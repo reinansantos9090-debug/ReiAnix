@@ -4767,20 +4767,98 @@ internal class NativeMainRuntimePort(
             publish(action = "export_settings", transform = { it.copy(lastArtifactPath = artifactPath) })
         }
 
-    fun importSettingsFromPrivateFile(file: File): Boolean {
-        val sourcePath = runCatching { file.canonicalFile.toPath() }.getOrNull() ?: return false
+    fun importSettingsFromPrivateFile(
+        file: File,
+        requestId: String? = null,
+        resultAction: String = "settings_import",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        val sourcePath = runCatching { file.canonicalFile.toPath() }.getOrNull()
         val allowedRoots = listOf(activity.filesDir, activity.cacheDir).mapNotNull {
             runCatching { it.canonicalFile.toPath() }.getOrNull()
         }
-        if (allowedRoots.none { sourcePath.startsWith(it) } || !file.isFile || file.length() !in 1..1_048_576L) {
-            publish(action = "import_settings", error = "O arquivo de configurações não está em uma área local permitida.")
+        if (
+            sourcePath == null || allowedRoots.none { sourcePath.startsWith(it) } ||
+            !file.isFile || file.length() !in 1..1_048_576L
+        ) {
+            val message = "O arquivo de configurações não está em uma área local permitida."
+            publish(action = "import_settings", error = message)
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = message,
+                    error = "settings_file_not_allowed",
+                )
+            }
             return false
         }
-        return launchTracked("import_settings", lane = "settings") {
-            val raw = withContext(Dispatchers.IO) { file.readText(Charsets.UTF_8) }
-            importSettingsJson(raw)
-            publish(action = "import_settings", transform = { it.copy(lastArtifactPath = file.absolutePath) })
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Importação das configurações enfileirada.",
+            )
         }
+        val accepted = launchTracked("import_settings", lane = "settings") {
+            try {
+                val raw = withContext(Dispatchers.IO) { file.readText(Charsets.UTF_8) }
+                val imported = importSettingsJson(raw)
+                publish(action = "import_settings", transform = {
+                    it.copy(lastArtifactPath = file.absolutePath)
+                })
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Configurações importadas.",
+                        payload = org.json.JSONObject()
+                            .put("imported", imported.imported)
+                            .put("unknownKeys", org.json.JSONArray(imported.unknownKeys)),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A importação das configurações foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível importar as configurações.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A importação das configurações não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
     }
 
     /** Build the existing canonical backup format; no alternate catalogue or database is created. */
@@ -9811,7 +9889,11 @@ internal class NativeMainRuntimePort(
             "settings_import" -> {
                 val reference = stringValueFromPayload(payload, "path", "filePath", "file_path")
                 if (reference != null) {
-                    importSettingsFromPrivateFile(File(reference))
+                    importSettingsFromPrivateFile(
+                        file = File(reference),
+                        requestId = resolvedRequestId,
+                        resultAction = normalized,
+                    )
                 } else {
                     launchNativeSettingsFileAction(normalized, resolvedRequestId)
                 }
