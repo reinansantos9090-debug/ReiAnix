@@ -4805,6 +4805,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     expectedEpisodeId = episodeId,
                     expectedAnimeId = animeId,
                 )
+                // The canonical lookup suspends. Do not let an old completion invalidate
+                // a newer transition that replaced this request while SQLite was queried.
+                if (!isCurrentTransition(
+                        generation = generation,
+                        expectedRequestId = sourceRequestId,
+                        expectedUri = sourceUri,
+                        expectedSessionId = sourcePlayerSessionId,
+                    )
+                ) return@launch
                 if (
                     !sourceValidation.isCurrent ||
                     navigation.current.id != episodeId ||
