@@ -8265,7 +8265,11 @@ internal class NativeMainRuntimePort(
             "query_marathon_plan" -> positiveLong("animeId")?.let {
                 queryMarathonPlan(it, nonBlank("currentPath") ?: nonBlank("current_path"))
             } ?: false
-            "refresh_details" -> positiveLong("animeId")?.let(::refreshCurrentDetails) ?: false
+            "refresh_details" -> {
+                val animeId = positiveLong("animeId") ?: positiveLong("anime_id")
+                    ?: mutableSnapshot.value.selectedAnimeId
+                animeId?.takeIf { it > 0L }?.let(::refreshCurrentDetails) ?: false
+            }
             "refresh_anilist_metadata", "refresh_current_metadata", "refresh_metadata" -> {
                 // Legacy refresh_current_metadata used the active Details item, so
                 // accept an explicit local ID first and otherwise use that selection.
