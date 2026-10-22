@@ -3649,10 +3649,13 @@ internal class NativeMainRuntimePort(
             "inventoryStartedAtMs",
             payload.optLong("inventory_started_at_ms", 0L),
         )
-        val inventoryComplete = payload.optBoolean(
-            "inventoryComplete",
-            payload.optBoolean("inventory_complete", payload.optBoolean("complete", false)),
-        )
+        // Python used bool(payload.get("inventoryComplete")); preserve that
+        // truthiness rule for legacy payloads while retaining newer field aliases.
+        val inventoryComplete = when {
+            payload.has("inventoryComplete") -> pythonTruthyJsonValue(payload.opt("inventoryComplete"))
+            payload.has("inventory_complete") -> pythonTruthyJsonValue(payload.opt("inventory_complete"))
+            else -> pythonTruthyJsonValue(payload.opt("complete"))
+        }
         if (inventoryStartedAt > 0L && lastStorageMutationAtMillis > inventoryStartedAt) {
             recordDiagnostic(
                 name = "SAF_INVENTORY_STALE_IGNORED",
@@ -4125,10 +4128,13 @@ internal class NativeMainRuntimePort(
             "inventoryStartedAtMs",
             payload.optLong("inventory_started_at_ms", 0L),
         )
-        val inventoryComplete = payload.optBoolean(
-            "inventoryComplete",
-            payload.optBoolean("inventory_complete", payload.optBoolean("complete", false)),
-        )
+        // Python used bool(payload.get("inventoryComplete")); preserve that
+        // truthiness rule for legacy payloads while retaining newer field aliases.
+        val inventoryComplete = when {
+            payload.has("inventoryComplete") -> pythonTruthyJsonValue(payload.opt("inventoryComplete"))
+            payload.has("inventory_complete") -> pythonTruthyJsonValue(payload.opt("inventory_complete"))
+            else -> pythonTruthyJsonValue(payload.opt("complete"))
+        }
         if (request.isEmpty() || selectionStarted <= 0L || inventoryStarted < selectionStarted ||
             inventoryStarted <= 0L || !inventoryComplete || !pendingSafSelectionBaselineKnown
         ) return false
@@ -9823,7 +9829,7 @@ internal class NativeMainRuntimePort(
                 val correlatedRequestId = eventRequestId?.trim()?.takeIf { it.isNotEmpty() } ?: stringValue("requestId")
                 if (type == "volume_changed") {
                     val nativeStorageOwner = payload.opt("nativeStorageOwner") == true
-                    if (nativeStorageOwner && payload.optBoolean("nativeVolumeStateIgnored", false)) {
+                    if (nativeStorageOwner && pythonTruthyJsonValue(payload.opt("nativeVolumeStateIgnored"))) {
                         recordDiagnostic(
                             name = "NATIVE_VOLUME_CHANGE_IGNORED",
                             requestId = correlatedRequestId,
