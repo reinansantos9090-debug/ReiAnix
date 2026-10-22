@@ -10948,8 +10948,8 @@ internal class NativeMainRuntimePort(
                 }
                 val playerErrorMessage = stringValue("message", "error")
                     ?: "Não foi possível reproduzir este arquivo localmente."
-                val playerErrorReason = firstTruthyJsonText(payload, "reason", "errorCode", "code")
-                    .takeIf { it.isNotEmpty() } ?: playerErrorMessage
+                val playerErrorReason = stringValue("reason") ?: playerErrorMessage
+                val transitionFailureReason = stringValue("reason", "message") ?: "player_error"
                 // Match the legacy main.py error path: a failure for the current
                 // launch invalidates an in-flight NEXT/PREVIOUS transition.
                 val playerErrorRequestId = eventRequestId ?: stringValue("requestId")
@@ -10974,7 +10974,7 @@ internal class NativeMainRuntimePort(
                             severity = "ERROR",
                             requestId = playerErrorOriginRequestId,
                             sessionId = stringValue("playerSessionId", "player_session_id", "sessionId", "session_id"),
-                            result = playerErrorReason,
+                            result = transitionFailureReason,
                             context = mapOf(
                                 "target_request_id" to playerErrorRequestId,
                                 "transition_direction" to transitionDirection,
