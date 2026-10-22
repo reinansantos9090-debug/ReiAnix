@@ -7532,6 +7532,8 @@ internal class NativeMainRuntimePort(
                             ?: "Não foi possível concluir a operação de armazenamento."
                         val error = stringValue("error", "reason", "status") ?: "saf_operation_failed"
                         val treeUri = stringValue("treeUri", "tree_uri")
+                        val failedPendingSelection = !pendingSafSelectionRequestId.isNullOrBlank() &&
+                            pendingSafSelectionRequestId == correlatedRequestId
                         val scanStatus = stringValue("status")?.uppercase(Locale.ROOT).orEmpty()
                         val isPendingRemoval = !pendingSafRemovalRequestId.isNullOrBlank() &&
                             (
@@ -7565,6 +7567,17 @@ internal class NativeMainRuntimePort(
                             error = error,
                             payload = payload,
                         )
+                        if (failedPendingSelection) {
+                            publishStorageOnboardingState(
+                                state = "ERROR",
+                                message = message,
+                                error = error,
+                                dismissed = false,
+                                diagnosticEvent = "STORAGE_SELECTION_FAILED",
+                                result = error,
+                                requestId = correlatedRequestId,
+                            )
+                        }
                         finishPendingSafRemoval(
                             eventRequestId = correlatedRequestId,
                             treeUri = treeUri,
@@ -7853,13 +7866,24 @@ internal class NativeMainRuntimePort(
                 val error = errorField("code", "error", "stage")
                     ?: "native_command_failed"
                 when (failedAction) {
-                    "select_tree" -> finishPendingSafSelection(
-                        eventRequestId = correlatedRequestId,
-                        status = "ERROR",
-                        message = message,
-                        error = error,
-                        payload = payload,
-                    )
+                    "select_tree" -> {
+                        finishPendingSafSelection(
+                            eventRequestId = correlatedRequestId,
+                            status = "ERROR",
+                            message = message,
+                            error = error,
+                            payload = payload,
+                        )
+                        publishStorageOnboardingState(
+                            state = "ERROR",
+                            message = message,
+                            error = error,
+                            dismissed = false,
+                            diagnosticEvent = "STORAGE_SELECTION_FAILED",
+                            result = error,
+                            requestId = correlatedRequestId,
+                        )
+                    }
                     "release_tree" -> finishPendingSafRemoval(
                         eventRequestId = correlatedRequestId,
                         treeUri = errorField("treeUri", "tree_uri"),
