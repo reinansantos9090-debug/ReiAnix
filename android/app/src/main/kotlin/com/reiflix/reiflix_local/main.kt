@@ -1594,11 +1594,73 @@ internal class NativeMainRuntimePort(
         )
     }
 
-    fun refreshCanonicalCatalog(): Boolean = launchTracked("refresh_canonical_catalog") {
-        val refreshed = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
-        if (!refreshed) {
-            throw IllegalStateException("O catálogo nativo ainda não pode ser atualizado antes da validação do banco.")
+    fun refreshCanonicalCatalog(
+        requestId: String? = null,
+        resultAction: String = "refresh_canonical_catalog",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Atualização do catálogo canônico enfileirada.",
+            )
         }
+        val accepted = launchTracked("refresh_canonical_catalog") {
+            try {
+                val refreshed = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
+                if (!refreshed) {
+                    throw IllegalStateException("O catálogo nativo ainda não pode ser atualizado antes da validação do banco.")
+                }
+                libraryViewModel.refresh()
+                settingsViewModel.refresh()
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Catálogo canônico atualizado.",
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A atualização do catálogo foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível atualizar o catálogo canônico.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A atualização do catálogo não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
     }
 
     fun refreshCurrentDetails(animeId: Long): Boolean {
@@ -7345,7 +7407,10 @@ internal class NativeMainRuntimePort(
             "refresh_library" -> refreshLibrary(
                 requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
             )
-            "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog()
+            "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                resultAction = normalized,
+            )
             "publish_catalog" -> {
                 // The canonical write was committed by Kotlin already; mirror on_catalog_changed
                 // by updating projections and scheduling coalesced metadata/artwork reconciliation.
