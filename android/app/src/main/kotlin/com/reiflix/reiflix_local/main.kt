@@ -1542,9 +1542,56 @@ internal class NativeMainRuntimePort(
     fun logout(): Boolean = requestAccountActionTracked("logout")
     fun switchAccount(): Boolean = requestAccountActionTracked("switch_account")
 
-    fun refreshLibrary(): Boolean = launchTracked("refresh_library") {
-        libraryViewModel.refresh()
-        settingsViewModel.refresh()
+    /**
+     * Port of main.py refresh_library: an explicit refresh requests the native
+     * scanner, not merely a view-model repaint. Capability discovery runs first
+     * when the native storage snapshot is still unknown, and a pending SAF picker
+     * blocks the refresh so it cannot race a user-authorized folder change.
+     */
+    fun refreshLibrary(requestId: String? = null): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        if (!pendingSafSelectionRequestId.isNullOrBlank()) {
+            val message = "Conclua ou cancele a seleção da pasta antes de atualizar a biblioteca."
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = "refresh_library",
+                    status = "BLOCKED",
+                    operationState = "BLOCKED",
+                    message = message,
+                    error = "saf_selection_pending",
+                )
+            }
+            recordDiagnostic(
+                name = "LIBRARY_REFRESH_REJECTED",
+                severity = "WARN",
+                requestId = correlatedRequestId,
+                result = "saf_selection_pending",
+            )
+            return false
+        }
+
+        val storage = storageSnapshot()
+        if (storage.onboardingPhase.equals(
+                NativeStorageOnboardingState.PHASE_CHECKING,
+                ignoreCase = true,
+            )
+        ) {
+            recordDiagnostic(
+                name = "NATIVE_STORAGE_CAPABILITIES_CHECK_REQUESTED",
+                requestId = correlatedRequestId,
+                result = "refresh_library",
+            )
+            return checkStorageAccess(
+                requestId = correlatedRequestId,
+                resultAction = "refresh_library",
+            )
+        }
+
+        return requestLibraryScan(
+            requestId = correlatedRequestId,
+            resultAction = "refresh_library",
+        )
     }
 
     fun refreshCanonicalCatalog(): Boolean = launchTracked("refresh_canonical_catalog") {
@@ -6557,7 +6604,9 @@ internal class NativeMainRuntimePort(
                 requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 resultAction = normalized,
             )
-            "refresh_library" -> refreshLibrary()
+            "refresh_library" -> refreshLibrary(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+            )
             "refresh_catalog", "refresh_canonical_catalog" -> refreshCanonicalCatalog()
             "publish_catalog" -> {
                 // The canonical write was committed by Kotlin already; mirror on_catalog_changed
