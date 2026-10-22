@@ -2505,11 +2505,11 @@ internal class NativeMainRuntimePort(
         // transition and record its diagnostic before clearing the session.
         cancelPlayerTransition(reason)
         // Keep MainActivity's handoff ledger in sync when lifecycle/native
-        // invalidation arrives without a player_exited event. The normal exit
-        // branch already calls notePlayerExit() with the event timestamp.
+        // invalidation arrives without a player_exited event. Do not record a
+        // synthetic exit timestamp or clear a different, newer player session.
         if (reason != "player_exited") {
-            MainActivity.notePlayerExit(
-                requestId = current.activePlayerRequestId.orEmpty(),
+            MainActivity.clearPlayerSessionIfCurrent(
+                requestId = current.activePlayerRequestId,
                 sessionId = current.activePlayerSessionId,
                 activityInstanceId = current.activePlayerActivityInstanceId,
             )
