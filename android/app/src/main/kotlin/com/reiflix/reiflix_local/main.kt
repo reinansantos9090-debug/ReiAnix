@@ -1776,6 +1776,47 @@ internal class NativeMainRuntimePort(
         val epochSeconds: Double?,
     )
 
+    /** Python str.isspace semantics for the legacy note/tag normalization boundary. */
+    private fun isPythonWhitespace(codePoint: Int): Boolean =
+        Character.isWhitespace(codePoint) ||
+            Character.isSpaceChar(codePoint) ||
+            codePoint in 0x1C..0x1F
+
+    private fun stripPythonWhitespace(value: String): String {
+        var start = 0
+        var end = value.length
+        while (start < end) {
+            val codePoint = value.codePointAt(start)
+            if (!isPythonWhitespace(codePoint)) break
+            start += Character.charCount(codePoint)
+        }
+        while (end > start) {
+            val codePoint = value.codePointBefore(end)
+            if (!isPythonWhitespace(codePoint)) break
+            end -= Character.charCount(codePoint)
+        }
+        return value.substring(start, end)
+    }
+
+    /** Equivalent to " ".join(value.split()) for Python's Unicode whitespace set. */
+    private fun collapsePythonWhitespace(value: String): String {
+        val result = StringBuilder()
+        var index = 0
+        var pendingSpace = false
+        while (index < value.length) {
+            val codePoint = value.codePointAt(index)
+            index += Character.charCount(codePoint)
+            if (isPythonWhitespace(codePoint)) {
+                if (result.isNotEmpty()) pendingSpace = true
+            } else {
+                if (pendingSpace) result.append(' ')
+                result.appendCodePoint(codePoint)
+                pendingSpace = false
+            }
+        }
+        return result.toString()
+    }
+
     private fun pythonTruthyJsonValue(value: Any?): Boolean = when (value) {
         null, org.json.JSONObject.NULL -> false
         is Boolean -> value
@@ -2817,7 +2858,7 @@ internal class NativeMainRuntimePort(
 
     fun savePersonalNote(animeId: Long, note: String?): Boolean {
         if (animeId <= 0L) return false
-        val normalized = note.orEmpty().trim()
+        val normalized = stripPythonWhitespace(note.orEmpty())
         return launchTracked("save_personal_note") {
             // Port core/library_store.py's set_personal_note contract: whitespace-only
             // notes clear the nullable field, and oversized notes are rejected.
@@ -2848,9 +2889,7 @@ internal class NativeMainRuntimePort(
 
         val normalized = mutableListOf<String>()
         for (rawTag in tags) {
-            val tag = rawTag.trim().split(Regex("\\s+"))
-                .filter { it.isNotEmpty() }
-                .joinToString(" ")
+            val tag = collapsePythonWhitespace(rawTag)
             if (tag.isEmpty()) continue
             if (normalized.any { caseFold(it) == caseFold(tag) }) continue
             normalized += takeCodePoints(tag, 40)
