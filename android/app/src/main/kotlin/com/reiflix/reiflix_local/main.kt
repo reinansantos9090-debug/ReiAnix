@@ -9293,6 +9293,12 @@ internal class NativeMainRuntimePort(
             "_legacySourceEventCreatedAt",
             sourceEventTimestamp ?: org.json.JSONObject.NULL,
         )
+        // Keep the original envelope field distinct: playback persistence falls
+        // back to timestamp, but PerformanceMonitor.record_native_event does not.
+        payload.put(
+            "_legacySourceEnvelopeCreatedAt",
+            if (event.has("createdAt")) event.opt("createdAt") else org.json.JSONObject.NULL,
+        )
         // Python's performance recorder reads receivedAtMs from the envelope,
         // not from the nested payload. Preserve that distinction before flattening.
         payload.put(
@@ -10547,7 +10553,7 @@ internal class NativeMainRuntimePort(
                 // different clock and produce a misleading measurement.
                 val rawCreatedAt = sequenceOf(
                     payload.opt("createdAt"),
-                    payload.opt("_legacySourceEventCreatedAt"),
+                    payload.opt("_legacySourceEnvelopeCreatedAt"),
                     payload.opt("commandCreatedAtMs"),
                     payload.opt("command_created_at_ms"),
                 ).firstOrNull { pythonTruthyJsonValue(it) }
