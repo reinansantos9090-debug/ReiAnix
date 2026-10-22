@@ -10948,6 +10948,8 @@ internal class NativeMainRuntimePort(
                 }
                 val playerErrorMessage = stringValue("message", "error")
                     ?: "Não foi possível reproduzir este arquivo localmente."
+                val playerErrorReason = firstTruthyJsonText(payload, "reason", "errorCode", "code")
+                    .takeIf { it.isNotEmpty() } ?: playerErrorMessage
                 // Match the legacy main.py error path: a failure for the current
                 // launch invalidates an in-flight NEXT/PREVIOUS transition.
                 val playerErrorRequestId = eventRequestId ?: stringValue("requestId")
@@ -10980,8 +10982,6 @@ internal class NativeMainRuntimePort(
                     }
                     cancelPlayerTransition("player_error")
                 }
-                val playerErrorReason = firstTruthyJsonText(payload, "reason", "errorCode", "code")
-                    .takeIf { it.isNotEmpty() } ?: playerErrorMessage
                 // Preserve the established diagnostic event name/source/result from
                 // main.py so existing playback diagnostics remain comparable.
                 recordDiagnostic(
