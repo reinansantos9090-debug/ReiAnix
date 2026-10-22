@@ -6771,39 +6771,120 @@ internal class NativeMainRuntimePort(
             )
             return false
         }
-        if (!canStartLibraryScan("saf")) {
-            HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
+        if (!pendingSafSelectionRequestId.isNullOrBlank()) {
+            HomeRefreshCoordinator.fail(requestId, "saf_selection_pending")
             recordDiagnostic(
-                name = "HOME_REFRESH_FAILED",
+                name = "HOME_REFRESH_REJECTED",
                 severity = "WARN",
                 requestId = requestId,
                 refreshId = refreshId,
-                result = "no_authorized_library_saf_source",
+                result = "saf_selection_pending",
             )
             return false
         }
-        if (!requestLibraryScan()) {
-            HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected")
+        val capabilitiesCheckPending = storageSnapshot().onboardingPhase.equals(
+            NativeStorageOnboardingState.PHASE_CHECKING,
+            ignoreCase = true,
+        )
+        if (capabilitiesCheckPending) {
+            // Port main.py's refresh_library preflight: query Android storage
+            // capabilities first, then request the catalogue scan once the result
+            // has updated the canonical onboarding projection.
             recordDiagnostic(
-                name = "HOME_REFRESH_FAILED",
-                severity = "WARN",
+                name = "NATIVE_STORAGE_CAPABILITIES_CHECK_REQUESTED",
                 requestId = requestId,
                 refreshId = refreshId,
-                result = "native_scan_request_rejected",
+                result = "home_refresh",
             )
-            return false
+            if (!checkStorageAccess()) {
+                HomeRefreshCoordinator.fail(requestId, "storage_capabilities_check_rejected")
+                recordDiagnostic(
+                    name = "HOME_REFRESH_FAILED",
+                    severity = "WARN",
+                    requestId = requestId,
+                    refreshId = refreshId,
+                    result = "storage_capabilities_check_rejected",
+                )
+                return false
+            }
+        } else {
+            if (!canStartLibraryScan("saf")) {
+                HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
+                recordDiagnostic(
+                    name = "HOME_REFRESH_FAILED",
+                    severity = "WARN",
+                    requestId = requestId,
+                    refreshId = refreshId,
+                    result = "no_authorized_library_saf_source",
+                )
+                return false
+            }
+            if (!requestLibraryScan()) {
+                HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected")
+                recordDiagnostic(
+                    name = "HOME_REFRESH_FAILED",
+                    severity = "WARN",
+                    requestId = requestId,
+                    refreshId = refreshId,
+                    result = "native_scan_request_rejected",
+                )
+                return false
+            }
         }
         recordDiagnostic(
             name = "HOME_REFRESH_ACCEPTED",
             requestId = requestId,
             refreshId = refreshId,
-            result = "native_scan_request_accepted",
-            context = mapOf("source" to refreshSource),
+            result = if (capabilitiesCheckPending) "storage_capability_check_accepted" else "native_scan_request_accepted",
+            context = mapOf("source" to refreshSource, "capabilities_check_pending" to capabilitiesCheckPending),
         )
         synchronized(lock) {
             homeRefreshJob?.cancel()
             homeRefreshJob = activity.lifecycleScope.launch {
                 try {
+                    if (capabilitiesCheckPending) {
+                        val checkedStorage = withTimeoutOrNull(HOME_REFRESH_SCAN_START_TIMEOUT_MS) {
+                            activity.nativeStorageOnboardingState.first { state ->
+                                !state.phase.equals(
+                                    NativeStorageOnboardingState.PHASE_CHECKING,
+                                    ignoreCase = true,
+                                )
+                            }
+                        }
+                        if (checkedStorage == null) {
+                            HomeRefreshCoordinator.fail(requestId, "storage_capabilities_check_timeout")
+                            recordDiagnostic(
+                                name = "HOME_REFRESH_FAILED",
+                                severity = "WARN",
+                                requestId = requestId,
+                                refreshId = refreshId,
+                                result = "storage_capabilities_check_timeout",
+                            )
+                            return@launch
+                        }
+                        if (!canStartLibraryScan("saf")) {
+                            HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
+                            recordDiagnostic(
+                                name = "HOME_REFRESH_FAILED",
+                                severity = "WARN",
+                                requestId = requestId,
+                                refreshId = refreshId,
+                                result = "no_authorized_library_saf_source",
+                            )
+                            return@launch
+                        }
+                        if (!requestLibraryScan()) {
+                            HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected_after_capability_check")
+                            recordDiagnostic(
+                                name = "HOME_REFRESH_FAILED",
+                                severity = "WARN",
+                                requestId = requestId,
+                                refreshId = refreshId,
+                                result = "native_scan_request_rejected_after_capability_check",
+                            )
+                            return@launch
+                        }
+                    }
                     val firstBatch = withTimeoutOrNull(HOME_REFRESH_SCAN_START_TIMEOUT_MS) {
                         NativeScanController.progress
                             .map { snapshots ->
