@@ -3569,7 +3569,7 @@ internal class NativeMainRuntimePort(
      * after the explicit selection request and proves exactly one newly persisted
      * SAF root. Unrelated grants are never promoted into library sources.
      */
-    private fun recoverPendingSafSelectionFromInventory(payload: org.json.JSONObject): Boolean {
+    private suspend fun recoverPendingSafSelectionFromInventory(payload: org.json.JSONObject): Boolean {
         val request = pendingSafSelectionRequestId?.trim().orEmpty()
         val selectionStarted = pendingSafSelectionStartedAtMillis
         val inventoryStarted = payload.optLong(
@@ -3631,154 +3631,144 @@ internal class NativeMainRuntimePort(
             return true
         }
 
-        val accepted = launchTracked("recover_saf_selection_from_inventory", lane = "storage") {
-            if (pendingSafSelectionRequestId != request) return@launchTracked
-            try {
-                val treeIdentity = SafScanner.treeIdentity(Uri.parse(treeUri))
-                val accountId = dependencies.sqliteAccountRepository.loadProfile()?.id
-                dependencies.sqliteLibraryRepository.upsertSafFolder(
-                    path = treeUri,
-                    name = candidate.optString("name", "").trim()
-                        .takeIf { it.isNotEmpty() }
-                        ?: SafScanner.displayName(activity.applicationContext, Uri.parse(treeUri)),
-                    authorization = "granted",
-                    accountId = accountId,
-                    safAuthority = candidate.optString("authority", treeIdentity.authority),
-                    safDocumentId = candidate.optString("documentId", treeIdentity.documentId),
-                    safVolumeId = candidate.optString("volumeId", treeIdentity.volumeId),
-                    safIdentity = identity,
-                )
-                // The legacy flow verified that the selected URI became a valid
-                // configured library source before acknowledging recovery. A
-                // persisted Android grant alone must never mark setup as complete.
-                val recoveredRoot = withContext(Dispatchers.IO) {
-                    configuredValidLibrarySafRoots().firstOrNull { configured ->
-                        configured == treeUri ||
-                            StorageAuthorization.safIdentity(configured) == identity
-                    }
+        if (pendingSafSelectionRequestId != request) return false
+        try {
+            val treeIdentity = SafScanner.treeIdentity(Uri.parse(treeUri))
+            val accountId = dependencies.sqliteAccountRepository.loadProfile()?.id
+            dependencies.sqliteLibraryRepository.upsertSafFolder(
+                path = treeUri,
+                name = candidate.optString("name", "").trim()
+                    .takeIf { it.isNotEmpty() }
+                    ?: SafScanner.displayName(activity.applicationContext, Uri.parse(treeUri)),
+                authorization = "granted",
+                accountId = accountId,
+                safAuthority = candidate.optString("authority", treeIdentity.authority),
+                safDocumentId = candidate.optString("documentId", treeIdentity.documentId),
+                safVolumeId = candidate.optString("volumeId", treeIdentity.volumeId),
+                safIdentity = identity,
+            )
+            // The legacy helper awaited catalog registration and validated that
+            // the new grant became a usable source before publishing success.
+            val recoveredRoot = withContext(Dispatchers.IO) {
+                configuredValidLibrarySafRoots().firstOrNull { configured ->
+                    configured == treeUri ||
+                        StorageAuthorization.safIdentity(configured) == identity
                 }
-                if (recoveredRoot == null) {
-                    val message =
-                        "O Android autorizou a pasta, mas o ReiAnix não conseguiu confirmar a fonte da biblioteca. Toque em ESCOLHER PASTA para tentar novamente."
-                    activity.reportNativeStorageOnboardingState(
-                        phase = NativeStorageOnboardingState.PHASE_ERROR,
-                        message = message,
-                        error = "selected_saf_source_validation_failed",
-                        dismissed = false,
-                    )
-                    libraryViewModel.refreshNativeFolders()
-                    settingsViewModel.refresh()
-                    libraryViewModel.refresh()
-                    mutableStorageState.value = storageSnapshot()
-                    finishPendingSafSelection(
-                        eventRequestId = request,
-                        status = "ERROR",
-                        message = message,
-                        error = "selected_saf_source_validation_failed",
-                        payload = org.json.JSONObject()
-                            .put("treeUri", treeUri)
-                            .put("identity", identity)
-                            .put("recoveredFromInventory", true),
-                    )
-                    recordDiagnostic(
-                        name = "STORAGE_SOURCE_VALIDATION_FAILED",
-                        severity = "WARN",
-                        requestId = request,
-                        result = "inventory_recovery_validation_failed",
-                        context = mapOf("identity" to identity),
-                    )
-                    return@launchTracked
-                }
+            }
+            if (recoveredRoot == null) {
+                val message =
+                    "O Android autorizou a pasta, mas o ReiAnix não conseguiu confirmar a fonte da biblioteca. Toque em ESCOLHER PASTA para tentar novamente."
                 activity.reportNativeStorageOnboardingState(
-                    phase = NativeStorageOnboardingState.PHASE_READY,
-                    message = null,
-                    error = null,
+                    phase = NativeStorageOnboardingState.PHASE_ERROR,
+                    message = message,
+                    error = "selected_saf_source_validation_failed",
                     dismissed = false,
                 )
-                recordStorageMutation("saf_selection_recovered_from_inventory", treeUri)
                 libraryViewModel.refreshNativeFolders()
                 settingsViewModel.refresh()
                 libraryViewModel.refresh()
                 mutableStorageState.value = storageSnapshot()
-                scheduleCatalogMetadataHydration("storage_ready_inventory_recovery")
-                scheduleThumbnailReconciliation("storage_ready_inventory_recovery")
-
                 finishPendingSafSelection(
                     eventRequestId = request,
-                    status = "COMPLETED",
-                    message = "Pasta autorizada e configurada.",
+                    status = "ERROR",
+                    message = message,
+                    error = "selected_saf_source_validation_failed",
                     payload = org.json.JSONObject()
                         .put("treeUri", treeUri)
                         .put("identity", identity)
                         .put("recoveredFromInventory", true),
                 )
                 recordDiagnostic(
-                    name = "SAF_SELECTION_RECOVERED_FROM_INVENTORY",
-                    requestId = request,
-                    result = "completed",
-                    context = mapOf("identity" to identity),
-                )
-                try {
-                    activity.startActivity(
-                        MainActivity.createNativeStorageActionIntent(
-                            context = activity,
-                            action = "scan_tree",
-                            treeUri = treeUri,
-                            requestId = UUID.randomUUID().toString(),
-                            reason = "saf_inventory_selection_recovery",
-                        )
-                    )
-                } catch (scanFailure: Exception) {
-                    recordDiagnostic(
-                        name = "SAF_RECOVERY_RESCAN_LAUNCH_FAILED",
-                        severity = "WARN",
-                        result = "scan_tree",
-                        error = scanFailure,
-                        context = mapOf("identity" to identity),
-                    )
-                }
-            } catch (cancelled: CancellationException) {
-                finishPendingSafSelection(
-                    eventRequestId = request,
-                    status = "CANCELLED",
-                    message = "Recuperação da seleção SAF cancelada.",
-                    payload = org.json.JSONObject().put("treeUri", treeUri),
-                )
-                throw cancelled
-            } catch (failure: Throwable) {
-                val message = failure.message ?: "Não foi possível recuperar a seleção de pasta."
-                activity.reportNativeStorageOnboardingState(
-                    phase = NativeStorageOnboardingState.PHASE_ERROR,
-                    message = message,
-                    error = failure.javaClass.simpleName,
-                    dismissed = false,
-                )
-                recordDiagnostic(
-                    name = "SAF_SELECTION_INVENTORY_RECOVERY_FAILED",
+                    name = "STORAGE_SOURCE_VALIDATION_FAILED",
                     severity = "WARN",
                     requestId = request,
-                    result = "failed",
-                    error = failure,
+                    result = "inventory_recovery_validation_failed",
                     context = mapOf("identity" to identity),
                 )
-                finishPendingSafSelection(
-                    eventRequestId = request,
-                    status = "ERROR",
-                    message = message,
-                    error = failure.javaClass.simpleName,
-                    payload = org.json.JSONObject().put("treeUri", treeUri),
+                return true
+            }
+
+            recordStorageMutation("saf_selection_recovered_from_inventory", treeUri)
+            libraryViewModel.refreshNativeFolders()
+            settingsViewModel.refresh()
+            libraryViewModel.refresh()
+            mutableStorageState.value = storageSnapshot()
+            activity.reportNativeStorageOnboardingState(
+                phase = NativeStorageOnboardingState.PHASE_READY,
+                message = null,
+                error = null,
+                dismissed = false,
+            )
+            scheduleCatalogMetadataHydration("storage_ready_inventory_recovery")
+            scheduleThumbnailReconciliation("storage_ready_inventory_recovery")
+
+            finishPendingSafSelection(
+                eventRequestId = request,
+                status = "COMPLETED",
+                message = "Pasta autorizada e configurada.",
+                payload = org.json.JSONObject()
+                    .put("treeUri", treeUri)
+                    .put("identity", identity)
+                    .put("recoveredFromInventory", true),
+            )
+            recordDiagnostic(
+                name = "SAF_SELECTION_RECOVERED_FROM_INVENTORY",
+                requestId = request,
+                result = "completed",
+                context = mapOf("identity" to identity),
+            )
+            try {
+                activity.startActivity(
+                    MainActivity.createNativeStorageActionIntent(
+                        context = activity,
+                        action = "scan_tree",
+                        treeUri = treeUri,
+                        requestId = UUID.randomUUID().toString(),
+                        reason = "saf_inventory_selection_recovery",
+                    )
+                )
+            } catch (scanFailure: Exception) {
+                recordDiagnostic(
+                    name = "SAF_RECOVERY_RESCAN_LAUNCH_FAILED",
+                    severity = "WARN",
+                    result = "scan_tree",
+                    error = scanFailure,
+                    context = mapOf("identity" to identity),
                 )
             }
-        }
-        if (!accepted) {
+        } catch (cancelled: CancellationException) {
+            finishPendingSafSelection(
+                eventRequestId = request,
+                status = "CANCELLED",
+                message = "Recuperação da seleção SAF cancelada.",
+                payload = org.json.JSONObject().put("treeUri", treeUri),
+            )
+            throw cancelled
+        } catch (failure: Throwable) {
+            val message = failure.message ?: "Não foi possível recuperar a seleção de pasta."
+            activity.reportNativeStorageOnboardingState(
+                phase = NativeStorageOnboardingState.PHASE_ERROR,
+                message = message,
+                error = failure.javaClass.simpleName,
+                dismissed = false,
+            )
+            recordDiagnostic(
+                name = "SAF_SELECTION_INVENTORY_RECOVERY_FAILED",
+                severity = "WARN",
+                requestId = request,
+                result = "failed",
+                error = failure,
+                context = mapOf("identity" to identity),
+            )
             finishPendingSafSelection(
                 eventRequestId = request,
                 status = "ERROR",
-                message = "Não foi possível agendar a recuperação da seleção SAF.",
-                error = "recovery_operation_rejected",
+                message = message,
+                error = failure.javaClass.simpleName,
+                payload = org.json.JSONObject().put("treeUri", treeUri),
             )
         }
-        return accepted
+        return true
     }
 
     fun beginSafSelection(requestId: String? = null, bridge: String = "library"): Boolean {
