@@ -4954,11 +4954,20 @@ internal class NativeMainRuntimePort(
             )
         }
         val accepted = launchTracked("create_backup", lane = "backup") {
+            val backupStartedAtMillis = android.os.SystemClock.elapsedRealtime()
             try {
                 val archive = withContext(Dispatchers.IO) { backupService.createBackupFile() }
                 require(archive.isFile && archive.length() > 0L) {
                     "O serviço de backup não produziu um arquivo válido."
                 }
+                recordDiagnostic(
+                    name = "BACKUP_CREATED",
+                    result = "success",
+                    context = mapOf(
+                        "backup_duration_ms" to (android.os.SystemClock.elapsedRealtime() - backupStartedAtMillis),
+                        "size_bytes" to archive.length(),
+                    ),
+                )
                 publish(action = "create_backup", transform = {
                     it.copy(lastArtifactPath = archive.absolutePath, lastResultJson = null)
                 })
@@ -5167,6 +5176,7 @@ internal class NativeMainRuntimePort(
             )
         }
         val accepted = launchTracked("restore_backup", lane = "backup") {
+            val restoreStartedAtMillis = android.os.SystemClock.elapsedRealtime()
             try {
                 // Match the old library metadata lock and artwork-generation invalidation:
                 // stop tracked metadata/thumbnail work, wait for in-flight reconciliations
@@ -5192,6 +5202,17 @@ internal class NativeMainRuntimePort(
                         }
                     }
                 }
+                recordDiagnostic(
+                    name = "RESTORE_COMPLETED",
+                    result = "success",
+                    context = mapOf(
+                        "restore_duration_ms" to (android.os.SystemClock.elapsedRealtime() - restoreStartedAtMillis),
+                        "imported_rows" to result.importedRows,
+                        "missing_files" to result.missingFiles,
+                        "manual_artwork_reconnected" to result.manualArtworkReconnected,
+                        "warnings_count" to result.warnings.size,
+                    ),
+                )
                 libraryViewModel.refresh()
                 settingsViewModel.refresh()
                 scheduleCatalogMetadataHydration("backup_restored")
