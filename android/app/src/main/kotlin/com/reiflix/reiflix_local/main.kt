@@ -30,6 +30,7 @@ import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineStart
 import java.util.PriorityQueue
 import java.util.LinkedHashSet
@@ -823,7 +824,7 @@ internal class NativeMainRuntimePort(
     private val thumbnailLatestKeyByUri = ConcurrentHashMap<String, String>()
     private val thumbnailLatestAtMillis = ConcurrentHashMap<String, Long>()
     private val thumbnailInFlight = ConcurrentHashMap.newKeySet<String>()
-    private val thumbnailSemaphore = Semaphore(4)
+    private val thumbnailSemaphore = Semaphore(MAX_CONCURRENT_THUMBNAIL_REQUESTS)
     @Volatile private var thumbnailPumpActive = false
     @Volatile private var thumbnailPumpJob: Job? = null
     @Volatile private var homeRefreshJob: Job? = null
@@ -1977,8 +1978,11 @@ internal class NativeMainRuntimePort(
         thumbnailPumpActive = true
         thumbnailPumpJob = activity.lifecycleScope.launch {
             try {
-                while (true) {
-                    val request = synchronized(thumbnailQueueLock) {
+                coroutineScope {
+                    repeat(MAX_CONCURRENT_THUMBNAIL_REQUESTS) {
+                        launch {
+                            while (true) {
+                                val request = synchronized(thumbnailQueueLock) {
                         val next = thumbnailQueue.poll() ?: return@synchronized null
                         val currentKey = thumbnailLatestKeyByUri[next.uri.toString()]
                         if (currentKey != null && currentKey != next.key) {
@@ -2138,6 +2142,9 @@ internal class NativeMainRuntimePort(
                         if (!retryScheduled && thumbnailRetryCounts[request.key] == attemptToRetry) {
                             thumbnailRetryCounts.remove(request.key)
                             thumbnailRetryPendingKeys.remove(request.key)
+                        }
+                    }
+                            }
                         }
                     }
                 }
@@ -5724,6 +5731,7 @@ internal class NativeMainRuntimePort(
         const val HOME_REFRESH_TERMINAL_SETTLE_MS = 250L
         const val HOME_REFRESH_MONITOR_INTERVAL_MS = 100L
         const val MAX_PENDING_THUMBNAIL_REQUESTS = 128
+        const val MAX_CONCURRENT_THUMBNAIL_REQUESTS = 4
         const val MAX_SEEN_PROJECTION_EVENTS = 512
     }
 
