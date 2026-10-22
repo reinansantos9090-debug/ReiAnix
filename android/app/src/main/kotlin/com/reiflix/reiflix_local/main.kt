@@ -4583,6 +4583,16 @@ internal class NativeMainRuntimePort(
 
     fun onRuntimeDisconnect() {
         cancelBackgroundTasks()
+        // main.py clears the active home-refresh context when a Flet view
+        // disconnects. Terminate the native coordinator as well so a reconnect
+        // cannot inherit a permanently active refresh with a stale request ID.
+        val activeRefresh = HomeRefreshCoordinator.state.value
+        if (activeRefresh.active && !activeRefresh.requestId.isNullOrBlank()) {
+            HomeRefreshCoordinator.cancel(
+                activeRefresh.requestId,
+                "runtime_disconnect",
+            )
+        }
         publish(action = "runtime_disconnect")
     }
 
