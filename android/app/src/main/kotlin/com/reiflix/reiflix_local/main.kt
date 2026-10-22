@@ -10501,12 +10501,33 @@ internal class NativeMainRuntimePort(
                 completeNativeOperation(requestId, "backup_restored")
             }
             "performance_metrics", "performance_player" -> {
+                // Port main.py's PerformanceMonitor.record_native_event(): retain event
+                // identity and stage, and calculate delivery latency when both clocks are
+                // present instead of relying only on an opaque serialized payload.
+                val createdAtMs = longValue(
+                    "createdAt",
+                    "_legacySourceEventCreatedAt",
+                    "commandCreatedAtMs",
+                    "command_created_at_ms",
+                )
+                val receivedAtMs = longValue("receivedAtMs", "received_at_ms")
+                val deliveryLatencyMs = if (createdAtMs != null && receivedAtMs != null) {
+                    (receivedAtMs - createdAtMs).coerceAtLeast(0L)
+                } else {
+                    null
+                }
                 recordDiagnostic(
                     name = "NATIVE_PERFORMANCE_EVENT",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
+                    requestId = eventRequestId ?: stringValue("requestId", "request_id"),
+                    sessionId = stringValue("playerSessionId", "player_session_id", "sessionId", "session_id"),
                     result = type,
-                    context = mapOf("payload" to payload.toString().take(2000)),
+                    context = mapOf(
+                        "event_type" to type,
+                        "event_id" to stringValue("eventId", "event_id", "id"),
+                        "stage" to stringValue("stage", "event"),
+                        "delivery_latency_ms" to deliveryLatencyMs,
+                        "payload" to payload.toString().take(2000),
+                    ),
                 )
                 true
             }
