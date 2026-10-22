@@ -190,10 +190,84 @@ class ReiAnixAniListViewModel(
                         )
                     }
                     is AniListResult.Failure -> if (requestId == metadataRefreshRequestId) {
-                        _aniListUiState.value = _aniListUiState.value.copy(
-                            isMetadataRefreshLoading = false,
-                            error = result.error.userMessage(),
-                        )
+                        val missingAssociation = (result.error as? AniListError.InvalidRequest)
+                            ?.message
+                            ?.contains("no valid AniList association", ignoreCase = true) == true
+                        if (!missingAssociation) {
+                            _aniListUiState.value = _aniListUiState.value.copy(
+                                isMetadataRefreshLoading = false,
+                                error = result.error.userMessage(),
+                            )
+                        } else {
+                            // Legacy main.py's refresh_metadata(force=True) searched
+                            // by the local title when no AniList ID was associated;
+                            // a refresh action must not become a hard failure merely
+                            // because the local entry has not been matched yet.
+                            when (val matchResult = integration.autoMatch(animeId)) {
+                                is AniListResult.Failure -> if (requestId == metadataRefreshRequestId) {
+                                    _aniListUiState.value = _aniListUiState.value.copy(
+                                        isMetadataRefreshLoading = false,
+                                        error = matchResult.error.userMessage(),
+                                    )
+                                }
+                                is AniListResult.Success -> if (requestId == metadataRefreshRequestId) {
+                                    when (val match = matchResult.value) {
+                                        is AniListAutoMatchResult.Matched -> {
+                                            _aniListUiState.value = _aniListUiState.value.copy(
+                                                isMetadataRefreshLoading = false,
+                                                error = null,
+                                                lastAssociationMessage = "Metadados AniList encontrados e atualizados.",
+                                                associationRevision = _aniListUiState.value.associationRevision + 1,
+                                            )
+                                        }
+                                        is AniListAutoMatchResult.AlreadyMatched,
+                                        is AniListAutoMatchResult.AlreadyManuallyMatched -> {
+                                            when (val refreshed = integration.refreshMetadata(animeId)) {
+                                                is AniListResult.Success -> _aniListUiState.value =
+                                                    _aniListUiState.value.copy(
+                                                        isMetadataRefreshLoading = false,
+                                                        error = null,
+                                                        lastAssociationMessage = "Metadados AniList atualizados.",
+                                                        associationRevision = _aniListUiState.value.associationRevision + 1,
+                                                    )
+                                                is AniListResult.Failure -> _aniListUiState.value =
+                                                    _aniListUiState.value.copy(
+                                                        isMetadataRefreshLoading = false,
+                                                        error = refreshed.error.userMessage(),
+                                                    )
+                                            }
+                                        }
+                                        is AniListAutoMatchResult.Ambiguous -> _aniListUiState.value =
+                                            _aniListUiState.value.copy(
+                                                isMetadataRefreshLoading = false,
+                                                error = null,
+                                                results = match.candidates,
+                                                lastAssociationMessage =
+                                                    "Foram encontradas várias correspondências possíveis. Revise as opções AniList antes de associar.",
+                                                associationRevision = _aniListUiState.value.associationRevision + 1,
+                                            )
+                                        AniListAutoMatchResult.NoMatch -> _aniListUiState.value =
+                                            _aniListUiState.value.copy(
+                                                isMetadataRefreshLoading = false,
+                                                error = null,
+                                                lastAssociationMessage = "Nenhuma correspondência AniList confiável foi encontrada.",
+                                                associationRevision = _aniListUiState.value.associationRevision + 1,
+                                            )
+                                        AniListAutoMatchResult.RecentlyAttempted -> _aniListUiState.value =
+                                            _aniListUiState.value.copy(
+                                                isMetadataRefreshLoading = false,
+                                                error = null,
+                                                lastAssociationMessage = "A correspondência AniList foi tentada recentemente. Tente novamente mais tarde.",
+                                            )
+                                        AniListAutoMatchResult.Disabled -> _aniListUiState.value =
+                                            _aniListUiState.value.copy(
+                                                isMetadataRefreshLoading = false,
+                                                error = "O AniList está desativado nas configurações.",
+                                            )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
