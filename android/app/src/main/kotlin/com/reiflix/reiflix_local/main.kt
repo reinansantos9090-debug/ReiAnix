@@ -10847,6 +10847,20 @@ internal class NativeMainRuntimePort(
                 ) {
                     cancelPlayerTransition("player_error")
                 }
+                val playerErrorReason = firstTruthyJsonText(payload, "reason", "errorCode", "code")
+                    .takeIf { it.isNotEmpty() } ?: playerErrorMessage
+                // Preserve the established diagnostic event name/source/result from
+                // main.py so existing playback diagnostics remain comparable.
+                recordDiagnostic(
+                    name = "PLAYER_ERROR",
+                    severity = "ERROR",
+                    requestId = eventRequestId ?: stringValue("requestId"),
+                    sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
+                    source = "native_player",
+                    result = playerErrorReason,
+                    error = IllegalStateException(playerErrorMessage),
+                    context = mapOf("episode_id" to longValue("episodeId", "episode_id")),
+                )
                 recordDiagnostic(
                     name = "PLAYER_RUNTIME_ERROR",
                     severity = "ERROR",
