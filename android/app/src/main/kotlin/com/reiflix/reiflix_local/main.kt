@@ -1928,6 +1928,36 @@ internal class NativeMainRuntimePort(
                 playedAtEpochSeconds = playedAtEpochSeconds,
                 completed = completed,
             )
+            // Mirror main.py's second player_callback_is_current check after the
+            // asynchronous persistence completes. A session may be replaced while
+            // SQLite is writing; stale callbacks must not publish a projection update.
+            if (callbackSnapshot != null) {
+                val postSaveValidation = validatePlayerCallback(
+                    eventRequestId = callbackRequestId,
+                    payload = callbackSnapshot,
+                    requireActive = mutableSnapshot.value.playerSessionActive,
+                    expectedEpisodeId = episodeId,
+                    expectedAnimeId = callbackSnapshot.optLong(
+                        "animeId",
+                        callbackSnapshot.optLong("anime_id", 0L),
+                    ).takeIf { it > 0L },
+                    expectedMediaId = callbackSnapshot.optString(
+                        "mediaId",
+                        callbackSnapshot.optString("media_id", ""),
+                    ).trim().takeIf { it.isNotEmpty() },
+                    allowMissingAnimeId = true,
+                )
+                if (!postSaveValidation.isCurrent) {
+                    recordDiagnostic(
+                        name = "PLAYER_PROGRESS_STALE",
+                        severity = "WARN",
+                        requestId = callbackRequestId,
+                        result = "stale_after_persistence:" + postSaveValidation.reason,
+                        context = mapOf("episode_id" to episodeId),
+                    )
+                    return@launchTracked
+                }
+            }
             libraryViewModel.refreshCatalogProjection()
             publish(action = "save_playback_progress", transform = {
                 it.copy(
