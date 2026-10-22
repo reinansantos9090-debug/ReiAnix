@@ -6418,9 +6418,9 @@ internal class NativeMainRuntimePort(
         libraryViewModel.queryNativeArtwork()
     }
 
-    fun reconcileMissingThumbnails(): Boolean = launchTracked("reconcile_thumbnails", lane = "library") {
-        libraryViewModel.queryNativeArtwork()
-    }
+    /** Direct Kotlin counterpart of main.py's reconcile_missing_thumbnails worker. */
+    fun reconcileMissingThumbnails(): Boolean =
+        scheduleThumbnailReconciliation("explicit_reconcile_missing_thumbnails")
 
     /** Port of the explicit SAF actions; selecting or removing a root remains user-driven. */
     fun requestSafFolderSelection(requestId: String? = null, bridge: String = "library"): Boolean {
