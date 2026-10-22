@@ -3570,6 +3570,43 @@ class MainActivity : ComponentActivity() {
         _nativeStorageOnboardingState.value = current.copy(dismissed = true)
     }
 
+    /**
+     * Publishes a transient onboarding decision produced by the native runtime.
+     * SQLite folder rows and ContentResolver grants remain the authorities; this
+     * updates only the Compose-facing state, matching the legacy main.py
+     * _set_storage_onboarding_state projection.
+     */
+    fun reportNativeStorageOnboardingState(
+        phase: String,
+        message: String? = null,
+        error: String? = null,
+        dismissed: Boolean? = null,
+    ) {
+        val normalizedPhase = phase.trim().lowercase()
+        if (
+            normalizedPhase !in setOf(
+                NativeStorageOnboardingState.PHASE_CHECKING,
+                NativeStorageOnboardingState.PHASE_READY,
+                NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
+                NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN,
+                NativeStorageOnboardingState.PHASE_ERROR,
+            )
+        ) return
+        val current = _nativeStorageOnboardingState.value
+        _nativeStorageOnboardingState.value = current.copy(
+            phase = normalizedPhase,
+            message = message,
+            error = error,
+            dismissed = dismissed ?: current.dismissed,
+        )
+        Log.i(
+            tag,
+            "STORAGE_ONBOARDING_RUNTIME_STATE phase=" + normalizedPhase +
+                " hasMessage=" + !message.isNullOrBlank() +
+                " hasError=" + !error.isNullOrBlank(),
+        )
+    }
+
     /** Launches the existing SAF picker once after bootstrap and lifecycle validation. */
     private fun maybeLaunchAutomaticSafPicker() {
         if (
