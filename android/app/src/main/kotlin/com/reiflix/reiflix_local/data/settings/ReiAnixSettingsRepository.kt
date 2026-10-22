@@ -894,20 +894,20 @@ class ReiAnixSettingsRepository(
                 ),
             )
         }
-        Log.i(TAG, "SETTINGS_ACTION_START requestId=" + requestId + " action=" + action)
+        Log.i(TAG, "SETTINGS_ACTION_START requestId=" + resolvedRequestId + " action=" + action)
         scope.launch {
             val writeStartedNs = System.nanoTime()
             val published = runCatching { NativeMailbox.write(appContext, builder(resolvedRequestId)) }.getOrElse { false }
             val durationMs = (System.nanoTime() - writeStartedNs) / 1_000_000.0
             if (published) {
-                Log.i(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=" + action + " success=true writeDurationMs=" + durationMs)
+                Log.i(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + resolvedRequestId + " action=" + action + " success=true writeDurationMs=" + durationMs)
             } else {
                 synchronized(stateLock) {
                     val current = _state.value
                     _state.value = current.copy(
                         operations = upsertOperationLocked(
                             current.operations,
-                            (current.operations[requestId] ?: ReiAnixSettingsOperationUiState(requestId, operationKey)).copy(
+                            (current.operations[resolvedRequestId] ?: ReiAnixSettingsOperationUiState(resolvedRequestId, operationKey)).copy(
                                 state = ReiAnixSettingsOperationState.ERROR,
                                 error = "Não foi possível enviar o comando ao backend.",
                                 timestampMs = System.currentTimeMillis(),
@@ -915,7 +915,7 @@ class ReiAnixSettingsRepository(
                         ),
                     )
                 }
-                Log.e(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=" + action + " success=false writeDurationMs=" + durationMs)
+                Log.e(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + resolvedRequestId + " action=" + action + " success=false writeDurationMs=" + durationMs)
             }
         }
     }
