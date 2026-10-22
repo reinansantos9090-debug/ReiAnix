@@ -28,9 +28,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * AniList domain integration used by native ViewModels. The canonical SQLite
- * repository remains the sole persistence authority; remote failures never mutate
- * the local record. Requested artwork is materialized by the Kotlin artwork service
- * after the metadata transaction commits.
+ * repository remains the sole persistence authority; remote failures retain
+ * existing local metadata and update only its freshness/status projection. Requested
+ * artwork is materialized by the Kotlin artwork service after metadata commits.
  */
 class ReiAnixAniListIntegrationService(
     private val client: ReiAnixAniListClient,
