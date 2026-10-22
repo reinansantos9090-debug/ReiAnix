@@ -6598,8 +6598,27 @@ internal class NativeMainRuntimePort(
 
                 if (result is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure) {
                     val error = result.error
-                    val missingAssociation = error is com.reiflix.reiflix_local.data.anilist.AniListError.InvalidRequest &&
-                        error.message.contains("no valid AniList association", ignoreCase = true)
+                    val invalidRequest = error as? com.reiflix.reiflix_local.data.anilist.AniListError.InvalidRequest
+                    if (invalidRequest?.message?.contains("disabled in settings", ignoreCase = true) == true) {
+                        val message = "O AniList está desativado nas configurações."
+                        completionPayload.put("result", "disabled")
+                        publish(action = "refresh_anilist_metadata", transform = {
+                            it.copy(lastResultJson = completionPayload.toString(), selectedAnimeId = animeId)
+                        })
+                        publishOperationResult(
+                            requestId = correlatedRequestId,
+                            action = operation,
+                            status = "BLOCKED",
+                            operationState = "BLOCKED",
+                            message = message,
+                            error = "anilist_disabled",
+                            payload = completionPayload,
+                        )
+                        return@launchTracked
+                    }
+                    val missingAssociation = invalidRequest
+                        ?.message
+                        ?.contains("no valid AniList association", ignoreCase = true) == true
                     if (missingAssociation) {
                         when (val matchResult = integration.autoMatch(animeId, force = true)) {
                             is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure -> {
