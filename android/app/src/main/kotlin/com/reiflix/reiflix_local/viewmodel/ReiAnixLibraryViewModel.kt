@@ -60,6 +60,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -239,6 +240,10 @@ class ReiAnixLibraryViewModel(
 
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
+    // Legacy runtime callbacks can invalidate the same projection many times in a burst.
+    // A conflated channel keeps one follow-up reload instead of launching dozens of
+    // identical SQLite catalog reads while the previous reload is still in flight.
+    private val projectionRefreshRequests = Channel<Unit>(Channel.CONFLATED)
     private val nativePageGeneration = AtomicLong(0L)
     private val nativePagedLibraryState = MutableStateFlow(ReiAnixLibraryPagedUiState())
 
@@ -1321,13 +1326,7 @@ class ReiAnixLibraryViewModel(
      * metadata/artwork commit, or catalog event.
      */
     fun refreshCatalogProjection() {
-        viewModelScope.launch {
-            if (appDependencies == null) {
-                refreshNativeCatalog()
-            } else {
-                refreshCanonicalCatalogAfterBootstrapValidation()
-            }
-        }
+        projectionRefreshRequests.trySend(Unit)
     }
 
     /**
@@ -1347,6 +1346,34 @@ class ReiAnixLibraryViewModel(
 
     init {
         val dependencies = appDependencies
+        viewModelScope.launch {
+            // Queue projection-only refreshes until the canonical database is healthy.
+            // Recovery mode already has its own route and will release this worker only
+            // after bootstrap has accepted the restored database.
+            if (dependencies != null) {
+                dependencies.bootstrap.state.first { state ->
+                    !state.recoveryRequired &&
+                        state.stage == com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY &&
+                        state.persistenceStatus in setOf(
+                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+                        )
+                }
+            }
+            for (ignored in projectionRefreshRequests) {
+                try {
+                    if (dependencies == null) {
+                        refreshNativeCatalog()
+                    } else {
+                        refreshCanonicalCatalogAfterBootstrapValidation()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e(TAG, "Projection-only refresh failed", error)
+                }
+            }
+        }
         if (dependencies == null) {
             // Isolated UI/test construction has no process bootstrap to await.
             startCanonicalConsumersAfterDatabaseValidation()
