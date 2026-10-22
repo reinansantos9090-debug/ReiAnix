@@ -107,6 +107,45 @@ internal fun resolveNativePlaybackStartPosition(
 }
 
 /**
+ * Validates the active player's URI against the canonical row before a Next/Previous
+ * transition. This ports main.py's sqlite_current_row_mismatch guard: a valid episode
+ * ID alone is insufficient if the media reference changed while the player was open.
+ *
+ * The lookup accepts the same absolute-path/file-URI spellings as progress callbacks,
+ * and reads only the existing canonical SQLite catalogue.
+ */
+internal data class NativePlayerTransitionSourceValidation(
+    val isCurrent: Boolean,
+    val reason: String? = null,
+)
+
+internal suspend fun validateNativePlayerTransitionSource(
+    dependencies: ReiAnixAppDependencies,
+    sourceUri: String,
+    expectedEpisodeId: Long,
+    expectedAnimeId: Long,
+): NativePlayerTransitionSourceValidation {
+    val canonical = runCatching {
+        dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(sourceUri)
+    }.getOrNull() ?: return NativePlayerTransitionSourceValidation(
+        isCurrent = false,
+        reason = "sqlite_current_row_mismatch",
+    )
+    return if (
+        canonical.id == expectedEpisodeId &&
+        canonical.animeId == expectedAnimeId &&
+        canonical.path.isNotBlank()
+    ) {
+        NativePlayerTransitionSourceValidation(isCurrent = true)
+    } else {
+        NativePlayerTransitionSourceValidation(
+            isCurrent = false,
+            reason = "sqlite_current_row_mismatch",
+        )
+    }
+}
+
+/**
  * Native Android entry-point orchestration shared by the launcher Activity.
  *
  * ReiAnixApplication remains the single owner of the process dependency graph.
