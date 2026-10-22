@@ -10826,8 +10826,8 @@ internal class NativeMainRuntimePort(
                     .coerceAtLeast(0L)
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // NativePlayerActivity already committed this checkpoint to canonical SQLite.
-                    // Validate the callback and refresh Compose, but never issue a second write.
-                    libraryViewModel.refreshCatalogProjection()
+                    // Match main.py: leave the library projection untouched while the player
+                    // is on top; the player-exit event performs the single catalog refresh.
                     recordDiagnostic(
                         name = "PLAYER_PROGRESS_NATIVE_COMMIT_REUSED",
                         requestId = eventRequestId,
@@ -10984,8 +10984,8 @@ internal class NativeMainRuntimePort(
                 val durationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
                     .coerceAtLeast(0L)
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
-                    // The player saved this exact episode checkpoint before publishing the mailbox event.
-                    libraryViewModel.refreshCatalogProjection()
+                    // The player already saved this exact checkpoint before publishing the
+                    // mailbox event. As in main.py, defer catalog refresh until player exit.
                     recordDiagnostic(
                         name = "PLAYER_PROGRESS_NATIVE_COMMIT_REUSED",
                         requestId = eventRequestId,
