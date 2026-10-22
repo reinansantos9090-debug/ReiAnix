@@ -182,10 +182,16 @@ class ReiAnixAniListViewModel(
             try {
                 when (val result = integration.refreshMetadata(animeId)) {
                     is AniListResult.Success -> if (requestId == metadataRefreshRequestId) {
+                        val retainedStaleMetadata = result.value.metadataStatus
+                            .equals("stale", ignoreCase = true)
                         _aniListUiState.value = _aniListUiState.value.copy(
                             isMetadataRefreshLoading = false,
                             error = null,
-                            lastAssociationMessage = "Metadados AniList atualizados.",
+                            lastAssociationMessage = if (retainedStaleMetadata) {
+                                "Não foi possível atualizar os metadados do AniList agora; os dados locais foram mantidos e marcados como desatualizados."
+                            } else {
+                                "Metadados AniList atualizados."
+                            },
                             associationRevision = _aniListUiState.value.associationRevision + 1,
                         )
                     }
@@ -223,13 +229,20 @@ class ReiAnixAniListViewModel(
                                         is AniListAutoMatchResult.AlreadyMatched,
                                         is AniListAutoMatchResult.AlreadyManuallyMatched -> {
                                             when (val refreshed = integration.refreshMetadata(animeId)) {
-                                                is AniListResult.Success -> _aniListUiState.value =
-                                                    _aniListUiState.value.copy(
+                                                is AniListResult.Success -> {
+                                                    val retainedStaleMetadata = refreshed.value.metadataStatus
+                                                        .equals("stale", ignoreCase = true)
+                                                    _aniListUiState.value = _aniListUiState.value.copy(
                                                         isMetadataRefreshLoading = false,
                                                         error = null,
-                                                        lastAssociationMessage = "Metadados AniList atualizados.",
+                                                        lastAssociationMessage = if (retainedStaleMetadata) {
+                                                            "Não foi possível atualizar os metadados do AniList agora; os dados locais foram mantidos e marcados como desatualizados."
+                                                        } else {
+                                                            "Metadados AniList atualizados."
+                                                        },
                                                         associationRevision = _aniListUiState.value.associationRevision + 1,
                                                     )
+                                                }
                                                 is AniListResult.Failure -> _aniListUiState.value =
                                                     _aniListUiState.value.copy(
                                                         isMetadataRefreshLoading = false,
