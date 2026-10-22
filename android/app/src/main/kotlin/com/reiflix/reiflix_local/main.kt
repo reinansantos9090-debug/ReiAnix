@@ -9385,7 +9385,7 @@ internal class NativeMainRuntimePort(
             "artwork_published" -> {
                 val event = stringValue("event")?.uppercase(Locale.ROOT) ?: return false
                 val entity = stringValue("entity_type", "entityType")?.lowercase(Locale.ROOT).orEmpty()
-                val artworkType = stringValue("artwork_type", "artworkType").orEmpty()
+                val artworkType = stringValue("artwork_type", "artworkType").orEmpty().lowercase(Locale.ROOT)
                 val entityId = longValue("entity_id", "entityId") ?: 0L
                 val localPath = stringValue("local_path", "localPath").orEmpty()
                 val publicationEvents = setOf(
