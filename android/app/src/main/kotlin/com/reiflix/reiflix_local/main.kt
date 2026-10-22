@@ -3420,6 +3420,65 @@ internal class NativeMainRuntimePort(
         libraryViewModel.refreshNativeFolders()
         libraryViewModel.refresh()
         mutableStorageState.value = storageSnapshot()
+
+        // Port maybe_show_storage_onboarding after an authoritative inventory.
+        // A configured, persisted SAF root unlocks the UI immediately; inventory
+        // and scanning remain asynchronous and never hold the first-run gate open.
+        val validLibraryRoots = configuredValidLibrarySafRoots()
+        val onboarding = activity.nativeStorageOnboardingState.value
+        when {
+            validLibraryRoots.isNotEmpty() -> {
+                publishStorageOnboardingState(
+                    state = "READY",
+                    message = null,
+                    error = null,
+                    dismissed = false,
+                    diagnosticEvent = if (
+                        onboarding.phase.equals(NativeStorageOnboardingState.PHASE_READY, ignoreCase = true)
+                    ) null else "STORAGE_READY",
+                    result = "configured_library_root_valid",
+                )
+                scheduleThumbnailReconciliation("storage_ready_inventory")
+                scheduleCatalogMetadataHydration("storage_ready_inventory")
+            }
+            !pendingSafSelectionRequestId.isNullOrBlank() -> {
+                publishStorageOnboardingState(
+                    state = "FOLDER_PICKER_OPEN",
+                    message = "Selecione a pasta onde estão armazenados seus animes.",
+                    error = null,
+                    dismissed = false,
+                    requestId = pendingSafSelectionRequestId,
+                )
+            }
+            else -> {
+                val hasConfiguredSafRow = configuredSafFolders.isNotEmpty()
+                val message = if (hasConfiguredSafRow) {
+                    "O acesso à pasta da sua biblioteca foi perdido. Selecione novamente a pasta onde estão seus animes."
+                } else {
+                    "Selecione a pasta onde estão armazenados seus animes.\n\nO ReiAnix usará essa pasta para encontrar e organizar seus vídeos."
+                }
+                publishStorageOnboardingState(
+                    state = "NEEDS_FOLDER",
+                    message = message,
+                    error = null,
+                    dismissed = onboarding.dismissed,
+                    diagnosticEvent = if (hasConfiguredSafRow) {
+                        "STORAGE_PERMISSION_REVOKED"
+                    } else {
+                        "STORAGE_PERMISSION_MISSING"
+                    },
+                    result = if (hasConfiguredSafRow) "configured_root_invalid" else "library_root_missing",
+                )
+                if (!onboarding.dismissed) {
+                    recordDiagnostic(
+                        name = "STORAGE_ONBOARDING_SHOWN",
+                        source = "saf",
+                        result = if (hasConfiguredSafRow) "configured_root_invalid" else "library_root_missing",
+                    )
+                }
+            }
+        }
+
         recordDiagnostic(
             name = "NATIVE_SAF_INVENTORY_RECONCILED",
             result = if (inventoryComplete) "complete" else "partial_inventory",
