@@ -10702,20 +10702,40 @@ internal class NativeMainRuntimePort(
         }
         thumbnailPumpJob?.cancel()
         thumbnailPumpJob = null
-        synchronized(thumbnailQueueLock) {
-            thumbnailQueue.clear()
-            thumbnailRequests.values.forEach { it.completion.cancel() }
-            thumbnailRequests.clear()
-            thumbnailRetryCounts.clear()
-            thumbnailRetryPendingKeys.clear()
-            thumbnailLatestKeyByUri.clear()
-            thumbnailLatestAtMillis.clear()
-            thumbnailInFlight.clear()
-            thumbnailPumpActive = false
-        }
         lifecycleIsAlive = false
+        synchronized(thumbnailQueueLock) {
+            // main.py's page-disconnect hook cancels the dispatcher but keeps
+            // queued thumbnail requests so a reconnect can resume pending work.
+            // Preserve those queue entries and their completion objects; only
+            // discard retry/freshness state that no queued request can use.
+            val queuedKeys = thumbnailQueue.map { it.key }.toSet()
+            val inFlightKeys = thumbnailInFlight.toSet()
+            thumbnailRequests.keys.toList().forEach { key ->
+                if (key !in queuedKeys && key !in inFlightKeys) {
+                    thumbnailRequests.remove(key)?.completion?.cancel()
+                }
+            }
+            thumbnailRetryCounts.keys.toList().forEach { key ->
+                if (key !in queuedKeys && key !in inFlightKeys) thumbnailRetryCounts.remove(key)
+            }
+            thumbnailRetryPendingKeys.toList().forEach { key ->
+                if (key !in queuedKeys && key !in inFlightKeys) thumbnailRetryPendingKeys.remove(key)
+            }
+            val queuedUris = thumbnailQueue.map { it.uri.toString() }.toSet()
+            thumbnailLatestKeyByUri.entries.toList().forEach { entry ->
+                if (entry.value !in queuedKeys) {
+                    thumbnailLatestKeyByUri.remove(entry.key, entry.value)
+                }
+            }
+            thumbnailLatestAtMillis.keys.toList().forEach { uri ->
+                if (uri !in queuedUris) thumbnailLatestAtMillis.remove(uri)
+            }
+        }
         publish(action = "cancel_background_tasks", transform = {
-            it.copy(queuedThumbnailCount = 0, activeThumbnailCount = 0)
+            it.copy(
+                queuedThumbnailCount = synchronized(thumbnailQueueLock) { thumbnailQueue.size },
+                activeThumbnailCount = thumbnailInFlight.size,
+            )
         })
     }
 
