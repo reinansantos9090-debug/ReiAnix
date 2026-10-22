@@ -2817,8 +2817,17 @@ internal class NativeMainRuntimePort(
 
     fun savePersonalNote(animeId: Long, note: String?): Boolean {
         if (animeId <= 0L) return false
+        val normalized = note.orEmpty().trim()
         return launchTracked("save_personal_note") {
-            libraryViewModel.saveAnimePersonalNoteNative(animeId, note)
+            // Port core/library_store.py's set_personal_note contract: whitespace-only
+            // notes clear the nullable field, and oversized notes are rejected.
+            require(normalized.length <= 2_000) {
+                "A nota pessoal pode ter no máximo 2000 caracteres."
+            }
+            libraryViewModel.saveAnimePersonalNoteNative(
+                animeId,
+                normalized.takeIf { it.isNotEmpty() },
+            )
         }
     }
 
