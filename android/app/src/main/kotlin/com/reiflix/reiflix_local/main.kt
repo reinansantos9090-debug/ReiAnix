@@ -8651,9 +8651,47 @@ internal class NativeMainRuntimePort(
             )
 
             "open_episode", "open_media", "play_episode" -> {
-                val episodeId = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
                 val animeId = positiveLong("animeId") ?: positiveLong("anime_id")
-                openEpisode(episodeId, animeId) != null
+                val request = requestId ?: nonBlank("requestId") ?: nonBlank("request_id")
+                val episodeId = positiveLong("episodeId") ?: positiveLong("episode_id")
+                if (episodeId == null) {
+                    // Preserve main.py's explicit rejection contract instead of silently
+                    // dropping a malformed play command before the native handoff layer.
+                    recordDiagnostic(
+                        name = "ASSIST_REQUEST_REJECTED",
+                        severity = "WARN",
+                        requestId = request,
+                        result = "EPISODE_NOT_FOUND",
+                        context = mapOf("anime_id" to animeId),
+                    )
+                    recordDiagnostic(
+                        name = "PLAYER_COMMAND_REJECTED",
+                        severity = "WARN",
+                        requestId = request,
+                        source = "details",
+                        result = "EPISODE_NOT_FOUND",
+                    )
+                    false
+                } else {
+                    val accepted = openEpisode(episodeId, animeId) != null
+                    if (!accepted) {
+                        recordDiagnostic(
+                            name = "ASSIST_REQUEST_REJECTED",
+                            severity = "WARN",
+                            requestId = request,
+                            result = "EPISODE_NOT_FOUND",
+                            context = mapOf("episode_id" to episodeId, "anime_id" to animeId),
+                        )
+                        recordDiagnostic(
+                            name = "PLAYER_COMMAND_REJECTED",
+                            severity = "WARN",
+                            requestId = request,
+                            source = "details",
+                            result = "EPISODE_NOT_FOUND",
+                        )
+                    }
+                    accepted
+                }
             }
             "toggle_favorite", "toggle_personal_list" ->
                 positiveLong("animeId")?.let {
