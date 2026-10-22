@@ -9504,7 +9504,7 @@ internal class NativeMainRuntimePort(
                 true
             }
             "artwork_published" -> {
-                val event = stringValue("event")?.uppercase(Locale.ROOT) ?: return false
+                val event = stringValue("event")?.uppercase(Locale.ROOT).orEmpty()
                 val entity = stringValue("entity_type", "entityType")?.lowercase(Locale.ROOT).orEmpty()
                 val artworkType = stringValue("artwork_type", "artworkType").orEmpty().lowercase(Locale.ROOT)
                 val entityId = longValue("entity_id", "entityId") ?: 0L
@@ -9541,7 +9541,9 @@ internal class NativeMainRuntimePort(
                                 "path_present" to localPath.isNotBlank(),
                             ),
                         )
-                        return false
+                        // main.py warns and continues after rejecting a bad publication;
+                        // the legacy mailbox event is consumed, not left pending.
+                        return true
                     }
                     if (entity in setOf("anime", "movie")) libraryViewModel.refreshDetails(entityId)
                     libraryViewModel.queryNativeArtwork()
@@ -9587,7 +9589,8 @@ internal class NativeMainRuntimePort(
                     result = event,
                     context = mapOf("unsupported_event" to true),
                 )
-                false
+                // Unknown artwork sub-events are logged and consumed by main.py.
+                true
             }
             "compose_settings_set" -> {
                 val key = stringValue("key") ?: stringValue("setting_key").orEmpty()
