@@ -166,16 +166,18 @@ class ReiAnixSettingsRepository(
      * changes only after SQLite confirms the write; NativeMailbox is a post-commit
      * notification for legacy consumers, never the persistence mechanism.
      */
-    fun setSetting(key: String, value: String) {
+    fun setSetting(key: String, value: String, requestId: String? = null) {
         val normalizedKey = key.trim()
         if (normalizedKey.isBlank()) return
+        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
         val normalizedValue = try {
             ReiAnixSettingsContract.normalize(normalizedKey, value)
         } catch (exception: IllegalArgumentException) {
             Log.w(TAG, "Rejected invalid setting value for key=" + normalizedKey)
             synchronized(stateLock) {
                 val current = _state.value
-                val requestId = UUID.randomUUID().toString()
+                val requestId = resolvedRequestId
                 _state.value = current.copy(
                     operations = upsertOperationLocked(
                         current.operations,
@@ -192,7 +194,7 @@ class ReiAnixSettingsRepository(
             }
             return
         }
-        val requestId = UUID.randomUUID().toString()
+        val requestId = resolvedRequestId
         synchronized(stateLock) {
             val current = _state.value
             val confirmedValue = confirmedSettings[normalizedKey]
