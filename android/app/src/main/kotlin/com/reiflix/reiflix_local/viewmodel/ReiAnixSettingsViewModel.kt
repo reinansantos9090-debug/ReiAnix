@@ -97,8 +97,8 @@ class ReiAnixSettingsViewModel(
         repository.requestAction(action)
     }
 
-    fun requestAccountAction(action: String) {
-        repository.requestAccountAction(action)
+    fun requestAccountAction(action: String, requestId: String? = null) {
+        repository.requestAccountAction(action, requestId)
     }
 
     override fun onCleared() {
