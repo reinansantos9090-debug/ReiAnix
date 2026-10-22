@@ -1857,7 +1857,7 @@ internal class NativeMainRuntimePort(
             pruneThumbnailQueueStateLocked()
             val uriKey = uri.toString()
             val previousKey = thumbnailLatestKeyByUri.put(uriKey, key)
-            thumbnailLatestAtMillis[uriKey] = System.currentTimeMillis()
+            thumbnailLatestAtMillis[uriKey] = android.os.SystemClock.elapsedRealtime()
             if (previousKey != null && previousKey != key) {
                 thumbnailRetryCounts.remove(previousKey)
                 thumbnailRetryPendingKeys.remove(previousKey)
@@ -1906,7 +1906,7 @@ internal class NativeMainRuntimePort(
                 modifiedAt = boundedModifiedAt,
                 mediaIdentity = identity,
                 priority = priority,
-                enqueuedAtMillis = System.currentTimeMillis(),
+                enqueuedAtMillis = android.os.SystemClock.elapsedRealtime(),
                 completion = CompletableDeferred(),
             )
             thumbnailRequests[key] = request
@@ -1918,7 +1918,7 @@ internal class NativeMainRuntimePort(
     }
 
     /** Remove expired request bookkeeping and bound per-URI freshness metadata. Caller holds thumbnailQueueLock. */
-    private fun pruneThumbnailQueueStateLocked(nowMillis: Long = System.currentTimeMillis()) {
+    private fun pruneThumbnailQueueStateLocked(nowMillis: Long = android.os.SystemClock.elapsedRealtime()) {
         val expiredKeys = thumbnailRequests.values
             .filter { nowMillis - it.enqueuedAtMillis > 180_000L }
             .map { it.key }
