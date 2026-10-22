@@ -10676,29 +10676,19 @@ internal class NativeMainRuntimePort(
                 true
             }
             "player_mark_watched", "player_mark_unwatched" -> {
-                val validation = validatePlayerCallback(
-                    eventRequestId,
-                    payload,
-                    requireActive = true,
-                    expectedEpisodeId = longValue("episodeId", "episode_id"),
-                    expectedAnimeId = longValue("animeId", "anime_id"),
-                    expectedMediaId = stringValue("mediaId", "media_id"),
-                    allowMissingAnimeId = true,
-                )
-                if (!validation.isCurrent) {
-                    recordDiagnostic(
-                        name = "PLAYER_CALLBACK_REJECTED",
-                        severity = "WARN",
-                        requestId = eventRequestId,
-                        result = validation.reason,
-                    )
-                    return false
-                }
-                val episodeId = longValue("episodeId", "episode_id") ?: return false
+                val pathReference = stringValue("uri", "path")
+                val episodeId = longValue("episodeId", "episode_id")
+                    ?: pathReference?.let { reference ->
+                        dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(reference)?.id
+                    }
+                    ?: return false
+                // Match LibraryStore.set_watched: path-only legacy events resolve to
+                // the canonical persisted episode. markEpisodeWatchedTracked still
+                // rejects a supplied path that conflicts with the requested episode ID.
                 markEpisodeWatchedTracked(
                     episodeId = episodeId,
                     watched = type == "player_mark_watched",
-                    path = stringValue("uri", "path"),
+                    path = pathReference,
                 )
             }
             "player_error" -> {
