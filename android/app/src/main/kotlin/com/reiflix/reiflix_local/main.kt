@@ -816,7 +816,15 @@ internal class NativeMainRuntimePort(
         val createdAtMillis: Long,
         val modifiedAtMillis: Long,
     )
+    private data class NativeContinueResumeContext(
+        val episodeId: Long,
+        val animeId: Long,
+        val resumeSeconds: Double,
+    )
     private val seenProjectionEventIds = LinkedHashSet<String>()
+    // Mirrors main.py's pending player_resume_context lifetime for error/completion
+    // classification. Sessions leave this set on invalidation or exit.
+    private val firstFrameRenderedPlayerSessions = ConcurrentHashMap.newKeySet<String>()
     private val claimedRequestIds = mutableMapOf<String, LinkedHashSet<String>>()
     private val jobs = linkedSetOf<Job>()
     private val jobLanes = mutableMapOf<Job, String>()
@@ -2590,6 +2598,7 @@ internal class NativeMainRuntimePort(
         }
         // Match the former invalidate_player_session order: cancel the
         // transition and record its diagnostic before clearing the session.
+        current.activePlayerSessionId?.let(firstFrameRenderedPlayerSessions::remove)
         cancelPlayerTransition(reason)
         // Keep MainActivity's handoff ledger in sync when lifecycle/native
         // invalidation arrives without a player_exited event. Do not record a
@@ -2624,6 +2633,33 @@ internal class NativeMainRuntimePort(
         return true
     }
 
+
+    private suspend fun loadContinueResumeContext(episodeId: Long): NativeContinueResumeContext? {
+        if (episodeId <= 0L) return null
+        val navigation = withContext(Dispatchers.IO) {
+            dependencies.sqliteLibraryRepository.playerNavigation(episodeId)
+        } ?: return null
+        val persistedPreferences = withContext(Dispatchers.IO) {
+            dependencies.sqliteSettingsRepository.allPreferences()
+        }
+        val resumeEnabled = (
+            persistedPreferences["player.resume"]
+                ?: ReiAnixSettingsContract.defaultFor("player.resume").orEmpty()
+            ).toBooleanStrictOrNull() ?: true
+        val episode = navigation.current
+        val playbackStart = resolveNativePlaybackStartPosition(
+            progressSeconds = episode.progress,
+            durationSeconds = episode.duration,
+            watched = episode.watched,
+            resumeEnabled = resumeEnabled,
+        )
+        if (playbackStart.positionSeconds <= 0.0) return null
+        return NativeContinueResumeContext(
+            episodeId = episode.id,
+            animeId = episode.animeId,
+            resumeSeconds = playbackStart.positionSeconds,
+        )
+    }
 
     fun playerCallbackIdentityIsComplete(payload: org.json.JSONObject?): Boolean {
         if (payload == null) return false
@@ -11333,6 +11369,34 @@ internal class NativeMainRuntimePort(
                     ?: "Não foi possível reproduzir este arquivo localmente."
                 val playerErrorReason = stringValue("reason") ?: playerErrorMessage
                 val transitionFailureReason = stringValue("reason", "message") ?: "player_error"
+                val failedSessionId = stringValue("playerSessionId", "player_session_id", "sessionId", "session_id")
+                if (
+                    !failedSessionId.isNullOrBlank() &&
+                    !firstFrameRenderedPlayerSessions.contains(failedSessionId)
+                ) {
+                    val failedEpisodeId = (
+                        mutableSnapshot.value.activeEpisodeId
+                            ?: longValue("episodeId", "episode_id")
+                        )?.takeIf { it > 0L }
+                    failedEpisodeId?.let { continueEpisodeId ->
+                        launchTracked("continue_failed", lane = "playback") {
+                            val resumeContext = loadContinueResumeContext(continueEpisodeId)
+                                ?: return@launchTracked
+                            recordDiagnostic(
+                                name = "CONTINUE_FAILED",
+                                severity = "ERROR",
+                                requestId = eventRequestId ?: stringValue("requestId"),
+                                sessionId = failedSessionId,
+                                result = playerErrorReason,
+                                context = mapOf(
+                                    "episode_id" to resumeContext.episodeId,
+                                    "reason" to playerErrorReason,
+                                    "resume_seconds" to resumeContext.resumeSeconds,
+                                ),
+                            )
+                        }
+                    }
+                }
                 // Match the legacy main.py error path: a failure for the current
                 // launch invalidates an in-flight NEXT/PREVIOUS transition.
                 val playerErrorRequestId = eventRequestId ?: stringValue("requestId")
@@ -11989,6 +12053,13 @@ internal class NativeMainRuntimePort(
                             recordLegacyDiagnosticProjection()
                             true
                         } else {
+                            sessionId?.takeIf { it.isNotBlank() }?.let {
+                                firstFrameRenderedPlayerSessions.add(it)
+                                if (firstFrameRenderedPlayerSessions.size > 128) {
+                                    firstFrameRenderedPlayerSessions.clear()
+                                    firstFrameRenderedPlayerSessions.add(it)
+                                }
+                            }
                             recordDiagnostic(
                                 name = "PLAYER_FIRST_FRAME_RENDERED",
                                 requestId = requestId,
@@ -12036,41 +12107,26 @@ internal class NativeMainRuntimePort(
                                 // the same canonical episode progress and persisted
                                 // player.resume setting; do not count watched, invalid,
                                 // zero-progress, or resume-disabled starts as continuations.
-                                val completedEpisodeId = mutableSnapshot.value.activeEpisodeId
-                                    ?: longValue("episodeId", "episode_id")
-                                if (completedEpisodeId != null && completedEpisodeId > 0L) {
+                                val completedEpisodeId = (
+                                    mutableSnapshot.value.activeEpisodeId
+                                        ?: longValue("episodeId", "episode_id")
+                                    )?.takeIf { it > 0L }
+                                completedEpisodeId?.let { continueEpisodeId ->
                                     launchTracked("continue_completed", lane = "playback") {
-                                        val episodeNavigation = withContext(Dispatchers.IO) {
-                                            dependencies.sqliteLibraryRepository.playerNavigation(completedEpisodeId)
-                                        } ?: return@launchTracked
-                                        val persistedPreferences = withContext(Dispatchers.IO) {
-                                            dependencies.sqliteSettingsRepository.allPreferences()
-                                        }
-                                        val resumeEnabled = (
-                                            persistedPreferences["player.resume"]
-                                                ?: ReiAnixSettingsContract.defaultFor("player.resume").orEmpty()
-                                            ).toBooleanStrictOrNull() ?: true
-                                        val episode = episodeNavigation.current
-                                        val playbackStart = resolveNativePlaybackStartPosition(
-                                            progressSeconds = episode.progress,
-                                            durationSeconds = episode.duration,
-                                            watched = episode.watched,
-                                            resumeEnabled = resumeEnabled,
+                                        val resumeContext = loadContinueResumeContext(continueEpisodeId)
+                                            ?: return@launchTracked
+                                        recordDiagnostic(
+                                            name = "CONTINUE_COMPLETED",
+                                            requestId = requestId,
+                                            sessionId = sessionId,
+                                            result = "completed",
+                                            context = mapOf(
+                                                "episode_id" to resumeContext.episodeId,
+                                                "anime_id" to resumeContext.animeId,
+                                                "resume_seconds" to resumeContext.resumeSeconds,
+                                                "completion" to "FIRST_FRAME_RENDERED",
+                                            ),
                                         )
-                                        if (playbackStart.positionSeconds > 0.0) {
-                                            recordDiagnostic(
-                                                name = "CONTINUE_COMPLETED",
-                                                requestId = requestId,
-                                                sessionId = sessionId,
-                                                result = "completed",
-                                                context = mapOf(
-                                                    "episode_id" to episode.id,
-                                                    "anime_id" to episode.animeId,
-                                                    "resume_seconds" to playbackStart.positionSeconds,
-                                                    "completion" to "FIRST_FRAME_RENDERED",
-                                                ),
-                                            )
-                                        }
                                     }
                                 }
                             }
