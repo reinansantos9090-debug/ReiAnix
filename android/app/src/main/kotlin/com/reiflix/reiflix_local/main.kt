@@ -9270,12 +9270,17 @@ internal class NativeMainRuntimePort(
             val value = event.opt(key) ?: continue
             payload.put(key, value)
         }
-        val requestId = sequenceOf(
-            event.optString("requestId", ""),
-            event.optString("request_id", ""),
-            payload.optString("requestId", ""),
-            payload.optString("request_id", ""),
-        ).firstOrNull { it.isNotBlank() }
+        val rawRequestId = sequenceOf(
+            event.opt("requestId"),
+            event.opt("request_id"),
+            payload.opt("requestId"),
+            payload.opt("request_id"),
+        ).firstOrNull { pythonTruthyJsonValue(it) }
+        val requestId = when (rawRequestId) {
+            null, org.json.JSONObject.NULL -> null
+            is Boolean -> if (rawRequestId) "True" else "False"
+            else -> rawRequestId.toString()
+        }
         val eventId = sequenceOf(
             event.optString("eventId", ""),
             event.optString("event_id", ""),
