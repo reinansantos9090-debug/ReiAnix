@@ -9735,9 +9735,50 @@ internal class NativeMainRuntimePort(
                 )
             }
             "compose_library_command" -> {
-                val action = stringValue("action") ?: return false
-                val requestId = eventRequestId ?: stringValue("requestId")
-                if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_library")) return false
+                val action = stringValue("action")?.lowercase(Locale.ROOT).orEmpty()
+                val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
+                val supportedActions = setOf(
+                    "set_watched", "select_saf", "dismiss_storage_onboarding", "remove_saf",
+                    "refresh", "publish_catalog", "load_library_page", "open_media",
+                )
+                if (requestId.isNullOrBlank()) {
+                    recordDiagnostic(
+                        name = "COMPOSE_LIBRARY_COMMAND_REJECTED",
+                        severity = "WARN",
+                        result = "missing_request_id",
+                        context = mapOf("action" to action),
+                    )
+                    // main.py consumes request-less events after logging them.
+                    return true
+                }
+                if (action !in supportedActions) {
+                    recordDiagnostic(
+                        name = "COMPOSE_LIBRARY_COMMAND_UNSUPPORTED",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = "unsupported_action",
+                        context = mapOf("action" to action),
+                    )
+                    publishOperationResult(
+                        requestId = requestId,
+                        action = action,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = "Comando de biblioteca Compose desconhecido.",
+                        error = "unsupported_compose_library_command",
+                    )
+                    return true
+                }
+                if (!claimRequestId(requestId, "compose_library")) {
+                    recordDiagnostic(
+                        name = "COMPOSE_LIBRARY_COMMAND_DUPLICATE_IGNORED",
+                        severity = "INFO",
+                        requestId = requestId,
+                        result = "duplicate_request",
+                        context = mapOf("action" to action),
+                    )
+                    return true
+                }
                 dispatchMainAction(action, payload, requestId)
             }
             "saf_permission", "saf_released", "saf_error", "saf_cancelled",
