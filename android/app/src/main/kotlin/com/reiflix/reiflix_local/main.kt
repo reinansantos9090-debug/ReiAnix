@@ -1944,22 +1944,28 @@ internal class NativeMainRuntimePort(
     }
 
     fun markEpisodeWatchedTracked(
-        episodeId: Long,
+        episodeId: Long?,
         watched: Boolean,
         path: String? = null,
     ): Boolean {
-        if (episodeId <= 0L) return false
+        val requestedEpisodeId = episodeId?.takeIf { it > 0L }
+        val suppliedPath = path?.trim().orEmpty()
+        if (requestedEpisodeId == null && suppliedPath.isEmpty()) return false
         return launchTracked("mark_episode_watched", lane = "playback") {
-            val canonicalEpisode = dependencies.sqliteLibraryRepository.getEpisode(episodeId)
-                ?: throw IllegalArgumentException("Episódio não encontrado.")
-            val suppliedPath = path?.trim().orEmpty()
+            val canonicalEpisode = if (requestedEpisodeId != null) {
+                dependencies.sqliteLibraryRepository.getEpisode(requestedEpisodeId)
+                    ?: throw IllegalArgumentException("Episódio não encontrado.")
+            } else {
+                dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(suppliedPath)
+                    ?: throw IllegalArgumentException("Episódio local não encontrado.")
+            }
             if (suppliedPath.isNotEmpty()) {
                 val pathEpisode = dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(suppliedPath)
                 require(pathEpisode == null || pathEpisode.id == canonicalEpisode.id) {
                     "Episódio não encontrado ou referência local incompatível."
                 }
             }
-            val progress = dependencies.consumptionService.setWatched(episodeId, watched)
+            val progress = dependencies.consumptionService.setWatched(canonicalEpisode.id, watched)
             libraryViewModel.refreshCatalogProjection()
             publish(action = "mark_episode_watched", transform = {
                 it.copy(
@@ -10678,13 +10684,9 @@ internal class NativeMainRuntimePort(
             "player_mark_watched", "player_mark_unwatched" -> {
                 val pathReference = stringValue("uri", "path")
                 val episodeId = longValue("episodeId", "episode_id")
-                    ?: pathReference?.let { reference ->
-                        dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(reference)?.id
-                    }
-                    ?: return false
                 // Match LibraryStore.set_watched: path-only legacy events resolve to
-                // the canonical persisted episode. markEpisodeWatchedTracked still
-                // rejects a supplied path that conflicts with the requested episode ID.
+                // the canonical persisted episode inside the tracked coroutine. The helper
+                // still rejects a supplied path that conflicts with the requested episode ID.
                 markEpisodeWatchedTracked(
                     episodeId = episodeId,
                     watched = type == "player_mark_watched",
