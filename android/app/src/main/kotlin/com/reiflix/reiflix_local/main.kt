@@ -125,9 +125,13 @@ internal suspend fun validateNativePlayerTransitionSource(
     expectedEpisodeId: Long,
     expectedAnimeId: Long,
 ): NativePlayerTransitionSourceValidation {
-    val canonical = runCatching {
+    val canonical = try {
         dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(sourceUri)
-    }.getOrNull() ?: return NativePlayerTransitionSourceValidation(
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    } ?: return NativePlayerTransitionSourceValidation(
         isCurrent = false,
         reason = "sqlite_current_row_mismatch",
     )
