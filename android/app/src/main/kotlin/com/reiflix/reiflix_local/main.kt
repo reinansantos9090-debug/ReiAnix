@@ -2875,9 +2875,9 @@ internal class NativeMainRuntimePort(
     fun saveUserTags(animeId: Long, tags: List<String>): Boolean {
         if (animeId <= 0L) return false
 
-        // Port core/library_store.py's set_user_tags exactly at the Kotlin boundary:
-        // collapse internal whitespace, compare case-folded prior values, and cap each
-        // stored tag at 40 characters while preserving the first spelling and order.
+        // Preserve the legacy entrypoint's tag normalization before forwarding values
+        // to the canonical native store: collapse whitespace, reject case-insensitive
+        // duplicates, cap tags, and preserve the first spelling and order.
         fun caseFold(value: String): String =
             value.lowercase(Locale.ROOT).replace("ß", "ss").replace("ς", "σ")
 
