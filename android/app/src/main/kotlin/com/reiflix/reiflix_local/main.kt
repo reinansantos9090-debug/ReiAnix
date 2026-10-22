@@ -4858,22 +4858,93 @@ internal class NativeMainRuntimePort(
     }
 
     /** Inspect archive structure and integrity before an explicit restore request. */
-    fun inspectBackup(archive: File): Boolean {
+    fun inspectBackup(
+        archive: File,
+        requestId: String? = null,
+        resultAction: String = "inspect_backup",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
         if (!archive.isFile || archive.length() <= 0L) {
-            publish(action = "inspect_backup", error = "O arquivo de backup está ausente ou vazio.")
+            val message = "O arquivo de backup está ausente ou vazio."
+            publish(action = "inspect_backup", error = message)
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = message,
+                    error = "backup_missing_or_empty",
+                )
+            }
             return false
         }
-        return launchTracked("inspect_backup", lane = "backup") {
-            val inspection = withContext(Dispatchers.IO) { backupService.inspectBackup(archive) }
-            val summary = org.json.JSONObject()
-                .put("manifest", inspection.manifest)
-                .put("counts", inspection.counts)
-                .put("invalidOptionalEntries", org.json.JSONArray(inspection.invalidOptionalEntries.toList()))
-                .put("warnings", org.json.JSONArray(inspection.warnings))
-            publish(action = "inspect_backup", transform = {
-                it.copy(lastArtifactPath = archive.absolutePath, lastResultJson = summary.toString())
-            })
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Inspeção do backup enfileirada.",
+            )
         }
+        val accepted = launchTracked("inspect_backup", lane = "backup") {
+            try {
+                val inspection = withContext(Dispatchers.IO) { backupService.inspectBackup(archive) }
+                val summary = org.json.JSONObject()
+                    .put("manifest", inspection.manifest)
+                    .put("counts", inspection.counts)
+                    .put("invalidOptionalEntries", org.json.JSONArray(inspection.invalidOptionalEntries.toList()))
+                    .put("warnings", org.json.JSONArray(inspection.warnings))
+                publish(action = "inspect_backup", transform = {
+                    it.copy(lastArtifactPath = archive.absolutePath, lastResultJson = summary.toString())
+                })
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Inspeção do backup concluída.",
+                        payload = summary,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A inspeção do backup foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível inspecionar o backup.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A inspeção do backup não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
     }
 
     /** Restore through the canonical Kotlin service, including its pre-restore safety backup. */
@@ -7090,7 +7161,14 @@ internal class NativeMainRuntimePort(
                 requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 resultAction = normalized,
             )
-            "inspect_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::inspectBackup) ?: false
+            "inspect_backup" -> {
+                val archive = nonBlank("archivePath")?.let(::resolvePrivateBackupFile) ?: return false
+                inspectBackup(
+                    archive = archive,
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    resultAction = normalized,
+                )
+            }
             "restore_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreBackup) ?: false
             "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
             "restore_recovery_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreRecoveryBackup) ?: false
