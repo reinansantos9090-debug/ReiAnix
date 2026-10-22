@@ -134,11 +134,14 @@ class ReiAnixAniListIntegrationService(
      * with a clear margin is persisted. Existing manual associations are immutable
      * to this path, and candidates are returned for UI confirmation otherwise.
      */
-    suspend fun autoMatch(animeId: Long): AniListResult<AniListAutoMatchResult> {
+    suspend fun autoMatch(
+        animeId: Long,
+        force: Boolean = false,
+    ): AniListResult<AniListAutoMatchResult> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
         }
-        if (!settingEnabled("metadata.auto_match", defaultValue = true)) {
+        if (!force && !settingEnabled("metadata.auto_match", defaultValue = true)) {
             return AniListResult.Success(AniListAutoMatchResult.Disabled)
         }
         val local = library.getAnime(animeId)
