@@ -2000,10 +2000,25 @@ class ReiAnixLibraryViewModel(
         }
         if (duplicateRequestId != null) {
             Log.i(TAG, "PLAYER_HANDOFF_DUPLICATE_IGNORED episodeId=$episodeId pendingRequestId=$duplicateRequestId")
+            ReiAnixDiagnosticTimeline.record(
+                name = "PLAYER_HANDOFF_DUPLICATE_IGNORED",
+                severity = "WARN",
+                source = "ReiAnixLibraryViewModel",
+                result = "launch_inflight",
+                context = mapOf(
+                    "episode_id" to episodeId,
+                    "pending_request_id_present" to duplicateRequestId.isNotBlank(),
+                ),
+            )
             // The legacy player_launch_inflight guard ignored duplicate play taps.
             // Returning null prevents Compose from treating the old request ID as
             // a new launch and leaves the first handoff as the only player request.
             return null
+        }
+        val isCurrentHandoff = {
+            synchronized(nativePlayerHandoffLock) {
+                pendingNativePlayerHandoffRequestId == requestId
+            }
         }
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -2244,19 +2259,52 @@ class ReiAnixLibraryViewModel(
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP,
                 )
-                ReiAnixDiagnosticTimeline.record(
-                    name = "PLAYER_HANDOFF_STARTED",
-                    source = "ReiAnixLibraryViewModel",
-                    requestId = requestId,
-                    sessionId = playerSessionId,
-                    context = mapOf(
-                        "episode_id" to episode.id,
-                        "anime_id" to episode.animeId,
-                        "destination" to "MainActivity",
-                    ),
-                )
-                withContext(Dispatchers.Main) {
-                    appContext.startActivity(intent)
+                val handoffStarted = withContext(Dispatchers.Main) {
+                    // A lifecycle disconnect can cancel the pending request while
+                    // SQLite/settings work is running on Dispatchers.IO. Re-check
+                    // on Main immediately before the side effect so a cancelled or
+                    // superseded request cannot still launch NativePlayerActivity.
+                    if (!isCurrentHandoff()) {
+                        false
+                    } else {
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "PLAYER_HANDOFF_STARTED",
+                            source = "ReiAnixLibraryViewModel",
+                            requestId = requestId,
+                            sessionId = playerSessionId,
+                            context = mapOf(
+                                "episode_id" to episode.id,
+                                "anime_id" to episode.animeId,
+                                "destination" to "MainActivity",
+                            ),
+                        )
+                        appContext.startActivity(intent)
+                        true
+                    }
+                }
+                if (!handoffStarted) {
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "PLAYER_HANDOFF_STALE_REJECTED",
+                        severity = "WARN",
+                        source = "ReiAnixLibraryViewModel",
+                        result = "stale_before_native_handoff",
+                        requestId = requestId,
+                        sessionId = playerSessionId,
+                        context = mapOf(
+                            "episode_id" to episode.id,
+                            "anime_id" to episode.animeId,
+                        ),
+                    )
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "CONTINUE_REQUEST_REJECTED",
+                        severity = "WARN",
+                        source = "ReiAnixLibraryViewModel",
+                        result = "STALE_SESSION_BEFORE_HANDOFF",
+                        requestId = requestId,
+                        sessionId = playerSessionId,
+                        context = mapOf("episode_id" to episode.id),
+                    )
+                    return@launch
                 }
                 nativeIntentStarted = true
             } catch (cancelled: CancellationException) {
