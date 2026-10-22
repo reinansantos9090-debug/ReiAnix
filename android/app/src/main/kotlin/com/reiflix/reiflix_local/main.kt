@@ -7117,10 +7117,18 @@ internal class NativeMainRuntimePort(
     ): Boolean {
         val refreshSource = source.trim().lowercase(Locale.ROOT)
             .takeIf { it == "button" || it == "pull" } ?: "button"
+        // Resolve correlation before any early return so blocked/rejected requests
+        // keep the identity supplied by dispatchMainAction in diagnostics.
+        val requestId = requestedRequestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
+        val refreshId = requestedRefreshId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
         if (restoreMaintenanceInProgress) {
             recordDiagnostic(
                 name = "HOME_REFRESH_BLOCKED",
                 severity = "WARN",
+                requestId = requestId,
+                refreshId = refreshId,
                 result = "restore_in_progress",
                 context = mapOf("source" to refreshSource),
             )
@@ -7130,6 +7138,8 @@ internal class NativeMainRuntimePort(
             recordDiagnostic(
                 name = "HOME_REFRESH_REJECTED",
                 severity = "INFO",
+                requestId = requestId,
+                refreshId = refreshId,
                 result = "already_refreshing",
                 context = mapOf("source" to refreshSource),
             )
@@ -7138,12 +7148,6 @@ internal class NativeMainRuntimePort(
             // untouched and let its current terminal transition own the UI state.
             return true
         }
-        // Preserve a caller's operation identity across the native dispatch boundary.
-        // Generate IDs only when this method is invoked without correlated metadata.
-        val requestId = requestedRequestId?.trim()?.takeIf { it.isNotEmpty() }
-            ?: UUID.randomUUID().toString()
-        val refreshId = requestedRefreshId?.trim()?.takeIf { it.isNotEmpty() }
-            ?: UUID.randomUUID().toString()
         val startedAt = System.currentTimeMillis()
         val knownOperations = NativeScanController.progress.value.keys.toSet()
         recordDiagnostic(
