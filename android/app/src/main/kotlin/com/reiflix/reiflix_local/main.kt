@@ -4582,6 +4582,11 @@ internal class NativeMainRuntimePort(
     }
 
     fun onRuntimeDisconnect() {
+        // Mirror main.py's cancellation of the pending player transition task.
+        // A handoff that loses its runtime owner must not leave the ViewModel's
+        // single-flight gate locked for subsequent play requests.
+        cancelPlayerTransition("runtime_disconnect")
+        libraryViewModel.cancelPendingNativePlayerHandoff("runtime_disconnect")
         cancelBackgroundTasks()
         // main.py clears the active home-refresh context when a Flet view
         // disconnects. Terminate the native coordinator as well so a reconnect
