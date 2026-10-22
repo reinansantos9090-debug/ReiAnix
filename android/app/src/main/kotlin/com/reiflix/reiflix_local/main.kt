@@ -5583,7 +5583,15 @@ internal class NativeMainRuntimePort(
         }
         val accepted = launchTracked("database_integrity", lane = "backup") {
             try {
-                val report = withContext(Dispatchers.IO) { backupService.integrityReport().toJson() }
+                // main.py's integrity_check returned the complete privacy-filtered
+                // diagnostic report (database, library, files, artwork, AniList,
+                // playback, performance, storage and scan state), not only the
+                // backup subsystem's SQLite integrity fragment.
+                val reportBytes = withContext(Dispatchers.IO) {
+                    val raw = ReiAnixDiagnosticsService(activity.applicationContext).exportJson()
+                    if (mutableSnapshot.value.recoveryRequired) enrichRecoveryDiagnostic(raw) else raw
+                }
+                val report = org.json.JSONObject(String(reportBytes, Charsets.UTF_8))
                 publish(action = "database_integrity", transform = {
                     it.copy(lastResultJson = report.toString())
                 })
