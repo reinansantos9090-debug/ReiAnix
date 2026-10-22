@@ -5191,9 +5191,25 @@ internal class NativeMainRuntimePort(
             })
         }
 
-    fun restoreRecoveryBackup(archive: File): Boolean {
+    fun restoreRecoveryBackup(
+        archive: File,
+        requestId: String? = null,
+        resultAction: String = "restore_recovery_backup",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
         if (!archive.isFile || archive.length() <= 0L) {
-            publish(action = "restore_recovery_backup", error = "O arquivo de recuperação está ausente ou vazio.")
+            val message = "O arquivo de recuperação está ausente ou vazio."
+            publish(action = "restore_recovery_backup", error = message)
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = message,
+                    error = "recovery_archive_missing_or_empty",
+                )
+            }
             return false
         }
         val reserved = synchronized(lock) {
@@ -5209,16 +5225,34 @@ internal class NativeMainRuntimePort(
             }
         }
         if (!reserved) {
-            publish(
-                action = "restore_recovery_backup",
-                error = "Finalize a varredura ou operação de armazenamento atual antes de restaurar a recuperação.",
-            )
+            val message = "Finalize a varredura ou operação de armazenamento atual antes de restaurar a recuperação."
+            publish(action = "restore_recovery_backup", error = message)
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "BLOCKED",
+                    operationState = "BLOCKED",
+                    message = message,
+                    error = "scan_in_progress_or_restore_active",
+                )
+            }
             recordDiagnostic(
                 name = "RECOVERY_RESTORE_BLOCKED",
                 severity = "WARN",
+                requestId = correlatedRequestId,
                 result = "scan_in_progress_or_restore_active",
             )
             return false
+        }
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Restauração de recuperação enfileirada.",
+            )
         }
         val accepted = launchTracked("restore_recovery_backup", lane = "backup") {
             try {
@@ -5255,11 +5289,56 @@ internal class NativeMainRuntimePort(
                     )
                 })
                 composeHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Recuperação restaurada.",
+                        payload = summary,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A restauração de recuperação foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível restaurar a recuperação.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
             } finally {
                 synchronized(lock) { restoreMaintenanceInProgress = false }
             }
         }
-        if (!accepted) synchronized(lock) { restoreMaintenanceInProgress = false }
+        if (!accepted) {
+            synchronized(lock) { restoreMaintenanceInProgress = false }
+            correlatedRequestId?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = "A restauração de recuperação não foi aceita.",
+                    error = "operation_rejected",
+                )
+            }
+        }
         return accepted
     }
 
@@ -7460,7 +7539,14 @@ internal class NativeMainRuntimePort(
                 )
             }
             "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
-            "restore_recovery_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreRecoveryBackup) ?: false
+            "restore_recovery_backup" -> {
+                val archive = nonBlank("archivePath")?.let(::resolvePrivateBackupFile) ?: return false
+                restoreRecoveryBackup(
+                    archive = archive,
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    resultAction = normalized,
+                )
+            }
             "integrity_check" -> checkDatabaseIntegrity(
                 requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 resultAction = normalized,
