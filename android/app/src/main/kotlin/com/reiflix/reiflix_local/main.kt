@@ -3432,7 +3432,7 @@ internal class NativeMainRuntimePort(
                     state = "READY",
                     message = null,
                     error = null,
-                    dismissed = false,
+                    dismissed = onboarding.dismissed,
                     diagnosticEvent = if (
                         onboarding.phase.equals(NativeStorageOnboardingState.PHASE_READY, ignoreCase = true)
                     ) null else "STORAGE_READY",
