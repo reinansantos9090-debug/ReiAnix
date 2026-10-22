@@ -4784,14 +4784,77 @@ internal class NativeMainRuntimePort(
     }
 
     /** Build the existing canonical backup format; no alternate catalogue or database is created. */
-    fun createBackup(): Boolean = launchTracked("create_backup", lane = "backup") {
-        val archive = withContext(Dispatchers.IO) { backupService.createBackupFile() }
-        require(archive.isFile && archive.length() > 0L) {
-            "O serviço de backup não produziu um arquivo válido."
+    fun createBackup(
+        requestId: String? = null,
+        resultAction: String = "create_backup",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Criação do backup enfileirada.",
+            )
         }
-        publish(action = "create_backup", transform = {
-            it.copy(lastArtifactPath = archive.absolutePath, lastResultJson = null)
-        })
+        val accepted = launchTracked("create_backup", lane = "backup") {
+            try {
+                val archive = withContext(Dispatchers.IO) { backupService.createBackupFile() }
+                require(archive.isFile && archive.length() > 0L) {
+                    "O serviço de backup não produziu um arquivo válido."
+                }
+                publish(action = "create_backup", transform = {
+                    it.copy(lastArtifactPath = archive.absolutePath, lastResultJson = null)
+                })
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Backup criado.",
+                        payload = org.json.JSONObject()
+                            .put("fileName", archive.name)
+                            .put("sizeBytes", archive.length()),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A criação do backup foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível criar o backup.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A criação do backup não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
     }
 
     /** Inspect archive structure and integrity before an explicit restore request. */
@@ -7023,7 +7086,10 @@ internal class NativeMainRuntimePort(
             "request_restore_reconciliation", "reconcile_after_restore" ->
                 requestRestoreReconciliation(requestId ?: nonBlank("requestId") ?: nonBlank("request_id"))
 
-            "create_backup" -> createBackup()
+            "create_backup" -> createBackup(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                resultAction = normalized,
+            )
             "inspect_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::inspectBackup) ?: false
             "restore_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreBackup) ?: false
             "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
