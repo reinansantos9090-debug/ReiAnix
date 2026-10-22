@@ -728,6 +728,7 @@ private data class NativeThumbnailCandidateRow(
     val size: Long,
     val modifiedAt: Long,
     val mediaIdentity: String?,
+    val lastPlayedAt: Double,
     val durationSeconds: Double,
     val thumbnailPath: String?,
 )
@@ -951,6 +952,7 @@ internal class NativeMainRuntimePort(
                     COALESCE(e.file_size, 0) AS file_size,
                     COALESCE(e.modified_at, 0) AS modified_at,
                     COALESCE(e.media_identity, '') AS media_identity,
+                    COALESCE(e.last_played_at, 0) AS last_played_at,
                     COALESCE(e.duration, 0) AS duration
                 FROM episodes e
                 WHERE e.id > ?
@@ -980,6 +982,8 @@ internal class NativeMainRuntimePort(
                                 size = cursor.getLong(cursor.getColumnIndexOrThrow("file_size")).coerceAtLeast(0L),
                                 modifiedAt = cursor.getLong(cursor.getColumnIndexOrThrow("modified_at")).coerceAtLeast(0L),
                                 mediaIdentity = mediaIdentity,
+                                lastPlayedAt = cursor.getDouble(cursor.getColumnIndexOrThrow("last_played_at"))
+                                    .takeIf { it.isFinite() && it > 0.0 } ?: 0.0,
                                 durationSeconds = cursor.getDouble(cursor.getColumnIndexOrThrow("duration"))
                                     .takeIf { it.isFinite() && it > 0.0 } ?: 0.0,
                                 thumbnailPath = null,
@@ -1101,7 +1105,9 @@ internal class NativeMainRuntimePort(
                                 size = row.size,
                                 modifiedAt = row.modifiedAt,
                                 mediaIdentity = identity,
-                                priority = 100,
+                                // Port main.py's _thumbnail_priority(): recently played
+                                // episodes enter the bounded queue before untouched items.
+                                priority = if (row.lastPlayedAt > 0.0) 150 else 100,
                             )
                         ) {
                             queued += 1
