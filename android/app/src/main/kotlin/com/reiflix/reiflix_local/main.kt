@@ -825,6 +825,9 @@ internal class NativeMainRuntimePort(
     // Mirrors main.py's pending player_resume_context lifetime for error/completion
     // classification. Sessions leave this set on invalidation or exit.
     private val firstFrameRenderedPlayerSessions = ConcurrentHashMap.newKeySet<String>()
+    // The legacy player_resume_context was consumed after its first error; keep a
+    // per-session guard so duplicate mailbox errors cannot emit repeated CONTINUE_FAILED.
+    private val continueFailureRecordedPlayerSessions = ConcurrentHashMap.newKeySet<String>()
     private val claimedRequestIds = mutableMapOf<String, LinkedHashSet<String>>()
     private val jobs = linkedSetOf<Job>()
     private val jobLanes = mutableMapOf<Job, String>()
@@ -2599,6 +2602,7 @@ internal class NativeMainRuntimePort(
         // Match the former invalidate_player_session order: cancel the
         // transition and record its diagnostic before clearing the session.
         current.activePlayerSessionId?.let(firstFrameRenderedPlayerSessions::remove)
+        current.activePlayerSessionId?.let(continueFailureRecordedPlayerSessions::remove)
         cancelPlayerTransition(reason)
         // Keep MainActivity's handoff ledger in sync when lifecycle/native
         // invalidation arrives without a player_exited event. Do not record a
@@ -11382,18 +11386,24 @@ internal class NativeMainRuntimePort(
                         launchTracked("continue_failed", lane = "playback") {
                             val resumeContext = loadContinueResumeContext(continueEpisodeId)
                                 ?: return@launchTracked
-                            recordDiagnostic(
-                                name = "CONTINUE_FAILED",
-                                severity = "ERROR",
-                                requestId = eventRequestId ?: stringValue("requestId"),
-                                sessionId = failedSessionId,
-                                result = playerErrorReason,
-                                context = mapOf(
-                                    "episode_id" to resumeContext.episodeId,
-                                    "reason" to playerErrorReason,
-                                    "resume_seconds" to resumeContext.resumeSeconds,
-                                ),
-                            )
+                            if (continueFailureRecordedPlayerSessions.add(failedSessionId)) {
+                                if (continueFailureRecordedPlayerSessions.size > 128) {
+                                    continueFailureRecordedPlayerSessions.remove(failedSessionId)
+                                } else {
+                                    recordDiagnostic(
+                                        name = "CONTINUE_FAILED",
+                                        severity = "ERROR",
+                                        requestId = eventRequestId ?: stringValue("requestId"),
+                                        sessionId = failedSessionId,
+                                        result = playerErrorReason,
+                                        context = mapOf(
+                                            "episode_id" to resumeContext.episodeId,
+                                            "reason" to playerErrorReason,
+                                            "resume_seconds" to resumeContext.resumeSeconds,
+                                        ),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
