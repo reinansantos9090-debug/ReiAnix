@@ -11117,17 +11117,20 @@ internal class NativeMainRuntimePort(
                     }
                     scheduleCatalogMetadataHydration("player_exited")
                     scheduleThumbnailReconciliation("player_exited")
+                    val legacyProgressSaved = exitProgressResult in setOf("SAVED", "NATIVE_COMMIT_REUSED")
                     recordDiagnostic(
                         name = "PLAYER_EXITED",
                         requestId = exitRequestId,
                         sessionId = exitSessionId,
+                        source = "native_player",
                         result = (stringValue("reason") ?: "exit") +
-                            ":progress_" + exitProgressResult.lowercase(Locale.ROOT),
+                            if (legacyProgressSaved) ":progress_saved" else ":progress_not_updated",
                         context = mapOf(
                             "episode_id" to exitEpisodeId,
                             "media_identity" to stringValue("mediaId", "media_id"),
                             "position_ms" to exitPositionMs.takeIf { it >= 0L },
                             "duration_ms" to exitDurationMs,
+                            "progress_result" to exitProgressResult,
                         ),
                     )
                 }
