@@ -11388,9 +11388,16 @@ internal class NativeMainRuntimePort(
                         launchTracked("continue_failed", lane = "playback") {
                             val resumeContext = loadContinueResumeContext(continueEpisodeId)
                                 ?: return@launchTracked
+                            // This error was current when it entered the dispatcher. Its
+                            // normal transition-cancellation path may advance only the
+                            // transition generation while this SQLite lookup is in flight;
+                            // validate the same callback identity against the latest state
+                            // without letting that self-induced transition change erase it.
+                            val latestValidationPayload = org.json.JSONObject(payload.toString())
+                                .put("transitionGeneration", mutableSnapshot.value.transitionGeneration)
                             val latestValidation = validatePlayerCallback(
                                 eventRequestId = eventRequestId,
-                                payload = payload,
+                                payload = latestValidationPayload,
                                 requireActive = true,
                                 allowMissingEpisodeId = true,
                                 allowMissingAnimeId = true,
@@ -12139,9 +12146,15 @@ internal class NativeMainRuntimePort(
                                             ?: return@launchTracked
                                         val completedSessionId = sessionId?.takeIf { it.isNotBlank() }
                                             ?: return@launchTracked
+                                        // FIRST_FRAME_RENDERED passed validation before the
+                                        // async SQLite read. Recheck session/media identity,
+                                        // but do not let a later transition generation suppress
+                                        // the completion marker for that already-valid frame.
+                                        val latestValidationPayload = org.json.JSONObject(payload.toString())
+                                            .put("transitionGeneration", mutableSnapshot.value.transitionGeneration)
                                         val latestValidation = validatePlayerCallback(
                                             eventRequestId = requestId,
-                                            payload = payload,
+                                            payload = latestValidationPayload,
                                             requireActive = true,
                                             allowMissingEpisodeId = true,
                                             allowMissingAnimeId = true,
