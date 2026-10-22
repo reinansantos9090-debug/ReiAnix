@@ -6794,17 +6794,26 @@ internal class NativeMainRuntimePort(
     fun homeRefreshSnapshot(): HomeRefreshSnapshot = HomeRefreshCoordinator.state.value
 
     /** StateFlow-driven Android screens invalidate by publishing catalog state, not rebuilding a Flet view tree. */
-    fun onCatalogChanged(refreshDetailsForAnimeId: Long? = null): Boolean {
-        if (refreshDetailsForAnimeId != null && refreshDetailsForAnimeId > 0L) {
-            libraryViewModel.refreshDetails(refreshDetailsForAnimeId)
-        }
-        val accepted = refreshCanonicalCatalog()
-        if (accepted) {
-            scheduleCatalogMetadataHydration("catalog_changed")
+    /**
+     * Port of main.py on_catalog_changed for Compose-primary Android. The legacy
+     * path treats this as projection invalidation after a canonical SQLite write,
+     * not as a request to rerun bootstrap catalog validation.
+     */
+    fun onCatalogChanged(refreshDetailsForAnimeId: Long? = null): Boolean =
+        launchTracked("catalog_changed", lane = "library") {
+            libraryViewModel.refresh()
+            settingsViewModel.refresh()
+            if (refreshDetailsForAnimeId != null && refreshDetailsForAnimeId > 0L) {
+                libraryViewModel.refreshDetails(refreshDetailsForAnimeId)
+            }
             scheduleThumbnailReconciliation("catalog_changed")
+            scheduleCatalogMetadataHydration("catalog_changed")
+            recordDiagnostic(
+                name = "UI_REFRESHED",
+                result = "catalog_changed",
+                context = mapOf("route" to mutableSnapshot.value.route),
+            )
         }
-        return accepted
-    }
 
     fun onMetadataChanged(animeId: Long, requestArtwork: Boolean = true): Boolean {
         if (animeId <= 0L) return false
