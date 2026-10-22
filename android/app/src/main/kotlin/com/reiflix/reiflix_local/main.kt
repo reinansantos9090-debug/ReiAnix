@@ -7114,6 +7114,7 @@ internal class NativeMainRuntimePort(
         source: String = "button",
         requestedRequestId: String? = null,
         requestedRefreshId: String? = null,
+        requestedAction: String = "request_home_refresh",
     ): Boolean {
         val refreshSource = source.trim().lowercase(Locale.ROOT)
             .takeIf { it == "button" || it == "pull" } ?: "button"
@@ -7144,7 +7145,7 @@ internal class NativeMainRuntimePort(
             }
             publishOperationResult(
                 requestId = operationId,
-                action = "request_home_refresh",
+                action = requestedAction.trim().lowercase(Locale.ROOT).ifBlank { "request_home_refresh" },
                 status = status,
                 operationState = operationState,
                 message = message,
@@ -8460,6 +8461,7 @@ internal class NativeMainRuntimePort(
                 source = nonBlank("source") ?: "button",
                 requestedRequestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 requestedRefreshId = nonBlank("refreshId") ?: nonBlank("refresh_id"),
+                requestedAction = normalized,
             )
             "remove_folder", "remove_saf_tree", "remove_saf", "release_tree" ->
                 (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference") ?: nonBlank("source"))
