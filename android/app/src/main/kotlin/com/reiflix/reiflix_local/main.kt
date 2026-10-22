@@ -10849,7 +10849,7 @@ internal class NativeMainRuntimePort(
                             "has_uri" to stringValue("uri").isNullOrBlank().not(),
                         ),
                     )
-                    return false
+                    return true
                 }
                 val validation = validatePlayerCallback(
                     eventRequestId,
@@ -11071,7 +11071,7 @@ internal class NativeMainRuntimePort(
                             "has_uri" to stringValue("uri").isNullOrBlank().not(),
                         ),
                     )
-                    return false
+                    return true
                 }
                 val progressValidation = validatePlayerCallback(
                     eventRequestId = eventRequestId,
@@ -11157,7 +11157,7 @@ internal class NativeMainRuntimePort(
                             "has_uri" to stringValue("uri").isNullOrBlank().not(),
                         ),
                     )
-                    return false
+                    return true
                 }
                 val validation = validatePlayerCallback(
                     eventRequestId = eventRequestId,
