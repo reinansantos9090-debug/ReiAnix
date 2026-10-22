@@ -11056,7 +11056,27 @@ internal class NativeMainRuntimePort(
                 val exitActivityInstanceId = stringValue("activityInstanceId", "activity_instance_id")
                 val exitEpisodeId = longValue("episodeId", "episode_id") ?: return false
                 val exitUri = stringValue("uri", "path").orEmpty()
-                val exitPositionMs = payload.optLong("positionMs", payload.optLong("position_ms", -1L))
+                val rawExitPosition = sequenceOf(
+                    payload.opt("positionMs"),
+                    payload.opt("position_ms"),
+                ).firstOrNull { it != null && it !== org.json.JSONObject.NULL }
+                // main.py saves a supplied exit checkpoint even when negative, after
+                // clamping it to zero; an omitted checkpoint remains absent.
+                val exitPositionMs = if (rawExitPosition == null) {
+                    -1L
+                } else {
+                    val numericExitPosition = when (rawExitPosition) {
+                        is Number -> rawExitPosition.toDouble()
+                        is Boolean -> if (rawExitPosition) 1.0 else 0.0
+                        is String -> if (rawExitPosition.isBlank()) 0.0 else rawExitPosition.toDoubleOrNull()
+                        else -> null
+                    }
+                    numericExitPosition
+                        ?.takeIf { it.isFinite() }
+                        ?.coerceAtLeast(0.0)
+                        ?.toLong()
+                        ?: -1L
+                }
                 val exitDurationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
                 val nativeProgressPersisted = payload.optBoolean(
                     "nativeProgressPersisted",
