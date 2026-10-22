@@ -3231,7 +3231,7 @@ internal class NativeMainRuntimePort(
         val treeUri = payload?.let {
             it.optString("treeUri", it.optString("tree_uri", "")).trim()
         }.orEmpty()
-        val claimsGranted = payload?.optBoolean("granted", false) == true ||
+        val claimsGranted = payload?.let { pythonTruthyJsonValue(it.opt("granted")) } == true ||
             payload?.optString("status", "")?.equals("GRANTED", ignoreCase = true) == true
         if (claimsGranted && treeUri.isNotBlank()) {
             val persisted = activity.contentResolver.persistedUriPermissions
@@ -8022,9 +8022,9 @@ internal class NativeMainRuntimePort(
         val rawGenre = payload.optString("genre", "Todos").trim().ifEmpty { "Todos" }
         val genre = rawGenre.takeUnless { it.equals("Todos", ignoreCase = true) }
         val sort = payload.optString("sort", "Mais recentes").trim().ifEmpty { "Mais recentes" }
-        val favoritesOnly = payload.optBoolean("favoritesOnly", false)
-        val watchingOnly = payload.optBoolean("watchingOnly", false)
-        val completedOnly = payload.optBoolean("completedOnly", false)
+        val favoritesOnly = pythonTruthyJsonValue(payload.opt("favoritesOnly"))
+        val watchingOnly = pythonTruthyJsonValue(payload.opt("watchingOnly"))
+        val completedOnly = pythonTruthyJsonValue(payload.opt("completedOnly"))
         val normalizedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
 
         return launchTracked("load_library_page", lane = "library") {
@@ -9879,7 +9879,7 @@ internal class NativeMainRuntimePort(
                             val added = volumeEvent.optJSONArray("added")
                             if (added != null) {
                                 for (index in 0 until added.length()) {
-                                    if (added.optJSONObject(index)?.optBoolean("available", false) == true) {
+                                    if (added.optJSONObject(index)?.let { pythonTruthyJsonValue(it.opt("available")) } == true) {
                                         return true
                                     }
                                 }
@@ -9890,8 +9890,8 @@ internal class NativeMainRuntimePort(
                                     val change = changed.optJSONObject(index) ?: continue
                                     val after = change.optJSONObject("after") ?: continue
                                     val before = change.optJSONObject("before")
-                                    if (after.optBoolean("available", false) &&
-                                        before?.optBoolean("available", false) != true
+                                    if (pythonTruthyJsonValue(after.opt("available")) &&
+                                        before?.let { pythonTruthyJsonValue(it.opt("available")) } != true
                                     ) return true
                                 }
                             }
@@ -10034,7 +10034,7 @@ internal class NativeMainRuntimePort(
                         payload = payload,
                     )
                     "mediastore_permission" -> {
-                        val granted = payload.optBoolean("granted", false)
+                        val granted = pythonTruthyJsonValue(payload.opt("granted"))
                         refreshStorageCapabilitiesProjection(payload)
                         val sourceReference = stringValue("source") ?: "mediastore:external:video"
                         if (!granted) {
@@ -10096,7 +10096,7 @@ internal class NativeMainRuntimePort(
                     }
                     "broad_storage_status" -> {
                         refreshStorageCapabilitiesProjection(payload)
-                        if (!payload.optBoolean("hasAccess", false)) {
+                        if (!pythonTruthyJsonValue(payload.opt("hasAccess"))) {
                             launchTracked("broad_storage_marked_unavailable", lane = "storage") {
                                 val changed = markBroadStorageSourceUnavailable(
                                     authorization = "revoked",
@@ -10114,7 +10114,7 @@ internal class NativeMainRuntimePort(
                         }
                     }
                     "broad_storage_permission" -> {
-                        val granted = payload.optBoolean("granted", false)
+                        val granted = pythonTruthyJsonValue(payload.opt("granted"))
                         refreshStorageCapabilitiesProjection(payload)
                         if (!granted) {
                             launchTracked("broad_storage_permission_denied", lane = "storage") {
@@ -10172,8 +10172,8 @@ internal class NativeMainRuntimePort(
                     }
                     "saf_permission" -> {
                         val treeUri = stringValue("treeUri", "tree_uri")
-                        val granted = payload.optBoolean("granted", false)
-                        val selected = payload.optBoolean("selected", false)
+                        val granted = pythonTruthyJsonValue(payload.opt("granted"))
+                        val selected = pythonTruthyJsonValue(payload.opt("selected"))
                         // Permission callback arrival is a storage mutation even when it
                         // only revalidates an existing source. Fence older SAF inventories
                         // so they cannot undo this grant/revocation decision.
@@ -11180,7 +11180,7 @@ internal class NativeMainRuntimePort(
                 // NativePlayerActivity persists player.autoplay_next before publishing this event.
                 // Consume it as an invalidation signal, not as a second settings write.
                 settingsViewModel.refresh()
-                val enabled = payload.optBoolean("enabled", false)
+                val enabled = pythonTruthyJsonValue(payload.opt("enabled"))
                 recordDiagnostic(
                     name = "PLAYER_AUTOPLAY_CHANGED",
                     requestId = eventRequestId,
@@ -11746,7 +11746,7 @@ internal class NativeMainRuntimePort(
                     }
                     "PLAYER_ACTIVITY_RESULT" -> {
                         val active = mutableSnapshot.value
-                        val controlled = payload.optBoolean("controlled", false)
+                        val controlled = pythonTruthyJsonValue(payload.opt("controlled"))
                         val instanceMatches = activityInstanceId.isNullOrBlank() ||
                             active.activePlayerActivityInstanceId == null ||
                             active.activePlayerActivityInstanceId == activityInstanceId
