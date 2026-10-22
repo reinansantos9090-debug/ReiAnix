@@ -10707,7 +10707,7 @@ internal class NativeMainRuntimePort(
                     requestId = request,
                     sessionId = sessionId,
                     transitionGeneration = payload.optLong("transitionGeneration", 0L),
-                    playerGeneration = payload.optLong("generation", payload.optLong("playerGeneration", 0L)),
+                    playerGeneration = firstTruthyJsonLong(payload, "generation", "playerGeneration").takeIf { it != 0L },
                 )
                 setActivePlayerMedia(
                     longValue("episodeId", "episode_id"),
@@ -11125,7 +11125,7 @@ internal class NativeMainRuntimePort(
                             correlatedRequestId,
                             createdSession,
                             payload.optLong("transitionGeneration", 0L),
-                            payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
+                            firstTruthyJsonLong(payload, "playerGeneration", "generation").takeIf { it != 0L },
                         )
                         if (!activityInstanceId.isNullOrBlank()) {
                             notePlayerActivityCreated(
@@ -11133,7 +11133,7 @@ internal class NativeMainRuntimePort(
                                 correlatedRequestId,
                                 createdSession,
                                 payload.optLong("transitionGeneration", 0L),
-                                payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
+                                firstTruthyJsonLong(payload, "playerGeneration", "generation").takeIf { it != 0L },
                             )
                         }
                         true
@@ -11239,7 +11239,7 @@ internal class NativeMainRuntimePort(
                                 correlatedRequestId.orEmpty(),
                                 sessionId,
                                 payload.optLong("transitionGeneration", 0L),
-                                payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
+                                firstTruthyJsonLong(payload, "playerGeneration", "generation").takeIf { it != 0L },
                             )
                             if (!activityInstanceId.isNullOrBlank()) {
                                 notePlayerActivityCreated(
@@ -11247,7 +11247,7 @@ internal class NativeMainRuntimePort(
                                     correlatedRequestId.orEmpty(),
                                     sessionId,
                                     payload.optLong("transitionGeneration", 0L),
-                                    payload.optLong("playerGeneration", payload.optLong("generation", 0L)),
+                                    firstTruthyJsonLong(payload, "playerGeneration", "generation").takeIf { it != 0L },
                                 )
                             }
                             val state = stringValue("sessionState")?.uppercase(Locale.ROOT)
