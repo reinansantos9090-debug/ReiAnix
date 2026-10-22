@@ -5720,13 +5720,19 @@ internal class NativeMainRuntimePort(
         }
     }
 
-    /** Settings actions are delegated to the canonical Settings ViewModel/repository. */
-    fun requestSettingsActionTracked(action: String): Boolean {
-        val normalized = action.trim()
+    /**
+     * Legacy settings commands already contain an action-specific payload and request ID.
+     * Dispatch those commands through the same native action port instead of handing them
+     * to the Compose button adapter, which would mint an unrelated operation ID.
+     */
+    fun requestSettingsActionTracked(
+        action: String,
+        payload: org.json.JSONObject = org.json.JSONObject(),
+        requestId: String? = null,
+    ): Boolean {
+        val normalized = action.trim().lowercase(Locale.ROOT)
         if (normalized.isEmpty()) return false
-        return launchTracked("settings_action", lane = "settings") {
-            settingsViewModel.requestAction(normalized)
-        }
+        return dispatchSettingsAction(normalized, payload, requestId)
     }
     /** Validate the entire update before committing any settings row. */
     fun applySettingsAtomically(
@@ -7447,7 +7453,13 @@ internal class NativeMainRuntimePort(
                 )
             }
             "settings_action", "compose_settings_action" ->
-                (nonBlank("action") ?: nonBlank("setting_action"))?.let(::requestSettingsActionTracked) ?: false
+                (nonBlank("action") ?: nonBlank("setting_action"))?.let { settingsAction ->
+                    requestSettingsActionTracked(
+                        action = settingsAction,
+                        payload = payload,
+                        requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    )
+                } ?: false
             "account_action", "compose_account_action", "compose_settings_account_action" ->
                 (nonBlank("accountAction") ?: nonBlank("account_action"))?.let { accountAction ->
                     requestAccountActionTracked(
