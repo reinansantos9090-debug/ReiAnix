@@ -9810,6 +9810,57 @@ internal class NativeMainRuntimePort(
                 val request = eventRequestId ?: stringValue("requestId") ?: current.activePlayerRequestId.orEmpty()
                 val sessionId = stringValue("playerSessionId", "player_session_id", "sessionId")
                     ?: return false
+                val originRequestId = stringValue("originRequestId", "origin_request_id").orEmpty()
+                if (originRequestId.isNotBlank()) {
+                    // Port the legacy pending-transition target check. A successor may
+                    // reuse the same Activity/session, so session equality alone is not
+                    // enough: the request, source session and transition generation must
+                    // still describe the intended Next/Previous handoff.
+                    val originSessionId =
+                        stringValue("originPlayerSessionId", "origin_player_session_id").orEmpty()
+                    val originGeneration = payload.optLong(
+                        "originTransitionGeneration",
+                        payload.optLong("origin_transition_generation", 0L),
+                    )
+                    val openedGeneration = payload.optLong("transitionGeneration", 0L)
+                    val direction = stringValue("transitionDirection", "transition_direction").orEmpty()
+                    val revoked = originSessionId.isNotBlank() &&
+                        MainActivity.isPlayerTransitionRevoked(originRequestId, originSessionId)
+                    val transitionMismatch = when {
+                        request.isBlank() -> "missing_target_request_id"
+                        request == originRequestId -> "target_request_matches_origin"
+                        originSessionId.isBlank() || originSessionId != sessionId ->
+                            "transition_session_mismatch"
+                        originGeneration <= 0L || openedGeneration != originGeneration ->
+                            "transition_generation_mismatch"
+                        revoked -> "transition_revoked"
+                        else -> null
+                    }
+                    if (transitionMismatch != null) {
+                        recordDiagnostic(
+                            name = "PLAYER_CALLBACK_STALE",
+                            severity = "WARN",
+                            requestId = request,
+                            sessionId = sessionId,
+                            result = transitionMismatch,
+                            context = mapOf(
+                                "origin_request_id" to originRequestId,
+                                "origin_session_matches" to (originSessionId == sessionId),
+                                "origin_generation" to originGeneration,
+                                "opened_generation" to openedGeneration,
+                                "direction" to direction,
+                            ),
+                        )
+                        recordDiagnostic(
+                            name = "PLAYER_OPENED_IGNORED",
+                            requestId = request,
+                            sessionId = sessionId,
+                            result = transitionMismatch,
+                            context = mapOf("origin_request_id" to originRequestId),
+                        )
+                        return false
+                    }
+                }
                 if (!current.activePlayerSessionId.isNullOrBlank() &&
                     current.activePlayerSessionId != sessionId
                 ) {
