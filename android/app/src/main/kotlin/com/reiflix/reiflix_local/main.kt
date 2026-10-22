@@ -9655,9 +9655,36 @@ internal class NativeMainRuntimePort(
                 }
             }
             "compose_settings_action" -> {
-                val action = stringValue("action")?.lowercase(Locale.ROOT) ?: return false
-                val requestId = eventRequestId ?: stringValue("requestId")
-                if (requestId.isNullOrBlank() || !claimRequestId(requestId, "compose_settings")) return false
+                val action = stringValue("action")?.lowercase(Locale.ROOT).orEmpty()
+                val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
+                val supportedActions = setOf(
+                    "reset_player", "reset_all_settings", "clear_anilist_cache",
+                    "settings_export", "settings_import", "select_saf",
+                    "request_media_access", "check_storage_access", "open_broad_storage_settings",
+                    "backup_create", "backup_restore", "backup_integrity",
+                    "backup_reconcile", "diagnostic_export",
+                )
+                if (requestId.isNullOrBlank() || action !in supportedActions) {
+                    recordDiagnostic(
+                        name = "COMPOSE_SETTINGS_ACTION_REJECTED",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = "missing_request_id_or_unsupported_action",
+                        context = mapOf("action" to action),
+                    )
+                    // Match main.py: log and continue without scheduling an unsupported action.
+                    return true
+                }
+                if (!claimRequestId(requestId, "compose_settings")) {
+                    recordDiagnostic(
+                        name = "COMPOSE_SETTINGS_ACTION_DUPLICATE_IGNORED",
+                        severity = "INFO",
+                        requestId = requestId,
+                        result = "duplicate_request",
+                        context = mapOf("action" to action),
+                    )
+                    return true
+                }
                 if (payload.optBoolean("nativeHandled", payload.optBoolean("native_handled", false))) {
                     // Native settings repositories publish a compatibility event after
                     // committing actions such as artwork-cache clearing. Consume it as
@@ -9678,14 +9705,32 @@ internal class NativeMainRuntimePort(
                 accepted
             }
             "compose_account_action" -> {
-                val action = stringValue("action")?.lowercase(Locale.ROOT) ?: return false
-                val requestId = eventRequestId ?: stringValue("requestId")
+                val action = stringValue("action")?.lowercase(Locale.ROOT).orEmpty()
+                val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
                 if (action !in setOf("login", "logout", "switch", "switch_account") ||
-                    requestId.isNullOrBlank() ||
-                    !claimRequestId(requestId, "compose_account")
-                ) return false
+                    requestId.isNullOrBlank()
+                ) {
+                    recordDiagnostic(
+                        name = "COMPOSE_ACCOUNT_ACTION_REJECTED",
+                        severity = "WARN",
+                        requestId = requestId,
+                        result = "missing_request_id_or_unsupported_action",
+                        context = mapOf("action" to action),
+                    )
+                    return true
+                }
+                if (!claimRequestId(requestId, "compose_account")) {
+                    recordDiagnostic(
+                        name = "COMPOSE_ACCOUNT_ACTION_DUPLICATE_IGNORED",
+                        severity = "INFO",
+                        requestId = requestId,
+                        result = "duplicate_request",
+                        context = mapOf("action" to action),
+                    )
+                    return true
+                }
                 requestAccountActionTracked(
-                    if (action == "switch") "switch" else action,
+                    if (action == "switch_account") "switch" else action,
                     requestId,
                 )
             }
