@@ -1105,7 +1105,7 @@ internal class NativeMainRuntimePort(
                             break
                         }
                         val queueHasRoom = synchronized(thumbnailQueueLock) {
-                            thumbnailRequests.size < MAX_PENDING_THUMBNAIL_REQUESTS
+                            thumbnailQueue.size < MAX_PENDING_THUMBNAIL_REQUESTS
                         }
                         if (queueHasRoom) {
                             skipped += 1
@@ -1880,9 +1880,9 @@ internal class NativeMainRuntimePort(
                 startThumbnailPumpLocked()
                 return true
             }
-            if (thumbnailRequests.size >= MAX_PENDING_THUMBNAIL_REQUESTS) {
+            if (thumbnailQueue.size >= MAX_PENDING_THUMBNAIL_REQUESTS) {
                 val lowest = thumbnailQueue.minWithOrNull(
-                    compareBy<NativeThumbnailRequest> { it.priority }.thenByDescending { it.enqueuedAtMillis },
+                    compareBy<NativeThumbnailRequest> { it.priority }.thenBy { it.enqueuedAtMillis },
                 )
                 if (lowest == null || lowest.priority >= priority) {
                     recordDiagnostic(
