@@ -8717,10 +8717,11 @@ internal class NativeMainRuntimePort(
                     )
                     false
                 } else {
-                    // The ViewModel may return null when it intentionally suppresses an
-                    // in-flight duplicate. That path already records PLAYER_HANDOFF_DUPLICATE_IGNORED;
-                    // do not overwrite it with a false EPISODE_NOT_FOUND diagnosis here.
-                    openEpisode(episodeId, animeId) != null
+                    // The ViewModel owns duplicate suppression and asynchronous handoff results.
+                    // A suppressed duplicate is a consumed command, not evidence that the episode
+                    // is missing; keep the ViewModel's PLAYER_HANDOFF_DUPLICATE_IGNORED diagnosis.
+                    openEpisode(episodeId, animeId)
+                    true
                 }
             }
             "toggle_favorite", "toggle_personal_list" ->
