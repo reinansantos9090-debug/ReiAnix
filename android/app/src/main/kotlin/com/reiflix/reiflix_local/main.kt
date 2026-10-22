@@ -11388,6 +11388,16 @@ internal class NativeMainRuntimePort(
                         launchTracked("continue_failed", lane = "playback") {
                             val resumeContext = loadContinueResumeContext(continueEpisodeId)
                                 ?: return@launchTracked
+                            val latestValidation = validatePlayerCallback(
+                                eventRequestId = eventRequestId,
+                                payload = payload,
+                                requireActive = true,
+                                allowMissingEpisodeId = true,
+                                allowMissingAnimeId = true,
+                            )
+                            if (!latestValidation.isCurrent ||
+                                firstFrameRenderedPlayerSessions.contains(failedSessionId)
+                            ) return@launchTracked
                             if (continueFailureRecordedPlayerSessions.add(failedSessionId)) {
                                 recordDiagnostic(
                                     name = "CONTINUE_FAILED",
@@ -12129,6 +12139,16 @@ internal class NativeMainRuntimePort(
                                             ?: return@launchTracked
                                         val completedSessionId = sessionId?.takeIf { it.isNotBlank() }
                                             ?: return@launchTracked
+                                        val latestValidation = validatePlayerCallback(
+                                            eventRequestId = requestId,
+                                            payload = payload,
+                                            requireActive = true,
+                                            allowMissingEpisodeId = true,
+                                            allowMissingAnimeId = true,
+                                        )
+                                        if (!latestValidation.isCurrent ||
+                                            !firstFrameRenderedPlayerSessions.contains(completedSessionId)
+                                        ) return@launchTracked
                                         if (!continueCompletedPlayerSessions.add(completedSessionId)) {
                                             return@launchTracked
                                         }
