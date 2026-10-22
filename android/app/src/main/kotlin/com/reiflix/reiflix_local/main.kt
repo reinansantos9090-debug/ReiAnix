@@ -2293,9 +2293,31 @@ internal class NativeMainRuntimePort(
     ): Boolean {
         val current = mutableSnapshot.value
         if (!expectedSessionId.isNullOrBlank() && current.activePlayerSessionId != null &&
-            current.activePlayerSessionId != expectedSessionId) return false
+            current.activePlayerSessionId != expectedSessionId
+        ) {
+            recordDiagnostic(
+                name = "PLAYER_CALLBACK_STALE",
+                severity = "WARN",
+                requestId = expectedRequestId ?: current.activePlayerRequestId,
+                sessionId = expectedSessionId,
+                result = "session_mismatch_on_invalidation",
+                context = mapOf("current_player_session_id" to current.activePlayerSessionId),
+            )
+            return false
+        }
         if (!expectedRequestId.isNullOrBlank() && current.activePlayerRequestId != null &&
-            current.activePlayerRequestId != expectedRequestId) return false
+            current.activePlayerRequestId != expectedRequestId
+        ) {
+            recordDiagnostic(
+                name = "PLAYER_CALLBACK_STALE",
+                severity = "WARN",
+                requestId = expectedRequestId,
+                sessionId = current.activePlayerSessionId,
+                result = "request_mismatch_on_invalidation",
+                context = mapOf("current_request_id" to current.activePlayerRequestId),
+            )
+            return false
+        }
         // Match the former invalidate_player_session order: cancel the
         // transition and record its diagnostic before clearing the session.
         cancelPlayerTransition(reason)
