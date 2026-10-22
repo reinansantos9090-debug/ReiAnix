@@ -5816,7 +5816,18 @@ internal class NativeMainRuntimePort(
             )
             return false
         }
-        if (HomeRefreshCoordinator.state.value.active) return false
+        if (HomeRefreshCoordinator.state.value.active) {
+            recordDiagnostic(
+                name = "HOME_REFRESH_REJECTED",
+                severity = "INFO",
+                result = "already_refreshing",
+                context = mapOf("source" to refreshSource),
+            )
+            // The legacy request_home_refresh reports an active refresh as an
+            // accepted wait, not a failed tap; leave the existing coordinator
+            // untouched and let its current terminal transition own the UI state.
+            return true
+        }
         val requestId = UUID.randomUUID().toString()
         val refreshId = UUID.randomUUID().toString()
         val startedAt = System.currentTimeMillis()
