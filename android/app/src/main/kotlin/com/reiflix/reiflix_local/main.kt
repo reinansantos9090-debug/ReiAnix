@@ -1866,7 +1866,7 @@ internal class NativeMainRuntimePort(
                 val validation = validatePlayerCallback(
                     eventRequestId = callbackRequestId,
                     payload = callbackSnapshot,
-                    requireActive = true,
+                    requireActive = mutableSnapshot.value.playerSessionActive,
                     expectedEpisodeId = episodeId,
                     expectedAnimeId = callbackSnapshot.optLong("animeId", callbackSnapshot.optLong("anime_id", 0L))
                         .takeIf { it > 0L },
@@ -10607,7 +10607,7 @@ internal class NativeMainRuntimePort(
                 val validation = validatePlayerCallback(
                     eventRequestId,
                     payload,
-                    requireActive = true,
+                    requireActive = mutableSnapshot.value.playerSessionActive,
                     expectedEpisodeId = longValue("episodeId", "episode_id"),
                     expectedAnimeId = longValue("animeId", "anime_id"),
                     expectedMediaId = stringValue("mediaId", "media_id"),
@@ -10771,7 +10771,7 @@ internal class NativeMainRuntimePort(
                 if (!validatePlayerCallback(
                         eventRequestId,
                         payload,
-                        requireActive = true,
+                        requireActive = mutableSnapshot.value.playerSessionActive,
                         allowMissingAnimeId = true,
                     ).isCurrent) {
                     recordDiagnostic("PLAYER_CALLBACK_REJECTED", severity = "WARN",
