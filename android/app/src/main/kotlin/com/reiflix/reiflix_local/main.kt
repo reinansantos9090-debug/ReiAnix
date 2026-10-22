@@ -5723,7 +5723,7 @@ internal class NativeMainRuntimePort(
         const val HOME_REFRESH_SCAN_START_TIMEOUT_MS = 15_000L
         const val HOME_REFRESH_TERMINAL_SETTLE_MS = 250L
         const val HOME_REFRESH_MONITOR_INTERVAL_MS = 100L
-        const val MAX_PENDING_THUMBNAIL_REQUESTS = 512
+        const val MAX_PENDING_THUMBNAIL_REQUESTS = 128
         const val MAX_SEEN_PROJECTION_EVENTS = 512
     }
 
