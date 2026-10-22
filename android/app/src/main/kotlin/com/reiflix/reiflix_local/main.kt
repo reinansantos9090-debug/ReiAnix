@@ -10845,8 +10845,20 @@ internal class NativeMainRuntimePort(
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
                 // Legacy main.py treats omitted/negative checkpoint values as zero
                 // rather than dropping an otherwise valid pause/completion callback.
-                val position = nonNegativeMillis("positionMs", "position_ms") ?: return false
-                val duration = nonNegativeMillis("durationMs", "duration_ms") ?: return false
+                val position = nonNegativeMillis("positionMs", "position_ms")
+                val duration = nonNegativeMillis("durationMs", "duration_ms")
+                if (position == null || duration == null) {
+                    recordDiagnostic(
+                        name = type.uppercase(Locale.ROOT),
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        sessionId = stringValue("playerSessionId", "player_session_id"),
+                        source = "native_player",
+                        result = "ignored",
+                        context = mapOf("reason" to "invalid_progress_values"),
+                    )
+                    return true
+                }
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // NativePlayerActivity already committed this checkpoint to canonical SQLite.
                     // Match main.py: leave the library projection untouched while the player
@@ -11002,8 +11014,20 @@ internal class NativeMainRuntimePort(
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
                 // Python's max(0.0, float(value or 0.0)) clamps negative and
                 // defaults missing checkpoints to zero before saving progress.
-                val positionMs = nonNegativeMillis("positionMs", "position_ms") ?: return false
-                val durationMs = nonNegativeMillis("durationMs", "duration_ms") ?: return false
+                val positionMs = nonNegativeMillis("positionMs", "position_ms")
+                val durationMs = nonNegativeMillis("durationMs", "duration_ms")
+                if (positionMs == null || durationMs == null) {
+                    recordDiagnostic(
+                        name = type.uppercase(Locale.ROOT),
+                        severity = "WARN",
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        sessionId = stringValue("playerSessionId", "player_session_id"),
+                        source = "native_player",
+                        result = "ignored",
+                        context = mapOf("reason" to "invalid_progress_values"),
+                    )
+                    return true
+                }
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // The player already saved this exact checkpoint before publishing the
                     // mailbox event. As in main.py, defer catalog refresh until player exit.
