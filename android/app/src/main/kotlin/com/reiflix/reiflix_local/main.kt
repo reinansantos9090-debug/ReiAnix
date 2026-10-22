@@ -10835,12 +10835,16 @@ internal class NativeMainRuntimePort(
                 )
                 if (!validation.isCurrent) {
                     recordDiagnostic(
-                        name = "PLAYER_CALLBACK_REJECTED",
+                        name = "PLAYER_TASK_STALE",
                         severity = "WARN",
                         requestId = eventRequestId,
                         result = validation.reason,
+                        context = mapOf(
+                            "stage" to "before_save_progress",
+                            "event" to type,
+                        ),
                     )
-                    return false
+                    return true
                 }
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
                 // Legacy main.py treats omitted/negative checkpoint values as zero
@@ -11001,15 +11005,24 @@ internal class NativeMainRuntimePort(
                     )
                     return false
                 }
-                if (!validatePlayerCallback(
-                        eventRequestId,
-                        payload,
-                        requireActive = mutableSnapshot.value.playerSessionActive,
-                        allowMissingAnimeId = true,
-                    ).isCurrent) {
-                    recordDiagnostic("PLAYER_CALLBACK_REJECTED", severity = "WARN",
-                        requestId = eventRequestId, result = "stale_progress_callback")
-                    return false
+                val progressValidation = validatePlayerCallback(
+                    eventRequestId = eventRequestId,
+                    payload = payload,
+                    requireActive = mutableSnapshot.value.playerSessionActive,
+                    allowMissingAnimeId = true,
+                )
+                if (!progressValidation.isCurrent) {
+                    recordDiagnostic(
+                        name = "PLAYER_TASK_STALE",
+                        severity = "WARN",
+                        requestId = eventRequestId,
+                        result = progressValidation.reason,
+                        context = mapOf(
+                            "stage" to "before_save_progress",
+                            "event" to type,
+                        ),
+                    )
+                    return true
                 }
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
                 // Python's max(0.0, float(value or 0.0)) clamps negative and
