@@ -10618,7 +10618,7 @@ internal class NativeMainRuntimePort(
                     context = mapOf(
                         "event_type" to type,
                         "event_id" to stringValue("eventId", "event_id", "id"),
-                        "stage" to stringValue("stage", "event"),
+                        "stage" to firstTruthyJsonText(payload, "stage", "event").takeIf { it.isNotEmpty() },
                         "delivery_latency_ms" to deliveryLatencyMs,
                         "payload" to payload.toString().take(2000),
                     ),
