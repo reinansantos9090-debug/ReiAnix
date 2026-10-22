@@ -8717,24 +8717,10 @@ internal class NativeMainRuntimePort(
                     )
                     false
                 } else {
-                    val accepted = openEpisode(episodeId, animeId) != null
-                    if (!accepted) {
-                        recordDiagnostic(
-                            name = "ASSIST_REQUEST_REJECTED",
-                            severity = "WARN",
-                            requestId = request,
-                            result = "EPISODE_NOT_FOUND",
-                            context = mapOf("episode_id" to episodeId, "anime_id" to animeId),
-                        )
-                        recordDiagnostic(
-                            name = "PLAYER_COMMAND_REJECTED",
-                            severity = "WARN",
-                            requestId = request,
-                            source = "details",
-                            result = "EPISODE_NOT_FOUND",
-                        )
-                    }
-                    accepted
+                    // The ViewModel may return null when it intentionally suppresses an
+                    // in-flight duplicate. That path already records PLAYER_HANDOFF_DUPLICATE_IGNORED;
+                    // do not overwrite it with a false EPISODE_NOT_FOUND diagnosis here.
+                    openEpisode(episodeId, animeId) != null
                 }
             }
             "toggle_favorite", "toggle_personal_list" ->
