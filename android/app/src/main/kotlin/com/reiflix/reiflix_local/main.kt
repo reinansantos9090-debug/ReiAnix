@@ -8266,14 +8266,33 @@ internal class NativeMainRuntimePort(
                 queryMarathonPlan(it, nonBlank("currentPath") ?: nonBlank("current_path"))
             } ?: false
             "refresh_details" -> positiveLong("animeId")?.let(::refreshCurrentDetails) ?: false
-            "refresh_anilist_metadata", "refresh_current_metadata", "refresh_metadata" ->
-                positiveLong("animeId")?.let { animeId ->
+            "refresh_anilist_metadata", "refresh_current_metadata", "refresh_metadata" -> {
+                // Legacy refresh_current_metadata used the active Details item, so
+                // accept an explicit local ID first and otherwise use that selection.
+                val animeId = positiveLong("animeId") ?: positiveLong("anime_id")
+                    ?: mutableSnapshot.value.selectedAnimeId
+                if (animeId == null || animeId <= 0L) {
+                    val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: nonBlank("requestId")
+                        ?: nonBlank("request_id")
+                        ?: UUID.randomUUID().toString()
+                    publishOperationResult(
+                        requestId = correlatedRequestId,
+                        action = normalized,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = "Abra um anime ou informe o identificador local antes de atualizar os metadados.",
+                        error = "missing_anime_id",
+                    )
+                    false
+                } else {
                     refreshAniListMetadata(
                         animeId = animeId,
                         requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                         resultAction = normalized,
                     )
-                } ?: false
+                }
+            }
             "resolve_match", "associate_anilist" -> {
                 val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
                     ?: nonBlank("requestId")
