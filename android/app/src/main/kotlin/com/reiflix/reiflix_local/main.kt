@@ -6800,7 +6800,6 @@ internal class NativeMainRuntimePort(
                         refreshId = refreshId,
                         context = mapOf("elapsed_ms" to elapsedMs, "rebuild" to false, "db_updated" to true),
                     )
-                    PerformanceDiagnostics.counter("home.refresh.ui_updated")
                     recordDiagnostic(
                         "HOME_REFRESH_COMPLETED",
                         requestId = requestId,
