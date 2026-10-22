@@ -5147,13 +5147,18 @@ internal class NativeMainRuntimePort(
     private val settingLocks = ConcurrentHashMap<String, Mutex>()
 
     /** Serialize writes to the same preference key, mirroring the old per-setting asyncio locks. */
-    fun setSettingSerialized(key: String, value: String): Boolean {
+    fun setSettingSerialized(
+        key: String,
+        value: String,
+        requestId: String? = null,
+    ): Boolean {
         val normalizedKey = key.trim()
         if (normalizedKey.isEmpty()) return false
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
         val keyLock = settingLocks.getOrPut(normalizedKey) { Mutex() }
         return launchTracked("set_setting", lane = "settings") {
             keyLock.withLock {
-                settingsViewModel.setSetting(normalizedKey, value)
+                settingsViewModel.setSetting(normalizedKey, value, correlatedRequestId)
             }
         }
     }
@@ -6820,7 +6825,11 @@ internal class NativeMainRuntimePort(
                 val key = nonBlank("key") ?: nonBlank("setting_key") ?: return false
                 val value = if (payload.has("value")) payload.opt("value")?.toString().orEmpty()
                     else payload.optString("setting_value", "")
-                setSettingSerialized(key, value)
+                setSettingSerialized(
+                    key,
+                    value,
+                    requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                )
             }
             "settings_action", "compose_settings_action" ->
                 (nonBlank("action") ?: nonBlank("setting_action"))?.let(::requestSettingsActionTracked) ?: false
@@ -6831,7 +6840,11 @@ internal class NativeMainRuntimePort(
                         requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                     )
                 } ?: false
-            "set_theme" -> setSettingSerialized("appearance.theme", payload.optString("theme", "dark"))
+            "set_theme" -> setSettingSerialized(
+                "appearance.theme",
+                payload.optString("theme", "dark"),
+                requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+            )
 
             "open_episode", "open_media", "play_episode" -> {
                 val episodeId = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
@@ -7607,7 +7620,7 @@ internal class NativeMainRuntimePort(
                         result = "native_persisted_projection_refresh", context = mapOf("key" to key))
                     true
                 } else {
-                    val accepted = setSettingSerialized(key, value)
+                    val accepted = setSettingSerialized(key, value, requestId)
                     recordDiagnostic("SETTINGS_COMMAND_RECEIVED", requestId = requestId,
                         result = if (accepted) "queued" else "rejected", context = mapOf("key" to key))
                     accepted
