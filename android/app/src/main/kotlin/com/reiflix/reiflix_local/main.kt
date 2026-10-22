@@ -5425,6 +5425,7 @@ internal class NativeMainRuntimePort(
                     .put("manualArtworkReconnected", result.manualArtworkReconnected)
                     .put("safetyBackup", result.safetyBackup.absolutePath)
                     .put("warnings", org.json.JSONArray(result.warnings))
+                    .put("accountStatePreserved", result.accountStatePreserved)
                     .put("reauthenticationRequired", result.reauthenticationRequired)
                 publish(action = "restore_recovery_backup", transform = {
                     it.copy(
