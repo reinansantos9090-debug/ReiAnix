@@ -1950,9 +1950,6 @@ class ReiAnixLibraryViewModel(
                         "PLAYER_PROGRESS_REJECTED episodeId=${episode.id} reason=INVALID_PERSISTED_PROGRESS",
                     )
                 }
-                val positionMs = (playbackStart.positionSeconds * 1_000.0)
-                    .toLong()
-                    .coerceAtLeast(0L)
                 val createdAtMs = System.currentTimeMillis()
                 val playerSessionId = UUID.randomUUID().toString()
                 val title = episode.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
@@ -1969,7 +1966,11 @@ class ReiAnixLibraryViewModel(
                     .appendQueryParameter("anime_id", episode.animeId.toString())
                     .appendQueryParameter("player_session_id", playerSessionId)
                     .appendQueryParameter("title", title)
-                    .appendQueryParameter("position_ms", positionMs.toString())
+                    .apply {
+                        playbackStart.positionMsOverride?.let { positionMs ->
+                            appendQueryParameter("position_ms", positionMs.toString())
+                        }
+                    }
                     .appendQueryParameter("can_next", canNext.toString())
                     .appendQueryParameter("can_previous", canPrevious.toString())
                     .appendQueryParameter(
