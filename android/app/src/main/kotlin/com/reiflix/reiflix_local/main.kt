@@ -3690,6 +3690,64 @@ internal class NativeMainRuntimePort(
         return normalized
     }
 
+    private suspend fun reconcileStorageOnboardingProjection(
+        reason: String,
+        requestId: String? = null,
+    ) {
+        val validRoots = configuredValidLibrarySafRoots()
+        val current = activity.nativeStorageOnboardingState.value
+        if (validRoots.isNotEmpty()) {
+            publishStorageOnboardingState(
+                state = "READY",
+                message = null,
+                error = null,
+                dismissed = current.dismissed,
+                diagnosticEvent = if (
+                    current.phase.equals(NativeStorageOnboardingState.PHASE_READY, ignoreCase = true)
+                ) null else "STORAGE_READY",
+                result = reason,
+                requestId = requestId,
+            )
+            scheduleThumbnailReconciliation(reason)
+            scheduleCatalogMetadataHydration(reason)
+            return
+        }
+
+        if (!pendingSafSelectionRequestId.isNullOrBlank()) {
+            publishStorageOnboardingState(
+                state = "FOLDER_PICKER_OPEN",
+                message = "Selecione a pasta onde estão armazenados seus animes.",
+                error = null,
+                dismissed = false,
+                requestId = requestId,
+            )
+            return
+        }
+
+        val hasConfiguredSafRow = withContext(Dispatchers.IO) {
+            dependencies.sqliteLibraryRepository.listFolders().any {
+                it.kind.equals("saf", ignoreCase = true)
+            }
+        }
+        publishStorageOnboardingState(
+            state = "NEEDS_FOLDER",
+            message = if (hasConfiguredSafRow) {
+                "O acesso à pasta da sua biblioteca foi perdido. Selecione novamente a pasta onde estão seus animes."
+            } else {
+                "Selecione a pasta onde estão armazenados seus animes.\n\nO ReiAnix usará essa pasta para encontrar e organizar seus vídeos."
+            },
+            error = null,
+            dismissed = current.dismissed,
+            diagnosticEvent = if (hasConfiguredSafRow) {
+                "STORAGE_PERMISSION_REVOKED"
+            } else {
+                "STORAGE_PERMISSION_MISSING"
+            },
+            result = if (hasConfiguredSafRow) "configured_root_invalid" else "library_root_missing",
+            requestId = requestId,
+        )
+    }
+
     private fun finishPendingSafSelection(
         eventRequestId: String?,
         status: String,
@@ -7905,6 +7963,14 @@ internal class NativeMainRuntimePort(
                 libraryViewModel.refreshNativeFolders()
                 libraryViewModel.refresh()
                 val reason = stringValue("reason", "state", "status", "message") ?: type
+                if (type in setOf("saf_permission", "saf_released", "saf_error", "saf_cancelled")) {
+                    launchTracked("storage_onboarding_projection", lane = "storage") {
+                        reconcileStorageOnboardingProjection(
+                            reason = "storage_event_$type",
+                            requestId = eventRequestId ?: stringValue("requestId"),
+                        )
+                    }
+                }
                 recordDiagnostic(
                     name = "NATIVE_STORAGE_PROJECTION_REFRESH",
                     severity = if (type.endsWith("_error")) "WARN" else "INFO",
