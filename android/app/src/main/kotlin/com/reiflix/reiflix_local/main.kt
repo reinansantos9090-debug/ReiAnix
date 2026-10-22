@@ -5232,7 +5232,11 @@ internal class NativeMainRuntimePort(
 
 
     fun requestAccountActionTracked(action: String, requestId: String? = null): Boolean {
-        val normalized = action.trim()
+        val rawAction = action.trim().lowercase(Locale.ROOT)
+        val normalized = when (rawAction) {
+            "switch_account", "switchaccount" -> "switch"
+            else -> rawAction
+        }
         if (normalized.isEmpty()) return false
         val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
         return launchTracked("account_action", lane = "settings") {
