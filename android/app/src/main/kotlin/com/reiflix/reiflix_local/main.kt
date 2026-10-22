@@ -2504,6 +2504,16 @@ internal class NativeMainRuntimePort(
         // Match the former invalidate_player_session order: cancel the
         // transition and record its diagnostic before clearing the session.
         cancelPlayerTransition(reason)
+        // Keep MainActivity's handoff ledger in sync when lifecycle/native
+        // invalidation arrives without a player_exited event. The normal exit
+        // branch already calls notePlayerExit() with the event timestamp.
+        if (reason != "player_exited") {
+            MainActivity.notePlayerExit(
+                requestId = current.activePlayerRequestId.orEmpty(),
+                sessionId = current.activePlayerSessionId,
+                activityInstanceId = current.activePlayerActivityInstanceId,
+            )
+        }
         cancelBackgroundTasksForLane("playback")
         publish(action = "invalidate_player_session", transform = {
             it.copy(
