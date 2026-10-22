@@ -5802,10 +5802,9 @@ internal class NativeMainRuntimePort(
                 .put("database_exists", databaseFile.isFile)
                 .put("size_bytes", if (databaseFile.isFile) databaseFile.length() else 0L)
                 .put("quick_check", quickCheck)
-                .put(
-                    "foreign_key_ok",
-                    database.optBoolean("healthy", false) && foreignKeyViolations == 0,
-                )
+                // Keep the FK result independent from the overall SQLite/schema
+                // health flag, matching the legacy RecoveryService diagnostic contract.
+                .put("foreign_key_ok", foreignKeyViolations == 0)
                 .put("error", database.opt("error") ?: org.json.JSONObject.NULL),
         )
         return (report.toString(2) + "\n").toByteArray(Charsets.UTF_8)
