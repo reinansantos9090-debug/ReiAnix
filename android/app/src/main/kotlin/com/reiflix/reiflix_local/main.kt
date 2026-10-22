@@ -11118,7 +11118,7 @@ internal class NativeMainRuntimePort(
                     )
                     return true
                 }
-                if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
+                if (payload.opt("nativeProgressPersisted") == true) {
                     // NativePlayerActivity already committed this checkpoint to canonical SQLite.
                     // Match main.py: leave the library projection untouched while the player
                     // is on top; the player-exit event performs the single catalog refresh.
@@ -11339,7 +11339,7 @@ internal class NativeMainRuntimePort(
                     )
                     return true
                 }
-                if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
+                if (payload.opt("nativeProgressPersisted") == true) {
                     // The player already saved this exact checkpoint before publishing the
                     // mailbox event. As in main.py, defer catalog refresh until player exit.
                     recordDiagnostic(
@@ -11456,10 +11456,7 @@ internal class NativeMainRuntimePort(
                         ?: -1L
                 }
                 val exitDurationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
-                val nativeProgressPersisted = payload.optBoolean(
-                    "nativeProgressPersisted",
-                    payload.optBoolean("native_progress_persisted", false),
-                )
+                val nativeProgressPersisted = payload.opt("nativeProgressPersisted") == true
                 // A valid exit may omit requestId; session/activity identity and the
                 // active snapshot still fence stale exits. The legacy path invalidated
                 // the playback session instead of merely clearing the exit projection.
