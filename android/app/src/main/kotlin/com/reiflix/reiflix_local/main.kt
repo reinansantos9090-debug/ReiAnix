@@ -1897,6 +1897,10 @@ internal class NativeMainRuntimePort(
                 thumbnailRequests.remove(lowest.key, lowest)
                 thumbnailRetryCounts.remove(lowest.key)
                 thumbnailRetryPendingKeys.remove(lowest.key)
+                val evictedUriKey = lowest.uri.toString()
+                if (thumbnailLatestKeyByUri.remove(evictedUriKey, lowest.key)) {
+                    thumbnailLatestAtMillis.remove(evictedUriKey)
+                }
                 lowest.completion.complete(null)
             }
             val request = NativeThumbnailRequest(
