@@ -68,6 +68,7 @@ import java.security.MessageDigest
  */
 internal data class NativePlaybackStartPosition(
     val positionSeconds: Double,
+    val positionMsOverride: Long?,
     val progressInvalid: Boolean,
 )
 
@@ -86,13 +87,21 @@ internal fun resolveNativePlaybackStartPosition(
             rawProgress < 0.0 ||
             (knownDuration > 0.0 && rawProgress > knownDuration)
         )
-    val position = when {
-        !resumeEnabled -> 0.0
-        invalid -> 0.0
-        watched == true -> 0.0
-        else -> rawProgress.coerceAtLeast(0.0)
+    val forceStartAtZero = !resumeEnabled || invalid || watched == true
+    val position = if (forceStartAtZero) 0.0 else rawProgress.coerceAtLeast(0.0)
+    // Legacy start_native_player omitted position_ms for a valid zero-progress
+    // episode, allowing the native player to consult its canonical progress row.
+    // It explicitly sent zero only for disabled resume, invalid progress or watched episodes.
+    val positionOverride = when {
+        forceStartAtZero -> 0L
+        position > 0.0 -> (position * 1_000.0).toLong().coerceAtLeast(0L)
+        else -> null
     }
-    return NativePlaybackStartPosition(positionSeconds = position, progressInvalid = invalid)
+    return NativePlaybackStartPosition(
+        positionSeconds = position,
+        positionMsOverride = positionOverride,
+        progressInvalid = invalid,
+    )
 }
 
 /**
