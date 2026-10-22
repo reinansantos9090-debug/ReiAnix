@@ -7144,7 +7144,9 @@ internal class NativeMainRuntimePort(
                 return false
             }
         } else {
-            if (!canStartLibraryScan("saf")) {
+            // An active scan is queued by requestLibraryScan below. Only
+            // the absence of a currently authorized SAF root blocks Home refresh here.
+            if (authorizedScanTargets("saf").isEmpty()) {
                 HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
                 recordDiagnostic(
                     name = "HOME_REFRESH_FAILED",
@@ -7198,7 +7200,10 @@ internal class NativeMainRuntimePort(
                             )
                             return@launch
                         }
-                        if (!canStartLibraryScan("saf")) {
+                        // Permit a second refresh to wait behind scans that
+                        // are already running; requestLibraryScan rechecks storage
+                        // mutations before it schedules the next native operation.
+                        if (authorizedScanTargets("saf").isEmpty()) {
                             HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
                             recordDiagnostic(
                                 name = "HOME_REFRESH_FAILED",
