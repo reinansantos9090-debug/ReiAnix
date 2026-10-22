@@ -1874,6 +1874,7 @@ internal class NativeMainRuntimePort(
                         "mediaId",
                         callbackSnapshot.optString("media_id", ""),
                     ).trim().takeIf { it.isNotEmpty() },
+                    allowMissingAnimeId = true,
                 )
                 if (!validation.isCurrent) {
                     recordDiagnostic(
@@ -2554,9 +2555,16 @@ internal class NativeMainRuntimePort(
         }
         // Bad event fields are rejected here rather than escaping the dispatcher:
         // a thrown exception would make the durable mailbox requeue this poison event.
-        val playerGeneration = numericIdentity("generation", "playerGeneration")
+        fun numericIdentityOrLegacyZero(vararg keys: String): Long? {
+            // Python's player_callback_is_current used int(value or 0): omitted,
+            // null, empty and numeric-zero fields defaulted to zero; a truthy
+            // malformed value still failed validation instead of being coerced.
+            if (keys.none { key -> pythonTruthyJsonValue(payload.opt(key)) }) return 0L
+            return numericIdentity(*keys)
+        }
+        val playerGeneration = numericIdentityOrLegacyZero("generation", "playerGeneration")
             ?: return reject("invalid_player_generation")
-        val transition = numericIdentity("transitionGeneration")
+        val transition = numericIdentityOrLegacyZero("transitionGeneration")
             ?: return reject("invalid_transition_generation")
         val rawEpisodeIdentity = payload.opt("episodeId")
         val parsedEpisodeIdentity = numericIdentity("episodeId")
@@ -10435,6 +10443,7 @@ internal class NativeMainRuntimePort(
                     expectedEpisodeId = longValue("episodeId", "episode_id"),
                     expectedAnimeId = longValue("animeId", "anime_id"),
                     expectedMediaId = stringValue("mediaId", "media_id"),
+                    allowMissingAnimeId = true,
                 )
                 if (!validation.isCurrent) {
                     recordDiagnostic(
@@ -10504,6 +10513,7 @@ internal class NativeMainRuntimePort(
                     expectedEpisodeId = longValue("episodeId", "episode_id"),
                     expectedAnimeId = longValue("animeId", "anime_id"),
                     expectedMediaId = stringValue("mediaId", "media_id"),
+                    allowMissingAnimeId = true,
                 )
                 if (!validation.isCurrent) {
                     recordDiagnostic(
@@ -10590,7 +10600,12 @@ internal class NativeMainRuntimePort(
                     )
                     return false
                 }
-                if (!validatePlayerCallback(eventRequestId, payload, requireActive = true).isCurrent) {
+                if (!validatePlayerCallback(
+                        eventRequestId,
+                        payload,
+                        requireActive = true,
+                        allowMissingAnimeId = true,
+                    ).isCurrent) {
                     recordDiagnostic("PLAYER_CALLBACK_REJECTED", severity = "WARN",
                         requestId = eventRequestId, result = "stale_progress_callback")
                     return false
@@ -10977,6 +10992,8 @@ internal class NativeMainRuntimePort(
                             requestId,
                             payload,
                             requireActive = true,
+                            allowMissingEpisodeId = true,
+                            allowMissingAnimeId = true,
                         )
                         if (!validation.isCurrent) {
                             recordDiagnostic(
