@@ -3306,6 +3306,13 @@ internal class NativeMainRuntimePort(
                 ),
             )
             settingsViewModel.refresh()
+            // main.py still re-evaluates the startup onboarding gate for a stale
+            // inventory, but only from current canonical folders/grants—not from
+            // the stale payload itself.
+            reconcileStorageOnboardingProjection(
+                reason = "storage_stale_inventory",
+                requestId = payload.optString("requestId", "").takeIf { it.isNotBlank() },
+            )
             return
         }
 
