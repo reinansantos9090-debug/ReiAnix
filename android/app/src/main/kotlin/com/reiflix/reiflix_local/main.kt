@@ -10632,7 +10632,15 @@ internal class NativeMainRuntimePort(
                 // of dropping a valid session event.
                 val request = eventRequestId ?: stringValue("requestId") ?: current.activePlayerRequestId.orEmpty()
                 val sessionId = stringValue("playerSessionId", "player_session_id", "sessionId")
-                    ?: return false
+                if (sessionId.isNullOrBlank()) {
+                    recordDiagnostic(
+                        name = "PLAYER_COMMAND_REJECTED",
+                        severity = "WARN",
+                        requestId = request,
+                        result = "missing_player_session_id",
+                    )
+                    return false
+                }
                 val originRequestId = stringValue("originRequestId", "origin_request_id").orEmpty()
                 if (originRequestId.isNotBlank()) {
                     // Port the legacy pending-transition target check. A successor may
@@ -10714,6 +10722,29 @@ internal class NativeMainRuntimePort(
                     longValue("animeId", "anime_id"),
                     stringValue("uri", "mediaUri", "media_uri"),
                 )
+                // Retain the legacy PLAYER_OPENED diagnostic contract in addition
+                // to the native session-projection marker.
+                recordDiagnostic(
+                    name = "PLAYER_OPENED",
+                    requestId = request,
+                    sessionId = sessionId,
+                    source = stringValue("source") ?: "native_player",
+                    result = stringValue("state") ?: "READY",
+                )
+                if (originRequestId.isBlank()) {
+                    // Initial opens were acknowledged as an accepted playback command;
+                    // NEXT/PREVIOUS handoffs emit their own transition-ready markers.
+                    recordDiagnostic(
+                        name = "PLAYER_COMMAND_ACCEPTED",
+                        requestId = request,
+                        sessionId = sessionId,
+                        result = "player_opened",
+                        context = mapOf(
+                            "player_generation" to mutableSnapshot.value.activePlayerGeneration,
+                            "reason" to "player_opened",
+                        ),
+                    )
+                }
                 recordDiagnostic(
                     name = "PLAYER_OPENED_EVENT",
                     requestId = request,
