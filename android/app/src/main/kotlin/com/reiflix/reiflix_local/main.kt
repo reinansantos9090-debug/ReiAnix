@@ -9373,6 +9373,31 @@ internal class NativeMainRuntimePort(
             }
             return null
         }
+        // Preserve main.py's float(value or 0.0) + max(0.0, value) behavior
+        // for playback checkpoints. optLong() silently turns decimal strings into
+        // defaults, whereas the legacy path accepts numeric strings such as "125.5".
+        fun nonNegativeMillis(vararg keys: String): Long? {
+            var raw: Any? = null
+            var found = false
+            for (key in keys) {
+                if (payload.has(key)) {
+                    raw = payload.opt(key)
+                    found = true
+                    break
+                }
+            }
+            if (!found || raw == null || raw === org.json.JSONObject.NULL) return 0L
+            if (raw == false || (raw is String && raw.isEmpty()) ||
+                (raw is Number && raw.toDouble() == 0.0)
+            ) return 0L
+            val numeric = when (raw) {
+                is Number -> raw.toDouble()
+                is Boolean -> if (raw) 1.0 else 0.0
+                is String -> raw.toDoubleOrNull()
+                else -> null
+            } ?: return null
+            return numeric.takeIf { it.isFinite() }?.coerceAtLeast(0.0)?.toLong()
+        }
         return when (type) {
             "permission_requested" -> {
                 recordDiagnostic(
@@ -10820,10 +10845,8 @@ internal class NativeMainRuntimePort(
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
                 // Legacy main.py treats omitted/negative checkpoint values as zero
                 // rather than dropping an otherwise valid pause/completion callback.
-                val position = payload.optLong("positionMs", payload.optLong("position_ms", 0L))
-                    .coerceAtLeast(0L)
-                val duration = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
-                    .coerceAtLeast(0L)
+                val position = nonNegativeMillis("positionMs", "position_ms") ?: return false
+                val duration = nonNegativeMillis("durationMs", "duration_ms") ?: return false
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // NativePlayerActivity already committed this checkpoint to canonical SQLite.
                     // Match main.py: leave the library projection untouched while the player
@@ -10979,10 +11002,8 @@ internal class NativeMainRuntimePort(
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
                 // Python's max(0.0, float(value or 0.0)) clamps negative and
                 // defaults missing checkpoints to zero before saving progress.
-                val positionMs = payload.optLong("positionMs", payload.optLong("position_ms", 0L))
-                    .coerceAtLeast(0L)
-                val durationMs = payload.optLong("durationMs", payload.optLong("duration_ms", 0L))
-                    .coerceAtLeast(0L)
+                val positionMs = nonNegativeMillis("positionMs", "position_ms") ?: return false
+                val durationMs = nonNegativeMillis("durationMs", "duration_ms") ?: return false
                 if (payload.optBoolean("nativeProgressPersisted", payload.optBoolean("native_progress_persisted", false))) {
                     // The player already saved this exact checkpoint before publishing the
                     // mailbox event. As in main.py, defer catalog refresh until player exit.
