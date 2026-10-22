@@ -10376,6 +10376,19 @@ internal class NativeMainRuntimePort(
                     "COMPLETED", "PARTIAL" -> "COMPLETED"
                     else -> "FAILED"
                 }
+                // Preserve main.py's actionable scan-failure reasons instead of
+                // collapsing "no authorized source" and "Activity not resumed"
+                // into one generic message.
+                val nativeScanFailureMessage = when {
+                    payload.opt("noSourcesAvailable") == true ->
+                        "Nenhuma fonte de armazenamento autorizada estava disponível para varredura."
+                    stringValue("errorCode") == "ACTIVITY_NOT_RESUMED" ->
+                        "A operação de varredura foi interrompida antes de iniciar as fontes."
+                    payload.optInt("requestedSources", 0) > 0 &&
+                        payload.optInt("successfulScopes", 0) == 0 ->
+                        "Nenhuma fonte solicitada concluiu a varredura com sucesso."
+                    else -> "A varredura nativa não pôde ser concluída."
+                }
                 finishPendingStorageOperation(
                     eventRequestId = requestId,
                     expectedNativeActions = setOf("scan_library"),
@@ -10385,11 +10398,14 @@ internal class NativeMainRuntimePort(
                         "PARTIAL" -> "Atualização concluída parcialmente."
                         "CANCELLED" -> "Atualização da biblioteca cancelada."
                         "BLOCKED" -> "A atualização da biblioteca foi bloqueada."
+                        "FAILED", "ERROR" -> nativeScanFailureMessage
                         else -> "Não foi possível concluir a atualização da biblioteca."
                     },
-                    error = if (status in setOf("FAILED", "ERROR", "BLOCKED")) {
-                        stringValue("error", "errorCode") ?: "library_scan_$status"
-                    } else null,
+                    error = when (status) {
+                        "FAILED", "ERROR" -> nativeScanFailureMessage
+                        "BLOCKED" -> stringValue("error", "errorCode") ?: "library_scan_$status"
+                        else -> null
+                    },
                     payload = payload,
                 )
                 val treeUri = stringValue("treeUri", "tree_uri")
