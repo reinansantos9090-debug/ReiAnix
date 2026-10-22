@@ -203,7 +203,7 @@ class ReiAnixAniListViewModel(
                             // by the local title when no AniList ID was associated;
                             // a refresh action must not become a hard failure merely
                             // because the local entry has not been matched yet.
-                            when (val matchResult = integration.autoMatch(animeId)) {
+                            when (val matchResult = integration.autoMatch(animeId, force = true)) {
                                 is AniListResult.Failure -> if (requestId == metadataRefreshRequestId) {
                                     _aniListUiState.value = _aniListUiState.value.copy(
                                         isMetadataRefreshLoading = false,
