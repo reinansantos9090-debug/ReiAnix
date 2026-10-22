@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reiflix.reiflix_local.resolveNativePlaybackStartPosition
 import com.reiflix.reiflix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
@@ -1937,14 +1938,21 @@ class ReiAnixLibraryViewModel(
                 }
 
                 val resumeEnabled = preferenceValue("player.resume").toBooleanStrictOrNull() ?: true
-                val progressSeconds = episode.progress
-                    ?.takeIf { it.isFinite() && it >= 0.0 }
-                    ?: 0.0
-                val positionMs = if (resumeEnabled) {
-                    (progressSeconds * 1_000.0).toLong().coerceAtLeast(0L)
-                } else {
-                    0L
+                val playbackStart = resolveNativePlaybackStartPosition(
+                    progressSeconds = episode.progress,
+                    durationSeconds = episode.duration,
+                    watched = episode.watched,
+                    resumeEnabled = resumeEnabled,
+                )
+                if (playbackStart.progressInvalid) {
+                    Log.w(
+                        TAG,
+                        "PLAYER_PROGRESS_REJECTED episodeId=${episode.id} reason=INVALID_PERSISTED_PROGRESS",
+                    )
                 }
+                val positionMs = (playbackStart.positionSeconds * 1_000.0)
+                    .toLong()
+                    .coerceAtLeast(0L)
                 val createdAtMs = System.currentTimeMillis()
                 val playerSessionId = UUID.randomUUID().toString()
                 val title = episode.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
