@@ -9261,6 +9261,12 @@ internal class NativeMainRuntimePort(
             "_legacySourceEventCreatedAt",
             sourceEventTimestamp ?: org.json.JSONObject.NULL,
         )
+        // Python's performance recorder reads receivedAtMs from the envelope,
+        // not from the nested payload. Preserve that distinction before flattening.
+        payload.put(
+            "_legacySourceEventReceivedAtMs",
+            if (event.has("receivedAtMs")) event.opt("receivedAtMs") else org.json.JSONObject.NULL,
+        )
         return dispatchNativeEvent(eventType, payload, requestId, eventId)
     }
 
@@ -10519,7 +10525,9 @@ internal class NativeMainRuntimePort(
                     is Boolean -> if (rawCreatedAt) 1.0 else 0.0
                     else -> null
                 }
-                val rawReceivedAt = if (payload.has("receivedAtMs")) {
+                val rawReceivedAt = if (payload.has("_legacySourceEventReceivedAtMs")) {
+                    payload.opt("_legacySourceEventReceivedAtMs")
+                } else if (payload.has("receivedAtMs")) {
                     payload.opt("receivedAtMs")
                 } else {
                     payload.opt("received_at_ms")
