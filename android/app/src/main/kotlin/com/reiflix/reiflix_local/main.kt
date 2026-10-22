@@ -7100,12 +7100,6 @@ internal class NativeMainRuntimePort(
                         }
                     }
                 }
-                // LibraryService.clear_anilist_cache() also expires cached AniList
-                // metadata in the canonical catalog, without deleting anime rows or
-                // their AniList associations. Clearing artwork files alone is not enough.
-                dependencies.sqliteDatabase.transaction { database ->
-                    database.execSQL("UPDATE anime SET metadata_updated_at = NULL, cover_cache = ''")
-                }
                 libraryViewModel.refreshCatalogProjection()
                 val resultPayload = org.json.JSONObject()
                     .put("removed", removed + legacyRemoved)
