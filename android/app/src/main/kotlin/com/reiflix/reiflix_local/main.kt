@@ -2862,8 +2862,7 @@ internal class NativeMainRuntimePort(
         return launchTracked("save_personal_note") {
             // Port core/library_store.py's set_personal_note contract: whitespace-only
             // notes clear the nullable field, and oversized notes are rejected.
-            // Python len(str) counts Unicode code points, not UTF-16 code units.
-            require(normalized.codePointCount(0, normalized.length) <= 2_000) {
+            require(normalized.length <= 2_000) {
                 "A nota pessoal pode ter no máximo 2000 caracteres."
             }
             libraryViewModel.saveAnimePersonalNoteNative(
@@ -2882,17 +2881,12 @@ internal class NativeMainRuntimePort(
         fun caseFold(value: String): String =
             value.lowercase(Locale.ROOT).replace("ß", "ss").replace("ς", "σ")
 
-        fun takeCodePoints(value: String, limit: Int): String {
-            val count = value.codePointCount(0, value.length)
-            return if (count <= limit) value else value.substring(0, value.offsetByCodePoints(0, limit))
-        }
-
         val normalized = mutableListOf<String>()
         for (rawTag in tags) {
             val tag = collapsePythonWhitespace(rawTag)
             if (tag.isEmpty()) continue
             if (normalized.any { caseFold(it) == caseFold(tag) }) continue
-            normalized += takeCodePoints(tag, 40)
+            normalized += tag.take(40)
         }
 
         return launchTracked("save_user_tags") {
