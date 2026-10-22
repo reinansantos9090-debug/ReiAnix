@@ -11387,21 +11387,21 @@ internal class NativeMainRuntimePort(
                             val resumeContext = loadContinueResumeContext(continueEpisodeId)
                                 ?: return@launchTracked
                             if (continueFailureRecordedPlayerSessions.add(failedSessionId)) {
+                                recordDiagnostic(
+                                    name = "CONTINUE_FAILED",
+                                    severity = "ERROR",
+                                    requestId = eventRequestId ?: stringValue("requestId"),
+                                    sessionId = failedSessionId,
+                                    result = playerErrorReason,
+                                    context = mapOf(
+                                        "episode_id" to resumeContext.episodeId,
+                                        "reason" to playerErrorReason,
+                                        "resume_seconds" to resumeContext.resumeSeconds,
+                                    ),
+                                )
                                 if (continueFailureRecordedPlayerSessions.size > 128) {
-                                    continueFailureRecordedPlayerSessions.remove(failedSessionId)
-                                } else {
-                                    recordDiagnostic(
-                                        name = "CONTINUE_FAILED",
-                                        severity = "ERROR",
-                                        requestId = eventRequestId ?: stringValue("requestId"),
-                                        sessionId = failedSessionId,
-                                        result = playerErrorReason,
-                                        context = mapOf(
-                                            "episode_id" to resumeContext.episodeId,
-                                            "reason" to playerErrorReason,
-                                            "resume_seconds" to resumeContext.resumeSeconds,
-                                        ),
-                                    )
+                                    continueFailureRecordedPlayerSessions.clear()
+                                    continueFailureRecordedPlayerSessions.add(failedSessionId)
                                 }
                             }
                         }
