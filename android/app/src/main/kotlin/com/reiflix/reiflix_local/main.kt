@@ -10932,22 +10932,52 @@ internal class NativeMainRuntimePort(
                 )
                 if (!validation.isCurrent) {
                     recordDiagnostic(
-                        name = "PLAYER_CALLBACK_REJECTED",
+                        name = "PLAYER_ERROR_STALE_IGNORED",
                         severity = "WARN",
-                        requestId = eventRequestId,
+                        requestId = eventRequestId ?: stringValue("requestId"),
+                        sessionId = stringValue("playerSessionId", "player_session_id", "sessionId", "session_id"),
                         result = validation.reason,
+                        context = mapOf(
+                            "episode_id" to longValue("episodeId", "episode_id"),
+                            "stage" to "before_error_projection",
+                        ),
                     )
-                    return false
+                    // The legacy mailbox loop continues past stale player errors;
+                    // consume this event rather than making an old error retry forever.
+                    return true
                 }
                 val playerErrorMessage = stringValue("message", "error")
                     ?: "Não foi possível reproduzir este arquivo localmente."
                 // Match the legacy main.py error path: a failure for the current
                 // launch invalidates an in-flight NEXT/PREVIOUS transition.
                 val playerErrorRequestId = eventRequestId ?: stringValue("requestId")
+                val playerErrorOriginRequestId = stringValue("originRequestId", "origin_request_id")
+                val currentPlayerRequestId = mutableSnapshot.value.activePlayerRequestId
+                val matchesPendingTransitionOrigin =
+                    !playerErrorOriginRequestId.isNullOrBlank() &&
+                        currentPlayerRequestId == playerErrorOriginRequestId
+                val transitionDirection = stringValue("transitionDirection", "transition_direction")
+                    ?.uppercase(Locale.ROOT)
                 if (
-                    !playerErrorRequestId.isNullOrBlank() &&
-                    mutableSnapshot.value.activePlayerRequestId == playerErrorRequestId
+                    (!playerErrorRequestId.isNullOrBlank() &&
+                        currentPlayerRequestId == playerErrorRequestId) ||
+                    matchesPendingTransitionOrigin
                 ) {
+                    if (!playerErrorOriginRequestId.isNullOrBlank() &&
+                        transitionDirection in setOf("NEXT", "PREVIOUS")
+                    ) {
+                        recordDiagnostic(
+                            name = if (transitionDirection == "NEXT") "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
+                            severity = "ERROR",
+                            requestId = playerErrorOriginRequestId,
+                            sessionId = stringValue("playerSessionId", "player_session_id", "sessionId", "session_id"),
+                            result = playerErrorReason,
+                            context = mapOf(
+                                "target_request_id" to playerErrorRequestId,
+                                "transition_direction" to transitionDirection,
+                            ),
+                        )
+                    }
                     cancelPlayerTransition("player_error")
                 }
                 val playerErrorReason = firstTruthyJsonText(payload, "reason", "errorCode", "code")
