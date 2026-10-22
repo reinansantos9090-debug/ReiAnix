@@ -2926,28 +2926,6 @@ internal class NativeMainRuntimePort(
             }
             return false
         }
-        if (hasAnyNativeScanInProgress()) {
-            val activeScanCount = NativeScanController.progress.value.values.count { !it.state.isTerminal }
-            val message = "Uma atualização da biblioteca já está em andamento."
-            recordDiagnostic(
-                name = "LIBRARY_SCAN_DEDUPED",
-                severity = "INFO",
-                requestId = requestId,
-                result = "scan_already_running",
-                context = mapOf("active_scan_count" to activeScanCount),
-            )
-            requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
-                publishOperationResult(
-                    requestId = it,
-                    action = resultAction,
-                    status = "BLOCKED",
-                    operationState = "BLOCKED",
-                    message = message,
-                    error = "scan_already_running",
-                )
-            }
-            return false
-        }
         val authorizedRoots = authorizedScanTargets("saf")
         if (authorizedRoots.isEmpty()) {
             val message = "Não há uma pasta SAF autorizada para atualizar a biblioteca."
@@ -2969,6 +2947,77 @@ internal class NativeMainRuntimePort(
                 )
             }
             return false
+        }
+        if (hasAnyNativeScanInProgress()) {
+            val activeScanIds = NativeScanController.progress.value.values
+                .filter { !it.state.isTerminal }
+                .map { it.operationId }
+                .toSet()
+            if (activeScanIds.isEmpty()) {
+                // A scan completed between the initial check and snapshot read.
+                return requestStorageAction("scan_library", requestId, resultAction)
+            }
+            val queuedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+                ?: UUID.randomUUID().toString()
+            val message = "Atualização enfileirada; a varredura atual será concluída primeiro."
+            publishOperationResult(
+                requestId = queuedRequestId,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = message,
+                payload = org.json.JSONObject()
+                    .put("waitingForScanCount", activeScanIds.size)
+                    .put("waitingForScanIds", org.json.JSONArray(activeScanIds.toList())),
+            )
+            recordDiagnostic(
+                name = "LIBRARY_SCAN_QUEUED",
+                requestId = queuedRequestId,
+                result = "active_scan_in_progress",
+                context = mapOf("active_scan_count" to activeScanIds.size),
+            )
+            val accepted = launchTracked("queued_library_scan", lane = "storage") {
+                try {
+                    NativeScanController.progress
+                        .map { snapshots ->
+                            activeScanIds.all { scanId -> snapshots[scanId]?.state?.isTerminal == true }
+                        }
+                        .first { allFinished -> allFinished }
+                    delay(HOME_REFRESH_TERMINAL_SETTLE_MS)
+                    // Re-enter through the same guards: a new scan, restore or
+                    // storage mutation may have begun while this request waited.
+                    requestLibraryScan(
+                        requestId = queuedRequestId,
+                        resultAction = resultAction,
+                    )
+                } catch (cancelled: CancellationException) {
+                    publishOperationResult(
+                        requestId = queuedRequestId,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A atualização enfileirada da biblioteca foi cancelada.",
+                    )
+                    throw cancelled
+                }
+            }
+            if (!accepted) {
+                publishOperationResult(
+                    requestId = queuedRequestId,
+                    action = resultAction,
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = "Não foi possível enfileirar a atualização da biblioteca.",
+                    error = "operation_rejected",
+                )
+                recordDiagnostic(
+                    name = "LIBRARY_SCAN_QUEUE_REJECTED",
+                    severity = "WARN",
+                    requestId = queuedRequestId,
+                    result = "operation_rejected",
+                )
+            }
+            return accepted
         }
         return requestStorageAction("scan_library", requestId, resultAction)
     }
