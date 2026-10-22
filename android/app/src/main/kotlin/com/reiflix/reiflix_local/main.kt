@@ -6695,7 +6695,8 @@ internal class NativeMainRuntimePort(
     }
 
     fun dismissNativeStorageOnboarding() {
-        libraryViewModel.dismissStorageOnboarding()
+        // The mailbox command has already been consumed by this runtime.
+        // Re-sending it through the ViewModel would enqueue the same command again.
         activity.dismissNativeStorageOnboarding()
         publish(action = "dismiss_storage_onboarding")
     }
