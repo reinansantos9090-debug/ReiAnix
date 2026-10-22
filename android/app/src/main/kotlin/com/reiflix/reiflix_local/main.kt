@@ -10981,6 +10981,16 @@ internal class NativeMainRuntimePort(
                             ),
                         )
                     }
+                    // A NEXT/PREVIOUS failure may carry the target request while the
+                    // native handoff ledger is keyed by the origin request. Revoke that
+                    // origin explicitly before clearing the active transition projection.
+                    if (!playerErrorOriginRequestId.isNullOrBlank()) {
+                        MainActivity.revokePlayerTransition(
+                            playerErrorOriginRequestId,
+                            stringValue("playerSessionId", "player_session_id", "sessionId", "session_id")
+                                ?: mutableSnapshot.value.activePlayerSessionId,
+                        )
+                    }
                     cancelPlayerTransition("player_error")
                 }
                 // Preserve the established diagnostic event name/source/result from
