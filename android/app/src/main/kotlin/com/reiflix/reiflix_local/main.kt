@@ -2902,14 +2902,61 @@ internal class NativeMainRuntimePort(
             }
             return false
         }
-        if (!canStartLibraryScan("saf")) {
+        val storageMutationPending =
+            !pendingSafSelectionRequestId.isNullOrBlank() ||
+                !pendingSafRemovalRequestId.isNullOrBlank() ||
+                !pendingFolderRemovalRequestId.isNullOrBlank()
+        if (storageMutationPending) {
+            val message = "Conclua a seleção ou remoção da pasta antes de atualizar a biblioteca."
+            recordDiagnostic(
+                name = "LIBRARY_SCAN_REJECTED",
+                severity = "WARN",
+                requestId = requestId,
+                result = "storage_operation_in_progress",
+            )
+            requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "BLOCKED",
+                    operationState = "BLOCKED",
+                    message = message,
+                    error = "storage_operation_in_progress",
+                )
+            }
+            return false
+        }
+        if (hasAnyNativeScanInProgress()) {
+            val activeScanCount = NativeScanController.progress.value.values.count { !it.state.isTerminal }
+            val message = "Uma atualização da biblioteca já está em andamento."
+            recordDiagnostic(
+                name = "LIBRARY_SCAN_DEDUPED",
+                severity = "INFO",
+                requestId = requestId,
+                result = "scan_already_running",
+                context = mapOf("active_scan_count" to activeScanCount),
+            )
+            requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                publishOperationResult(
+                    requestId = it,
+                    action = resultAction,
+                    status = "BLOCKED",
+                    operationState = "BLOCKED",
+                    message = message,
+                    error = "scan_already_running",
+                )
+            }
+            return false
+        }
+        val authorizedRoots = authorizedScanTargets("saf")
+        if (authorizedRoots.isEmpty()) {
             val message = "Não há uma pasta SAF autorizada para atualizar a biblioteca."
             recordDiagnostic(
                 name = "LIBRARY_SCAN_REJECTED",
                 severity = "WARN",
                 requestId = requestId,
                 result = "no_authorized_library_saf_source",
-                context = mapOf("configured_saf_root_count" to authorizedScanTargets("saf").size),
+                context = mapOf("authorized_saf_root_count" to authorizedRoots.size),
             )
             requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 publishOperationResult(
