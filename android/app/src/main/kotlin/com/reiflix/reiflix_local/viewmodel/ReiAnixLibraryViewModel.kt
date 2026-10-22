@@ -1902,6 +1902,18 @@ class ReiAnixLibraryViewModel(
         }
     }
 
+    /** Release the single-flight gate when the legacy runtime disconnects mid-handoff. */
+    fun cancelPendingNativePlayerHandoff(reason: String = "runtime_disconnect") {
+        val pending = synchronized(nativePlayerHandoffLock) {
+            pendingNativePlayerHandoffRequestId
+        } ?: return
+        reportNativePlayerHandoff(
+            requestId = pending,
+            status = "CANCELLED",
+            error = reason,
+        )
+    }
+
     fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String {
         val requestId = UUID.randomUUID().toString()
         val duplicateRequestId = synchronized(nativePlayerHandoffLock) {
