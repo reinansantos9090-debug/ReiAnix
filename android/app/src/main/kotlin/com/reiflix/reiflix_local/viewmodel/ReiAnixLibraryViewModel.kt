@@ -179,6 +179,12 @@ class ReiAnixLibraryViewModel(
     private val appContext = context.applicationContext
     private val appDependencies = dependencies ?: ReiAnixAppDependencies.existingOrNull(appContext)
 
+    // The former main.py player_launch_inflight flag allowed only one handoff to
+    // be pending at a time. Keep that guarantee while MainActivity validates and
+    // acknowledges the URI request.
+    private val nativePlayerHandoffLock = Any()
+    private var pendingNativePlayerHandoffRequestId: String? = null
+
     /** Process-owned bootstrap state is observable by Compose without transferring lifecycle ownership. */
     val bootstrapState: StateFlow<ReiAnixBootstrapState> =
         appDependencies?.bootstrap?.state ?: MutableStateFlow(ReiAnixBootstrapState())
@@ -1888,11 +1894,31 @@ class ReiAnixLibraryViewModel(
         error: String? = null,
     ) {
         repository.reportNativePlayerHandoff(requestId, status, error)
+        synchronized(nativePlayerHandoffLock) {
+            if (pendingNativePlayerHandoffRequestId == requestId) {
+                pendingNativePlayerHandoffRequestId = null
+            }
+        }
     }
 
     fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String {
         val requestId = UUID.randomUUID().toString()
+        val duplicateRequestId = synchronized(nativePlayerHandoffLock) {
+            val existing = pendingNativePlayerHandoffRequestId
+            if (existing != null) {
+                existing
+            } else {
+                pendingNativePlayerHandoffRequestId = requestId
+                null
+            }
+        }
+        if (duplicateRequestId != null) {
+            Log.i(TAG, "PLAYER_HANDOFF_DUPLICATE_IGNORED episodeId=$episodeId pendingRequestId=$duplicateRequestId")
+            return duplicateRequestId
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
+            var nativeIntentStarted = false
             try {
                 require(episodeId > 0L) { "O identificador do episódio é inválido." }
                 val episode = nativeLibraryRepository.getEpisode(episodeId)
@@ -2021,7 +2047,13 @@ class ReiAnixLibraryViewModel(
                 withContext(Dispatchers.Main) {
                     appContext.startActivity(intent)
                 }
+                nativeIntentStarted = true
             } catch (cancelled: CancellationException) {
+                synchronized(nativePlayerHandoffLock) {
+                    if (pendingNativePlayerHandoffRequestId == requestId) {
+                        pendingNativePlayerHandoffRequestId = null
+                    }
+                }
                 throw cancelled
             } catch (error: Exception) {
                 Log.e(
@@ -2029,12 +2061,20 @@ class ReiAnixLibraryViewModel(
                     "Native Compose player handoff failed requestId=$requestId episodeId=$episodeId",
                     error,
                 )
-                repository.reportNativePlayerHandoff(
+                reportNativePlayerHandoff(
                     requestId = requestId,
                     status = "FAILED",
                     error = error.message?.takeIf(String::isNotBlank)
                         ?: "Não foi possível preparar a reprodução local.",
                 )
+            } finally {
+                if (!nativeIntentStarted) {
+                    synchronized(nativePlayerHandoffLock) {
+                        if (pendingNativePlayerHandoffRequestId == requestId) {
+                            pendingNativePlayerHandoffRequestId = null
+                        }
+                    }
+                }
             }
         }
         return requestId
