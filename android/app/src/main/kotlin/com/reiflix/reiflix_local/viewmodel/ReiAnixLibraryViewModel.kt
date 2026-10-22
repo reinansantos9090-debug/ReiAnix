@@ -6,6 +6,7 @@ import android.util.Log
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.resolveNativePlaybackStartPosition
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
@@ -1974,6 +1975,17 @@ class ReiAnixLibraryViewModel(
                     Log.w(
                         TAG,
                         "PLAYER_PROGRESS_REJECTED episodeId=${episode.id} reason=INVALID_PERSISTED_PROGRESS",
+                    )
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "PLAYER_PROGRESS_REJECTED",
+                        severity = "WARN",
+                        source = "ReiAnixLibraryViewModel",
+                        result = "INVALID_PERSISTED_PROGRESS",
+                        context = mapOf(
+                            "episode_id" to episode.id,
+                            "progress_seconds" to (episode.progress ?: 0.0),
+                            "duration_seconds" to (episode.duration ?: 0.0),
+                        ),
                     )
                 }
                 val createdAtMs = System.currentTimeMillis()
