@@ -1877,7 +1877,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                     .put("mediaId", currentMediaId())
                                     .put("episodeId", currentEpisodeId())
                                     .put("animeId", intent.getStringExtra("animeId").orEmpty())
-                                    .put("uri", uri.toString())
                                     .put("playerSessionId", playerSessionId)
                                     .put("activityInstanceId", activityInstanceId)
                                     .put("generation", playerGeneration)
