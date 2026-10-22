@@ -7119,10 +7119,40 @@ internal class NativeMainRuntimePort(
             .takeIf { it == "button" || it == "pull" } ?: "button"
         // Resolve correlation before any early return so blocked/rejected requests
         // keep the identity supplied by dispatchMainAction in diagnostics.
-        val requestId = requestedRequestId?.trim()?.takeIf { it.isNotEmpty() }
-            ?: UUID.randomUUID().toString()
+        val correlatedRequestId = requestedRequestId?.trim()?.takeIf { it.isNotEmpty() }
+        val requestId = correlatedRequestId ?: UUID.randomUUID().toString()
         val refreshId = requestedRefreshId?.trim()?.takeIf { it.isNotEmpty() }
             ?: UUID.randomUUID().toString()
+
+        fun reportOperation(
+            status: String,
+            operationState: String,
+            message: String? = null,
+            error: String? = null,
+            resultPayload: org.json.JSONObject? = null,
+        ) {
+            val operationId = correlatedRequestId ?: return
+            val payload = org.json.JSONObject()
+                .put("refreshId", refreshId)
+                .put("source", refreshSource)
+            resultPayload?.let { extra ->
+                val keys = extra.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    payload.put(key, extra.opt(key))
+                }
+            }
+            publishOperationResult(
+                requestId = operationId,
+                action = "request_home_refresh",
+                status = status,
+                operationState = operationState,
+                message = message,
+                error = error,
+                payload = payload,
+            )
+        }
+
         if (restoreMaintenanceInProgress) {
             recordDiagnostic(
                 name = "HOME_REFRESH_BLOCKED",
@@ -7131,6 +7161,12 @@ internal class NativeMainRuntimePort(
                 refreshId = refreshId,
                 result = "restore_in_progress",
                 context = mapOf("source" to refreshSource),
+            )
+            reportOperation(
+                status = "BLOCKED",
+                operationState = "BLOCKED",
+                message = "Aguarde a conclusão da restauração do backup antes de atualizar a biblioteca.",
+                error = "restore_in_progress",
             )
             return false
         }
@@ -7146,6 +7182,12 @@ internal class NativeMainRuntimePort(
             // The legacy request_home_refresh reports an active refresh as an
             // accepted wait, not a failed tap; leave the existing coordinator
             // untouched and let its current terminal transition own the UI state.
+            reportOperation(
+                status = "COMPLETED",
+                operationState = "COMPLETED",
+                message = "Uma atualização da biblioteca já está em andamento; esta solicitação foi absorvida pela operação atual.",
+                resultPayload = org.json.JSONObject().put("coalesced", true),
+            )
             return true
         }
         val startedAt = System.currentTimeMillis()
@@ -7165,6 +7207,12 @@ internal class NativeMainRuntimePort(
                 refreshId = refreshId,
                 result = "coordinator_rejected",
             )
+            reportOperation(
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A atualização da biblioteca não pôde ser iniciada.",
+                error = "coordinator_rejected",
+            )
             return false
         }
         if (!pendingSafSelectionRequestId.isNullOrBlank()) {
@@ -7175,6 +7223,12 @@ internal class NativeMainRuntimePort(
                 requestId = requestId,
                 refreshId = refreshId,
                 result = "saf_selection_pending",
+            )
+            reportOperation(
+                status = "BLOCKED",
+                operationState = "BLOCKED",
+                message = "Conclua ou cancele a seleção da pasta antes de atualizar a biblioteca.",
+                error = "saf_selection_pending",
             )
             return false
         }
@@ -7201,6 +7255,12 @@ internal class NativeMainRuntimePort(
                     refreshId = refreshId,
                     result = "storage_capabilities_check_rejected",
                 )
+                reportOperation(
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = "Não foi possível verificar as permissões de armazenamento.",
+                    error = "storage_capabilities_check_rejected",
+                )
                 return false
             }
         } else {
@@ -7215,6 +7275,12 @@ internal class NativeMainRuntimePort(
                     refreshId = refreshId,
                     result = "no_authorized_library_saf_source",
                 )
+                reportOperation(
+                    status = "BLOCKED",
+                    operationState = "BLOCKED",
+                    message = "Nenhuma pasta da biblioteca está autorizada para varredura.",
+                    error = "no_authorized_library_saf_source",
+                )
                 return false
             }
             if (!requestLibraryScan(requestId = requestId, resultAction = "scan_library")) {
@@ -7225,6 +7291,12 @@ internal class NativeMainRuntimePort(
                     requestId = requestId,
                     refreshId = refreshId,
                     result = "native_scan_request_rejected",
+                )
+                reportOperation(
+                    status = "FAILED",
+                    operationState = "FAILED",
+                    message = "A varredura nativa da biblioteca não foi aceita.",
+                    error = "native_scan_request_rejected",
                 )
                 return false
             }
@@ -7258,6 +7330,12 @@ internal class NativeMainRuntimePort(
                                 refreshId = refreshId,
                                 result = "storage_capabilities_check_timeout",
                             )
+                            reportOperation(
+                                status = "FAILED",
+                                operationState = "FAILED",
+                                message = "A verificação das permissões de armazenamento expirou.",
+                                error = "storage_capabilities_check_timeout",
+                            )
                             return@launch
                         }
                         // Permit a second refresh to wait behind scans that
@@ -7272,6 +7350,12 @@ internal class NativeMainRuntimePort(
                                 refreshId = refreshId,
                                 result = "no_authorized_library_saf_source",
                             )
+                            reportOperation(
+                                status = "BLOCKED",
+                                operationState = "BLOCKED",
+                                message = "Nenhuma pasta da biblioteca está autorizada para varredura.",
+                                error = "no_authorized_library_saf_source",
+                            )
                             return@launch
                         }
                         if (!requestLibraryScan(requestId = requestId, resultAction = "scan_library")) {
@@ -7282,6 +7366,12 @@ internal class NativeMainRuntimePort(
                                 requestId = requestId,
                                 refreshId = refreshId,
                                 result = "native_scan_request_rejected_after_capability_check",
+                            )
+                            reportOperation(
+                                status = "FAILED",
+                                operationState = "FAILED",
+                                message = "A varredura nativa da biblioteca não foi aceita após verificar as permissões.",
+                                error = "native_scan_request_rejected_after_capability_check",
                             )
                             return@launch
                         }
@@ -7299,6 +7389,12 @@ internal class NativeMainRuntimePort(
                         HomeRefreshCoordinator.fail(requestId, "native_scan_start_timeout")
                         recordDiagnostic("HOME_REFRESH_FAILED", result = "native_scan_start_timeout",
                             requestId = requestId, context = mapOf("source" to refreshSource))
+                        reportOperation(
+                            status = "FAILED",
+                            operationState = "FAILED",
+                            message = "A varredura da biblioteca não iniciou dentro do prazo.",
+                            error = "native_scan_start_timeout",
+                        )
                         return@launch
                     }
                     HomeRefreshCoordinator.markScanStarted(requestId)
@@ -7338,12 +7434,27 @@ internal class NativeMainRuntimePort(
                         recordDiagnostic("HOME_REFRESH_FAILED", severity = "WARN", requestId = requestId,
                             refreshId = refreshId, result = "native_scan_failed",
                             context = mapOf("terminal_states" to stableTerminalBatch.joinToString { it.state.name }))
+                        reportOperation(
+                            status = "FAILED",
+                            operationState = "FAILED",
+                            message = "A varredura da biblioteca falhou.",
+                            error = "native_scan_failed",
+                            resultPayload = org.json.JSONObject().put(
+                                "terminalStates", stableTerminalBatch.joinToString { it.state.name },
+                            ),
+                        )
                         return@launch
                     }
                     if (stableTerminalBatch.any { it.state == ScanLifecycleState.CANCELLED }) {
                         HomeRefreshCoordinator.cancel(requestId, "native_scan_cancelled")
                         recordDiagnostic("HOME_REFRESH_CANCELLED", severity = "WARN", requestId = requestId,
                             refreshId = refreshId, result = "native_scan_cancelled")
+                        reportOperation(
+                            status = "CANCELLED",
+                            operationState = "CANCELLED",
+                            message = "A varredura da biblioteca foi cancelada.",
+                            error = "native_scan_cancelled",
+                        )
                         return@launch
                     }
                     if (!HomeRefreshCoordinator.markScanTerminal(requestId)) {
@@ -7357,6 +7468,12 @@ internal class NativeMainRuntimePort(
                     val catalogAccepted = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
                     if (!catalogAccepted) {
                         HomeRefreshCoordinator.fail(requestId, "canonical_catalog_refresh_rejected")
+                        reportOperation(
+                            status = "FAILED",
+                            operationState = "FAILED",
+                            message = "O catálogo local não pôde ser atualizado após a varredura.",
+                            error = "canonical_catalog_refresh_rejected",
+                        )
                         return@launch
                     }
                     // refreshCanonicalCatalogAfterBootstrapValidation() already reloads
@@ -7379,22 +7496,48 @@ internal class NativeMainRuntimePort(
                         refreshId = refreshId,
                         context = mapOf("elapsed_ms" to elapsedMs, "rebuild" to false, "db_updated" to true),
                     )
+                    val partialCount = stableTerminalBatch.count { it.state == ScanLifecycleState.PARTIAL }
                     recordDiagnostic(
                         "HOME_REFRESH_COMPLETED",
                         requestId = requestId,
                         refreshId = refreshId,
                         context = mapOf(
                             "elapsed_ms" to elapsedMs,
-                            "partial_count" to stableTerminalBatch.count { it.state == ScanLifecycleState.PARTIAL },
+                            "partial_count" to partialCount,
                         ),
+                    )
+                    reportOperation(
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = if (partialCount > 0) {
+                            "Atualização da biblioteca concluída parcialmente; os dados anteriores foram preservados."
+                        } else {
+                            "Atualização da biblioteca concluída."
+                        },
+                        resultPayload = org.json.JSONObject()
+                            .put("elapsedMs", elapsedMs)
+                            .put("partialCount", partialCount)
+                            .put("operationCount", stableTerminalBatch.size),
                     )
                 } catch (cancelled: CancellationException) {
                     HomeRefreshCoordinator.cancel(requestId, "runtime_cancelled")
+                    reportOperation(
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A atualização da biblioteca foi cancelada.",
+                        error = "runtime_cancelled",
+                    )
                     throw cancelled
                 } catch (failure: Throwable) {
                     HomeRefreshCoordinator.fail(requestId, failure.message ?: "runtime_failure")
                     recordDiagnostic("HOME_REFRESH_FAILED", severity = "ERROR", requestId = requestId,
                         refreshId = refreshId, error = failure)
+                    reportOperation(
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível atualizar a biblioteca.",
+                        error = failure.javaClass.simpleName,
+                    )
                 } finally {
                     synchronized(lock) {
                         if (homeRefreshJob === kotlinx.coroutines.currentCoroutineContext()[Job]) {
