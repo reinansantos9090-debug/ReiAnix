@@ -3028,6 +3028,17 @@ internal class NativeMainRuntimePort(
                         }
                     }
                 } catch (cancelled: CancellationException) {
+                    val refresh = HomeRefreshCoordinator.state.value
+                    if (refresh.active && refresh.requestId == queuedRequestId) {
+                        HomeRefreshCoordinator.cancel(queuedRequestId, "queued_scan_cancelled")
+                        recordDiagnostic(
+                            name = "HOME_REFRESH_CANCELLED",
+                            severity = "WARN",
+                            requestId = queuedRequestId,
+                            refreshId = refresh.refreshId,
+                            result = "queued_scan_cancelled",
+                        )
+                    }
                     publishOperationResult(
                         requestId = queuedRequestId,
                         action = resultAction,
