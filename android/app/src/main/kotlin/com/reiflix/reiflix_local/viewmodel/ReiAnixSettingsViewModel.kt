@@ -89,8 +89,8 @@ class ReiAnixSettingsViewModel(
         viewModelScope.launch { repository.refresh() }
     }
 
-    fun setSetting(key: String, value: String) {
-        repository.setSetting(key, value)
+    fun setSetting(key: String, value: String, requestId: String? = null) {
+        repository.setSetting(key, value, requestId)
     }
 
     fun requestAction(action: String) {
