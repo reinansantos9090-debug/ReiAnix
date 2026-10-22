@@ -5841,39 +5841,97 @@ internal class NativeMainRuntimePort(
         return accepted
     }
 
-    fun clearManagedArtworkCache(): Boolean =
-        launchTracked("clear_managed_artwork_cache", lane = "metadata") {
-            // Keep parity with LibraryService.clear_anilist_cache(): the modern artwork
-            // engine clears its own managed cache and expires metadata in canonical SQLite,
-            // while older AniList covers may still sit directly under data/covers.
-            val removed = dependencies.artworkService.clearManagedCache()
-            val legacyCoverRoot = File(activity.applicationContext.filesDir, "data/covers")
-            var legacyRemoved = 0
-            if (legacyCoverRoot.exists()) {
-                val entries = legacyCoverRoot.listFiles()
-                    ?: throw java.io.IOException("Não foi possível listar o cache legado de capas.")
-                entries.forEach { entry ->
-                    // The Python compatibility path removes files in this directory only;
-                    // nested directories are intentionally preserved.
-                    if (entry.isFile) {
-                        if (!entry.delete()) {
-                            throw java.io.IOException("Não foi possível remover uma capa legada: ${entry.name}")
+    fun clearManagedArtworkCache(
+        requestId: String? = null,
+        resultAction: String = "clear_anilist_cache",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Limpeza do cache de arte enfileirada.",
+            )
+        }
+        val accepted = launchTracked("clear_managed_artwork_cache", lane = "metadata") {
+            try {
+                // Keep parity with LibraryService.clear_anilist_cache(): the modern artwork
+                // engine clears its own managed cache and expires metadata in canonical SQLite,
+                // while older AniList covers may still sit directly under data/covers.
+                val removed = dependencies.artworkService.clearManagedCache()
+                val legacyCoverRoot = File(activity.applicationContext.filesDir, "data/covers")
+                var legacyRemoved = 0
+                if (legacyCoverRoot.exists()) {
+                    val entries = legacyCoverRoot.listFiles()
+                        ?: throw java.io.IOException("Não foi possível listar o cache legado de capas.")
+                    entries.forEach { entry ->
+                        // The Python compatibility path removes files in this directory only;
+                        // nested directories are intentionally preserved.
+                        if (entry.isFile) {
+                            if (!entry.delete()) {
+                                throw java.io.IOException("Não foi possível remover uma capa legada: ${entry.name}")
+                            }
+                            legacyRemoved++
                         }
-                        legacyRemoved++
                     }
                 }
+                libraryViewModel.refresh()
+                val resultPayload = org.json.JSONObject()
+                    .put("removed", removed + legacyRemoved)
+                    .put("managedRemoved", removed)
+                    .put("legacyRemoved", legacyRemoved)
+                publish(action = "clear_managed_artwork_cache", transform = {
+                    it.copy(lastResultJson = resultPayload.toString())
+                })
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Cache de arte limpo.",
+                        payload = resultPayload,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A limpeza do cache de arte foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível limpar o cache de arte.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
             }
-            libraryViewModel.refresh()
-            publish(action = "clear_managed_artwork_cache", transform = {
-                it.copy(
-                    lastResultJson = org.json.JSONObject()
-                        .put("removed", removed + legacyRemoved)
-                        .put("managedRemoved", removed)
-                        .put("legacyRemoved", legacyRemoved)
-                        .toString(),
-                )
-            })
         }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A limpeza do cache de arte não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
+    }
 
     suspend fun timelineGroups() = libraryViewModel.queryNativeTimelineGroups()
     suspend fun durationAnomalies(animeId: Long? = null) =
@@ -6940,7 +6998,10 @@ internal class NativeMainRuntimePort(
                 requestAnimeArtwork(it, payload.optBoolean("force", false))
             } ?: false
             "request_pending_artwork" -> requestPendingArtwork()
-            "clear_artwork_cache" -> clearManagedArtworkCache()
+            "clear_artwork_cache" -> clearManagedArtworkCache(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                resultAction = normalized,
+            )
             "request_missing_thumbnail", "request_thumbnail" -> enqueueThumbnailFromLegacyPayload(payload)
             "extract_local_thumbnail" ->
                 (nonBlank("uri") ?: nonBlank("path") ?: nonBlank("mediaUri"))?.let {
@@ -9381,7 +9442,10 @@ internal class NativeMainRuntimePort(
                 resolvedRequestId,
                 "reset_all_settings",
             )
-            "clear_anilist_cache", "clear_artwork_cache" -> clearManagedArtworkCache()
+            "clear_anilist_cache", "clear_artwork_cache" -> clearManagedArtworkCache(
+                requestId = resolvedRequestId,
+                resultAction = normalized,
+            )
             "settings_export" -> launchNativeSettingsFileAction(normalized, resolvedRequestId)
             "settings_import" -> {
                 val reference = stringValueFromPayload(payload, "path", "filePath", "file_path")
