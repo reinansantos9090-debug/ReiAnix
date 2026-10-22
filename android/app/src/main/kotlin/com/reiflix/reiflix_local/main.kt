@@ -2978,12 +2978,28 @@ internal class NativeMainRuntimePort(
             )
             val accepted = launchTracked("queued_library_scan", lane = "storage") {
                 try {
-                    NativeScanController.progress
-                        .map { snapshots ->
-                            activeScanIds.all { scanId -> snapshots[scanId]?.state?.isTerminal == true }
+                    // A library refresh may fan out across several SAF roots.
+                    // Wait for a stable quiet interval rather than only the first active
+                    // root, because the native aggregate scanner can start another root
+                    // just as the previous root reaches a terminal state.
+                    while (true) {
+                        val currentActiveIds = NativeScanController.progress.value.values
+                            .filter { !it.state.isTerminal }
+                            .map { it.operationId }
+                            .toSet()
+                        if (currentActiveIds.isNotEmpty()) {
+                            NativeScanController.progress
+                                .map { snapshots ->
+                                    currentActiveIds.all { scanId -> snapshots[scanId]?.state?.isTerminal == true }
+                                }
+                                .first { allFinished -> allFinished }
+                        } else {
+                            delay(HOME_REFRESH_TERMINAL_SETTLE_MS)
+                            if (NativeScanController.progress.value.values.none { !it.state.isTerminal }) {
+                                break
+                            }
                         }
-                        .first { allFinished -> allFinished }
-                    delay(HOME_REFRESH_TERMINAL_SETTLE_MS)
+                    }
                     // Re-enter through the same guards: a new scan, restore or
                     // storage mutation may have begun while this request waited.
                     val scanAccepted = requestLibraryScan(
