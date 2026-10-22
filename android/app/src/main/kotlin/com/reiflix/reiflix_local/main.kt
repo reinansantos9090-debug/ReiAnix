@@ -2023,7 +2023,20 @@ internal class NativeMainRuntimePort(
         size: Long,
         modifiedAt: Long,
         mediaIdentity: String,
-    ): String = VideoThumbnailExtractor.cacheKey("${uri}|${mediaIdentity}", size.coerceAtLeast(0L), modifiedAt.coerceAtLeast(0L))
+    ): String {
+        // The legacy Python key is a 4-tuple (URI, size, mtime, media identity).
+        // Do not join URI and identity with a delimiter: either value can contain "|",
+        // which would merge distinct queued requests into the same hash.
+        val queueIdentity = org.json.JSONArray()
+            .put(uri.toString())
+            .put(mediaIdentity)
+            .toString()
+        return VideoThumbnailExtractor.cacheKey(
+            queueIdentity,
+            size.coerceAtLeast(0L),
+            modifiedAt.coerceAtLeast(0L),
+        )
+    }
 
     /**
      * Priority/deduplicated local-thumbnail queue corresponding to the Python
