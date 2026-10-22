@@ -823,7 +823,7 @@ internal class NativeMainRuntimePort(
     private val thumbnailLatestKeyByUri = ConcurrentHashMap<String, String>()
     private val thumbnailLatestAtMillis = ConcurrentHashMap<String, Long>()
     private val thumbnailInFlight = ConcurrentHashMap.newKeySet<String>()
-    private val thumbnailSemaphore = Semaphore(2)
+    private val thumbnailSemaphore = Semaphore(4)
     @Volatile private var thumbnailPumpActive = false
     @Volatile private var thumbnailPumpJob: Job? = null
     @Volatile private var homeRefreshJob: Job? = null
