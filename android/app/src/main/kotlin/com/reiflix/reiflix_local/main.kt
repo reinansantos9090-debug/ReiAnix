@@ -11600,7 +11600,7 @@ internal class NativeMainRuntimePort(
                         val createdSession = sessionId ?: stringValue("result")
                         if (createdSession.isNullOrBlank()) {
                             recordLegacyDiagnosticProjection()
-                            return false
+                            return true
                         }
                         val current = mutableSnapshot.value
                         if (current.playerSessionActive &&
@@ -11615,7 +11615,14 @@ internal class NativeMainRuntimePort(
                                 result = "stale_session_created",
                                 context = mapOf("current_session" to current.activePlayerSessionId),
                             )
-                            return false
+                            recordDiagnostic(
+                                name = "MAILBOX_STALE_COMMAND_DISCARDED",
+                                severity = "WARN",
+                                requestId = requestId,
+                                sessionId = createdSession,
+                                result = "stale_session_created",
+                            )
+                            return true
                         }
                         // Legacy callbacks may omit requestId after a native
                         // activity has already registered its active launch request.
@@ -11648,7 +11655,7 @@ internal class NativeMainRuntimePort(
                         val invalidSession = sessionId
                         if (invalidSession.isNullOrBlank()) {
                             recordLegacyDiagnosticProjection()
-                            return false
+                            return true
                         }
                         val current = mutableSnapshot.value
                         if (current.activePlayerSessionId != invalidSession ||
@@ -11664,7 +11671,7 @@ internal class NativeMainRuntimePort(
                                 result = "stale_session_invalidated",
                             )
                             recordLegacyDiagnosticProjection()
-                            return false
+                            return true
                         }
                         val invalidated = invalidatePlayerSession(
                             reason = stringValue("reason") ?: "native_session_invalidated",
@@ -11678,7 +11685,7 @@ internal class NativeMainRuntimePort(
                         val active = mutableSnapshot.value
                         if (requestId.isNullOrBlank()) {
                             recordLegacyDiagnosticProjection()
-                            return false
+                            return true
                         }
                         if (!active.playerSessionActive || active.activePlayerSessionId != sessionId) {
                             recordDiagnostic(
@@ -11688,7 +11695,24 @@ internal class NativeMainRuntimePort(
                                 sessionId = sessionId,
                                 result = "stale_handoff_dispatch",
                             )
-                            return false
+                            val direction = stringValue("transitionDirection", "transition_direction")
+                                ?.uppercase(Locale.ROOT)
+                            val previous = direction == "PREVIOUS"
+                            recordDiagnostic(
+                                name = if (previous) "PREVIOUS_REQUEST_STALE" else "NEXT_REQUEST_STALE",
+                                severity = "WARN",
+                                requestId = requestId,
+                                sessionId = sessionId,
+                                result = "stale_handoff_dispatch",
+                            )
+                            recordDiagnostic(
+                                name = if (previous) "PLAYER_PREVIOUS_STALE_REJECTED" else "PLAYER_NEXT_STALE_REJECTED",
+                                severity = "WARN",
+                                requestId = requestId,
+                                sessionId = sessionId,
+                                result = "stale_handoff_dispatch",
+                            )
+                            return true
                         }
                         publish(action = "player_handoff_dispatched", transform = {
                             it.copy(activePlayerRequestId = requestId)
@@ -11717,7 +11741,7 @@ internal class NativeMainRuntimePort(
                             true
                         } else {
                             recordLegacyDiagnosticProjection()
-                            false
+                            true
                         }
                     }
                     "PLAYER_LIFECYCLE" -> {
@@ -11742,19 +11766,19 @@ internal class NativeMainRuntimePort(
                                     "lifecycle" to lifecycle,
                                 ),
                             )
-                            return false
+                            return true
                         }
                         if (!sessionId.isNullOrBlank() &&
                             !current.activePlayerSessionId.isNullOrBlank() &&
                             current.activePlayerSessionId != sessionId
                         ) {
                             recordLegacyDiagnosticProjection()
-                            return false
+                            return true
                         }
                         if (normalizedLifecycle in setOf("oncreate", "onnewintent", "onstart", "onresume")) {
                             if (sessionId.isNullOrBlank()) {
                                 recordLegacyDiagnosticProjection()
-                                return false
+                                return true
                             }
                             // PLAYER_LIFECYCLE did not require requestId in the legacy
                             // handler; an omitted ID keeps the active request correlation.
