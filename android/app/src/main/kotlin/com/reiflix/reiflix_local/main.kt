@@ -3545,6 +3545,82 @@ internal class NativeMainRuntimePort(
         return published
     }
 
+    /**
+     * Kotlin port of main.py's _set_storage_onboarding_state. Lifecycle and
+     * inventory snapshots cannot regress a validated library source from READY,
+     * nor erase an actionable selection error before a user retry or valid grant.
+     */
+    private fun publishStorageOnboardingState(
+        state: String,
+        message: String? = null,
+        error: String? = null,
+        dismissed: Boolean? = null,
+        diagnosticEvent: String? = null,
+        result: String? = null,
+        requestId: String? = null,
+    ): String {
+        var normalized = state.trim().uppercase(Locale.ROOT).ifBlank { "CHECKING" }
+        val current = activity.nativeStorageOnboardingState.value
+        val configuredRootAvailable = runCatching {
+            storageSnapshot().configuredSafRoots.isNotEmpty()
+        }.getOrDefault(false)
+        var resolvedMessage = message
+        var resolvedError = error
+
+        if (
+            current.phase.equals(NativeStorageOnboardingState.PHASE_READY, ignoreCase = true) &&
+            normalized in setOf("CHECKING", "FOLDER_PICKER_OPEN", "NEEDS_FOLDER") &&
+            configuredRootAvailable
+        ) {
+            normalized = "READY"
+            resolvedMessage = null
+            resolvedError = null
+        }
+        if (
+            current.phase.equals(NativeStorageOnboardingState.PHASE_ERROR, ignoreCase = true) &&
+            normalized in setOf("CHECKING", "NEEDS_FOLDER") &&
+            !configuredRootAvailable &&
+            pendingSafSelectionRequestId.isNullOrBlank()
+        ) {
+            normalized = "ERROR"
+            resolvedMessage = current.message ?: resolvedMessage
+            resolvedError = current.error ?: resolvedError
+        }
+
+        val phase = when (normalized) {
+            "READY" -> NativeStorageOnboardingState.PHASE_READY
+            "NEEDS_FOLDER" -> NativeStorageOnboardingState.PHASE_NEEDS_FOLDER
+            "FOLDER_PICKER_OPEN" -> NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN
+            "ERROR", "FAILED" -> NativeStorageOnboardingState.PHASE_ERROR
+            else -> NativeStorageOnboardingState.PHASE_CHECKING
+        }
+        activity.reportNativeStorageOnboardingState(
+            phase = phase,
+            message = resolvedMessage,
+            error = resolvedError,
+            dismissed = dismissed,
+        )
+        diagnosticEvent?.takeIf { it.isNotBlank() }?.let { name ->
+            recordDiagnostic(
+                name = name,
+                severity = if (phase == NativeStorageOnboardingState.PHASE_ERROR) "WARN" else "INFO",
+                source = "saf",
+                requestId = requestId,
+                result = result ?: normalized.lowercase(Locale.ROOT),
+                context = mapOf(
+                    "phase" to phase,
+                    "has_message" to !resolvedMessage.isNullOrBlank(),
+                    "has_error" to !resolvedError.isNullOrBlank(),
+                ),
+            )
+        }
+        Log.i(
+            "ReiAnixMainPort",
+            "STORAGE_ONBOARDING_STATE phase=${phase} hasMessage=${!resolvedMessage.isNullOrBlank()} hasError=${!resolvedError.isNullOrBlank()}",
+        )
+        return normalized
+    }
+
     private fun finishPendingSafSelection(
         eventRequestId: String?,
         status: String,
