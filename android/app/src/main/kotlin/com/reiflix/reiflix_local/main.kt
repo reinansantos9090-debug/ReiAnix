@@ -8275,7 +8275,7 @@ internal class NativeMainRuntimePort(
             ?: payload.optJSONObject("currentEpisode")
             ?: payload.optJSONObject("episode")
         val episode = if (payload.optString("path", "").trim().isNotEmpty()) payload else nestedEpisode ?: payload
-        if (episode.optBoolean("missing", false)) return false
+        if (pythonTruthyJsonValue(episode.opt("missing"))) return false
 
         fun firstText(vararg keys: String): String? {
             for (key in keys) {
@@ -8600,7 +8600,11 @@ internal class NativeMainRuntimePort(
                 val id = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
                 // Preserve the old Compose Library default (false for set_watched)
                 // while enforcing path/ID agreement in the canonical SQLite catalog.
-                val watched = payload.optBoolean("watched", normalized != "set_watched")
+                val watched = if (payload.has("watched")) {
+                    pythonTruthyJsonValue(payload.opt("watched"))
+                } else {
+                    normalized != "set_watched"
+                }
                 markEpisodeWatchedFromLegacyCommand(
                     episodeId = id,
                     watched = watched,
