@@ -11101,13 +11101,33 @@ internal class NativeMainRuntimePort(
                     allowMissingAnimeId = true,
                 )
                 if (!validation.isCurrent) {
+                    val staleRequestId = eventRequestId ?: stringValue("requestId")
+                    val staleSessionId = stringValue("playerSessionId", "sessionId", "session_id")
+                    val staleActivityInstanceId = stringValue("activityInstanceId", "activity_instance_id")
+                    val currentPlayer = mutableSnapshot.value
                     recordDiagnostic(
-                        name = "PLAYER_CALLBACK_REJECTED",
+                        name = "PLAYER_CALLBACK_STALE",
                         severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = validation.reason,
+                        requestId = staleRequestId,
+                        sessionId = staleSessionId,
+                        result = "stale_player_exit",
+                        context = mapOf(
+                            "activity_instance_id" to staleActivityInstanceId,
+                            "current_player_session_id" to currentPlayer.activePlayerSessionId,
+                            "current_activity_instance_id" to currentPlayer.activePlayerActivityInstanceId,
+                            "validation_reason" to validation.reason,
+                        ),
                     )
-                    return false
+                    recordDiagnostic(
+                        name = "MAILBOX_STALE_COMMAND_DISCARDED",
+                        severity = "WARN",
+                        requestId = staleRequestId,
+                        sessionId = staleSessionId,
+                        result = "stale_player_exit",
+                    )
+                    // main.py continues the mailbox loop for stale exits: discard the
+                    // event instead of asking the durable dispatcher to retry it.
+                    return true
                 }
                 val exitRequestId = eventRequestId ?: stringValue("requestId")
                 val exitSessionId = stringValue("playerSessionId", "sessionId", "session_id")
