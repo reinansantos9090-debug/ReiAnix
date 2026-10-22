@@ -718,6 +718,7 @@ private data class NativeThumbnailRequest(
     val mediaIdentity: String?,
     val priority: Int,
     val enqueuedAtMillis: Long,
+    val sequence: Long,
     val completion: CompletableDeferred<VideoThumbnailExtractor.Result?>,
 )
 
@@ -810,9 +811,11 @@ internal class NativeMainRuntimePort(
     private val thumbnailQueueLock = Any()
     private val thumbnailQueue = PriorityQueue<NativeThumbnailRequest>(
         compareByDescending<NativeThumbnailRequest> { it.priority }
-            .thenBy { it.enqueuedAtMillis }
-            .thenBy { it.key },
+            .thenBy { it.sequence },
     )
+    // Same monotonically increasing insertion order as main.py's
+    // thumbnail_queue_sequence; guarded by thumbnailQueueLock.
+    private var thumbnailQueueSequence = 0L
     private val thumbnailRequests = ConcurrentHashMap<String, NativeThumbnailRequest>()
     // Bounded retry state mirrors the legacy thumbnail retry_after_error task.
     private val thumbnailRetryCounts = ConcurrentHashMap<String, Int>()
@@ -1872,7 +1875,12 @@ internal class NativeMainRuntimePort(
             if (existing != null) {
                 if (priority > existing.priority && key !in thumbnailInFlight) {
                     thumbnailQueue.remove(existing)
-                    val promoted = existing.copy(priority = priority)
+                    thumbnailQueueSequence += 1L
+                    val promoted = existing.copy(
+                        priority = priority,
+                        enqueuedAtMillis = android.os.SystemClock.elapsedRealtime(),
+                        sequence = thumbnailQueueSequence,
+                    )
                     thumbnailRequests[key] = promoted
                     thumbnailQueue.add(promoted)
                 }
@@ -1882,7 +1890,7 @@ internal class NativeMainRuntimePort(
             }
             if (thumbnailQueue.size >= MAX_PENDING_THUMBNAIL_REQUESTS) {
                 val lowest = thumbnailQueue.minWithOrNull(
-                    compareBy<NativeThumbnailRequest> { it.priority }.thenBy { it.enqueuedAtMillis },
+                    compareBy<NativeThumbnailRequest> { it.priority }.thenBy { it.sequence },
                 )
                 if (lowest == null || lowest.priority >= priority) {
                     recordDiagnostic(
@@ -1903,6 +1911,7 @@ internal class NativeMainRuntimePort(
                 }
                 lowest.completion.complete(null)
             }
+            thumbnailQueueSequence += 1L
             val request = NativeThumbnailRequest(
                 key = key,
                 uri = uri,
@@ -1911,6 +1920,7 @@ internal class NativeMainRuntimePort(
                 mediaIdentity = identity,
                 priority = priority,
                 enqueuedAtMillis = android.os.SystemClock.elapsedRealtime(),
+                sequence = thumbnailQueueSequence,
                 completion = CompletableDeferred(),
             )
             thumbnailRequests[key] = request
