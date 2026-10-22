@@ -6409,14 +6409,9 @@ internal class NativeMainRuntimePort(
         NativeScanController.activeScanId(sourceKey)
 
 
-    /** Catalog metadata and artwork reconciliation are owned by the canonical Kotlin ViewModel/services. */
-    fun reconcileCatalogMetadata(): Boolean = launchTracked("reconcile_catalog_metadata", lane = "library") {
-        val refreshed = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
-        if (!refreshed) {
-            throw IllegalStateException("A reconciliação de metadados foi bloqueada pela validação do banco.")
-        }
-        libraryViewModel.queryNativeArtwork()
-    }
+    /** Queue the native counterpart of main.py's coalesced catalog metadata hydration worker. */
+    fun reconcileCatalogMetadata(): Boolean =
+        scheduleCatalogMetadataHydration("explicit_reconcile_catalog_metadata")
 
     /** Direct Kotlin counterpart of main.py's reconcile_missing_thumbnails worker. */
     fun reconcileMissingThumbnails(): Boolean =
