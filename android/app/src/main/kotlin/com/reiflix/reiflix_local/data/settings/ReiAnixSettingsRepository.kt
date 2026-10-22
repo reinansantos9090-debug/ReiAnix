@@ -613,25 +613,37 @@ class ReiAnixSettingsRepository(
         }
     }
 
-    fun requestAccountAction(action: String) {
+    fun requestAccountAction(action: String, requestId: String? = null) {
         val normalizedAction = action.trim().lowercase()
         if (normalizedAction !in setOf("login", "logout", "switch")) return
+        val correlationId = requestId?.trim()?.takeIf { it.isNotEmpty() }
         if (sharedAccountRepository == null) {
-            // Compatibility for older hosts only; the shipped Compose ViewModel
-            // receives the canonical account repository from the Application graph.
-            dispatchCommand(normalizedAction, "account:" + normalizedAction) { requestId ->
+            // Preserve the caller's request identity across the compatibility
+            // mailbox; a generated replacement would leave the originating
+            // Compose/Python operation waiting for a terminal result forever.
+            dispatchCommand(
+                normalizedAction,
+                "account:" + normalizedAction,
+                correlationId,
+            ) { dispatchedRequestId ->
                 JSONObject()
                     .put("type", "compose_account_action")
-                    .put("requestId", requestId)
-                    .put("payload", JSONObject().put("action", normalizedAction).put("requestId", requestId))
+                    .put("requestId", dispatchedRequestId)
+                    .put(
+                        "payload",
+                        JSONObject()
+                            .put("action", normalizedAction)
+                            .put("requestId", dispatchedRequestId),
+                    )
             }
             return
         }
-        launchNativeAccountAction(normalizedAction)
+        launchNativeAccountAction(normalizedAction, correlationId)
     }
 
-    private fun launchNativeAccountAction(action: String) {
-        val requestId = UUID.randomUUID().toString()
+    private fun launchNativeAccountAction(action: String, requestedRequestId: String? = null) {
+        val requestId = requestedRequestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
         val busyState = if (action == "login") "connecting" else "disconnecting"
         synchronized(stateLock) {
             val current = _state.value
@@ -863,16 +875,18 @@ class ReiAnixSettingsRepository(
     private fun dispatchCommand(
         action: String,
         operationKey: String,
+        requestId: String? = null,
         builder: (String) -> JSONObject,
     ) {
-        val requestId = UUID.randomUUID().toString()
+        val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
         synchronized(stateLock) {
             val current = _state.value
             _state.value = current.copy(
                 operations = upsertOperationLocked(
                     current.operations,
                     ReiAnixSettingsOperationUiState(
-                        requestId = requestId,
+                        requestId = resolvedRequestId,
                         action = operationKey,
                         state = ReiAnixSettingsOperationState.QUEUED,
                         timestampMs = System.currentTimeMillis(),
@@ -883,7 +897,7 @@ class ReiAnixSettingsRepository(
         Log.i(TAG, "SETTINGS_ACTION_START requestId=" + requestId + " action=" + action)
         scope.launch {
             val writeStartedNs = System.nanoTime()
-            val published = runCatching { NativeMailbox.write(appContext, builder(requestId)) }.getOrElse { false }
+            val published = runCatching { NativeMailbox.write(appContext, builder(resolvedRequestId)) }.getOrElse { false }
             val durationMs = (System.nanoTime() - writeStartedNs) / 1_000_000.0
             if (published) {
                 Log.i(TAG, "SETTINGS_COMMAND_WRITTEN requestId=" + requestId + " action=" + action + " success=true writeDurationMs=" + durationMs)
