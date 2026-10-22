@@ -5705,7 +5705,14 @@ internal class NativeMainRuntimePort(
         }
         val accepted = launchTracked("export_diagnostics", lane = "diagnostics") {
             try {
-                val bytes = withContext(Dispatchers.IO) { diagnosticsService.exportJson() }
+                val bytes = withContext(Dispatchers.IO) {
+                    val raw = diagnosticsService.exportJson()
+                    if (mutableSnapshot.value.recoveryRequired) {
+                        enrichRecoveryDiagnostic(raw)
+                    } else {
+                        raw
+                    }
+                }
                 val json = bytes.toString(Charsets.UTF_8)
                 publish(action = "export_diagnostics", transform = {
                     it.copy(lastResultJson = json)
@@ -5756,6 +5763,32 @@ internal class NativeMainRuntimePort(
             )
         }
         return accepted
+    }
+
+    /**
+     * Port RecoveryService.diagnostic_bytes without exposing the local database path.
+     * The ordinary privacy-filtered report remains unchanged outside Recovery Mode.
+     */
+    private fun enrichRecoveryDiagnostic(raw: ByteArray): ByteArray {
+        val report = org.json.JSONObject(String(raw, Charsets.UTF_8))
+        val database = report.optJSONObject("database") ?: org.json.JSONObject()
+        val databaseFile = File(File(activity.filesDir, "data"), "library.sqlite3")
+        val quickCheck = database.optJSONArray("quick_check") ?: org.json.JSONArray()
+        val foreignKeyViolations = database.optInt("foreign_key_violations", -1)
+        report.put(
+            "recovery",
+            org.json.JSONObject()
+                .put("required", true)
+                .put("database_exists", databaseFile.isFile)
+                .put("size_bytes", if (databaseFile.isFile) databaseFile.length() else 0L)
+                .put("quick_check", quickCheck)
+                .put(
+                    "foreign_key_ok",
+                    database.optBoolean("healthy", false) && foreignKeyViolations == 0,
+                )
+                .put("error", database.opt("error") ?: org.json.JSONObject.NULL),
+        )
+        return (report.toString(2) + "\n").toByteArray(Charsets.UTF_8)
     }
 
     fun exportDiagnostics(): String = ReiAnixDiagnosticTimeline.snapshotJson().toString()
