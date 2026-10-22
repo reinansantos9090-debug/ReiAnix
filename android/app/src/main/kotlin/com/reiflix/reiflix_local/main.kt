@@ -1614,7 +1614,6 @@ internal class NativeMainRuntimePort(
                 if (!refreshed) {
                     throw IllegalStateException("O catálogo nativo ainda não pode ser atualizado antes da validação do banco.")
                 }
-                libraryViewModel.refreshCatalogProjection()
                 settingsViewModel.refresh()
                 correlatedRequestId?.let {
                     publishOperationResult(
@@ -9999,8 +9998,7 @@ internal class NativeMainRuntimePort(
                     if (exitUri.isNotBlank() && exitPositionMs >= 0L) {
                         if (nativeProgressPersisted) {
                             // NativePlayerActivity already committed this final checkpoint.
-                            // Refresh the projection but never write the checkpoint twice.
-                            libraryViewModel.refreshCatalogProjection()
+                            // The awaited catalog projection below observes it without a second write.
                             exitProgressResult = "NATIVE_COMMIT_REUSED"
                         } else {
                             val eventTime = parseLegacyPlaybackTimestamp(payload)
@@ -10059,7 +10057,6 @@ internal class NativeMainRuntimePort(
                                         )
                                         exitProgressResult = "SAVED"
                                     }
-                                    libraryViewModel.refreshCatalogProjection()
                                 }
                             }
                         }
