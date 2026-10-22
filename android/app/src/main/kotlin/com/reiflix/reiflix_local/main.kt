@@ -11309,12 +11309,21 @@ internal class NativeMainRuntimePort(
                         }
                     }
                     else -> {
+                        // Match main.py's generic diagnostic projection: the source
+                        // and scan correlation are part of the recorded event, while
+                        // "access" is the fallback when no truthy result was supplied.
+                        val diagnosticSource = firstTruthyJsonText(payload, "source")
+                            .takeIf { it.isNotEmpty() } ?: "NativeMainRuntimePort"
                         recordDiagnostic(
                             name = eventName,
                             severity = stringValue("severity") ?: "INFO",
-                            result = stringValue("result"),
+                            result = firstTruthyJsonText(payload, "result", "access")
+                                .takeIf { it.isNotEmpty() },
                             requestId = requestId,
+                            scanId = firstTruthyJsonText(payload, "scanId", "scan_id")
+                                .takeIf { it.isNotEmpty() },
                             sessionId = sessionId,
+                            source = diagnosticSource,
                             context = mapOf("event_type" to type),
                         )
                         true
