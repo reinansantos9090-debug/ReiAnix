@@ -5185,11 +5185,72 @@ internal class NativeMainRuntimePort(
         return accepted
     }
 
-    fun checkDatabaseIntegrity(): Boolean = launchTracked("database_integrity", lane = "backup") {
-        val report = withContext(Dispatchers.IO) { backupService.integrityReport().toJson() }
-        publish(action = "database_integrity", transform = {
-            it.copy(lastResultJson = report.toString())
-        })
+    fun checkDatabaseIntegrity(
+        requestId: String? = null,
+        resultAction: String = "integrity_check",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Verificação de integridade enfileirada.",
+            )
+        }
+        val accepted = launchTracked("database_integrity", lane = "backup") {
+            try {
+                val report = withContext(Dispatchers.IO) { backupService.integrityReport().toJson() }
+                publish(action = "database_integrity", transform = {
+                    it.copy(lastResultJson = report.toString())
+                })
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Verificação de integridade concluída.",
+                        payload = report,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A verificação de integridade foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível verificar a integridade do banco.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A verificação de integridade não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
     }
 
     fun reconcileRestoredFileAvailability(): Boolean =
@@ -5323,11 +5384,73 @@ internal class NativeMainRuntimePort(
     }
 
     /** Native privacy-filtered report mirrors the old diagnostic export action. */
-    fun exportDiagnosticsJson(): Boolean = launchTracked("export_diagnostics", lane = "diagnostics") {
-        val bytes = withContext(Dispatchers.IO) { diagnosticsService.exportJson() }
-        publish(action = "export_diagnostics", transform = {
-            it.copy(lastResultJson = bytes.toString(Charsets.UTF_8))
-        })
+    fun exportDiagnosticsJson(
+        requestId: String? = null,
+        resultAction: String = "export_diagnostics",
+    ): Boolean {
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = resultAction,
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Exportação de diagnósticos enfileirada.",
+            )
+        }
+        val accepted = launchTracked("export_diagnostics", lane = "diagnostics") {
+            try {
+                val bytes = withContext(Dispatchers.IO) { diagnosticsService.exportJson() }
+                val json = bytes.toString(Charsets.UTF_8)
+                publish(action = "export_diagnostics", transform = {
+                    it.copy(lastResultJson = json)
+                })
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Diagnósticos exportados.",
+                        payload = org.json.JSONObject().put("jsonBytes", bytes.size),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A exportação de diagnósticos foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = resultAction,
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível exportar os diagnósticos.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = resultAction,
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A exportação de diagnósticos não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
     }
 
     fun exportDiagnostics(): String = ReiAnixDiagnosticTimeline.snapshotJson().toString()
@@ -7260,8 +7383,14 @@ internal class NativeMainRuntimePort(
             }
             "create_recovery_safety_snapshot" -> createRecoverySafetySnapshot()
             "restore_recovery_backup" -> nonBlank("archivePath")?.let(::resolvePrivateBackupFile)?.let(::restoreRecoveryBackup) ?: false
-            "integrity_check" -> checkDatabaseIntegrity()
-            "export_diagnostics" -> exportDiagnosticsJson()
+            "integrity_check" -> checkDatabaseIntegrity(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                resultAction = normalized,
+            )
+            "export_diagnostics" -> exportDiagnosticsJson(
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                resultAction = normalized,
+            )
 
             "cancel_scan", "cancel_native_scan", "scan_cancel" -> {
                 val id = nonBlank("scanId") ?: nonBlank("scan_id") ?: return false
