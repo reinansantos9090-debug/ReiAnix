@@ -6905,6 +6905,146 @@ internal class NativeMainRuntimePort(
         }
     }
 
+    /**
+     * Compatibility port of main.py's _set_episode_identification_from_details /
+     * LibraryStore.set_episode_identification(path, ...). Resolve the supplied
+     * media reference to the canonical persisted episode ID before mutating it;
+     * never identify by a display filename or create a second catalogue.
+     */
+    private fun setEpisodeIdentificationFromLegacyPayload(
+        payload: org.json.JSONObject,
+        requestId: String?,
+    ): Boolean {
+        val reference = firstTruthyJsonText(payload, "path", "uri", "filePath", "file_path")
+        if (reference.isBlank()) return false
+
+        fun numericValue(key: String): Double? {
+            if (!payload.has(key)) return null
+            val raw = payload.opt(key)
+            if (raw == null || raw === org.json.JSONObject.NULL) return null
+            val parsed = when (raw) {
+                is Number -> raw.toDouble()
+                is Boolean -> if (raw) 1.0 else 0.0
+                is String -> raw.trim().toDoubleOrNull()
+                    ?: throw IllegalArgumentException(
+                        if (key == "season") "Temporada inválida." else "Número do episódio inválido.",
+                    )
+                else -> throw IllegalArgumentException(
+                    if (key == "season") "Temporada inválida." else "Número do episódio inválido.",
+                )
+            }
+            if (!parsed.isFinite()) {
+                throw IllegalArgumentException(
+                    if (key == "season") "Temporada inválida." else "Número do episódio inválido.",
+                )
+            }
+            return parsed
+        }
+
+        val normalizedSeason = (numericValue("season") ?: 0.0).let { value ->
+            require(value >= 0.0 && value % 1.0 == 0.0 && value <= Int.MAX_VALUE.toDouble()) {
+                "Temporada inválida."
+            }
+            value.toInt()
+        }
+        val normalizedNumber = numericValue("number")?.also { value ->
+            require(value >= 0.0) { "Número do episódio inválido." }
+        }
+        val kind = firstTruthyJsonText(payload, "episodeType", "episode_type")
+            .ifBlank { "regular" }
+            .lowercase(Locale.ROOT)
+        require(kind in setOf("regular", "special", "ova", "oad", "ona", "extra", "movie", "unknown")) {
+            "Tipo de episódio inválido."
+        }
+        val rawTitle = payload.opt("title")
+        val title = if (rawTitle == null || rawTitle === org.json.JSONObject.NULL) {
+            null
+        } else {
+            pythonJsonString(rawTitle).trim().takeIf { it.isNotEmpty() }
+        }
+        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+
+        correlatedRequestId?.let {
+            publishOperationResult(
+                requestId = it,
+                action = "set_episode_identification",
+                status = "QUEUED",
+                operationState = "QUEUED",
+                message = "Identificação manual do episódio enfileirada.",
+            )
+        }
+        val accepted = launchTracked("manual_episode_identification", lane = "library") {
+            try {
+                val episode = dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(reference)
+                    ?: throw IllegalArgumentException("Arquivo local não encontrado.")
+                libraryViewModel.setEpisodeManualIdentificationNative(
+                    episodeId = episode.id,
+                    season = normalizedSeason,
+                    number = normalizedNumber,
+                    episodeType = kind,
+                    title = title,
+                )
+                invalidateCatalogViews()
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = "set_episode_identification",
+                        status = "COMPLETED",
+                        operationState = "COMPLETED",
+                        message = "Identificação manual do episódio salva.",
+                        payload = org.json.JSONObject()
+                            .put("episodeId", episode.id)
+                            .put("season", normalizedSeason)
+                            .put("number", normalizedNumber ?: org.json.JSONObject.NULL)
+                            .put("episodeType", kind)
+                            .put("title", title ?: org.json.JSONObject.NULL),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = "set_episode_identification",
+                        status = "CANCELLED",
+                        operationState = "CANCELLED",
+                        message = "A identificação manual do episódio foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                correlatedRequestId?.let {
+                    publishOperationResult(
+                        requestId = it,
+                        action = "set_episode_identification",
+                        status = "FAILED",
+                        operationState = "FAILED",
+                        message = failure.message ?: "Não foi possível salvar a identificação do episódio.",
+                        error = failure.javaClass.simpleName,
+                    )
+                }
+                recordDiagnostic(
+                    name = "MANUAL_EPISODE_IDENTIFICATION_FAILED",
+                    severity = "WARN",
+                    requestId = correlatedRequestId,
+                    result = failure.javaClass.simpleName,
+                    error = failure,
+                )
+                throw failure
+            }
+        }
+        if (!accepted && correlatedRequestId != null) {
+            publishOperationResult(
+                requestId = correlatedRequestId,
+                action = "set_episode_identification",
+                status = "FAILED",
+                operationState = "FAILED",
+                message = "A identificação manual do episódio não foi aceita.",
+                error = "operation_rejected",
+            )
+        }
+        return accepted
+    }
+
     fun dismissPlayerTransition(originRequestId: String, originPlayerSessionId: String? = null) =
         revokePlayerTransition(originRequestId, originPlayerSessionId)
 
@@ -7661,6 +7801,20 @@ internal class NativeMainRuntimePort(
                     raw.optString(index, "").trim().takeIf { it.isNotEmpty() }
                 }
                 saveUserTags(id, tags)
+            }
+            "set_episode_identification" -> try {
+                setEpisodeIdentificationFromLegacyPayload(
+                    payload = payload,
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                )
+            } catch (failure: IllegalArgumentException) {
+                recordDiagnostic(
+                    name = "MANUAL_EPISODE_IDENTIFICATION_REJECTED",
+                    severity = "WARN",
+                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                    result = failure.message ?: "invalid_episode_identification",
+                )
+                false
             }
             "set_episode_manual_identification" -> {
                 val id = positiveLong("episodeId") ?: positiveLong("episode_id") ?: return false
