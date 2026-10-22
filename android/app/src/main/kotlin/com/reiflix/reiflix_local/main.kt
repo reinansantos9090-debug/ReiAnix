@@ -7110,7 +7110,11 @@ internal class NativeMainRuntimePort(
      * native scan reaches a terminal result and the canonical catalog refresh is
      * accepted. Lifecycle resume alone never invokes this method.
      */
-    fun requestHomeRefresh(source: String = "button"): Boolean {
+    fun requestHomeRefresh(
+        source: String = "button",
+        requestId: String? = null,
+        refreshId: String? = null,
+    ): Boolean {
         val refreshSource = source.trim().lowercase(Locale.ROOT)
             .takeIf { it == "button" || it == "pull" } ?: "button"
         if (restoreMaintenanceInProgress) {
@@ -7134,8 +7138,12 @@ internal class NativeMainRuntimePort(
             // untouched and let its current terminal transition own the UI state.
             return true
         }
-        val requestId = UUID.randomUUID().toString()
-        val refreshId = UUID.randomUUID().toString()
+        // Preserve a caller's operation identity across the native dispatch boundary.
+        // Generate IDs only when this method is invoked without correlated metadata.
+        val requestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
+        val refreshId = refreshId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: UUID.randomUUID().toString()
         val startedAt = System.currentTimeMillis()
         val knownOperations = NativeScanController.progress.value.keys.toSet()
         recordDiagnostic(
@@ -8303,6 +8311,8 @@ internal class NativeMainRuntimePort(
             )
             "refresh_home_library", "request_home_refresh" -> requestHomeRefresh(
                 source = nonBlank("source") ?: "button",
+                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
+                refreshId = nonBlank("refreshId") ?: nonBlank("refresh_id"),
             )
             "remove_folder", "remove_saf_tree", "remove_saf", "release_tree" ->
                 (nonBlank("treeUri") ?: nonBlank("tree_uri") ?: nonBlank("reference") ?: nonBlank("source"))
