@@ -11654,6 +11654,12 @@ internal class NativeMainRuntimePort(
                     "PLAYER_SESSION_INVALIDATED" -> {
                         val invalidSession = sessionId
                         if (invalidSession.isNullOrBlank()) {
+                            recordDiagnostic(
+                                name = "PLAYER_CALLBACK_STALE",
+                                severity = "WARN",
+                                requestId = requestId,
+                                result = "stale_session_invalidated",
+                            )
                             recordLegacyDiagnosticProjection()
                             return true
                         }
@@ -11846,7 +11852,7 @@ internal class NativeMainRuntimePort(
                                 result = validation.reason,
                             )
                             recordLegacyDiagnosticProjection()
-                            false
+                            true
                         } else {
                             recordDiagnostic(
                                 name = "PLAYER_FIRST_FRAME_RENDERED",
