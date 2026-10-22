@@ -5397,14 +5397,22 @@ internal class NativeMainRuntimePort(
             try {
                 cancelBackgroundTasksForLane("metadata")
                 cancelBackgroundTasksForLane("thumbnail")
-                val result = withContext(Dispatchers.IO) {
-                    synchronized(NativeScanController) {
-                        if (NativeScanController.progress.value.values.any { !it.state.isTerminal }) {
-                            throw IllegalStateException(
-                                "Uma varredura foi iniciada antes da reserva exclusiva da recuperação.",
-                            )
+                // Match normal backup restore semantics: cancel queued work, wait for
+                // any in-flight metadata/artwork maintenance to leave its critical section,
+                // and then serialize the restore against scanner startup. Recovery mode
+                // must not let an old reconciliation write into the recovered catalogue.
+                val result = metadataMaintenanceMutex.withLock {
+                    thumbnailMaintenanceMutex.withLock {
+                        withContext(Dispatchers.IO) {
+                            synchronized(NativeScanController) {
+                                if (NativeScanController.progress.value.values.any { !it.state.isTerminal }) {
+                                    throw IllegalStateException(
+                                        "Uma varredura foi iniciada antes da reserva exclusiva da recuperação.",
+                                    )
+                                }
+                                backupService.restoreRecoveryBackup(archive)
+                            }
                         }
-                        backupService.restoreRecoveryBackup(archive)
                     }
                 }
                 libraryViewModel.refresh()
