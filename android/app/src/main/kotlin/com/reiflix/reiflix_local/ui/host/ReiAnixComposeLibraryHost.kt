@@ -62,6 +62,7 @@ class ReiAnixComposeLibraryHost(
     @Volatile
     private var composeNavController: NavHostController? = null
     private var lastHomeBackAtElapsedRealtimeMs: Long = 0L
+    private var lastBackAtElapsedRealtimeMs: Long = 0L
 
     val isVisible: Boolean
         get() = composeView?.visibility == View.VISIBLE
@@ -310,6 +311,16 @@ class ReiAnixComposeLibraryHost(
      */
     fun handleBack(): Boolean {
         val controller = composeNavController ?: return false
+        val now = SystemClock.elapsedRealtime()
+        val previousBack = lastBackAtElapsedRealtimeMs
+        if (previousBack > 0L && now - previousBack < BACK_DEBOUNCE_WINDOW_MS) {
+            android.util.Log.i(
+                TAG,
+                "NATIVE_BACK_DUPLICATE_SUPPRESSED deltaMs=" + (now - previousBack),
+            )
+            return true
+        }
+        lastBackAtElapsedRealtimeMs = now
         val route = controller.currentBackStackEntry?.destination?.route
 
         if (route != ReiAnixRoutes.HOME && route != ReiAnixRoutes.RECOVERY) {
@@ -476,6 +487,7 @@ class ReiAnixComposeLibraryHost(
     private companion object {
         const val CONTENT_TAG = "reianix_compose_app_shell_content"
         const val TAG = "[REIANIX][COMPOSE_SHELL]"
+        const val BACK_DEBOUNCE_WINDOW_MS = 300L
         const val HOME_DOUBLE_BACK_WINDOW_MS = 2_000L
     }
 }
