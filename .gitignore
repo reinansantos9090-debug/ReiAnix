@@ -1,6 +1,4 @@
 .reiflix-data/
-__pycache__/
-*.pyc
 build/
 
 # Android/Gradle generated files
