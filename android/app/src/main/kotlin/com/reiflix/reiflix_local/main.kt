@@ -8194,7 +8194,10 @@ internal class NativeMainRuntimePort(
                 val favoritesOnly = pythonTruthyJsonValue(payload.opt("favoritesOnly"))
                 val watchingOnly = pythonTruthyJsonValue(payload.opt("watchingOnly"))
                 val completedOnly = pythonTruthyJsonValue(payload.opt("completedOnly"))
-                libraryViewModel.applyLibraryPageSize(nativePageSize)
+                // Filter setters only update StateFlow; they do not start a query.
+                // Force one final page-size transition after all filters are applied so
+                // the latest generation actually queries these exact inputs. A request
+                // for the intermediate size is superseded by the target-size generation.
                 libraryViewModel.setLibrarySearchQuery(query)
                 libraryViewModel.setLibraryGenreFilter(genre)
                 libraryViewModel.setLibrarySort(sort)
@@ -8207,6 +8210,9 @@ internal class NativeMainRuntimePort(
                 if (libraryViewModel.libraryFilters.value.completedOnly != completedOnly) {
                     libraryViewModel.toggleLibraryCompletedFilter()
                 }
+                val intermediatePageSize = if (nativePageSize == 24) 36 else 24
+                libraryViewModel.applyLibraryPageSize(intermediatePageSize)
+                libraryViewModel.applyLibraryPageSize(nativePageSize)
 
                 val expectedFilters = libraryViewModel.libraryFilters.value
                 fun matchesRequestedFilters(
