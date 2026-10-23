@@ -8,12 +8,13 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.util.Locale
+import java.util.zip.GZIPInputStream
 
 /**
  * Connection boundary for the existing LibraryStore-created SQLite database.
  *
- * The canonical runtime contract is generated from LibraryStore during the
- * Android build. No open/read path creates, migrates, deletes, or replaces the
+ * The canonical runtime contract is versioned with the Android source and
+ * packaged as a compressed asset. No open/read path silently replaces the
  * database. Ordinary repository operations reject a schema that fails the
  * contract; inspectSchema() remains diagnostic and returns the incompatibilities.
  */
@@ -509,13 +510,14 @@ class ReiAnixSqliteDatabase(context: Context) {
     }
 
     private fun loadCanonicalContract(): JSONObject = try {
-        appContext.assets.open(CONTRACT_ASSET_NAME).bufferedReader(Charsets.UTF_8).use { reader ->
-            JSONObject(reader.readText())
+        appContext.assets.open(CONTRACT_ASSET_NAME).use { compressed ->
+            GZIPInputStream(compressed).bufferedReader(Charsets.UTF_8).use { reader ->
+                JSONObject(reader.readText())
+            }
         }
     } catch (error: IOException) {
         throw IllegalStateException(
-            "Canonical SQLite runtime contract asset is missing: $CONTRACT_ASSET_NAME. " +
-                "Generate it from core.library_store.LibraryStore before building the Android host.",
+            "Canonical SQLite v29 runtime contract asset is missing or unreadable: $CONTRACT_ASSET_NAME.",
             error,
         )
     }
@@ -586,7 +588,7 @@ class ReiAnixSqliteDatabase(context: Context) {
         const val DATABASE_FILE_NAME = "library.sqlite3"
         const val EXPECTED_SCHEMA_VERSION = 29
         const val BUSY_TIMEOUT_MS = 10_000
-        const val CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json"
+        const val CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json.gz"
         private const val SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
 
         private fun quoteIdentifier(identifier: String) = "\"" + identifier.replace("\"", "\"\"") + "\""
