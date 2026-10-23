@@ -699,7 +699,11 @@ data class ReiAnixSqliteSchemaSnapshot(
                 integrityErrors.isNotEmpty() ||
                 foreignKeyViolations.isNotEmpty()
             ) return false
-            return incompatibilities.none { isTolerableLegacyDrift(it) }
+            // Compatibility requires every reported drift to be explicitly
+            // recognized as harmless legacy schema evolution. Using none() here
+            // inverted the predicate and rejected precisely the legacy-only cases
+            // this runtime-compatibility path is meant to accept.
+            return incompatibilities.all { isTolerableLegacyDrift(it) }
         }
 
     private fun isTolerableLegacyDrift(issue: String): Boolean {
