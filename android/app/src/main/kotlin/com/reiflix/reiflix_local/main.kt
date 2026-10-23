@@ -2518,7 +2518,6 @@ internal class NativeMainRuntimePort(
                         .toString(),
                 )
             })
-            libraryViewModel.queryNativeArtwork()
         }
     }
 
@@ -5166,8 +5165,11 @@ internal class NativeMainRuntimePort(
         libraryViewModel.queryNativeFolders()
     }
 
-    fun queryNativeArtwork(): Boolean = launchTracked("query_artwork") {
-        libraryViewModel.queryNativeArtwork()
+    fun queryNativeArtwork(animeId: Long? = mutableSnapshot.value.selectedAnimeId): Boolean {
+        val resolvedAnimeId = animeId?.takeIf { it > 0L } ?: return false
+        return launchTracked("query_artwork") {
+            libraryViewModel.queryNativeArtwork(resolvedAnimeId)
+        }
     }
 
     /** The process Application owns dispatch; start is idempotent and creates no second queue. */
@@ -6524,7 +6526,9 @@ internal class NativeMainRuntimePort(
         if (!refreshed) {
             throw IllegalStateException("A reconciliação de metadados foi bloqueada pela validação do banco.")
         }
-        libraryViewModel.queryNativeArtwork()
+        mutableSnapshot.value.selectedAnimeId?.takeIf { it > 0L }?.let {
+            libraryViewModel.queryNativeArtwork(it)
+        }
     }
 
     /** Direct Kotlin counterpart of main.py's reconcile_missing_thumbnails worker. */
@@ -7730,8 +7734,9 @@ internal class NativeMainRuntimePort(
                         error = failure.javaClass.simpleName,
                     )
                 } finally {
+                    val completedJob = kotlinx.coroutines.currentCoroutineContext()[Job]
                     synchronized(lock) {
-                        if (homeRefreshJob === kotlinx.coroutines.currentCoroutineContext()[Job]) {
+                        if (homeRefreshJob === completedJob) {
                             homeRefreshJob = null
                         }
                     }
@@ -8396,7 +8401,7 @@ internal class NativeMainRuntimePort(
             }
             if (
                 key in thumbnailRetryPendingKeys ||
-                key in thumbnailRequests ||
+                thumbnailRequests.containsKey(key) ||
                 key in thumbnailInFlight
             ) {
                 recordDiagnostic(
@@ -8931,7 +8936,9 @@ internal class NativeMainRuntimePort(
             "query_episode" -> (positiveLong("episodeId") ?: positiveLong("episode_id"))?.let(::queryNativeEpisode) ?: false
             "query_recently_played" -> queryNativeRecentlyPlayed()
             "query_folders" -> queryNativeFolders()
-            "query_artwork" -> queryNativeArtwork()
+            "query_artwork" -> queryNativeArtwork(
+                positiveLong("animeId") ?: positiveLong("anime_id") ?: mutableSnapshot.value.selectedAnimeId,
+            )
             "query_marathon_plan" -> (positiveLong("animeId") ?: positiveLong("anime_id"))?.let {
                 queryMarathonPlan(it, nonBlank("currentPath") ?: nonBlank("current_path"))
             } ?: false
@@ -9844,9 +9851,15 @@ internal class NativeMainRuntimePort(
                         // the legacy mailbox event is consumed, not left pending.
                         return true
                     }
-                    if (entity in setOf("anime", "movie")) libraryViewModel.refreshDetails(entityId)
-                    libraryViewModel.queryNativeArtwork()
-                    libraryViewModel.refreshCatalogProjection()
+                    if (entity in setOf("anime", "movie")) {
+                        libraryViewModel.refreshDetails(entityId)
+                        launchTracked("artwork_projection_refresh", lane = "library") {
+                            libraryViewModel.queryNativeArtwork(entityId)
+                            libraryViewModel.refreshCatalogProjection()
+                        }
+                    } else {
+                        libraryViewModel.refreshCatalogProjection()
+                    }
                     recordDiagnostic(
                         name = "ARTWORK_PROJECTION_REFRESH",
                         requestId = eventRequestId ?: stringValue("requestId"),
@@ -9865,9 +9878,13 @@ internal class NativeMainRuntimePort(
                     // the UI can observe the persisted status instead of dropping them.
                     if (entityId > 0L && entity in setOf("anime", "movie")) {
                         libraryViewModel.refreshDetails(entityId)
+                        launchTracked("artwork_state_projection_refresh", lane = "library") {
+                            libraryViewModel.queryNativeArtwork(entityId)
+                            libraryViewModel.refreshCatalogProjection()
+                        }
+                    } else {
+                        libraryViewModel.refreshCatalogProjection()
                     }
-                    libraryViewModel.queryNativeArtwork()
-                    libraryViewModel.refreshCatalogProjection()
                     recordDiagnostic(
                         name = "ARTWORK_STATE_PROJECTION_REFRESH",
                         severity = if (event == "ARTWORK_DOWNLOAD_FAILED") "WARN" else "INFO",
@@ -10509,13 +10526,13 @@ internal class NativeMainRuntimePort(
                                 mergeAuthoritativeSafRoot(treeUri)
                             val selectionMessage = when {
                                 authorized -> "Pasta autorizada e configurada."
-                                treeUri.isBlank() -> "O Android retornou a seleção sem informar a pasta. Toque em ESCOLHER PASTA para tentar novamente."
+                                treeUri.isNullOrBlank() -> "O Android retornou a seleção sem informar a pasta. Toque em ESCOLHER PASTA para tentar novamente."
                                 !granted -> "O Android não confirmou o acesso à pasta selecionada. Toque em ESCOLHER PASTA para tentar novamente."
                                 else -> "O Android autorizou a pasta, mas o ReiAnix não conseguiu confirmar essa fonte da biblioteca. Toque em ESCOLHER PASTA para tentar novamente."
                             }
                             val selectionError = when {
                                 authorized -> null
-                                treeUri.isBlank() -> "selected_saf_uri_missing"
+                                treeUri.isNullOrBlank() -> "selected_saf_uri_missing"
                                 !granted -> "selected_saf_grant_missing"
                                 else -> "selected_saf_source_validation_failed"
                             }
@@ -10533,12 +10550,12 @@ internal class NativeMainRuntimePort(
                                 dismissed = false,
                                 diagnosticEvent = when {
                                     authorized -> "STORAGE_READY"
-                                    !granted || treeUri.isBlank() -> "STORAGE_PERMISSION_MISSING"
+                                    !granted || treeUri.isNullOrBlank() -> "STORAGE_PERMISSION_MISSING"
                                     else -> "STORAGE_SOURCE_VALIDATION_FAILED"
                                 },
                                 result = when {
                                     authorized -> "library_root_valid"
-                                    treeUri.isBlank() -> "selected_tree_uri_missing"
+                                    treeUri.isNullOrBlank() -> "selected_tree_uri_missing"
                                     !granted -> "selected_tree_not_granted"
                                     else -> "configured_source_missing"
                                 },
@@ -10607,6 +10624,7 @@ internal class NativeMainRuntimePort(
                             result = error,
                             requestId = correlatedRequestId,
                         )
+                        true
                     }
                     "release_tree" -> finishPendingSafRemoval(
                         eventRequestId = correlatedRequestId,
@@ -10778,7 +10796,6 @@ internal class NativeMainRuntimePort(
                         if (status in setOf("reconciled", "already_reconciled")) {
                             libraryViewModel.refreshNativeFolders()
                             libraryViewModel.refreshCatalogProjection()
-                            libraryViewModel.queryNativeArtwork()
                             requestSafIdentityReconciliationRescan(
                                 treeUri = treeUri,
                                 sourceRequestId = eventRequestId ?: stringValue("requestId"),
@@ -10855,7 +10872,7 @@ internal class NativeMainRuntimePort(
                                 when {
                                     !correlatedRequestId.isNullOrBlank() &&
                                         completedRequestId == correlatedRequestId &&
-                                        key !in thumbnailRequests -> "duplicate"
+                                        !thumbnailRequests.containsKey(key) -> "duplicate"
                                     latestKey != null && latestKey != key -> "stale"
                                     else -> {
                                         thumbnailRetryCounts.remove(key)
@@ -10893,7 +10910,6 @@ internal class NativeMainRuntimePort(
                         }
                     }
                 }
-                libraryViewModel.queryNativeArtwork()
                 libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
                     name = if (type == "thumbnail_ready") "NATIVE_THUMBNAIL_READY" else "NATIVE_THUMBNAIL_ERROR",
