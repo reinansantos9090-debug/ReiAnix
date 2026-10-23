@@ -2,16 +2,13 @@
 
 ## Objetivo e destino arquitetural
 
-Este é um projeto existente em estabilização e migração incremental. Trabalhe sobre o código atual do ReiAnix; não reinicie, recrie nem substitua o projeto por uma implementação nova.
+A branch ativa contém uma aplicação Android nativa em Kotlin, Jetpack Compose, Gradle e SQLite. Mantenha esse caminho como a única arquitetura de execução e compilação suportada.
 
-**Objetivo final obrigatório: migrar a aplicação para 100% Kotlin no Android, com interface nativa em Jetpack Compose e sem dependência de Python/Flet em runtime.** Essa meta deve ser alcançada por etapas pequenas, verificáveis e compatíveis, não por uma reescrita geral de uma só vez.
-
-- O estado intermediário pode continuar usando Python/Flet enquanto responsabilidades ainda não tiverem sido migradas com equivalência funcional comprovada.
-- Não trate Python/Flet, pontes Python ↔ Kotlin, NativeMailbox ou a UI Flet como dependências permanentes da arquitetura final.
-- Antes de remover qualquer componente Python, identifique todas as responsabilidades, consumidores, contratos IPC, persistência e efeitos colaterais; migre-os para Kotlin e valide a paridade funcional primeiro.
-- O destino é uma aplicação Android nativa em Kotlin/Jetpack Compose. Não crie uma segunda arquitetura paralela nem mantenha dois caminhos de execução definitivos para a mesma responsabilidade.
-- A migração só está concluída quando o código e o empacotamento da aplicação não dependerem mais de Python/Flet em runtime e todas as funcionalidades exigidas tiverem sido preservadas e validadas.
-- Não confunda percentuais de linguagens no GitHub com progresso funcional da migração. Registre explicitamente o que foi migrado, o que continua dependente de Python e quais critérios ainda faltam para removê-lo.
+- Não reintroduza fontes `.py`, `requirements.txt`, `pyproject.toml`, Flet, Flutter ou passos de instalação/execução de Python no build, testes ou workflows.
+- A configuração de release, identidade Android, schema SQLite v29, dados dos usuários, permissões SAF/MediaStore, AniList, artwork, navegação Compose e player Media3 são contratos existentes que devem ser preservados.
+- Documentos de migração antigos em `docs/` podem descrever snapshots históricos híbridos; não os trate como prova do estado atual nem reative dependências que já foram removidas.
+- Não crie uma segunda arquitetura paralela nem uma segunda fonte de verdade para banco, catálogo, scanner, artwork ou progresso.
+- Considere a migração nativa completa apenas naquilo que o código, build e workflows atuais comprovarem. Diferencie análise estática, testes executados, build de APK e validação em dispositivo real.
 
 ## Regras obrigatórias de preservação
 
@@ -50,7 +47,7 @@ Trate como áreas de alto risco:
 - reprodução local com Media3/ExoPlayer e NativePlayerActivity;
 - Next/Previous, autoplay e transições entre episódios;
 - histórico e persistência do progresso de reprodução;
-- comunicação Python ↔ Kotlin/NativeMailbox enquanto ainda existir código legado;
+- NativeMailbox e contratos transitórios ainda usados dentro do código Kotlin;
 - thumbnails, artwork, capas e cache;
 - metadados, AniList, sinopses, tradução e cache;
 - lifecycle, Back, PiP e barras do sistema;
@@ -85,29 +82,16 @@ Após alterações:
 
 A etapa só pode ser declarada concluída quando seus critérios de aceitação tiverem sido atendidos e o workflow oficial aplicável estiver concluído com sucesso no SHA final. Se o workflow falhar ou não tiver sido executado, declare a etapa como não concluída e informe o bloqueio. Não execute manualmente o workflow Kotlin/JVM enquanto estiver reservado para a validação final.
 
-## Regra de remoção e migração
+## Regra de manutenção do runtime Kotlin nativo
 
-Se a solução parecer exigir remover uma funcionalidade existente, pare e procure primeiro uma solução compatível. A meta de 100% Kotlin não autoriza perda de comportamento.
-
-Para cada responsabilidade migrada:
-1. Identifique o comportamento e os consumidores atuais.
-2. Implemente a substituição Kotlin no fluxo existente, evitando arquitetura paralela.
-3. Preserve os dados, identificadores e associações existentes.
-4. Adicione ou atualize testes compatíveis com as restrições deste arquivo.
-5. Confirme compilação, regressões e workflow oficial.
-6. Só então remova a implementação Python/Flet correspondente se nenhum consumidor restante depender dela.
-7. Mantenha um registro claro das responsabilidades migradas e das dependências Python ainda restantes.
-
-Se um contrato legado for insuficiente, estenda-o de forma mínima e compatível durante a transição; não invente uma segunda fonte de verdade. Se não for seguro migrar/remover uma responsabilidade na etapa atual, preserve-a e documente exatamente o que falta.
-
-## Git e colaboração
-
-- Não reescreva histórico.
-- Não faça reset ou checkout destrutivo.
-- Não force push.
-- Não altere commits anteriores para esconder mudanças.
-- Preserve o estado atual do repositório e produza mudanças rastreáveis.
-- Prefira branches e pull requests para mudanças documentais ou de código, mantendo a revisão e a validação visíveis.
+- Não reintroduza código Python, gerenciadores de pacotes Python, Flet ou Flutter no repositório ativo.
+- Antes de remover ou alterar qualquer comportamento, identifique os consumidores, os contratos de dados, as operações de armazenamento e os efeitos colaterais; preserve a equivalência funcional no fluxo Kotlin.
+- Não apague dados, backups, campos do schema v29, testes ou proteções para simplificar a implementação.
+- Preserve os identificadores do app, permissões, configuração de release, NativePlayerActivity/Media3, SAF, MediaStore, SQLite, AniList, artwork, cache, progresso e ciclo de vida.
+- Os registros históricos em `docs/` não constituem dependências de execução. Quando estiverem materialmente desatualizados, identifique-os como históricos ou atualize-os em vez de ressuscitar código legado.
+- Adicione dependências de execução somente pelo Gradle/Kotlin e com justificativa. Prefira a biblioteca padrão/AndroidX já utilizada quando suficiente.
+- Se a substituição nativa não preservar o comportamento ou os dados, não remova o recurso; implemente primeiro a equivalência em Kotlin e registre o bloqueio de forma objetiva.
+- Após a alteração, revise o diff, execute validações permitidas, compile quando aplicável e confira o workflow oficial do SHA final. Não alegue execução de testes/build nem validação física sem evidência real.
 
 ## Prioridade
 
