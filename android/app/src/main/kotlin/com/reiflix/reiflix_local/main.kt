@@ -8542,7 +8542,11 @@ internal class NativeMainRuntimePort(
                         .firstOrNull { it.id == episodeId }
                 }.getOrNull()
             } else null
-            val exactThumbnailReady = !cached?.thumbnailPath.isNullOrBlank()
+            // The legacy main.py cache-hit contract requires the exact thumbnail
+            // file to still exist on disk; a stale SQLite path must be regenerated.
+            val exactThumbnailReady = cached?.thumbnailPath
+                ?.takeIf { it.isNotBlank() }
+                ?.let { File(it).isFile } == true
             if (exactThumbnailReady) {
                 cancelThumbnailRequest(reference, size, modifiedAt, mediaIdentity)
                 recordDiagnostic(
