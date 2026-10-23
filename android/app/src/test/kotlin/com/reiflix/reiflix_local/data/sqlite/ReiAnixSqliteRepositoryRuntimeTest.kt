@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
+import android.app.Application
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import android.net.Uri
@@ -26,12 +27,13 @@ import java.io.File
 /**
  * Runtime tests against the Android SQLite engine through Robolectric.
  *
- * These are local JVM tests, not instrumented/device/emulator tests. The fixture
- * DDL is generated from an isolated temporary database initialized by the real
- * core.library_store.LibraryStore; the runtime test seeds only synthetic rows.
+ * These are local JVM tests, not instrumented/device/emulator tests. A plain
+ * Android Application is used intentionally: ReiAnixApplication launches the real
+ * process bootstrap, which would race the synthetic database fixture in the same
+ * app-private data directory. The fixture DDL comes from the canonical v29 contract.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(application = Application::class, sdk = [35])
 class ReiAnixSqliteRepositoryRuntimeTest {
     private val context: Context
         get() = RuntimeEnvironment.getApplication()
