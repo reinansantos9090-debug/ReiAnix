@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.sqlite
 
 import android.database.sqlite.SQLiteDatabase
 import java.io.File
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -56,7 +57,7 @@ internal object ReiAnixSqliteSchemaManager {
                 }
                 migrate(database, contract)
                 snapshot = inspectSchema(database)
-                check(snapshot.supportsCurrentContract) {
+                check(snapshot.supportsCompatibleRuntimeContract) {
                     "Canonical SQLite schema migration did not produce a compatible v29 database: " +
                         snapshot.incompatibilities.joinToString("; ")
                 }
@@ -205,10 +206,28 @@ internal object ReiAnixSqliteSchemaManager {
             check(rawSql.isNotEmpty()) { "Canonical index $name has no SQL definition." }
             val createPattern = Regex("(?i)^CREATE\\s+(UNIQUE\\s+)?INDEX\\s+")
             check(createPattern.containsMatchIn(rawSql)) { "Unsupported DDL for canonical index $name." }
+
+            val existingSql = database.rawQuery(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+                arrayOf(name),
+            ).use { cursor -> if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null }
+            if (existingSql != null && normalizeIndexDdl(existingSql) != normalizeIndexDdl(rawSql)) {
+                // Rebuild only the named index, never the table or its data. This
+                // repairs indexes whose definition changed while schema version
+                // remained v29 in older LibraryStore releases.
+                database.execSQL("DROP INDEX IF EXISTS " + quote(name))
+            }
             val prefix = "CREATE " + (if (createPattern.find(rawSql)?.groupValues?.get(1).orEmpty().isNotBlank()) "UNIQUE " else "") + "INDEX IF NOT EXISTS "
             database.execSQL(rawSql.replaceFirst(createPattern, prefix))
         }
     }
+
+    private fun normalizeIndexDdl(sql: String): String =
+        sql.replace(Regex("(?i)\\bIF\\s+NOT\\s+EXISTS\\b"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .trimEnd(';')
+            .uppercase(Locale.ROOT)
 
     private fun createTriggers(database: SQLiteDatabase, contract: JSONObject) {
         val triggers = contract.optJSONArray("triggers")?.objects().orEmpty()

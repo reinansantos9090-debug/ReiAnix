@@ -442,9 +442,9 @@ class ReiAnixAppBootstrap internal constructor(
                 // No durable recovery evidence exists: initialize the one canonical file
                 // natively. The schema manager is additive and never replaces existing data.
                 val migrated = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = true)
-                val contractStillCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
+                val contractStillCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCompatibleRuntimeContract
                 val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
-                if (migrated.supportsCurrentContract && contractStillCompatible && integrityHealthy) {
+                if (migrated.supportsCompatibleRuntimeContract && contractStillCompatible && integrityHealthy) {
                     CanonicalDatabaseCheck(
                         status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
                         recoveryRequired = false,
@@ -470,8 +470,8 @@ class ReiAnixAppBootstrap internal constructor(
         val migrationSnapshot = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
         val schemaSnapshot = dependencies.sqliteDatabase.inspectSchema()
         val integrity = ReiAnixBackupService(appContext).integrityReport()
-        return if (migrationSnapshot.supportsCurrentContract &&
-            schemaSnapshot.supportsCurrentContract && integrity.healthy
+        return if (migrationSnapshot.supportsCompatibleRuntimeContract &&
+            schemaSnapshot.supportsCompatibleRuntimeContract && integrity.healthy
         ) {
             CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
@@ -479,8 +479,8 @@ class ReiAnixAppBootstrap internal constructor(
             )
         } else {
             val details = buildList {
-                if (!migrationSnapshot.supportsCurrentContract) addAll(migrationSnapshot.incompatibilities)
-                if (!schemaSnapshot.supportsCurrentContract) addAll(schemaSnapshot.incompatibilities)
+                if (!migrationSnapshot.supportsCompatibleRuntimeContract) addAll(migrationSnapshot.incompatibilities)
+                if (!schemaSnapshot.supportsCompatibleRuntimeContract) addAll(schemaSnapshot.incompatibilities)
                 if (!integrity.healthy) add(integrity.error ?: "SQLite integrity validation failed.")
             }.distinct().joinToString("; ").take(640)
             CanonicalDatabaseCheck(
