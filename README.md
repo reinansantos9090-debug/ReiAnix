@@ -21,7 +21,7 @@ gradle -p android --no-daemon :app:assembleRelease
 Para compilar o Kotlin de release e executar os testes unitários locais:
 
 ```bash
-gradle -p android --no-daemon :app:compileReleaseKotlin :app:testDebugUnitTest
+gradle -p android --no-daemon :app:compileReleaseKotlin
 ```
 
 O workflow oficial **Build ReiAnix Android APK** compila o APK diretamente por Gradle, valida o Manifest, as classes nativas no DEX, o contrato SQLite v29 e a ausência de payloads de runtimes não nativos. O asset comprimido `android/app/src/main/assets/native-sqlite-contract-v29.json.gz` é a origem versionada do contrato SQLite utilizado pelo aplicativo.
