@@ -79,6 +79,10 @@ jobs:
 
           contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
           gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"
+          test_fixture="android/app/src/test/resources/native-sqlite-schema-v29.json"
+          mkdir -p "$(dirname "$test_fixture")"
+          jq '. + {statements: ((.table_sql | to_entries | sort_by(.key) | map(.value)) + ([.indexes | sort_by(.name)[] | select(.sql != null) | .sql]))}' "$contract" > "$test_fixture"
+          jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$test_fixture" >/dev/null
           db="$assets/library_fixture.sqlite3"
           rm -f "$db"
           jq -r '.table_sql[]' "$contract" | sqlite3 "$db"
@@ -163,6 +167,8 @@ jobs:
         run: |
           rm -f android/app/src/androidTest/assets/player_fixture.mp4
           rm -f android/app/src/androidTest/assets/library_fixture.sqlite3
+          rm -f android/app/src/test/resources/native-sqlite-schema-v29.json
+          rmdir android/app/src/test/resources 2>/dev/null || true
           rmdir android/app/src/androidTest/assets 2>/dev/null || true
 
       - name: Upload Android instrumentation diagnostics
