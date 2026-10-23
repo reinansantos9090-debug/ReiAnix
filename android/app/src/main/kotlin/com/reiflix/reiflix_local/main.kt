@@ -8113,7 +8113,7 @@ internal class NativeMainRuntimePort(
             .put("media_kind", anime.mediaKind.name.lowercase(Locale.ROOT))
             .put("year", anime.year ?: org.json.JSONObject.NULL)
             .put("presentation_state", anime.presentationState.name.lowercase(Locale.ROOT))
-            .put("artwork_available", artwork?.isAvailable ?: false)
+            .put("artwork_available", localPosterPath != null)
             .put("playback_target_episode_id", anime.playbackTargetEpisodeId ?: org.json.JSONObject.NULL)
             .put("genres", org.json.JSONArray().apply { anime.genres.forEach { put(it.name) } })
             .put("genre_ids", org.json.JSONArray().apply { anime.genres.forEach { put(it.id ?: "") } })
