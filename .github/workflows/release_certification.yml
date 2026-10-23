@@ -84,6 +84,13 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.migrationRepairsStaleCanonicalIndexDefinitionWithoutRebuildingCatalogTables \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.readsPreexistingCatalogAndReportsVersionWithoutChangingSchema \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.applicationRepositoryRejectsAnIncompatibleSchemaBeforeServingRows \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationCreatesFreshCanonicalDatabaseOnlyAfterExplicitAuthorization \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationIsIdempotentAndPreservesExistingCanonicalCatalogData \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationRejectsMissingCoreTablesWithoutRecreatingThemOrReplacingTheCatalog \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationRejectsCorruptExistingDatabaseWithoutReplacingItsBytes \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationRejectsEmptyExistingDatabaseWithoutReplacingIt \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationDoesNotOverwriteAnUnexpectedSqliteUserVersion \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.bootstrapKeepsNativeServicesGatedWhenCanonicalCoreTablesAreMissing \
             :app:compileReleaseKotlin 2>&1 | tee "$RUNNER_TEMP/reianix-jvm-certification.log"
 
       - name: Upload JVM certification log for failure diagnosis
