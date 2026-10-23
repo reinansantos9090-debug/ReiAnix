@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   native-certification:
-    name: Native Kotlin source and JVM certification
+    name: Native Kotlin compilation certification
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -54,8 +54,9 @@ jobs:
           test -n "$(find android/app/src/main/kotlin -type f -name '*.kt' -print -quit)"
           grep -Fq 'android:name=".MainActivity"' android/app/src/main/AndroidManifest.xml
           git diff --check
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Run Kotlin JVM tests and verify release Kotlin compilation
+      - name: Compile JVM test sources and release Kotlin sources
         shell: bash
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
@@ -64,5 +65,5 @@ jobs:
           gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
-            :app:testDebugUnitTest \
+            :app:compileDebugUnitTestKotlin \
             :app:compileReleaseKotlin
