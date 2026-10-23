@@ -8118,7 +8118,7 @@ internal class NativeMainRuntimePort(
             .put("artwork_available", localPosterPath != null)
             .put("playback_target_episode_id", anime.playbackTargetEpisodeId ?: org.json.JSONObject.NULL)
             .put("genres", org.json.JSONArray().apply { anime.genres.forEach { put(it.name) } })
-            .put("genre_ids", org.json.JSONArray().apply { anime.genres.forEach { put(it.id ?: "") } })
+            .put("genre_ids", org.json.JSONArray().apply { anime.genres.mapNotNull { it.id }.forEach { put(it) } })
             .put("user_tags", org.json.JSONArray().apply { anime.userTags.forEach { put(it) } })
             .put("personal_note", anime.personalNote ?: org.json.JSONObject.NULL)
             .put("artwork_local_path", localPosterPath ?: org.json.JSONObject.NULL)
