@@ -532,6 +532,34 @@ class ReiAnixAppBootstrap internal constructor(
             )
         }
 
+        // Capture the pre-migration shape without mutating the database. This is especially
+        // important when migrate() fails closed because a preexisting file has lost core tables:
+        // that failure must still leave enough schema evidence in Logcat to identify the file state.
+        val preflightSnapshot = try {
+            dependencies.sqliteDatabase.inspectSchema()
+        } catch (error: Exception) {
+            Log.w(
+                TAG,
+                "APP_BOOTSTRAP_SQLITE_PREFLIGHT_FAILED file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                    "reason=${databaseFailureCategory(error)} errorType=${error::class.java.simpleName}",
+                error,
+            )
+            null
+        }
+        if (preflightSnapshot != null) {
+            val missingCoreTables = setOf("anime", "episodes", "folders") - preflightSnapshot.tables
+            Log.i(
+                TAG,
+                "APP_BOOTSTRAP_SQLITE_PREFLIGHT file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                    "schemaVersion=${preflightSnapshot.schemaVersion ?: -1} " +
+                    "sqliteUserVersion=${preflightSnapshot.sqliteUserVersion} " +
+                    "tableCount=${preflightSnapshot.tables.size} " +
+                    "tables=${preflightSnapshot.tables.sorted().joinToString(",").ifBlank { "none" }} " +
+                    "missingCoreTables=${missingCoreTables.sorted().joinToString(",").ifBlank { "none" }} " +
+                    "migration=NOT_STARTED integrityCheck=NOT_RUN",
+            )
+        }
+
         val migrationSnapshot = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
         val schemaSnapshot = dependencies.sqliteDatabase.inspectSchema()
         val integrity = ReiAnixBackupService(appContext).integrityReport()
