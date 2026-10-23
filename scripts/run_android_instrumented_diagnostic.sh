@@ -220,12 +220,12 @@ run_diagnostic_case() {
     set +e
     if [[ -n "$selector" ]]; then
         timeout --foreground --signal=TERM --kill-after=30s "$timeout_seconds"s \
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace \
+            gradle -p "$WORKSPACE/android" :app:connectedDebugAndroidTest --stacktrace \
             "-Pandroid.testInstrumentationRunnerArguments.class=$selector" \
             > "$case_dir/gradle.log" 2>&1
     else
         timeout --foreground --signal=TERM --kill-after=30s "$timeout_seconds"s \
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace \
+            gradle -p "$WORKSPACE/android" :app:connectedDebugAndroidTest --stacktrace \
             > "$case_dir/gradle.log" 2>&1
     fi
     status=$?
@@ -240,41 +240,6 @@ run_diagnostic_case() {
         printf 'CASE_PASS label=%s selector=%s exit=%s\n' "$label" "$selector" "$status" | tee -a "$DIAG_ROOT/summary.txt"
     fi
     reset_device_state
-}
-
-discover_failed_tests() {
-    local output="$1"
-    python - "$output" <<'PY'
-from pathlib import Path
-import sys
-import xml.etree.ElementTree as ET
-
-out = Path(sys.argv[1])
-seen = set()
-
-for root in (Path("app/build/outputs/androidTest-results"), Path("app/build/outputs"), Path("build")):
-    if not root.exists():
-        continue
-    for path in root.rglob("*.xml"):
-        text = path.as_posix()
-        if "androidTest" not in text and "connected" not in text:
-            continue
-        try:
-            tree = ET.parse(path)
-        except (ET.ParseError, OSError):
-            continue
-        for testcase in tree.getroot().iter("testcase"):
-            failed = any(child.tag.rsplit("}", 1)[-1] in {"failure", "error"} for child in testcase)
-            if not failed:
-                continue
-            classname = testcase.attrib.get("classname", "").strip()
-            method = testcase.attrib.get("name", "").strip()
-            if classname:
-                seen.add((classname, method))
-
-for classname, method in sorted(seen):
-    print(f"{classname}|{method}")
-PY
 }
 
 extract_failed_classes_from_log() {
@@ -298,12 +263,12 @@ GRADLE_INVOCATIONS=1
 FULL_LOG="$DIAG_ROOT/full-suite.log"
 FULL_STATUS=0
 
-printf 'NORMAL_SUITE=./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace\n' | tee -a "$DIAG_ROOT/summary.txt"
+printf 'NORMAL_SUITE=gradle -p "$WORKSPACE/android" :app:connectedDebugAndroidTest --no-daemon --stacktrace\n' | tee -a "$DIAG_ROOT/summary.txt"
 printf 'GRADLE_INVOCATION=1 label=full-suite selector=<all>\n' | tee -a "$DIAG_ROOT/summary.txt"
 reset_device_state
 
 set +e
-./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace 2>&1 | tee "$FULL_LOG"
+gradle -p "$WORKSPACE/android" :app:connectedDebugAndroidTest --no-daemon --stacktrace 2>&1 | tee "$FULL_LOG"
 FULL_STATUS=${PIPESTATUS[0]}
 set -e
 
@@ -322,13 +287,9 @@ printf 'DIAGNOSTIC_REQUIRED=1\n' | tee -a "$DIAG_ROOT/summary.txt"
 collect_diagnostics "full-suite-failure"
 snapshot_device "$DIAG_ROOT/failure"
 
-FAILED_TESTS_RAW="$DIAG_ROOT/failed-tests.raw"
 FAILED_TESTS="$DIAG_ROOT/failed-tests.txt"
-discover_failed_tests "$FAILED_TESTS_RAW"
-if [[ ! -s "$FAILED_TESTS_RAW" ]]; then
-    extract_failed_classes_from_log "$FULL_LOG" "$FAILED_TESTS_RAW"
-fi
-sort -u "$FAILED_TESTS_RAW" > "$FAILED_TESTS"
+extract_failed_classes_from_log "$FULL_LOG" "$FAILED_TESTS"
+sort -u "$FAILED_TESTS" -o "$FAILED_TESTS"
 
 if [[ -s "$FAILED_TESTS" ]]; then
     printf 'FAILED_TESTS_IDENTIFIED=1\n' | tee -a "$DIAG_ROOT/summary.txt"
