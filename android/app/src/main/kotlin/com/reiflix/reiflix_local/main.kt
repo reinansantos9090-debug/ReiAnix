@@ -8131,10 +8131,10 @@ internal class NativeMainRuntimePort(
             36
         }).coerceIn(12, 48)
         val requestedGeneration = payload.optLong("generation", 0L).coerceAtLeast(0L)
-        val query = payload.optString("query", "").trim()
-        val rawGenre = payload.optString("genre", "Todos").trim().ifEmpty { "Todos" }
+        val query = firstTruthyJsonText(payload, "query")
+        val rawGenre = firstTruthyJsonText(payload, "genre").ifEmpty { "Todos" }
         val genre = rawGenre.takeUnless { it.equals("Todos", ignoreCase = true) }
-        val sort = payload.optString("sort", "Mais recentes").trim().ifEmpty { "Mais recentes" }
+        val sort = firstTruthyJsonText(payload, "sort").ifEmpty { "Mais recentes" }
         val favoritesOnly = pythonTruthyJsonValue(payload.opt("favoritesOnly"))
         val watchingOnly = pythonTruthyJsonValue(payload.opt("watchingOnly"))
         val completedOnly = pythonTruthyJsonValue(payload.opt("completedOnly"))
