@@ -8435,9 +8435,7 @@ internal class NativeMainRuntimePort(
                         .firstOrNull { it.id == episodeId }
                 }.getOrNull()
             } else null
-            val cachedPath = cached?.thumbnailPath
-            val exactThumbnailReady = !cachedPath.isNullOrBlank() &&
-                withContext(Dispatchers.IO) { hasValidLocalThumbnail(cachedPath) }
+            val exactThumbnailReady = !cached?.thumbnailPath.isNullOrBlank()
             if (exactThumbnailReady) {
                 cancelThumbnailRequest(reference, size, modifiedAt, mediaIdentity)
                 recordDiagnostic(
