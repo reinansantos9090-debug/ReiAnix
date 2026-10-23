@@ -274,6 +274,17 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
         val repository = ReiAnixSqliteLibraryRepository(context)
         val schema = repository.inspectSchema()
+        println(
+            "LEGACY_COMPATIBILITY_DIAGNOSTIC " +
+                "supported=${schema.supportsCompatibleRuntimeContract} " +
+                "strict=${schema.supportsCurrentContract} " +
+                "issues=${schema.incompatibilities} " +
+                "missingTables=${schema.missingRequiredTables} " +
+                "missingColumns=${schema.missingRequiredColumns} " +
+                "missingIndexes=${schema.missingRequiredIndexes} " +
+                "integrityErrors=${schema.integrityErrors} " +
+                "foreignKeyViolations=${schema.foreignKeyViolations}",
+        )
         assertFalse("Strict diagnostics must continue reporting legacy schema drift.", schema.supportsCurrentContract)
         assertTrue(
             "Ordinary legacy columns/indexes must not route an otherwise healthy catalog to Recovery Mode: ${schema.incompatibilities}",

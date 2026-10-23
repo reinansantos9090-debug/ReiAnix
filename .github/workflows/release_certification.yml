@@ -73,6 +73,10 @@ jobs:
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.compatibleLegacyColumnsAndIndexesRemainReadableWithoutRebuildingUserTables \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.migrationRepairsStaleCanonicalIndexDefinitionWithoutRebuildingCatalogTables \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.readsPreexistingCatalogAndReportsVersionWithoutChangingSchema \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.applicationRepositoryRejectsAnIncompatibleSchemaBeforeServingRows \
             :app:compileReleaseKotlin 2>&1 | tee "$RUNNER_TEMP/reianix-jvm-certification.log"
 
       - name: Upload JVM certification log for failure diagnosis
