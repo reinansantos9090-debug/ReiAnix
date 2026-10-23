@@ -2906,7 +2906,7 @@ internal class NativeMainRuntimePort(
         return launchTracked("save_personal_note") {
             // Port core/library_store.py's set_personal_note contract: whitespace-only
             // notes clear the nullable field, and oversized notes are rejected.
-            require(normalized.length <= 2_000) {
+            require(normalized.codePointCount(0, normalized.length) <= 2_000) {
                 "A nota pessoal pode ter no máximo 2000 caracteres."
             }
             libraryViewModel.saveAnimePersonalNoteNative(
@@ -2930,7 +2930,8 @@ internal class NativeMainRuntimePort(
             val tag = collapsePythonWhitespace(rawTag)
             if (tag.isEmpty()) continue
             if (normalized.any { caseFold(it) == caseFold(tag) }) continue
-            normalized += tag.take(40)
+            val end = tag.offsetByCodePoints(0, minOf(40, tag.codePointCount(0, tag.length)))
+            normalized += tag.substring(0, end)
         }
 
         return launchTracked("save_user_tags") {
