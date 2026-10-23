@@ -8075,7 +8075,7 @@ internal class NativeMainRuntimePort(
                 put(
                     org.json.JSONObject()
                         .put("season", season.number ?: org.json.JSONObject.NULL)
-                        .put("season_name", season.title)
+                        .put("season_name", season.number?.let { "Temporada $it" } ?: "Temporada especial")
                         .put(
                             "episodes",
                             org.json.JSONArray().apply {
@@ -8085,23 +8085,25 @@ internal class NativeMainRuntimePort(
                 )
             }
         }
-        val specials = org.json.JSONArray().apply {
-            anime.specials
-                .groupBy { it.seasonNumber }
-                .forEach { (seasonNumber, episodes) ->
-                    put(
-                        org.json.JSONObject()
-                            .put("season", seasonNumber ?: org.json.JSONObject.NULL)
-                            .put("season_name", seasonNumber?.let { "Temporada $it" } ?: "Especiais")
-                            .put(
-                                "episodes",
-                                org.json.JSONArray().apply {
-                                    episodes.forEach { put(projectNativeLibraryPageEpisode(it)) }
-                                },
-                            ),
-                    )
-                }
-        }
+        // The legacy catalog always emits one Specials group, even when empty;
+        // special episodes are sorted by number and filename, not split by season.
+        val specials = org.json.JSONArray().put(
+            org.json.JSONObject()
+                .put("season", org.json.JSONObject.NULL)
+                .put("season_name", "Especiais")
+                .put(
+                    "episodes",
+                    org.json.JSONArray().apply {
+                        anime.specials
+                            .sortedWith(
+                                compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel> {
+                                    it.number ?: -1.0
+                                }.thenBy { it.fileName.lowercase(Locale.ROOT) },
+                            )
+                            .forEach { put(projectNativeLibraryPageEpisode(it)) }
+                    },
+                ),
+        )
         return org.json.JSONObject()
             .put("id", anime.id)
             .put("main_title", anime.title)
