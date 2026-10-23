@@ -8725,7 +8725,7 @@ internal class NativeMainRuntimePort(
                 }
             }
             "toggle_favorite", "toggle_personal_list" ->
-                positiveLong("animeId")?.let {
+                (positiveLong("animeId") ?: positiveLong("anime_id"))?.let {
                     libraryViewModel.toggleFavorite(it)
                     true
                 } ?: false
@@ -8747,7 +8747,7 @@ internal class NativeMainRuntimePort(
                 )
             }
             "toggle_pinned", "toggle_pin" ->
-                positiveLong("animeId")?.let(::togglePinned) ?: false
+                (positiveLong("animeId") ?: positiveLong("anime_id"))?.let(::togglePinned) ?: false
             "save_personal_note", "set_note" -> {
                 val id = positiveLong("animeId") ?: positiveLong("anime_id") ?: return false
                 savePersonalNote(id, payload.optString("note", ""))
