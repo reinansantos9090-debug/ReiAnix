@@ -8408,6 +8408,12 @@ internal class NativeMainRuntimePort(
             ),
         ).coerceAtLeast(0L)
         val mediaIdentity = firstText("mediaIdentity", "media_identity")
+        val episodeId = episode.optLong(
+            "id",
+            episode.optLong("episodeId", episode.optLong("episode_id", 0L)),
+        )
+        val duration = episode.optDouble("duration", 0.0)
+        val durationKnown = duration.isFinite() && duration > 0.0
         val lastPlayedAt = payload.optDouble(
             "lastPlayedAt",
             payload.optDouble(
@@ -8422,13 +8428,40 @@ internal class NativeMainRuntimePort(
         } else {
             100
         }
-        return enqueueLocalThumbnail(
-            reference = reference,
-            size = size,
-            modifiedAt = modifiedAt,
-            mediaIdentity = mediaIdentity,
-            priority = priority,
-        )
+        return launchTracked("request_missing_thumbnail") {
+            val cached = if (episodeId > 0L && durationKnown) {
+                runCatching {
+                    loadThumbnailCandidateRows(afterId = episodeId - 1L, limit = 1)
+                        .firstOrNull { it.id == episodeId }
+                }.getOrNull()
+            } else null
+            val cachedPath = cached?.thumbnailPath
+            val exactThumbnailReady = !cachedPath.isNullOrBlank() &&
+                withContext(Dispatchers.IO) { hasValidLocalThumbnail(cachedPath) }
+            if (exactThumbnailReady) {
+                recordDiagnostic(
+                    name = "THUMBNAIL_CACHE_HIT",
+                    result = "exact_local_thumbnail_ready",
+                    context = mapOf("episode_id" to episodeId),
+                )
+                return@launchTracked
+            }
+            if (!enqueueLocalThumbnail(
+                    reference = reference,
+                    size = size,
+                    modifiedAt = modifiedAt,
+                    mediaIdentity = mediaIdentity,
+                    priority = priority,
+                )
+            ) {
+                recordDiagnostic(
+                    name = "THUMBNAIL_REQUEST_REJECTED",
+                    severity = "WARN",
+                    result = "queue_full",
+                    context = mapOf("episode_id" to episodeId),
+                )
+            }
+        }
     }
 
     /**
