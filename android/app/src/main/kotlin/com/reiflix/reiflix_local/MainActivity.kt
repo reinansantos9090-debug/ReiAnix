@@ -1304,29 +1304,23 @@ class MainActivity : ComponentActivity() {
             dismissed = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
                 .getBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false),
         )
-        // Do not construct the Compose host or expose catalog consumers until the
-        // process-owned bootstrap has decided whether the canonical SQLite database is usable.
-        // The launch intent and any new intents received during validation are replayed only
-        // after a safe normal route or Recovery Mode has been selected.
+        // Keep the application shell and Settings available even when canonical SQLite
+        // validation fails. Database-dependent native operations remain gated by the
+        // process bootstrap, but diagnostics and export are only opened by an explicit
+        // user action in Settings; startup never redirects the user to a recovery/diagnostic UI.
         lifecycleScope.launch {
             val recoveryRequired = appDependencies.bootstrap.validateCanonicalDatabase()
             if (isFinishing || isDestroyed) return@launch
 
             nativeBootstrapDecisionComplete = true
             composeLibraryHost = ReiAnixComposeLibraryHost(this@MainActivity, libraryViewModel, settingsViewModel)
+            composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
             if (recoveryRequired) {
-                val recoveryReason = appDependencies.bootstrap.state.value.error
-                    ?.removePrefix("[")
-                    ?.substringBefore("]")
-                    ?.takeIf { it.matches(Regex("[A-Z0-9_]+")) }
-                    ?: "UNSPECIFIED"
-                Log.w(
+                Log.i(
                     tag,
-                    "NATIVE_DATABASE_RECOVERY_REQUIRED route_opened=true reason=$recoveryReason",
+                    "NATIVE_DATABASE_UNHEALTHY startup_route=home native_operations=gated diagnostics=manual",
                 )
-                composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
             } else {
-                composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
                 refreshNativeStorageOnboardingState("bootstrap_validated")
             }
 
@@ -2829,28 +2823,21 @@ class MainActivity : ComponentActivity() {
             commandCreatedAt = commandCreatedAt,
             parameterNames = parameterNames)
 
+        // Navigation is not a database mutation. Keep Home, Library, Organize and
+        // Settings reachable during a database fault so the user can inspect/export
+        // diagnostics on demand. Actual database-dependent commands remain gated below.
+        val navigationActions = setOf(
+            "open_library",
+            "open_organize",
+            "hide_library",
+            "open_storage_settings",
+            "open_settings",
+            "hide_settings",
+        )
         if (
             appDependencies.bootstrap.state.value.recoveryRequired &&
-            action in setOf("open_library", "open_organize", "open_storage_settings", "open_settings")
+            action !in navigationActions
         ) {
-            composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
-            nativeRequestState.markOperationState(
-                requestId, action, NativeRequestState.OperationState.COMPLETED,
-            )
-            publishNativeDiagnostic(
-                "OPERATION_ROUTED_TO_RECOVERY",
-                requestId,
-                action,
-                NativeRequestState.OperationState.COMPLETED.name,
-                result = "canonical_database_recovery_required",
-            )
-            return
-        }
-        // Navigation requests are redirected to Recovery Mode above. Every other
-        // native operation is rejected while the canonical database is unhealthy;
-        // this also blocks scans, playback, storage mutations, and account actions
-        // that could otherwise bypass the Recovery route.
-        if (appDependencies.bootstrap.state.value.recoveryRequired) {
             publishNativeCommandError(
                 requestId,
                 action,
