@@ -1,5 +1,8 @@
 # ReiAnix — roadmap executável de migração integral para Kotlin nativo
 
+> **Estado:** este roadmap registra a sequência histórica da migração. A árvore ativa agora usa o build Kotlin/Gradle nativo; os itens de Python/Flet/Flutter abaixo não devem ser interpretados como dependências atuais. Veja [a auditoria nativa atual](KOTLIN_MIGRATION_AUDIT.md).
+
+
 ## 1. Objetivo e referência
 
 Este plano parte do snapshot auditado em 2026-10-14, SHA 40e8c86be49282774ec45060aea9374155a14ca9, e dos achados de docs/KOTLIN_MIGRATION_AUDIT.md. O objetivo final é um único aplicativo Android Kotlin/Jetpack Compose, cujo build e execução não dependam de Python, Flet, Flutter, serious_python ou main.py.
