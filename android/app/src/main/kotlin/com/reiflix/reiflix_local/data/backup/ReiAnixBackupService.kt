@@ -10,6 +10,7 @@ import com.reiflix.reiflix_local.data.contract.stringOrNull
 
 import android.content.ContentValues
 import android.content.Context
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import android.database.sqlite.SQLiteDatabase
 import com.reiflix.reiflix_local.BuildConfig
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
@@ -42,7 +43,7 @@ import java.util.zip.ZipOutputStream
 class ReiAnixBackupService(context: Context) {
     private val appContext = context.applicationContext
     private val dataDirectory = File(appContext.filesDir, "data")
-    private val databaseFile = File(dataDirectory, DATABASE_NAME)
+    private val databaseFile = ReiAnixSqliteDatabase.canonicalFile(appContext)
     private val backupDirectory = File(dataDirectory, "backups")
     private val coversDirectory = File(dataDirectory, "covers")
     private val manualArtworkDirectory = File(coversDirectory, "artwork/manual")
@@ -1421,7 +1422,7 @@ class ReiAnixBackupService(context: Context) {
 
     companion object {
         private val MAINTENANCE_LOCK = Any()
-        const val DATABASE_NAME = "library.sqlite3"
+        const val DATABASE_NAME = ReiAnixSqliteDatabase.DATABASE_FILE_NAME
         const val SCHEMA_VERSION = 29
         const val SETTINGS_SCHEMA_VERSION = 2
         const val FORMAT = "rei-flix-backup-v1"
