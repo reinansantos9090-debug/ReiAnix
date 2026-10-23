@@ -56,7 +56,7 @@ jobs:
           strings_file="android/app/src/main/res/values/strings.xml"
           cp "$strings_file" build-strings-source.xml
           client_id="${REIFLIX_GOOGLE_WEB_CLIENT_ID:-}"
-          if [[ -n "$client_id" && ! "$client_id" =~ ^[0-9]+-[a-z0-9-]+\\.apps\\.googleusercontent\\.com$ ]]; then
+          if [[ -n "$client_id" && ! "$client_id" =~ ^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$ ]]; then
             echo "REIFLIX_GOOGLE_WEB_CLIENT_ID must be a valid public Google Web client ID."
             exit 1
           fi
@@ -192,13 +192,13 @@ jobs:
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
 
           archive_list="$(unzip -Z1 "$apk")"
-          if grep -Eiq '(^|/)(__pycache__/|[^/]+\\.py[co]$|assets/app\\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"; then
+          if grep -Eiq '(^|/)(__pycache__/|[^/]+\.py[co]$|assets/app\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"; then
             echo "The APK contains a forbidden Python/Flet/Flutter payload:"
-            grep -Ei '(^|/)(__pycache__/|[^/]+\\.py[co]$|assets/app\\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"
+            grep -Ei '(^|/)(__pycache__/|[^/]+\.py[co]$|assets/app\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"
             exit 1
           fi
 
-          dex_files="$(grep -E '^classes([0-9]+)?\\.dex$' <<< "$archive_list" || true)"
+          dex_files="$(grep -E '^classes([0-9]+)?\.dex$' <<< "$archive_list" || true)"
           test -n "$dex_files"
           for class_name in \
             "com/reiflix/reiflix_local/MainActivity" \
@@ -251,7 +251,7 @@ jobs:
           status="$(git status --porcelain)"
           if [[ -n "$status" ]]; then
             echo "Unexpected working-tree changes:"
-            printf '%s\\n' "$status"
+            printf '%s\n' "$status"
             git diff --stat
             exit 1
           fi
@@ -284,7 +284,7 @@ jobs:
           unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'LEIA-ANTES-DE-INSTALAR.txt'
           apk_bytes="$(stat -c '%s' build/ReiAnix.apk)"
           zip_bytes="$(stat -c '%s' build/ReiAnix-apk.zip)"
-          printf 'APK_SIZE_BYTES=%s\\nZIP_SIZE_BYTES=%s\\n' "$apk_bytes" "$zip_bytes"
+          printf 'APK_SIZE_BYTES=%s\nZIP_SIZE_BYTES=%s\n' "$apk_bytes" "$zip_bytes"
           test "$zip_bytes" -le "$((apk_bytes + 1048576))"
 
       - name: Publish APK and ZIP to rolling GitHub Release
