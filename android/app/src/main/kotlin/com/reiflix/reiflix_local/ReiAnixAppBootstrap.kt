@@ -270,14 +270,14 @@ class ReiAnixAppBootstrap internal constructor(
     private fun sanitizeSqliteDiagnosticDetail(value: String): String =
         value
             .replace(
-                Regex("""(?<![A-Za-z0-9:])/(?:[^/\\s,;:()]+/)+[^/\\s,;:()]*"""),
+                Regex("""(?<![A-Za-z0-9:])/(?:[^/\s,;:()]+/)+[^/\s,;:()]*"""),
                 "<caminho-redigido>",
             )
             .replace(
-                Regex("""(?i)\\b[A-Z]:\\\\(?:[^\\\\\\s]+\\\\)*[^\\\\\\s]*"""),
+                Regex("""(?i)\b[A-Z]:\\(?:[^\\\s]+\\)*[^\\\s]*"""),
                 "<caminho-redigido>",
             )
-            .replace(Regex("""\\s+"""), " ")
+            .replace(Regex("""\s+"""), " ")
             .trim()
             .take(640)
 
@@ -317,7 +317,7 @@ class ReiAnixAppBootstrap internal constructor(
             contains("recuperação SQLite interrompida", ignoreCase = true) ||
             contains("promoção SQLite interrompida", ignoreCase = true) ||
             contains("recibos SAF interrompidos", ignoreCase = true) ||
-            Regex("""^\\[(?:SCHEMA_[A-Z0-9_]+|SQLITE_[A-Z0-9_]+|FILE_ACCESS_DENIED|FRESH_DATABASE_VALIDATION_FAILED)]""")
+            Regex("""^\[(?:SCHEMA_[A-Z0-9_]+|SQLITE_[A-Z0-9_]+|FILE_ACCESS_DENIED|FRESH_DATABASE_VALIDATION_FAILED)]""")
                 .containsMatchIn(this)
 
     /**
