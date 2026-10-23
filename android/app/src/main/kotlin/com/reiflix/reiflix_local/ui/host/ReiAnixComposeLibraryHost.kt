@@ -245,7 +245,12 @@ class ReiAnixComposeLibraryHost(
                                 lastScanStatus = libraryState.lastScanStatus,
                             )
                         },
-                        recovery = { ReiAnixRecoveryRoute(viewModel = settingsViewModel) },
+                        recovery = {
+                            ReiAnixRecoveryRoute(
+                                viewModel = settingsViewModel,
+                                failureReason = bootstrapState.error,
+                            )
+                        },
                         storage = {
                             ReiAnixStorageRoute(
                                 viewModel = libraryViewModel,

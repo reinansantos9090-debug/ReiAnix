@@ -37,6 +37,7 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 @Composable
 fun ReiAnixRecoveryRoute(
     viewModel: ReiAnixSettingsViewModel,
+    failureReason: String? = null,
 ) {
     val settingsState by viewModel.uiState.collectAsStateWithLifecycle()
     var confirmationVisible by rememberSaveable { mutableStateOf(false) }
@@ -74,6 +75,14 @@ fun ReiAnixRecoveryRoute(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            failureReason?.trim()?.takeIf { it.isNotBlank() }?.let { reason ->
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Motivo técnico: " + reason.take(640),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             Spacer(Modifier.height(12.dp))
             Text(
                 text = "Selecione um backup ReiAnix ZIP no formato suportado. O arquivo será inspecionado e seus dados " +

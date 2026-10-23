@@ -357,10 +357,10 @@ class ReiAnixSqliteDatabase(context: Context) {
         for (table in expectedTables.intersect(tables)) {
             val expectedColumns = columnContract.getJSONArray(table).toColumnMap()
             val actualColumns = columnSnapshots[table].orEmpty()
-            val unexpected = actualColumns.keys - expectedColumns.keys
-            if (unexpected.isNotEmpty()) {
-                incompatibilities += "unexpected columns in $table: ${unexpected.sorted().joinToString()}"
-            }
+            // Legacy databases may retain columns removed from a later schema
+            // contract. They are deliberately preserved and do not invalidate
+            // reads/writes against the canonical columns known to this build.
+            // Missing or changed canonical columns are still rejected below.
             for ((columnName, expected) in expectedColumns) {
                 val actual = actualColumns[columnName] ?: continue
                 if (actual.declaredType != expected.declaredType) {
@@ -385,21 +385,31 @@ class ReiAnixSqliteDatabase(context: Context) {
             val expectedStrict = expectedTableOptions.getBoolean("strict")
             val expectedWithoutRowId = expectedTableOptions.getBoolean("without_rowid")
             val expectedChecks = expectedTableOptions.getJSONArray("checks").toStringList()
-            if (actualOptions.strict != expectedStrict) {
-                incompatibilities += "$table STRICT expected $expectedStrict but was ${actualOptions.strict}"
-            }
-            if (actualOptions.withoutRowId != expectedWithoutRowId) {
-                incompatibilities += "$table WITHOUT ROWID expected $expectedWithoutRowId but was ${actualOptions.withoutRowId}"
-            }
-            if (actualOptions.checks != expectedChecks) {
-                incompatibilities += "$table CHECK constraints expected $expectedChecks but were ${actualOptions.checks}"
+            // STRICT/WITHOUT ROWID can differ in a database created by an older
+            // release. Do not rebuild user tables to alter these storage options.
+            // Required CHECK constraints must exist; older databases may preserve
+            // additional constraints that are harmless for canonical reads.
+            val missingChecks = expectedChecks.filterNot { it in actualOptions.checks }
+            if (missingChecks.isNotEmpty()) {
+                incompatibilities += "$table is missing canonical CHECK constraints: ${missingChecks.joinToString()}"
             }
 
             val expectedForeignKeys = contract.getJSONObject("foreign_keys").getJSONArray(table)
                 .toForeignKeyList()
             val actualForeignKeys = foreignKeys[table].orEmpty()
-            if (expectedForeignKeys != actualForeignKeys) {
-                incompatibilities += "$table foreign keys differ; expected=$expectedForeignKeys actual=$actualForeignKeys"
+            val missingForeignKeys = expectedForeignKeys.filterNot { expected ->
+                actualForeignKeys.any { actual ->
+                    actual.sequence == expected.sequence &&
+                        actual.table == expected.table &&
+                        actual.from == expected.from &&
+                        actual.to == expected.to &&
+                        actual.onUpdate == expected.onUpdate &&
+                        actual.onDelete == expected.onDelete &&
+                        actual.match == expected.match
+                }
+            }
+            if (missingForeignKeys.isNotEmpty()) {
+                incompatibilities += "$table is missing canonical foreign keys: ${missingForeignKeys.joinToString()}"
             }
         }
 
@@ -415,15 +425,9 @@ class ReiAnixSqliteDatabase(context: Context) {
             incompatibilities.addAll(issues)
         }
 
-        val expectedExplicitIndexNames = expectedExplicitIndexes.map { it.name }.toSet()
-        val actualExplicitIndexNames = indexSnapshots.values
-            .filter { it.origin == "c" && it.table in expectedTables }
-            .map { it.name }
-            .toSet()
-        val unexpectedExplicitIndexes = actualExplicitIndexNames - expectedExplicitIndexNames
-        if (unexpectedExplicitIndexes.isNotEmpty()) {
-            incompatibilities += "unexpected indexes on canonical tables: ${unexpectedExplicitIndexes.sorted().joinToString()}"
-        }
+        // Additional legacy indexes are preserved. They can improve reads or
+        // encode constraints established by earlier releases; their presence
+        // alone is not a reason to block the entire library.
 
         // SQLite-generated UNIQUE/PRIMARY KEY indexes are compared by semantic
         // signature, not sqlite_autoindex_* names (whose suffix is implementation detail).
@@ -441,22 +445,14 @@ class ReiAnixSqliteDatabase(context: Context) {
                 incompatibilities += "missing $constraintKind on ${expected.table}[$columns]"
             }
         }
-        for ((signature, actualCount) in actualConstraintCounts) {
-            val expectedCount = expectedConstraintCounts[signature] ?: 0
-            if (actualCount > expectedCount) {
-                val actual = actualConstraintIndexes.first { it.semanticSignature() == signature }
-                val columns = actual.columns.joinToString(",") { it.name.orEmpty() }
-                val constraintKind = if (actual.origin == "u" || actual.unique) "unique constraint" else "primary-key constraint"
-                incompatibilities += "unexpected $constraintKind on ${actual.table}[$columns]"
-            }
-        }
-        if (expectedConstraintCounts != actualConstraintCounts) {
-            incompatibilities += "SQLite UNIQUE/PRIMARY KEY index constraints differ; expected=$expectedConstraintCounts actual=$actualConstraintCounts"
-        }
+        // Additional UNIQUE/PRIMARY KEY constraints from a legacy schema are
+        // not removed or treated as corruption. Missing canonical constraints
+        // are still rejected in the comparison above.
 
         val expectedTriggers = contract.getJSONArray("triggers").toTriggerMap()
-        if (expectedTriggers.keys != actualTriggers.keys) {
-            incompatibilities += "trigger names differ; expected=${expectedTriggers.keys} actual=${actualTriggers.keys}"
+        val missingTriggers = expectedTriggers.keys - actualTriggers.keys
+        if (missingTriggers.isNotEmpty()) {
+            incompatibilities += "missing canonical triggers: ${missingTriggers.sorted().joinToString()}"
         }
         for ((name, expected) in expectedTriggers) {
             val actual = actualTriggers[name] ?: continue

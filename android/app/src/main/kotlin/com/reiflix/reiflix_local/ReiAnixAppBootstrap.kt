@@ -140,11 +140,11 @@ class ReiAnixAppBootstrap internal constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Log.e(TAG, "Canonical SQLite validation failed; normal services remain gated. errorType=" + error::class.java.simpleName)
+                Log.e(TAG, "Canonical SQLite validation failed; normal services remain gated.", error)
                 CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
-                    warning = DATABASE_RECOVERY_WARNING,
+                    warning = databaseFailureWarning(error),
                 )
             }
             publishDatabaseCheck(check)
@@ -186,11 +186,11 @@ class ReiAnixAppBootstrap internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            Log.e(TAG, "Initial canonical SQLite validation failed; normal services remain gated. errorType=" + error::class.java.simpleName)
+            Log.e(TAG, "Initial canonical SQLite validation failed; normal services remain gated.", error)
             CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
-                warning = DATABASE_RECOVERY_WARNING,
+                warning = databaseFailureWarning(error),
             )
         }
         publishDatabaseCheck(check)
@@ -242,6 +242,16 @@ class ReiAnixAppBootstrap internal constructor(
                 },
             )
         }
+    }
+
+    private fun databaseFailureWarning(error: Throwable): String {
+        val detail = error.message
+            ?.replace(Regex("\\s+"), " ")
+            ?.trim()
+            ?.take(640)
+            ?.takeIf { it.isNotBlank() }
+        return if (detail == null) DATABASE_RECOVERY_WARNING
+        else "Falha na validação do banco SQLite: $detail"
     }
 
     private fun String.isCanonicalDatabaseWarning(): Boolean =
@@ -457,20 +467,26 @@ class ReiAnixAppBootstrap internal constructor(
             )
         }
 
-        val migrationCompatible = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
-            .supportsCurrentContract
-        val schemaCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCurrentContract
-        val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
-        return if (schemaCompatible && integrityHealthy) {
+        val migrationSnapshot = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
+        val schemaSnapshot = dependencies.sqliteDatabase.inspectSchema()
+        val integrity = ReiAnixBackupService(appContext).integrityReport()
+        return if (migrationSnapshot.supportsCurrentContract &&
+            schemaSnapshot.supportsCurrentContract && integrity.healthy
+        ) {
             CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
                 recoveryRequired = false,
             )
         } else {
+            val details = buildList {
+                if (!migrationSnapshot.supportsCurrentContract) addAll(migrationSnapshot.incompatibilities)
+                if (!schemaSnapshot.supportsCurrentContract) addAll(schemaSnapshot.incompatibilities)
+                if (!integrity.healthy) add(integrity.error ?: "SQLite integrity validation failed.")
+            }.distinct().joinToString("; ").take(640)
             CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
-                warning = DATABASE_RECOVERY_WARNING,
+                warning = details.ifBlank { DATABASE_RECOVERY_WARNING },
             )
         }
     }
