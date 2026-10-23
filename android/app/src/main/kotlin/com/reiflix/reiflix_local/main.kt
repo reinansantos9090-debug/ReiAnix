@@ -8162,6 +8162,13 @@ internal class NativeMainRuntimePort(
                     }
                     .toInt()
                 val pageSize = legacyInteger("pageSize", 36L).coerceIn(12L, 48L).toInt()
+                // Compose's user-facing page sizes are discrete; use the next native
+                // page bucket while retaining the exact legacy request size in the result.
+                val nativePageSize = when {
+                    pageSize <= 24 -> 24
+                    pageSize <= 36 -> 36
+                    else -> 48
+                }
                 val requestedGeneration = legacyInteger("generation", 0L)
                 val query = firstTruthyJsonText(payload, "query")
                 val rawGenre = firstTruthyJsonText(payload, "genre").ifEmpty { "Todos" }
@@ -8170,7 +8177,7 @@ internal class NativeMainRuntimePort(
                 val favoritesOnly = pythonTruthyJsonValue(payload.opt("favoritesOnly"))
                 val watchingOnly = pythonTruthyJsonValue(payload.opt("watchingOnly"))
                 val completedOnly = pythonTruthyJsonValue(payload.opt("completedOnly"))
-                libraryViewModel.applyLibraryPageSize(pageSize)
+                libraryViewModel.applyLibraryPageSize(nativePageSize)
                 libraryViewModel.setLibrarySearchQuery(query)
                 libraryViewModel.setLibraryGenreFilter(genre)
                 libraryViewModel.setLibrarySort(sort)
@@ -8194,7 +8201,7 @@ internal class NativeMainRuntimePort(
                         state.favoritesOnly == expectedFilters.favoritesOnly &&
                         state.watchingOnly == expectedFilters.watchingOnly &&
                         state.completedOnly == expectedFilters.completedOnly &&
-                        state.pageSize == pageSize &&
+                        state.pageSize == nativePageSize &&
                         !state.isLoading &&
                         state.status.name != "LOADING"
 
@@ -8205,7 +8212,9 @@ internal class NativeMainRuntimePort(
                     error(pageState.error ?: "A consulta da biblioteca nativa falhou.")
                 }
 
-                while (pageState.loadedPage < requestedPage && pageState.hasMore) {
+                val offset = requestedPage * pageSize
+                val requiredRows = offset + pageSize
+                while (pageState.animes.size < requiredRows && pageState.hasMore) {
                     val previousGeneration = pageState.generation
                     val nextPage = pageState.loadedPage + 1
                     libraryViewModel.loadNextLibraryPage()
@@ -8226,7 +8235,6 @@ internal class NativeMainRuntimePort(
                     }
                 }
 
-                val offset = requestedPage * pageSize
                 val items = pageState.animes.drop(offset).take(pageSize)
                 // lookup_title is a canonical SQLite identity used by legacy consumers;
                 // the Compose card model intentionally doesn't retain this persistence field.
