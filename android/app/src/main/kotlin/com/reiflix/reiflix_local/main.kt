@@ -8026,6 +8026,7 @@ internal class NativeMainRuntimePort(
 
     private fun projectNativeLibraryPageAnime(
         anime: com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel,
+        lookupTitle: String?,
     ): org.json.JSONObject {
         val artwork = anime.artwork
         val meta = org.json.JSONObject()
@@ -8085,7 +8086,7 @@ internal class NativeMainRuntimePort(
         return org.json.JSONObject()
             .put("id", anime.id)
             .put("main_title", anime.title)
-            .put("lookup_title", anime.romajiTitle ?: anime.englishTitle ?: anime.title)
+            .put("lookup_title", lookupTitle ?: org.json.JSONObject.NULL)
             .put("favorite", anime.favorite)
             .put("is_pinned", anime.pinned)
             .put("last_played_at", anime.lastPlayedAt ?: org.json.JSONObject.NULL)
@@ -8225,8 +8226,29 @@ internal class NativeMainRuntimePort(
 
                 val offset = requestedPage * pageSize
                 val items = pageState.animes.drop(offset).take(pageSize)
+                // lookup_title is a canonical SQLite identity used by legacy consumers;
+                // the Compose card model intentionally doesn't retain this persistence field.
+                val lookupTitles = withContext(Dispatchers.IO) {
+                    dependencies.sqliteDatabase.read { database ->
+                        val result = linkedMapOf<Long, String?>()
+                        if (items.isNotEmpty()) {
+                            val placeholders = items.joinToString(",") { "?" }
+                            database.rawQuery(
+                                "SELECT id, lookup_title FROM anime WHERE id IN ($placeholders)",
+                                items.map { it.id.toString() }.toTypedArray(),
+                            ).use { cursor ->
+                                while (cursor.moveToNext()) {
+                                    result[cursor.getLong(0)] = cursor.getString(1)
+                                }
+                            }
+                        }
+                        result
+                    }
+                }
                 val itemPayload = org.json.JSONArray().apply {
-                    items.forEach { put(projectNativeLibraryPageAnime(it)) }
+                    items.forEach { anime ->
+                        put(projectNativeLibraryPageAnime(anime, lookupTitles[anime.id]))
+                    }
                 }
                 val pagePayload = org.json.JSONObject()
                     .put("kind", "library_page")
