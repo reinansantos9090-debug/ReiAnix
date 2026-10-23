@@ -85,8 +85,8 @@ jobs:
           jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$test_fixture" >/dev/null
           db="$assets/library_fixture.sqlite3"
           rm -f "$db"
-          jq -r '.table_sql[]' "$contract" | sqlite3 "$db"
-          jq -r '.indexes[]? | select(.sql != null) | .sql' "$contract" | sqlite3 "$db"
+          jq -r '.table_sql[] + ";"' "$contract" | sqlite3 "$db"
+          jq -r '.indexes[]? | select(.sql != null) | .sql + ";"' "$contract" | sqlite3 "$db"
           sqlite3 "$db" <<'SQL'
           PRAGMA foreign_keys=OFF;
           INSERT INTO anime (id, title, anilist_id)
