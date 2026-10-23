@@ -1,162 +1,49 @@
 # ReiAnix Local
 
-ReiAnix é uma biblioteca para vídeos de anime que o usuário já possui no
-Android. Os arquivos não são enviados para servidor algum; AniList é usado
-somente para metadados/capas.
+ReiAnix é uma biblioteca Android nativa para organizar e reproduzir vídeos de anime armazenados localmente. A aplicação usa Kotlin, Jetpack Compose, SQLite e Media3. Os arquivos de vídeo permanecem no dispositivo; o AniList é utilizado para metadados e capas.
 
-## Android 16
+## Ambiente de desenvolvimento
 
-O projeto configura `target_sdk_version = 36` e prepara o build para o Android 16 (API 36). O teste final de permissões e descoberta deve ser feito em um dispositivo Android 16 real, porque a suíte Python não consegue provar o comportamento das Configurações do sistema, MediaStore ou provedores SAF.
+- JDK 17
+- Android SDK Platform 36 e Build Tools 36.0.0
+- Gradle 8.11.1 instalado no ambiente
 
-## Validação do repositório
+O projeto Android independente fica em `android/`. O repositório não inclui Gradle Wrapper; os comandos abaixo usam a instalação local de Gradle.
 
-```bash
-python -m pip install -r requirements.txt
-python -m unittest discover -s tests -v
-```
+## Compilar
 
-O banco SQLite e o cache de capas ficam no diretório privado definido por
-`FLET_APP_STORAGE_DATA` (ou `.reiflix-data/` no desenvolvimento).
-
-## Android e APK
-
-O aplicativo Android instalado usa o launcher nativo
-`MainActivity : ComponentActivity()`, a composição process-scoped
-`ReiAnixApplication : Application()`, Jetpack Compose e Gradle diretamente.
-O APK oficial não depende de Python/Flet/Flutter em runtime; CI verifica o
-Manifest, o DEX, a ausência de payloads Python/Flutter e a presença das classes
-nativas e do contrato SQLite.
-
-O contrato de compilação é Java 17, Gradle 8.11.1, Android SDK 36, AGP 8.9.1,
-Kotlin 2.2.10 e Media3 1.11.1. O repositório não inclui APK nem wrapper Gradle.
-Para compilar localmente, instale esses componentes e gere primeiro o contrato
-SQLite a partir do schema canônico ainda mantido em Python:
+Para gerar o APK release:
 
 ```bash
-python -m pip install -r requirements.txt
-python scripts/generate_native_sqlite_test_fixture.py \
-  --output android/app/src/test/resources/native-sqlite-schema-v29.json \
-  --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
 gradle -p android --no-daemon :app:assembleRelease
-python scripts/verify_android_host.py android/app/build/outputs/apk/release/app-release.apk
-python scripts/verify_native_apk.py android/app/build/outputs/apk/release/app-release.apk
 ```
 
-O pipeline oficial gera o asset temporário e remove-o depois do build, para não
-versionar artefatos gerados. Essa geração é uma dependência de ferramenta do
-build; o APK produzido não contém nem executa Python.
+Para compilar o Kotlin de release e executar os testes unitários locais:
 
-O entrypoint Flet da raiz foi removido. O launcher Android usa `MainActivity`, com a coordenação nativa em `main.kt`, serviços Kotlin e telas Compose. Os módulos Python restantes ainda atendem a ferramentas e regressões históricas do repositório; a remoção do entrypoint não significa que todos esses módulos já tenham sido migrados nem substitui a validação em dispositivo.
+```bash
+gradle -p android --no-daemon :app:compileReleaseKotlin :app:testDebugUnitTest
+```
 
-O Android mantém SAF, MediaStore e acesso amplo opcional para autorizar pastas
-locais. O app não converte URIs `content://` em caminhos artificiais. Não há
-secrets de Google no repositório; o Web Client ID público é injetado como
-recurso de compilação quando configurado.
+O workflow oficial **Build ReiAnix Android APK** compila o APK diretamente por Gradle, valida o Manifest, as classes nativas no DEX, o contrato SQLite v29 e a ausência de payloads de runtimes não nativos. O asset comprimido `android/app/src/main/assets/native-sqlite-contract-v29.json.gz` é a origem versionada do contrato SQLite utilizado pelo aplicativo.
 
-## Licença e autoria
+## Aplicativo Android
 
-O **ReiAnix** é distribuído sob a **Apache License 2.0 (Apache-2.0)**.
+O launcher é `MainActivity : ComponentActivity()`; `ReiAnixApplication : Application()` mantém os serviços e o bootstrap nativos. As telas são Compose, a persistência usa o SQLite canônico e a reprodução local usa Media3.
+
+O app descobre vídeos por MediaStore, pela pasta escolhida via Storage Access Framework (SAF) ou pelo acesso amplo ao armazenamento compartilhado quando autorizado pelo usuário. O acesso a uma pasta pode ser concedido ou revogado nas Configurações do Android; o app não solicita acesso a contatos, SMS, localização, câmera, microfone, Gmail ou Drive.
+
+O player inclui retomada de progresso, velocidade de 0,5x a 2x, ajuste de imagem, autoplay do próximo episódio e timer de sono. A compatibilidade com arquivos, codecs e permissões reais deve ser validada no dispositivo Android de destino.
+
+## Login Google opcional
+
+O login Android usa Credential Manager. O workflow de release aceita o Web Client ID público pela variável de repositório `REIFLIX_GOOGLE_WEB_CLIENT_ID` (ou secret com o mesmo nome). Não armazene client secrets ou tokens no repositório ou no APK. Sem o identificador, o aplicativo permanece compilável e informa que o login precisa ser configurado.
+
+## Privacidade e dados
+
+O catálogo, as preferências, o progresso e o cache local são mantidos no armazenamento privado do aplicativo. Os vídeos locais não são enviados para servidores; as solicitações de metadados/capas usam os serviços correspondentes.
+
+## Licença
+
+O ReiAnix é distribuído sob a Apache License 2.0. Consulte [LICENSE](LICENSE) para os termos completos.
 
 Copyright © 2026 Reinan Santos.
-
-A licença completa está disponível no arquivo [LICENSE](LICENSE). O código próprio do ReiAnix pode ser usado, estudado, modificado e redistribuído sob os termos da Apache-2.0, observando as condições de preservação de avisos de copyright, licença e demais atribuições aplicáveis.
-
-O nome **ReiAnix** e quaisquer marcas, logos, artes ou conteúdos de terceiros não são automaticamente licenciados pela Apache-2.0 apenas por estarem no repositório. As respectivas permissões e licenças aplicáveis devem ser respeitadas. Dependências e componentes de terceiros continuam sujeitos às suas próprias licenças.
-
-## Google Cloud
-
-Copie `.env.example` para o ambiente e forneça somente IDs públicos:
-
-```bash
-REIFLIX_GOOGLE_WEB_CLIENT_ID='...apps.googleusercontent.com'
-REIFLIX_GOOGLE_CLIENT_ID='...apps.googleusercontent.com' # fallback OAuth desktop
-REIFLIX_GOOGLE_REDIRECT_URL='https://redirect-autorizado.example/callback'
-```
-
-No Google Cloud Console configure a tela de consentimento, o **Web client ID**
-passado a `REIFLIX_GOOGLE_WEB_CLIENT_ID`, e um Android client para o package
-`com.reiflix.reiflix_local` com SHA-1/SHA-256 do certificado de assinatura. Não
-inclua client secret no APK.
-
-### Login Google no Android
-
-O botão usa o Credential Manager somente quando
-`REIFLIX_GOOGLE_WEB_CLIENT_ID` (ou `GOOGLE_WEB_CLIENT_ID` em
-`app_config.py`) contém um Web client ID OAuth 2.0 público. Sem esse
-identificador, o APK mostra que a configuração é necessária e não simula um
-login ou salva uma conta falsa.
-
-No mesmo projeto do Google Cloud Console:
-
-1. Crie um cliente OAuth 2.0 do tipo **Web application** e configure somente
-   o seu client ID público como `REIFLIX_GOOGLE_WEB_CLIENT_ID`.
-2. Crie um cliente OAuth 2.0 do tipo **Android** para o package
-   `com.reiflix.reiflix_local`; registre o SHA-1 e o SHA-256 do certificado que
-   assina o APK distribuído (release/Play Console conforme aplicável).
-3. Não coloque client secret, token, senha ou arquivo de credenciais no
-   repositório, nas variáveis empacotadas ou no APK.
-
-O aplicativo armazena somente ID, nome, e-mail e foto retornados pela conta.
-Ele não pede Gmail, Drive, contatos ou permissões de arquivos.
-
-## AniList, scanner e organização
-
-O scanner Python atende caminhos reais em desktop. No Android, a camada SAF
-entrega documentos autorizados e `LibraryService.ingest_documents()` os agrupa
-por anime/temporada/episódio, persistindo a URI em vez de caminho POSIX.
-AniList GraphQL pesquisa o título e mantém título, gêneros, sinopse e cache
-local de capas. Sem internet, a biblioteca/URI e capas cacheadas permanecem
-utilizáveis. A Home filtra os títulos por gêneros devolvidos pelo AniList.
-
-Além dos favoritos, cada anime pode receber etiquetas pessoais na tela de
-Detalhes (por exemplo, `Prioridade` ou `Assistir com amigos`). Essas etiquetas
-são privadas, ficam no SQLite local, aparecem em buscas locais e não são
-enviadas ao AniList ou ao Google.
-
-## Biblioteca pessoal e player local
-
-A biblioteca também mantém, exclusivamente no SQLite local, **pins** e notas
-pessoais (até 2000 caracteres). A tela de detalhes permite editar ambos; as
-projeções locais podem filtrar por favorito, pin, progresso, nota, metadata,
-capa e etiqueta. Configurações mostra estatísticas agregadas e o relatório
-real do último scan, sem abrir arquivos nem chamar serviços de metadata.
-
-O player Android usa Media3 1.11.1 para conteúdo autorizado localmente. Ele
-preserva retomada/progresso via `NativeMailbox` e inclui velocidade entre
-0,5x–2x, fit/fill/zoom, reinício, marcar visto/não visto, autoplay do próximo
-episódio e timer de sono de sessão. PiP, codecs e reprodução devem ser
-validados em APK/dispositivo; não há streaming, download ou legenda online.
-
-## Permissões
-
-O Android usa três mecanismos complementares para a biblioteca local:
-
-- READ_MEDIA_VIDEO (e o estado de acesso visual selecionado no Android 14+)
-  para consultar vídeos pelo MediaStore;
-- MANAGE_EXTERNAL_STORAGE, concedido pelo usuário nas Configurações do
-  Android, para a varredura ampla de armazenamento local;
-- SAF (ACTION_OPEN_DOCUMENT_TREE) para uma pasta específica escolhida pelo
-  usuário.
-
-A tela de Configurações do ReiAnix explica e solicita esses acessos em contexto.
-O app não solicita permissões de notificações, contatos, SMS, telefone,
-localização, câmera, microfone, Gmail ou Drive.
-
-Na primeira abertura Android, o app consulta o estado real das permissões antes
-de oferecer o onboarding. O MediaStore é uma camada complementar de descoberta
-e pode informar acesso parcial no Android 14+. O acesso amplo só é considerado
-concedido quando `Environment.isExternalStorageManager()` confirma o retorno
-das Configurações; ele alcança o armazenamento compartilhado que o Android
-permite ao aplicativo, não áreas protegidas do sistema. SAF continua sendo a
-opção para uma árvore escolhida explicitamente pelo usuário. Cancelar qualquer
-etapa mantém o app aberto e permite tentar de novo em Configurações.
-
-## Build
-
-```bash
-flet build apk --yes
-```
-
-O build requer Java 17, Flutter e dependências Android acessíveis. Depois de
-configurar a mesclagem do overlay, valide em aparelho a seleção SAF, a conta
-Google e arquivos/codec reais, especialmente MKV.
