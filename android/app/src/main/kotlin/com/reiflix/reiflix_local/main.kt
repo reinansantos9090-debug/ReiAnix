@@ -8040,6 +8040,8 @@ internal class NativeMainRuntimePort(
         lookupTitle: String?,
         descriptionOriginal: String?,
         fallbackCoverCache: String?,
+        fallbackCoverUrl: String?,
+        fallbackBannerUrl: String?,
     ): org.json.JSONObject {
         val artwork = anime.artwork
         val localPosterPath = validLocalArtworkPath(artwork?.localPath)
@@ -8066,8 +8068,8 @@ internal class NativeMainRuntimePort(
             .put("studio", anime.studio ?: org.json.JSONObject.NULL)
             .put("season", anime.seasonLabel ?: org.json.JSONObject.NULL)
             .put("cover_cache", fallbackCoverCache ?: org.json.JSONObject.NULL)
-            .put("cover_url", artwork?.externalUrl ?: org.json.JSONObject.NULL)
-            .put("banner_url", artwork?.backdropExternalUrl ?: org.json.JSONObject.NULL)
+            .put("cover_url", fallbackCoverUrl ?: org.json.JSONObject.NULL)
+            .put("banner_url", fallbackBannerUrl ?: org.json.JSONObject.NULL)
         val seasons = org.json.JSONArray().apply {
             anime.seasons.forEach { season ->
                 put(
@@ -8253,20 +8255,29 @@ internal class NativeMainRuntimePort(
                 val items = pageState.animes.drop(offset).take(pageSize)
                 // lookup_title is a canonical SQLite identity used by legacy consumers;
                 // the Compose card model intentionally doesn't retain this persistence field.
+                data class LegacyAnimeMetadata(
+                    val lookupTitle: String?,
+                    val descriptionOriginal: String?,
+                    val coverCache: String?,
+                    val coverUrl: String?,
+                    val bannerUrl: String?,
+                )
                 val legacyMetadata = withContext(Dispatchers.IO) {
                     dependencies.sqliteDatabase.read { database ->
-                        val result = linkedMapOf<Long, Triple<String?, String?, String?>>()
+                        val result = linkedMapOf<Long, LegacyAnimeMetadata>()
                         if (items.isNotEmpty()) {
                             val placeholders = items.joinToString(",") { "?" }
                             database.rawQuery(
-                                "SELECT id, lookup_title, description_original, cover_cache FROM anime WHERE id IN ($placeholders)",
+                                "SELECT id, lookup_title, description_original, cover_cache, cover_url, banner_url FROM anime WHERE id IN ($placeholders)",
                                 items.map { it.id.toString() }.toTypedArray(),
                             ).use { cursor ->
                                 while (cursor.moveToNext()) {
-                                    result[cursor.getLong(0)] = Triple(
-                                        cursor.getString(1),
-                                        cursor.getString(2),
-                                        cursor.getString(3),
+                                    result[cursor.getLong(0)] = LegacyAnimeMetadata(
+                                        lookupTitle = cursor.getString(1),
+                                        descriptionOriginal = cursor.getString(2),
+                                        coverCache = cursor.getString(3),
+                                        coverUrl = cursor.getString(4),
+                                        bannerUrl = cursor.getString(5),
                                     )
                                 }
                             }
@@ -8277,7 +8288,16 @@ internal class NativeMainRuntimePort(
                 val itemPayload = org.json.JSONArray().apply {
                     items.forEach { anime ->
                         val metadata = legacyMetadata[anime.id]
-                        put(projectNativeLibraryPageAnime(anime, metadata?.first, metadata?.second, metadata?.third))
+                        put(
+                            projectNativeLibraryPageAnime(
+                                anime,
+                                metadata?.lookupTitle,
+                                metadata?.descriptionOriginal,
+                                metadata?.coverCache,
+                                metadata?.coverUrl,
+                                metadata?.bannerUrl,
+                            ),
+                        )
                     }
                 }
                 val pagePayload = org.json.JSONObject()
