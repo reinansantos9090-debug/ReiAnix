@@ -13,41 +13,56 @@ permissions:
   contents: read
 
 jobs:
-  source-certification:
-    name: Source and regression evidence (no emulator)
+  native-certification:
+    name: Native Kotlin source and JVM certification
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
     steps:
       - name: Checkout official repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Java
+        uses: actions/setup-java@v5
         with:
-          python-version: "3.12"
-          cache: pip
+          distribution: temurin
+          java-version: "17"
 
-      - name: Install application and certification dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt "flet[cli]==0.86.5" pytest
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+          accept-android-sdk-licenses: true
 
-      - name: Run release evidence certification and 201-row matrix
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Validate native entry point and repository integrity
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/release_certification.py --skip-gradle
+          test -s android/settings.gradle.kts
+          test -s android/build.gradle.kts
+          test -s android/app/build.gradle.kts
+          test -s android/app/src/main/AndroidManifest.xml
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt
+          test ! -e main.py
+          test -n "$(find android/app/src/main/kotlin -type f -name '*.kt' -print -quit)"
+          grep -Fq 'android:name=".MainActivity"' android/app/src/main/AndroidManifest.xml
+          git diff --check
 
-      - name: Upload certification report and requirement matrix
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReiAnix-release-certification-${{ github.run_number }}
-          path: |
-            build/release-certification.json
-            build/release-certification.md
-            build/release-certification-matrix.json
-          retention-days: 14
-          if-no-files-found: error
+      - name: Run Kotlin JVM tests and verify release Kotlin compilation
+        shell: bash
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
+        run: |
+          set -euo pipefail
+          gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
+            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
+            -PreianixBuildVersion="0.2.1" \
+            :app:testDebugUnitTest \
+            :app:compileReleaseKotlin
