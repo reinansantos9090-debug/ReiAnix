@@ -20,7 +20,7 @@ Não há Gradle Wrapper versionado; instale a versão indicada e execute:
 
 ```bash
 gradle -p android --no-daemon :app:assembleRelease
-gradle -p android --no-daemon :app:compileReleaseKotlin :app:testDebugUnitTest
+gradle -p android --no-daemon :app:compileReleaseKotlin
 ```
 
 O contrato SQLite v29 é mantido em `app/src/main/assets/native-sqlite-contract-v29.json.gz`. O workflow de build valida o contrato, compila o release, inspeciona as classes nativas no DEX e rejeita payloads de Python/Flet/Flutter no APK. O APK é construído diretamente pelo Gradle.
