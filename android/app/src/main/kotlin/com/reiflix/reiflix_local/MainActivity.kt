@@ -1315,7 +1315,15 @@ class MainActivity : ComponentActivity() {
             nativeBootstrapDecisionComplete = true
             composeLibraryHost = ReiAnixComposeLibraryHost(this@MainActivity, libraryViewModel, settingsViewModel)
             if (recoveryRequired) {
-                Log.w(tag, "NATIVE_DATABASE_RECOVERY_REQUIRED route_opened=true")
+                val recoveryReason = appDependencies.bootstrap.state.value.error
+                    ?.removePrefix("[")
+                    ?.substringBefore("]")
+                    ?.takeIf { it.matches(Regex("[A-Z0-9_]+")) }
+                    ?: "UNSPECIFIED"
+                Log.w(
+                    tag,
+                    "NATIVE_DATABASE_RECOVERY_REQUIRED route_opened=true reason=$recoveryReason",
+                )
                 composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
             } else {
                 composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
