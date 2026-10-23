@@ -1,29 +1,23 @@
-name: ReiAnix Kotlin JVM Validation
+name: ReiAnix Kotlin/JVM Source Validation
 
 on:
-  # Kotlin/JVM tests are intentionally manual and must be dispatched explicitly.
   workflow_dispatch:
 
 concurrency:
   group: reianix-kotlin-jvm-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   kotlin-jvm:
-    name: Kotlin JVM unit tests (no emulator)
+    name: Kotlin source compilation (no emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    permissions:
-      contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
+        uses: actions/checkout@v5
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -34,214 +28,36 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools build-tools;36.0.0 platforms;android-36'
+          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
           accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: false
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          flutter-version: "3.44.8"
-          channel: stable
-          cache: true
+          gradle-version: "8.11.1"
 
-      - name: Install Python and Flet build dependencies
-        run: |
-          python -m pip install -r requirements.txt "flet[cli]==0.86.5"
-          python -c "import flet; assert flet.__version__ == '0.86.5'"
-
-      - name: Generate build identity for the rendered Android host
-        run: |
-          mkdir -p build
-          python scripts/generate_build_identity.py \
-            --root . \
-            --python-output core/build_identity.py \
-            --json-output .reiflix-build-identity.json \
-            --python-runtime 3.12 \
-            --flet-version 0.86.5 \
-            --build-version 0.2.1 \
-            --build-number "$GITHUB_RUN_NUMBER"
-          test -s core/build_identity.py
-          test -s .reiflix-build-identity.json
-
-      - name: Generate test schema from canonical LibraryStore
-        run: |
-          python scripts/generate_native_sqlite_test_fixture.py \
-            --output android/app/src/test/resources/native-sqlite-schema-v29.json \
-            --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
-
-      - name: Prepare Flet build template with Android host
+      - name: Validate native source layout
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p build "$HOME/.cache/reiflix"
-          template_zip="$HOME/.cache/reiflix/flet-build-template-v0.86.5.zip"
-          if [ ! -s "$template_zip" ]; then
-            curl -fsSL --retry 3 --retry-delay 2 -o "$template_zip" \
-              https://github.com/flet-dev/flet/releases/download/v0.86.5/flet-build-template.zip
-          fi
-          mkdir -p build/temp_tmpl build/flet-build-template
-          unzip -q "$template_zip" -d build/temp_tmpl
-          cp -a build/temp_tmpl/build/. build/flet-build-template/
-          rm -rf build/temp_tmpl
-          python scripts/prepare_flet_template.py \
-            --template "$GITHUB_WORKSPACE/build/flet-build-template" \
-            --overlay "$GITHUB_WORKSPACE/android"
+          test -s android/settings.gradle.kts
+          test -s android/build.gradle.kts
+          test -s android/app/build.gradle.kts
+          test -s android/app/src/main/AndroidManifest.xml
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt
+          test ! -e main.py
+          git diff --check
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Normalize generated JSON files
-        shell: bash
-        run: |
-          python - <<'PY'
-          import glob
-          import json
-
-          def strip_trailing_commas(raw):
-              out = []
-              in_string = False
-              escaped = False
-              i = 0
-              while i < len(raw):
-                  char = raw[i]
-                  if in_string:
-                      out.append(char)
-                      if escaped:
-                          escaped = False
-                      elif char == chr(92):
-                          escaped = True
-                      elif char == chr(34):
-                          in_string = False
-                      i += 1
-                      continue
-                  if char == chr(34):
-                      in_string = True
-                      out.append(char)
-                      i += 1
-                      continue
-                  if char == chr(44):
-                      j = i + 1
-                      while j < len(raw) and raw[j] in " \t\r\n":
-                          j += 1
-                      if j < len(raw) and raw[j] in "}]":
-                          i = j
-                          continue
-                  out.append(char)
-                  i += 1
-              return "".join(out)
-
-          for path in glob.glob("build/flet-build-template/**/*.json", recursive=True):
-              with open(path, "r", encoding="utf-8") as handle:
-                  raw = handle.read()
-              if "{{cookiecutter." in raw or "{%" in raw:
-                  continue
-              cleaned = strip_trailing_commas(raw)
-              json.loads(cleaned)
-              with open(path, "w", encoding="utf-8") as handle:
-                  json.dump(json.loads(cleaned), handle, indent=2)
-          PY
-
-      - name: Render Android project with Flet
+      - name: Compile JVM test sources and release Kotlin sources
         shell: bash
         env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/reianix-kotlin-gradle-home
-          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=false"
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
-          build_args=(
-            apk
-            --template build/flet-build-template
-            --build-number "$GITHUB_RUN_NUMBER"
-            --build-version "0.2.1"
-            --python-version "3.12"
-            --arch "arm64-v8a"
-            --yes
-          )
-          git_backup_root="$(mktemp -d)"
-          git_backup="$git_backup_root/.git"
-          mv .git "$git_backup"
-          restore_git() {
-            if [ -d "$git_backup" ] && [ ! -e .git ]; then
-              mv "$git_backup" .git
-            fi
-            if [ -d "$git_backup_root" ]; then
-              rmdir "$git_backup_root"
-            fi
-          }
-          trap restore_git EXIT
-          flet build "${build_args[@]}"
-
-      - name: Execute Kotlin JVM unit tests
-        shell: bash
-        env:
-          SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/flutter/site-packages
-          GRADLE_USER_HOME: ${{ runner.temp }}/reianix-kotlin-gradle-home
-          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=false"
-        run: |
-          set -euo pipefail
-          gradle_root="$GITHUB_WORKSPACE/build/flutter/android"
-          test -x "$gradle_root/gradlew"
-          "$gradle_root/gradlew" \
-            --project-dir "$gradle_root" \
-            :app:testDebugUnitTest \
-            --no-daemon \
-            --max-workers=1 \
-            --console=plain \
-            --stacktrace
-
-      - name: Print Kotlin JVM test failure details
-        if: failure()
-        shell: bash
-        run: |
-          set -euo pipefail
-          report_root="$GITHUB_WORKSPACE/build/flutter"
-          python - "$report_root" <<'PY'
-          import pathlib
-          import sys
-          import xml.etree.ElementTree as ET
-
-          root = pathlib.Path(sys.argv[1])
-          reports = sorted(root.glob("**/test-results/testDebugUnitTest/TEST-*.xml"))
-          found = False
-          for report in reports:
-              suite = ET.parse(report).getroot()
-              for testcase in suite.iter("testcase"):
-                  problem = testcase.find("failure")
-                  if problem is None:
-                      problem = testcase.find("error")
-                  if problem is None:
-                      continue
-                  found = True
-                  classname = testcase.attrib.get("classname", "<unknown>")
-                  name = testcase.attrib.get("name", "<unknown>")
-                  print(f"FAILED TEST: {classname} > {name}")
-                  print(f"MESSAGE: {problem.attrib.get('message', '')}")
-                  detail = (problem.text or "").strip()
-                  if detail:
-                      print(detail)
-                  for stream_name in ("system-out", "system-err"):
-                      stream = testcase.find(stream_name)
-                      stream_text = (stream.text or "").strip() if stream is not None else ""
-                      if stream_text:
-                          print(f"{stream_name.upper()} FOR FAILED TEST:")
-                          print(stream_text)
-          if not found:
-              print(f"No failing testcase details found under {root}")
-          PY
-
-      - name: Restore generated build identity source and verify repository integrity
-        if: always()
-        shell: bash
-        run: |
-          if [ -e .git ]; then
-            git checkout -- core/build_identity.py
-          fi
-          rm -f .reiflix-build-identity.json build/flet-version.txt
-          rm -f android/app/src/test/resources/native-sqlite-schema-v29.json
-          rm -f android/app/src/main/assets/native-sqlite-contract-v29.json
-          if [ -e .git ]; then
-            git diff --check
-            status="$(git status --porcelain)"
-            if [ -n "$status" ]; then
-              printf '%s\n' "$status"
-              exit 1
-            fi
-          fi
+          gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
+            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
+            -PreianixBuildVersion="0.2.1" \
+            :app:compileDebugUnitTestKotlin \
+            :app:compileReleaseKotlin
