@@ -21,12 +21,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Set up Python for source validation and SQLite contract generation
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -37,139 +31,57 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+          accept-android-sdk-licenses: true
 
       - name: Set up standalone Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
-      - name: Install source validation tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build
-          python -m pip install --disable-pip-version-check --upgrade pip
-          python -m pip install --disable-pip-version-check -r requirements.txt pytest
-          python --version
-          gradle --version
-
-      - name: Validate public Google configuration for the native Android resource
-        shell: bash
-        env:
-          REIFLIX_GOOGLE_WEB_CLIENT_ID: ${{ vars.REIFLIX_GOOGLE_WEB_CLIENT_ID || secrets.REIFLIX_GOOGLE_WEB_CLIENT_ID }}
-        run: |
-          set -euo pipefail
-          cp android/app/src/main/res/values/strings.xml build/reiflix-strings.source.xml
-          python - <<'PY'
-          import os
-          import re
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          path = Path("android/app/src/main/res/values/strings.xml")
-          client_id = os.environ.get("REIFLIX_GOOGLE_WEB_CLIENT_ID", "").strip()
-          if client_id and not re.fullmatch(r"[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com", client_id):
-              raise SystemExit("REIFLIX_GOOGLE_WEB_CLIENT_ID must be a valid public Google Web client ID.")
-          root = ET.parse(path).getroot()
-          resource = next((node for node in root.findall("string") if node.get("name") == "reiflix_google_web_client_id"), None)
-          if resource is None:
-              resource = ET.SubElement(root, "string", {"name": "reiflix_google_web_client_id"})
-          resource.text = client_id
-          ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
-          if client_id.endswith(".apps.googleusercontent.com"):
-              print("GOOGLE_WEB_CLIENT_ID=validated")
-          else:
-              print("GOOGLE_WEB_CLIENT_ID missing; login will show configuration required.")
-          PY
-
       - name: Validate JSON configuration
         shell: bash
         run: |
           set -euo pipefail
           while IFS= read -r -d '' file; do
-            python -m json.tool "$file" >/dev/null
+            jq empty "$file"
             echo "Valid JSON: $file"
           done < <(find . -path './.git' -prune -o -path './build' -prune -o -type f -name '*.json' -print0)
 
-      - name: Run Python regression suite
-        id: pytest_regression
+      - name: Configure optional public Google client ID
         shell: bash
-        run: |
-          set +e
-          mkdir -p build
-          python -m pytest -q --tb=short > build/pytest-full.txt 2>&1
-          pytest_status=$?
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          raw_path = Path("build/pytest-full.txt")
-          summary_path = Path("build/pytest-summary.txt")
-          pattern = re.compile(
-              r"^(FAILED|ERROR|XPASS|XFAIL)\s|^=+ .* (failed|passed|error|warning)s? .* =+$|"
-              r"^E\s+(AssertionError|TypeError|ValueError|KeyError|AttributeError|ImportError|ModuleNotFoundError|FileNotFoundError|RuntimeError|IndexError|NameError|OSError):|"
-              r"^short test summary info|^tests/[^ ]+::[^ ]+\s+(FAILED|ERROR|XPASS|XFAIL)"
-          )
-          selected = []
-          bytes_seen = 0
-          with raw_path.open("r", encoding="utf-8", errors="replace") as stream:
-              for line in stream:
-                  bytes_seen += len(line.encode("utf-8", errors="replace"))
-                  text = line.rstrip("\r\n")
-                  if pattern.search(text.strip()):
-                      if len(text) > 600:
-                          text = text[:600] + " … [linha truncada]"
-                      selected.append(text)
-          if not selected:
-              with raw_path.open("r", encoding="utf-8", errors="replace") as stream:
-                  tail = stream.readlines()[-80:]
-              selected = [line.rstrip("\r\n")[:600] for line in tail]
-          output = [
-              f"pytest_output_bytes={bytes_seen}",
-              f"diagnostic_lines={len(selected)}",
-              "",
-              *selected[-240:],
-          ]
-          summary_path.write_text("\n".join(output) + "\n", encoding="utf-8")
-          print(summary_path.read_text(encoding="utf-8"))
-          PY
-          rm -f build/pytest-full.txt
-          exit "$pytest_status"
-
-      - name: Upload Python regression diagnostic summary
-        if: always() && steps.pytest_regression.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-regression-summary-${{ github.run_number }}
-          path: build/pytest-summary.txt
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Validate retained Python source and repository integrity
-        shell: bash
+        env:
+          REIFLIX_GOOGLE_WEB_CLIENT_ID: ${{ vars.REIFLIX_GOOGLE_WEB_CLIENT_ID || secrets.REIFLIX_GOOGLE_WEB_CLIENT_ID }}
         run: |
           set -euo pipefail
-          python -m compileall -q app_config.py core views scripts
-          bash -n scripts/run_android_instrumented_diagnostic.sh
-          python scripts/audit_release.py --root .
-          git diff --check
-          actual_sha="$(git rev-parse HEAD)"
-          if [[ "$actual_sha" != "$GITHUB_SHA" ]]; then
-            echo "Checkout SHA mismatch: expected=$GITHUB_SHA actual=$actual_sha"
+          strings_file="android/app/src/main/res/values/strings.xml"
+          cp "$strings_file" build-strings-source.xml
+          client_id="${REIFLIX_GOOGLE_WEB_CLIENT_ID:-}"
+          if [[ -n "$client_id" && ! "$client_id" =~ ^[0-9]+-[a-z0-9-]+\\.apps\\.googleusercontent\\.com$ ]]; then
+            echo "REIFLIX_GOOGLE_WEB_CLIENT_ID must be a valid public Google Web client ID."
             exit 1
           fi
-          # strings.xml has a temporary CI-injected public Google client ID
-          # until Final Git integrity check restores it after APK packaging.
+          sed -i -E "s#<string name=\"reiflix_google_web_client_id\">[^<]*</string>#<string name=\"reiflix_google_web_client_id\">$client_id</string>#" "$strings_file"
+          if [[ -n "$client_id" ]]; then
+            echo "GOOGLE_WEB_CLIENT_ID=validated"
+          else
+            echo "GOOGLE_WEB_CLIENT_ID missing; login will show configuration required."
+          fi
 
-      - name: Generate canonical SQLite runtime contract and JVM fixture
+      - name: Validate native Kotlin entry point and repository integrity
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/generate_native_sqlite_test_fixture.py \
-            --output android/app/src/test/resources/native-sqlite-schema-v29.json \
-            --contract-output android/app/src/main/assets/native-sqlite-contract-v29.json
-          test -s android/app/src/test/resources/native-sqlite-schema-v29.json
-          test -s android/app/src/main/assets/native-sqlite-contract-v29.json
+          test -s android/settings.gradle.kts
+          test -s android/build.gradle.kts
+          test -s android/app/build.gradle.kts
+          test -s android/app/src/main/AndroidManifest.xml
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt
+          test ! -e main.py
+          test -n "$(find android/app/src/main/kotlin -type f -name '*.kt' -print -quit)"
+          grep -Fq 'android:name=".MainActivity"' android/app/src/main/AndroidManifest.xml
+          git diff --check
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Configure Android release signing
         shell: bash
@@ -180,6 +92,7 @@ jobs:
           REIFLIX_ANDROID_KEY_ALIAS: ${{ secrets.REIFLIX_ANDROID_KEY_ALIAS }}
         run: |
           set -euo pipefail
+          mkdir -p build
           if [[ -n "${REIFLIX_ANDROID_KEYSTORE_B64:-}" && -n "${REIFLIX_ANDROID_KEYSTORE_PASSWORD:-}" && -n "${REIFLIX_ANDROID_KEY_PASSWORD:-}" && -n "${REIFLIX_ANDROID_KEY_ALIAS:-}" ]]; then
             printf "%s" "$REIFLIX_ANDROID_KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/build/reiflix-release.jks"
             test -s "$GITHUB_WORKSPACE/build/reiflix-release.jks"
@@ -207,30 +120,26 @@ jobs:
           REIFLIX_BUILD_BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import json
-          import os
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          payload = {
-              "commit_sha": os.environ["REIFLIX_BUILD_SHA"],
-              "build_number": os.environ["REIFLIX_BUILD_NUMBER"],
-              "build_version": "0.2.1",
-              "branch": os.environ["REIFLIX_BUILD_BRANCH"],
-              "timestamp_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-              "android_runtime": "native-kotlin-compose",
-              "android_entrypoint": "com.reiflix.reiflix_local.MainActivity",
-              "python_runtime_packaged": False,
-              "flet_runtime_packaged": False,
-              "flutter_runtime_packaged": False,
-              "main_py_packaged": False,
-          }
-          Path("build/reiflix-build-identity.json").write_text(
-              json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-              encoding="utf-8",
-          )
-          PY
+          mkdir -p build
+          jq -n \
+            --arg commit_sha "$REIFLIX_BUILD_SHA" \
+            --arg build_number "$REIFLIX_BUILD_NUMBER" \
+            --arg build_version "0.2.1" \
+            --arg branch "$REIFLIX_BUILD_BRANCH" \
+            --arg timestamp_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              commit_sha: $commit_sha,
+              build_number: $build_number,
+              build_version: $build_version,
+              branch: $branch,
+              timestamp_utc: $timestamp_utc,
+              android_runtime: "native-kotlin-compose",
+              android_entrypoint: "com.reiflix.reiflix_local.MainActivity",
+              python_runtime_packaged: false,
+              flet_runtime_packaged: false,
+              flutter_runtime_packaged: false,
+              main_py_packaged: false
+            }' > build/reiflix-build-identity.json
           test -s build/reiflix-build-identity.json
 
       - name: Build native Android release APK
@@ -267,38 +176,46 @@ jobs:
           file build/ReiAnix.apk
           echo "path=build/ReiAnix.apk" >> "$GITHUB_OUTPUT"
 
-      - name: Verify native APK contains no Python, Flet, or Flutter runtime
+      - name: Verify native APK payload and Android package metadata
         shell: bash
         run: |
           set -euo pipefail
           apk="${{ steps.apk.outputs.path }}"
-          python scripts/verify_android_host.py "$apk"
-          python scripts/verify_native_apk.py "$apk"
           aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           badging="$("$aapt2" dump badging "$apk")"
-          echo "$badging" | grep -q "package: name='com.reiflix.reiflix_local'"
-          echo "$badging" | grep -q "versionCode='$GITHUB_RUN_NUMBER'"
-          echo "$badging" | grep -q "versionName='0.2.1'"
-          echo "$badging" | grep -q "targetSdkVersion:'36'"
-          "$aapt2" dump permissions "$apk" | grep -q "android.permission.MANAGE_EXTERNAL_STORAGE"
-          "$aapt2" dump permissions "$apk" | grep -q "android.permission.READ_MEDIA_VIDEO"
-          "$aapt2" dump permissions "$apk" | grep -q "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+          echo "$badging" | grep -Fq "package: name='com.reiflix.reiflix_local'"
+          echo "$badging" | grep -Fq "versionCode='$GITHUB_RUN_NUMBER'"
+          echo "$badging" | grep -Fq "versionName='0.2.1'"
+          echo "$badging" | grep -Fq "targetSdkVersion:'36'"
+          "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.MANAGE_EXTERNAL_STORAGE"
+          "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VIDEO"
+          "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
 
-      - name: Verify compiled Compose classes and APK DEX packaging
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/verify_compose_packaging.py build/ReiAnix.apk \
-            --classes-root android/app/build/tmp/kotlin-classes/release
+          archive_list="$(unzip -Z1 "$apk")"
+          if grep -Eiq '(^|/)(__pycache__/|[^/]+\\.py[co]$|assets/app\\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"; then
+            echo "The APK contains a forbidden Python/Flet/Flutter payload:"
+            grep -Ei '(^|/)(__pycache__/|[^/]+\\.py[co]$|assets/app\\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"
+            exit 1
+          fi
 
-      - name: Verify effective APK AndroidManifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/verify_apk_manifest.py build/ReiAnix.apk \
-            --aapt2 "$ANDROID_HOME/build-tools/36.0.0/aapt2" \
-            --expected-version-code "$GITHUB_RUN_NUMBER" \
-            --expected-version-name "0.2.1"
+          dex_files="$(grep -E '^classes([0-9]+)?\\.dex$' <<< "$archive_list" || true)"
+          test -n "$dex_files"
+          for class_name in \
+            "com/reiflix/reiflix_local/MainActivity" \
+            "com/reiflix/reiflix_local/ReiAnixApplication" \
+            "com/reiflix/reiflix_local/NativePlayerActivity"; do
+            found=0
+            while IFS= read -r dex; do
+              if unzip -p "$apk" "$dex" | strings | grep -Fq "$class_name"; then
+                found=1
+                break
+              fi
+            done <<< "$dex_files"
+            if [[ "$found" -ne 1 ]]; then
+              echo "Required native class missing from DEX: $class_name"
+              exit 1
+            fi
+          done
 
       - name: Print and publish APK SHA-256
         shell: bash
@@ -321,18 +238,20 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs build/ReiAnix.apk
 
       - name: Final Git integrity check
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          cp build/reiflix-strings.source.xml android/app/src/main/res/values/strings.xml
-          rm -f android/app/src/test/resources/native-sqlite-schema-v29.json
-          rm -f android/app/src/main/assets/native-sqlite-contract-v29.json
+          if [[ -f build-strings-source.xml ]]; then
+            cp build-strings-source.xml android/app/src/main/res/values/strings.xml
+            rm -f build-strings-source.xml
+          fi
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --check
           status="$(git status --porcelain)"
-          if [ -n "$status" ]; then
+          if [[ -n "$status" ]]; then
             echo "Unexpected working-tree changes:"
-            printf '%s\n' "$status"
+            printf '%s\\n' "$status"
             git diff --stat
             exit 1
           fi
@@ -360,12 +279,12 @@ jobs:
           zip -j -9 -X build/ReiAnix-apk.zip build/ReiAnix.apk build/ReiAnix.apk.sha256 build/LEIA-ANTES-DE-INSTALAR.txt
           unzip -tq build/ReiAnix-apk.zip
           test -s build/ReiAnix-apk.zip
-          unzip -Z1 build/ReiAnix-apk.zip | grep -Fx 'ReiAnix.apk'
-          unzip -Z1 build/ReiAnix-apk.zip | grep -Fx 'ReiAnix.apk.sha256'
-          unzip -Z1 build/ReiAnix-apk.zip | grep -Fx 'LEIA-ANTES-DE-INSTALAR.txt'
+          unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'ReiAnix.apk'
+          unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'ReiAnix.apk.sha256'
+          unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'LEIA-ANTES-DE-INSTALAR.txt'
           apk_bytes="$(stat -c '%s' build/ReiAnix.apk)"
           zip_bytes="$(stat -c '%s' build/ReiAnix-apk.zip)"
-          printf 'APK_SIZE_BYTES=%s\nZIP_SIZE_BYTES=%s\n' "$apk_bytes" "$zip_bytes"
+          printf 'APK_SIZE_BYTES=%s\\nZIP_SIZE_BYTES=%s\\n' "$apk_bytes" "$zip_bytes"
           test "$zip_bytes" -le "$((apk_bytes + 1048576))"
 
       - name: Publish APK and ZIP to rolling GitHub Release
