@@ -2923,7 +2923,7 @@ internal class NativeMainRuntimePort(
         // to the canonical native store: collapse whitespace, reject case-insensitive
         // duplicates, cap tags, and preserve the first spelling and order.
         fun caseFold(value: String): String =
-            value.lowercase(Locale.ROOT).replace("ß", "ss").replace("ς", "σ")
+            value.uppercase(Locale.ROOT).lowercase(Locale.ROOT)
 
         val normalized = mutableListOf<String>()
         for (rawTag in tags) {
