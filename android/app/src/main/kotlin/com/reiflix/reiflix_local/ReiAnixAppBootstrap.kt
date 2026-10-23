@@ -141,7 +141,11 @@ class ReiAnixAppBootstrap internal constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Log.e(TAG, "Canonical SQLite validation failed; normal services remain gated.", error)
+                Log.e(
+                    TAG,
+                    "Canonical SQLite validation failed; normal services remain gated. " +
+                        "reason=${databaseFailureCategory(error)} errorType=${error::class.java.simpleName}",
+                )
                 CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
@@ -187,7 +191,11 @@ class ReiAnixAppBootstrap internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            Log.e(TAG, "Initial canonical SQLite validation failed; normal services remain gated.", error)
+            Log.e(
+                TAG,
+                "Initial canonical SQLite validation failed; normal services remain gated. " +
+                    "reason=${databaseFailureCategory(error)} errorType=${error::class.java.simpleName}",
+            )
             CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
@@ -248,13 +256,30 @@ class ReiAnixAppBootstrap internal constructor(
     private fun databaseFailureWarning(error: Throwable): String {
         val category = databaseFailureCategory(error)
         val detail = error.message
-            ?.replace(Regex("\\s+"), " ")
-            ?.trim()
-            ?.take(640)
+            ?.let(::sanitizeSqliteDiagnosticDetail)
             ?.takeIf { it.isNotBlank() }
         return if (detail == null) "[$category] $DATABASE_RECOVERY_WARNING"
         else "[$category] Falha na validação do banco SQLite: $detail"
     }
+
+    /**
+     * Exceptions from Android SQLite/open APIs may embed the physical database path.
+     * Keep enough detail to distinguish the failure while never persisting/exporting
+     * private absolute paths through bootstrap warnings or recovery UI.
+     */
+    private fun sanitizeSqliteDiagnosticDetail(value: String): String =
+        value
+            .replace(
+                Regex("""(?<![A-Za-z0-9:])/(?:[^/\\s,;:()]+/)+[^/\\s,;:()]*"""),
+                "<caminho-redigido>",
+            )
+            .replace(
+                Regex("""(?i)\\b[A-Z]:\\\\(?:[^\\\\\\s]+\\\\)*[^\\\\\\s]*"""),
+                "<caminho-redigido>",
+            )
+            .replace(Regex("""\\s+"""), " ")
+            .trim()
+            .take(640)
 
     private fun databaseFailureCategory(error: Throwable): String {
         val chain = generateSequence(error as Throwable?) { it.cause }.toList()
@@ -288,9 +313,12 @@ class ReiAnixAppBootstrap internal constructor(
     private fun String.isCanonicalDatabaseWarning(): Boolean =
         contains("base canônica SQLite", ignoreCase = true) ||
             contains("arquivo da base SQLite", ignoreCase = true) ||
+            contains("falha na validação do banco SQLite", ignoreCase = true) ||
             contains("recuperação SQLite interrompida", ignoreCase = true) ||
             contains("promoção SQLite interrompida", ignoreCase = true) ||
-            contains("recibos SAF interrompidos", ignoreCase = true)
+            contains("recibos SAF interrompidos", ignoreCase = true) ||
+            Regex("""^\\[(?:SCHEMA_[A-Z0-9_]+|SQLITE_[A-Z0-9_]+|FILE_ACCESS_DENIED|FRESH_DATABASE_VALIDATION_FAILED)]""")
+                .containsMatchIn(this)
 
     /**
      * May be reached on first healthy startup or after Recovery Mode succeeds. The
@@ -542,7 +570,6 @@ class ReiAnixAppBootstrap internal constructor(
                 TAG,
                 "APP_BOOTSTRAP_SQLITE_PREFLIGHT_FAILED file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
                     "reason=${databaseFailureCategory(error)} errorType=${error::class.java.simpleName}",
-                error,
             )
             null
         }
@@ -580,7 +607,7 @@ class ReiAnixAppBootstrap internal constructor(
                 if (!migrationSnapshot.supportsCompatibleRuntimeContract) addAll(migrationSnapshot.incompatibilities)
                 if (!schemaSnapshot.supportsCompatibleRuntimeContract) addAll(schemaSnapshot.incompatibilities)
                 if (!integrity.healthy) add(integrity.error ?: "SQLite integrity validation failed.")
-            }.distinct().joinToString("; ").take(640)
+            }.distinct().joinToString("; ").let(::sanitizeSqliteDiagnosticDetail)
             val reason = databaseFailureCategory(IllegalStateException(details.ifBlank { DATABASE_RECOVERY_WARNING }))
             Log.w(
                 TAG,
