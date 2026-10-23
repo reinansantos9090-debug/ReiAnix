@@ -8124,7 +8124,12 @@ internal class NativeMainRuntimePort(
         requestId: String?,
     ): Boolean {
         val requestedPage = payload.optInt("page", 0).coerceAtLeast(0)
-        val pageSize = payload.optInt("pageSize", 36).coerceIn(12, 48)
+        val rawPageSize = payload.opt("pageSize")
+        val pageSize = (if (pythonTruthyJsonValue(rawPageSize)) {
+            payload.optInt("pageSize", 36)
+        } else {
+            36
+        }).coerceIn(12, 48)
         val requestedGeneration = payload.optLong("generation", 0L).coerceAtLeast(0L)
         val query = payload.optString("query", "").trim()
         val rawGenre = payload.optString("genre", "Todos").trim().ifEmpty { "Todos" }
