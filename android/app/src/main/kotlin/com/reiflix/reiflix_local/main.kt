@@ -8439,6 +8439,7 @@ internal class NativeMainRuntimePort(
             val exactThumbnailReady = !cachedPath.isNullOrBlank() &&
                 withContext(Dispatchers.IO) { hasValidLocalThumbnail(cachedPath) }
             if (exactThumbnailReady) {
+                cancelThumbnailRequest(reference, size, modifiedAt, mediaIdentity)
                 recordDiagnostic(
                     name = "THUMBNAIL_CACHE_HIT",
                     result = "exact_local_thumbnail_ready",
