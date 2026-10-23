@@ -8027,6 +8027,7 @@ internal class NativeMainRuntimePort(
     private fun projectNativeLibraryPageAnime(
         anime: com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel,
         lookupTitle: String?,
+        descriptionOriginal: String?,
     ): org.json.JSONObject {
         val artwork = anime.artwork
         val meta = org.json.JSONObject()
@@ -8036,6 +8037,7 @@ internal class NativeMainRuntimePort(
             .put("presentation_state", anime.presentationState.name.lowercase(Locale.ROOT))
             .put("metadata_status", anime.metadataAvailability.name.lowercase(Locale.ROOT))
             .put("description", anime.description ?: org.json.JSONObject.NULL)
+            .put("description_original", descriptionOriginal ?: org.json.JSONObject.NULL)
             .put("romaji", anime.romajiTitle ?: org.json.JSONObject.NULL)
             .put("english", anime.englishTitle ?: org.json.JSONObject.NULL)
             .put("native", anime.nativeTitle ?: org.json.JSONObject.NULL)
@@ -8228,17 +8230,17 @@ internal class NativeMainRuntimePort(
                 val items = pageState.animes.drop(offset).take(pageSize)
                 // lookup_title is a canonical SQLite identity used by legacy consumers;
                 // the Compose card model intentionally doesn't retain this persistence field.
-                val lookupTitles = withContext(Dispatchers.IO) {
+                val legacyMetadata = withContext(Dispatchers.IO) {
                     dependencies.sqliteDatabase.read { database ->
-                        val result = linkedMapOf<Long, String?>()
+                        val result = linkedMapOf<Long, Pair<String?, String?>>()
                         if (items.isNotEmpty()) {
                             val placeholders = items.joinToString(",") { "?" }
                             database.rawQuery(
-                                "SELECT id, lookup_title FROM anime WHERE id IN ($placeholders)",
+                                "SELECT id, lookup_title, description_original FROM anime WHERE id IN ($placeholders)",
                                 items.map { it.id.toString() }.toTypedArray(),
                             ).use { cursor ->
                                 while (cursor.moveToNext()) {
-                                    result[cursor.getLong(0)] = cursor.getString(1)
+                                    result[cursor.getLong(0)] = cursor.getString(1) to cursor.getString(2)
                                 }
                             }
                         }
@@ -8247,7 +8249,8 @@ internal class NativeMainRuntimePort(
                 }
                 val itemPayload = org.json.JSONArray().apply {
                     items.forEach { anime ->
-                        put(projectNativeLibraryPageAnime(anime, lookupTitles[anime.id]))
+                        val metadata = legacyMetadata[anime.id]
+                        put(projectNativeLibraryPageAnime(anime, metadata?.first, metadata?.second))
                     }
                 }
                 val pagePayload = org.json.JSONObject()
