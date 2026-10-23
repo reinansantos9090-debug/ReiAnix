@@ -8782,13 +8782,13 @@ internal class NativeMainRuntimePort(
                 val title = nonBlank("title")
                 setManualEpisodeIdentification(id, season, number, kind, title)
             }
-            "query_anime" -> positiveLong("animeId")?.let(::queryNativeAnime) ?: false
-            "query_episodes" -> positiveLong("animeId")?.let(::queryNativeEpisodes) ?: false
-            "query_episode" -> positiveLong("episodeId")?.let(::queryNativeEpisode) ?: false
+            "query_anime" -> (positiveLong("animeId") ?: positiveLong("anime_id"))?.let(::queryNativeAnime) ?: false
+            "query_episodes" -> (positiveLong("animeId") ?: positiveLong("anime_id"))?.let(::queryNativeEpisodes) ?: false
+            "query_episode" -> (positiveLong("episodeId") ?: positiveLong("episode_id"))?.let(::queryNativeEpisode) ?: false
             "query_recently_played" -> queryNativeRecentlyPlayed()
             "query_folders" -> queryNativeFolders()
             "query_artwork" -> queryNativeArtwork()
-            "query_marathon_plan" -> positiveLong("animeId")?.let {
+            "query_marathon_plan" -> (positiveLong("animeId") ?: positiveLong("anime_id"))?.let {
                 queryMarathonPlan(it, nonBlank("currentPath") ?: nonBlank("current_path"))
             } ?: false
             "refresh_details" -> {
