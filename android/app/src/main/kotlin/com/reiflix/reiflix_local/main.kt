@@ -8980,7 +8980,7 @@ internal class NativeMainRuntimePort(
             )
             "request_missing_thumbnail", "request_thumbnail" -> enqueueThumbnailFromLegacyPayload(payload)
             "extract_local_thumbnail" ->
-                (nonBlank("uri") ?: nonBlank("path") ?: nonBlank("mediaUri"))?.let {
+                (nonBlank("uri") ?: nonBlank("path") ?: nonBlank("mediaUri") ?: nonBlank("media_uri"))?.let {
                     extractLocalThumbnail(
                         reference = it,
                         size = payload.optLong("size", 0L),
@@ -9004,7 +9004,7 @@ internal class NativeMainRuntimePort(
                 resultAction = normalized,
             )
             "inspect_backup" -> {
-                val archive = nonBlank("archivePath")?.let(::resolvePrivateBackupFile) ?: return false
+                val archive = (nonBlank("archivePath") ?: nonBlank("archive_path"))?.let(::resolvePrivateBackupFile) ?: return false
                 inspectBackup(
                     archive = archive,
                     requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
@@ -9012,7 +9012,7 @@ internal class NativeMainRuntimePort(
                 )
             }
             "restore_backup" -> {
-                val archive = nonBlank("archivePath")?.let(::resolvePrivateBackupFile) ?: return false
+                val archive = (nonBlank("archivePath") ?: nonBlank("archive_path"))?.let(::resolvePrivateBackupFile) ?: return false
                 restoreBackup(
                     archive = archive,
                     requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
@@ -9024,7 +9024,7 @@ internal class NativeMainRuntimePort(
                 resultAction = normalized,
             )
             "restore_recovery_backup" -> {
-                val archive = nonBlank("archivePath")?.let(::resolvePrivateBackupFile) ?: return false
+                val archive = (nonBlank("archivePath") ?: nonBlank("archive_path"))?.let(::resolvePrivateBackupFile) ?: return false
                 restoreRecoveryBackup(
                     archive = archive,
                     requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
@@ -12325,7 +12325,7 @@ internal class NativeMainRuntimePort(
             "backup_recovery_restore", "backup_recovery_snapshot" ->
                 launchNativeSettingsFileAction(normalized, resolvedRequestId)
             "backup_restore" -> {
-                val reference = stringValueFromPayload(payload, "archivePath", "path", "filePath")
+                val reference = stringValueFromPayload(payload, "archivePath", "archive_path", "path", "filePath", "file_path")
                 if (reference != null) {
                     val archive = resolvePrivateBackupFile(reference) ?: return false
                     restoreBackup(
