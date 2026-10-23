@@ -1,5 +1,8 @@
 # ReiAnix — Inventário de Python remanescente (Prompt 1.2/9)
 
+> **Registro histórico:** este arquivo descreve o snapshot/etapa indicada no título e não a árvore ativa atual. A aplicação Android foi cortada para Kotlin/Gradle nativos; arquivos Python e configurações Flet listados abaixo são contexto histórico, não dependências atuais. Consulte [a auditoria nativa atual](KOTLIN_MIGRATION_AUDIT.md) e o README para o estado vigente.
+
+
 **Snapshot de `main` no commit de código validado `566521ed45f0534bc318cb2fa38adc8d8c6ad12d`.**  
 **Total exato: 218 arquivos `.py`.**
 
