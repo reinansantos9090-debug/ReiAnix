@@ -73,4 +73,13 @@ jobs:
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
-            :app:compileReleaseKotlin
+            :app:compileReleaseKotlin 2>&1 | tee "$RUNNER_TEMP/reianix-jvm-certification.log"
+
+      - name: Upload JVM certification log for failure diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-JVM-certification-log-${{ github.run_number }}
+          path: ${{ runner.temp }}/reianix-jvm-certification.log
+          retention-days: 7
+          if-no-files-found: warn
