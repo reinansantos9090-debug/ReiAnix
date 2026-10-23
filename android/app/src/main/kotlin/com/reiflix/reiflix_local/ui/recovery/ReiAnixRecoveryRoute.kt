@@ -44,6 +44,7 @@ fun ReiAnixRecoveryRoute(
     val operation = settingsState.operations.values
         .filter {
             it.action == "backup_recovery_restore" ||
+                it.action == "backup_recovery_restore_local" ||
                 it.action == "backup_recovery_snapshot" ||
                 it.action == "diagnostic_export"
         }
@@ -142,6 +143,20 @@ fun ReiAnixRecoveryRoute(
                 }
                 else -> Unit
             }
+            OutlinedButton(
+                onClick = { viewModel.requestAction("backup_recovery_restore_local") },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Usar backup local válido mais recente")
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "O ReiAnix verificará os ZIPs guardados pelo aplicativo e mostrará os dados do backup antes da confirmação. Se nenhum for válido, selecione um backup externo abaixo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
             Button(
                 onClick = { confirmationVisible = true },
                 enabled = !busy,

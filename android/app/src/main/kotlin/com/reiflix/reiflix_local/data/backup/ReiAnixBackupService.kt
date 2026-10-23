@@ -54,6 +54,12 @@ class ReiAnixBackupService(context: Context) {
         val warnings: List<String>,
     )
 
+    /** A private backup archive that has passed the same validation used by restore. */
+    data class LocalRecoveryBackup(
+        val file: File,
+        val inspection: BackupInspection,
+    )
+
     data class RestoreResult(
         val importedRows: Int,
         val missingFiles: Int,
@@ -221,6 +227,31 @@ class ReiAnixBackupService(context: Context) {
             )
         }
     }
+
+    /**
+     * Finds the newest valid ZIP already stored in the app-private backup directory.
+     * Partial, unsupported, corrupt, and schema-incompatible archives are skipped.
+     * This method never restores anything; UI confirmation is still mandatory.
+     */
+    fun newestValidLocalRecoveryBackup(): LocalRecoveryBackup? =
+        withCanonicalFileMaintenance {
+            backupDirectory.listFiles().orEmpty()
+                .asSequence()
+                .filter { file ->
+                    file.isFile &&
+                        file.extension.equals("zip", ignoreCase = true) &&
+                        !file.name.startsWith(".")
+                }
+                .sortedWith(
+                    compareByDescending<File> { it.lastModified() }
+                        .thenByDescending { it.name },
+                )
+                .firstNotNullOfOrNull { candidate ->
+                    runCatching {
+                        LocalRecoveryBackup(candidate, inspectBackup(candidate))
+                    }.getOrNull()
+                }
+        }
 
     fun restoreBackup(file: File): RestoreResult = try {
         withCanonicalFileMaintenance { restoreBackupLocked(file) }.also { result ->

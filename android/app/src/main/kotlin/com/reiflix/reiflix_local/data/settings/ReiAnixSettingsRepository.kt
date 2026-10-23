@@ -51,6 +51,7 @@ class ReiAnixSettingsRepository(
             "backup_create",
             "backup_restore",
             "backup_recovery_restore",
+            "backup_recovery_restore_local",
             "backup_recovery_snapshot",
             "backup_integrity",
             "backup_reconcile",

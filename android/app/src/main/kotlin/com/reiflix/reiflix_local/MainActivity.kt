@@ -1370,7 +1370,7 @@ class MainActivity : ComponentActivity() {
             ?.trim().orEmpty()
         val nativeActions = setOf(
             "settings_export", "settings_import", "backup_create", "backup_restore",
-            "backup_recovery_restore", "backup_recovery_snapshot", "backup_integrity", "backup_reconcile", "diagnostic_export",
+            "backup_recovery_restore", "backup_recovery_restore_local", "backup_recovery_snapshot", "backup_integrity", "backup_reconcile", "diagnostic_export",
         )
         if (action == null || action !in nativeActions) return
 
@@ -1389,6 +1389,7 @@ class MainActivity : ComponentActivity() {
         val recoveryAllowedActions = setOf(
             "backup_integrity",
             "backup_recovery_restore",
+            "backup_recovery_restore_local",
             "backup_recovery_snapshot",
             "diagnostic_export",
         )
@@ -1425,7 +1426,9 @@ class MainActivity : ComponentActivity() {
                         action == "backup_integrity" ||
                         action == "backup_reconcile" ||
                         action == "backup_recovery_snapshot"
-                    ) "Preparando a operação nativa." else "Aguardando o seletor de arquivos do Android.",
+                    ) "Preparando a operação nativa." else if (action == "backup_recovery_restore_local") {
+                        "Procurando um backup válido salvo pelo ReiAnix."
+                    } else "Aguardando o seletor de arquivos do Android.",
                 )
             }
             lifecycle.whenStarted {
@@ -1445,6 +1448,7 @@ class MainActivity : ComponentActivity() {
                         "backup_restore", "backup_recovery_restore" -> backupImportLauncher.launch(
                             arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
                         )
+                        "backup_recovery_restore_local" -> restoreNewestLocalBackupForRecovery(requestId)
                         "diagnostic_export" -> {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
                             diagnosticExportLauncher.launch("reiflix-diagnostic-" + stamp + ".json")
@@ -1590,6 +1594,80 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun isRecoveryRestoreAction(action: String): Boolean =
+        action == "backup_recovery_restore" || action == "backup_recovery_restore_local"
+
+    /**
+     * Finds the newest valid ZIP backup already stored privately by ReiAnix. The
+     * archive is copied to cache and previewed like an externally selected backup;
+     * restoration only starts after the user confirms the candidate's database counts.
+     */
+    private fun restoreNewestLocalBackupForRecovery(requestId: String) {
+        val action = "backup_recovery_restore_local"
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            var inputCopy: File? = null
+            var handedOff = false
+            try {
+                val candidate = withContext(Dispatchers.IO) {
+                    ReiAnixBackupService(applicationContext).newestValidLocalRecoveryBackup()
+                } ?: throw IllegalStateException(
+                    "Nenhum backup ZIP local válido foi encontrado. Selecione um backup ReiAnix externo ou exportado.",
+                )
+
+                val copy = File(cacheDir, "reianix-local-recovery-" + UUID.randomUUID() + ".zip")
+                inputCopy = copy
+                withContext(Dispatchers.IO) {
+                    require(candidate.file.isFile && candidate.file.length() in 1..ReiAnixBackupService.MAX_ARCHIVE_BYTES) {
+                        "O backup local deixou de estar disponível ou excede o limite permitido."
+                    }
+                    FileInputStream(candidate.file).use { source ->
+                        FileOutputStream(copy).use { output ->
+                            source.copyTo(output)
+                            output.fd.sync()
+                        }
+                    }
+                    require(copy.length() == candidate.file.length()) {
+                        "A cópia temporária do backup local ficou incompleta."
+                    }
+                }
+                val preview = withContext(Dispatchers.IO) {
+                    ReiAnixBackupService(applicationContext).inspectBackup(copy)
+                }
+                // The confirmation dialog now owns the temporary archive and clears
+                // the processing guard through the same path as an external restore.
+                pendingSettingsFileAction = null
+                pendingSettingsFileRequestId = null
+                showNativeBackupRestoreConfirmation(copy, action, requestId, preview)
+                handedOff = true
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "CANCELLED", "CANCELLED",
+                        error = "A busca pelo backup local foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_LOCAL_RECOVERY_BACKUP_NOT_AVAILABLE requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Não foi possível validar um backup local.",
+                    )
+                }
+            } finally {
+                if (!handedOff) {
+                    inputCopy?.delete()
+                    pendingSettingsFileAction = null
+                    pendingSettingsFileRequestId = null
+                    settingsFileProcessing = false
+                }
+            }
+        }
+    }
+
     private fun finishNativeBackupImport(uri: Uri?) {
         val action = pendingSettingsFileAction
         val requestId = pendingSettingsFileRequestId
@@ -1676,7 +1754,7 @@ class MainActivity : ComponentActivity() {
         requestId: String,
         preview: ReiAnixBackupService.BackupInspection,
     ) {
-        require(action == "backup_restore" || action == "backup_recovery_restore") {
+        require(action == "backup_restore" || isRecoveryRestoreAction(action)) {
             "Ação de restauração nativa inválida."
         }
         val manifest = preview.manifest
@@ -1699,7 +1777,7 @@ class MainActivity : ComponentActivity() {
             append(" • com progresso/histórico: ")
             append(counts.optLong("progress", 0L))
             append("\n\n")
-            if (action == "backup_recovery_restore") {
+            if (isRecoveryRestoreAction(action)) {
                 append("O banco atual requer recuperação. Uma cópia bruta do SQLite e dos arquivos auxiliares disponíveis " +
                     "será preservada antes de promover o banco validado. ")
             } else {
@@ -1726,7 +1804,7 @@ class MainActivity : ComponentActivity() {
                             action,
                             "CANCELLED",
                             "CANCELLED",
-                            message = if (action == "backup_recovery_restore") {
+                            message = if (isRecoveryRestoreAction(action)) {
                                 "A recuperação foi cancelada antes de substituir o banco."
                             } else {
                                 "A restauração foi cancelada antes de alterar a biblioteca."
@@ -1742,7 +1820,7 @@ class MainActivity : ComponentActivity() {
 
         android.app.AlertDialog.Builder(this)
             .setTitle(
-                if (action == "backup_recovery_restore") {
+                if (isRecoveryRestoreAction(action)) {
                     "Confirmar recuperação da biblioteca"
                 } else {
                     "Confirmar restauração do backup"
@@ -1751,7 +1829,7 @@ class MainActivity : ComponentActivity() {
             .setMessage(details)
             .setNegativeButton("Cancelar") { _, _ -> finishCancelled() }
             .setPositiveButton(
-                if (action == "backup_recovery_restore") "Recuperar biblioteca" else "Restaurar backup",
+                if (isRecoveryRestoreAction(action)) "Recuperar biblioteca" else "Restaurar backup",
             ) { _, _ ->
                 if (decisionHandled.compareAndSet(false, true)) {
                     completeNativeBackupRestore(inputCopy, action, requestId)
@@ -1766,13 +1844,13 @@ class MainActivity : ComponentActivity() {
             try {
                 val backupService = ReiAnixBackupService(applicationContext)
                 val result = withContext(Dispatchers.IO) {
-                    if (action == "backup_recovery_restore") {
+                    if (isRecoveryRestoreAction(action)) {
                         backupService.restoreRecoveryBackup(inputCopy)
                     } else {
                         backupService.restoreBackup(inputCopy)
                     }
                 }
-                if (action == "backup_recovery_restore") {
+                if (isRecoveryRestoreAction(action)) {
                     // The backup service validates/promotes the candidate and preserves its
                     // rollback snapshot. The process-owned bootstrap must independently accept
                     // the canonical database before any normal ViewModel projection is refreshed.
@@ -1818,11 +1896,11 @@ class MainActivity : ComponentActivity() {
                 val accountMessage = when {
                     result.reauthenticationRequired ->
                         " O estado local da conta não pôde ser lido antes da recuperação; entre novamente se necessário."
-                    action == "backup_recovery_restore" && result.accountStatePreserved ->
+                    isRecoveryRestoreAction(action) && result.accountStatePreserved ->
                         " O estado local da conta foi preservado."
                     else -> ""
                 }
-                val message = (if (action == "backup_recovery_restore") {
+                val message = (if (isRecoveryRestoreAction(action)) {
                     "Biblioteca recuperada. Snapshot de segurança: " + result.safetyBackup.name + ". "
                 } else {
                     "Backup restaurado. "
@@ -1842,7 +1920,7 @@ class MainActivity : ComponentActivity() {
                 }
                 throw cancelled
             } catch (error: Exception) {
-                if (action == "backup_recovery_restore" && ::composeLibraryHost.isInitialized) {
+                if (isRecoveryRestoreAction(action) && ::composeLibraryHost.isInitialized) {
                     // Never leave the recovery route because of an exception after promotion.
                     runCatching {
                         composeLibraryHost.show(ReiAnixRoutes.RECOVERY, resetBackStack = true)
@@ -1856,7 +1934,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "ERROR", "ERROR",
-                        error = if (action == "backup_recovery_restore") {
+                        error = if (isRecoveryRestoreAction(action)) {
                             "A recuperação foi interrompida porque a base restaurada não passou por todas as validações. O modo de recuperação foi mantido."
                         } else {
                             error.message?.takeIf { it.isNotBlank() }
