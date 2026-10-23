@@ -272,6 +272,34 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
     }
 
+
+    @Test
+    fun bootstrapKeepsNativeServicesGatedWhenCanonicalDatabaseIsCorrupt() = runBlocking {
+        databaseFile.parentFile?.mkdirs()
+        databaseFile.writeText("not a sqlite database", Charsets.UTF_8)
+
+        val bootstrap = com.reiflix.reiflix_local.ReiAnixAppDependencies(context).bootstrap
+        bootstrap.awaitStarted()
+        val state = bootstrap.state.value
+
+        assertTrue("A corrupt canonical database must require recovery.", state.recoveryRequired)
+        assertEquals(
+            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+            state.persistenceStatus,
+        )
+        assertEquals(
+            com.reiflix.reiflix_local.ReiAnixBootstrapStage.RECOVERY_REQUIRED,
+            state.stage,
+        )
+        assertFalse(
+            "Native services must not be published as ready after a database validation failure.",
+            state.completedStages.contains(com.reiflix.reiflix_local.ReiAnixBootstrapStage.NATIVE_SERVICES_READY),
+        )
+        assertFalse(
+            state.completedStages.contains(com.reiflix.reiflix_local.ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER),
+        )
+    }
+
     @Test
     fun readsPreexistingCatalogAndReportsVersionWithoutChangingSchema() = runBlocking {
         createCanonicalFixture()
