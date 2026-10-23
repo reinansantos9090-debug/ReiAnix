@@ -25,7 +25,7 @@ enum class ReiAnixSqliteTransactionOutcome {
 
 class ReiAnixSqliteDatabase(context: Context) {
     private val appContext = context.applicationContext
-    private val databaseFile = File(File(appContext.filesDir, "data"), DATABASE_FILE_NAME)
+    private val databaseFile = ReiAnixSqliteDatabase.canonicalFile(appContext)
     private val connectionLock = Any()
     @Volatile private var contractValidated = false
     private val canonicalContract: JSONObject by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -582,6 +582,13 @@ class ReiAnixSqliteDatabase(context: Context) {
     }
 
     companion object {
+        /**
+         * Single path authority shared by bootstrap, repositories, diagnostics and recovery.
+         * The app-private relative identity is stable and does not expose the full local path.
+         */
+        internal fun canonicalFile(context: Context): File =
+            File(File(context.applicationContext.filesDir, "data"), DATABASE_FILE_NAME)
+
         const val DATABASE_FILE_NAME = "library.sqlite3"
         const val EXPECTED_SCHEMA_VERSION = 29
         const val BUSY_TIMEOUT_MS = 10_000
