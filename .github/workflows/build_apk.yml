@@ -38,6 +38,45 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Set up Python for one-time schema asset recovery
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Generate canonical SQLite v29 runtime contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This pinned, pre-migration schema source is used only to generate the
+          # data contract. None of its Python sources are copied into the APK or
+          # committed to the current repository.
+          schema_source="$RUNNER_TEMP/reianix-schema-source"
+          source_commit="fb236a169185c3fde12f4bbd59bdc5371dfacb08"
+          source_root="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$source_commit"
+          mkdir -p "$schema_source/scripts" "$schema_source/core" build
+          for source_file in \
+            scripts/generate_native_sqlite_test_fixture.py \
+            core/library_store.py \
+            core/consumption.py \
+            core/search_engine.py \
+            core/performance.py; do
+            destination="$schema_source/$source_file"
+            mkdir -p "$(dirname "$destination")"
+            curl --fail --location --silent --show-error --retry 3 \
+              "$source_root/$source_file" -o "$destination"
+            test -s "$destination"
+          done
+          python "$schema_source/scripts/generate_native_sqlite_test_fixture.py" \
+            --output "$RUNNER_TEMP/native-sqlite-schema-v29.json" \
+            --contract-output "$RUNNER_TEMP/native-sqlite-contract-v29.json"
+          jq -e '.schema_version == 29 and (.tables | length == 14) and (.table_sql | length == 14)' \
+            "$RUNNER_TEMP/native-sqlite-contract-v29.json" >/dev/null
+          mkdir -p android/app/src/main/assets
+          cp "$RUNNER_TEMP/native-sqlite-contract-v29.json" \
+            android/app/src/main/assets/native-sqlite-contract-v29.json
+          cp "$RUNNER_TEMP/native-sqlite-contract-v29.json" build/native-sqlite-contract-v29.json
+          test -s android/app/src/main/assets/native-sqlite-contract-v29.json
+          echo "Canonical v29 runtime contract generated and staged."
       - name: Validate JSON configuration
         shell: bash
         run: |
@@ -77,6 +116,7 @@ jobs:
           test -s android/app/src/main/AndroidManifest.xml
           test -s android/app/src/main/res/values/colors.xml
           test -s android/app/src/main/res/drawable/ic_launcher_foreground.xml
+          test -s android/app/src/main/assets/native-sqlite-contract-v29.json
           test -s android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           test -s android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
           grep -Fq 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
@@ -199,6 +239,10 @@ jobs:
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
 
           archive_list="$(unzip -Z1 "$apk")"
+          grep -Fxq 'assets/native-sqlite-contract-v29.json' <<< "$archive_list"
+          unzip -p "$apk" assets/native-sqlite-contract-v29.json > "$RUNNER_TEMP/packaged-native-sqlite-contract-v29.json"
+          jq -e '.schema_version == 29 and (.tables | length == 14) and (.table_sql | length == 14)' \
+            "$RUNNER_TEMP/packaged-native-sqlite-contract-v29.json" >/dev/null
           if grep -Eiq '(^|/)(__pycache__/|[^/]+\.py[co]$|assets/app\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"; then
             echo "The APK contains a forbidden Python/Flet/Flutter payload:"
             grep -Ei '(^|/)(__pycache__/|[^/]+\.py[co]$|assets/app\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"
@@ -253,6 +297,10 @@ jobs:
             cp build-strings-source.xml android/app/src/main/res/values/strings.xml
             rm -f build-strings-source.xml
           fi
+          # The generated JSON stays in the APK and build artifact, not in the
+          # transient source tree. It is committed after the one-time recovery run.
+          rm -f android/app/src/main/assets/native-sqlite-contract-v29.json
+          rmdir android/app/src/main/assets 2>/dev/null || true
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --check
           status="$(git status --porcelain)"
@@ -335,6 +383,15 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+
+      - name: Upload canonical SQLite contract for permanent source restore
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-sqlite-contract-bootstrap-${{ github.run_number }}
+          path: build/native-sqlite-contract-v29.json
+          retention-days: 7
+          if-no-files-found: error
       - name: Upload APK ZIP to Actions run
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
