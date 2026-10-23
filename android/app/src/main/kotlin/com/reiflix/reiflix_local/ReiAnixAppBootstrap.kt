@@ -522,7 +522,7 @@ class ReiAnixAppBootstrap internal constructor(
             )
             // No durable recovery evidence exists: initialize the one canonical file
             // natively. The schema manager is additive and never replaces existing data.
-            val migrated = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = true)
+            val migrated = initializeCanonicalDatabase(allowCreate = true)
             val schemaSnapshot = dependencies.sqliteDatabase.inspectSchema()
             val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
             logCanonicalSqliteValidation(
@@ -587,7 +587,7 @@ class ReiAnixAppBootstrap internal constructor(
             )
         }
 
-        val migrationSnapshot = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
+        val migrationSnapshot = initializeCanonicalDatabase(allowCreate = false)
         val schemaSnapshot = dependencies.sqliteDatabase.inspectSchema()
         val integrity = ReiAnixBackupService(appContext).integrityReport()
         logCanonicalSqliteValidation(
@@ -619,6 +619,38 @@ class ReiAnixAppBootstrap internal constructor(
                 recoveryRequired = true,
                 warning = "[$reason] " + details.ifBlank { DATABASE_RECOVERY_WARNING },
             )
+        }
+    }
+
+    private fun initializeCanonicalDatabase(
+        allowCreate: Boolean,
+    ): com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot {
+        val canonicalFile = ReiAnixSqliteDatabase.canonicalFile(appContext)
+        val existedBefore = canonicalFile.exists()
+        Log.i(
+            TAG,
+            "APP_BOOTSTRAP_SQLITE_MIGRATION_STARTED file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                "existingBefore=$existedBefore allowCreate=$allowCreate",
+        )
+        return try {
+            dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = allowCreate).also { snapshot ->
+                Log.i(
+                    TAG,
+                    "APP_BOOTSTRAP_SQLITE_MIGRATION_COMPLETED file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                        "created=${!existedBefore && canonicalFile.isFile} " +
+                        "schemaVersion=${snapshot.schemaVersion ?: -1} tableCount=${snapshot.tables.size} " +
+                        "compatible=${snapshot.supportsCompatibleRuntimeContract}",
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.e(
+                TAG,
+                "APP_BOOTSTRAP_SQLITE_MIGRATION_FAILED file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                    "reason=${databaseFailureCategory(error)} errorType=${error::class.java.simpleName}",
+            )
+            throw error
         }
     }
 
