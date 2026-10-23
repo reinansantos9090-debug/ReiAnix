@@ -56,14 +56,21 @@ jobs:
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Compile JVM test sources and release Kotlin sources
+      - name: Run JVM SQLite regression tests and compile release Kotlin sources
         shell: bash
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
+          contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
+          fixture="android/app/src/test/resources/native-sqlite-schema-v29.json"
+          mkdir -p "$(dirname "$fixture")"
+          trap 'rm -f "$fixture"; rmdir "$(dirname "$fixture")" 2>/dev/null || true' EXIT
+          gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"
+          jq '. + {statements: ((.table_sql | to_entries | sort_by(.key) | map(.value)) + ([.indexes | sort_by(.name)[] | select(.sql != null) | .sql]))}' "$contract" > "$fixture"
+          jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$fixture" >/dev/null
           gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
-            :app:compileDebugUnitTestKotlin \
+            :app:testDebugUnitTest \
             :app:compileReleaseKotlin

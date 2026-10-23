@@ -541,7 +541,7 @@ class ReiAnixSqliteDatabase(context: Context) {
             }
             if (validateContract && !contractValidated) {
                 val snapshot = inspectSchema(database)
-                if (!snapshot.supportsCurrentContract) {
+                if (!snapshot.supportsCompatibleRuntimeContract) {
                     throw ReiAnixSqliteSchemaMismatchException(snapshot.incompatibilities)
                 }
                 contractValidated = true

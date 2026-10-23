@@ -264,6 +264,49 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun compatibleLegacyColumnsAndIndexesRemainReadableWithoutRebuildingUserTables() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("ALTER TABLE episodes ADD COLUMN legacy_annotation TEXT")
+            db.execSQL("CREATE INDEX idx_legacy_episode_annotation ON episodes(legacy_annotation)")
+            db.execSQL("UPDATE episodes SET legacy_annotation='preserve-me' WHERE id=7")
+        }
+
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val schema = repository.inspectSchema()
+        assertFalse("Strict diagnostics must continue reporting legacy schema drift.", schema.supportsCurrentContract)
+        assertTrue(
+            "Ordinary legacy columns/indexes must not route an otherwise healthy catalog to Recovery Mode: ${schema.incompatibilities}",
+            schema.supportsCompatibleRuntimeContract,
+        )
+        assertEquals("Original Title", repository.getAnime(1L)?.title)
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT legacy_annotation FROM episodes WHERE id=7", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("preserve-me", cursor.getString(0))
+            }
+        }
+    }
+
+    @Test
+    fun migrationRepairsStaleCanonicalIndexDefinitionWithoutRebuildingCatalogTables() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("DROP INDEX IF EXISTS idx_episodes_anime_playback")
+            db.execSQL("CREATE INDEX idx_episodes_anime_playback ON episodes(anime_id)")
+        }
+
+        val database = ReiAnixSqliteDatabase(context)
+        val migrated = database.initializeOrMigrate(allowCreate = false)
+        assertTrue("Migration should restore the canonical index: ${migrated.incompatibilities}", migrated.supportsCurrentContract)
+        assertEquals(
+            listOf("anime_id", "missing", "watched", "last_played_at"),
+            migrated.indexSnapshots["idx_episodes_anime_playback"]?.columns?.mapNotNull { it.name },
+        )
+        assertEquals("Original Title", ReiAnixSqliteLibraryRepository(database).getAnime(1L)?.title)
+    }
+
+    @Test
     fun applicationRepositoryRejectsAnIncompatibleSchemaBeforeServingRows() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
