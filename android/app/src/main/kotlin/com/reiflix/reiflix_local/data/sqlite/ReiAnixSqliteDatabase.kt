@@ -8,7 +8,6 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.util.Locale
-import java.util.zip.GZIPInputStream
 
 /**
  * Connection boundary for the existing LibraryStore-created SQLite database.
@@ -510,10 +509,8 @@ class ReiAnixSqliteDatabase(context: Context) {
     }
 
     private fun loadCanonicalContract(): JSONObject = try {
-        appContext.assets.open(CONTRACT_ASSET_NAME).use { compressed ->
-            GZIPInputStream(compressed).bufferedReader(Charsets.UTF_8).use { reader ->
-                JSONObject(reader.readText())
-            }
+        appContext.assets.open(CONTRACT_ASSET_NAME).bufferedReader(Charsets.UTF_8).use { reader ->
+            JSONObject(reader.readText())
         }
     } catch (error: IOException) {
         throw IllegalStateException(
@@ -588,7 +585,7 @@ class ReiAnixSqliteDatabase(context: Context) {
         const val DATABASE_FILE_NAME = "library.sqlite3"
         const val EXPECTED_SCHEMA_VERSION = 29
         const val BUSY_TIMEOUT_MS = 10_000
-        const val CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json.gz"
+        const val CONTRACT_ASSET_NAME = "native-sqlite-contract-v29.json"
         private const val SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
 
         private fun quoteIdentifier(identifier: String) = "\"" + identifier.replace("\"", "\"\"") + "\""

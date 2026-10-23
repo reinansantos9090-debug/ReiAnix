@@ -208,23 +208,15 @@ jobs:
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
 
           archive_list="$(unzip -Z1 "$apk")"
-          contract_asset='assets/native-sqlite-contract-v29.json.gz'
+          contract_asset='assets/native-sqlite-contract-v29.json'
           if ! grep -Fxq "$contract_asset" <<< "$archive_list"; then
             echo "ERROR: packaged APK is missing $contract_asset"
             echo "SQLite-related entries actually present in the APK:"
             grep -Ei '(^assets/|sqlite|contract|\.gz$)' <<< "$archive_list" || true
             exit 1
           fi
-          packaged_contract_gz="$RUNNER_TEMP/packaged-native-sqlite-contract-v29.json.gz"
           packaged_contract_json="$RUNNER_TEMP/packaged-native-sqlite-contract-v29.json"
-          unzip -p "$apk" "$contract_asset" > "$packaged_contract_gz"
-          if ! gzip -t "$packaged_contract_gz"; then
-            echo "ERROR: the APK's SQLite contract asset is not a valid gzip stream."
-            file "$packaged_contract_gz" || true
-            od -An -tx1 -N16 "$packaged_contract_gz" || true
-            exit 1
-          fi
-          gzip -dc "$packaged_contract_gz" > "$packaged_contract_json"
+          unzip -p "$apk" "$contract_asset" > "$packaged_contract_json"
           if ! jq -e '.schema_version == 29 and (.tables | length == 14) and (.table_sql | length == 14)' "$packaged_contract_json" >/dev/null; then
             echo "ERROR: the packaged SQLite contract did not satisfy the schema-v29 contract."
             jq -r '"schema_version=\(.schema_version // "missing") tables=\((.tables // []) | length) table_sql=\((.table_sql // {}) | length)"' "$packaged_contract_json" || true
