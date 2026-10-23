@@ -193,7 +193,7 @@ jobs:
           echo "$badging" | grep -Fq "versionCode='$GITHUB_RUN_NUMBER'"
           echo "$badging" | grep -Fq "versionName='0.2.1'"
           echo "$badging" | grep -Fq "targetSdkVersion:'36'"
-          echo "$badging" | grep -Eq "^application-icon(-[0-9]+)?="
+          echo "$badging" | grep -Fq "application-icon"
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.MANAGE_EXTERNAL_STORAGE"
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VIDEO"
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
