@@ -3,7 +3,6 @@ package com.reiflix.reiflix_local.ui.host
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -461,14 +460,13 @@ class ReiAnixComposeLibraryHost(
             if (existing.parent != null) return existing
         }
 
-        val root = activity.findViewById<ViewGroup>(android.R.id.content)
-            ?: error("MainActivity content root is unavailable")
-
         val view = ComposeView(activity).apply {
-            // Stable ID lets Compose restore rememberSaveable/NavController
-            // state when MainActivity is recreated for configuration changes.
+            // ComponentActivity initializes LifecycleOwner, ViewModelStoreOwner and
+            // SavedStateRegistryOwner on its content hierarchy through setContentView().
+            // Installing this as the Activity content root keeps Compose and Navigation
+            // attached to those owners on the very first launch (and after recreation).
             setId(R.id.reianix_compose_app_shell)
-            layoutParams = FrameLayout.LayoutParams(
+            layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             )
@@ -479,7 +477,7 @@ class ReiAnixComposeLibraryHost(
                 ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
             )
         }
-        root.addView(view)
+        activity.setContentView(view)
         composeView = view
         return view
     }

@@ -75,6 +75,12 @@ jobs:
           test -s android/build.gradle.kts
           test -s android/app/build.gradle.kts
           test -s android/app/src/main/AndroidManifest.xml
+          test -s android/app/src/main/res/values/colors.xml
+          test -s android/app/src/main/res/drawable/ic_launcher_foreground.xml
+          test -s android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          test -s android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          grep -Fq 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
+          grep -Fq 'android:roundIcon="@mipmap/ic_launcher_round"' android/app/src/main/AndroidManifest.xml
           test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt
           test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt
           test ! -e main.py
@@ -187,6 +193,7 @@ jobs:
           echo "$badging" | grep -Fq "versionCode='$GITHUB_RUN_NUMBER'"
           echo "$badging" | grep -Fq "versionName='0.2.1'"
           echo "$badging" | grep -Fq "targetSdkVersion:'36'"
+          echo "$badging" | grep -Eq "^application-icon(-[0-9]+)?="
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.MANAGE_EXTERNAL_STORAGE"
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VIDEO"
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
