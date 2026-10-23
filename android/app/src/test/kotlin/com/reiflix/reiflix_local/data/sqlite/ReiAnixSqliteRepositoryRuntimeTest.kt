@@ -102,6 +102,176 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertFalse("Opening a missing DB must not create the canonical file.", databaseFile.exists())
     }
 
+
+    @Test
+    fun initializationCreatesFreshCanonicalDatabaseOnlyAfterExplicitAuthorization() = runBlocking {
+        val database = ReiAnixSqliteDatabase(context)
+        assertFalse("The fixture starts without a canonical database.", databaseFile.exists())
+
+        try {
+            database.initializeOrMigrate(allowCreate = false)
+            fail("A missing database must not be created without explicit fresh-install authorization.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("creation was not authorized"))
+        }
+        assertFalse("Refused initialization must leave the database absent.", databaseFile.exists())
+
+        val created = database.initializeOrMigrate(allowCreate = true)
+        assertTrue(databaseFile.isFile)
+        assertEquals(29, created.schemaVersion)
+        assertEquals(0, created.sqliteUserVersion)
+        assertTrue("Fresh schema must satisfy the runtime contract.", created.supportsCompatibleRuntimeContract)
+        assertTrue(created.missingRequiredTables.isEmpty())
+        assertTrue(created.missingRequiredColumns.isEmpty())
+        assertTrue(created.missingRequiredIndexes.isEmpty())
+        assertEquals(14, created.tables.size)
+
+        val repeated = database.initializeOrMigrate(allowCreate = false)
+        assertTrue("Reinitialization must remain compatible.", repeated.supportsCompatibleRuntimeContract)
+        assertEquals(29, repeated.schemaVersion)
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT COUNT(*) FROM schema_migrations WHERE version = 29", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Repeated initialization must not duplicate the v29 marker.", 1, cursor.getInt(0))
+            }
+        }
+    }
+
+    @Test
+    fun initializationIsIdempotentAndPreservesExistingCanonicalCatalogData() = runBlocking {
+        createCanonicalFixture()
+        val originalCanonicalPath = databaseFile.canonicalPath
+        val database = ReiAnixSqliteDatabase(context)
+
+        val first = database.initializeOrMigrate(allowCreate = false)
+        assertTrue("Existing canonical data must remain compatible: ${first.incompatibilities}", first.supportsCompatibleRuntimeContract)
+        val second = database.initializeOrMigrate(allowCreate = false)
+        assertTrue("Repeated migration must remain compatible: ${second.incompatibilities}", second.supportsCompatibleRuntimeContract)
+        assertEquals(originalCanonicalPath, databaseFile.canonicalPath)
+
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT title, personal_note, favorite FROM anime WHERE id = 1", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Original Title", cursor.getString(0))
+                assertEquals("keep this note", cursor.getString(1))
+                assertEquals(1, cursor.getInt(2))
+            }
+            db.rawQuery("SELECT path, progress FROM episodes WHERE id = 7", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("/media/show/episode-01.mkv", cursor.getString(0))
+                assertEquals(11.0, cursor.getDouble(1), 0.0)
+            }
+            db.rawQuery("SELECT name FROM folders WHERE path = '/media/show'", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Show Folder", cursor.getString(0))
+            }
+            db.rawQuery("SELECT value FROM preferences WHERE key = 'theme'", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("light", cursor.getString(0))
+            }
+            db.rawQuery("SELECT COUNT(*) FROM schema_migrations WHERE version = 29", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+        }
+    }
+
+    @Test
+    fun initializationRejectsMissingCoreTablesWithoutRecreatingThemOrReplacingTheCatalog() = runBlocking {
+        createCanonicalFixture()
+        val originalCanonicalPath = databaseFile.canonicalPath
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("DROP TABLE folders")
+        }
+
+        try {
+            ReiAnixSqliteDatabase(context).initializeOrMigrate(allowCreate = true)
+            fail("An existing database missing a core table must require recovery, not auto-recreate it.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("missing existing core tables"))
+            assertTrue(expected.message.orEmpty().contains("folders"))
+        }
+
+        assertTrue(databaseFile.isFile)
+        assertEquals(originalCanonicalPath, databaseFile.canonicalPath)
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'folders'", null).use { cursor ->
+                assertFalse("The missing core table must stay missing until explicit recovery.", cursor.moveToFirst())
+            }
+            db.rawQuery("SELECT title FROM anime WHERE id = 1", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Original Title", cursor.getString(0))
+            }
+            db.rawQuery("SELECT progress FROM episodes WHERE id = 7", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(11.0, cursor.getDouble(0), 0.0)
+            }
+        }
+    }
+
+    @Test
+    fun initializationRejectsCorruptExistingDatabaseWithoutReplacingItsBytes() = runBlocking {
+        databaseFile.parentFile?.mkdirs()
+        databaseFile.writeText("not a sqlite database", Charsets.UTF_8)
+        val originalBytes = databaseFile.readBytes()
+
+        try {
+            ReiAnixSqliteDatabase(context).initializeOrMigrate(allowCreate = true)
+            fail("Initialization must reject a corrupt existing database rather than replace it.")
+        } catch (expected: Exception) {
+            assertTrue(
+                "Expected an SQLite open/corruption failure, got ${expected::class.java.name}",
+                expected is ReiAnixSqliteOpenException || expected is SQLiteException,
+            )
+        }
+
+        assertTrue(databaseFile.exists())
+        assertEquals(originalBytes.toList(), databaseFile.readBytes().toList())
+    }
+
+    @Test
+    fun initializationRejectsEmptyExistingDatabaseWithoutReplacingIt() = runBlocking {
+        databaseFile.parentFile?.mkdirs()
+        databaseFile.writeBytes(byteArrayOf())
+
+        try {
+            ReiAnixSqliteDatabase(context).initializeOrMigrate(allowCreate = true)
+            fail("An empty existing file must require recovery instead of fresh creation.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("empty or is not a regular file"))
+        }
+
+        assertTrue(databaseFile.exists())
+        assertEquals(0L, databaseFile.length())
+    }
+
+    @Test
+    fun initializationDoesNotOverwriteAnUnexpectedSqliteUserVersion() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("PRAGMA user_version = 29")
+        }
+
+        try {
+            ReiAnixSqliteDatabase(context).initializeOrMigrate(allowCreate = false)
+            fail("Initialization must reject an unexpected PRAGMA user_version without silently changing it.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("SQLite user_version is 29"))
+            assertTrue(expected.message.orEmpty().contains("expected 0"))
+        }
+
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("PRAGMA user_version", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(29, cursor.getInt(0))
+            }
+            db.rawQuery("SELECT title FROM anime WHERE id = 1", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Original Title", cursor.getString(0))
+            }
+        }
+    }
+
     @Test
     fun readsPreexistingCatalogAndReportsVersionWithoutChangingSchema() = runBlocking {
         createCanonicalFixture()
