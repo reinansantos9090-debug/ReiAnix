@@ -10647,7 +10647,6 @@ internal class NativeMainRuntimePort(
                     message = "Estado das permissões de armazenamento atualizado.",
                     payload = payload,
                 )
-                val capabilities = payload.optJSONObject("capabilities") ?: payload
                 val publishedAt = payload.optLong(
                     "_legacySourceEventCreatedAt",
                     payload.optLong(
@@ -10655,7 +10654,10 @@ internal class NativeMainRuntimePort(
                         payload.optLong("published_at_ms", payload.optLong("createdAt", payload.optLong("timestamp", 0L))),
                     ),
                 )
-                refreshAuthoritativeStorageSnapshot(capabilities, publishedAt)
+                // Keep outer event metadata (for example a just-granted treeUri)
+                // alongside nested capability details. The snapshot is re-read from
+                // Android, but these correlation fields still fence stale grants.
+                refreshAuthoritativeStorageSnapshot(payload, publishedAt)
             }
             "saf_inventory" -> launchTracked("reconcile_saf_inventory", lane = "storage") {
                 reconcileSafInventory(payload)
