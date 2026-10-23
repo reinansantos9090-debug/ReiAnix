@@ -274,15 +274,17 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
 
     @Test
-    fun bootstrapKeepsNativeServicesGatedWhenCanonicalDatabaseIsCorrupt() = runBlocking {
-        databaseFile.parentFile?.mkdirs()
-        databaseFile.writeText("not a sqlite database", Charsets.UTF_8)
+    fun bootstrapKeepsNativeServicesGatedWhenCanonicalCoreTablesAreMissing() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("DROP TABLE folders")
+        }
 
         val bootstrap = com.reiflix.reiflix_local.ReiAnixAppDependencies(context).bootstrap
         bootstrap.awaitStarted()
         val state = bootstrap.state.value
 
-        assertTrue("A corrupt canonical database must require recovery.", state.recoveryRequired)
+        assertTrue("A canonical database missing a core table must require recovery.", state.recoveryRequired)
         assertEquals(
             com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
             state.persistenceStatus,
@@ -292,7 +294,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             state.stage,
         )
         assertFalse(
-            "Native services must not be published as ready after a database validation failure.",
+            "Native services must not be published as ready while core tables are missing.",
             state.completedStages.contains(com.reiflix.reiflix_local.ReiAnixBootstrapStage.NATIVE_SERVICES_READY),
         )
         assertFalse(
