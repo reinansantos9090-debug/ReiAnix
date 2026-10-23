@@ -1,192 +1,122 @@
-name: ReiAnix Android Instrumented Runtime Matrix
+name: ReiAnix Android Instrumented Runtime Tests
 
 on:
   workflow_dispatch:
 
 concurrency:
-  # Device/emulator certification is intentionally manual and single-instance.
-  group: reiflix-android-instrumented-manual
+  group: reianix-android-instrumented-manual
   cancel-in-progress: true
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
-  python-contracts:
-    name: Python contracts
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install Python test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt "flet[cli]==0.86.5" pytest
-      - name: Compile Python sources
-        run: python -m compileall -q main.py app_config.py core views scripts
-      - name: Run Python tests once
-        run: python -m pytest -q
-      - name: Check diff whitespace
-        run: git diff --check
-
   instrumented:
-    name: Android API 36
+    name: Native Android API 36
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      SERIOUS_PYTHON_SITE_PACKAGES: ${{ github.workspace }}/build/site-packages
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
 
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
         with:
-          flutter-version: "3.44.8"
-          channel: stable
-          cache: true
-      - name: Verify Flutter SDK
-        run: |
-          set -euo pipefail
-          flutter --version
-          test -d "$FLUTTER_ROOT/packages/flutter_tools/gradle"
-      - name: Accept Android SDK licenses and install platform
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0 emulator"
+          accept-android-sdk-licenses: true
+
+      - name: Set up standalone Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Verify Kotlin-only project inputs
         shell: bash
         run: |
           set -euo pipefail
-          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          sdkmanager_path="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -print -quit)"
-          test -n "$sdkmanager_path"
-          set +o pipefail
-          yes | "$sdkmanager_path" --licenses >/dev/null
-          set -o pipefail
-          "$sdkmanager_path" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator"
-      - name: Install Flet build dependencies
-        run: |
-          set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
+          test -s android/settings.gradle.kts
+          test -s android/build.gradle.kts
+          test -s android/app/build.gradle.kts
+          test -s android/app/src/main/AndroidManifest.xml
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt
+          test -s android/app/src/main/assets/native-sqlite-contract-v29.json.gz
+          test ! -e main.py
+          test ! -e app_config.py
+          test ! -e requirements.txt
+          test ! -e pyproject.toml
+          if find . -path './.git' -prune -o -type f \( -name '*.py' -o -name '*.pyc' \) -print | grep -q .; then
+            echo "Unexpected Python source/bytecode remains in the repository."
+            find . -path './.git' -prune -o -type f \( -name '*.py' -o -name '*.pyc' \) -print
+            exit 1
           fi
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt "flet[cli]==0.86.5"
-      - name: Generate deterministic player fixture
+          git diff --check
+
+      - name: Install fixture tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg sqlite3
+
+      - name: Generate native instrumentation fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="android/app/src/androidTest/assets"
+          mkdir -p "$assets"
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "color=c=black:s=640x360:r=30" \
+            -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
+            -t 12 -shortest -c:v mpeg4 -q:v 5 -c:a aac -movflags +faststart \
+            "$assets/player_fixture.mp4"
+          test -s "$assets/player_fixture.mp4"
+
+          contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
+          gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"
+          test_fixture="android/app/src/test/resources/native-sqlite-schema-v29.json"
+          mkdir -p "$(dirname "$test_fixture")"
+          jq '. + {statements: ((.table_sql | to_entries | sort_by(.key) | map(.value)) + ([.indexes | sort_by(.name)[] | select(.sql != null) | .sql]))}' "$contract" > "$test_fixture"
+          jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$test_fixture" >/dev/null
+          db="$assets/library_fixture.sqlite3"
+          rm -f "$db"
+          jq -r '.table_sql[] + ";"' "$contract" | sqlite3 "$db"
+          jq -r '.indexes[]? | select(.sql != null) | .sql + ";"' "$contract" | sqlite3 "$db"
+          sqlite3 "$db" <<'SQL'
+          PRAGMA foreign_keys=OFF;
+          INSERT INTO anime (id, title, anilist_id)
+            VALUES (1, 'ReiAnix Test Collection', 16498);
+          INSERT INTO episodes (id, anime_id, number, path, media_identity, progress)
+            VALUES
+              (101, 1, 1, 'content://reianix-fixture/episode-01.mp4', 'fixture-identity-01', 37),
+              (102, 1, 2, 'content://reianix-fixture/episode-02.mp4', 'fixture-identity-02', 0),
+              (103, 1, 3, 'content://reianix-fixture/episode-03.mp4', 'fixture-identity-03', 0),
+              (104, 1, 4, 'content://reianix-fixture/episode-04.mp4', 'fixture-identity-04', 0),
+              (105, 1, 5, 'content://reianix-fixture/episode-05.mp4', 'fixture-identity-05', 0);
+          SQL
+          test "$(sqlite3 "$db" 'SELECT count(*) FROM episodes WHERE anime_id=1;')" = "5"
+          test "$(sqlite3 "$db" 'SELECT progress FROM episodes WHERE anime_id=1 ORDER BY number LIMIT 1;')" = "37"
+
+      - name: Compile native app and instrumentation sources
+        shell: bash
         env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: |
-          python scripts/create_player_fixture.py
-          test -s android/app/src/androidTest/assets/player_fixture.mp4
-          python scripts/create_library_fixture.py
-          test -s android/app/src/androidTest/assets/library_fixture.sqlite3
-      - name: Prepare Flet template with ReiAnix Android host
-        shell: bash
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
-          mkdir -p build
-          curl -sSL -o build/flet-build-template.zip https://github.com/flet-dev/flet/releases/download/v0.86.5/flet-build-template.zip
-          mkdir -p build/temp_tmpl build/flet-build-template
-          unzip -q build/flet-build-template.zip -d build/temp_tmpl
-          cp -a build/temp_tmpl/build/. build/flet-build-template/
-          rm -rf build/temp_tmpl build/flet-build-template.zip
-          python scripts/prepare_flet_template.py             --template "$GITHUB_WORKSPACE/build/flet-build-template"             --overlay "$GITHUB_WORKSPACE/android"
-      - name: Render Android Gradle project
-        shell: bash
-        run: |
-          set -euo pipefail
-          git_backup_root="$(mktemp -d)"
-          git_backup="$git_backup_root/.git"
-          mv .git "$git_backup"
-          restore_git() {
-            if [ -d "$git_backup" ] && [ ! -e .git ]; then
-              mv "$git_backup" .git
-            fi
-            rmdir "$git_backup_root"
-          }
-          trap restore_git EXIT
-          flet build apk             --template build/flet-build-template             --build-number "$GITHUB_RUN_NUMBER"             --build-version "0.2.1"             --python-version "3.12"             --yes
-      - name: Verify Serious Python staging
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -d "$SERIOUS_PYTHON_SITE_PACKAGES"
-          test -n "$(find "$SERIOUS_PYTHON_SITE_PACKAGES" -type f -print -quit)"
-          echo "Serious Python site-packages: $SERIOUS_PYTHON_SITE_PACKAGES"
+          gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
+            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
+            -PreianixBuildVersion="0.2.1" \
+            :app:testDebugUnitTest \
+            :app:assembleDebug \
+            :app:assembleDebugAndroidTest \
+            :app:compileReleaseKotlin
 
-      - name: Verify rendered Android test project
-        run: |
-          test -f build/flutter/android/gradlew
-          test -f build/flutter/android/app/build.gradle.kts
-          for test_file in \
-            NativePlayerPlaybackInstrumentedTest.kt \
-            BackAndSettingsReturnInstrumentedTest.kt \
-            DeviceFlowInstrumentedTest.kt \
-            NativeIndexInstrumentedTest.kt \
-            NativeMailboxInstrumentedTest.kt \
-            MetadataOwnerInstrumentedTest.kt; do
-            test -f "build/flutter/android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/$test_file"
-          done
-      - name: Verify rendered Android project integrity
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f build/flutter/pubspec.yaml
-          test -f build/flutter/android/gradlew
-          test -f build/flutter/android/settings.gradle.kts
-          test -f build/flutter/android/app/build.gradle.kts
-          test -d build/flutter/android/app/src/androidTest
-
-
-      - name: Restore Flutter pub dependencies
-        working-directory: build/flutter
-        run: flutter pub get
-
-      - name: Run Android Kotlin unit tests (no emulator)
-        working-directory: build/flutter/android
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f ./gradlew
-          chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --max-workers=2
-
-      - name: Precompile Android app and instrumentation APKs
-        working-directory: build/flutter/android
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x gradlew
-          timeout --signal=TERM --kill-after=10s 10m             ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest             --no-daemon --stacktrace --max-workers=2
-
-      - name: Enable KVM for Android emulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-reianix-kvm.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -e /dev/kvm
-          ls -l /dev/kvm
-      - name: Run instrumented tests on Android API 36
+      - name: Run Android instrumentation tests on API 36
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -199,76 +129,6 @@ jobs:
           disable-linux-hw-accel: false
           emulator-options: "-no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-save -gpu swiftshader_indirect -camera-back none -camera-front none"
           script: bash "$GITHUB_WORKSPACE/scripts/run_android_instrumented.sh" "36" "$GITHUB_WORKSPACE/build/android-api36"
-      - name: Summarize instrumented test failures
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$GITHUB_WORKSPACE/build/flutter/android"
-          python - <<'PY'
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-
-          roots = [
-              Path("app/build/outputs/androidTest-results"),
-              Path("app/build/outputs/androidTest-results/connected"),
-              Path("app/build/test-results"),
-              Path("app/build/outputs"),
-          ]
-          xml_files = []
-          seen = set()
-          for root in roots:
-              if not root.exists():
-                  continue
-              for path in root.rglob("*.xml"):
-                  if path in seen:
-                      continue
-                  seen.add(path)
-                  xml_files.append(path)
-
-          failures = []
-          for path in xml_files:
-              try:
-                  root = ET.parse(path).getroot()
-              except (ET.ParseError, OSError):
-                  continue
-              for testcase in root.iter("testcase"):
-                  error_nodes = [child for child in testcase if child.tag.rsplit("}", 1)[-1] in {"failure", "error"}]
-                  if not error_nodes:
-                      continue
-                  classname = testcase.attrib.get("classname", "")
-                  name = testcase.attrib.get("name", "")
-                  detail = ""
-                  if error_nodes:
-                      detail = " ".join((error_nodes[0].text or "").split())[:1200]
-                  failures.append((classname, name, detail, str(path)))
-
-          print(f"INSTRUMENTED_RESULT_FILES={len(xml_files)}")
-          if not failures:
-              print("INSTRUMENTED_FAILURES=0")
-          else:
-              print(f"INSTRUMENTED_FAILURES={len(failures)}")
-              for classname, name, detail, path in failures:
-                  print(f"INSTRUMENTED_TEST_FAILURE={classname}#{name}")
-                  if detail:
-                      print(f"INSTRUMENTED_TEST_FAILURE_DETAIL={detail}")
-                  print(f"INSTRUMENTED_TEST_RESULT_FILE={path}")
-          PY
-
-          log="$(find "$GITHUB_WORKSPACE/build" -type f -name 'connectedDebugAndroidTest.log' -print -quit)"
-          if [ -n "$log" ]; then
-            echo "===== CONNECTED_TEST_LOG_FAILURE_CONTEXT ====="
-            set +e
-            grep -n -E 'FAILED|FAILURE|There were failing tests|Test run failed|Exception|AssertionError' "$log" | tail -n 120
-            grep_status=${PIPESTATUS[0]}
-            set -e
-            if [ "$grep_status" -gt 1 ]; then
-              echo "INSTRUMENTED_TEST_LOG_GREP_FAILED=$grep_status"
-              exit "$grep_status"
-            fi
-          else
-            echo "INSTRUMENTED_TEST_LOG=NOT_FOUND"
-          fi
 
       - name: Capture Android runtime diagnostics
         if: always()
@@ -277,11 +137,6 @@ jobs:
           set +e
           out="$GITHUB_WORKSPACE/build/android-api36"
           mkdir -p "$out"
-
-          # Diagnostic collection must never hide or change the preceding
-          # instrumentation result. Each individual adb command is bounded so
-          # a wedged emulator cannot prevent the evidence directory from being
-          # uploaded after a real test failure.
           capture() {
             local output="$1"
             shift
@@ -292,44 +147,29 @@ jobs:
             fi
             return 0
           }
-
           capture "$out/adb_devices.txt" adb devices -l
           capture "$out/sdk.txt" adb shell getprop ro.build.version.sdk
           capture "$out/activity_top.txt" adb shell dumpsys activity top
-          capture "$out/window.txt" adb shell dumpsys window
           capture "$out/package.txt" adb shell dumpsys package com.reiflix.reiflix_local
           capture "$out/logcat.txt" adb logcat -d -b all -v threadtime
-          capture "$out/screenshot.png" adb exec-out screencap -p
-          capture "$out/ui_dump.txt" adb shell uiautomator dump /sdcard/window.xml
-          capture "$out/ui.xml" adb shell cat /sdcard/window.xml
           {
             echo "## Android runtime diagnostics"
             echo "SDK:"
-            if [ -f "$out/sdk.txt" ]; then
-              cat "$out/sdk.txt"
-            fi
+            cat "$out/sdk.txt" 2>/dev/null
             echo "--- adb devices ---"
-            if [ -f "$out/adb_devices.txt" ]; then
-              cat "$out/adb_devices.txt"
-            fi
-            echo "--- command exit markers ---"
-            if compgen -G "$out/*.txt" > /dev/null; then
-              grep -h "COMMAND_EXIT=" "$out"/*.txt
-            fi
+            cat "$out/adb_devices.txt" 2>/dev/null
           } >> "$GITHUB_STEP_SUMMARY"
           set -e
 
-      - name: Analyze ReiAnix runtime Logcat
+      - name: Remove generated test fixtures
         if: always()
         shell: bash
         run: |
-          set -euo pipefail
-          log="$GITHUB_WORKSPACE/build/android-api36/logcat.txt"
-          report="$GITHUB_WORKSPACE/build/android-api36/reianix-logcat-analysis.json"
-          python scripts/analyze_android_runtime_log.py \
-            --logcat "$log" \
-            --output "$report" \
-            --package "com.reiflix.reiflix_local"
+          rm -f android/app/src/androidTest/assets/player_fixture.mp4
+          rm -f android/app/src/androidTest/assets/library_fixture.sqlite3
+          rm -f android/app/src/test/resources/native-sqlite-schema-v29.json
+          rmdir android/app/src/test/resources 2>/dev/null || true
+          rmdir android/app/src/androidTest/assets 2>/dev/null || true
 
       - name: Upload Android instrumentation diagnostics
         if: always()
@@ -338,8 +178,8 @@ jobs:
           name: ReiAnix-android-api36-diagnostics-${{ github.run_number }}
           path: |
             build/android-api36/**
-            build/flutter/android/app/build/reports/**
-            build/flutter/android/app/build/test-results/**
-            build/flutter/android/app/build/outputs/androidTest-results/**
+            android/app/build/reports/**
+            android/app/build/test-results/**
+            android/app/build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn

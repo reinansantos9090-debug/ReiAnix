@@ -91,17 +91,14 @@ if [ "$ready" -ne 1 ]; then
   exit 1
 fi
 
-cd "$GITHUB_WORKSPACE/build/flutter/android"
+cd "$GITHUB_WORKSPACE/android"
 
-# The APK and androidTest APK are compiled before the emulator starts.
-# Keep this phase out of the emulator runner so heavy Kotlin/Dex work cannot
-# starve QEMU and trigger the known 'QEMU2 main loop' hang.
-chmod +x gradlew
-
+# The standalone Kotlin app and instrumentation APKs are compiled before the
+# emulator starts so Gradle/Dex work does not compete with the emulator.
 log="$output_dir/connectedDebugAndroidTest.log"
 set +e
 timeout --signal=TERM --kill-after=10s 12m \
-  ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace --max-workers=2 2>&1 | tee "$log"
+  gradle -p "$GITHUB_WORKSPACE/android" :app:connectedDebugAndroidTest --no-daemon --stacktrace --max-workers=2 2>&1 | tee "$log"
 status=${PIPESTATUS[0]}
 set -e
 

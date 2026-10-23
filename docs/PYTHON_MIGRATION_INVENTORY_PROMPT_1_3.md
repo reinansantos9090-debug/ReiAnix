@@ -1,5 +1,8 @@
 # ReiAnix — Inventário Python após o Prompt 1.3/9
 
+> **Registro histórico:** este arquivo descreve o snapshot/etapa indicada no título e não a árvore ativa atual. A aplicação Android foi cortada para Kotlin/Gradle nativos; arquivos Python e configurações Flet listados abaixo são contexto histórico, não dependências atuais. Consulte [a auditoria nativa atual](KOTLIN_MIGRATION_AUDIT.md) e o README para o estado vigente.
+
+
 **Snapshot de `main` após a migração aditiva do schema v29.**
 
 ## Situação

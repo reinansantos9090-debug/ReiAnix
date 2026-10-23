@@ -93,6 +93,13 @@ jobs:
           test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt
           test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt
           test ! -e main.py
+          test ! -e app_config.py
+          test ! -e requirements.txt
+          test ! -e pyproject.toml
+          if find . -path './.git' -prune -o -path './build' -prune -o -type f \( -name '*.py' -o -name '*.pyc' \) -print | grep -q .; then
+            echo "Unexpected Python source/bytecode remains in the repository."
+            exit 1
+          fi
           test -n "$(find android/app/src/main/kotlin -type f -name '*.kt' -print -quit)"
           grep -Fq 'android:name=".MainActivity"' android/app/src/main/AndroidManifest.xml
           git diff --check
