@@ -8970,7 +8970,7 @@ internal class NativeMainRuntimePort(
                 }
             }
             "reconcile_unmatched_metadata" -> reconcileUnmatchedAniListMetadata()
-            "request_anime_artwork" -> positiveLong("animeId")?.let {
+            "request_anime_artwork" -> (positiveLong("animeId") ?: positiveLong("anime_id"))?.let {
                 requestAnimeArtwork(it, payload.optBoolean("force", false))
             } ?: false
             "request_pending_artwork" -> requestPendingArtwork()
@@ -8989,7 +8989,7 @@ internal class NativeMainRuntimePort(
                     )
                 } ?: false
             "classify_missing_local_genres" -> classifyMissingLocalGenres()
-            "open_marathon" -> positiveLong("animeId")?.let {
+            "open_marathon" -> (positiveLong("animeId") ?: positiveLong("anime_id"))?.let {
                 queryMarathonPlan(it, nonBlank("currentPath") ?: nonBlank("current_path"))
             } ?: false
             "clear_runtime_selection" -> {
