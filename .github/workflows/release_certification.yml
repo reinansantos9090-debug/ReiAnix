@@ -84,6 +84,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ReiAnix-JVM-certification-log-${{ github.run_number }}
-          path: ${{ runner.temp }}/reianix-jvm-certification.log
+          path: |
+            ${{ runner.temp }}/reianix-jvm-certification.log
+            android/app/build/test-results/testDebugUnitTest/*.xml
+            android/app/build/reports/tests/testDebugUnitTest/**
           retention-days: 7
           if-no-files-found: warn
