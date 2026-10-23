@@ -7998,7 +7998,7 @@ internal class NativeMainRuntimePort(
             .put("anime_id", episode.animeId)
             .put("season", episode.seasonNumber ?: org.json.JSONObject.NULL)
             .put("number", episode.number ?: org.json.JSONObject.NULL)
-            .put("episode_title", episode.title ?: org.json.JSONObject.NULL)
+            .put("episode_title", episode.title?.takeIf { it.isNotBlank() } ?: episode.fileName)
             .put("file_name", episode.fileName)
             .put("progress", episode.progressSeconds ?: org.json.JSONObject.NULL)
             .put("duration", episode.durationSeconds ?: org.json.JSONObject.NULL)
@@ -8012,8 +8012,8 @@ internal class NativeMainRuntimePort(
             .put("cover_cache", org.json.JSONObject.NULL)
             .put("cover_url", org.json.JSONObject.NULL)
             .put("banner_url", org.json.JSONObject.NULL)
-            .put("path", episode.media.path ?: org.json.JSONObject.NULL)
-            .put("uri", episode.media.uri ?: org.json.JSONObject.NULL)
+            .put("path", episode.media.reference ?: org.json.JSONObject.NULL)
+            .put("uri", org.json.JSONObject.NULL)
             .put("media_identity", episode.media.mediaIdentity ?: org.json.JSONObject.NULL)
             .put(
                 "availability_state",
