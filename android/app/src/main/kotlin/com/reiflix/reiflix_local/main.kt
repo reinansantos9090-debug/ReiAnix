@@ -8024,12 +8024,27 @@ internal class NativeMainRuntimePort(
             .put("artwork_external_url", artwork?.externalUrl ?: org.json.JSONObject.NULL)
     }
 
+    private fun validLocalArtworkPath(path: String?): String? {
+        val value = path?.trim().orEmpty()
+        if (value.isEmpty() || value.startsWith("content://") ||
+            value.startsWith("http://") || value.startsWith("https://")
+        ) return null
+        return runCatching {
+            val file = File(value)
+            value.takeIf { file.isFile && file.length() > 0L }
+        }.getOrNull()
+    }
+
     private fun projectNativeLibraryPageAnime(
         anime: com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel,
         lookupTitle: String?,
         descriptionOriginal: String?,
+        fallbackCoverCache: String?,
     ): org.json.JSONObject {
         val artwork = anime.artwork
+        val localPosterPath = validLocalArtworkPath(artwork?.localPath)
+            ?: validLocalArtworkPath(fallbackCoverCache)
+        val localBackdropPath = validLocalArtworkPath(artwork?.backdropLocalPath)
         val meta = org.json.JSONObject()
             .put("title", anime.title)
             .put("year", anime.year ?: org.json.JSONObject.NULL)
@@ -8050,7 +8065,7 @@ internal class NativeMainRuntimePort(
             .put("duration", anime.durationMinutes ?: org.json.JSONObject.NULL)
             .put("studio", anime.studio ?: org.json.JSONObject.NULL)
             .put("season", anime.seasonLabel ?: org.json.JSONObject.NULL)
-            .put("cover_cache", artwork?.localPath ?: org.json.JSONObject.NULL)
+            .put("cover_cache", fallbackCoverCache ?: org.json.JSONObject.NULL)
             .put("cover_url", artwork?.externalUrl ?: org.json.JSONObject.NULL)
             .put("banner_url", artwork?.backdropExternalUrl ?: org.json.JSONObject.NULL)
         val seasons = org.json.JSONArray().apply {
@@ -8102,9 +8117,9 @@ internal class NativeMainRuntimePort(
             .put("genre_ids", org.json.JSONArray().apply { anime.genres.forEach { put(it.id ?: "") } })
             .put("user_tags", org.json.JSONArray().apply { anime.userTags.forEach { put(it) } })
             .put("personal_note", anime.personalNote ?: org.json.JSONObject.NULL)
-            .put("artwork_local_path", artwork?.localPath ?: org.json.JSONObject.NULL)
+            .put("artwork_local_path", localPosterPath ?: org.json.JSONObject.NULL)
             .put("artwork_external_url", artwork?.externalUrl ?: org.json.JSONObject.NULL)
-            .put("backdrop_local_path", artwork?.backdropLocalPath ?: org.json.JSONObject.NULL)
+            .put("backdrop_local_path", localBackdropPath ?: org.json.JSONObject.NULL)
             .put("backdrop_external_url", artwork?.backdropExternalUrl ?: org.json.JSONObject.NULL)
             .put("meta", meta)
             .put("seasons", seasons)
@@ -8240,15 +8255,19 @@ internal class NativeMainRuntimePort(
                 // the Compose card model intentionally doesn't retain this persistence field.
                 val legacyMetadata = withContext(Dispatchers.IO) {
                     dependencies.sqliteDatabase.read { database ->
-                        val result = linkedMapOf<Long, Pair<String?, String?>>()
+                        val result = linkedMapOf<Long, Triple<String?, String?, String?>>()
                         if (items.isNotEmpty()) {
                             val placeholders = items.joinToString(",") { "?" }
                             database.rawQuery(
-                                "SELECT id, lookup_title, description_original FROM anime WHERE id IN ($placeholders)",
+                                "SELECT id, lookup_title, description_original, cover_cache FROM anime WHERE id IN ($placeholders)",
                                 items.map { it.id.toString() }.toTypedArray(),
                             ).use { cursor ->
                                 while (cursor.moveToNext()) {
-                                    result[cursor.getLong(0)] = cursor.getString(1) to cursor.getString(2)
+                                    result[cursor.getLong(0)] = Triple(
+                                        cursor.getString(1),
+                                        cursor.getString(2),
+                                        cursor.getString(3),
+                                    )
                                 }
                             }
                         }
@@ -8258,7 +8277,7 @@ internal class NativeMainRuntimePort(
                 val itemPayload = org.json.JSONArray().apply {
                     items.forEach { anime ->
                         val metadata = legacyMetadata[anime.id]
-                        put(projectNativeLibraryPageAnime(anime, metadata?.first, metadata?.second))
+                        put(projectNativeLibraryPageAnime(anime, metadata?.first, metadata?.second, metadata?.third))
                     }
                 }
                 val pagePayload = org.json.JSONObject()
