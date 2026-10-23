@@ -31,6 +31,12 @@ internal object ReiAnixSqliteSchemaManager {
         check(parent != null && (parent.isDirectory || parent.mkdirs())) {
             "The canonical SQLite data directory is unavailable."
         }
+        // Never let a writable SQLite open touch a preexisting file until a read-only
+        // integrity pass proves it is a database we can safely attempt to migrate.
+        // In particular, OPEN_READWRITE on a non-SQLite file must not turn corruption
+        // evidence into a missing/empty catalogue.
+        if (existed) validateExistingDatabaseReadOnly(databaseFile)
+
         val database = try {
             if (existed) {
                 SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
@@ -55,7 +61,7 @@ internal object ReiAnixSqliteSchemaManager {
                 check(!existed || hasUserTables) {
                     "An existing canonical SQLite file contains no user tables; automatic initialization is forbidden. Recovery is required."
                 }
-                migrate(database, contract)
+                migrate(database, contract, freshDatabaseCreatedByThisCall = !existed && allowCreate)
                 snapshot = inspectSchema(database)
                 check(snapshot.supportsCompatibleRuntimeContract) {
                     "Canonical SQLite schema migration did not produce a compatible v29 database: " +
@@ -73,7 +79,11 @@ internal object ReiAnixSqliteSchemaManager {
         }
     }
 
-    fun migrate(database: SQLiteDatabase, contract: JSONObject) {
+    fun migrate(
+        database: SQLiteDatabase,
+        contract: JSONObject,
+        freshDatabaseCreatedByThisCall: Boolean = false,
+    ) {
         val expectedVersion = contract.getInt("schema_version")
         require(expectedVersion == ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION) {
             "Unsupported canonical schema version $expectedVersion."
@@ -91,7 +101,7 @@ internal object ReiAnixSqliteSchemaManager {
         ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
         // On a non-empty database these long-standing tables are canonical data owners.
         // Their disappearance is data-loss evidence, not an instruction to create an empty replacement.
-        if (existingTables.isNotEmpty()) {
+        if (!freshDatabaseCreatedByThisCall && existingTables.isNotEmpty()) {
             val missingCoreTables = setOf("anime", "episodes", "folders") - existingTables
             check(missingCoreTables.isEmpty()) {
                 "Canonical database is missing existing core tables: ${missingCoreTables.sorted().joinToString()}. Recovery is required."
@@ -145,6 +155,41 @@ internal object ReiAnixSqliteSchemaManager {
                     "cancelled=1, finished_at=? WHERE status='running' AND finished_at IS NULL",
                 arrayOf<Any>(timestampSeconds),
             )
+        }
+    }
+
+    private fun validateExistingDatabaseReadOnly(databaseFile: File) {
+        val database = try {
+            SQLiteDatabase.openDatabase(
+                databaseFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            )
+        } catch (error: Exception) {
+            throw ReiAnixSqliteOpenException(
+                "Existing canonical SQLite database failed read-only preflight; the file was not modified.",
+                error,
+            )
+        }
+
+        try {
+            val checkResults = database.rawQuery("PRAGMA quick_check", null).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(0))
+                }
+            }
+            if (checkResults != listOf("ok")) {
+                throw android.database.sqlite.SQLiteException(
+                    "Read-only SQLite quick_check failed: ${checkResults.joinToString("; ").ifBlank { "no result" }}",
+                )
+            }
+        } catch (error: Exception) {
+            throw ReiAnixSqliteOpenException(
+                "Existing canonical SQLite database failed read-only preflight; the file was not modified.",
+                error,
+            )
+        } finally {
+            database.close()
         }
     }
 
