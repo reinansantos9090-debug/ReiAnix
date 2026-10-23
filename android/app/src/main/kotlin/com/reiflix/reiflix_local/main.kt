@@ -8159,7 +8159,7 @@ internal class NativeMainRuntimePort(
                     }
                     .toInt()
                 val pageSize = legacyInteger("pageSize", 36L).coerceIn(12L, 48L).toInt()
-                val requestedGeneration = legacyInteger("generation", 0L).coerceAtLeast(0L)
+                val requestedGeneration = legacyInteger("generation", 0L)
                 val query = firstTruthyJsonText(payload, "query")
                 val rawGenre = firstTruthyJsonText(payload, "genre").ifEmpty { "Todos" }
                 val genre = rawGenre.takeUnless { it.equals("Todos", ignoreCase = true) }
