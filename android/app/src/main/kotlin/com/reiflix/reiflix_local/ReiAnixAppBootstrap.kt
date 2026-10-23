@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
 import com.reiflix.reiflix_local.storage.NativeIndex
@@ -245,13 +246,43 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     private fun databaseFailureWarning(error: Throwable): String {
+        val category = databaseFailureCategory(error)
         val detail = error.message
             ?.replace(Regex("\\s+"), " ")
             ?.trim()
             ?.take(640)
             ?.takeIf { it.isNotBlank() }
-        return if (detail == null) DATABASE_RECOVERY_WARNING
-        else "Falha na validação do banco SQLite: $detail"
+        return if (detail == null) "[$category] $DATABASE_RECOVERY_WARNING"
+        else "[$category] Falha na validação do banco SQLite: $detail"
+    }
+
+    private fun databaseFailureCategory(error: Throwable): String {
+        val chain = generateSequence(error as Throwable?) { it.cause }.toList()
+        val message = chain.mapNotNull { it.message }.joinToString(" ").lowercase()
+        val types = chain.map { it.javaClass.simpleName.lowercase() }
+        return when {
+            "missing existing core tables" in message ||
+                "missing required tables" in message ||
+                "canonical schema migration did not produce" in message ->
+                "SCHEMA_CORE_TABLES_OR_CONTRACT_MISSING"
+            "user_version is" in message -> "SCHEMA_USER_VERSION_MISMATCH"
+            "database schema migration version" in message ||
+                "schema migration failed" in message ->
+                "SCHEMA_MIGRATION_FAILED"
+            "database disk image is malformed" in message ||
+                "not a database" in message ||
+                types.any { it.contains("corrupt") } ->
+                "SQLITE_CORRUPT_OR_UNRECOGNIZED"
+            chain.any { it is SecurityException } -> "FILE_ACCESS_DENIED"
+            "database is locked" in message || "database is busy" in message ||
+                types.any { it.contains("busy") || it.contains("locked") } ->
+                "SQLITE_BUSY_OR_LOCKED"
+            types.any { it.contains("cantopendatabase") || it.contains("filenotfound") ||
+                it.contains("diskio") || it == "ioexception" } ->
+                "SQLITE_OPEN_OR_IO_FAILURE"
+            "empty or is not a regular file" in message -> "SQLITE_FILE_EMPTY_OR_NOT_REGULAR"
+            else -> "SQLITE_VALIDATION_FAILED"
+        }
     }
 
     private fun String.isCanonicalDatabaseWarning(): Boolean =
@@ -407,14 +438,20 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     private fun inspectCanonicalDatabase(): CanonicalDatabaseCheck {
-        val dataDirectory = File(appContext.filesDir, "data")
-        val canonicalFile = File(dataDirectory, ReiAnixBackupService.DATABASE_NAME)
+        val canonicalFile = ReiAnixSqliteDatabase.canonicalFile(appContext)
+        val dataDirectory = canonicalFile.parentFile ?: File(appContext.filesDir, "data")
+        Log.i(
+            TAG,
+            "APP_BOOTSTRAP_SQLITE_INSPECT file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                "exists=${canonicalFile.exists()} regularFile=${canonicalFile.isFile} " +
+                "bytes=${canonicalFile.takeIf { it.isFile }?.length() ?: 0L} schemaContract=v29",
+        )
         if (!canonicalFile.exists()) {
             val interruptedPromotion = dataDirectory.listFiles()
                 ?.any { file ->
                     file.isFile && (
-                        file.name.startsWith(".library.sqlite3.previous-") ||
-                            file.name.startsWith(".library.sqlite3.candidate-")
+                        file.name.startsWith(".${ReiAnixSqliteDatabase.DATABASE_FILE_NAME}.previous-") ||
+                            file.name.startsWith(".${ReiAnixSqliteDatabase.DATABASE_FILE_NAME}.candidate-")
                         )
                 } == true
             val priorRecoverySnapshots = File(dataDirectory, "backups")
@@ -428,48 +465,81 @@ class ReiAnixAppBootstrap internal constructor(
                 Log.e(TAG, "Could not inspect durable SAF recovery receipts; treating the state as recovery evidence. errorType=" + error::class.java.simpleName)
                 true
             }
-            return if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
-                CanonicalDatabaseCheck(
+            if (interruptedPromotion || priorRecoverySnapshots || pendingSafRecovery) {
+                val reason = when {
+                    pendingSafRecovery -> "SAF_RECEIPTS_PENDING"
+                    interruptedPromotion -> "SQLITE_PROMOTION_INTERRUPTED"
+                    else -> "SQLITE_RECOVERY_SNAPSHOT_PRESENT"
+                }
+                Log.w(
+                    TAG,
+                    "APP_BOOTSTRAP_SQLITE_DECISION file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                        "exists=false recoveryRequired=true reason=$reason",
+                )
+                return CanonicalDatabaseCheck(
                     status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                     recoveryRequired = true,
                     warning = when {
-                        pendingSafRecovery -> SAF_RECEIPT_RECOVERY_WARNING
-                        interruptedPromotion -> PROMOTION_RECOVERY_WARNING
-                        else -> INTERRUPTED_RECOVERY_WARNING
+                        pendingSafRecovery -> "[$reason] $SAF_RECEIPT_RECOVERY_WARNING"
+                        interruptedPromotion -> "[$reason] $PROMOTION_RECOVERY_WARNING"
+                        else -> "[$reason] $INTERRUPTED_RECOVERY_WARNING"
                     },
                 )
+            }
+
+            Log.i(
+                TAG,
+                "APP_BOOTSTRAP_SQLITE_DECISION file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                    "exists=false recoveryRequired=false reason=FRESH_DATABASE",
+            )
+            // No durable recovery evidence exists: initialize the one canonical file
+            // natively. The schema manager is additive and never replaces existing data.
+            val migrated = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = true)
+            val schemaSnapshot = dependencies.sqliteDatabase.inspectSchema()
+            val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
+            logCanonicalSqliteValidation(
+                migrationSnapshot = migrated,
+                schemaSnapshot = schemaSnapshot,
+                integrityHealthy = integrityHealthy,
+            )
+            return if (migrated.supportsCompatibleRuntimeContract &&
+                schemaSnapshot.supportsCompatibleRuntimeContract && integrityHealthy
+            ) {
+                CanonicalDatabaseCheck(
+                    status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                    recoveryRequired = false,
+                )
             } else {
-                // No durable recovery evidence exists: initialize the one canonical file
-                // natively. The schema manager is additive and never replaces existing data.
-                val migrated = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = true)
-                val contractStillCompatible = dependencies.sqliteDatabase.inspectSchema().supportsCompatibleRuntimeContract
-                val integrityHealthy = ReiAnixBackupService(appContext).integrityReport().healthy
-                if (migrated.supportsCompatibleRuntimeContract && contractStillCompatible && integrityHealthy) {
-                    CanonicalDatabaseCheck(
-                        status = ReiAnixBootstrapPersistenceStatus.HEALTHY,
-                        recoveryRequired = false,
-                    )
-                } else {
-                    CanonicalDatabaseCheck(
-                        status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
-                        recoveryRequired = true,
-                        warning = DATABASE_RECOVERY_WARNING,
-                    )
-                }
+                CanonicalDatabaseCheck(
+                    status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+                    recoveryRequired = true,
+                    warning = "[FRESH_DATABASE_VALIDATION_FAILED] " + DATABASE_RECOVERY_WARNING,
+                )
             }
         }
 
         if (!canonicalFile.isFile || canonicalFile.length() <= 0L) {
+            Log.e(
+                TAG,
+                "APP_BOOTSTRAP_SQLITE_DECISION file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                    "exists=true regularFile=${canonicalFile.isFile} bytes=${canonicalFile.length()} " +
+                    "recoveryRequired=true reason=SQLITE_FILE_EMPTY_OR_NOT_REGULAR",
+            )
             return CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
-                warning = "O arquivo da base SQLite existe, mas não pode ser validado.",
+                warning = "[SQLITE_FILE_EMPTY_OR_NOT_REGULAR] O arquivo da base SQLite existe, mas não pode ser validado.",
             )
         }
 
         val migrationSnapshot = dependencies.sqliteDatabase.initializeOrMigrate(allowCreate = false)
         val schemaSnapshot = dependencies.sqliteDatabase.inspectSchema()
         val integrity = ReiAnixBackupService(appContext).integrityReport()
+        logCanonicalSqliteValidation(
+            migrationSnapshot = migrationSnapshot,
+            schemaSnapshot = schemaSnapshot,
+            integrityHealthy = integrity.healthy,
+        )
         return if (migrationSnapshot.supportsCompatibleRuntimeContract &&
             schemaSnapshot.supportsCompatibleRuntimeContract && integrity.healthy
         ) {
@@ -483,12 +553,35 @@ class ReiAnixAppBootstrap internal constructor(
                 if (!schemaSnapshot.supportsCompatibleRuntimeContract) addAll(schemaSnapshot.incompatibilities)
                 if (!integrity.healthy) add(integrity.error ?: "SQLite integrity validation failed.")
             }.distinct().joinToString("; ").take(640)
+            val reason = databaseFailureCategory(IllegalStateException(details.ifBlank { DATABASE_RECOVERY_WARNING }))
+            Log.w(
+                TAG,
+                "APP_BOOTSTRAP_SQLITE_DECISION file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                    "exists=true recoveryRequired=true reason=$reason",
+            )
             CanonicalDatabaseCheck(
                 status = ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
                 recoveryRequired = true,
-                warning = details.ifBlank { DATABASE_RECOVERY_WARNING },
+                warning = "[$reason] " + details.ifBlank { DATABASE_RECOVERY_WARNING },
             )
         }
+    }
+
+    private fun logCanonicalSqliteValidation(
+        migrationSnapshot: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot,
+        schemaSnapshot: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot,
+        integrityHealthy: Boolean,
+    ) {
+        Log.i(
+            TAG,
+            "APP_BOOTSTRAP_SQLITE_VALIDATION file=data/${ReiAnixSqliteDatabase.DATABASE_FILE_NAME} " +
+                "migrationCompatible=${migrationSnapshot.supportsCompatibleRuntimeContract} " +
+                "runtimeCompatible=${schemaSnapshot.supportsCompatibleRuntimeContract} " +
+                "schemaVersion=${schemaSnapshot.schemaVersion ?: -1} " +
+                "sqliteUserVersion=${schemaSnapshot.sqliteUserVersion} tableCount=${schemaSnapshot.tables.size} " +
+                "missingTables=${schemaSnapshot.missingRequiredTables.sorted().joinToString(",").ifBlank { "none" }} " +
+                "integrityHealthy=$integrityHealthy",
+        )
     }
 
     private fun completeStage(stage: ReiAnixBootstrapStage) {
