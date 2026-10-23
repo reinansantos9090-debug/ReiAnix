@@ -8123,23 +8123,50 @@ internal class NativeMainRuntimePort(
         payload: org.json.JSONObject,
         requestId: String?,
     ): Boolean {
-        val requestedPage = payload.optInt("page", 0).coerceAtLeast(0)
-        val pageSize = (if (pythonTruthyJsonValue(payload.opt("pageSize"))) payload.optInt("pageSize", 36) else 36).coerceIn(12, 48)
-        val requestedGeneration = payload.optLong("generation", 0L).coerceAtLeast(0L)
-        val query = firstTruthyJsonText(payload, "query")
-        val rawGenre = firstTruthyJsonText(payload, "genre").ifEmpty { "Todos" }
-        val genre = rawGenre.takeUnless { it.equals("Todos", ignoreCase = true) }
-        val sort = firstTruthyJsonText(payload, "sort").ifEmpty { "Mais recentes" }
-        val favoritesOnly = pythonTruthyJsonValue(payload.opt("favoritesOnly"))
-        val watchingOnly = pythonTruthyJsonValue(payload.opt("watchingOnly"))
-        val completedOnly = pythonTruthyJsonValue(payload.opt("completedOnly"))
         val normalizedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
 
         return launchTracked("load_library_page", lane = "library") {
             try {
-                require(requestedPage <= 100) {
-                    "A página solicitada excede o limite de compatibilidade nativa."
+                // Match int(payload.get(key) or fallback): falsey JSON values use
+                // the legacy default, while truthy malformed values fail this
+                // command instead of silently turning into page/generation zero.
+                fun legacyInteger(key: String, fallback: Long): Long {
+                    val raw = payload.opt(key)
+                    if (!pythonTruthyJsonValue(raw)) return fallback
+                    return when (raw) {
+                        is Boolean -> if (raw) 1L else 0L
+                        is Number -> raw.toDouble().let { number ->
+                            require(number.isFinite()) {
+                                "Campo inteiro inválido na consulta da biblioteca: $key."
+                            }
+                            number.toLong()
+                        }
+                        is String -> raw.trim().toLongOrNull()
+                            ?: throw IllegalArgumentException(
+                                "Campo inteiro inválido na consulta da biblioteca: $key.",
+                            )
+                        else -> throw IllegalArgumentException(
+                            "Campo inteiro inválido na consulta da biblioteca: $key.",
+                        )
+                    }
                 }
+                val requestedPage = legacyInteger("page", 0L)
+                    .coerceAtLeast(0L)
+                    .also {
+                        require(it <= 100L) {
+                            "A página solicitada excede o limite de compatibilidade nativa."
+                        }
+                    }
+                    .toInt()
+                val pageSize = legacyInteger("pageSize", 36L).coerceIn(12L, 48L).toInt()
+                val requestedGeneration = legacyInteger("generation", 0L).coerceAtLeast(0L)
+                val query = firstTruthyJsonText(payload, "query")
+                val rawGenre = firstTruthyJsonText(payload, "genre").ifEmpty { "Todos" }
+                val genre = rawGenre.takeUnless { it.equals("Todos", ignoreCase = true) }
+                val sort = firstTruthyJsonText(payload, "sort").ifEmpty { "Mais recentes" }
+                val favoritesOnly = pythonTruthyJsonValue(payload.opt("favoritesOnly"))
+                val watchingOnly = pythonTruthyJsonValue(payload.opt("watchingOnly"))
+                val completedOnly = pythonTruthyJsonValue(payload.opt("completedOnly"))
                 libraryViewModel.applyLibraryPageSize(pageSize)
                 libraryViewModel.setLibrarySearchQuery(query)
                 libraryViewModel.setLibraryGenreFilter(genre)
