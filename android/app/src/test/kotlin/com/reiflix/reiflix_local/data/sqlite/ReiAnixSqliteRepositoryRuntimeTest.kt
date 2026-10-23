@@ -124,7 +124,15 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertTrue(created.missingRequiredTables.isEmpty())
         assertTrue(created.missingRequiredColumns.isEmpty())
         assertTrue(created.missingRequiredIndexes.isEmpty())
-        assertEquals(14, created.tables.size)
+        val canonicalTables = loadCanonicalSchemaFixture().getJSONArray("tables")
+        val requiredTables = (0 until canonicalTables.length())
+            .map { canonicalTables.getString(it) }
+            .toSet()
+        assertEquals("The canonical fixture must define the 14 v29 tables.", 14, requiredTables.size)
+        assertTrue(
+            "Fresh initialization is missing canonical tables: ${requiredTables - created.tables}",
+            created.tables.containsAll(requiredTables),
+        )
 
         val repeated = database.initializeOrMigrate(allowCreate = false)
         assertTrue("Reinitialization must remain compatible.", repeated.supportsCompatibleRuntimeContract)
