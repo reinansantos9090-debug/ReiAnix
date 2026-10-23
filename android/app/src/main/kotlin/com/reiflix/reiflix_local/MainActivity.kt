@@ -1066,6 +1066,11 @@ class MainActivity : ComponentActivity() {
                 result = "user_cancelled_picker",
             )
             clearSafPickerPending(requestId, SafPickerPhase.CANCELLED)
+            // Cancellation is an intentional user decision for this Activity session.
+            // Suppress the automatic first-run retry even when the picker was opened
+            // manually before the automatic-launch guard had been set. The user can
+            // always request the SAF picker again from the normal library/settings UI.
+            automaticSafPickerAttempted = true
             getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
                 .edit()
                 .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
