@@ -6,6 +6,7 @@ import android.os.Build
 import com.reiflix.reiflix_local.BuildConfig
 import com.reiflix.reiflix_local.PerformanceDiagnostics
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixManualDiagnostics
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.NativeScanController
