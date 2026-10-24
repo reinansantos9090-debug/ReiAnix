@@ -212,8 +212,9 @@ object ReiAnixManualDiagnostics {
 
     fun clear(context: Context) {
         requestCancellation()
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val cleared = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().clear().commit()
+        check(cleared) { "Não foi possível limpar os dados locais de diagnóstico." }
         ReiAnixDiagnosticTimeline.clear()
     }
 
@@ -614,7 +615,9 @@ object ReiAnixManualDiagnostics {
         categories.put(category, entry)
         report.put("categories", categories)
             .put("updated_at", utcTimestamp())
-        prefs.edit().putString(KEY_REPORT, report.toString()).commit()
+        check(prefs.edit().putString(KEY_REPORT, report.toString()).commit()) {
+            "Não foi possível persistir os resultados de diagnóstico."
+        }
     }
 
     private fun currentReport(context: Context): JSONObject {
@@ -645,7 +648,9 @@ object ReiAnixManualDiagnostics {
         for (index in 0 until minOf(previous.length(), HISTORY_LIMIT - 1)) {
             previous.optJSONObject(index)?.let { result.put(it) }
         }
-        prefs.edit().putString(KEY_HISTORY, result.toString()).commit()
+        check(prefs.edit().putString(KEY_HISTORY, result.toString()).commit()) {
+            "Não foi possível persistir o histórico de diagnóstico."
+        }
     }
 
     private fun history(context: Context): JSONArray =
