@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
@@ -196,6 +197,7 @@ class ReiAnixLibraryViewModel(
         private const val TAG = "ReiAnixLibraryViewModel"
         const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
         const val SEARCH_DEBOUNCE_MS = 180L
+        const val ARTWORK_PROJECTION_REFRESH_DEBOUNCE_MS = 180L
 
         internal fun projectHomeState(state: ReiAnixLibraryUiState): ReiAnixHomeLibraryUiState =
             ReiAnixHomeLibraryUiState.from(state)
@@ -1399,6 +1401,47 @@ class ReiAnixLibraryViewModel(
 
         // Read the local canonical catalog only after bootstrap allows normal use.
         viewModelScope.launch { refreshNativeCatalog() }
+
+        // A successful artwork commit must invalidate the existing SQLite projection:
+        // Compose reads immutable models and does not consume NativeMailbox directly.
+        // Keep the publication stream bounded and debounce bursts (poster + backdrop,
+        // several list items) into one canonical re-read, without rescanning media.
+        appDependencies?.artworkService?.publishedArtworks?.let { publications ->
+            viewModelScope.launch {
+                publications
+                    .onEach { publication ->
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "ARTWORK_PROJECTION_INVALIDATION_QUEUED",
+                            source = "ReiAnixLibraryViewModel",
+                            result = "QUEUED",
+                            requestId = publication.requestId,
+                            context = mapOf(
+                                "entity_type" to publication.entityType,
+                                "entity_id" to publication.entityId,
+                                "artwork_type" to publication.artworkType,
+                                "source_kind" to publication.sourceKind,
+                            ),
+                        )
+                    }
+                    .debounce(ARTWORK_PROJECTION_REFRESH_DEBOUNCE_MS)
+                    .collectLatest { publication ->
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "ARTWORK_PROJECTION_REFRESH_REQUESTED",
+                            source = "ReiAnixLibraryViewModel",
+                            result = "CANONICAL_SQLITE_RELOAD",
+                            requestId = publication.requestId,
+                            context = mapOf(
+                                "entity_type" to publication.entityType,
+                                "entity_id" to publication.entityId,
+                                "artwork_type" to publication.artworkType,
+                                "source_kind" to publication.sourceKind,
+                                "refresh_mode" to "PROJECTION_ONLY",
+                            ),
+                        )
+                        refreshCatalogProjection()
+                    }
+            }
+        }
 
         // Opening the app must not schedule missing/stale artwork downloads. Artwork is
         // requested only by explicit details/artwork actions or existing pipeline events.
