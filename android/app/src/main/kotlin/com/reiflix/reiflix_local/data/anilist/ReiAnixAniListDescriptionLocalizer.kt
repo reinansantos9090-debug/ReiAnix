@@ -178,16 +178,7 @@ class ReiAnixAniListDescriptionLocalizer(
         return isValidTranslation(source, translated)
     }
 
-    fun isPtBrDescription(text: String): Boolean {
-        val normalized = normalizeDescription(text)
-        if (normalized.isEmpty()) return false
-        val detectedLanguage = detectDescriptionLanguage(normalized).first
-        if (detectedLanguage == "pt") return true
-        if (detectedLanguage != "unknown") return false
-        val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
-            .map { it.value }.toSet()
-        return tokens.intersect(PORTUGUESE_WORDS).size >= 2
-    }
+    fun isPtBrDescription(text: String): Boolean = isPtBrDescriptionText(normalizeDescription(text))
 
     private fun evictUnusedKeyLocksIfNeeded() {
         if (keyLocks.size <= MAX_CACHE_ENTRIES) return
@@ -380,15 +371,54 @@ class ReiAnixAniListDescriptionLocalizer(
          * avoids Android Html APIs so plain JVM mapper tests and pure presentation code
          * can use it without requiring Robolectric.
          */
+        /**
+         * Conservative heuristic, shared by persistence validation and Compose projection.
+         * A known foreign-language score wins over isolated Portuguese-like words. Long
+         * mixed-language paragraphs are rejected; this is not a guarantee of perfect
+         * Brazilian Portuguese or a substitute for human linguistic review.
+         */
         fun isPtBrDescriptionText(text: String?): Boolean {
             val normalized = normalizeForLanguageClassification(text)
             if (normalized.isEmpty()) return false
-            val detectedLanguage = detectDescriptionLanguageForClassification(normalized)
-            if (detectedLanguage == "pt") return true
-            if (detectedLanguage != "unknown") return false
             val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
-                .map { it.value }.toSet()
-            return tokens.intersect(PORTUGUESE_WORDS).size >= 2
+                .map { it.value }.toList()
+            if (tokens.isEmpty()) return false
+            val unique = tokens.toSet()
+            val detectedLanguage = detectDescriptionLanguageForClassification(normalized)
+            val portugueseHits = unique.intersect(PORTUGUESE_WORDS).size
+            val competingHits = LANGUAGE_PROFILES
+                .filterKeys { it != "pt" }
+                .values
+                .maxOfOrNull { words -> unique.intersect(words).size } ?: 0
+            val europeanPortugueseHits = unique.intersect(EUROPEAN_PORTUGUESE_WORDS).size
+            val brazilianPortugueseHits = unique.intersect(BRAZILIAN_PORTUGUESE_WORDS).size
+            if (europeanPortugueseHits >= 2 && brazilianPortugueseHits == 0) return false
+
+            if (detectedLanguage == "pt") {
+                val longForeignTokens = normalized
+                    .split(Regex("(?<=[.!?])\\s+|\\n+"))
+                    .sumOf { segment ->
+                        val segmentTokens = Regex("[\\p{L}]+").findAll(segment.lowercase(Locale.ROOT))
+                            .map { it.value }.toList()
+                        if (
+                            segmentTokens.size >= 8 &&
+                            detectDescriptionLanguageForClassification(segment) !in setOf("pt", "unknown")
+                        ) {
+                            segmentTokens.size
+                        } else {
+                            0
+                        }
+                    }
+                if (longForeignTokens >= maxOf(8, (tokens.size * 0.2).toInt())) return false
+                return true
+            }
+            if (detectedLanguage != "unknown") return false
+
+            // Unknown is not an automatic pass: demand distinct PT lexical evidence and
+            // a lead over other known profiles. For long synopsis text require more signals.
+            val minimumPortugueseHits = if (tokens.size <= 8) 2 else 3
+            return portugueseHits >= minimumPortugueseHits &&
+                portugueseHits > competingHits
         }
 
         private fun normalizeForLanguageClassification(text: String?): String = text.orEmpty()
@@ -513,7 +543,17 @@ class ReiAnixAniListDescriptionLocalizer(
             "que", "uma", "um", "não", "com", "quando", "através", "está", "são", "dos", "das",
             "para", "por", "como", "história", "segue", "jovem", "garota", "garoto", "pessoas",
             "seus", "suas", "eles", "elas", "tem", "têm", "isso", "esta", "este", "depois",
-            "antes", "entre", "sobre", "sem", "mais", "também", "porque", "onde",
+            "antes", "entre", "sobre", "sem", "mais", "também", "porque", "onde", "enquanto",
+            "aventura", "amizade", "família", "destino", "mundo", "enfrenta", "procura",
+            "conhece", "companheiros", "universo", "cidade", "protagonista", "torna",
+        )
+        private val EUROPEAN_PORTUGUESE_WORDS = setOf(
+            "ecrã", "ficheiro", "telemóvel", "autocarro", "comboio", "miúdo", "miúda",
+            "rapaz", "rapariga", "pequeno-almoço", "carrinha", "rebuçado", "fixe", "facto",
+        )
+        private val BRAZILIAN_PORTUGUESE_WORDS = setOf(
+            "você", "vocês", "ônibus", "trem", "celular", "tela", "arquivo", "equipe",
+            "geladeira", "banheiro", "quadrinhos", "pra", "tá", "né", "bacana",
         )
 
         private val LANGUAGE_PROFILES = mapOf(
