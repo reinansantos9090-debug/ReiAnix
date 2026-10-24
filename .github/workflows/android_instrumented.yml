@@ -109,8 +109,11 @@ jobs:
               (104, 1, 1, 4, 'Episode 04.mp4', 'content://reianix-fixture/episode-04.mp4', 'fixture-identity-04', 0),
               (105, 1, 1, 5, 'Episode 05.mp4', 'content://reianix-fixture/episode-05.mp4', 'fixture-identity-05', 0);
           SQL
-          test "$(sqlite3 "$db" 'SELECT count(*) FROM episodes WHERE anime_id=1;')" = "5"
-          test "$(sqlite3 "$db" 'SELECT progress FROM episodes WHERE anime_id=1 ORDER BY number LIMIT 1;')" = "37"
+          episode_count="$(sqlite3 "$db" 'SELECT count(*) FROM episodes WHERE anime_id=1;')"
+          first_progress="$(sqlite3 "$db" 'SELECT progress FROM episodes WHERE anime_id=1 ORDER BY number LIMIT 1;')"
+          echo "Fixture verification: episode_count=$episode_count first_progress=$first_progress"
+          test "$episode_count" = "5"
+          test "$first_progress" = "37"
 
       - name: Compile native app and instrumentation sources
         shell: bash
