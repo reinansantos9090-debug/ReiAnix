@@ -524,7 +524,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     val diagnosticEvents by ReiAnixDiagnosticTimeline.events.collectAsStateWithLifecycle()
     val diagnosticContext = androidx.compose.ui.platform.LocalContext.current
     val diagnosticWorkRunning = state.operations.values.any {
-        it.action.startsWith("diagnostic_run_") &&
+        it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" &&
             it.state in setOf(
                 ReiAnixSettingsOperationState.QUEUED,
                 ReiAnixSettingsOperationState.RUNNING,
