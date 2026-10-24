@@ -586,7 +586,20 @@ class ReiAnixAniListIntegrationService(
                         val original = localizer.normalizeDescription(originalRaw)
                         val display = localizer.normalizeDescription(displayRaw)
 
-                        if (original.isNotEmpty() && display.isNotEmpty() &&
+                        val persistedTranslationMatchesSource = if (
+                            original.isNotEmpty() && display.isNotEmpty()
+                        ) {
+                            (original.equals(display, ignoreCase = true) &&
+                                localizer.isPtBrDescription(display)) ||
+                                localizer.getCachedDescriptionPtBr(original)
+                                    ?.let(localizer::normalizeDescription)
+                                    ?.let { cached -> cached == display } == true
+                        } else {
+                            false
+                        }
+                        if (
+                            original.isNotEmpty() && display.isNotEmpty() &&
+                            persistedTranslationMatchesSource &&
                             localizer.isValidPtBrResult(original, display)
                         ) {
                             outcome = "already_valid"
@@ -645,18 +658,28 @@ class ReiAnixAniListIntegrationService(
                                 // CAS-clearing first ensures an old English/other-language
                                 // fallback never remains presented as a completed synopsis.
                                 // The original/source is retained in description_original.
+                                // A previous PT-BR description may still be useful while a
+                                // newer source synopsis is awaiting translation. Do not delete
+                                // linguistically valid stored text just to force a new request.
+                                // The cache comparison above will keep it pending until this
+                                // exact source has a validated cached/result translation.
+                                val preserveExistingPtBrDisplay =
+                                    display.isNotEmpty() && localizer.isPtBrDescription(display)
+                                val preparedDisplay = displayRaw.takeIf {
+                                    preserveExistingPtBrDisplay && !it.isNullOrBlank()
+                                }
                                 val prepared = library.updateAniListSynopsisIfUnchanged(
                                     animeId = row.id,
                                     expectedAniListId = anilistId,
                                     expectedOriginal = originalRaw,
                                     expectedDescription = displayRaw,
                                     originalSource = sourceText,
-                                    translatedDescription = null,
+                                    translatedDescription = preparedDisplay,
                                 )
                                 if (!prepared) {
                                     outcome = "conflict"
                                 } else {
-                                    clearedStaleDisplay = display.isNotEmpty()
+                                    clearedStaleDisplay = display.isNotEmpty() && preparedDisplay == null
                                     if (clearedStaleDisplay || originalRaw != sourceText) {
                                         enqueueMetadataCommit(row.id, requestArtwork = false)
                                     }
@@ -683,7 +706,7 @@ class ReiAnixAniListIntegrationService(
                                             animeId = row.id,
                                             expectedAniListId = anilistId,
                                             expectedOriginal = sourceText,
-                                            expectedDescription = null,
+                                            expectedDescription = preparedDisplay,
                                             originalSource = sourceText,
                                             translatedDescription = validTranslation,
                                         )
@@ -838,6 +861,9 @@ class ReiAnixAniListIntegrationService(
                                 ?.takeIf { localizer.isValidPtBrResult(remoteOriginal, it) }
                             val candidate = cached ?: localizer.localizeToPtBr(remoteOriginal)
                             candidate?.takeIf { localizer.isValidPtBrResult(remoteOriginal, it) }
+                                // Keep a previously translated PT-BR synopsis visible if the
+                                // new source translation fails; never replace it with the source.
+                                ?: existingDescription?.takeIf(localizer::isPtBrDescription)
                         }
                     }
                 }
