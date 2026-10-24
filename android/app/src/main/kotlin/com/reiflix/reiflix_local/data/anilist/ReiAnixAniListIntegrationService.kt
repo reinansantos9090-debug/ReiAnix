@@ -576,9 +576,7 @@ class ReiAnixAniListIntegrationService(
                         it in 1L..Int.MAX_VALUE.toLong()
                     }
                     val ownership = synopsisOwnershipStatus(row)
-                    if (row.anilistId != null && anilistId == null) {
-                        outcome = "invalid_association"
-                    } else if (ownership == "manual") {
+                    if (ownership == "manual") {
                         outcome = "manual"
                     } else if (ownership == "unknown") {
                         outcome = "ownership_unknown"
@@ -603,7 +601,10 @@ class ReiAnixAniListIntegrationService(
                                 ?: display.takeIf(String::isNotBlank)
 
                             if (source == null) {
-                                if (anilistId == null || !isAniListEnabled() ||
+                                if (row.anilistId != null && anilistId == null) {
+                                    outcome = "invalid_association"
+                                } else if (
+                                    anilistId == null || !isAniListEnabled() ||
                                     sourceLookups >= MAX_SYNOPSIS_SOURCE_LOOKUPS_PER_RUN
                                 ) {
                                     outcome = "source_unavailable"
