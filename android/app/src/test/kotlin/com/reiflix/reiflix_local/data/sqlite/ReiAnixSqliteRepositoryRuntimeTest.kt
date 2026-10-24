@@ -886,6 +886,54 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun persistedSynopsisRecoveryCursorResumesAtTheNextStableAnimeId() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val firstSource = "The first synopsis remains stored in its original language."
+        val secondSource = "The second synopsis remains stored in its original language."
+        repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = firstSource,
+                descriptionOriginal = firstSource,
+            ),
+        )
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                INSERT INTO anime (
+                    id, lookup_title, title, added_at, metadata_manual_fields,
+                    favorite, user_tags, is_pinned, personal_note, cover_url,
+                    english, metadata_source, description, description_original
+                ) VALUES (
+                    2, 'catalog-key-2', 'Second Anime', 1000, '[]',
+                    0, '[]', 0, '', 'https://example.invalid/second-cover.jpg',
+                    'Second English Title', 'anilist', ?, ?
+                )
+                """.trimIndent(),
+                arrayOf(secondSource, secondSource),
+            )
+        }
+
+        val firstBatch = repository.loadAniListSynopsisRecoveryBatch(afterAnimeId = 0L, limit = 1)
+        assertEquals(listOf(1L), firstBatch.map { it.id })
+
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        settings.setPreference("metadata.synopsis_recovery_cursor", firstBatch.last().id.toString())
+        val persistedCursor = settings.getPreference("metadata.synopsis_recovery_cursor")
+            ?.value?.toLongOrNull()
+        assertEquals(1L, persistedCursor)
+
+        val resumedBatch = repository.loadAniListSynopsisRecoveryBatch(
+            afterAnimeId = persistedCursor!!,
+            limit = 1,
+        )
+        assertEquals(listOf(2L), resumedBatch.map { it.id })
+        assertEquals(secondSource, resumedBatch.single().descriptionOriginal)
+    }
+
+    @Test
     fun genericMetadataPatchPersistsOriginalSynopsisWithoutClearingLocalFields() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
