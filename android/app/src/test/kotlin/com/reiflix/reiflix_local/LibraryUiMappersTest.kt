@@ -68,6 +68,44 @@ class LibraryUiMappersTest {
     }
 
     @Test
+    fun originalLanguageFallbackIsHiddenAndMarkedPending() {
+        val sourceText = "The story follows a young hero who protects their people from danger every day."
+        val source = animeSource(
+            id = 19L,
+            meta = mapOf(
+                "anilist_id" to 10019,
+                "metadata_status" to "available",
+                "description" to sourceText,
+                "description_original" to sourceText,
+            ),
+        )
+
+        val model = LibraryUiMappers.anime(source)
+
+        assertNull(model.description)
+        assertTrue(model.descriptionTranslationPending)
+    }
+
+    @Test
+    fun validatedPtBrSynopsisIsVisibleAndNotPending() {
+        val translated = "A história acompanha um jovem herói que protege seu povo do perigo todos os dias."
+        val source = animeSource(
+            id = 20L,
+            meta = mapOf(
+                "anilist_id" to 10020,
+                "metadata_status" to "available",
+                "description" to translated,
+                "description_original" to "The story follows a young hero.",
+            ),
+        )
+
+        val model = LibraryUiMappers.anime(source)
+
+        assertEquals(translated, model.description)
+        assertFalse(model.descriptionTranslationPending)
+    }
+
+    @Test
     fun presentationStateDistinguishesPendingAndFailedArtwork() {
         val pending = animeSource(
             id = 18L,
