@@ -624,8 +624,15 @@ class ReiAnixSqliteLibraryRepository(
             } else {
                 try {
                     val fields = JSONArray(ownershipJson)
-                    (0 until fields.length()).any {
-                        fields.optString(it).trim().equals("description", ignoreCase = true)
+                    (0 until fields.length()).any { index ->
+                        val field = fields.get(index)
+                        if (field !is String) {
+                            // A valid JSON array with an invalid element is still
+                            // unreliable ownership metadata; fail closed.
+                            true
+                        } else {
+                            field.trim().equals("description", ignoreCase = true)
+                        }
                     }
                 } catch (_: Exception) {
                     // Corrupt ownership metadata must fail closed instead of overwriting a
