@@ -34,11 +34,12 @@ object LibraryUiMappers {
             ?.trim()?.takeIf(String::isNotEmpty)
         val persistedDescription = metadata.stringOrNull("description")
             ?.trim()?.takeIf(String::isNotEmpty)
-        // Older rows may still contain the original language in the display column.
-        // Never expose that exact fallback as a completed localized synopsis.
-        val displayDescription = persistedDescription?.takeIf(
-            ReiAnixAniListDescriptionLocalizer::isPtBrDescriptionText,
-        )
+        // Older rows may still contain the original language or an invalid
+        // translation in the display column. Reuse the localizer's classifier so
+        // presentation never exposes them as completed PT-BR synopses.
+        val displayDescription = persistedDescription?.takeIf {
+            ReiAnixAniListDescriptionLocalizer.isPtBrDescriptionText(it)
+        }
         val descriptionTranslationPending = displayDescription == null &&
             (originalDescription != null || persistedDescription != null)
 
