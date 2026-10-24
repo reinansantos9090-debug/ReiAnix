@@ -11,8 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.yield
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
@@ -27,6 +26,7 @@ import java.io.File
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * AniList domain integration used by native ViewModels. The canonical SQLite
@@ -34,6 +34,13 @@ import java.util.concurrent.ConcurrentHashMap
  * existing local metadata and update only its freshness/status projection. Requested
  * artwork is materialized by the Kotlin artwork service after metadata commits.
  */
+private data class SynopsisRecoveryBatchResult(
+    val translatedCount: Int,
+    val pendingCount: Int,
+    val recoverableFailureCount: Int,
+    val hasMoreInCycle: Boolean,
+)
+
 class ReiAnixAniListIntegrationService(
     private val client: ReiAnixAniListClient,
     private val library: ReiAnixSqliteLibraryRepository,
@@ -46,7 +53,8 @@ class ReiAnixAniListIntegrationService(
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
-    private val synopsisRecoveryMutex = Mutex()
+    // A non-blocking gate prevents concurrent passes without holding a lock during network I/O.
+    private val synopsisRecoveryInProgress = AtomicBoolean(false)
 
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
@@ -365,12 +373,47 @@ class ReiAnixAniListIntegrationService(
      * work resume across process restarts without schema changes. Each pass is bounded
      * by candidates and remote translation attempts, and all network work is sequential.
      */
+    /**
+     * Continues in bounded pages until the current stable-ID sweep reaches the end.
+     * Every batch has its own candidate/network budgets. yield() between batches gives
+     * lifecycle and UI coroutines a cancellation opportunity; no Mutex is held over I/O.
+     */
     suspend fun reconcilePendingSynopsisTranslations(
         maxCandidates: Int = MAX_SYNOPSIS_CANDIDATES_PER_RUN,
         maxTranslationAttempts: Int = MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN,
-    ): Int = synopsisRecoveryMutex.withLock {
+    ): Int {
         require(maxCandidates in 1..MAX_SYNOPSIS_CANDIDATES_PER_RUN)
         require(maxTranslationAttempts in 1..MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN)
+        if (!synopsisRecoveryInProgress.compareAndSet(false, true)) {
+            Log.i(TAG, "Synopsis recovery already active; the current sweep will continue.")
+            return 0
+        }
+        return try {
+            var translatedTotal = 0
+            var batchCount = 0
+            var hasMoreInCycle: Boolean
+            do {
+                currentCoroutineContext().ensureActive()
+                val batch = reconcilePendingSynopsisTranslationsBatch(
+                    maxCandidates = maxCandidates,
+                    maxTranslationAttempts = maxTranslationAttempts,
+                )
+                translatedTotal += batch.translatedCount
+                batchCount++
+                hasMoreInCycle = batch.hasMoreInCycle
+                if (hasMoreInCycle) yield()
+            } while (hasMoreInCycle)
+            Log.i(TAG, "Synopsis recovery sweep completed batches=" + batchCount + " translated=" + translatedTotal)
+            translatedTotal
+        } finally {
+            synopsisRecoveryInProgress.set(false)
+        }
+    }
+
+    private suspend fun reconcilePendingSynopsisTranslationsBatch(
+        maxCandidates: Int,
+        maxTranslationAttempts: Int,
+    ): SynopsisRecoveryBatchResult {
         val localizer = descriptionLocalizer
         if (localizer == null) {
             Log.w(TAG, "Synopsis recovery unavailable because the canonical localizer is not configured")
@@ -379,7 +422,7 @@ class ReiAnixAniListIntegrationService(
 
         var cursor = settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)
             ?.value?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
-        var wrapped = false
+        var cycleCompleted = false
         var scanned = 0
         var translatedCount = 0
         var translationAttempts = 0
@@ -400,14 +443,12 @@ class ReiAnixAniListIntegrationService(
                 limit = minOf(SYNOPSIS_RECOVERY_PAGE_SIZE, maxCandidates - scanned),
             )
             if (page.isEmpty()) {
-                if (cursor > 0L && !wrapped) {
-                    settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, "0")
-                    cursor = 0L
-                    wrapped = true
-                    if (scanned == 0) continue
-                } else {
-                    if (cursor != 0L) settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, "0")
-                }
+                // We have reached the end of the IDs after the persisted cursor.
+                // All earlier IDs were processed by this or a previous bounded batch.
+                // Resetting to zero makes unresolved older rows eligible next cycle.
+                if (cursor != 0L) settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, "0")
+                cursor = 0L
+                cycleCompleted = true
                 break
             }
 
@@ -565,7 +606,10 @@ class ReiAnixAniListIntegrationService(
                         pending++
                         recoverableFailures++
                     }
-                    "conflict" -> conflicts++
+                    "conflict" -> {
+                        conflicts++
+                        pending++
+                    }
                 }
                 if (clearedStaleDisplay) cleared++
 
@@ -592,7 +636,12 @@ class ReiAnixAniListIntegrationService(
                 " manualSkipped=" + manualSkipped +
                 " cursor=" + cursor,
         )
-        translatedCount
+        return SynopsisRecoveryBatchResult(
+            translatedCount = translatedCount,
+            pendingCount = pending,
+            recoverableFailureCount = recoverableFailures,
+            hasMoreInCycle = !cycleCompleted,
+        )
     }
 
     private fun hasManuallyOwnedSynopsis(record: ReiAnixAnimeRecord): Boolean {
