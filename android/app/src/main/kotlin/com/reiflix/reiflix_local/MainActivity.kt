@@ -2127,8 +2127,10 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(requestId, action, "RUNNING", "RUNNING", message = "Executando verificação nativa.")
                 }
-                when {
-                    action.startsWith("diagnostic_run_") -> {
+                when (action) {
+                    "diagnostic_run_general", "diagnostic_run_system", "diagnostic_run_logs",
+                    "diagnostic_run_storage", "diagnostic_run_scanner", "diagnostic_run_sqlite",
+                    "diagnostic_run_thumbnails", "diagnostic_run_bridge", "diagnostic_run_performance" -> {
                         val category = action.removePrefix("diagnostic_run_")
                         val summary = withContext(Dispatchers.IO) {
                             ReiAnixManualDiagnostics.run(applicationContext, category)
@@ -2150,7 +2152,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                    action == "diagnostic_clear" -> {
+                    "diagnostic_clear" -> {
                         withContext(Dispatchers.IO) { ReiAnixManualDiagnostics.clear(applicationContext) }
                         withContext(Dispatchers.IO) {
                             writeSettingsFileActionResult(
