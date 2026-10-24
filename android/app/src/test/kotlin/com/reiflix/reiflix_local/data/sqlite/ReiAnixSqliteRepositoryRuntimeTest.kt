@@ -732,7 +732,9 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
         }
 
-        val settings = ReiAnixSqliteSettingsRepository(context)
+        // Reuse the already-validated database instance: the injected trigger is
+        // deliberately non-canonical, so a fresh repository must correctly reject it.
+        val settings = ReiAnixSqliteSettingsRepository(database)
         try {
             settings.setPreferencesAtomically(
                 mapOf("appearance.theme" to "light", "player.resume" to "false"),
