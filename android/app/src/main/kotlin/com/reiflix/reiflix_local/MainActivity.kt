@@ -1514,8 +1514,9 @@ class MainActivity : ComponentActivity() {
                         )
                         "backup_recovery_restore_local" -> restoreNewestLocalBackupForRecovery(requestId)
                         "diagnostic_export" -> {
-                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
-                            diagnosticExportLauncher.launch("reiflix-diagnostic-" + stamp + ".json")
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.ROOT).format(Date())
+                            val uniqueSuffix = UUID.randomUUID().toString().take(8)
+                            diagnosticExportLauncher.launch("reiflix-diagnostic-" + stamp + "-" + uniqueSuffix + ".json")
                         }
                         "diagnostic_import_logcat" -> diagnosticImportLauncher.launch(
                             arrayOf("text/plain", "application/octet-stream", "*/*"),
