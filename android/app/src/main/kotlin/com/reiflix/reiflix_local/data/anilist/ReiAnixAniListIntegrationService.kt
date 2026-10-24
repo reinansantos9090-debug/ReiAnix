@@ -686,6 +686,9 @@ class ReiAnixAniListIntegrationService(
                 } else {
                     null
                 },
+                validateSynopsisSnapshot = true,
+                expectedSynopsisOriginal = local.descriptionOriginal,
+                expectedSynopsisDescription = local.description,
             )
             if (!manual && updated.anilistId != remote.id.toLong()) {
                 return AniListResult.Failure(
