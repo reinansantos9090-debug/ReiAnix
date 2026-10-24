@@ -788,9 +788,12 @@ class ReiAnixAniListIntegrationService(
         if (raw.isNullOrBlank()) return "unknown"
         return try {
             val fields = JSONArray(raw)
-            if ((0 until fields.length()).any {
-                fields.optString(it).trim().equals("description", ignoreCase = true)
-            }) "manual" else null
+            for (index in 0 until fields.length()) {
+                val field = fields.get(index)
+                if (field !is String) return "unknown"
+                if (field.trim().equals("description", ignoreCase = true)) return "manual"
+            }
+            null
         } catch (_: Exception) {
             // Corrupt ownership metadata requires intervention; never overwrite blindly.
             "unknown"
