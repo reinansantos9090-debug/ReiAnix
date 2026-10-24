@@ -113,7 +113,7 @@ jobs:
           first_progress="$(sqlite3 "$db" 'SELECT progress FROM episodes WHERE anime_id=1 ORDER BY number LIMIT 1;')"
           echo "Fixture verification: episode_count=$episode_count first_progress=$first_progress"
           test "$episode_count" = "5"
-          test "$first_progress" = "37"
+          test "$(printf '%s' "$first_progress" | sed 's/\.0$//')" = "37"
 
       - name: Compile native app and instrumentation sources
         shell: bash
