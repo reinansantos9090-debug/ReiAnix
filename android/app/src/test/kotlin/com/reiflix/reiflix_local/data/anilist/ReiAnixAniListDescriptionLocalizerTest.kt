@@ -4,6 +4,8 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -75,6 +77,68 @@ class ReiAnixAniListDescriptionLocalizerTest {
         assertTrue(normalized.contains("Another paragraph."))
         assertTrue(!normalized.contains("<p>"))
         assertNotNull(normalized)
+    }
+
+    @Test
+    fun untranslatedServiceResponseIsRejectedAndFailureBackoffIsHonored() = runBlocking {
+        val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-failed-" + System.nanoTime())
+        assertTrue(directory.mkdirs())
+        try {
+            val source = "The story follows a young hero who protects their people from danger every day."
+            val transport = FakeTranslationTransport(
+                AniListTranslationHttpResponse(
+                    200,
+                    JSONObject()
+                        .put("responseStatus", 200)
+                        .put("responseData", JSONObject().put("translatedText", source))
+                        .toString(),
+                ),
+            )
+            val localizer = ReiAnixAniListDescriptionLocalizer(
+                File(directory, "anilist_description_ptbr.json"),
+                transport,
+            )
+            assertNull(localizer.localizeToPtBr(source, "en"))
+            assertNull(localizer.localizeToPtBr(source, "en"))
+            assertEquals("A rejected translation is not a completed synopsis.", 1, transport.calls)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun accentMarksAloneDoNotClassifyForeignTextAsPtBr() {
+        val localizer = ReiAnixAniListDescriptionLocalizer(
+            File(System.getProperty("java.io.tmpdir"), "reianix-unused-" + System.nanoTime() + ".json"),
+        )
+        assertFalse(localizer.isPtBrDescription("François célèbre Noël à la façon d'un héros."))
+    }
+
+    @Test
+    fun translationFromAnotherLanguageMustBeValidatedAsPtBr() = runBlocking {
+        val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-spanish-" + System.nanoTime())
+        assertTrue(directory.mkdirs())
+        try {
+            val source = "La historia sigue a un joven que protege a su pueblo cada día."
+            val translated = "A história acompanha um jovem que protege seu povo todos os dias."
+            val transport = FakeTranslationTransport(
+                AniListTranslationHttpResponse(
+                    200,
+                    JSONObject()
+                        .put("responseStatus", 200)
+                        .put("responseData", JSONObject().put("translatedText", translated))
+                        .toString(),
+                ),
+            )
+            val localizer = ReiAnixAniListDescriptionLocalizer(
+                File(directory, "anilist_description_ptbr.json"),
+                transport,
+            )
+            assertEquals(translated, localizer.localizeToPtBr(source, "es"))
+            assertTrue(localizer.isValidPtBrResult(source, translated))
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     private class FakeTranslationTransport(
