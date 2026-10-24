@@ -67,9 +67,9 @@ Não foram introduzidas bibliotecas HTTP/GraphQL adicionais, mecanismos de auten
 
 ## Verificações e evidências
 
-A suíte de regressão Python contém contratos do cliente, ViewModel, associação transacional, preservação de metadata manual e validação do pipeline nativo de artwork. Os testes Kotlin/JVM do cliente e do localizer continuam reservados para execução manual; não são executados automaticamente como parte desta alteração.
+A suíte de regressão Python existente não foi executada nesta etapa. Os testes Kotlin/JVM de localizer, projeção Compose e repositório SQLite são mantidos para execução manual conforme `AGENTS.md`; nenhum deles foi executado durante esta implementação.
 
-Testes JVM ajustados para esta correção incluem: rejeição de texto francês/espanhol/inglês e PT-PT; mistura longa de idiomas; tradução do PT-PT para PT-BR; continuação automática por mais lotes do que o orçamento de uma chamada; falha externa com estado pendente e retry; concorrência, cancelamento/retomada, proteção de metadados manuais, controle de snapshots obsoletos, cursor, wrap e inclusão de novos IDs. Esses testes permanecem manuais conforme AGENTS.md e não foram executados durante esta etapa. Nenhum teste de emulador foi adicionado.
+Os testes JVM adicionados/ajustados cobrem: rejeição de idioma estrangeiro mesmo em HTTP 200 (espanhol, francês e inglês), PT-PT e texto misto; saída vazia e backoff; falha de rede; deduplicação por chave e por instância de serviço; continuação em chamadas com orçamento de um candidato/uma tentativa; avanço, wrap e high-water; descoberta de novos IDs; cancelamento/retomada; falha de persistência SQLite; propriedade manual por status de linha, lista vazia e ownership desconhecido; compare-and-set contra snapshots obsoletos; e preservação de progresso/metadados. Os testes continuam manuais e não foram executados; nenhum teste de emulador foi adicionado.
 
 O build oficial pode compilar Kotlin e empacotar APK, mas isso não valida a semântica linguística em todas as sinopses nem substitui a execução manual dos testes. O resultado de build, workflow, SHA e artefatos APK/ZIP deve ser consultado no GitHub Actions associado ao commit final desta alteração; este documento não presume sucesso de um commit ou execução anterior.
 
