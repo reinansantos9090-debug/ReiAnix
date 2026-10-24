@@ -87,6 +87,18 @@ object ReiAnixDiagnosticTimeline {
         }
     }
 
+    /** Clear only after an explicit user action; no synthetic event is emitted. */
+    fun clear() {
+        try {
+            synchronized(lock) {
+                recent.clear()
+                mutableEvents.value = emptyList()
+            }
+        } catch (failure: Exception) {
+            Log.w(TAG, "Could not clear diagnostic timeline (" + failure.javaClass.simpleName + ").")
+        }
+    }
+
     /** A bounded snapshot suitable for the native report; no SQLite writes occur. */
     fun snapshotJson(limit: Int = 100): JSONArray {
         val snapshot = synchronized(lock) {
