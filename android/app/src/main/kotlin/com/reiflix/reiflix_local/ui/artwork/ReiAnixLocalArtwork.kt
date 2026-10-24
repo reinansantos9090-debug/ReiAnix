@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.ui.artwork
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -143,6 +144,9 @@ fun ReiAnixLocalArtwork(
         val artworkTraceId = remember(stableIdentity, source) {
             "art-" + Integer.toHexString((stableIdentity + "|" + source.orEmpty()).hashCode())
         }
+        val artworkRequestStartedAt = remember(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
+            SystemClock.elapsedRealtime()
+        }
         var isMissing by remember(stableIdentity, candidates) {
             mutableStateOf(false)
         }
@@ -246,7 +250,21 @@ fun ReiAnixLocalArtwork(
                         requestId = artworkTraceId,
                     )
                 },
-                onSuccess = {
+                onSuccess = { state ->
+                    val dataSource = (state.result as? coil.request.SuccessResult)?.dataSource?.name ?: "UNKNOWN"
+                    if (dataSource.contains("CACHE", ignoreCase = true)) {
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "ARTWORK_CACHE_HIT",
+                            source = "ReiAnixLocalArtwork",
+                            result = dataSource,
+                            requestId = artworkTraceId,
+                            context = mapOf(
+                                "candidate_index" to candidateIndex,
+                                "width_px" to effectiveWidthPx,
+                                "height_px" to effectiveHeightPx,
+                            ),
+                        )
+                    }
                     ReiAnixDiagnosticTimeline.record(
                         name = "ARTWORK_IMAGE_READY",
                         source = "ReiAnixLocalArtwork",
@@ -257,6 +275,8 @@ fun ReiAnixLocalArtwork(
                             "height_px" to effectiveHeightPx,
                             "candidate_index" to candidateIndex,
                             "source_scheme" to (source.substringBefore(':').takeIf { ':' in source } ?: "file"),
+                            "data_source" to dataSource,
+                            "elapsed_ms" to (SystemClock.elapsedRealtime() - artworkRequestStartedAt).coerceAtLeast(0L),
                         ),
                     )
                 },
@@ -279,6 +299,7 @@ fun ReiAnixLocalArtwork(
                             "candidate_count" to candidates.size,
                             "width_px" to effectiveWidthPx,
                             "height_px" to effectiveHeightPx,
+                            "elapsed_ms" to (SystemClock.elapsedRealtime() - artworkRequestStartedAt).coerceAtLeast(0L),
                         ),
                     )
                     if (candidateIndex < candidates.lastIndex) {
