@@ -1062,6 +1062,44 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals("0", settings.getPreference("metadata.synopsis_recovery_cursor")?.value)
         assertEquals("3", settings.getPreference("metadata.synopsis_recovery_high_water")?.value)
         assertEquals("complete", settings.getPreference("metadata.synopsis_recovery_state")?.value)
+
+        // A newly eligible record above the completed high-water mark is discovered
+        // without re-walking already completed records.
+        val newSource = "The fourth story follows a young explorer across the mountains."
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                INSERT INTO anime (
+                    id, lookup_title, title, added_at, metadata_manual_fields,
+                    favorite, user_tags, is_pinned, personal_note, cover_url,
+                    english, metadata_source, metadata_status, description, description_original
+                ) VALUES (
+                    4, 'catalog-key-4', 'Anime 4', 1000, '[]',
+                    0, '[]', 0, '', 'https://example.invalid/cover-4.jpg',
+                    'English 4', 'anilist', 'available', ?, ?
+                )
+                """.trimIndent(),
+                arrayOf(newSource, newSource),
+            )
+        }
+        assertEquals(
+            1,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+            ),
+        )
+        assertTrue(service.shouldContinueSynopsisRecovery())
+        assertEquals(
+            0,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+            ),
+        )
+        assertEquals("4", settings.getPreference("metadata.synopsis_recovery_high_water")?.value)
+        assertEquals("complete", settings.getPreference("metadata.synopsis_recovery_state")?.value)
+        assertEquals(4, translationTransport.calls)
     }
 
     private class GatedSynopsisTranslationTransport(
