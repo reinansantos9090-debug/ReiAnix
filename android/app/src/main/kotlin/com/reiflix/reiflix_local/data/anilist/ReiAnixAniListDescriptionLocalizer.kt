@@ -173,7 +173,8 @@ class ReiAnixAniListDescriptionLocalizer(
         val translated = normalizeDescription(translatedText)
         if (source.isEmpty() || translated.isEmpty() || !isPtBrDescription(translated)) return false
         if (source.equals(translated, ignoreCase = true)) {
-            return detectDescriptionLanguage(source).first == "pt"
+            // Identical PT-PT text is not automatically a valid PT-BR localization.
+            return isPtBrDescription(source)
         }
         return isValidTranslation(source, translated)
     }
