@@ -356,7 +356,7 @@ class ReiAnixSqliteLibraryRepository(
                             for (column in 1..18) {
                                 if (!cursor.isNull(column)) append(cursor.getString(column)).append(' ')
                             }
-                            append(cursor.getString(19)).append(' ').append(cursor.getString(20))
+                            append(cursor.getString(19).orEmpty()).append(' ').append(cursor.getString(20).orEmpty())
                         }
                         val normalized = normalizeNativeSearchText(searchable)
                         if (!terms.all { term -> normalized.contains(term) }) continue
@@ -364,13 +364,13 @@ class ReiAnixSqliteLibraryRepository(
                     }
 
                     val id = cursor.getLong(0)
-                    val title = normalizeNativeSearchText(cursor.getString(1))
+                    val title = normalizeNativeSearchText(cursor.getString(1).orEmpty())
                     val alternateTitles = listOf(2, 3, 4)
-                        .map { column -> normalizeNativeSearchText(cursor.getString(column)) }
+                        .map { column -> normalizeNativeSearchText(cursor.getString(column).orEmpty()) }
                         .filter(String::isNotBlank)
-                    val aliases = normalizeNativeSearchText(cursor.getString(5))
-                    val studio = normalizeNativeSearchText(cursor.getString(15))
-                    val genres = normalizeNativeSearchText(cursor.getString(10) + " " + cursor.getString(20))
+                    val aliases = normalizeNativeSearchText(cursor.getString(5).orEmpty())
+                    val studio = normalizeNativeSearchText(cursor.getString(15).orEmpty())
+                    val genres = normalizeNativeSearchText(cursor.getString(10).orEmpty() + " " + cursor.getString(20).orEmpty())
                     var score = when {
                         terms.isEmpty() -> 0
                         title == queryText -> 1000
