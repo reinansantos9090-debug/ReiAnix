@@ -373,7 +373,6 @@ class ReiAnixAniListDescriptionLocalizer(
     companion object {
         private const val TAG = "ReiAnixAniListTranslation"
 
-        /** Pure shared classifier for persistence projections; it never performs translation or I/O. */
         /**
          * Lightweight language validation for UI projections. This helper intentionally
          * avoids Android Html APIs so plain JVM mapper tests and pure presentation code
