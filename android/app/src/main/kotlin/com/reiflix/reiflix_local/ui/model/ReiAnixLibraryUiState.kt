@@ -112,6 +112,7 @@ data class ReiAnixHomeLibraryUiState(
                         lastPlayedAt = anime.lastPlayedAt,
                         pinned = anime.pinned,
                         description = anime.description,
+                        descriptionTranslationPending = anime.descriptionTranslationPending,
                         status = anime.status,
                         format = anime.format,
                         studio = anime.studio,
