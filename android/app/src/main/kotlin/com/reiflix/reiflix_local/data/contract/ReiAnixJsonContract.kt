@@ -13,13 +13,13 @@ internal fun JSONObject.stringOrNull(key: String): String? =
     when {
         !has(key) || isNull(key) -> null
         opt(key) is String -> opt(key) as String
-        else -> error("Invalid JSON contract field '$key': expected text.")
+        else -> invalidJsonContract("Invalid JSON contract field '$key': expected text.")
     }
 
 internal fun JSONObject.stringOrDefault(key: String, default: String): String =
     if (!has(key)) default
     else stringOrNull(key)
-        ?: error("Invalid JSON contract field '$key': null is not valid for this string field.")
+        ?: invalidJsonContract("Invalid JSON contract field '$key': null is not valid for this string field.")
 
 internal fun JSONObject.longRequired(key: String): Long {
     require(has(key) && !isNull(key)) { "Missing required JSON contract field '$key'." }
@@ -65,50 +65,50 @@ internal fun JSONObject.intOrNull(key: String): Int? {
 internal fun JSONObject.booleanRequired(key: String): Boolean {
     require(has(key) && !isNull(key)) { "Missing required JSON contract field '$key'." }
     return (opt(key) as? Boolean)
-        ?: error("Invalid JSON contract field '$key': expected a JSON Boolean.")
+        ?: invalidJsonContract("Invalid JSON contract field '$key': expected a JSON Boolean.")
 }
 
 internal fun JSONObject.booleanOrDefault(key: String, default: Boolean): Boolean {
     if (!has(key)) return default
     require(!isNull(key)) { "Invalid JSON contract field '$key': null is not valid for this Boolean field." }
     return (opt(key) as? Boolean)
-        ?: error("Invalid JSON contract field '$key': expected a JSON Boolean.")
+        ?: invalidJsonContract("Invalid JSON contract field '$key': expected a JSON Boolean.")
 }
 
 internal fun JSONObject.requiredArray(key: String): JSONArray {
     require(has(key) && !isNull(key)) { "Missing required JSON contract array '$key'." }
     return optJSONArray(key)
-        ?: error("Invalid JSON contract field '$key': expected an array.")
+        ?: invalidJsonContract("Invalid JSON contract field '$key': expected an array.")
 }
 
 internal fun JSONObject.arrayOrNull(key: String): JSONArray? =
     when {
         !has(key) || isNull(key) -> null
         optJSONArray(key) != null -> optJSONArray(key)
-        else -> error("Invalid JSON contract field '$key': expected an array.")
+        else -> invalidJsonContract("Invalid JSON contract field '$key': expected an array.")
     }
 
 internal fun JSONObject.arrayOrDefault(key: String): JSONArray =
     when {
         !has(key) -> JSONArray()
-        isNull(key) -> error("Invalid JSON contract field '$key': null is not valid for this array field.")
+        isNull(key) -> invalidJsonContract("Invalid JSON contract field '$key': null is not valid for this array field.")
         optJSONArray(key) != null -> optJSONArray(key)!!
-        else -> error("Invalid JSON contract field '$key': expected an array.")
+        else -> invalidJsonContract("Invalid JSON contract field '$key': expected an array.")
     }
 
 internal fun JSONObject.objectOrNull(key: String): JSONObject? =
     when {
         !has(key) || isNull(key) -> null
         optJSONObject(key) != null -> optJSONObject(key)
-        else -> error("Invalid JSON contract field '$key': expected an object.")
+        else -> invalidJsonContract("Invalid JSON contract field '$key': expected an object.")
     }
 
 internal fun JSONObject.objectOrDefault(key: String): JSONObject =
     when {
         !has(key) -> JSONObject()
-        isNull(key) -> error("Invalid JSON contract field '$key': null is not valid for this object field.")
+        isNull(key) -> invalidJsonContract("Invalid JSON contract field '$key': null is not valid for this object field.")
         optJSONObject(key) != null -> optJSONObject(key)!!
-        else -> error("Invalid JSON contract field '$key': expected an object.")
+        else -> invalidJsonContract("Invalid JSON contract field '$key': expected an object.")
     }
 
 internal fun JSONObject.stringList(key: String): List<String> {
@@ -116,7 +116,7 @@ internal fun JSONObject.stringList(key: String): List<String> {
     return buildList(array.length()) {
         for (index in 0 until array.length()) {
             val value = array.opt(index) as? String
-                ?: error("Invalid JSON contract field '$key[$index]': expected text.")
+                ?: invalidJsonContract("Invalid JSON contract field '$key[$index]': expected text.")
             val trimmed = value.trim()
             require(trimmed.isNotEmpty()) {
                 "Invalid JSON contract field '$key[$index]': text must not be blank."
@@ -125,3 +125,6 @@ internal fun JSONObject.stringList(key: String): List<String> {
         }
     }.distinct()
 }
+
+private fun invalidJsonContract(message: String): Nothing =
+    throw IllegalArgumentException(message)
