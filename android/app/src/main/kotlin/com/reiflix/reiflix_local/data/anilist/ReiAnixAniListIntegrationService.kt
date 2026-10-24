@@ -11,7 +11,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.yield
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
@@ -28,12 +27,6 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * AniList domain integration used by native ViewModels. The canonical SQLite
- * repository remains the sole persistence authority; remote failures retain
- * existing local metadata and update only its freshness/status projection. Requested
- * artwork is materialized by the Kotlin artwork service after metadata commits.
- */
 private data class SynopsisRecoveryBatchResult(
     val scannedCount: Int,
     val translatedCount: Int,
@@ -45,6 +38,12 @@ private data class SynopsisRecoveryBatchResult(
     val localizerAvailable: Boolean = true,
 )
 
+/**
+ * AniList domain integration used by native ViewModels. The canonical SQLite
+ * repository remains the sole persistence authority; remote failures retain
+ * existing local metadata and update only its freshness/status projection. Requested
+ * artwork is materialized by the Kotlin artwork service after metadata commits.
+ */
 class ReiAnixAniListIntegrationService(
     private val client: ReiAnixAniListClient,
     private val library: ReiAnixSqliteLibraryRepository,
