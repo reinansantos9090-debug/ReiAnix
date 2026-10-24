@@ -19,6 +19,9 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         score: Double?,
         margin: Double?,
         clearUntranslatedDescriptionIfMatches: String? = null,
+        validateSynopsisSnapshot: Boolean = false,
+        expectedSynopsisOriginal: String? = null,
+        expectedSynopsisDescription: String? = null,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -47,6 +50,15 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
             val current = currentAndManualFields.first
             val protectedFields = currentAndManualFields.second
+            // The remote request may have started before a newer synopsis sync or
+            // recovery write completed. If either current value diverged from the
+            // captured snapshot, leave synopsis fields alone while still allowing
+            // unrelated metadata/association fields to follow their existing rules.
+            val synopsisSnapshotMatches = !validateSynopsisSnapshot ||
+                (
+                    current.descriptionOriginal == expectedSynopsisOriginal &&
+                        current.description == expectedSynopsisDescription
+                    )
             if (!manual && current.anilistMatchManual == true) return@transaction current
             if (!manual && current.anilistId != null && current.anilistId != anilistId) return@transaction current
             if (!manual && (score == null || score < 0.86 || margin == null || margin < 0.05)) {
@@ -59,7 +71,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             patch.english?.takeIf(String::isNotBlank)?.let { if ("english" !in protectedFields) values.put("english", it) }
             patch.nativeTitle?.takeIf(String::isNotBlank)?.let { if ("native" !in protectedFields) values.put("native", it) }
             patch.aliasesJson?.takeIf { it.isNotBlank() && it.trim() != "[]" }?.let { if ("aliases" !in protectedFields) values.put("aliases", it) }
-            if ("description" !in protectedFields) {
+            if ("description" !in protectedFields && synopsisSnapshotMatches) {
                 val translatedDescription = patch.description?.takeIf(String::isNotBlank)
                 if (translatedDescription != null) {
                     values.put("description", translatedDescription)
@@ -75,7 +87,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 }
             }
             patch.descriptionOriginal?.takeIf(String::isNotBlank)?.let {
-                if ("description" !in protectedFields) values.put("description_original", it)
+                if ("description" !in protectedFields && synopsisSnapshotMatches) values.put("description_original", it)
             }
             patch.coverUrl?.takeIf(String::isNotBlank)?.let { if ("cover_url" !in protectedFields) values.put("cover_url", it) }
             patch.coverCache?.takeIf(String::isNotBlank)?.let { if ("cover_cache" !in protectedFields) values.put("cover_cache", it) }
