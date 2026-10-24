@@ -106,7 +106,10 @@ object VideoThumbnailExtractor {
         }
         val target = File(cacheDir, key + ".jpg")
         val requestId = "thumb-" + key.take(12)
-        if (target.exists() && !isValidCachedThumbnail(target)) {
+        val targetExistsAtRequest = target.exists()
+        val initialCacheEntryValid = target.isFile && target.length() > 0L &&
+            isValidCachedThumbnail(target)
+        if (targetExistsAtRequest && !initialCacheEntryValid) {
             ReiAnixDiagnosticTimeline.record(
                 name = "THUMBNAIL_CACHE_ENTRY_INVALID",
                 severity = "WARN",
@@ -140,7 +143,7 @@ object VideoThumbnailExtractor {
                     .put("requestId", requestId).put("mediaIdentity", identity).put("size", size)
                     .put("modifiedAt", modifiedAt)),
         )
-        if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
+        if (initialCacheEntryValid) {
             val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
             if (cached != null) {
                 NativeMailbox.writeBestEffort(
