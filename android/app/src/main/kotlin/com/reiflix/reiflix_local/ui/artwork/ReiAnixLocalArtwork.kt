@@ -89,6 +89,7 @@ fun ReiAnixLocalArtwork(
     maxDimensionPx: Int = 1024,
     shape: Shape = ReiAnixTokens.Shapes.artwork,
     identity: String? = null,
+    artworkType: String = "poster",
     fallbackLocalPath: String? = null,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
@@ -136,6 +137,15 @@ fun ReiAnixLocalArtwork(
             identity?.trim().takeUnless { it.isNullOrEmpty() }
                 ?: candidates.firstOrNull().orEmpty()
         }
+        val artworkEntityId = remember(identity, artworkType) {
+            val keyPrefix = if (artworkType == "episode_thumbnail") "episode:" else "anime:"
+            identity?.takeIf { it.startsWith(keyPrefix) }
+                ?.removePrefix(keyPrefix)
+                ?.substringBefore(':')
+                ?.toLongOrNull()
+                ?.toString()
+        }
+        val artworkEntityType = if (artworkType == "episode_thumbnail") "episode" else "anime_or_movie"
 
         var candidateIndex by remember(stableIdentity, candidates) {
             mutableIntStateOf(0)
@@ -160,7 +170,15 @@ fun ReiAnixLocalArtwork(
                     source = "ReiAnixLocalArtwork",
                     result = if (candidates.isEmpty()) "NOT_CONFIGURED" else "CANDIDATES_EXHAUSTED",
                     requestId = artworkTraceId,
-                    context = mapOf("candidate_count" to candidates.size),
+                    context = mapOf(
+                        "entity_type" to artworkEntityType,
+                        "entity_id" to artworkEntityId,
+                        "artwork_type" to artworkType,
+                        "candidate_count" to candidates.size,
+                        "local_source_present" to candidates.any { !it.startsWith("http://", true) && !it.startsWith("https://", true) },
+                        "remote_source_present" to candidates.any { it.startsWith("http://", true) || it.startsWith("https://", true) },
+                        "source_kind" to "none",
+                    ),
                 )
             }
             ReiAnixArtworkMissingState(label = placeholder)
@@ -171,7 +189,13 @@ fun ReiAnixLocalArtwork(
                     source = "ReiAnixLocalArtwork",
                     result = "NOT_REQUESTED",
                     requestId = artworkTraceId,
-                    context = mapOf("width_px" to effectiveWidthPx, "height_px" to effectiveHeightPx),
+                    context = mapOf(
+                        "entity_type" to artworkEntityType,
+                        "entity_id" to artworkEntityId,
+                        "artwork_type" to artworkType,
+                        "width_px" to effectiveWidthPx,
+                        "height_px" to effectiveHeightPx,
+                    ),
                 )
             }
             Box(
@@ -227,6 +251,10 @@ fun ReiAnixLocalArtwork(
                     result = "STARTED",
                     requestId = artworkTraceId,
                     context = mapOf(
+                        "entity_type" to artworkEntityType,
+                        "entity_id" to artworkEntityId,
+                        "artwork_type" to artworkType,
+                        "source_kind" to artworkSourceKind(source),
                         "source_scheme" to (source.substringBefore(':').takeIf { ':' in source } ?: "file"),
                         "candidate_index" to candidateIndex,
                         "candidate_count" to candidates.size,
@@ -248,6 +276,13 @@ fun ReiAnixLocalArtwork(
                         source = "ReiAnixLocalArtwork",
                         result = "RUNNING",
                         requestId = artworkTraceId,
+                        context = mapOf(
+                            "entity_type" to artworkEntityType,
+                            "entity_id" to artworkEntityId,
+                            "artwork_type" to artworkType,
+                            "source_kind" to artworkSourceKind(source),
+                            "candidate_index" to candidateIndex,
+                        ),
                     )
                 },
                 onSuccess = { state ->
@@ -259,6 +294,10 @@ fun ReiAnixLocalArtwork(
                             result = dataSource,
                             requestId = artworkTraceId,
                             context = mapOf(
+                                "entity_type" to artworkEntityType,
+                                "entity_id" to artworkEntityId,
+                                "artwork_type" to artworkType,
+                                "source_kind" to artworkSourceKind(source),
                                 "candidate_index" to candidateIndex,
                                 "width_px" to effectiveWidthPx,
                                 "height_px" to effectiveHeightPx,
@@ -271,6 +310,10 @@ fun ReiAnixLocalArtwork(
                         result = "COMPLETED",
                         requestId = artworkTraceId,
                         context = mapOf(
+                            "entity_type" to artworkEntityType,
+                            "entity_id" to artworkEntityId,
+                            "artwork_type" to artworkType,
+                            "source_kind" to artworkSourceKind(source),
                             "width_px" to effectiveWidthPx,
                             "height_px" to effectiveHeightPx,
                             "candidate_index" to candidateIndex,
@@ -295,6 +338,10 @@ fun ReiAnixLocalArtwork(
                         requestId = artworkTraceId,
                         error = state.result.throwable,
                         context = mapOf(
+                            "entity_type" to artworkEntityType,
+                            "entity_id" to artworkEntityId,
+                            "artwork_type" to artworkType,
+                            "source_kind" to artworkSourceKind(source),
                             "candidate_index" to candidateIndex,
                             "candidate_count" to candidates.size,
                             "width_px" to effectiveWidthPx,
@@ -316,6 +363,16 @@ fun ReiAnixLocalArtwork(
             }
         }
     }
+}
+
+internal fun artworkSourceKind(source: String?): String = when {
+    source.isNullOrBlank() -> "none"
+    source.startsWith("https://", ignoreCase = true) ||
+        source.startsWith("http://", ignoreCase = true) -> "remote_http"
+    source.startsWith("content://", ignoreCase = true) -> "content_uri"
+    source.startsWith("file://", ignoreCase = true) -> "file_uri"
+    source.startsWith("android.resource://", ignoreCase = true) -> "android_resource"
+    else -> "local_file"
 }
 
 internal fun bucketDimensionPx(dimension: Int, step: Int = 32): Int {
@@ -397,6 +454,7 @@ fun ReiAnixPoster(
         maxDimensionPx = maxDimensionPx,
         shape = ReiAnixTokens.Shapes.artwork,
         identity = identity,
+        artworkType = "poster",
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
@@ -423,6 +481,7 @@ fun ReiAnixBackdrop(
         maxDimensionPx = maxDimensionPx,
         shape = ReiAnixTokens.Shapes.hero,
         identity = identity,
+        artworkType = "backdrop",
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
@@ -448,6 +507,7 @@ fun ReiAnixEpisodeThumbnail(
         maxDimensionPx = 320,
         shape = ReiAnixTokens.Shapes.small,
         identity = identity,
+        artworkType = "episode_thumbnail",
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
