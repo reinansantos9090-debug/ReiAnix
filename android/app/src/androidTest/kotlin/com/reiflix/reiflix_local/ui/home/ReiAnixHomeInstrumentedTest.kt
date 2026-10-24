@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui.home
 
 import android.graphics.Bitmap
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
@@ -222,6 +224,49 @@ class ReiAnixHomeInstrumentedTest {
         composeRule.onNodeWithText("Falha de leitura").assertIsDisplayed()
         composeRule.onNodeWithText("Tentar novamente").performClick()
         assertEquals(1, refreshCount)
+    }
+
+    @Test
+    fun artworkPublishedAfterInitialMissingSourceUpdatesComposeAndCompletesLoad() {
+        ReiAnixDiagnosticTimeline.clear()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val artworkFile = File(context.cacheDir, "reianix-published-artwork-test.png")
+        val bitmap = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888)
+        artworkFile.outputStream().use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+        }
+        bitmap.recycle()
+
+        val source = mutableStateOf<String?>(null)
+        try {
+            composeRule.setContent {
+                ReiAnixComposeRoot {
+                    ReiAnixLocalArtwork(
+                        localPath = source.value,
+                        contentDescription = "Published artwork",
+                        modifier = Modifier.size(100.dp),
+                        identity = "anime:812",
+                        artworkType = "poster",
+                        placeholder = "Aguardando arte",
+                    )
+                }
+            }
+
+            composeRule.onNodeWithText("Aguardando arte").assertIsDisplayed()
+            composeRule.runOnIdle { source.value = artworkFile.absolutePath }
+            composeRule.waitUntil(10_000L) {
+                ReiAnixDiagnosticTimeline.events.value.any { event ->
+                    event.name == "ARTWORK_IMAGE_READY" &&
+                        event.result == "COMPLETED" &&
+                        event.context["entity_id"] == "812" &&
+                        event.context["artwork_type"] == "poster"
+                }
+            }
+            composeRule.onNodeWithContentDescription("Published artwork").assertIsDisplayed()
+        } finally {
+            artworkFile.delete()
+            ReiAnixDiagnosticTimeline.clear()
+        }
     }
 
     @Test
