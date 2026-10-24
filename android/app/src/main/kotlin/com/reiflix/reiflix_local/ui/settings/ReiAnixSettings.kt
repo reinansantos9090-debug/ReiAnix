@@ -1317,6 +1317,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
                 "Diagnóstico" -> {
                     val diagnosticStorage = state.storage
+                    val latestDiagnosticOperation = state.operations.values
+                        .filter { it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" }
+                        .maxByOrNull { it.timestampMs }
                     item(key = "section:diagnostic:technical") { SettingsSectionLabel("Técnico") }
                     item(key = "diagnostic:info") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
@@ -1414,6 +1417,22 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     onClick = { pendingConfirmationAction = "diagnostic_clear" },
                                     enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_clear"),
                                     modifier = Modifier.fillMaxWidth(),
+                                )
+                                Text(
+                                    text = latestDiagnosticOperation?.let { operation ->
+                                        val stateLabel = when (operation.state) {
+                                            ReiAnixSettingsOperationState.QUEUED -> "AGUARDANDO"
+                                            ReiAnixSettingsOperationState.RUNNING -> "EXECUTANDO"
+                                            ReiAnixSettingsOperationState.SUCCESS -> "CONCLUÍDA"
+                                            ReiAnixSettingsOperationState.CANCELLED -> "CANCELADA"
+                                            ReiAnixSettingsOperationState.ERROR -> "FALHOU"
+                                            ReiAnixSettingsOperationState.IDLE -> "AGUARDANDO"
+                                        }
+                                        "Estado da operação: " + stateLabel + " • " +
+                                            (operation.message ?: operation.error ?: operation.action)
+                                    } ?: "Estado da operação: aguardando ação manual.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(
                                     text = "Resultados da última coleta:\n" +
