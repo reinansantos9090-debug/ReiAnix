@@ -301,7 +301,9 @@ object ReiAnixTokens {
         val bottomOverlayLandscapeHeight = 136.dp
         val topTitleWidthFraction = 0.84f
         val seekButtonSize = 60.dp
-        val seekIconSize = 32.dp
+        // Larger glyph for the 10-second circular seek controls; the 60.dp
+        // IconButton hit target remains independent of this visual size.
+        val seekIconSize = 40.dp
         val centerButtonContainerSize = 76.dp
         val centerButtonSize = 68.dp
         val bufferingIndicatorSize = 32.dp

@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -348,7 +349,7 @@ private fun PlayerSeekIconButton(
             )
             Text(
                 text = seconds.toString(),
-                style = ReiAnixTokens.TypographyTokens.chip,
+                style = ReiAnixTokens.TypographyTokens.chip.copy(fontSize = 12.sp, lineHeight = 14.sp),
                 color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier.align(Alignment.Center),
             )
