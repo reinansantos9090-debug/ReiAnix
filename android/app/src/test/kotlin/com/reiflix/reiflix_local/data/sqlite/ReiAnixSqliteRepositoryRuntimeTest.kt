@@ -894,6 +894,53 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun malformedManualOwnershipArrayCannotAuthorizeSynopsisOverwrite() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val database = ReiAnixSqliteDatabase(context)
+        val currentDescription = "A sinopse cuja propriedade não pode ser determinada."
+        val source = "The stored source synopsis."
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                UPDATE anime
+                SET description = ?, description_original = ?, metadata_source = 'anilist',
+                    metadata_status = 'available', metadata_manual_fields = '[true]'
+                WHERE id = 1
+                """.trimIndent(),
+                arrayOf(currentDescription, source),
+            )
+        }
+
+        assertFalse(
+            repository.updateAniListSynopsisIfUnchanged(
+                animeId = 1L,
+                expectedAniListId = null,
+                expectedOriginal = source,
+                expectedDescription = currentDescription,
+                originalSource = "A newer source synopsis.",
+                translatedDescription = "A nova sinopse automática.",
+            ),
+        )
+        try {
+            repository.updateAnimeMetadata(
+                ReiAnixAnimeMetadataPatch(
+                    animeId = 1L,
+                    description = "This automatic text must not be saved.",
+                    descriptionOriginal = "A different source.",
+                ),
+            )
+            fail("Malformed ownership metadata must reject generic synopsis patches.")
+        } catch (_: IllegalStateException) {
+            // The existing repository fails closed when a field-ownership element is not a string.
+        }
+
+        val after = repository.getAnime(1L)!!
+        assertEquals(currentDescription, after.description)
+        assertEquals(source, after.descriptionOriginal)
+    }
+
+    @Test
     fun rowLevelManualOwnershipProtectsSynopsisEvenWhenFieldListIsEmpty() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
