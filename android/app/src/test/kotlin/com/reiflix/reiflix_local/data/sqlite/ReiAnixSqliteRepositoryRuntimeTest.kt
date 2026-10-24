@@ -993,18 +993,25 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             descriptionLocalizer = localizer,
         )
 
-        val translatedCount = service.reconcilePendingSynopsisTranslations(
-            maxCandidates = 1,
-            maxTranslationAttempts = 1,
-            force = true,
-        )
+        var translatedCount = 0
+        var boundedExecutions = 0
+        do {
+            translatedCount += service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+                force = boundedExecutions == 0,
+            )
+            boundedExecutions++
+        } while (service.shouldContinueSynopsisRecovery())
 
         assertEquals(3, translatedCount)
+        assertEquals(4, boundedExecutions) // three bounded row batches plus the tail/cursor-wrap batch
         assertEquals(3, translationTransport.calls)
         assertTrue(localizer.isPtBrDescription(repository.getAnime(1L)!!.description.orEmpty()))
         assertTrue(localizer.isPtBrDescription(repository.getAnime(2L)!!.description.orEmpty()))
         assertTrue(localizer.isPtBrDescription(repository.getAnime(3L)!!.description.orEmpty()))
         assertEquals("0", settings.getPreference("metadata.synopsis_recovery_cursor")?.value)
+        assertEquals("3", settings.getPreference("metadata.synopsis_recovery_high_water")?.value)
         assertEquals("complete", settings.getPreference("metadata.synopsis_recovery_state")?.value)
     }
 
@@ -1077,6 +1084,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 force = true,
             ),
         )
+        assertTrue(service.shouldContinueSynopsisRecovery())
+        assertEquals(
+            0,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+            ),
+        )
         val pending = repository.getAnime(1L)!!
         assertNull(pending.description)
         assertEquals(source, pending.descriptionOriginal)
@@ -1131,6 +1146,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         )
         transport.release.complete(Unit)
         assertEquals(1, first.await())
+        assertEquals(0, service.reconcilePendingSynopsisTranslations(maxCandidates = 1, maxTranslationAttempts = 1))
+        assertEquals("complete", settings.getPreference("metadata.synopsis_recovery_state")?.value)
         assertEquals(1, transport.calls)
     }
 
@@ -1185,13 +1202,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 ),
             ),
         )
-        assertEquals(
-            1,
-            resumedService.reconcilePendingSynopsisTranslations(
+        var resumedTranslations = 0
+        do {
+            resumedTranslations += resumedService.reconcilePendingSynopsisTranslations(
                 maxCandidates = 1,
                 maxTranslationAttempts = 1,
-            ),
-        )
+            )
+        } while (resumedService.shouldContinueSynopsisRecovery())
+        assertEquals(1, resumedTranslations)
         assertEquals("complete", settings.getPreference("metadata.synopsis_recovery_state")?.value)
     }
 
