@@ -104,7 +104,8 @@ object ReiAnixManualDiagnostics {
                     status,
                     JSONObject()
                         .put("available", false)
-                        .put("error_type", error.javaClass.simpleName),
+                        .put("error_type", error.javaClass.simpleName)
+                        .put("error_message", sanitizeLogLine(error.message.orEmpty())),
                     error.javaClass.simpleName,
                 )
             }
@@ -205,10 +206,14 @@ object ReiAnixManualDiagnostics {
 
     /** Export reads the latest manually collected results; it never starts a check. */
     fun exportJson(context: Context): ByteArray {
+        val localHistory = history(context.applicationContext)
         val report = currentReport(context.applicationContext)
             .put("exported_at", utcTimestamp())
             .put("export_mode", "explicit_user_action")
-            .put("history", history(context.applicationContext))
+            .put("history", localHistory)
+        localHistory.optJSONObject(0)?.let { latestRun ->
+            report.put("latest_run", JSONObject(latestRun.toString()))
+        }
         return (report.toString(2) + "\n").toByteArray(Charsets.UTF_8)
     }
 
@@ -272,7 +277,8 @@ object ReiAnixManualDiagnostics {
                 else -> null
             }
             val detail = when {
-                result?.has("error_type") == true -> " • " + result.optString("error_type")
+                result?.has("error_type") == true -> " • " + result.optString("error_type") +
+                    result.optString("error_message").takeIf { it.isNotBlank() }?.let { ": " + it }.orEmpty()
                 result?.has("matching_lines") == true -> " • " + result.optInt("matching_lines") + " linhas relevantes"
                 result?.has("available") == true && !result.optBoolean("available") -> " • dados indisponíveis"
                 else -> ""
@@ -403,7 +409,8 @@ object ReiAnixManualDiagnostics {
                         .put("accessible", false)
                         .put("read_permission", grant.isReadPermission)
                         .put("write_permission", grant.isWritePermission)
-                        .put("error_type", error.javaClass.simpleName),
+                        .put("error_type", error.javaClass.simpleName)
+                        .put("error_message", sanitizeLogLine(error.message.orEmpty())),
                 )
                 return@forEachIndexed
             }
@@ -505,8 +512,11 @@ object ReiAnixManualDiagnostics {
                         )
                     """.trimIndent())
                 } else null
+                val failedCountQueries = counts.keys().asSequence().any { counts.optLong(it, -1L) < 0L } ||
+                    duplicateMediaIdentity == -1L
                 val integrityOk = quickCheck.length() > 0 && quickCheck.optString(0) == "ok"
                 JSONObject()
+                    .put("collection_status", if (failedCountQueries) "PARTIAL" else "COMPLETED")
                     .put("available", true)
                     .put("database_exists", true)
                     .put("database_bytes", file.length())
@@ -530,7 +540,10 @@ object ReiAnixManualDiagnostics {
                 result = "FAILED",
                 error = error,
             )
-            JSONObject().put("available", false).put("error_type", error.javaClass.simpleName)
+            JSONObject()
+                .put("available", false)
+                .put("error_type", error.javaClass.simpleName)
+                .put("error_message", sanitizeLogLine(error.message.orEmpty()))
         } finally {
             activeSqliteCancellationSignal.compareAndSet(cancellationSignal, null)
         }
