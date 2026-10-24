@@ -99,8 +99,16 @@ jobs:
               (104, 1, 4, 'episode-04.mp4', 1, 'content://reianix-fixture/episode-04.mp4', 'fixture-identity-04', 0),
               (105, 1, 5, 'episode-05.mp4', 1, 'content://reianix-fixture/episode-05.mp4', 'fixture-identity-05', 0);
           SQL
-          test "$(sqlite3 "$db" 'SELECT count(*) FROM episodes WHERE anime_id=1;')" = "5"
-          test "$(sqlite3 "$db" 'SELECT progress FROM episodes WHERE anime_id=1 ORDER BY number LIMIT 1;')" = "37"
+          episode_count="$(sqlite3 "$db" 'SELECT count(*) FROM episodes WHERE anime_id=1;')"
+          if [[ "$episode_count" != "5" ]]; then
+            echo "::error::Expected 5 episode rows in the fixture, got '$episode_count'."
+            exit 1
+          fi
+          first_progress="$(sqlite3 "$db" "SELECT printf('%g', progress) FROM episodes WHERE anime_id=1 ORDER BY number LIMIT 1;")"
+          if [[ "$first_progress" != "37" ]]; then
+            echo "::error::Expected the first episode progress to be 37 seconds, got '$first_progress'."
+            exit 1
+          fi
 
       - name: Compile native app and instrumentation sources
         shell: bash
