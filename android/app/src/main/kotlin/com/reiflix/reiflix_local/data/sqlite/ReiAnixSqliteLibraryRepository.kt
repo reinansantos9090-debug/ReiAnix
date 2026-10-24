@@ -466,27 +466,38 @@ class ReiAnixSqliteLibraryRepository(
                         "Cannot update anime metadata: anime ID does not exist.",
                     )
                 }
-                val rawManualFields = cursor.optionalString("metadata_manual_fields") ?: "[]"
-                val manualFields: Set<String> = try {
-                    val parsed = JSONArray(rawManualFields)
-                    buildSet<String> {
-                        for (index in 0 until parsed.length()) {
-                            val field = parsed.get(index)
-                            if (field !is String) {
-                                throw IllegalStateException(
-                                    "Stored manual metadata ownership contains a non-string field.",
-                                )
+                val rawManualFields = cursor.optionalString("metadata_manual_fields")
+                val manualFields = if (rawManualFields.isNullOrBlank()) {
+                    // Missing ownership metadata is ambiguous: don't infer that a synopsis
+                    // is automatic just because its field list is absent or blank.
+                    setOf("description")
+                } else {
+                    try {
+                        val parsed = JSONArray(rawManualFields)
+                        buildSet<String> {
+                            for (index in 0 until parsed.length()) {
+                                val field = parsed.get(index)
+                                if (field !is String) {
+                                    throw IllegalStateException(
+                                        "Stored manual metadata ownership contains a non-string field.",
+                                    )
+                                }
+                                add(field as String)
                             }
-                            add(field as String)
                         }
+                    } catch (error: JSONException) {
+                        throw IllegalStateException(
+                            "Stored manual metadata ownership is unreadable; refusing to overwrite metadata.",
+                            error,
+                        )
                     }
-                } catch (error: JSONException) {
-                    throw IllegalStateException(
-                        "Stored manual metadata ownership is unreadable; refusing to overwrite metadata.",
-                        error,
-                    )
                 }
-                cursor.toAnimeRecord() to manualFields
+                val record = cursor.toAnimeRecord()
+                val synopsisManuallyOwned =
+                    "description" in manualFields ||
+                        record.metadataSource.equals("manual", ignoreCase = true) ||
+                        record.metadataStatus.equals("manual", ignoreCase = true)
+                record to if (synopsisManuallyOwned) manualFields + "description" else manualFields
             }
 
             val currentRecord = current.first
