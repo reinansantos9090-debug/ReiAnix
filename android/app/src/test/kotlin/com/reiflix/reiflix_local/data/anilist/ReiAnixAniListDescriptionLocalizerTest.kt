@@ -152,6 +152,7 @@ class ReiAnixAniListDescriptionLocalizerTest {
             )
 
             assertFalse(localizer.isPtBrDescription(european))
+            assertFalse(localizer.isValidPtBrResult(european, european))
             assertEquals(brazilian, localizer.localizeToPtBr(european, "pt-PT"))
             assertEquals(1, transport.calls)
         } finally {
