@@ -1235,6 +1235,20 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             descriptionLocalizer = localizer,
         )
 
+        val competingTransport = FixedSynopsisTranslationTransport(
+            statusCode = 200,
+            translatedText = "A história acompanha um herói diferente.",
+        )
+        val competingService = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = settings,
+            descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
+                File(context.cacheDir, "synopsis-competing-" + System.nanoTime() + ".json"),
+                competingTransport,
+            ),
+        )
+
         val first = async {
             service.reconcilePendingSynopsisTranslations(
                 maxCandidates = 1,
@@ -1245,12 +1259,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         transport.started.await()
         assertEquals(
             0,
-            service.reconcilePendingSynopsisTranslations(
+            competingService.reconcilePendingSynopsisTranslations(
                 maxCandidates = 1,
                 maxTranslationAttempts = 1,
                 force = true,
             ),
         )
+        assertEquals(0, competingTransport.calls)
         transport.release.complete(Unit)
         assertEquals(1, first.await())
         assertEquals(0, service.reconcilePendingSynopsisTranslations(maxCandidates = 1, maxTranslationAttempts = 1))
