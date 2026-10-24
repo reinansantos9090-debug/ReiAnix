@@ -1003,6 +1003,62 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun emptySynopsisOwnershipArrayIsUnknownAcrossAllSynopsisWriters() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val database = ReiAnixSqliteDatabase(context)
+        val existingDisplay = "Sinopse protegida enquanto a propriedade está indeterminada."
+        val source = "The stored AniList source synopsis."
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                UPDATE anime
+                SET description = ?, description_original = ?, metadata_source = 'anilist',
+                    metadata_status = 'available', metadata_manual_fields = '[]'
+                WHERE id = 1
+                """.trimIndent(),
+                arrayOf(existingDisplay, source),
+            )
+        }
+
+        assertFalse(
+            "An empty ownership list cannot authorize a conditional synopsis overwrite.",
+            repository.updateAniListSynopsisIfUnchanged(
+                animeId = 1L,
+                expectedAniListId = null,
+                expectedOriginal = source,
+                expectedDescription = existingDisplay,
+                originalSource = "A newer source synopsis.",
+                translatedDescription = "Uma nova tradução.",
+            ),
+        )
+
+        val genericAfter = repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = "Generic update must not overwrite unknown ownership.",
+                descriptionOriginal = "A different generic source.",
+            ),
+        )
+        assertEquals(existingDisplay, genericAfter.description)
+        assertEquals(source, genericAfter.descriptionOriginal)
+
+        val associationAfter = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = "Association update must not overwrite unknown ownership.",
+                descriptionOriginal = "A different association source.",
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+        assertEquals(existingDisplay, associationAfter.description)
+        assertEquals(source, associationAfter.descriptionOriginal)
+    }
+
+    @Test
     fun unknownSynopsisOwnershipMetadataIsPreservedConservatively() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
