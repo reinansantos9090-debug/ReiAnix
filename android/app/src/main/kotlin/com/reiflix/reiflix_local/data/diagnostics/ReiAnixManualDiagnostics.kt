@@ -265,7 +265,11 @@ object ReiAnixManualDiagnostics {
                 }
                 "thumbnails" -> result?.let {
                     "eventos: " + it.optInt("timeline_event_count") +
-                        "; falhas registradas: " + it.optInt("failure_events") +
+                        "; falhas: " + it.optInt("failure_events") +
+                        " (leitura: " + it.optInt("source_read_failures") +
+                        ", decodificação: " + it.optInt("decode_failures") +
+                        ", cache: " + it.optInt("cache_failures") +
+                        ", apresentação: " + it.optInt("presentation_failures") + ")" +
                         "; cache: " + it.optInt("cache_file_count") + " arquivos / " + it.optLong("cache_bytes") + " bytes"
                 }
                 "bridge" -> result?.let { "eventos da ponte/mailbox: " + it.optInt("timeline_event_count") }
@@ -556,6 +560,10 @@ object ReiAnixManualDiagnostics {
         var completed = 0
         var failed = 0
         var cacheHits = 0
+        var sourceReadFailures = 0
+        var decodeFailures = 0
+        var cacheFailures = 0
+        var presentationFailures = 0
         for (index in 0 until events.length()) {
             val event = events.optJSONObject(index) ?: continue
             val name = event.optString("name")
@@ -566,8 +574,14 @@ object ReiAnixManualDiagnostics {
             selected.put(event)
             if (name.contains("REQUEST", true) || name.contains("STARTED", true)) requested++
             if (name.contains("READY", true) || name.contains("FINISHED", true) || name.contains("CACHE_HIT", true)) completed++
-            if (name.contains("FAILED", true) || name.contains("ERROR", true)) failed++
+            val isFailure = listOf("FAILED", "ERROR", "INVALID", "UNUSABLE", "ASSOCIATION_MISSING", "SOURCE_NOT_FOUND")
+                .any { name.contains(it, true) }
+            if (isFailure) failed++
             if (name.contains("CACHE_HIT", true)) cacheHits++
+            if (name.contains("SOURCE_READ_FAILED", true) || name.contains("METADATA_READ_FAILED", true)) sourceReadFailures++
+            if (name.contains("DECODE_FAILED", true)) decodeFailures++
+            if (name.contains("CACHE", true) && isFailure) cacheFailures++
+            if (name.contains("ARTWORK_LOAD_FAILED", true) || name.contains("ARTWORK_SOURCE_NOT_FOUND", true)) presentationFailures++
         }
         val cacheDirectory = File(context.cacheDir, "reiflix/thumbnails")
         return JSONObject()
@@ -576,6 +590,10 @@ object ReiAnixManualDiagnostics {
             .put("requested_or_started_events", requested)
             .put("completed_or_cache_hit_events", completed)
             .put("failure_events", failed)
+            .put("source_read_failures", sourceReadFailures)
+            .put("decode_failures", decodeFailures)
+            .put("cache_failures", cacheFailures)
+            .put("presentation_failures", presentationFailures)
             .put("cache_hit_events", cacheHits)
             .put("cache_directory_exists", cacheDirectory.isDirectory)
             .put("cache_directory_readable", cacheDirectory.canRead())
