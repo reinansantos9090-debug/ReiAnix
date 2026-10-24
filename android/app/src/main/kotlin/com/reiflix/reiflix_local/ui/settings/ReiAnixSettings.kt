@@ -78,6 +78,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixManualDiagnostics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
@@ -521,6 +522,14 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     val latestOperationError = state.operations.values.lastOrNull()
         ?.takeIf { it.state == ReiAnixSettingsOperationState.ERROR }
     val diagnosticEvents by ReiAnixDiagnosticTimeline.events.collectAsStateWithLifecycle()
+    val diagnosticContext = androidx.compose.ui.platform.LocalContext.current
+    val diagnosticWorkRunning = state.operations.values.any {
+        it.action.startsWith("diagnostic_run_") &&
+            it.state in setOf(
+                ReiAnixSettingsOperationState.QUEUED,
+                ReiAnixSettingsOperationState.RUNNING,
+            )
+    }
 
     var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
@@ -560,6 +569,11 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     "Restaurar backup?",
                     "O BackupService existente validará o arquivo antes de alterar o estado lógico local.",
                     "Continuar",
+                )
+                "diagnostic_clear" -> Triple(
+                    "Limpar dados de diagnóstico?",
+                    "Serão removidos os resultados coletados, o histórico local e a timeline em memória. A biblioteca e o banco SQLite canônico não serão alterados.",
+                    "Limpar dados",
                 )
                 else -> Triple(
                     "Confirmar ação",
@@ -1347,17 +1361,71 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     .padding(ReiAnixTokens.Spacing.lg),
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
+                                Text(
+                                    text = "Nenhuma verificação é iniciada ao abrir esta tela. Escolha explicitamente uma categoria; a coleta geral executa todas as categorias abaixo. Não há varredura de biblioteca, limpeza de cache ou envio remoto automático.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                                 ReiAnixPrimaryButton(
-                                    text = "Verificar integridade",
-                                    onClick = { onAction("backup_integrity") },
-                                    enabled = !actionBusy("backup_integrity"),
+                                    text = "Executar diagnóstico geral",
+                                    onClick = { onAction("diagnostic_run_general") },
+                                    enabled = !diagnosticWorkRunning,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                SettingsSectionLabel("Verificações individuais")
+                                val diagnosticActions = listOf(
+                                    "Sistema Android" to "diagnostic_run_system",
+                                    "Logcat disponível" to "diagnostic_run_logs",
+                                    "Armazenamento e permissões" to "diagnostic_run_storage",
+                                    "Scanner e indexação" to "diagnostic_run_scanner",
+                                    "SQLite e biblioteca" to "diagnostic_run_sqlite",
+                                    "Thumbnails, capas e cache" to "diagnostic_run_thumbnails",
+                                    "Ponte e comunicação interna" to "diagnostic_run_bridge",
+                                    "Desempenho e estabilidade" to "diagnostic_run_performance",
+                                )
+                                diagnosticActions.forEach { (label, action) ->
+                                    ReiAnixSecondaryButton(
+                                        text = label,
+                                        onClick = { onAction(action) },
+                                        enabled = !diagnosticWorkRunning,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                                ReiAnixSecondaryButton(
+                                    text = "Importar logcat (ADB)",
+                                    onClick = { onAction("diagnostic_import_logcat") },
+                                    enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_import_logcat"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixSecondaryButton(
-                                    text = "Exportar diagnóstico",
-                                    onClick = { onAction("diagnostic_export") },
-                                    enabled = !actionBusy("diagnostic_export"),
+                                    text = "Cancelar coleta atual",
+                                    onClick = { onAction("diagnostic_cancel") },
+                                    enabled = diagnosticWorkRunning,
                                     modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixPrimaryButton(
+                                    text = "Exportar relatório coletado",
+                                    onClick = { onAction("diagnostic_export") },
+                                    enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_export"),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Limpar resultados e histórico",
+                                    onClick = { pendingConfirmationAction = "diagnostic_clear" },
+                                    enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_clear"),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Text(
+                                    text = "Resultados da última coleta:\n" +
+                                        ReiAnixManualDiagnostics.resultSummary(diagnosticContext),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "Histórico local:\n" +
+                                        ReiAnixManualDiagnostics.historySummary(diagnosticContext),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
