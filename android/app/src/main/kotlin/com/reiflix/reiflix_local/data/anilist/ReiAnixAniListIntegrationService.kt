@@ -11,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
@@ -44,6 +46,7 @@ class ReiAnixAniListIntegrationService(
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
+    private val synopsisRecoveryMutex = Mutex()
 
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
@@ -340,6 +343,239 @@ class ReiAnixAniListIntegrationService(
         return changedOutcomes
     }
 
+    /**
+     * Incrementally repairs missing or untranslated synopses in the canonical SQLite
+     * catalog. A stable-ID cursor stored in the existing preferences table lets the
+     * work resume across process restarts without schema changes. Each pass is bounded
+     * by candidates and remote translation attempts, and all network work is sequential.
+     */
+    suspend fun reconcilePendingSynopsisTranslations(
+        maxCandidates: Int = MAX_SYNOPSIS_CANDIDATES_PER_RUN,
+        maxTranslationAttempts: Int = MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN,
+    ): Int = synopsisRecoveryMutex.withLock {
+        require(maxCandidates in 1..MAX_SYNOPSIS_CANDIDATES_PER_RUN)
+        require(maxTranslationAttempts in 1..MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN)
+        val localizer = descriptionLocalizer
+        if (localizer == null) {
+            Log.w(TAG, "Synopsis recovery unavailable because the canonical localizer is not configured")
+            return@withLock 0
+        }
+
+        var cursor = settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)
+            ?.value?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        var wrapped = false
+        var scanned = 0
+        var translatedCount = 0
+        var translationAttempts = 0
+        var sourceLookups = 0
+        var cacheHits = 0
+        var alreadyValid = 0
+        var failed = 0
+        var conflicts = 0
+        var cleared = 0
+        var sourceUnavailable = 0
+        var manualSkipped = 0
+
+        while (scanned < maxCandidates && translationAttempts < maxTranslationAttempts) {
+            currentCoroutineContext().ensureActive()
+            val page = library.loadAniListSynopsisRecoveryBatch(
+                afterAnimeId = cursor,
+                limit = minOf(SYNOPSIS_RECOVERY_PAGE_SIZE, maxCandidates - scanned),
+            )
+            if (page.isEmpty()) {
+                if (cursor > 0L && !wrapped) {
+                    settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, "0")
+                    cursor = 0L
+                    wrapped = true
+                    if (scanned == 0) continue
+                } else {
+                    if (cursor != 0L) settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, "0")
+                }
+                break
+            }
+
+            for (row in page) {
+                if (scanned >= maxCandidates || translationAttempts >= maxTranslationAttempts) break
+                currentCoroutineContext().ensureActive()
+                scanned++
+
+                var outcome = "skipped"
+                var usedCache = false
+                var clearedStaleDisplay = false
+                try {
+                    val anilistId = row.anilistId
+                    if (anilistId == null || anilistId !in 1L..Int.MAX_VALUE.toLong()) {
+                        outcome = "no_association"
+                    } else if (hasManuallyOwnedSynopsis(row)) {
+                        outcome = "manual"
+                    } else {
+                        val originalRaw = row.descriptionOriginal
+                        val displayRaw = row.description
+                        val original = localizer.normalizeDescription(originalRaw)
+                        val display = localizer.normalizeDescription(displayRaw)
+
+                        if (original.isNotEmpty() && display.isNotEmpty() &&
+                            localizer.isValidPtBrResult(original, display)
+                        ) {
+                            outcome = "already_valid"
+                        } else if (original.isEmpty() && display.isNotEmpty() &&
+                            localizer.isPtBrDescription(display)
+                        ) {
+                            // Keep an existing Portuguese synopsis even if an older row
+                            // did not preserve its source field.
+                            outcome = "already_valid"
+                        } else {
+                            var source = original.takeIf(String::isNotBlank)
+                                ?: display.takeIf(String::isNotBlank)
+
+                            if (source == null) {
+                                if (!isAniListEnabled() ||
+                                    sourceLookups >= MAX_SYNOPSIS_SOURCE_LOOKUPS_PER_RUN
+                                ) {
+                                    outcome = "source_unavailable"
+                                } else {
+                                    sourceLookups++
+                                    val remoteResult = try {
+                                        client.getAnime(anilistId.toInt())
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        Log.i(
+                                            TAG,
+                                            "Synopsis source lookup failed animeId=" + row.id +
+                                                " errorType=" + error::class.java.simpleName,
+                                        )
+                                        null
+                                    }
+                                    source = when (remoteResult) {
+                                        is AniListResult.Success -> remoteResult.value?.description
+                                            ?.let(localizer::normalizeDescription)
+                                            ?.takeIf(String::isNotBlank)
+                                        is AniListResult.Failure -> {
+                                            Log.i(
+                                                TAG,
+                                                "Synopsis source lookup failed animeId=" + row.id +
+                                                    " errorType=" + remoteResult.error::class.java.simpleName,
+                                            )
+                                            null
+                                        }
+                                        null -> null
+                                    }
+                                    if (source.isNullOrBlank()) outcome = "source_unavailable"
+                                }
+                            }
+
+                            if (!source.isNullOrBlank()) {
+                                // CAS-clearing first ensures an old English/other-language
+                                // fallback never remains presented as a completed synopsis.
+                                // The original/source is retained in description_original.
+                                val prepared = library.updateAniListSynopsisIfUnchanged(
+                                    animeId = row.id,
+                                    expectedAniListId = anilistId,
+                                    expectedOriginal = originalRaw,
+                                    expectedDescription = displayRaw,
+                                    originalSource = source,
+                                    translatedDescription = null,
+                                )
+                                if (!prepared) {
+                                    outcome = "conflict"
+                                } else {
+                                    clearedStaleDisplay = display.isNotEmpty()
+                                    if (clearedStaleDisplay) enqueueMetadataCommit(row.id, requestArtwork = false)
+
+                                    val cached = localizer.getCachedDescriptionPtBr(source)
+                                        ?.takeIf { localizer.isValidPtBrResult(source, it) }
+                                    val translated = if (cached != null) {
+                                        usedCache = true
+                                        cached
+                                    } else {
+                                        translationAttempts++
+                                        localizer.localizeToPtBr(source)
+                                    }
+                                    val validTranslation = translated
+                                        ?.takeIf { localizer.isValidPtBrResult(source, it) }
+                                    if (validTranslation == null) {
+                                        outcome = if (localizer.detectDescriptionLanguage(source).first == "unknown") {
+                                            "unknown_source_language"
+                                        } else {
+                                            "translation_failed"
+                                        }
+                                    } else {
+                                        val persisted = library.updateAniListSynopsisIfUnchanged(
+                                            animeId = row.id,
+                                            expectedAniListId = anilistId,
+                                            expectedOriginal = source,
+                                            expectedDescription = null,
+                                            originalSource = source,
+                                            translatedDescription = validTranslation,
+                                        )
+                                        outcome = if (persisted) "translated" else "conflict"
+                                        if (persisted) enqueueMetadataCommit(row.id, requestArtwork = false)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    outcome = "error"
+                    Log.w(
+                        TAG,
+                        "Synopsis recovery failed animeId=" + row.id +
+                            " errorType=" + error::class.java.simpleName,
+                    )
+                }
+
+                when (outcome) {
+                    "translated" -> {
+                        translatedCount++
+                        if (usedCache) cacheHits++
+                    }
+                    "already_valid" -> alreadyValid++
+                    "manual" -> manualSkipped++
+                    "translation_failed", "unknown_source_language", "source_unavailable", "error" -> failed++
+                    "conflict" -> conflicts++
+                }
+                if (clearedStaleDisplay) cleared++
+
+                // Advance only after the record was processed normally. Cancellation
+                // above leaves the cursor before this anime so the work resumes safely.
+                cursor = row.id
+                settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, cursor.toString())
+            }
+        }
+
+        Log.i(
+            TAG,
+            "Synopsis recovery scanned=" + scanned +
+                " translated=" + translatedCount +
+                " cacheHits=" + cacheHits +
+                " alreadyValid=" + alreadyValid +
+                " failedOrPending=" + failed +
+                " staleDisplaysCleared=" + cleared +
+                " conflicts=" + conflicts +
+                " manualSkipped=" + manualSkipped +
+                " cursor=" + cursor,
+        )
+        translatedCount
+    }
+
+    private fun hasManuallyOwnedSynopsis(record: ReiAnixAnimeRecord): Boolean {
+        if (record.metadataSource == "manual" || record.metadataStatus == "manual") return true
+        val raw = record.metadataManualFieldsJson?.trim().orEmpty()
+        if (raw.isBlank()) return false
+        return try {
+            val fields = JSONArray(raw)
+            (0 until fields.length()).any {
+                fields.optString(it).trim().equals("description", ignoreCase = true)
+            }
+        } catch (_: Exception) {
+            // Do not overwrite an anime if ownership metadata cannot be read safely.
+            true
+        }
+    }
+
     private suspend fun applyRemote(
         local: ReiAnixAnimeRecord,
         remote: AniListAnime,
@@ -368,14 +604,15 @@ class ReiAnixAniListIntegrationService(
                     val existingTranslationIsValid = localizer != null &&
                         existingOriginal == remoteOriginal &&
                         existingDescription != null &&
-                        localizer.isValidTranslation(remoteOriginal, existingDescription) &&
-                        localizer.isPtBrDescription(existingDescription)
+                        localizer.isValidPtBrResult(remoteOriginal, existingDescription)
                     when {
+                        localizer == null -> null
                         existingTranslationIsValid -> existingDescription
-                        localizer == null -> remoteOriginal
                         else -> {
                             val cached = localizer.getCachedDescriptionPtBr(remoteOriginal)
-                            cached ?: localizer.localizeToPtBr(remoteOriginal) ?: remoteOriginal
+                                ?.takeIf { localizer.isValidPtBrResult(remoteOriginal, it) }
+                            val candidate = cached ?: localizer.localizeToPtBr(remoteOriginal)
+                            candidate?.takeIf { localizer.isValidPtBrResult(remoteOriginal, it) }
                         }
                     }
                 }
@@ -408,6 +645,13 @@ class ReiAnixAniListIntegrationService(
                 manual = manual,
                 score = score,
                 margin = margin,
+                clearUntranslatedDescriptionIfMatches = if (
+                    remoteOriginalDescription != null && displayDescription == null
+                ) {
+                    local.description?.takeIf(String::isNotBlank)
+                } else {
+                    null
+                },
             )
             if (!manual && updated.anilistId != remote.id.toLong()) {
                 return AniListResult.Failure(
@@ -494,6 +738,11 @@ class ReiAnixAniListIntegrationService(
             "ambiguous",
         )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
+        private const val SYNOPSIS_RECOVERY_CURSOR_KEY = "metadata.synopsis_recovery_cursor"
+        private const val SYNOPSIS_RECOVERY_PAGE_SIZE = 64
+        private const val MAX_SYNOPSIS_CANDIDATES_PER_RUN = 512
+        private const val MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN = 8
+        private const val MAX_SYNOPSIS_SOURCE_LOOKUPS_PER_RUN = 4
     }
 }
 
