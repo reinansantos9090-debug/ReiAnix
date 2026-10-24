@@ -178,7 +178,14 @@ class ReiAnixAniListDescriptionLocalizer(
         return isValidTranslation(source, translated)
     }
 
-    fun isPtBrDescription(text: String): Boolean = isPtBrDescriptionText(text)
+    fun isPtBrDescription(text: String): Boolean {
+        val normalized = normalizeDescription(text)
+        if (normalized.isEmpty()) return false
+        if (detectDescriptionLanguage(normalized).first == "pt") return true
+        val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
+            .map { it.value }.toSet()
+        return tokens.intersect(PORTUGUESE_WORDS).size >= 2
+    }
 
     private fun evictUnusedKeyLocksIfNeeded() {
         if (keyLocks.size <= MAX_CACHE_ENTRIES) return
@@ -367,13 +374,65 @@ class ReiAnixAniListDescriptionLocalizer(
         private const val TAG = "ReiAnixAniListTranslation"
 
         /** Pure shared classifier for persistence projections; it never performs translation or I/O. */
+        /**
+         * Lightweight language validation for UI projections. This helper intentionally
+         * avoids Android Html APIs so plain JVM mapper tests and pure presentation code
+         * can use it without requiring Robolectric.
+         */
         fun isPtBrDescriptionText(text: String?): Boolean {
-            val normalized = normalizeDescriptionText(text)
+            val normalized = normalizeForLanguageClassification(text)
             if (normalized.isEmpty()) return false
-            if (detectDescriptionLanguageText(normalized).first == "pt") return true
+            if (detectDescriptionLanguageForClassification(normalized) == "pt") return true
             val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
                 .map { it.value }.toSet()
             return tokens.intersect(PORTUGUESE_WORDS).size >= 2
+        }
+
+        private fun normalizeForLanguageClassification(text: String?): String = text.orEmpty()
+            .replace(Regex("(?i)<br\\s*/?>"), " ")
+            .replace(Regex("(?i)</p\\s*>"), " ")
+            .replace(Regex("<[^>]+>"), " ")
+            .replace(Regex("(?i)&nbsp;|&#160;"), " ")
+            .replace(Regex("(?i)&amp;"), "&")
+            .replace(Regex("(?i)&quot;"), "\"")
+            .replace(Regex("(?i)&#39;|&apos;"), "'")
+            .replace(Regex("(?i)&lt;"), "<")
+            .replace(Regex("(?i)&gt;"), ">")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        private fun detectDescriptionLanguageForClassification(description: String): String {
+            for (char in description) {
+                when (char.code) {
+                    in 0x3040..0x30FF -> return "ja"
+                    in 0xAC00..0xD7AF -> return "ko"
+                    in 0x0400..0x04FF -> return "ru"
+                    in 0x0600..0x06FF -> return "ar"
+                    in 0x0370..0x03FF -> return "el"
+                }
+            }
+            if (description.any { it.code in 0x4E00..0x9FFF }) return "zh-CN"
+            val tokens = Regex("[\\p{L}]+").findAll(description.lowercase(Locale.ROOT))
+                .map { it.value }.toList()
+            if (tokens.isEmpty()) return "unknown"
+            val unique = tokens.toSet()
+            val ranked = LANGUAGE_PROFILES.map { (language, words) ->
+                val hits = unique.intersect(words).size
+                val weighted = tokens.count { it in words } +
+                    if (language == "pt") tokens.count { token ->
+                        token.any { it in "ãõçáéíóúâêô" }
+                    } else 0
+                Triple(language, hits, weighted)
+            }.sortedWith(
+                compareByDescending<Triple<String, Int, Int>> { it.second }
+                    .thenByDescending { it.third },
+            )
+            val (language, hits, weighted) = ranked.first()
+            val second = ranked.getOrNull(1) ?: return "unknown"
+            val strongEnough = hits >= 3 || (hits >= 2 && tokens.size <= 6 && weighted >= 3)
+            val margin = hits - second.second
+            return if (strongEnough && (margin >= 1 || weighted - second.third >= 2)) language
+            else "unknown"
         }
 
         private fun normalizeDescriptionText(description: String?): String {
