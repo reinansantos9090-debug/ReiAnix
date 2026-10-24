@@ -1258,6 +1258,56 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun invalidNewTranslationDoesNotDeletePreviouslyValidPtBrSynopsis() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val currentSource = "The updated synopsis follows a young hero on a dangerous journey."
+        val priorPtBrSynopsis = "A história anterior acompanha um jovem herói em uma jornada perigosa."
+        repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = priorPtBrSynopsis,
+                descriptionOriginal = currentSource,
+            ),
+        )
+        val wrongLanguage = "La historia sigue a un joven héroe en un viaje peligroso."
+        val transport = FixedSynopsisTranslationTransport(statusCode = 200, translatedText = wrongLanguage)
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = settings,
+            descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
+                File(context.cacheDir, "synopsis-preserve-ptbr-" + System.nanoTime() + ".json"),
+                transport,
+            ),
+        )
+
+        assertEquals(
+            0,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+                force = true,
+            ),
+        )
+        assertTrue(service.shouldContinueSynopsisRecovery())
+        assertEquals(
+            0,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+            ),
+        )
+
+        val afterRejectedTranslation = repository.getAnime(1L)!!
+        assertEquals(priorPtBrSynopsis, afterRejectedTranslation.description)
+        assertEquals(currentSource, afterRejectedTranslation.descriptionOriginal)
+        assertEquals("pending", settings.getPreference("metadata.synopsis_recovery_state")?.value)
+        assertEquals(1, transport.calls)
+    }
+
+    @Test
     fun sqliteSynopsisPersistenceFailureLeavesTheWorkPendingInsteadOfComplete() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
