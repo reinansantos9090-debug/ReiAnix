@@ -543,6 +543,93 @@ class ReiAnixSqliteLibraryRepository(
         }
     }
 
+    /**
+     * Bounded, stable-ID page for the PT-BR synopsis recovery pass. The source and
+     * display fields are intentionally both returned so callers can repair older
+     * rows without re-importing an anime or loading the whole catalog snapshot.
+     */
+    suspend fun loadAniListSynopsisRecoveryBatch(
+        afterAnimeId: Long,
+        limit: Int = 64,
+    ): List<ReiAnixAnimeRecord> = withContext(Dispatchers.IO) {
+        require(afterAnimeId >= 0L) { "afterAnimeId cannot be negative." }
+        require(limit in 1..256) { "Synopsis recovery page size must be between 1 and 256." }
+        database.read { connection ->
+            connection.rawQuery(
+                "SELECT * FROM anime WHERE id > ? AND anilist_id IS NOT NULL " +
+                    "ORDER BY id ASC LIMIT ?",
+                arrayOf(afterAnimeId.toString(), limit.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.toAnimeRecord())
+                }
+            }
+        }
+    }
+
+    /**
+     * Compare-and-set synopsis write on the canonical SQLite row. It only changes
+     * description/description_original and the metadata timestamp; local paths,
+     * artwork, identity, favorites, episodes, notes and playback progress are untouched.
+     *
+     * A stale remote response cannot replace a newer source/description because the
+     * current values and AniList identity must still match the captured snapshot.
+     */
+    suspend fun updateAniListSynopsisIfUnchanged(
+        animeId: Long,
+        expectedAniListId: Long,
+        expectedOriginal: String?,
+        expectedDescription: String?,
+        originalSource: String,
+        translatedDescription: String?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        require(animeId > 0L && expectedAniListId > 0L) { "Persisted anime and AniList IDs must be positive." }
+        require(originalSource.isNotBlank()) { "A non-empty source synopsis is required." }
+        require(translatedDescription == null || translatedDescription.isNotBlank()) {
+            "A completed synopsis translation cannot be blank."
+        }
+        database.transaction { connection ->
+            val current = connection.rawQuery(
+                "SELECT * FROM anime WHERE id = ? LIMIT 1",
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) return@transaction false
+                cursor.toAnimeRecord()
+            }
+            if (current.anilistId != expectedAniListId ||
+                current.descriptionOriginal != expectedOriginal ||
+                current.description != expectedDescription ||
+                current.metadataSource == "manual" ||
+                current.metadataStatus == "manual"
+            ) return@transaction false
+
+            val descriptionIsManuallyOwned = try {
+                val fields = JSONArray(current.metadataManualFieldsJson ?: "[]")
+                (0 until fields.length()).any {
+                    fields.optString(it).trim().equals("description", ignoreCase = true)
+                }
+            } catch (_: Exception) {
+                // Corrupt ownership metadata must fail closed instead of overwriting a
+                // field that might have been curated manually.
+                true
+            }
+            if (descriptionIsManuallyOwned) return@transaction false
+
+            val values = ContentValues().apply {
+                put("description_original", originalSource)
+                if (translatedDescription == null) putNull("description")
+                else put("description", translatedDescription)
+                put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
+            }
+            connection.update(
+                "anime",
+                values,
+                "id = ? AND anilist_id = ?",
+                arrayOf(animeId.toString(), expectedAniListId.toString()),
+            ) > 0
+        }
+    }
+
     suspend fun getEpisode(id: Long): ReiAnixEpisodeRecord? = withContext(Dispatchers.IO) {
         require(id > 0L) { "Episode ID must be a positive persisted ID." }
         database.read { connection ->
