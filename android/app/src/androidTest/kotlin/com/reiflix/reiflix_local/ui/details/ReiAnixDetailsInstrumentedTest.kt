@@ -1,5 +1,9 @@
 package com.reiflix.reiflix_local.ui.details
 
+import android.graphics.Bitmap
+import java.io.File
+import androidx.test.platform.app.InstrumentationRegistry
+
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -10,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import androidx.compose.runtime.mutableStateOf
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
@@ -79,6 +84,80 @@ class ReiAnixDetailsInstrumentedTest {
         assertEquals(71L, watchedEpisodeId)
         assertEquals(42L, favoriteAnimeId)
         assertEquals(1, backCount)
+    }
+
+    @Test
+    fun episodeThumbnailMovesFromMissingSourceToDecodedImageForItsOwnEpisode() {
+        ReiAnixDiagnosticTimeline.clear()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val artworkFile = File(context.cacheDir, "reianix-episode-artwork-test.png")
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        artworkFile.outputStream().use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+        }
+        bitmap.recycle()
+
+        val state = mutableStateOf(detailsStateWithEpisodes(10))
+        try {
+            composeRule.setContent {
+                ReiAnixComposeRoot {
+                    ReiAnixDetailsScreen(
+                        state = state.value,
+                        onBack = {},
+                        onRetry = {},
+                        onWatch = {},
+                        onToggleFavorite = {},
+                        onSetEpisodeWatched = { _, _ -> },
+                    )
+                }
+            }
+            composeRule.waitUntil(10_000L) {
+                ReiAnixDiagnosticTimeline.events.value.any { event ->
+                    event.name == "ARTWORK_SOURCE_NOT_FOUND" &&
+                        event.context["entity_type"] == "episode" &&
+                        event.context["entity_id"] == "7" &&
+                        event.context["artwork_type"] == "episode_thumbnail" &&
+                        event.context["candidate_count"] == "0"
+                }
+            }
+
+            composeRule.runOnIdle {
+                val current = state.value
+                val anime = current.anime!!
+                val season = anime.seasons.single()
+                state.value = current.copy(
+                    anime = anime.copy(
+                        seasons = listOf(
+                            season.copy(
+                                episodes = season.episodes.map { episode ->
+                                    if (episode.id == 7L) {
+                                        episode.copy(artwork = ReiAnixArtworkUiModel(artworkFile.absolutePath, null))
+                                    } else episode
+                                },
+                            ),
+                        ),
+                    ),
+                )
+            }
+            composeRule.waitUntil(10_000L) {
+                ReiAnixDiagnosticTimeline.events.value.any { event ->
+                    event.name == "ARTWORK_IMAGE_READY" &&
+                        event.result == "COMPLETED" &&
+                        event.context["entity_type"] == "episode" &&
+                        event.context["entity_id"] == "7" &&
+                        event.context["artwork_type"] == "episode_thumbnail"
+                }
+            }
+            assertEquals(false, ReiAnixDiagnosticTimeline.events.value.any { event ->
+                event.name == "ARTWORK_IMAGE_READY" &&
+                    event.context["entity_id"] == "8" &&
+                    event.context["artwork_type"] == "episode_thumbnail"
+            })
+            composeRule.onNodeWithText("E07 • Episode 7").assertIsDisplayed()
+        } finally {
+            artworkFile.delete()
+            ReiAnixDiagnosticTimeline.clear()
+        }
     }
 
     @Test
