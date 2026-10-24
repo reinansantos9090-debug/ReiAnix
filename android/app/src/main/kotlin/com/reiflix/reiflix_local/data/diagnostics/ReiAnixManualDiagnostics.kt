@@ -11,6 +11,7 @@ import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
 import com.reiflix.reiflix_local.BuildConfig
+import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.PerformanceDiagnostics
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.scanner.NativeScanController
@@ -267,6 +268,7 @@ object ReiAnixManualDiagnostics {
 
     private fun collectSystem(context: Context): JSONObject {
         val packageInfo = runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+        val dependencies = ReiAnixAppDependencies.existingOrNull(context.applicationContext)
         val events = ReiAnixDiagnosticTimeline.snapshotJson(100)
         val lifecycleNames = mutableListOf<String>()
         for (index in 0 until events.length()) {
@@ -294,6 +296,8 @@ object ReiAnixManualDiagnostics {
             .put("app_version", packageInfo?.versionName ?: BuildConfig.VERSION_NAME)
             .put("app_version_code", versionCode)
             .put("process_id", Process.myPid())
+            .put("native_dependencies_available", dependencies != null)
+            .put("native_recovery_required", dependencies?.bootstrap?.state?.value?.recoveryRequired ?: JSONObject.NULL)
             .put("process_uptime_ms", SystemClock.elapsedRealtime())
             .put("process_cpu_time_ms", Process.getElapsedCpuTime())
             .put("memory", JSONObject()
