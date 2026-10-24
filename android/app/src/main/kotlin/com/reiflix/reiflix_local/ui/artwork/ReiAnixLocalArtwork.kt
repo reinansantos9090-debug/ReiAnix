@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +34,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Dimension
 import coil.size.Size
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.ui.ReiAnixArtworkMissingState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import java.io.File
@@ -138,14 +140,36 @@ fun ReiAnixLocalArtwork(
             mutableIntStateOf(0)
         }
         val source = candidates.getOrNull(candidateIndex)
+        val artworkTraceId = remember(stableIdentity, source) {
+            "art-" + Integer.toHexString((stableIdentity + "|" + source.orEmpty()).hashCode())
+        }
         var isMissing by remember(stableIdentity, candidates) {
             mutableStateOf(false)
         }
         val imageLoader = ReiAnixArtworkImageLoader.get(context)
 
         if (source == null) {
+            LaunchedEffect(stableIdentity, candidates) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "ARTWORK_SOURCE_NOT_FOUND",
+                    severity = "WARN",
+                    source = "ReiAnixLocalArtwork",
+                    result = if (candidates.isEmpty()) "NOT_CONFIGURED" else "CANDIDATES_EXHAUSTED",
+                    requestId = artworkTraceId,
+                    context = mapOf("candidate_count" to candidates.size),
+                )
+            }
             ReiAnixArtworkMissingState(label = placeholder)
         } else if (effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
+            LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "ARTWORK_LOAD_DEFERRED",
+                    source = "ReiAnixLocalArtwork",
+                    result = "NOT_REQUESTED",
+                    requestId = artworkTraceId,
+                    context = mapOf("width_px" to effectiveWidthPx, "height_px" to effectiveHeightPx),
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -192,6 +216,21 @@ fun ReiAnixLocalArtwork(
                     .build()
             }
 
+            LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "ARTWORK_LOAD_REQUESTED",
+                    source = "ReiAnixLocalArtwork",
+                    result = "STARTED",
+                    requestId = artworkTraceId,
+                    context = mapOf(
+                        "source_scheme" to (source.substringBefore(':').takeIf { ':' in source } ?: "file"),
+                        "candidate_index" to candidateIndex,
+                        "candidate_count" to candidates.size,
+                        "width_px" to effectiveWidthPx,
+                        "height_px" to effectiveHeightPx,
+                    ),
+                )
+            }
             AsyncImage(
                 model = request,
                 imageLoader = imageLoader,
@@ -199,11 +238,48 @@ fun ReiAnixLocalArtwork(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
                 placeholder = placeholderPainter,
+                onLoading = {
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "ARTWORK_LOAD_STARTED",
+                        source = "ReiAnixLocalArtwork",
+                        result = "RUNNING",
+                        requestId = artworkTraceId,
+                    )
+                },
+                onSuccess = {
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "ARTWORK_IMAGE_READY",
+                        source = "ReiAnixLocalArtwork",
+                        result = "COMPLETED",
+                        requestId = artworkTraceId,
+                        context = mapOf(
+                            "width_px" to effectiveWidthPx,
+                            "height_px" to effectiveHeightPx,
+                            "candidate_index" to candidateIndex,
+                            "source_scheme" to (source.substringBefore(':').takeIf { ':' in source } ?: "file"),
+                        ),
+                    )
+                },
                 onError = { state ->
                     Log.w(
                         TAG,
-                        "Artwork candidate failed for " + stableIdentity,
+                        "Artwork candidate failed requestId=" + artworkTraceId +
+                            " candidateIndex=" + candidateIndex,
                         state.result.throwable,
+                    )
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "ARTWORK_LOAD_FAILED",
+                        severity = "ERROR",
+                        source = "ReiAnixLocalArtwork",
+                        result = "FAILED",
+                        requestId = artworkTraceId,
+                        error = state.result.throwable,
+                        context = mapOf(
+                            "candidate_index" to candidateIndex,
+                            "candidate_count" to candidates.size,
+                            "width_px" to effectiveWidthPx,
+                            "height_px" to effectiveHeightPx,
+                        ),
                     )
                     if (candidateIndex < candidates.lastIndex) {
                         isMissing = false
