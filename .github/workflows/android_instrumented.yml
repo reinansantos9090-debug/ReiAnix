@@ -126,6 +126,7 @@ jobs:
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
+            --tests com.reiflix.reiflix_local.VideoThumbnailExtractorTest \
             :app:assembleDebug \
             :app:assembleDebugAndroidTest \
             :app:compileReleaseKotlin
