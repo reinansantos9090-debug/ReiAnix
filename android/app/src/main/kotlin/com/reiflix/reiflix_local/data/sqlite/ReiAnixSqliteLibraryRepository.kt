@@ -624,14 +624,18 @@ class ReiAnixSqliteLibraryRepository(
             } else {
                 try {
                     val fields = JSONArray(ownershipJson)
-                    (0 until fields.length()).any { index ->
-                        val field = fields.get(index)
-                        if (field !is String) {
-                            // A valid JSON array with an invalid element is still
-                            // unreliable ownership metadata; fail closed.
-                            true
-                        } else {
-                            field.trim().equals("description", ignoreCase = true)
+                    if (fields.length() == 0) {
+                        // An empty list is not evidence that the synopsis is automatic.
+                        true
+                    } else {
+                        (0 until fields.length()).any { index ->
+                            val field = fields.get(index)
+                            if (field !is String || field.isBlank()) {
+                                // Any malformed ownership entry protects the synopsis.
+                                true
+                            } else {
+                                field.trim().equals("description", ignoreCase = true)
+                            }
                         }
                     }
                 } catch (_: Exception) {
