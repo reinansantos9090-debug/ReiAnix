@@ -372,7 +372,7 @@ class ReiAnixAniListDescriptionLocalizer(
             val normalized = normalizeDescriptionText(text)
             if (normalized.isEmpty()) return false
             if (detectDescriptionLanguageText(normalized).first == "pt") return true
-            val tokens = Regex("[\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
+            val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
                 .map { it.value }.toSet()
             return tokens.intersect(PORTUGUESE_WORDS).size >= 2
         }
@@ -381,17 +381,17 @@ class ReiAnixAniListDescriptionLocalizer(
             val raw = description.orEmpty()
                 .replace("\r\n", "\n")
                 .replace('\r', '\n')
-                .replace(Regex("(?i)<br\s*/?>"), "\n\n")
-                .replace(Regex("(?i)</p>\s*<p\b[^>]*>"), "\n\n")
+                .replace(Regex("(?i)<br\\s*/?>"), "\n\n")
+                .replace(Regex("(?i)</p>\\s*<p\\b[^>]*>"), "\n\n")
             val htmlText = Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString()
             return htmlText.replace("\u00a0", " ")
                 .replace(Regex("[\t ]+"), " ")
                 .replace(Regex(" *\n *"), "\n")
                 .replace(Regex("\n{3,}"), "\n\n")
                 .trim()
-                .split(Regex("\n\s*\n"))
+                .split(Regex("\n\\s*\n"))
                 .map { paragraph ->
-                    paragraph.split(Regex("\s+"))
+                    paragraph.split(Regex("\\s+"))
                         .filter(String::isNotBlank)
                         .joinToString(" ")
                 }
@@ -412,7 +412,7 @@ class ReiAnixAniListDescriptionLocalizer(
                 }
             }
             if (normalized.any { it.code in 0x4E00..0x9FFF }) return "zh-CN" to 0.99
-            val tokens = Regex("[\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
+            val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
                 .map { it.value }.toList()
             if (tokens.isEmpty()) return "unknown" to 0.0
             val unique = tokens.toSet()
