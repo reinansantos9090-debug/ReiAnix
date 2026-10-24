@@ -203,13 +203,30 @@ class ReiAnixAniListDescriptionLocalizer(
         return true
     }
 
+    /**
+     * Validates the final synopsis contract. A PT-BR source may be retained without
+     * translation; non-Portuguese source text must produce a distinct, valid PT-BR result.
+     * Callers use this before treating persisted text as complete.
+     */
+    fun isValidPtBrResult(sourceText: String, translatedText: String): Boolean {
+        val source = normalizeDescription(sourceText)
+        val translated = normalizeDescription(translatedText)
+        if (source.isEmpty() || translated.isEmpty() || !isPtBrDescription(translated)) return false
+        if (source.equals(translated, ignoreCase = true)) {
+            return detectDescriptionLanguage(source).first == "pt"
+        }
+        return isValidTranslation(source, translated)
+    }
+
     fun isPtBrDescription(text: String): Boolean {
         val normalized = normalizeDescription(text)
         if (normalized.isEmpty()) return false
         if (detectDescriptionLanguage(normalized).first == "pt") return true
         val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT)).map { it.value }.toSet()
-        if (tokens.intersect(PORTUGUESE_WORDS).size >= 2) return true
-        return normalized.any { it in "çãõ" }
+        // Accent marks alone are not evidence of Portuguese: French, Spanish and
+        // other languages routinely contain accented characters. Require lexical
+        // evidence when the conservative detector cannot establish the language.
+        return tokens.intersect(PORTUGUESE_WORDS).size >= 2
     }
 
     private fun evictUnusedKeyLocksIfNeeded() {
