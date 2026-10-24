@@ -280,6 +280,8 @@ data class ReiAnixAnimeUiModel(
     // Editorial metadata comes from the existing SQLite/AniList-derived projection.
     // Defaults keep older library screens source-compatible.
     val description: String? = null,
+    /** Source exists but the canonical field has no validated PT-BR synopsis yet. */
+    val descriptionTranslationPending: Boolean = false,
     val romajiTitle: String? = null,
     val englishTitle: String? = null,
     val nativeTitle: String? = null,
@@ -358,6 +360,7 @@ data class ReiAnixHomeAnimeUiModel(
     val lastPlayedAt: Double? = null,
     val pinned: Boolean = false,
     val description: String? = null,
+    val descriptionTranslationPending: Boolean = false,
     val status: String? = null,
     val format: String? = null,
     val studio: String? = null,
