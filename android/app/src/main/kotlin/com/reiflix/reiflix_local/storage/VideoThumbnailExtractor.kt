@@ -61,6 +61,18 @@ object VideoThumbnailExtractor {
     internal fun parseDurationMs(raw: String?): Long =
         raw?.trim()?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
 
+    /** Normalize canonical library references exactly as the bridge does. */
+    internal fun normalizeLocalMediaUri(raw: String?): Uri? {
+        val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val parsed = runCatching { Uri.parse(value) }.getOrNull() ?: return null
+        val normalized = if (parsed.scheme.isNullOrBlank() && value.startsWith("/")) {
+            runCatching { Uri.fromFile(File(value).canonicalFile) }.getOrNull()
+        } else {
+            parsed
+        } ?: return null
+        return normalized.takeIf { it.scheme.equals("content", ignoreCase = true) || it.scheme.equals("file", ignoreCase = true) }
+    }
+
     fun extract(
         context: Context,
         uri: Uri,
