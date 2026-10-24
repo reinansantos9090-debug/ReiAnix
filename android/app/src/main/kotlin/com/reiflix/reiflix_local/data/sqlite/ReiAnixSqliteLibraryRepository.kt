@@ -556,7 +556,8 @@ class ReiAnixSqliteLibraryRepository(
         require(limit in 1..256) { "Synopsis recovery page size must be between 1 and 256." }
         database.read { connection ->
             connection.rawQuery(
-                "SELECT * FROM anime WHERE id > ? AND anilist_id IS NOT NULL " +
+                "SELECT * FROM anime WHERE id > ? AND " +
+                    "(anilist_id IS NOT NULL OR description_original IS NOT NULL OR description IS NOT NULL) " +
                     "ORDER BY id ASC LIMIT ?",
                 arrayOf(afterAnimeId.toString(), limit.toString()),
             ).use { cursor ->
@@ -577,13 +578,15 @@ class ReiAnixSqliteLibraryRepository(
      */
     suspend fun updateAniListSynopsisIfUnchanged(
         animeId: Long,
-        expectedAniListId: Long,
+        expectedAniListId: Long?,
         expectedOriginal: String?,
         expectedDescription: String?,
         originalSource: String,
         translatedDescription: String?,
     ): Boolean = withContext(Dispatchers.IO) {
-        require(animeId > 0L && expectedAniListId > 0L) { "Persisted anime and AniList IDs must be positive." }
+        require(animeId > 0L && (expectedAniListId == null || expectedAniListId > 0L)) {
+            "Persisted anime ID must be positive and AniList ID must be null or positive."
+        }
         require(originalSource.isNotBlank()) { "A non-empty source synopsis is required." }
         require(translatedDescription == null || translatedDescription.isNotBlank()) {
             "A completed synopsis translation cannot be blank."
@@ -621,12 +624,21 @@ class ReiAnixSqliteLibraryRepository(
                 else put("description", translatedDescription)
                 put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
             }
-            connection.update(
-                "anime",
-                values,
-                "id = ? AND anilist_id = ?",
-                arrayOf(animeId.toString(), expectedAniListId.toString()),
-            ) > 0
+            if (expectedAniListId == null) {
+                connection.update(
+                    "anime",
+                    values,
+                    "id = ? AND anilist_id IS NULL",
+                    arrayOf(animeId.toString()),
+                ) > 0
+            } else {
+                connection.update(
+                    "anime",
+                    values,
+                    "id = ? AND anilist_id = ?",
+                    arrayOf(animeId.toString(), expectedAniListId.toString()),
+                ) > 0
+            }
         }
     }
 
