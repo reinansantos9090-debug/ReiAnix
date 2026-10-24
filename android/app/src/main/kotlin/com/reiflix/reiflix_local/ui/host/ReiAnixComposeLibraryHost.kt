@@ -164,6 +164,7 @@ class ReiAnixComposeLibraryHost(
                             }
                             runSynopsisRecoveryBatches(
                                 dependencies.aniListIntegrationService,
+                                forceFirst = true,
                             )
                         } catch (cancelled: CancellationException) {
                             throw cancelled
