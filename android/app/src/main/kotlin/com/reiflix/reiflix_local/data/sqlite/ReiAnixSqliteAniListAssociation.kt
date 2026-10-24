@@ -18,6 +18,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         manual: Boolean,
         score: Double?,
         margin: Double?,
+        clearUntranslatedDescriptionIfMatches: String? = null,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -58,7 +59,19 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             patch.english?.takeIf(String::isNotBlank)?.let { if ("english" !in protectedFields) values.put("english", it) }
             patch.nativeTitle?.takeIf(String::isNotBlank)?.let { if ("native" !in protectedFields) values.put("native", it) }
             patch.aliasesJson?.takeIf { it.isNotBlank() && it.trim() != "[]" }?.let { if ("aliases" !in protectedFields) values.put("aliases", it) }
-            patch.description?.takeIf(String::isNotBlank)?.let { if ("description" !in protectedFields) values.put("description", it) }
+            if ("description" !in protectedFields) {
+                val translatedDescription = patch.description?.takeIf(String::isNotBlank)
+                if (translatedDescription != null) {
+                    values.put("description", translatedDescription)
+                } else if (
+                    clearUntranslatedDescriptionIfMatches != null &&
+                    current.description == clearUntranslatedDescriptionIfMatches
+                ) {
+                    // Clear only the exact stale presentation value observed by the
+                    // translation pipeline. The remote source is retained separately.
+                    values.putNull("description")
+                }
+            }
             patch.descriptionOriginal?.takeIf(String::isNotBlank)?.let {
                 if ("description" !in protectedFields) values.put("description_original", it)
             }
