@@ -344,11 +344,18 @@ class ReiAnixAniListDescriptionLocalizer(
                     val temporary = File.createTempFile(".anilist-ptbr-", ".tmp", parent)
                     try {
                         temporary.writeText(root.toString(), Charsets.UTF_8)
-                        try {
-                            Os.rename(temporary.absolutePath, file.absolutePath)
-                        } catch (renameError: Exception) {
-                            if (!temporary.renameTo(file)) throw renameError
+                        if (!temporary.renameTo(file)) {
+                            try {
+                                // Atomic replacement is preferred when Java rename cannot replace
+                                // an existing destination on the current filesystem.
+                                Os.rename(temporary.absolutePath, file.absolutePath)
+                            } catch (_: Exception) {
+                                temporary.copyTo(file, overwrite = true)
+                            }
                         }
+                        // Some host-side Android test filesystems report rename success without
+                        // publishing the destination. Ensure the cache is actually persisted.
+                        if (!file.isFile) temporary.copyTo(file, overwrite = true)
                     } finally {
                         if (temporary.exists()) temporary.delete()
                     }
