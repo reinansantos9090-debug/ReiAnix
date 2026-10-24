@@ -30,7 +30,7 @@ class ReiAnixDiagnosticsService(context: Context) {
     private val coversDirectory = File(dataDirectory, "covers")
 
     fun exportJson(): ByteArray = try {
-        createReport().also { bytes ->
+        ReiAnixManualDiagnostics.exportJson(appContext).also { bytes ->
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_DIAGNOSTIC_REPORT_EXPORTED",
                 source = "ReiAnixDiagnosticsService",
