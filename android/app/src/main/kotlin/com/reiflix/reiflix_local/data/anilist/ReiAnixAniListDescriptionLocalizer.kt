@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.data.anilist
 import android.system.Os
 import android.text.Html
 import android.util.Log
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -128,57 +129,10 @@ class ReiAnixAniListDescriptionLocalizer(
         return cachedTranslation(original, source)
     }
 
-    fun normalizeDescription(description: String?): String {
-        val raw = description.orEmpty()
-            .replace("\r\n", "\n")
-            .replace('\r', '\n')
-            .replace(Regex("(?i)<br\\s*/?>"), "\n\n")
-            .replace(Regex("(?i)</p>\\s*<p\\b[^>]*>"), "\n\n")
-        val htmlText = Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString()
-        return htmlText.replace("\u00a0", " ")
-            .replace(Regex("[\t ]+"), " ")
-            .replace(Regex(" *\n *"), "\n")
-            .replace(Regex("\n{3,}"), "\n\n")
-            .trim()
-            .split(Regex("\n\\s*\n"))
-            .map { paragraph -> paragraph.split(Regex("\\s+")).filter(String::isNotBlank).joinToString(" ") }
-            .filter(String::isNotBlank)
-            .joinToString("\n\n")
-    }
+    fun normalizeDescription(description: String?): String = normalizeDescriptionText(description)
 
-    fun detectDescriptionLanguage(description: String): Pair<String, Double> {
-        val normalized = normalizeDescription(description)
-        if (normalized.isEmpty()) return "unknown" to 0.0
-        for (char in normalized) {
-            val code = char.code
-            when (code) {
-                in 0x3040..0x30FF -> return "ja" to 0.99
-                in 0xAC00..0xD7AF -> return "ko" to 0.99
-                in 0x0400..0x04FF -> return "ru" to 0.99
-                in 0x0600..0x06FF -> return "ar" to 0.99
-                in 0x0370..0x03FF -> return "el" to 0.99
-            }
-        }
-        if (normalized.any { it.code in 0x4E00..0x9FFF }) return "zh-CN" to 0.99
-
-        val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
-            .map { it.value }.toList()
-        if (tokens.isEmpty()) return "unknown" to 0.0
-        val unique = tokens.toSet()
-        val ranked = LANGUAGE_PROFILES.map { (language, words) ->
-            val hits = unique.intersect(words).size
-            val weighted = tokens.count { it in words } +
-                if (language == "pt") tokens.count { token -> token.any { it in "ãõçáéíóúâêô" } } else 0
-            Triple(language, hits, weighted)
-        }.sortedWith(compareByDescending<Triple<String, Int, Int>> { it.second }.thenByDescending { it.third })
-        val (language, hits, weighted) = ranked.first()
-        val second = ranked.getOrNull(1) ?: return "unknown" to 0.0
-        val strongEnough = hits >= 3 || (hits >= 2 && tokens.size <= 6 && weighted >= 3)
-        val margin = hits - second.second
-        if (!strongEnough || (margin < 1 && weighted - second.third < 2)) return "unknown" to 0.0
-        val confidence = minOf(0.99, 0.45 + (hits.toDouble() / maxOf(4, tokens.size)) * 0.5 + minOf(0.15, maxOf(0, margin) * 0.05))
-        return language to String.format(Locale.ROOT, "%.3f", confidence).toDouble()
-    }
+    fun detectDescriptionLanguage(description: String): Pair<String, Double> =
+        detectDescriptionLanguageText(description)
 
     fun isValidTranslation(sourceText: String, translatedText: String): Boolean {
         val source = normalizeDescription(sourceText)
@@ -225,16 +179,7 @@ class ReiAnixAniListDescriptionLocalizer(
         return isValidTranslation(source, translated)
     }
 
-    fun isPtBrDescription(text: String): Boolean {
-        val normalized = normalizeDescription(text)
-        if (normalized.isEmpty()) return false
-        if (detectDescriptionLanguage(normalized).first == "pt") return true
-        val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT)).map { it.value }.toSet()
-        // Accent marks alone are not evidence of Portuguese: French, Spanish and
-        // other languages routinely contain accented characters. Require lexical
-        // evidence when the conservative detector cannot establish the language.
-        return tokens.intersect(PORTUGUESE_WORDS).size >= 2
-    }
+    fun isPtBrDescription(text: String): Boolean = isPtBrDescriptionText(text)
 
     private fun evictUnusedKeyLocksIfNeeded() {
         if (keyLocks.size <= MAX_CACHE_ENTRIES) return
@@ -421,6 +366,79 @@ class ReiAnixAniListDescriptionLocalizer(
 
     companion object {
         private const val TAG = "ReiAnixAniListTranslation"
+
+        /** Pure shared classifier for persistence projections; it never performs translation or I/O. */
+        fun isPtBrDescriptionText(text: String?): Boolean {
+            val normalized = normalizeDescriptionText(text)
+            if (normalized.isEmpty()) return false
+            if (detectDescriptionLanguageText(normalized).first == "pt") return true
+            val tokens = Regex("[\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
+                .map { it.value }.toSet()
+            return tokens.intersect(PORTUGUESE_WORDS).size >= 2
+        }
+
+        private fun normalizeDescriptionText(description: String?): String {
+            val raw = description.orEmpty()
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .replace(Regex("(?i)<br\s*/?>"), "\n\n")
+                .replace(Regex("(?i)</p>\s*<p\b[^>]*>"), "\n\n")
+            val htmlText = Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString()
+            return htmlText.replace("\u00a0", " ")
+                .replace(Regex("[\t ]+"), " ")
+                .replace(Regex(" *\n *"), "\n")
+                .replace(Regex("\n{3,}"), "\n\n")
+                .trim()
+                .split(Regex("\n\s*\n"))
+                .map { paragraph ->
+                    paragraph.split(Regex("\s+"))
+                        .filter(String::isNotBlank)
+                        .joinToString(" ")
+                }
+                .filter(String::isNotBlank)
+                .joinToString("\n\n")
+        }
+
+        private fun detectDescriptionLanguageText(description: String): Pair<String, Double> {
+            val normalized = normalizeDescriptionText(description)
+            if (normalized.isEmpty()) return "unknown" to 0.0
+            for (char in normalized) {
+                when (char.code) {
+                    in 0x3040..0x30FF -> return "ja" to 0.99
+                    in 0xAC00..0xD7AF -> return "ko" to 0.99
+                    in 0x0400..0x04FF -> return "ru" to 0.99
+                    in 0x0600..0x06FF -> return "ar" to 0.99
+                    in 0x0370..0x03FF -> return "el" to 0.99
+                }
+            }
+            if (normalized.any { it.code in 0x4E00..0x9FFF }) return "zh-CN" to 0.99
+            val tokens = Regex("[\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
+                .map { it.value }.toList()
+            if (tokens.isEmpty()) return "unknown" to 0.0
+            val unique = tokens.toSet()
+            val ranked = LANGUAGE_PROFILES.map { (language, words) ->
+                val hits = unique.intersect(words).size
+                val weighted = tokens.count { it in words } +
+                    if (language == "pt") tokens.count { token -> token.any { it in "ãõçáéíóúâêô" } } else 0
+                Triple(language, hits, weighted)
+            }.sortedWith(
+                compareByDescending<Triple<String, Int, Int>> { it.second }
+                    .thenByDescending { it.third },
+            )
+            val (language, hits, weighted) = ranked.first()
+            val second = ranked.getOrNull(1) ?: return "unknown" to 0.0
+            val strongEnough = hits >= 3 || (hits >= 2 && tokens.size <= 6 && weighted >= 3)
+            val margin = hits - second.second
+            if (!strongEnough || (margin < 1 && weighted - second.third < 2)) {
+                return "unknown" to 0.0
+            }
+            val confidence = minOf(
+                0.99,
+                0.45 + (hits.toDouble() / maxOf(4, tokens.size)) * 0.5 +
+                    minOf(0.15, maxOf(0, margin) * 0.05),
+            )
+            return language to String.format(Locale.ROOT, "%.3f", confidence).toDouble()
+        }
         const val TARGET_LANGUAGE = "pt-BR"
         const val TRANSLATION_ENDPOINT = "https://api.mymemory.translated.net/get"
         const val MAX_TRANSLATION_BYTES = 480
