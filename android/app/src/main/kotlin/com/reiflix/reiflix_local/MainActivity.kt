@@ -2293,9 +2293,11 @@ class MainActivity : ComponentActivity() {
                 temporary.delete()
                 throw IllegalStateException("Could not atomically publish the Settings result.")
             }
-            ReiAnixDiagnosticTimeline.record(
-                name = "SETTINGS_BRIDGE_RESULT",
-                severity = when (operationState.uppercase(Locale.ROOT)) {
+            // Clearing diagnostics must leave the process timeline empty after the user-confirmed action.
+            if (!(action == "diagnostic_clear" && operationState.equals("SUCCESS", ignoreCase = true))) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "SETTINGS_BRIDGE_RESULT",
+                    severity = when (operationState.uppercase(Locale.ROOT)) {
                     "ERROR", "FAILED" -> "ERROR"
                     "CANCELLED" -> "WARN"
                     else -> "INFO"
@@ -2309,8 +2311,9 @@ class MainActivity : ComponentActivity() {
                     "message_present" to !message.isNullOrBlank(),
                     "error_present" to !error.isNullOrBlank(),
                 ),
-                error = error?.takeIf { it.isNotBlank() }?.let { IllegalStateException(it) },
-            )
+                    error = error?.takeIf { it.isNotBlank() }?.let { IllegalStateException(it) },
+                )
+            }
         } catch (exception: Exception) {
             Log.e(tag, "SETTINGS_FILE_RESULT_WRITE_FAILED requestId=" + requestId + " action=" + action, exception)
         }
