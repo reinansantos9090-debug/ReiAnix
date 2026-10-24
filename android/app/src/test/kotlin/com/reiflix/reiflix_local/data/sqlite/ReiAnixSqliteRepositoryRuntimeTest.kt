@@ -928,6 +928,21 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(oldOriginal, updated.descriptionOriginal)
         assertEquals("manual", updated.metadataSource)
         assertEquals("manual", updated.metadataStatus)
+
+        assertFalse(
+            "The recovery CAS writer must fail closed for a manually owned row.",
+            repository.updateAniListSynopsisIfUnchanged(
+                animeId = 1L,
+                expectedAniListId = 42L,
+                expectedOriginal = oldOriginal,
+                expectedDescription = manualDescription,
+                originalSource = "A newer remote original.",
+                translatedDescription = "Texto automático que não pode sobrescrever a edição manual.",
+            ),
+        )
+        val afterRecoveryAttempt = repository.getAnime(1L)!!
+        assertEquals(manualDescription, afterRecoveryAttempt.description)
+        assertEquals(oldOriginal, afterRecoveryAttempt.descriptionOriginal)
     }
 
     @Test
