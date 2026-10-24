@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -106,6 +107,30 @@ class ReiAnixComposeLibraryHost(
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
+            // Repair older AniList synopses when an already-populated canonical catalog
+            // first becomes available, even if this process did not initiate a scan.
+            // The service uses a persisted stable-ID cursor and a bounded request budget.
+            LaunchedEffect(libraryViewModel) {
+                libraryViewModel.uiState
+                    .map { it.scanInProgress to it.animes.isNotEmpty() }
+                    .distinctUntilChanged()
+                    .filter { state -> !state.first && state.second }
+                    .first()
+                val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                try {
+                    withContext(Dispatchers.IO) {
+                        dependencies.aniListIntegrationService.reconcilePendingSynopsisTranslations()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w(
+                        TAG,
+                        "Initial synopsis recovery failed. errorType=" + error::class.java.simpleName,
+                    )
+                }
+            }
+
             // A route mount must not cause remote reconciliation. Observe scan-state
             // transitions only; drop the first snapshot so a stored/idle state on process
             // startup never triggers AniList or artwork work.
@@ -121,6 +146,7 @@ class ReiAnixComposeLibraryHost(
                         try {
                             withContext(Dispatchers.IO) {
                                 dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                                dependencies.aniListIntegrationService.reconcilePendingSynopsisTranslations()
                             }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
