@@ -127,13 +127,15 @@ class ReiAnixComposeLibraryHost(
                     val integration = dependencies.aniListIntegrationService
                     try {
                         runSynopsisRecoveryBatches(integration)
-                        val nextRetryAt = withContext(Dispatchers.IO) {
-                            integration.nextSynopsisRecoveryRetryAfterEpochMillis()
-                        }
-                        if (nextRetryAt != null) {
+                        var retryPasses = 0
+                        while (retryPasses < MAX_AUTOMATIC_SYNOPSIS_RETRIES_PER_START) {
+                            val nextRetryAt = withContext(Dispatchers.IO) {
+                                integration.nextSynopsisRecoveryRetryAfterEpochMillis()
+                            } ?: break
                             val waitMillis = (nextRetryAt - System.currentTimeMillis()).coerceAtLeast(0L)
                             if (waitMillis > 0L) delay(waitMillis)
                             runSynopsisRecoveryBatches(integration)
+                            retryPasses++
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -555,6 +557,7 @@ class ReiAnixComposeLibraryHost(
     }
 
     private companion object {
+        const val MAX_AUTOMATIC_SYNOPSIS_RETRIES_PER_START = 2
         const val CONTENT_TAG = "reianix_compose_app_shell_content"
         const val TAG = "[REIANIX][COMPOSE_SHELL]"
         const val BACK_DEBOUNCE_WINDOW_MS = 300L
