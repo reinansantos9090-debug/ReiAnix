@@ -98,6 +98,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "native" to anime.nativeTitle,
             "aliases" to parseStringArray(anime.aliasesJson),
             "description" to anime.description,
+            "description_original" to anime.descriptionOriginal,
             "cover_url" to anime.coverUrl,
             "cover_cache" to anime.coverCache,
             "banner_url" to anime.bannerUrl,
