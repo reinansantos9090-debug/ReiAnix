@@ -53,7 +53,11 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
 
             val values = ContentValues()
-            patch.title?.takeIf(String::isNotBlank)?.let { if ("title" !in protectedFields) values.put("title", it.trim()) }
+            val metadataIsManual = current.metadataSource == "manual" || current.metadataStatus == "manual"
+            val allowManualTitleOverride = manual && !metadataIsManual
+            patch.title?.takeIf(String::isNotBlank)?.let {
+                if ("title" !in protectedFields || allowManualTitleOverride) values.put("title", it.trim())
+            }
             patch.romaji?.takeIf(String::isNotBlank)?.let { if ("romaji" !in protectedFields) values.put("romaji", it) }
             patch.english?.takeIf(String::isNotBlank)?.let { if ("english" !in protectedFields) values.put("english", it) }
             patch.nativeTitle?.takeIf(String::isNotBlank)?.let { if ("native" !in protectedFields) values.put("native", it) }
@@ -87,7 +91,6 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             // contract even when the user explicitly changes the AniList link.
             // Do not make a metadata refresh look successful when every catalog
             // field was protected by metadata_manual_fields.
-            val metadataIsManual = current.metadataSource == "manual" || current.metadataStatus == "manual"
             if (remoteMetadataFieldsApplied && !metadataIsManual) {
                 values.put("metadata_source", "anilist")
                 values.put("metadata_status", "available")
