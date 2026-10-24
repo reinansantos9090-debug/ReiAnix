@@ -17,7 +17,7 @@ class ReiAnixAniListDescriptionLocalizerTest {
     @Test
     fun validatedTranslationIsPersistedAndReusableWithoutNetwork() = runBlocking {
         val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-" + System.nanoTime())
-        assertTrue(directory.mkdirs())
+        assertTrue(directory.isDirectory || directory.mkdirs())
         try {
             val cacheFile = File(directory, "anilist_description_ptbr.json")
             val source = "The story follows a young hero who protects their people from danger every day."
@@ -50,7 +50,7 @@ class ReiAnixAniListDescriptionLocalizerTest {
     @Test
     fun PortugueseDescriptionIsReturnedWithoutCallingTranslationService() = runBlocking {
         val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-" + System.nanoTime())
-        assertTrue(directory.mkdirs())
+        assertTrue(directory.isDirectory || directory.mkdirs())
         try {
             val transport = FakeTranslationTransport(AniListTranslationHttpResponse(500, "{}"))
             val localizer = ReiAnixAniListDescriptionLocalizer(
