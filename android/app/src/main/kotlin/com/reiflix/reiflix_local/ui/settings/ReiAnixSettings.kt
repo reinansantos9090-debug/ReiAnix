@@ -530,6 +530,13 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 ReiAnixSettingsOperationState.RUNNING,
             )
     }
+    val diagnosticCollectionRunning = state.operations.values.any {
+        it.action.startsWith("diagnostic_run_") &&
+            it.state in setOf(
+                ReiAnixSettingsOperationState.QUEUED,
+                ReiAnixSettingsOperationState.RUNNING,
+            )
+    }
 
     var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
@@ -1403,7 +1410,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 ReiAnixSecondaryButton(
                                     text = "Cancelar coleta atual",
                                     onClick = { onAction("diagnostic_cancel") },
-                                    enabled = diagnosticWorkRunning,
+                                    enabled = diagnosticCollectionRunning,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 ReiAnixPrimaryButton(
