@@ -2996,9 +2996,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         },
                         onToggleLock = { setLocked(!locked) },
-                        onResize = {
-                            findViewByTag<TextView>("reiflix_aspect_button")?.let(::showAspectSelection)
-                        },
+                        onResize = { toggleAspectMode() },
                         onSource = { toggleMorePanel() },
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
@@ -3413,41 +3411,38 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .show()
     }
 
-    private fun showAspectSelection(button: TextView) {
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
-        val labels = arrayOf("Ajustar", "Preencher")
-        val current = when (button.text.toString()) {
-            in labels -> button.text.toString()
-            "Original", "Auto" -> "Ajustar"
-            else -> "Ajustar"
+    private fun toggleAspectMode() {
+        if (!::playerView.isInitialized) return
+
+        // Read the active Media3 view, not a possibly stale Compose label or legacy button.
+        val nextMode = if (playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) {
+            "Ajustar"
+        } else {
+            "Preencher"
         }
-        val currentIndex = labels.indexOf(current).coerceAtLeast(0)
-        touchControls()
-        AlertDialog.Builder(this)
-            .setTitle("Aspecto")
-            .setSingleChoiceItems(labels, currentIndex) { dialog, which ->
-                applyAspectMode(labels[which], button)
-                dialog.dismiss()
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        applyAspectMode(nextMode)
     }
 
-    private fun applyAspectMode(mode: String, button: TextView) {
+    private fun applyAspectMode(mode: String) {
         if (!::playerView.isInitialized) return
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.resetZoomToFit()
+
         playerView.resizeMode = when (mode) {
             "Preencher" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
-        button.text = if (mode == "Preencher") "Preencher" else "Ajustar"
-        button.isSelected = mode == "Preencher"
-        aspectModeLabel = button.text.toString()
-        persistCanonicalPlayerSetting(
-            "player.aspect_ratio",
-            if (mode == "Preencher") "fill" else "fit",
-        )
-        showFeedback(button.text.toString())
+
+        // Derive the label and persisted setting from the resize mode actually applied.
+        val isFill = playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        aspectModeLabel = if (isFill) "Preencher" else "Ajustar"
+        val settingValue = if (isFill) "fill" else "fit"
+        intent.putExtra("setting_player_aspect_ratio", settingValue)
+        findViewByTag<TextView>("reiflix_aspect_button")?.apply {
+            text = aspectModeLabel
+            isSelected = isFill
+        }
+        persistCanonicalPlayerSetting("player.aspect_ratio", settingValue)
+        showFeedback(aspectModeLabel)
         touchControls()
         playerView.requestLayout()
         syncComposePlayerUiState()
@@ -5433,7 +5428,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         outState.putBoolean("lock_mode", locked)
         outState.putBoolean("controls_visible", controlsVisible)
         outState.putFloat("window_brightness", window.attributes.screenBrightness)
-        outState.putString("aspect_mode_label", findViewByTag<TextView>("reiflix_aspect_button")?.text?.toString() ?: "Ajustar")
+        outState.putString("aspect_mode_label", aspectModeLabel)
         super.onSaveInstanceState(outState)
     }
 
