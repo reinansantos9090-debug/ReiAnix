@@ -229,9 +229,8 @@ object ReiAnixManualDiagnostics {
             val result = entry.optJSONObject("result")
             val details = when (key) {
                 "system" -> result?.let {
-                    "Android " + it.optString("android_release", "?") +
-                        " (API " + it.optInt("android_api", 0) + ")" +
-                        "; dependências nativas: " + if (it.optBoolean("native_dependencies_available")) "disponíveis" else "indisponíveis"
+                    "Android ${it.optString("android_release", "?")} (API ${it.optInt("android_api", 0)}); " +
+                        "dependências nativas: ${if (it.optBoolean("native_dependencies_available")) "disponíveis" else "indisponíveis"}"
                 }
                 "logs" -> result?.let {
                     val source = it.optString("source", it.optString("collection_scope", "Logcat"))
@@ -239,9 +238,9 @@ object ReiAnixManualDiagnostics {
                         if (!it.optBoolean("available")) "; acesso limitado ou sem registros" else ""
                 }
                 "storage" -> result?.let {
-                    "SAF: " + it.optInt("persisted_saf_grants") + " autorizações persistentes; " +
-                        "vídeos: " + if (it.optBoolean("read_media_video_granted")) "permitido" else "sem permissão" +
-                        "; nova varredura: não iniciada"
+                    "SAF: ${it.optInt("persisted_saf_grants")} autorizações persistentes; " +
+                        "vídeos: ${if (it.optBoolean("read_media_video_granted")) "permitido" else "sem permissão"}; " +
+                        "nova varredura: não iniciada"
                 }
                 "scanner" -> result?.let {
                     "operações rastreadas: " + it.optInt("tracked_operations") +
@@ -254,8 +253,8 @@ object ReiAnixManualDiagnostics {
                         "; quick_check=" + it.optJSONArray("quick_check").let { check ->
                             if (check == null || check.length() == 0) "sem resultado" else check.optString(0)
                         } +
-                        "; violações FK=" + it.optInt("foreign_key_violations") +
-                        "; grupos duplicados=" + if (it.isNull("duplicate_media_identity_groups")) "não verificável" else it.optLong("duplicate_media_identity_groups").toString()
+                        "; violações FK=${it.optInt("foreign_key_violations")}" +
+                        "; grupos duplicados=${if (it.isNull("duplicate_media_identity_groups")) "não verificável" else it.optLong("duplicate_media_identity_groups").toString()}
                 }
                 "thumbnails" -> result?.let {
                     "eventos: " + it.optInt("timeline_event_count") +
