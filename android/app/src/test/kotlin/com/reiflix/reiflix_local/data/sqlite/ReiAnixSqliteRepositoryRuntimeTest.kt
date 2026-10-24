@@ -1211,6 +1211,74 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun sqliteSynopsisPersistenceFailureLeavesTheWorkPendingInsteadOfComplete() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val source = "The story follows a young hero who protects their people from danger every day."
+        repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = source,
+                descriptionOriginal = source,
+            ),
+        )
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                CREATE TRIGGER reject_synopsis_clear
+                BEFORE UPDATE OF description ON anime
+                WHEN NEW.description IS NULL
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected synopsis persistence failure');
+                END
+                """.trimIndent(),
+            )
+        }
+        val transport = FixedSynopsisTranslationTransport(
+            statusCode = 200,
+            translatedText = "A história acompanha um jovem herói que protege seu povo do perigo todos os dias.",
+        )
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = settings,
+            descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
+                File(context.cacheDir, "synopsis-persist-failure-" + System.nanoTime() + ".json"),
+                transport,
+            ),
+        )
+
+        assertEquals(
+            0,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+                force = true,
+            ),
+        )
+        assertTrue(service.shouldContinueSynopsisRecovery())
+        assertEquals(
+            0,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+            ),
+        )
+
+        val afterFailure = repository.getAnime(1L)!!
+        assertEquals(source, afterFailure.description)
+        assertEquals(source, afterFailure.descriptionOriginal)
+        assertEquals(0, transport.calls)
+        assertEquals("pending", settings.getPreference("metadata.synopsis_recovery_state")?.value)
+        assertTrue(
+            settings.getPreference("metadata.synopsis_recovery_retry_after")!!
+                .value.toLong() > System.currentTimeMillis(),
+        )
+    }
+
+    @Test
     fun concurrentRecoveryRunsDoNotCompeteForTheSameAnime() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
