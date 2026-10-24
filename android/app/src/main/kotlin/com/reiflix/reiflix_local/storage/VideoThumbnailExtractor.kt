@@ -61,17 +61,23 @@ object VideoThumbnailExtractor {
     internal fun parseDurationMs(raw: String?): Long =
         raw?.trim()?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
 
-    /** Normalize canonical library references exactly as the bridge does. */
-    internal fun normalizeLocalMediaUri(raw: String?): Uri? {
+    /** Pure source-reference normalization, testable without Android framework stubs. */
+    internal fun normalizeLocalMediaReference(raw: String?): String? {
         val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
-        val parsed = runCatching { Uri.parse(value) }.getOrNull() ?: return null
-        val normalized = if (parsed.scheme.isNullOrBlank() && value.startsWith("/")) {
-            runCatching { Uri.fromFile(File(value).canonicalFile) }.getOrNull()
-        } else {
-            parsed
-        } ?: return null
-        return normalized.takeIf { it.scheme.equals("content", ignoreCase = true) || it.scheme.equals("file", ignoreCase = true) }
+        val parsed = runCatching { java.net.URI(value) }.getOrNull()
+        val scheme = parsed?.scheme
+        return when {
+            scheme.isNullOrBlank() && value.startsWith("/") ->
+                runCatching { File(value).canonicalFile.toURI().toString() }.getOrNull()
+            scheme.equals("content", ignoreCase = true) || scheme.equals("file", ignoreCase = true) ->
+                value
+            else -> null
+        }
     }
+
+    /** Android URI adapter used by the thumbnail extractor. */
+    internal fun normalizeLocalMediaUri(raw: String?): Uri? =
+        normalizeLocalMediaReference(raw)?.let { runCatching { Uri.parse(it) }.getOrNull() }
 
     fun extract(
         context: Context,
