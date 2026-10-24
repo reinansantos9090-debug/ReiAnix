@@ -25,6 +25,7 @@ import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixManualDiagnostics
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -1212,6 +1213,20 @@ class MainActivity : ComponentActivity() {
             "LIFECYCLE $event instance=${System.identityHashCode(this)} task=$taskId resumed=$activityResumed " +
                 "focused=${window?.decorView?.hasWindowFocus() == true} finishing=$isFinishing " +
                 "action=${action ?: "-"} requestId=${requestId ?: "-"} flags=0x${intent?.flags?.toString(16) ?: "0"}"
+        )
+        ReiAnixDiagnosticTimeline.record(
+            name = "MAIN_ACTIVITY_LIFECYCLE",
+            source = "MainActivity",
+            result = event,
+            requestId = requestId,
+            context = mapOf(
+                "activity_instance" to System.identityHashCode(this),
+                "task_id" to taskId,
+                "resumed" to activityResumed,
+                "focused" to (window?.decorView?.hasWindowFocus() == true),
+                "finishing" to isFinishing,
+                "intent_flags" to (intent?.flags ?: 0),
+            ),
         )
         NativeMailbox.writeBestEffort(
             this,
