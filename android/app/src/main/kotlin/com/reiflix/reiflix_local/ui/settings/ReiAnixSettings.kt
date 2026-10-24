@@ -1402,6 +1402,12 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     )
                                 }
                                 ReiAnixSecondaryButton(
+                                    text = "Verificar integridade (checagem estrita existente)",
+                                    onClick = { onAction("backup_integrity") },
+                                    enabled = !diagnosticWorkRunning && !actionBusy("backup_integrity"),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                ReiAnixSecondaryButton(
                                     text = "Importar logcat (ADB)",
                                     onClick = { onAction("diagnostic_import_logcat") },
                                     enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_import_logcat"),
