@@ -278,6 +278,8 @@ data class AniListAnime(
     val coverExtraLargeUrl: String?,
     val bannerUrl: String?,
     val studios: List<String>,
+    /** True when the remote synopsis exists but no validated PT-BR result is available. */
+    val descriptionTranslationPending: Boolean = false,
 ) {
     val preferredTitle: String
         get() = titleEnglish ?: titleRomaji ?: titleNative ?: synonyms.firstOrNull().orEmpty()
