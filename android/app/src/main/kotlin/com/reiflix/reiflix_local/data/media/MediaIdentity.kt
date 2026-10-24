@@ -175,7 +175,9 @@ object MediaTitleNormalizer {
             .replace(Regex("^[ ._\\-–—]+"), "")
             .replace(Regex("\\[[^]]*]"), " ")
         technicalPatterns.forEach { pattern -> tail = pattern.replace(tail, " ") }
-        tail = tail.replace(Regex("\\s+"), " ").trim(' ', '-', '_')
+        tail = tail.replace(Regex("[._]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim(' ', '-', '_', '.')
         if (tail.isBlank() || Regex("(?i)v?\\d+").matches(tail)) return null
         return tail
     }
