@@ -86,7 +86,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val appContext = context.applicationContext
     private val cacheDirectory = File(File(appContext.filesDir, "data/covers"), "artwork")
     private val publicationSignal = ReiAnixArtworkPublicationSignal()
-    val publishedArtworks: SharedFlow<ReiAnixArtworkPublication> = publicationSignal.events
+    internal val publishedArtworks: SharedFlow<ReiAnixArtworkPublication> = publicationSignal.events
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<Long, Job>()
     private val permits = Semaphore(2)
