@@ -309,7 +309,7 @@ object ReiAnixTokens {
         val playIconSize = 48.dp
         val centerHorizontalPadding = 12.dp
         val centerColumnMinWidth = 280.dp
-        val centerControlsMaxWidth = 420.dp
+        val centerControlsMaxWidth = 560.dp
         val lockAffordanceSize = 48.dp
         val lockAffordanceBottomPadding = 10.dp
         val timelineHeight = 48.dp

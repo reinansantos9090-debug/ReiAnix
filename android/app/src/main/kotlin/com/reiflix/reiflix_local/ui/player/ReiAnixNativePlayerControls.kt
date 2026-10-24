@@ -20,8 +20,6 @@ import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.MoreVert
@@ -29,7 +27,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -47,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -207,9 +205,9 @@ fun ReiAnixNativePlayerCenterControls(
     ) {
         Row(
             modifier = Modifier
+                .widthIn(max = ReiAnixTokens.PlayerDimensions.centerControlsMaxWidth)
                 .fillMaxWidth()
-                .padding(horizontal = ReiAnixTokens.PlayerDimensions.centerHorizontalPadding)
-                .widthIn(max = ReiAnixTokens.PlayerDimensions.centerControlsMaxWidth),
+                .padding(horizontal = ReiAnixTokens.PlayerDimensions.centerHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
@@ -218,9 +216,10 @@ fun ReiAnixNativePlayerCenterControls(
                 contentAlignment = Alignment.CenterStart,
             ) {
                 PlayerSeekIconButton(
-                    icon = Icons.Filled.FastRewind,
+                    icon = Icons.Filled.Replay,
                     seconds = seekSeconds,
                     description = "Voltar $seekSeconds segundos",
+                    forward = false,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
                 )
@@ -303,9 +302,10 @@ fun ReiAnixNativePlayerCenterControls(
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 PlayerSeekIconButton(
-                    icon = Icons.Filled.FastForward,
+                    icon = Icons.Filled.Replay,
                     seconds = seekSeconds,
                     description = "Avançar $seekSeconds segundos",
+                    forward = true,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
                 )
@@ -319,6 +319,7 @@ private fun PlayerSeekIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     seconds: Long,
     description: String,
+    forward: Boolean,
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
@@ -338,13 +339,17 @@ private fun PlayerSeekIconButton(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
-                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.seekIconSize),
+                modifier = Modifier
+                    .size(ReiAnixTokens.PlayerDimensions.seekIconSize)
+                    .graphicsLayer {
+                        scaleX = if (forward) -1f else 1f
+                    },
             )
             Text(
                 text = seconds.toString(),
                 style = ReiAnixTokens.TypographyTokens.chip,
                 color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
-                modifier = Modifier.align(Alignment.BottomEnd),
+                modifier = Modifier.align(Alignment.Center),
             )
         }
     }
@@ -466,16 +471,30 @@ fun ReiAnixNativePlayerBottomControls(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(3.dp)
-                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)),
-                )
-                if (bufferedFraction > 0f) {
+                        .padding(horizontal = 10.dp)
+                        .height(2.dp),
+                ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(bufferedFraction)
-                            .height(3.dp)
-                            .background(ReiAnixTokens.Colors.playerControl.copy(alpha = 0.22f)),
+                            .fillMaxSize()
+                            .background(ReiAnixTokens.Colors.playerControl.copy(alpha = 0.66f)),
                     )
+                    if (bufferedFraction > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(bufferedFraction)
+                                .fillMaxHeight()
+                                .background(ReiAnixTokens.Colors.playerControl.copy(alpha = 0.22f)),
+                        )
+                    }
+                    if (sliderFraction > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(sliderFraction)
+                                .fillMaxHeight()
+                                .background(ReiAnixTokens.Colors.primary),
+                        )
+                    }
                 }
                 Slider(
                     value = sliderFraction,
@@ -506,8 +525,8 @@ fun ReiAnixNativePlayerBottomControls(
                             }
                         },
                     colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        thumbColor = ReiAnixTokens.Colors.primary,
+                        activeTrackColor = Color.Transparent,
                         inactiveTrackColor = Color.Transparent,
                     ),
                     steps = 0,
