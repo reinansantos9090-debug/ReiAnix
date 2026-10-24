@@ -886,6 +886,43 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun rowLevelManualOwnershipProtectsSynopsisEvenWhenFieldListIsEmpty() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val database = ReiAnixSqliteDatabase(context)
+        val manualDescription = "Sinopse escrita manualmente pelo usuário."
+        val oldOriginal = "The old AniList synopsis."
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                UPDATE anime
+                SET description = ?, description_original = ?, metadata_source = 'manual',
+                    metadata_status = 'manual', metadata_manual_fields = '[]'
+                WHERE id = 1
+                """.trimIndent(),
+                arrayOf(manualDescription, oldOriginal),
+            )
+        }
+
+        val updated = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = "Automatic translation must not replace a manual synopsis.",
+                descriptionOriginal = "A newer AniList original.",
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+
+        assertEquals(manualDescription, updated.description)
+        assertEquals(oldOriginal, updated.descriptionOriginal)
+        assertEquals("manual", updated.metadataSource)
+        assertEquals("manual", updated.metadataStatus)
+    }
+
+    @Test
     fun persistedSynopsisRecoveryCursorResumesAtTheNextStableAnimeId() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
@@ -931,6 +968,37 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         )
         assertEquals(listOf(2L), resumedBatch.map { it.id })
         assertEquals(secondSource, resumedBatch.single().descriptionOriginal)
+
+        // A newly inserted stable ID after the cursor must be reachable without a
+        // library scan, while a completed tail can wrap to zero for the next sweep.
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                INSERT INTO anime (
+                    id, lookup_title, title, added_at, metadata_manual_fields,
+                    favorite, user_tags, is_pinned, personal_note, cover_url,
+                    english, metadata_source, description, description_original
+                ) VALUES (
+                    3, 'catalog-key-3', 'Third Anime', 1000, '[]',
+                    0, '[]', 0, '', 'https://example.invalid/third-cover.jpg',
+                    'Third English Title', 'anilist', ?, ?
+                )
+                """.trimIndent(),
+                arrayOf("A third pending synopsis.", "A third pending synopsis."),
+            )
+        }
+        val insertedAfterCursor = repository.loadAniListSynopsisRecoveryBatch(
+            afterAnimeId = 2L,
+            limit = 1,
+        )
+        assertEquals(listOf(3L), insertedAfterCursor.map { it.id })
+        assertTrue(repository.loadAniListSynopsisRecoveryBatch(afterAnimeId = 3L, limit = 1).isEmpty())
+
+        settings.setPreference("metadata.synopsis_recovery_cursor", "0")
+        assertEquals(
+            listOf(1L),
+            repository.loadAniListSynopsisRecoveryBatch(afterAnimeId = 0L, limit = 1).map { it.id },
+        )
     }
 
     @Test
