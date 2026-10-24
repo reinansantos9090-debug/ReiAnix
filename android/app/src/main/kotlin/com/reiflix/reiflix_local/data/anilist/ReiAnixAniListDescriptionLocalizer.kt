@@ -3,7 +3,6 @@ package com.reiflix.reiflix_local.data.anilist
 import android.system.Os
 import android.text.Html
 import android.util.Log
-import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
