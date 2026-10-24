@@ -29,6 +29,16 @@ object LibraryUiMappers {
             ?: metadata.stringOrNull("title")
             ?: source.stringOrNull("title")
             ?: source.requiredString("lookup_title")
+        val originalDescription = metadata.stringOrNull("description_original")
+            ?.trim()?.takeIf(String::isNotEmpty)
+        val persistedDescription = metadata.stringOrNull("description")
+            ?.trim()?.takeIf(String::isNotEmpty)
+        // Older rows may still contain the original language in the display column.
+        // Never expose that exact fallback as a completed localized synopsis.
+        val displayDescription = persistedDescription?.takeUnless { candidate ->
+            originalDescription != null && candidate.equals(originalDescription, ignoreCase = true)
+        }
+        val descriptionTranslationPending = originalDescription != null && displayDescription == null
 
         return ReiAnixAnimeUiModel(
             id = id,
@@ -66,9 +76,10 @@ object LibraryUiMappers {
             addedAt = metadata.doubleOrNull("added_at") ?: source.doubleOrNull("added_at"),
             lastPlayedAt = source.doubleOrNull("last_played_at"),
             pinned = source.booleanOrNull("is_pinned") ?: metadata.booleanOrNull("is_pinned") ?: false,
-            // description is the canonical presentation value persisted by
-            // LibraryService. A missing value means the pt-BR synopsis is not ready.
-            description = metadata.stringOrNull("description"),
+            // SQLite's description column contains only a validated PT-BR value;
+            // the separate original column lets Compose expose pending state safely.
+            description = displayDescription,
+            descriptionTranslationPending = descriptionTranslationPending,
             romajiTitle = metadata.stringOrNull("romaji"),
             englishTitle = metadata.stringOrNull("english"),
             nativeTitle = metadata.stringOrNull("native"),
