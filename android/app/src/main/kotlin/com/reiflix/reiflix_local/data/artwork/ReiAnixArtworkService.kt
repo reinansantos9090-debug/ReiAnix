@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.artwork
 
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.graphics.BitmapFactory
@@ -706,6 +707,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val uri = mediaUri.trim()
         val file = File(thumbnailPath).absoluteFile
         if (uri.isEmpty() || !file.isFile || !validImage(file)) return false
+        // The extractor consumes file:// URIs, while canonical episode.path and
+        // historical observations commonly store the same source as /absolute/path.
+        // Match both forms before falling back to the stable media identity.
+        val sourcePath = runCatching {
+            Uri.parse(uri).takeIf { it.scheme.equals("file", ignoreCase = true) }?.path
+        }.getOrNull()?.takeIf(String::isNotBlank) ?: uri
         val identity = mediaIdentity?.trim().takeUnless { it.isNullOrEmpty() } ?: uri
         val sourceRef = "native:" + identity + "|" + size.coerceAtLeast(0L) + "|" + modifiedAt.coerceAtLeast(0L)
         val key = sha256("native|" + sourceRef + "|episode_thumbnail|small")
@@ -714,8 +721,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val ids = database.read { db ->
             db.rawQuery("SELECT DISTINCT e.id FROM episodes e JOIN anime a ON a.id=e.anime_id " +
                 "LEFT JOIN episode_observations o ON o.episode_id=e.id " +
-                "WHERE e.path=? OR o.uri=? OR (? != '' AND e.media_identity=?) ORDER BY e.id",
-                arrayOf(uri, uri, identity, identity)).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
+                "WHERE e.path IN (?,?) OR o.uri IN (?,?) OR (? != '' AND e.media_identity=?) ORDER BY e.id",
+                arrayOf(uri, sourcePath, uri, sourcePath, identity, identity)).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
         }
         if (ids.isEmpty()) return false
         var registered = 0
@@ -723,8 +730,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         for (episodeId in ids) {
             val saved = database.transaction { db ->
                 val matched = db.rawQuery("SELECT 1 FROM episodes e LEFT JOIN episode_observations o ON o.episode_id=e.id " +
-                    "WHERE e.id=? AND (e.path=? OR o.uri=? OR (? != '' AND e.media_identity=?)) LIMIT 1",
-                    arrayOf(episodeId.toString(), uri, uri, identity, identity)).use { it.moveToFirst() }
+                    "WHERE e.id=? AND (e.path IN (?,?) OR o.uri IN (?,?) OR (? != '' AND e.media_identity=?)) LIMIT 1",
+                    arrayOf(episodeId.toString(), uri, sourcePath, uri, sourcePath, identity, identity)).use { it.moveToFirst() }
                 if (!matched) return@transaction false
                 db.delete("artwork", "entity_type='episode' AND entity_id=? AND artwork_type='episode_thumbnail' " +
                     "AND source='generated' AND NOT (source_ref=? AND local_path=?)",
