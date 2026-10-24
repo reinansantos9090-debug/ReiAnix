@@ -2308,7 +2308,7 @@ class MainActivity : ComponentActivity() {
                     "message_present" to !message.isNullOrBlank(),
                     "error_present" to !error.isNullOrBlank(),
                 ),
-                error = error?.takeIf { it.isNotBlank() }?.let(::IllegalStateException),
+                error = error?.takeIf { it.isNotBlank() }?.let { IllegalStateException(it) },
             )
         } catch (exception: Exception) {
             Log.e(tag, "SETTINGS_FILE_RESULT_WRITE_FAILED requestId=" + requestId + " action=" + action, exception)
