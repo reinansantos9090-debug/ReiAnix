@@ -20,6 +20,10 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
@@ -38,10 +42,47 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
+/**
+ * Successful artwork materialization signal. It contains no path or URL: consumers
+ * need only the stable SQLite identity to invalidate their existing projection.
+ */
+internal data class ReiAnixArtworkPublication(
+    val requestId: String,
+    val entityType: String,
+    val entityId: String,
+    val artworkType: String,
+    val sourceKind: String,
+)
+
+/**
+ * Bounded publication signal for the existing Compose projection.
+ * Only a committed association with an existing image file can be published.
+ */
+internal class ReiAnixArtworkPublicationSignal {
+    private val mutableEvents = MutableSharedFlow<ReiAnixArtworkPublication>(
+        replay = 1,
+        extraBufferCapacity = 31,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    val events: SharedFlow<ReiAnixArtworkPublication> = mutableEvents.asSharedFlow()
+
+    fun publishIfCommitted(
+        publication: ReiAnixArtworkPublication,
+        associationCommitted: Boolean,
+        sourceFileExists: Boolean,
+    ): Boolean {
+        if (!associationCommitted || !sourceFileExists) return false
+        return mutableEvents.tryEmit(publication)
+    }
+}
+
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
     private val cacheDirectory = File(File(appContext.filesDir, "data/covers"), "artwork")
+    private val publicationSignal = ReiAnixArtworkPublicationSignal()
+    val publishedArtworks: SharedFlow<ReiAnixArtworkPublication> = publicationSignal.events
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<Long, Job>()
     private val permits = Semaphore(2)
@@ -64,22 +105,84 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private class InvalidImage(message: String) : Exception(message)
 
     fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean {
-        if (animeId <= 0L || cacheClearInProgress.get()) return false
+        val requestId = UUID.randomUUID().toString()
+        if (animeId <= 0L || cacheClearInProgress.get()) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_REQUEST_REJECTED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = if (animeId <= 0L) "INVALID_ENTITY_ID" else "CACHE_CLEAR_IN_PROGRESS",
+                requestId = requestId,
+                context = mapOf("entity_id" to animeId, "force" to force),
+            )
+            return false
+        }
         synchronized(jobs) {
-            if (cacheClearInProgress.get() || jobs[animeId]?.isActive == true) return false
+            if (cacheClearInProgress.get() || jobs[animeId]?.isActive == true) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_ARTWORK_REQUEST_SKIPPED",
+                    source = "ReiAnixArtworkService",
+                    result = if (cacheClearInProgress.get()) "CACHE_CLEAR_IN_PROGRESS" else "ALREADY_RUNNING",
+                    requestId = requestId,
+                    context = mapOf("entity_id" to animeId, "force" to force),
+                )
+                return false
+            }
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_REQUESTED",
+                source = "ReiAnixArtworkService",
+                result = "QUEUED",
+                requestId = requestId,
+                context = mapOf("entity_id" to animeId, "force" to force),
+            )
             val task = scope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val anime = loadAnime(animeId) ?: return@launch
-                    val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
-                    anime.coverUrl?.trim()?.takeIf { it.isNotEmpty() }?.let {
-                        materialize(animeId, entityType, "poster", it, anime.anilistId, force)
+                    val anime = loadAnime(animeId)
+                    if (anime == null) {
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "NATIVE_ARTWORK_ASSOCIATION_MISSING",
+                            severity = "WARN",
+                            source = "ReiAnixArtworkService",
+                            result = "LOCAL_ANIME_NOT_FOUND",
+                            requestId = requestId,
+                            context = mapOf("entity_id" to animeId),
+                        )
+                        return@launch
                     }
-                    anime.bannerUrl?.trim()?.takeIf { it.isNotEmpty() }?.let {
-                        materialize(animeId, entityType, "backdrop", it, anime.anilistId, force)
+                    val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
+                    val posterUrl = anime.coverUrl?.trim()?.takeIf { it.isNotEmpty() }
+                    val backdropUrl = anime.bannerUrl?.trim()?.takeIf { it.isNotEmpty() }
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "NATIVE_ARTWORK_SOURCES_RESOLVED",
+                        source = "ReiAnixArtworkService",
+                        result = if (posterUrl != null || backdropUrl != null) "SOURCE_CONFIGURED" else "NO_SOURCE_CONFIGURED",
+                        requestId = requestId,
+                        context = mapOf(
+                            "entity_type" to entityType,
+                            "entity_id" to animeId,
+                            "poster_source_configured" to (posterUrl != null),
+                            "backdrop_source_configured" to (backdropUrl != null),
+                            "anilist_id_present" to (anime.anilistId != null),
+                        ),
+                    )
+                    posterUrl?.let {
+                        materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
+                    }
+                    backdropUrl?.let {
+                        materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "NATIVE_ARTWORK_REQUEST_FAILED",
+                        severity = "ERROR",
+                        source = "ReiAnixArtworkService",
+                        result = "FAILED",
+                        requestId = requestId,
+                        error = error,
+                        context = mapOf("entity_id" to animeId),
+                    )
                     Log.e(TAG, "Native artwork request failed for " + animeId, error)
                 } finally {
                     currentCoroutineContext()[Job]?.let { jobs.remove(animeId, it) }
@@ -222,11 +325,40 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return candidatePath.startsWith(rootPath + File.separator)
     }
 
-    private suspend fun materialize(id: Long, entity: String, type: String, url: String, aniId: Long?, force: Boolean) {
-        if (!safeUrl(url) || !isUrlCurrent(id, type, url)) return
+    private suspend fun materialize(
+        id: Long,
+        entity: String,
+        type: String,
+        url: String,
+        aniId: Long?,
+        force: Boolean,
+        requestId: String,
+    ) {
+        if (!safeUrl(url)) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_SOURCE_REJECTED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = "INVALID_SOURCE",
+                requestId = requestId,
+                context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
+            )
+            return
+        }
+        if (!isUrlCurrent(id, type, url)) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_SOURCE_REJECTED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = "ASSOCIATION_CHANGED",
+                requestId = requestId,
+                context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
+            )
+            return
+        }
         permits.withPermit {
             currentCoroutineContext().ensureActive()
-            if (reuseLocal(id, entity, type, url, aniId)) return@withPermit
+            if (reuseLocal(id, entity, type, url, aniId, requestId)) return@withPermit
             val key = remoteKey(aniId, url, type)
             val rowId = prepareRow(id, entity, type, url, key, force) ?: return@withPermit
             var image: Downloaded? = null
@@ -241,7 +373,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 }
                 if (saved.current) publish(
                     "artwork_published", entity, id.toString(), type,
-                    completedImage.file.absolutePath, url, key, url, completedImage.mime,
+                    completedImage.file.absolutePath, url, key, url, completedImage.mime, requestId,
                 )
                 trimCache()
             } catch (cancelled: CancellationException) {
@@ -255,10 +387,14 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     severity = "ERROR",
                     source = "ReiAnixArtworkService",
                     result = "FAILED",
+                    requestId = requestId,
                     error = error,
                     context = mapOf(
                         "entity_type" to entity,
+                        "entity_id" to id,
                         "artwork_type" to type,
+                        "source_kind" to "anilist",
+                        "association_status" to "CHECKED_BEFORE_DOWNLOAD",
                         "http_status" to ((error as? HttpFailure)?.code ?: -1),
                     ),
                 )
@@ -268,7 +404,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
     }
 
-    private fun reuseLocal(id: Long, entity: String, type: String, url: String, aniId: Long?): Boolean {
+    private fun reuseLocal(id: Long, entity: String, type: String, url: String, aniId: Long?, requestId: String): Boolean {
         val rows = candidates(entity, id.toString(), type, url)
         if (rows.any { it.manual || it.source.equals("manual", true) }) return true
         if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return true
@@ -277,7 +413,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val path = existing.path ?: return false
             if (markReady(existing.id, id, type, url, path)) {
                 publish("artwork_published", entity, id.toString(), type, path, url,
-                    existing.key ?: remoteKey(aniId, url, type), url, existing.mime ?: mime(path))
+                    existing.key ?: remoteKey(aniId, url, type), url, existing.mime ?: mime(path), requestId)
             }
             return true
         }
@@ -311,7 +447,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (ok) updateCoverPointer(db, id, url, oldPath)
             ok
         }
-        if (inserted) publish("artwork_published", entity, id.toString(), type, oldPath, url, key, url, mime(oldPath))
+        if (inserted) publish("artwork_published", entity, id.toString(), type, oldPath, url, key, url, mime(oldPath), requestId)
         return inserted
     }
 
@@ -614,18 +750,73 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (saved) {
                 registered++
                 publish("artwork_published", "episode", episodeId.toString(), "episode_thumbnail",
-                    file.absolutePath, null, key, sourceRef, mime(file.absolutePath))
+                    file.absolutePath, null, key, sourceRef, mime(file.absolutePath), UUID.randomUUID().toString())
             }
         }
         return registered > 0
     }
 
-    private fun publish(eventType: String, entity: String, id: String, type: String, path: String, url: String?, key: String, ref: String?, contentType: String?) {
+    private fun publish(
+        eventType: String,
+        entity: String,
+        id: String,
+        type: String,
+        path: String,
+        url: String?,
+        key: String,
+        ref: String?,
+        contentType: String?,
+        requestId: String = UUID.randomUUID().toString(),
+    ) {
+        val sourceKind = when {
+            type == "episode_thumbnail" -> "generated"
+            url != null -> "anilist"
+            else -> "local"
+        }
+        val sourceFileExists = runCatching { File(path).isFile }.getOrDefault(false)
+        val publication = ReiAnixArtworkPublication(
+            requestId = requestId,
+            entityType = entity,
+            entityId = id,
+            artworkType = type,
+            sourceKind = sourceKind,
+        )
+        if (!publicationSignal.publishIfCommitted(
+                publication = publication,
+                associationCommitted = true,
+                sourceFileExists = sourceFileExists,
+            )
+        ) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_PUBLICATION_SOURCE_MISSING",
+                severity = "ERROR",
+                source = "ReiAnixArtworkService",
+                result = "SOURCE_FILE_MISSING",
+                requestId = requestId,
+                context = mapOf(
+                    "entity_type" to entity,
+                    "entity_id" to id,
+                    "artwork_type" to type,
+                    "source_kind" to sourceKind,
+                    "association_status" to "COMMITTED",
+                    "source_file_exists" to false,
+                ),
+            )
+            return
+        }
         ReiAnixDiagnosticTimeline.record(
             name = "NATIVE_ARTWORK_PUBLISHED",
             source = "ReiAnixArtworkService",
             result = "COMPLETED",
-            context = mapOf("entity_type" to entity, "artwork_type" to type),
+            requestId = requestId,
+            context = mapOf(
+                "entity_type" to entity,
+                "entity_id" to id,
+                "artwork_type" to type,
+                "source_kind" to sourceKind,
+                "association_status" to "COMMITTED",
+                "source_file_exists" to true,
+            ),
         )
         val body = JSONObject().put("event", "ARTWORK_PUBLISHED").put("entity_type", entity)
             .put("entity_id", id).put("artwork_type", type).put("cache_key", key).put("local_path", path)
@@ -633,9 +824,19 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             .put("content_type", contentType ?: JSONObject.NULL).put("published_at", System.currentTimeMillis())
         val ok = runCatching {
             NativeMailbox.write(appContext, JSONObject().put("type", eventType)
-                .put("requestId", UUID.randomUUID().toString()).put("payload", body))
+                .put("requestId", requestId).put("payload", body))
         }.getOrElse { Log.w(TAG, "Artwork publication failed", it); false }
-        if (!ok) Log.w(TAG, "ARTWORK_PUBLISHED event could not be queued")
+        if (!ok) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_MAILBOX_PUBLISH_FAILED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = "MAILBOX_WRITE_FAILED",
+                requestId = requestId,
+                context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
+            )
+            Log.w(TAG, "ARTWORK_PUBLISHED event could not be queued")
+        }
     }
 
     private fun trimCache() {
