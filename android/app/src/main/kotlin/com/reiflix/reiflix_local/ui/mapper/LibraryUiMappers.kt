@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui.mapper
 
 import com.reiflix.reiflix_local.data.contract.ReiAnixContractValues
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
@@ -35,10 +36,11 @@ object LibraryUiMappers {
             ?.trim()?.takeIf(String::isNotEmpty)
         // Older rows may still contain the original language in the display column.
         // Never expose that exact fallback as a completed localized synopsis.
-        val displayDescription = persistedDescription?.takeUnless { candidate ->
-            originalDescription != null && candidate.equals(originalDescription, ignoreCase = true)
-        }
-        val descriptionTranslationPending = originalDescription != null && displayDescription == null
+        val displayDescription = persistedDescription?.takeIf(
+            ReiAnixAniListDescriptionLocalizer::isPtBrDescriptionText,
+        )
+        val descriptionTranslationPending = displayDescription == null &&
+            (originalDescription != null || persistedDescription != null)
 
         return ReiAnixAnimeUiModel(
             id = id,
