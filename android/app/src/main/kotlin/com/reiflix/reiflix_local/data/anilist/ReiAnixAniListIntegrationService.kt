@@ -369,15 +369,11 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Incrementally repairs missing or untranslated synopses in the canonical SQLite
-     * catalog. A stable-ID cursor stored in the existing preferences table lets the
-     * work resume across process restarts without schema changes. Each pass is bounded
-     * by candidates and remote translation attempts, and all network work is sequential.
-     */
-    /**
-     * Continues in bounded pages until the current stable-ID sweep reaches the end.
-     * Every batch has its own candidate/network budgets. yield() between batches gives
-     * lifecycle and UI coroutines a cancellation opportunity; no Mutex is held over I/O.
+     * Incrementally repairs pending synopses in the canonical SQLite catalog.
+     * A stable-ID cursor and cycle state in the existing preferences table survive
+     * process restarts without schema changes. The public pass traverses bounded
+     * batches to the current end of the ID range, yielding between them so lifecycle
+     * cancellation remains responsive. No lock is held while network I/O is performed.
      */
     suspend fun reconcilePendingSynopsisTranslations(
         maxCandidates: Int = MAX_SYNOPSIS_CANDIDATES_PER_RUN,
@@ -692,7 +688,11 @@ class ReiAnixAniListIntegrationService(
                     "conflict" -> {
                         conflicts++
                         pending++
+                        // A concurrent edit may have changed the row during network I/O.
+                        // Re-read it after the same bounded backoff rather than treating
+                        // the conflict as a completed/terminal record.
                         settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "true")
+                        settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_RECOVERABLE_KEY, "true")
                     }
                 }
                 if (clearedStaleDisplay) cleared++
