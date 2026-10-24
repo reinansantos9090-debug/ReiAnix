@@ -209,13 +209,26 @@ object VideoThumbnailExtractor {
                 val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
                 if (cached != null) return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
             }
-            runCatching {
-                if (target.exists()) target.delete()
-            }
             var permitAcquired = false
             try {
                 extractionPermits.acquire()
                 permitAcquired = true
+                if (target.exists() && !target.delete()) {
+                    val error = IOException("THUMBNAIL_INVALID_CACHE_ENTRY_COULD_NOT_BE_REMOVED")
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "THUMBNAIL_CACHE_WRITE_FAILED",
+                        severity = "ERROR",
+                        source = "VideoThumbnailExtractor",
+                        result = "FAILED",
+                        requestId = requestId,
+                        error = error,
+                        context = mapOf(
+                            "stage" to "cache_invalidation",
+                            "cache_entry_bytes" to target.length().coerceAtLeast(0L),
+                        ),
+                    )
+                    return null
+                }
                 val startedNs = android.os.SystemClock.elapsedRealtimeNanos()
                 ReiAnixDiagnosticTimeline.record(
                     name = "THUMBNAIL_GENERATION_STARTED",
@@ -465,19 +478,34 @@ object VideoThumbnailExtractor {
                 output.fd.sync()
             }
 
-            if (target.isFile && target.length() > 0L) {
+            if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
+                // Another valid entry won a race; discard the redundant temporary file.
                 temp.delete()
-            } else if (!temp.renameTo(target)) {
+            } else {
+                if (target.exists() && !target.delete()) {
+                    temp.delete()
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "THUMBNAIL_CACHE_WRITE_FAILED",
+                        severity = "ERROR",
+                        source = "VideoThumbnailExtractor",
+                        result = "FAILED",
+                        error = IOException("THUMBNAIL_CACHE_ATOMIC_REPLACE_FAILED"),
+                        context = mapOf("stage" to "cache_commit", "cache_entry_bytes" to target.length()),
+                    )
+                    return null
+                }
+                if (!temp.renameTo(target)) {
                 temp.delete()
-                ReiAnixDiagnosticTimeline.record(
-                    name = "THUMBNAIL_CACHE_WRITE_FAILED",
-                    severity = "ERROR",
-                    source = "VideoThumbnailExtractor",
-                    result = "FAILED",
-                    error = IOException("THUMBNAIL_CACHE_ATOMIC_RENAME_FAILED"),
-                    context = mapOf("stage" to "cache_commit", "temporary_bytes" to temp.length()),
-                )
-                return null
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "THUMBNAIL_CACHE_WRITE_FAILED",
+                        severity = "ERROR",
+                        source = "VideoThumbnailExtractor",
+                        result = "FAILED",
+                        error = IOException("THUMBNAIL_CACHE_ATOMIC_RENAME_FAILED"),
+                        context = mapOf("stage" to "cache_commit", "temporary_bytes" to temp.length()),
+                    )
+                    return null
+                }
             }
 
             trimCache(target.parentFile ?: return null, target)
