@@ -181,7 +181,9 @@ class ReiAnixAniListDescriptionLocalizer(
     fun isPtBrDescription(text: String): Boolean {
         val normalized = normalizeDescription(text)
         if (normalized.isEmpty()) return false
-        if (detectDescriptionLanguage(normalized).first == "pt") return true
+        val detectedLanguage = detectDescriptionLanguage(normalized).first
+        if (detectedLanguage == "pt") return true
+        if (detectedLanguage != "unknown") return false
         val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
             .map { it.value }.toSet()
         return tokens.intersect(PORTUGUESE_WORDS).size >= 2
@@ -381,7 +383,9 @@ class ReiAnixAniListDescriptionLocalizer(
         fun isPtBrDescriptionText(text: String?): Boolean {
             val normalized = normalizeForLanguageClassification(text)
             if (normalized.isEmpty()) return false
-            if (detectDescriptionLanguageForClassification(normalized) == "pt") return true
+            val detectedLanguage = detectDescriptionLanguageForClassification(normalized)
+            if (detectedLanguage == "pt") return true
+            if (detectedLanguage != "unknown") return false
             val tokens = Regex("[\\p{L}]+").findAll(normalized.lowercase(Locale.ROOT))
                 .map { it.value }.toSet()
             return tokens.intersect(PORTUGUESE_WORDS).size >= 2
