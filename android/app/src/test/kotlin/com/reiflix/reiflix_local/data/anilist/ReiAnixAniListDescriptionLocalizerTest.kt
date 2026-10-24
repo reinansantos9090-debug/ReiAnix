@@ -118,6 +118,45 @@ class ReiAnixAniListDescriptionLocalizerTest {
         )
         assertFalse(localizer.isPtBrDescription("François célèbre Noël à la façon d'un héros."))
         assertFalse(localizer.isPtBrDescription("La historia sigue a un joven que protege a su pueblo cada día."))
+        assertFalse(localizer.isPtBrDescription("The story follows a young hero who protects their people from danger every day."))
+        assertFalse(
+            localizer.isPtBrDescription(
+                "The story follows a young hero who travels through a strange world and discovers the secret power hidden in an old castle. " +
+                    "A história acompanha um jovem herói.",
+            ),
+        )
+        assertFalse(localizer.isPtBrDescription("A história acompanha uma rapariga que apanha o autocarro e usa o telemóvel."))
+        assertFalse(localizer.isPtBrDescription("   "))
+        assertTrue(localizer.isPtBrDescription("A história acompanha uma jovem brasileira que descobre um mundo mágico."))
+    }
+
+    @Test
+    fun europeanPortugueseSynopsisIsSentThroughBrazilianLocalization() = runBlocking {
+        val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-ptpt-" + System.nanoTime())
+        assertTrue(directory.mkdirs())
+        try {
+            val european = "A história acompanha uma rapariga que apanha o autocarro e usa o telemóvel."
+            val brazilian = "A história acompanha uma garota que pega o ônibus e usa o celular."
+            val transport = FakeTranslationTransport(
+                AniListTranslationHttpResponse(
+                    200,
+                    JSONObject()
+                        .put("responseStatus", 200)
+                        .put("responseData", JSONObject().put("translatedText", brazilian))
+                        .toString(),
+                ),
+            )
+            val localizer = ReiAnixAniListDescriptionLocalizer(
+                File(directory, "anilist_description_ptbr.json"),
+                transport,
+            )
+
+            assertFalse(localizer.isPtBrDescription(european))
+            assertEquals(brazilian, localizer.localizeToPtBr(european, "pt-PT"))
+            assertEquals(1, transport.calls)
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     @Test
