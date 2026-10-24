@@ -37,9 +37,11 @@ import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -124,18 +126,14 @@ class ReiAnixComposeLibraryHost(
                     val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
                     val integration = dependencies.aniListIntegrationService
                     try {
-                        withContext(Dispatchers.IO) {
-                            integration.reconcilePendingSynopsisTranslations()
-                        }
+                        runSynopsisRecoveryBatches(integration)
                         val nextRetryAt = withContext(Dispatchers.IO) {
                             integration.nextSynopsisRecoveryRetryAfterEpochMillis()
                         }
                         if (nextRetryAt != null) {
                             val waitMillis = (nextRetryAt - System.currentTimeMillis()).coerceAtLeast(0L)
                             if (waitMillis > 0L) delay(waitMillis)
-                            withContext(Dispatchers.IO) {
-                                integration.reconcilePendingSynopsisTranslations()
-                            }
+                            runSynopsisRecoveryBatches(integration)
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -163,8 +161,11 @@ class ReiAnixComposeLibraryHost(
                         try {
                             withContext(Dispatchers.IO) {
                                 dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
-                                dependencies.aniListIntegrationService.reconcilePendingSynopsisTranslations(force = true)
                             }
+                            runSynopsisRecoveryBatches(
+                                dependencies.aniListIntegrationService,
+                                forceFirst = true,
+                            )
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (error: Exception) {
@@ -500,6 +501,29 @@ class ReiAnixComposeLibraryHost(
                     "Ignoring unsupported Compose shell destination=" + route,
                 )
             }
+        }
+    }
+
+    /**
+     * Each service call is one bounded recovery batch. The next batch is dispatched
+     * only when the persisted state says the sweep is incomplete; yield() lets Compose,
+     * lifecycle cancellation and other work run between batches.
+     */
+    private suspend fun runSynopsisRecoveryBatches(
+        integration: ReiAnixAniListIntegrationService,
+        forceFirst: Boolean = false,
+    ) {
+        var force = forceFirst
+        while (true) {
+            withContext(Dispatchers.IO) {
+                integration.reconcilePendingSynopsisTranslations(force = force)
+            }
+            force = false
+            val hasMore = withContext(Dispatchers.IO) {
+                integration.shouldContinueSynopsisRecovery()
+            }
+            if (!hasMore) return
+            yield()
         }
     }
 
