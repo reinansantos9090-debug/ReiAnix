@@ -1,6 +1,11 @@
 package com.reiflix.reiflix_local.data.anilist
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
+import java.io.IOException
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -138,6 +143,111 @@ class ReiAnixAniListDescriptionLocalizerTest {
             assertTrue(localizer.isValidPtBrResult(source, translated))
         } finally {
             directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun emptyTranslationResponseStaysPendingAndUsesFailureBackoff() = runBlocking {
+        val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-empty-" + System.nanoTime())
+        assertTrue(directory.mkdirs())
+        try {
+            val source = "The story follows a young hero who protects their people from danger every day."
+            val transport = FakeTranslationTransport(
+                AniListTranslationHttpResponse(
+                    200,
+                    JSONObject()
+                        .put("responseStatus", 200)
+                        .put("responseData", JSONObject().put("translatedText", ""))
+                        .toString(),
+                ),
+            )
+            val localizer = ReiAnixAniListDescriptionLocalizer(
+                File(directory, "anilist_description_ptbr.json"),
+                transport,
+            )
+
+            assertNull(localizer.localizeToPtBr(source, "en"))
+            assertNull(localizer.localizeToPtBr(source, "en"))
+            assertEquals(1, transport.calls)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun networkFailureDoesNotBecomeACompletedSynopsisOrRetryInALoop() = runBlocking {
+        val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-network-" + System.nanoTime())
+        assertTrue(directory.mkdirs())
+        try {
+            val source = "The story follows a young hero who protects their people from danger every day."
+            val transport = FailingTranslationTransport()
+            val localizer = ReiAnixAniListDescriptionLocalizer(
+                File(directory, "anilist_description_ptbr.json"),
+                transport,
+            )
+
+            assertNull(localizer.localizeToPtBr(source, "en"))
+            assertNull(localizer.localizeToPtBr(source, "en"))
+            assertEquals(1, transport.calls)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun concurrentRequestsForSameSynopsisShareOneTranslation() = runBlocking {
+        val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-dedupe-" + System.nanoTime())
+        assertTrue(directory.mkdirs())
+        try {
+            val source = "The story follows a young hero who protects their people from danger every day."
+            val translated = "A história acompanha um jovem herói que protege seu povo do perigo todos os dias."
+            val transport = GatedTranslationTransport(
+                AniListTranslationHttpResponse(
+                    200,
+                    JSONObject()
+                        .put("responseStatus", 200)
+                        .put("responseData", JSONObject().put("translatedText", translated))
+                        .toString(),
+                ),
+            )
+            val localizer = ReiAnixAniListDescriptionLocalizer(
+                File(directory, "anilist_description_ptbr.json"),
+                transport,
+            )
+            coroutineScope {
+                val first = async { localizer.localizeToPtBr(source, "en") }
+                transport.started.await()
+                val second = async { localizer.localizeToPtBr(source, "en") }
+                transport.release.complete(Unit)
+                assertEquals(listOf(translated, translated), listOf(first.await(), second.await()))
+            }
+            assertEquals(1, transport.calls)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    private class FailingTranslationTransport : AniListTranslationTransport {
+        var calls: Int = 0
+
+        override suspend fun get(url: String): AniListTranslationHttpResponse {
+            calls++
+            throw IOException("Simulated network failure")
+        }
+    }
+
+    private class GatedTranslationTransport(
+        private val response: AniListTranslationHttpResponse,
+    ) : AniListTranslationTransport {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var calls: Int = 0
+
+        override suspend fun get(url: String): AniListTranslationHttpResponse {
+            calls++
+            started.complete(Unit)
+            release.await()
+            return response
         }
     }
 
