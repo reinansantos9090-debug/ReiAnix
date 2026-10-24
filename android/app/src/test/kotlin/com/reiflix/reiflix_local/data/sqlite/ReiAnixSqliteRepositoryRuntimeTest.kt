@@ -934,6 +934,46 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun staleAniListSnapshotCannotOverwriteANewerPersistedSynopsis() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val newerOriginal = "The newer story follows another hero."
+        val newerTranslation = "A história mais recente acompanha outro herói."
+        val olderOriginal = "The older story follows the first hero."
+        val olderTranslation = "A história antiga acompanha o primeiro herói."
+
+        repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = newerTranslation,
+                descriptionOriginal = newerOriginal,
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+
+        val afterStaleResponse = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = olderTranslation,
+                descriptionOriginal = olderOriginal,
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+            validateSynopsisSnapshot = true,
+            expectedSynopsisOriginal = null,
+            expectedSynopsisDescription = null,
+        )
+
+        assertEquals(newerTranslation, afterStaleResponse.description)
+        assertEquals(newerOriginal, afterStaleResponse.descriptionOriginal)
+    }
+
+    @Test
     fun genericMetadataPatchPersistsOriginalSynopsisWithoutClearingLocalFields() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
