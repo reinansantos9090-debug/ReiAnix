@@ -796,6 +796,67 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun synopsisRecoveryUsesCompareAndSetAndPreservesUnrelatedCanonicalFields() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val source = "The story follows a young hero who protects their people from danger every day."
+        val translated = "A história acompanha um jovem herói que protege seu povo do perigo todos os dias."
+        val before = repository.getAnime(1L)!!
+        repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = source,
+                descriptionOriginal = source,
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+
+        assertTrue(
+            repository.updateAniListSynopsisIfUnchanged(
+                animeId = 1L,
+                expectedAniListId = 42L,
+                expectedOriginal = source,
+                expectedDescription = source,
+                originalSource = source,
+                translatedDescription = null,
+            ),
+        )
+        assertTrue(
+            repository.updateAniListSynopsisIfUnchanged(
+                animeId = 1L,
+                expectedAniListId = 42L,
+                expectedOriginal = source,
+                expectedDescription = null,
+                originalSource = source,
+                translatedDescription = translated,
+            ),
+        )
+        assertFalse(
+            "A stale source snapshot must not replace a newer synopsis.",
+            repository.updateAniListSynopsisIfUnchanged(
+                animeId = 1L,
+                expectedAniListId = 42L,
+                expectedOriginal = "A different stale source.",
+                expectedDescription = null,
+                originalSource = "A different stale source.",
+                translatedDescription = "Texto obsoleto.",
+            ),
+        )
+
+        val after = repository.getAnime(1L)!!
+        assertEquals(translated, after.description)
+        assertEquals(source, after.descriptionOriginal)
+        assertEquals(before.favorite, after.favorite)
+        assertEquals(before.lookupTitle, after.lookupTitle)
+        assertEquals(before.personalNote, after.personalNote)
+        assertEquals(before.coverUrl, after.coverUrl)
+        assertEquals(11.0, repository.getEpisode(7L)!!.progress!!, 0.0)
+    }
+
+    @Test
     fun genericMetadataPatchPersistsOriginalSynopsisWithoutClearingLocalFields() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
