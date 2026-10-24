@@ -540,6 +540,7 @@ class ReiAnixAniListIntegrationService(
         var conflicts = 0
         var cleared = 0
         var manualSkipped = 0
+        var ownershipUnknown = 0
 
         while (scanned < maxCandidates && translationAttempts < maxTranslationAttempts) {
             currentCoroutineContext().ensureActive()
@@ -575,10 +576,13 @@ class ReiAnixAniListIntegrationService(
                     val anilistId = row.anilistId?.takeIf {
                         it in 1L..Int.MAX_VALUE.toLong()
                     }
+                    val ownership = synopsisOwnershipStatus(row)
                     if (row.anilistId != null && anilistId == null) {
                         outcome = "invalid_association"
-                    } else if (hasManuallyOwnedSynopsis(row)) {
+                    } else if (ownership == "manual") {
                         outcome = "manual"
+                    } else if (ownership == "unknown") {
+                        outcome = "ownership_unknown"
                     } else {
                         val originalRaw = row.descriptionOriginal
                         val displayRaw = row.description
@@ -708,6 +712,11 @@ class ReiAnixAniListIntegrationService(
                     }
                     "already_valid" -> alreadyValid++
                     "manual" -> manualSkipped++
+                    "ownership_unknown" -> {
+                        ownershipUnknown++
+                        pending++
+                        settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "true")
+                    }
                     "unknown_source_language", "invalid_association" -> {
                         failed++
                         pending++
@@ -753,6 +762,7 @@ class ReiAnixAniListIntegrationService(
                 " staleDisplaysCleared=" + cleared +
                 " conflicts=" + conflicts +
                 " manualSkipped=" + manualSkipped +
+                " ownershipUnknown=" + ownershipUnknown +
                 " cursor=" + cursor,
         )
         return SynopsisRecoveryBatchResult(
@@ -766,21 +776,25 @@ class ReiAnixAniListIntegrationService(
         )
     }
 
-    private fun hasManuallyOwnedSynopsis(record: ReiAnixAnimeRecord): Boolean {
+    /**
+     * null = known automatic ownership; manual = protected synopsis; unknown = fail
+     * closed until the field-ownership record is repaired by the canonical editor.
+     */
+    private fun synopsisOwnershipStatus(record: ReiAnixAnimeRecord): String? {
         if (
             record.metadataSource.equals("manual", ignoreCase = true) ||
             record.metadataStatus.equals("manual", ignoreCase = true)
-        ) return true
-        val raw = record.metadataManualFieldsJson?.trim().orEmpty()
-        if (raw.isBlank()) return false
+        ) return "manual"
+        val raw = record.metadataManualFieldsJson?.trim()
+        if (raw.isNullOrBlank()) return "unknown"
         return try {
             val fields = JSONArray(raw)
-            (0 until fields.length()).any {
+            if ((0 until fields.length()).any {
                 fields.optString(it).trim().equals("description", ignoreCase = true)
-            }
+            }) "manual" else null
         } catch (_: Exception) {
-            // Do not overwrite an anime if ownership metadata cannot be read safely.
-            true
+            // Corrupt ownership metadata requires intervention; never overwrite blindly.
+            "unknown"
         }
     }
 
