@@ -24,6 +24,7 @@ import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixManualDiagnostics
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -893,6 +894,11 @@ class MainActivity : ComponentActivity() {
             finishNativeDiagnosticExport(uri)
         }
 
+    private val diagnosticImportLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            finishNativeDiagnosticLogImport(uri)
+        }
+
     private fun cancelSafPickerWatchdog() {
         safPickerWatchdog?.let { safPickerWatchdogHandler.removeCallbacks(it) }
         safPickerWatchdog = null
@@ -1378,6 +1384,10 @@ class MainActivity : ComponentActivity() {
         val nativeActions = setOf(
             "settings_export", "settings_import", "backup_create", "backup_restore",
             "backup_recovery_restore", "backup_recovery_restore_local", "backup_recovery_snapshot", "backup_integrity", "backup_reconcile", "diagnostic_export",
+            "diagnostic_run_general", "diagnostic_run_system", "diagnostic_run_logs",
+            "diagnostic_run_storage", "diagnostic_run_scanner", "diagnostic_run_sqlite",
+            "diagnostic_run_thumbnails", "diagnostic_run_bridge", "diagnostic_run_performance",
+            "diagnostic_import_logcat", "diagnostic_clear", "diagnostic_cancel",
         )
         if (action == null || action !in nativeActions) return
 
@@ -1390,6 +1400,17 @@ class MainActivity : ComponentActivity() {
             Log.w(tag, "SETTINGS_NATIVE_ACTION_REJECTED reason=invalid_request_id action=" + action)
             return
         }
+        if (action == "diagnostic_cancel") {
+            // Cancellation must remain available while a long manual diagnostic owns the file-operation slot.
+            ReiAnixManualDiagnostics.requestCancellation()
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(
+                    requestId, action, "SUCCESS", "SUCCESS",
+                    message = "Cancelamento solicitado; a coleta preservará as categorias já concluídas.",
+                )
+            }
+            return
+        }
         // Only actions required to inspect or recover data remain available in
         // Recovery Mode. In particular, normal restore/reconcile/import paths are
         // unavailable while SQLite health is unresolved.
@@ -1399,6 +1420,10 @@ class MainActivity : ComponentActivity() {
             "backup_recovery_restore_local",
             "backup_recovery_snapshot",
             "diagnostic_export",
+            "diagnostic_run_general", "diagnostic_run_system", "diagnostic_run_logs",
+            "diagnostic_run_storage", "diagnostic_run_scanner", "diagnostic_run_sqlite",
+            "diagnostic_run_thumbnails", "diagnostic_run_bridge", "diagnostic_run_performance",
+            "diagnostic_import_logcat", "diagnostic_clear", "diagnostic_cancel",
         )
         if (
             appDependencies.bootstrap.state.value.recoveryRequired &&
@@ -1459,6 +1484,17 @@ class MainActivity : ComponentActivity() {
                         "diagnostic_export" -> {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
                             diagnosticExportLauncher.launch("reiflix-diagnostic-" + stamp + ".json")
+                        }
+                        "diagnostic_import_logcat" -> diagnosticImportLauncher.launch(
+                            arrayOf("text/plain", "application/octet-stream", "*/*"),
+                        )
+                        "diagnostic_run_general", "diagnostic_run_system", "diagnostic_run_logs",
+                        "diagnostic_run_storage", "diagnostic_run_scanner", "diagnostic_run_sqlite",
+                        "diagnostic_run_thumbnails", "diagnostic_run_bridge", "diagnostic_run_performance",
+                        "diagnostic_clear" -> {
+                            pendingSettingsFileAction = null
+                            pendingSettingsFileRequestId = null
+                            runNativeSettingsMaintenanceAction(action, requestId)
                         }
                         "backup_integrity", "backup_reconcile", "backup_recovery_snapshot" -> {
                             pendingSettingsFileAction = null
@@ -2000,6 +2036,90 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun finishNativeDiagnosticLogImport(uri: Uri?) {
+        val action = pendingSettingsFileAction
+        val requestId = pendingSettingsFileRequestId
+        pendingSettingsFileAction = null
+        pendingSettingsFileRequestId = null
+        if (action != "diagnostic_import_logcat" || requestId.isNullOrBlank()) return
+        if (uri == null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(
+                    requestId, action, "CANCELLED", "CANCELLED",
+                    message = "Importação de Logcat cancelada.",
+                )
+            }
+            return
+        }
+        if (settingsFileProcessing) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                writeSettingsFileActionResult(
+                    requestId, action, "ERROR", "ERROR",
+                    error = "Outra operação de arquivo está em andamento.",
+                )
+            }
+            return
+        }
+        settingsFileProcessing = true
+        lifecycleScope.launch {
+            try {
+                val rawLogcat = withContext(Dispatchers.IO) {
+                    val input = contentResolver.openInputStream(uri)
+                        ?: throw IllegalStateException("O Android não abriu o log selecionado.")
+                    input.use { stream ->
+                        val output = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        while (true) {
+                            val count = stream.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) continue
+                            total += count
+                            require(total <= 5 * 1024 * 1024) {
+                                "O arquivo de Logcat excede o limite permitido de 5 MiB."
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                        output.toString(Charsets.UTF_8.name())
+                    }
+                }
+                val summary = withContext(Dispatchers.IO) {
+                    ReiAnixManualDiagnostics.importLogcat(applicationContext, rawLogcat)
+                }
+                withContext(Dispatchers.IO) {
+                    val partial = summary.optString("status") == "PARTIAL"
+                    writeSettingsFileActionResult(
+                        requestId, action, "SUCCESS", "SUCCESS",
+                        message = if (partial) {
+                            "Logcat importado parcialmente: nenhuma linha relevante foi encontrada; veja as instruções ADB no relatório."
+                        } else {
+                            "Logcat importado; linhas relevantes: " + summary.optInt("matching_lines") + "."
+                        },
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "CANCELLED", "CANCELLED",
+                        error = "A importação do Logcat foi cancelada.",
+                    )
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "NATIVE_DIAGNOSTIC_LOGCAT_IMPORT_FAILED requestId=" + requestId, error)
+                withContext(Dispatchers.IO) {
+                    writeSettingsFileActionResult(
+                        requestId, action, "ERROR", "ERROR",
+                        error = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Não foi possível importar o Logcat.",
+                    )
+                }
+            } finally {
+                settingsFileProcessing = false
+            }
+        }
+    }
+
     private fun runNativeSettingsMaintenanceAction(action: String, requestId: String) {
         settingsFileProcessing = true
         lifecycleScope.launch {
@@ -2007,8 +2127,39 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(requestId, action, "RUNNING", "RUNNING", message = "Executando verificação nativa.")
                 }
-                when (action) {
-                    "backup_integrity" -> {
+                when {
+                    action.startsWith("diagnostic_run_") -> {
+                        val category = action.removePrefix("diagnostic_run_")
+                        val summary = withContext(Dispatchers.IO) {
+                            ReiAnixManualDiagnostics.run(applicationContext, category)
+                        }
+                        val diagnosticStatus = summary.optString("status", "FAILED")
+                        val categoriesExecuted = summary.optJSONArray("categories_executed")?.length() ?: 0
+                        val message = when (diagnosticStatus) {
+                            "COMPLETED" -> "Diagnóstico concluído. Categorias executadas: " + categoriesExecuted + "."
+                            "PARTIAL" -> "Diagnóstico concluído parcialmente. Categorias concluídas: " + categoriesExecuted + ". Resultados parciais foram preservados."
+                            "CANCELLED" -> "Diagnóstico cancelado. Os resultados das categorias concluídas foram preservados."
+                            else -> "O diagnóstico falhou. Consulte os resultados e tente novamente."
+                        }
+                        withContext(Dispatchers.IO) {
+                            writeSettingsFileActionResult(
+                                requestId, action,
+                                if (diagnosticStatus == "FAILED") "ERROR" else if (diagnosticStatus == "CANCELLED") "CANCELLED" else "SUCCESS",
+                                if (diagnosticStatus == "FAILED") "ERROR" else if (diagnosticStatus == "CANCELLED") "CANCELLED" else "SUCCESS",
+                                message = message,
+                            )
+                        }
+                    }
+                    action == "diagnostic_clear" -> {
+                        withContext(Dispatchers.IO) { ReiAnixManualDiagnostics.clear(applicationContext) }
+                        withContext(Dispatchers.IO) {
+                            writeSettingsFileActionResult(
+                                requestId, action, "SUCCESS", "SUCCESS",
+                                message = "Resultados e histórico de diagnóstico removidos.",
+                            )
+                        }
+                    }
+                    action == "backup_integrity" -> {
                         val report = withContext(Dispatchers.IO) { ReiAnixBackupService(applicationContext).integrityReport() }
                         if (!report.healthy) {
                             throw IllegalStateException(report.error ?: "O banco falhou na verificação de integridade.")
