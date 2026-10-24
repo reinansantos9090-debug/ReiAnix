@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.os.Build
+import android.os.CancellationSignal
 import android.os.Debug
 import android.os.Environment
 import android.os.Process
@@ -24,6 +25,7 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Runs only when an explicit diagnostic action is sent from Settings.
@@ -38,13 +40,15 @@ object ReiAnixManualDiagnostics {
     private const val LOG_LIMIT = 300
     private const val ADB_INSTRUCTIONS =
         "Para obter logs mais completos, conecte o aparelho por USB com Depuração USB ativa e execute: " +
-            "adb devices; adb logcat -c; reproduza o problema; adb logcat -d -v threadtime > reianix-logcat.txt. " +
-            "Depois, use Importar logcat (ADB) e selecione o TXT. O arquivo importado será filtrado e sanitizado."
+            "Execute adb devices e depois adb logcat -v threadtime > reianix-logcat.txt; reproduza o problema e pare com Ctrl+C. " +
+            "Depois, use Importar logcat (ADB) e selecione o TXT. O arquivo importado será filtrado e sanitizado; não é necessário limpar os logs existentes."
 
     private val cancellationRequested = AtomicBoolean(false)
 
     @Volatile
     private var activeLogcatProcess: java.lang.Process? = null
+
+    private val activeSqliteCancellationSignal = AtomicReference<CancellationSignal?>(null)
 
     private val generalCategories = listOf(
         "system", "logs", "storage", "scanner", "sqlite", "thumbnails", "bridge", "performance",
@@ -64,6 +68,7 @@ object ReiAnixManualDiagnostics {
     fun requestCancellation() {
         cancellationRequested.set(true)
         runCatching { activeLogcatProcess?.destroy() }
+        runCatching { activeSqliteCancellationSignal.getAndSet(null)?.cancel() }
     }
 
     fun run(context: Context, requestedCategory: String): JSONObject {
@@ -356,18 +361,20 @@ object ReiAnixManualDiagnostics {
             return JSONObject().put("available", false).put("status_detail", "canonical_database_missing")
                 .put("database_exists", false)
         }
+        val cancellationSignal = CancellationSignal()
+        activeSqliteCancellationSignal.set(cancellationSignal)
         return try {
             SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
                 val quickCheck = JSONArray()
-                db.rawQuery("PRAGMA quick_check", null).use { cursor ->
+                db.rawQuery("PRAGMA quick_check", null, cancellationSignal).use { cursor ->
                     while (cursor.moveToNext() && quickCheck.length() < 20) quickCheck.put(cursor.getString(0))
                 }
                 var foreignKeyViolations = 0
-                db.rawQuery("PRAGMA foreign_key_check", null).use { cursor ->
+                db.rawQuery("PRAGMA foreign_key_check", null, cancellationSignal).use { cursor ->
                     while (cursor.moveToNext()) foreignKeyViolations++
                 }
                 val tables = mutableSetOf<String>()
-                db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { cursor ->
+                db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null, cancellationSignal).use { cursor ->
                     while (cursor.moveToNext()) tables += cursor.getString(0)
                 }
                 val counts = JSONObject()
@@ -399,6 +406,9 @@ object ReiAnixManualDiagnostics {
                     .put("mutations_performed", false)
             }
         } catch (error: Exception) {
+            if (cancellationRequested.get()) {
+                throw java.util.concurrent.CancellationException("SQLite diagnostic cancelled by user.")
+            }
             ReiAnixDiagnosticTimeline.record(
                 name = "MANUAL_DIAGNOSTIC_SQLITE_FAILED",
                 severity = "ERROR",
@@ -407,6 +417,8 @@ object ReiAnixManualDiagnostics {
                 error = error,
             )
             JSONObject().put("available", false).put("error_type", error.javaClass.simpleName)
+        } finally {
+            activeSqliteCancellationSignal.compareAndSet(cancellationSignal, null)
         }
     }
 
@@ -506,6 +518,10 @@ object ReiAnixManualDiagnostics {
             }
             reader.join(1000)
             val rawLines = outputLines.toList()
+            if (process.exitValue() != 0) {
+                return logcatUnavailable("logcat_exit_code_" + process.exitValue())
+            }
+            if (rawLines.isEmpty()) return logcatUnavailable("logcat_no_output_or_access_restricted")
             val permissionDenied = rawLines.any {
                 it.contains("permission denied", ignoreCase = true) ||
                     it.contains("access denied", ignoreCase = true) ||
