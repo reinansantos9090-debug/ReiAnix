@@ -11,6 +11,8 @@ class ReiAnixSettingsContractTest {
     @Test fun knownDefaultsAndTypesMatchLegacyContract() {
         assertEquals("dark", ReiAnixSettingsContract.defaultFor("appearance.theme"))
         assertEquals("true", ReiAnixSettingsContract.defaultFor("player.autoplay_next"))
+        assertEquals("true", ReiAnixSettingsContract.defaultFor("gestures.double_tap"))
+        assertEquals("false", ReiAnixSettingsContract.defaultFor("gestures.horizontal_seek"))
         assertEquals(ReiAnixSettingKind.LANGUAGE, ReiAnixSettingsContract.definitions["audio.preferred_language"]?.kind)
         assertNull(ReiAnixSettingsContract.defaultFor("future.legacy_key"))
     }

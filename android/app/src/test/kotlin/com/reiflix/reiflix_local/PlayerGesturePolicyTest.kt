@@ -1,6 +1,8 @@
 package com.reiflix.reiflix_local
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlayerGesturePolicyTest {
@@ -112,6 +114,14 @@ class PlayerGesturePolicyTest {
         assertEquals(1f, NativePlayerActivity.PlayerGesturePolicy.normalizePlaybackSpeed(3f), 0.0001f)
         assertEquals(1.5f, NativePlayerActivity.PlayerGesturePolicy.normalizePlaybackSpeed(1.5f), 0.0001f)
         assertEquals(1.75f, NativePlayerActivity.PlayerGesturePolicy.normalizePlaybackSpeed(1.75f), 0.0001f)
+    }
+
+    @Test
+    fun horizontalSeekRequiresEnabledPreferenceAndPlayableMedia() {
+        assertFalse(NativePlayerActivity.PlayerGesturePolicy.canSeekHorizontally(false, 100_000L, false))
+        assertTrue(NativePlayerActivity.PlayerGesturePolicy.canSeekHorizontally(true, 100_000L, false))
+        assertFalse(NativePlayerActivity.PlayerGesturePolicy.canSeekHorizontally(true, 0L, false))
+        assertFalse(NativePlayerActivity.PlayerGesturePolicy.canSeekHorizontally(true, 100_000L, true))
     }
 
     @Test

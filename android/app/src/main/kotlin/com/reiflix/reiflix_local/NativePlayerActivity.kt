@@ -170,6 +170,7 @@ class NativePlayerActivity : ComponentActivity() {
     private var gestureSafeBottom = 0
     private var volumeGesturesEnabled = false
     private var brightnessGesturesEnabled = false
+    private var horizontalSeekEnabled = false
     private var doubleTapEnabled = true
     private var longPressEnabled = false
     private var windowBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -782,7 +783,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         localMetadataStore = PlayerLocalMetadataStore(this)
         volumeGesturesEnabled = intent.getBooleanExtra("setting_gestures_volume", false)
         brightnessGesturesEnabled = intent.getBooleanExtra("setting_gestures_brightness", false)
-        doubleTapEnabled = intent.getBooleanExtra("setting_gestures_double_tap", false)
+        horizontalSeekEnabled = intent.getBooleanExtra("setting_gestures_horizontal_seek", false)
+        doubleTapEnabled = intent.getBooleanExtra("setting_gestures_double_tap", true)
         longPressEnabled = intent.getBooleanExtra("setting_gestures_long_press", false)
         immersiveSetting = intent.getStringExtra("setting_player_immersive") ?: "always"
         val interactionProfile = DeviceInteractionProfile.detect(this)
@@ -1155,6 +1157,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         autoplayNext = newIntent.getBooleanExtra("autoplay", autoplayNext)
         volumeGesturesEnabled = newIntent.getBooleanExtra("setting_gestures_volume", volumeGesturesEnabled)
         brightnessGesturesEnabled = newIntent.getBooleanExtra("setting_gestures_brightness", brightnessGesturesEnabled)
+        horizontalSeekEnabled = newIntent.getBooleanExtra("setting_gestures_horizontal_seek", horizontalSeekEnabled)
         doubleTapEnabled = newIntent.getBooleanExtra("setting_gestures_double_tap", doubleTapEnabled)
         longPressEnabled = newIntent.getBooleanExtra("setting_gestures_long_press", longPressEnabled)
         val incomingLockMode = newIntent.getBooleanExtra("setting_player_lock_mode", locked)
@@ -1198,6 +1201,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
             text = aspectModeLabel
             isSelected = aspectModeLabel == "Preencher"
         }
+        findViewByTag<TextView>("reiflix_gesture_horizontal_seek")?.apply {
+            text = gestureSettingLabel("Gestos", horizontalSeekEnabled)
+            isSelected = horizontalSeekEnabled
+        }
+        findViewByTag<TextView>("reiflix_gesture_double_tap")?.apply {
+            text = gestureSettingLabel("Double tap", doubleTapEnabled)
+            isSelected = doubleTapEnabled
+        }
 
         findViewByTag<TextView>("reiflix_player_title")?.text =
             newIntent.getStringExtra("title") ?: "Episódio"
@@ -1238,6 +1249,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("player.pip", pipEnabled)
             .put("gestures.volume", volumeGesturesEnabled)
             .put("gestures.brightness", brightnessGesturesEnabled)
+            .put("gestures.horizontal_seek", horizontalSeekEnabled)
             .put("gestures.double_tap", doubleTapEnabled)
             .put("gestures.long_press", longPressEnabled)
             .put("audio.preferred_language", preferredAudioLanguage)
@@ -2826,9 +2838,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
             tag = "reiflix_speed_button"
             contentDescription = "Velocidade de reprodução"
         }
-        val aspect = actionButton("Aspecto", 92) { button -> showAspectSelection(button) }.apply {
-            text = aspectModeLabel
-            tag = "reiflix_aspect_button"
+        val horizontalSeekButton = actionButton(gestureSettingLabel("Gestos", horizontalSeekEnabled), 92) { button ->
+            horizontalSeekEnabled = !horizontalSeekEnabled
+            persistCanonicalPlayerSetting("gestures.horizontal_seek", horizontalSeekEnabled.toString())
+            button.text = gestureSettingLabel("Gestos", horizontalSeekEnabled)
+            button.isSelected = horizontalSeekEnabled
+            showFeedback(if (horizontalSeekEnabled) "Gestos horizontais ligados" else "Gestos horizontais desligados")
+            touchControls()
+        }.apply {
+            tag = "reiflix_gesture_horizontal_seek"
+            contentDescription = "Ativar ou desativar gestos horizontais de busca temporal"
+            isSelected = horizontalSeekEnabled
         }
         val markers = actionButton("Marcadores", 92) {
             showLocalMetadataEditor()
@@ -2838,7 +2858,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         addMoreRow(previousEpisode, nextEpisode)
         addMoreRow(audio, subtitle)
-        addMoreRow(speed, aspect)
+        addMoreRow(speed, horizontalSeekButton)
         addMoreRow(markers)
         addMoreRow(actionButton("Reiniciar", 92) {
             if (::player.isInitialized) {
@@ -2877,11 +2897,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
             doubleTapEnabled = !doubleTapEnabled
             persistCanonicalPlayerSetting("gestures.double_tap", doubleTapEnabled.toString())
             button.text = gestureSettingLabel("Double tap", doubleTapEnabled)
+            button.isSelected = doubleTapEnabled
             showFeedback(if (doubleTapEnabled) "Double tap ligado" else "Double tap desligado")
             touchControls()
         }.apply {
             tag = "reiflix_gesture_double_tap"
             contentDescription = "Configurar double tap"
+            isSelected = doubleTapEnabled
         }
         val longPressButton = actionButton(gestureSettingLabel("Pressão", longPressEnabled), 120) { button ->
             longPressEnabled = !longPressEnabled
@@ -4995,6 +5017,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     "player.pip" to "setting_player_pip",
                     "gestures.volume" to "setting_gestures_volume",
                     "gestures.brightness" to "setting_gestures_brightness",
+                    "gestures.horizontal_seek" to "setting_gestures_horizontal_seek",
                     "gestures.double_tap" to "setting_gestures_double_tap",
                     "gestures.long_press" to "setting_gestures_long_press",
                     "audio.preferred_language" to "setting_audio_preferred_language",
@@ -5955,6 +5978,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         PAN,
         VERTICAL,
         HORIZONTAL_SEEK,
+        HORIZONTAL_IGNORED,
     }
 
     private inner class GestureLayer(context: Context) : View(context) {
@@ -6272,12 +6296,26 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         PlayerGesturePolicy.Direction.HORIZONTAL -> {
-                            if (!::player.isInitialized || player.duration <= 0L || episodeChangePending) {
+                            val durationMs = if (::player.isInitialized) player.duration else 0L
+                            if (!PlayerGesturePolicy.canSeekHorizontally(
+                                    enabled = horizontalSeekEnabled,
+                                    durationMs = durationMs,
+                                    episodeChangePending = episodeChangePending,
+                                )
+                            ) {
                                 gestureConsumed = true
-                                gestureMode = GestureMode.IDLE
-                                cancelGestureDetector(event)
-                                restoreLongPressSpeed()
-                                logPlayer("GESTURE_HORIZONTAL_SEEK_IGNORED reason=duration_or_transition requestId=" + requestId.ifEmpty { "-" })
+                                if (!horizontalSeekEnabled) {
+                                    gestureMode = GestureMode.HORIZONTAL_IGNORED
+                                    cancelGestureDetector(event)
+                                    restoreLongPressSpeed()
+                                    touchControls()
+                                    logPlayer("GESTURE_HORIZONTAL_SEEK_IGNORED reason=disabled requestId=" + requestId.ifEmpty { "-" })
+                                } else {
+                                    gestureMode = GestureMode.IDLE
+                                    cancelGestureDetector(event)
+                                    restoreLongPressSpeed()
+                                    logPlayer("GESTURE_HORIZONTAL_SEEK_IGNORED reason=duration_or_transition requestId=" + requestId.ifEmpty { "-" })
+                                }
                             } else {
                                 gestureConsumed = true
                                 gestureMode = GestureMode.HORIZONTAL_SEEK
@@ -6316,6 +6354,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         GestureMode.DOUBLE_TAP -> {
+                            resetTransientState()
+                            return true
+                        }
+
+                        GestureMode.HORIZONTAL_IGNORED -> {
+                            logPlayer("GESTURE_END type=horizontal_seek_ignored requestId=" + requestId.ifEmpty { "-" })
                             resetTransientState()
                             return true
                         }
@@ -6775,6 +6819,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             return target.coerceIn(0L, durationMs)
         }
+
+        fun canSeekHorizontally(
+            enabled: Boolean,
+            durationMs: Long,
+            episodeChangePending: Boolean,
+        ): Boolean = enabled && durationMs > 0L && !episodeChangePending
 
         fun horizontalSeekTarget(
             startPositionMs: Long,

@@ -982,12 +982,21 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("gestures.brightness", it.toString()) },
                         )
                     }
+                    item(key = "setting:gestures.horizontal_seek") {
+                        BooleanSettingRow(
+                            keyName = "gestures.horizontal_seek",
+                            title = "Gestos horizontais",
+                            description = "Permite avançar ou retroceder no vídeo deslizando horizontalmente.",
+                            checked = state.settings["gestures.horizontal_seek"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.horizontal_seek", it.toString()) },
+                        )
+                    }
                     item(key = "setting:gestures.double_tap") {
                         BooleanSettingRow(
                             keyName = "gestures.double_tap",
                             title = "Double tap para seek",
                             description = "Controla o double tap existente.",
-                            checked = state.settings["gestures.double_tap"] == "true",
+                            checked = state.settings["gestures.double_tap"]?.toBooleanStrictOrNull() ?: true,
                             onCheckedChange = { onUpdateSetting("gestures.double_tap", it.toString()) },
                         )
                     }

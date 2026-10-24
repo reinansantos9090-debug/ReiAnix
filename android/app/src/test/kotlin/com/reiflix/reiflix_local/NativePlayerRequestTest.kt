@@ -56,6 +56,8 @@ class NativePlayerRequestTest {
         assertEquals(1f, request.defaultSpeed)
         assertEquals(300, request.autoHideSeconds)
         assertEquals(1L, request.doubleTapSeekSeconds)
+        assertTrue(request.gesturesDoubleTap)
+        assertFalse(request.gesturesHorizontalSeek)
         assertEquals(1f, request.longPressSpeed)
         assertEquals(0, request.maxVideoFrameRate)
         assertEquals(0.5f, request.audioSubtitleScale)
@@ -92,6 +94,7 @@ class NativePlayerRequestTest {
                 "setting_audio_subtitle_embedded_style" to "true",
                 "setting_gestures_volume" to "true",
                 "setting_gestures_brightness" to "true",
+                "setting_gestures_horizontal_seek" to "true",
                 "setting_gestures_double_tap" to "true",
                 "setting_gestures_long_press" to "true",
                 "setting_player_max_video_resolution" to "1080p",
@@ -126,11 +129,25 @@ class NativePlayerRequestTest {
         assertTrue(request.audioSubtitleEmbeddedStyle)
         assertTrue(request.gesturesVolume)
         assertTrue(request.gesturesBrightness)
+        assertTrue(request.gesturesHorizontalSeek)
         assertTrue(request.gesturesDoubleTap)
         assertTrue(request.gesturesLongPress)
         assertEquals("1080p", request.maxVideoResolution)
         assertEquals(60, request.maxVideoFrameRate)
         assertEquals(6, request.maxAudioChannels)
+    }
+
+    @Test
+    fun explicitGesturePreferencesRemainIndependent() {
+        val request = NativePlayerRequest.fromQueryParameters(
+            mapOf(
+                "setting_gestures_horizontal_seek" to "true",
+                "setting_gestures_double_tap" to "false",
+            )::get,
+        )
+
+        assertTrue(request.gesturesHorizontalSeek)
+        assertFalse(request.gesturesDoubleTap)
     }
 
     @Test

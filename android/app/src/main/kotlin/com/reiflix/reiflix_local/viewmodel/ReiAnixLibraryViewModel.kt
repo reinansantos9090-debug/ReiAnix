@@ -2236,6 +2236,7 @@ class ReiAnixLibraryViewModel(
                     "player.max_audio_channels" to "setting_player_max_audio_channels",
                     "gestures.volume" to "setting_gestures_volume",
                     "gestures.brightness" to "setting_gestures_brightness",
+                    "gestures.horizontal_seek" to "setting_gestures_horizontal_seek",
                     "gestures.double_tap" to "setting_gestures_double_tap",
                     "gestures.long_press" to "setting_gestures_long_press",
                     "audio.preferred_language" to "setting_audio_preferred_language",
