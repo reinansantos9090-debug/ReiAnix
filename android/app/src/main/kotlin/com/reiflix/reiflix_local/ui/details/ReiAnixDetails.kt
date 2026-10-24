@@ -158,6 +158,7 @@ fun ReiAnixDetailsRoute(
     LaunchedEffect(canonicalId, state.status) {
         if (state.status == ReiAnixDetailsLoadStatus.READY) {
             aniListViewModel.autoMatchAniList(canonicalId)
+            viewModel.requestMissingEpisodeThumbnails(canonicalId)
         }
     }
 
