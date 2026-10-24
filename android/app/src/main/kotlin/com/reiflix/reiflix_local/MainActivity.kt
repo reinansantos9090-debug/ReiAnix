@@ -1415,6 +1415,16 @@ class MainActivity : ComponentActivity() {
             Log.w(tag, "SETTINGS_NATIVE_ACTION_REJECTED reason=invalid_request_id action=" + action)
             return
         }
+        ReiAnixDiagnosticTimeline.record(
+            name = "SETTINGS_BRIDGE_ACTION_RECEIVED",
+            source = "MainActivity",
+            result = "RECEIVED",
+            requestId = requestId,
+            context = mapOf(
+                "action" to action,
+                "file_operation_busy" to (pendingSettingsFileAction != null || settingsFileProcessing),
+            ),
+        )
         if (action == "diagnostic_cancel") {
             // Cancellation must remain available while a long manual diagnostic owns the file-operation slot.
             ReiAnixManualDiagnostics.requestCancellation()
@@ -2282,6 +2292,24 @@ class MainActivity : ComponentActivity() {
                 temporary.delete()
                 throw IllegalStateException("Could not atomically publish the Settings result.")
             }
+            ReiAnixDiagnosticTimeline.record(
+                name = "SETTINGS_BRIDGE_RESULT",
+                severity = when (operationState.uppercase(Locale.ROOT)) {
+                    "ERROR", "FAILED" -> "ERROR"
+                    "CANCELLED" -> "WARN"
+                    else -> "INFO"
+                },
+                source = "MainActivity",
+                result = operationState,
+                requestId = requestId,
+                context = mapOf(
+                    "action" to action,
+                    "status" to status,
+                    "message_present" to !message.isNullOrBlank(),
+                    "error_present" to !error.isNullOrBlank(),
+                ),
+                error = error?.takeIf { it.isNotBlank() }?.let(::IllegalStateException),
+            )
         } catch (exception: Exception) {
             Log.e(tag, "SETTINGS_FILE_RESULT_WRITE_FAILED requestId=" + requestId + " action=" + action, exception)
         }
@@ -2825,6 +2853,43 @@ class MainActivity : ComponentActivity() {
         playerSessionId: String? = null,
         transitionDirection: String? = null,
     ) {
+        val normalizedEvent = event.uppercase(Locale.ROOT)
+        if (
+            normalizedEvent.contains("COMMAND") ||
+            normalizedEvent.contains("REQUEST") ||
+            normalizedEvent.contains("BRIDGE") ||
+            normalizedEvent.contains("MAILBOX") ||
+            normalizedEvent.contains("PENDING") ||
+            normalizedEvent.contains("DISCARDED") ||
+            normalizedEvent.contains("DROPPED") ||
+            normalizedEvent.contains("FAILED") ||
+            normalizedEvent.contains("ERROR")
+        ) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_BRIDGE_" + normalizedEvent,
+                severity = when {
+                    state?.contains("FAILED", ignoreCase = true) == true ||
+                        result?.contains("FAILED", ignoreCase = true) == true ||
+                        normalizedEvent.contains("FAILED") ||
+                        normalizedEvent.contains("ERROR") -> "ERROR"
+                    normalizedEvent.contains("DUPLICATE") ||
+                        normalizedEvent.contains("DROPPED") ||
+                        normalizedEvent.contains("PENDING") -> "WARN"
+                    else -> "INFO"
+                },
+                source = "MainActivity",
+                result = result ?: state,
+                requestId = requestId,
+                error = error?.takeIf { it.isNotBlank() }?.let(::IllegalStateException),
+                context = mapOf(
+                    "action" to action,
+                    "state" to state,
+                    "protocol_version" to protocolVersion,
+                    "transition_direction" to transitionDirection,
+                    "parameter_names" to parameterNames,
+                ),
+            )
+        }
         val payload = JSONObject()
             .put("event", event)
             .put("requestId", requestId ?: "")
