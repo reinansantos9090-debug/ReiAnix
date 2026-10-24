@@ -56,6 +56,18 @@ class ReiAnixSettingsRepository(
             "backup_integrity",
             "backup_reconcile",
             "diagnostic_export",
+            "diagnostic_run_general",
+            "diagnostic_run_system",
+            "diagnostic_run_logs",
+            "diagnostic_run_storage",
+            "diagnostic_run_scanner",
+            "diagnostic_run_sqlite",
+            "diagnostic_run_thumbnails",
+            "diagnostic_run_bridge",
+            "diagnostic_run_performance",
+            "diagnostic_import_logcat",
+            "diagnostic_clear",
+            "diagnostic_cancel",
         )
 
         /**
