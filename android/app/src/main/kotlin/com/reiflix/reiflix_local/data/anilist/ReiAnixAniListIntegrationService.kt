@@ -344,6 +344,22 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
+     * Localizes a remote-only synopsis for presentation using the same canonical
+     * localizer/cache as persisted metadata. It never returns the source as a
+     * successful translation unless the source itself validates as Portuguese.
+     */
+    suspend fun localizeSynopsisForPresentation(description: String?): String? {
+        val localizer = descriptionLocalizer ?: return null
+        val source = localizer.normalizeDescription(description)
+        if (source.isBlank()) return null
+        val cached = localizer.getCachedDescriptionPtBr(source)
+            ?.takeIf { localizer.isValidPtBrResult(source, it) }
+        if (cached != null) return cached
+        return localizer.localizeToPtBr(source)
+            ?.takeIf { localizer.isValidPtBrResult(source, it) }
+    }
+
+    /**
      * Incrementally repairs missing or untranslated synopses in the canonical SQLite
      * catalog. A stable-ID cursor stored in the existing preferences table lets the
      * work resume across process restarts without schema changes. Each pass is bounded
