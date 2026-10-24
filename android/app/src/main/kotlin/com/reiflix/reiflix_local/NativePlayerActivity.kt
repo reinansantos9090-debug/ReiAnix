@@ -1662,6 +1662,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 firstFrameRenderedForTesting = true
                 cancelFirstFrameDiagnostics("first_frame")
                 if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
+                syncComposePlayerUiState()
                 firstFrameRenderedAtMs = System.currentTimeMillis()
                 PerformanceDiagnostics.markPlayer(this@NativePlayerActivity, "first_frame",
                     requestId, commandCreatedAtMs, reused = false)
@@ -1979,15 +1980,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
                 Player.STATE_BUFFERING -> {
                     updatePlayPauseButton()
-                    if (::preparingIndicator.isInitialized && !errorVisible) {
-                        // The native spinner handles preparation until the first frame.
-                        // After playback has rendered, Compose owns the single buffering indicator.
-                        preparingIndicator.visibility = if (firstFrameRenderedForTesting) {
-                            View.GONE
-                        } else {
-                            View.VISIBLE
-                        }
-                    }
                     if (!errorVisible) scheduleControlsHide()
                 }
                 Player.STATE_ENDED -> {
@@ -3116,6 +3108,30 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (::composeCenterView.isInitialized) composeCenterView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
         if (::composeBottomView.isInitialized) composeBottomView.visibility =
             if (unlockedOverlaysVisible || lockedAffordanceVisible) View.VISIBLE else View.INVISIBLE
+        syncBufferingIndicatorVisibility()
+    }
+
+    /**
+     * Show exactly one spinner for the active buffering state. Compose owns it
+     * while its center controls are visible; the native preparation indicator
+     * takes over when those controls are hidden, locked, or in PiP.
+     */
+    private fun syncBufferingIndicatorVisibility() {
+        if (!::preparingIndicator.isInitialized) return
+        if (errorVisible) {
+            preparingIndicator.visibility = View.GONE
+            return
+        }
+        if (!::player.isInitialized || player.playbackState != Player.STATE_BUFFERING) return
+
+        val composeIndicatorVisible =
+            firstFrameRenderedForTesting &&
+                ::composeCenterView.isInitialized &&
+                composeCenterView.visibility == View.VISIBLE &&
+                controlsVisible &&
+                !locked &&
+                !inPictureInPicture
+        preparingIndicator.visibility = if (composeIndicatorVisible) View.GONE else View.VISIBLE
     }
 
     private fun toggleMorePanel() {
