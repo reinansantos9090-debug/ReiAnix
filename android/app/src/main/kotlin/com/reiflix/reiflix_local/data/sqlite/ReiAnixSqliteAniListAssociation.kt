@@ -33,18 +33,24 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             ).use { cursor ->
                 if (!cursor.moveToFirst()) throw NoSuchElementException("Anime ID does not exist.")
                 val record = cursor.toAnimeRecord()
-                val raw = cursor.optionalString("metadata_manual_fields") ?: "[]"
-                val manualFields = try {
-                    val parsed = JSONArray(raw)
-                    buildSet<String> {
-                        for (index in 0 until parsed.length()) {
-                            val field = parsed.get(index)
-                            if (field !is String) throw IllegalStateException("Manual metadata ownership is invalid.")
-                            add(field as String)
+                val raw = cursor.optionalString("metadata_manual_fields")
+                // A null/blank ownership list is ambiguous: preserve synopsis fields
+                // conservatively instead of assuming that no manual edit exists.
+                val manualFields = if (raw.isNullOrBlank()) {
+                    setOf("description")
+                } else {
+                    try {
+                        val parsed = JSONArray(raw)
+                        buildSet<String> {
+                            for (index in 0 until parsed.length()) {
+                                val field = parsed.get(index)
+                                if (field !is String) throw IllegalStateException("Manual metadata ownership is invalid.")
+                                add(field as String)
+                            }
                         }
+                    } catch (error: JSONException) {
+                        throw IllegalStateException("Manual metadata ownership is unreadable; refusing remote update.", error)
                     }
-                } catch (error: JSONException) {
-                    throw IllegalStateException("Manual metadata ownership is unreadable; refusing remote update.", error)
                 }
                 record to manualFields
             }
