@@ -50,7 +50,7 @@ class ReiAnixAniListDescriptionLocalizer(
         var source = normalizeSourceLanguage(sourceLanguage)
         if (source == "unknown") source = detectDescriptionLanguage(original).first
         if (source == "unknown") return null
-        if (source == "pt") {
+        if (source == "pt" && isPtBrDescription(original)) {
             cacheEntry(
                 cacheKey(original, source),
                 JSONObject()
@@ -123,7 +123,7 @@ class ReiAnixAniListDescriptionLocalizer(
         if (original.isEmpty()) return null
         var source = normalizeSourceLanguage(sourceLanguage)
         if (source == "unknown") source = detectDescriptionLanguage(original).first
-        if (source == "pt") return original
+        if (source == "pt" && isPtBrDescription(original)) return original
         if (source == "unknown") return null
         return cachedTranslation(original, source)
     }
