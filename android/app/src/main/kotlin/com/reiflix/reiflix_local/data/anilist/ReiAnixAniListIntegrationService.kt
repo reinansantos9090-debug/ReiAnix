@@ -418,9 +418,11 @@ class ReiAnixAniListIntegrationService(
                 var usedCache = false
                 var clearedStaleDisplay = false
                 try {
-                    val anilistId = row.anilistId
-                    if (anilistId == null || anilistId !in 1L..Int.MAX_VALUE.toLong()) {
-                        outcome = "no_association"
+                    val anilistId = row.anilistId?.takeIf {
+                        it in 1L..Int.MAX_VALUE.toLong()
+                    }
+                    if (row.anilistId != null && anilistId == null) {
+                        outcome = "invalid_association"
                     } else if (hasManuallyOwnedSynopsis(row)) {
                         outcome = "manual"
                     } else {
@@ -444,7 +446,7 @@ class ReiAnixAniListIntegrationService(
                                 ?: display.takeIf(String::isNotBlank)
 
                             if (source == null) {
-                                if (!isAniListEnabled() ||
+                                if (anilistId == null || !isAniListEnabled() ||
                                     sourceLookups >= MAX_SYNOPSIS_SOURCE_LOOKUPS_PER_RUN
                                 ) {
                                     outcome = "source_unavailable"
@@ -552,7 +554,7 @@ class ReiAnixAniListIntegrationService(
                     }
                     "already_valid" -> alreadyValid++
                     "manual" -> manualSkipped++
-                    "translation_failed", "unknown_source_language", "source_unavailable", "error" -> failed++
+                    "translation_failed", "unknown_source_language", "source_unavailable", "invalid_association", "error" -> failed++
                     "conflict" -> conflicts++
                 }
                 if (clearedStaleDisplay) cleared++
