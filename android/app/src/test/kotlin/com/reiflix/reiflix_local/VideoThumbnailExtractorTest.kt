@@ -27,4 +27,22 @@ class VideoThumbnailExtractorTest {
         assertNotEquals(sameA, differentMtime)
         assertNotEquals(sameA, differentIdentity)
     }
+
+    @Test
+    fun normalizesCanonicalFilePathsAndKeepsContentUris() {
+        val file = VideoThumbnailExtractor.normalizeLocalMediaUri("/storage/emulated/0/Anime/Episode 01.mkv")
+        assertEquals("file", file?.scheme)
+        assertEquals("/storage/emulated/0/Anime/Episode 01.mkv", file?.path)
+
+        val content = VideoThumbnailExtractor.normalizeLocalMediaUri("content://media/external/video/media/71")
+        assertEquals("content", content?.scheme)
+        assertEquals("/external/video/media/71", content?.path)
+    }
+
+    @Test
+    fun rejectsAbsentAndNonLocalEpisodeSources() {
+        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaUri(null))
+        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaUri("  "))
+        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaUri("https://example.invalid/episode.mkv"))
+    }
 }
