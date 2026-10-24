@@ -474,15 +474,20 @@ class ReiAnixSqliteLibraryRepository(
                 } else {
                     try {
                         val parsed = JSONArray(rawManualFields)
-                        buildSet<String> {
-                            for (index in 0 until parsed.length()) {
-                                val field = parsed.get(index)
-                                if (field !is String) {
-                                    throw IllegalStateException(
-                                        "Stored manual metadata ownership contains a non-string field.",
-                                    )
+                        if (parsed.length() == 0) {
+                            // Empty ownership is ambiguous, not proof that description is automatic.
+                            setOf("description")
+                        } else {
+                            buildSet<String> {
+                                for (index in 0 until parsed.length()) {
+                                    val field = parsed.get(index)
+                                    if (field !is String || field.isBlank()) {
+                                        throw IllegalStateException(
+                                            "Stored manual metadata ownership contains an invalid field.",
+                                        )
+                                    }
+                                    add(field)
                                 }
-                                add(field as String)
                             }
                         }
                     } catch (error: JSONException) {
