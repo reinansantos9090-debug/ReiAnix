@@ -11,6 +11,7 @@ on:
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetails.kt"
       - "android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/ui/details/ReiAnixDetailsInstrumentedTest.kt"
       - "android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/storage/VideoThumbnailExtractorInstrumentedTest.kt"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/VideoThumbnailExtractorTest.kt"
       - ".github/workflows/android_instrumented.yml"
 
 concurrency:
