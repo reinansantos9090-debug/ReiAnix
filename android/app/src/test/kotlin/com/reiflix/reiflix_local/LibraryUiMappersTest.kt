@@ -656,6 +656,8 @@ class LibraryUiMappersTest {
         }
 
         val fractionalYear = animeSource(id = 7L).toMutableMap().apply {
+            // Remove the metadata year so the mapper must validate this fallback field.
+            this.remove("meta")
             this["year"] = 2026.5
         }
         assertThrows(IllegalArgumentException::class.java) {
