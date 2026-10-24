@@ -177,6 +177,18 @@ private fun RemoteAniListDetailsContent(
                 color = MaterialTheme.colorScheme.onSurface)
             Text(it, style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } ?: if (anime.descriptionTranslationPending) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Sinopse", style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    "Tradução para português brasileiro pendente. A sinopse será exibida após a validação da tradução.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            Unit
         }
         associatedLocalAnimeIds.singleOrNull()?.let { localAnimeId ->
             ReiAnixPrimaryButton(
