@@ -90,9 +90,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                     values.put("description", translatedDescription)
                 } else if (
                     clearUntranslatedDescriptionIfMatches != null &&
-                    current.description == clearUntranslatedDescriptionIfMatches &&
-                    current.metadataSource != "manual" &&
-                    current.metadataStatus != "manual"
+                    current.description == clearUntranslatedDescriptionIfMatches
                 ) {
                     // Clear only the exact stale presentation value observed by the
                     // translation pipeline. The remote source is retained separately.
