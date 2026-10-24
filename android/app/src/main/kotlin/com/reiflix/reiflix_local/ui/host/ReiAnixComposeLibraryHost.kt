@@ -114,8 +114,8 @@ class ReiAnixComposeLibraryHost(
 
             // Repair existing pending synopses whenever this activity is started.
             // The service runs bounded batches to the end of the current ID sweep,
-            // persists its cursor/state, and applies one cancellable retry at the
-            // translator's existing cooldown boundary when a transient failure remains.
+            // persists its cursor/state, and applies at most two cancellable retries at
+            // the translator's existing cooldown boundary when transient failures remain.
             LaunchedEffect(libraryViewModel) {
                 activity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     libraryViewModel.uiState
