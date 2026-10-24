@@ -30,19 +30,21 @@ class VideoThumbnailExtractorTest {
 
     @Test
     fun normalizesCanonicalFilePathsAndKeepsContentUris() {
-        val file = VideoThumbnailExtractor.normalizeLocalMediaUri("/storage/emulated/0/Anime/Episode 01.mkv")
-        assertEquals("file", file?.scheme)
-        assertEquals("/storage/emulated/0/Anime/Episode 01.mkv", file?.path)
+        val file = VideoThumbnailExtractor.normalizeLocalMediaReference("/storage/emulated/0/Anime/Episode 01.mkv")
+        val fileUri = java.net.URI(file)
+        assertEquals("file", fileUri.scheme)
+        assertEquals("/storage/emulated/0/Anime/Episode 01.mkv", fileUri.path)
 
-        val content = VideoThumbnailExtractor.normalizeLocalMediaUri("content://media/external/video/media/71")
-        assertEquals("content", content?.scheme)
-        assertEquals("/external/video/media/71", content?.path)
+        val content = VideoThumbnailExtractor.normalizeLocalMediaReference("content://media/external/video/media/71")
+        val contentUri = java.net.URI(content)
+        assertEquals("content", contentUri.scheme)
+        assertEquals("/external/video/media/71", contentUri.path)
     }
 
     @Test
     fun rejectsAbsentAndNonLocalEpisodeSources() {
-        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaUri(null))
-        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaUri("  "))
-        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaUri("https://example.invalid/episode.mkv"))
+        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaReference(null))
+        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaReference("  "))
+        assertEquals(null, VideoThumbnailExtractor.normalizeLocalMediaReference("https://example.invalid/episode.mkv"))
     }
 }
