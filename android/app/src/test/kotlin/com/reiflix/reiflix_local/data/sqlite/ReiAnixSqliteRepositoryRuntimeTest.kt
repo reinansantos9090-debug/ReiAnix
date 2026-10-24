@@ -20,6 +20,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
+import com.reiflix.reiflix_local.data.anilist.AniListTranslationHttpResponse
+import com.reiflix.reiflix_local.data.anilist.AniListTranslationTransport
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -920,6 +925,88 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(oldOriginal, updated.descriptionOriginal)
         assertEquals("manual", updated.metadataSource)
         assertEquals("manual", updated.metadataStatus)
+    }
+
+    @Test
+    fun recoveryContinuesAcrossCandidateAndTranslationBudgetsUntilTheEndOfTheSweep() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val first = "The first hero protects a city from danger every day."
+        val second = "The second warrior explores a distant kingdom with unusual friends."
+        val third = "The third pilot discovers a mysterious machine beneath the ocean."
+        repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = first,
+                descriptionOriginal = first,
+            ),
+        )
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            listOf(2L to second, 3L to third).forEach { (id, source) ->
+                connection.execSQL(
+                    """
+                    INSERT INTO anime (
+                        id, lookup_title, title, added_at, metadata_manual_fields,
+                        favorite, user_tags, is_pinned, personal_note, cover_url,
+                        english, metadata_source, metadata_status, description, description_original
+                    ) VALUES (
+                        ?, ?, ?, 1000, '[]', 0, '[]', 0, '',
+                        'https://example.invalid/cover.jpg', ?, 'anilist', 'available', ?, ?
+                    )
+                    """.trimIndent(),
+                    arrayOf(id, "catalog-key-$id", "Anime $id", "English $id", source, source),
+                )
+            }
+        }
+        val translationTransport = FixedSynopsisTranslationTransport(
+            statusCode = 200,
+            translatedText = "A história acompanha um jovem herói que protege seu povo do perigo todos os dias.",
+        )
+        val localizer = ReiAnixAniListDescriptionLocalizer(
+            File(context.cacheDir, "synopsis-recovery-" + System.nanoTime() + ".json"),
+            translationTransport,
+        )
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = settings,
+            descriptionLocalizer = localizer,
+        )
+
+        val translatedCount = service.reconcilePendingSynopsisTranslations(
+            maxCandidates = 1,
+            maxTranslationAttempts = 1,
+            force = true,
+        )
+
+        assertEquals(3, translatedCount)
+        assertEquals(3, translationTransport.calls)
+        assertTrue(localizer.isPtBrDescription(repository.getAnime(1L)!!.description.orEmpty()))
+        assertTrue(localizer.isPtBrDescription(repository.getAnime(2L)!!.description.orEmpty()))
+        assertTrue(localizer.isPtBrDescription(repository.getAnime(3L)!!.description.orEmpty()))
+        assertEquals("0", settings.getPreference("metadata.synopsis_recovery_cursor")?.value)
+        assertEquals("complete", settings.getPreference("metadata.synopsis_recovery_state")?.value)
+    }
+
+    private class FixedSynopsisTranslationTransport(
+        private val statusCode: Int,
+        private val translatedText: String,
+    ) : AniListTranslationTransport {
+        var calls: Int = 0
+
+        override suspend fun get(url: String): AniListTranslationHttpResponse {
+            calls++
+            val body = JSONObject()
+                .put("responseStatus", if (statusCode in 200..299) 200 else statusCode)
+                .put(
+                    "responseData",
+                    JSONObject().put("translatedText", if (statusCode in 200..299) translatedText else ""),
+                )
+                .toString()
+            return AniListTranslationHttpResponse(statusCode, body)
+        }
     }
 
     @Test
