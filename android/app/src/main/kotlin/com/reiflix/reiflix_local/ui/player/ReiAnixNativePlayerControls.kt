@@ -44,7 +44,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -131,15 +130,6 @@ fun ReiAnixNativePlayerTopControls(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.88f),
-                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.50f),
-                        Color.Transparent,
-                    ),
-                ),
-            )
             .padding(
                 start = ReiAnixTokens.PlayerDimensions.topHorizontalPadding,
                 end = ReiAnixTokens.PlayerDimensions.topHorizontalPadding,
@@ -434,15 +424,6 @@ fun ReiAnixNativePlayerBottomControls(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color.Transparent,
-                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.50f),
-                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.92f),
-                    ),
-                ),
-            )
             .padding(
                 start = ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding,
                 end = ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding,
