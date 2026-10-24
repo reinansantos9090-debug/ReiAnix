@@ -606,15 +606,21 @@ class ReiAnixSqliteLibraryRepository(
                 current.metadataStatus.equals("manual", ignoreCase = true)
             ) return@transaction false
 
-            val descriptionIsManuallyOwned = try {
-                val fields = JSONArray(current.metadataManualFieldsJson ?: "[]")
-                (0 until fields.length()).any {
-                    fields.optString(it).trim().equals("description", ignoreCase = true)
-                }
-            } catch (_: Exception) {
-                // Corrupt ownership metadata must fail closed instead of overwriting a
-                // field that might have been curated manually.
+            val ownershipJson = current.metadataManualFieldsJson
+            val descriptionIsManuallyOwned = if (ownershipJson.isNullOrBlank()) {
+                // Missing ownership metadata is ambiguous, not proof that a field is automatic.
                 true
+            } else {
+                try {
+                    val fields = JSONArray(ownershipJson)
+                    (0 until fields.length()).any {
+                        fields.optString(it).trim().equals("description", ignoreCase = true)
+                    }
+                } catch (_: Exception) {
+                    // Corrupt ownership metadata must fail closed instead of overwriting a
+                    // field that might have been curated manually.
+                    true
+                }
             }
             if (descriptionIsManuallyOwned) return@transaction false
 
