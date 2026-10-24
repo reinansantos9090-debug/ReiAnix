@@ -863,7 +863,13 @@ class ReiAnixAniListIntegrationService(
                 val existingDescription = local.description
                     ?.let { descriptionLocalizer?.normalizeDescription(it) ?: it.trim() }
                     ?.takeIf(String::isNotBlank)
-                val displayDescription = if (remoteOriginal == null) {
+                val ownership = synopsisOwnershipStatus(local)
+                val displayDescription = if (ownership != "automatic") {
+                    // Do not spend translation quota or infer ownership for a row whose
+                    // synopsis is manual or indeterminate. The transactional writer also
+                    // enforces this guard in case ownership changes after this snapshot.
+                    existingDescription?.takeIf { descriptionLocalizer?.isPtBrDescription(it) == true }
+                } else if (remoteOriginal == null) {
                     null
                 } else {
                     val localizer = descriptionLocalizer
