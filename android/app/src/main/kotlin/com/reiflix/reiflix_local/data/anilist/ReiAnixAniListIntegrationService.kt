@@ -35,9 +35,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * artwork is materialized by the Kotlin artwork service after metadata commits.
  */
 private data class SynopsisRecoveryBatchResult(
+    val scannedCount: Int,
     val translatedCount: Int,
     val pendingCount: Int,
     val recoverableFailureCount: Int,
+    val translationRequestCount: Int,
+    val sourceLookupCount: Int,
     val hasMoreInCycle: Boolean,
     val localizerAvailable: Boolean = true,
 )
@@ -54,8 +57,6 @@ class ReiAnixAniListIntegrationService(
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
-    // A non-blocking gate prevents concurrent passes without holding a lock during network I/O.
-    private val synopsisRecoveryInProgress = AtomicBoolean(false)
 
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
@@ -384,64 +385,83 @@ class ReiAnixAniListIntegrationService(
         require(maxTranslationAttempts in 1..MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN)
 
         val previousState = settings.getPreference(SYNOPSIS_RECOVERY_STATE_KEY)?.value
-        var initialCursor = settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)
+        var cursor = settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)
             ?.value?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
         val now = System.currentTimeMillis()
         val retryAfter = settings.getPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY)
             ?.value?.toLongOrNull() ?: 0L
-        if (!force && initialCursor == 0L) {
-            if (previousState == "complete") return 0
-            if (previousState == "pending" && (retryAfter <= 0L || now < retryAfter)) return 0
+        val highWater = settings.getPreference(SYNOPSIS_RECOVERY_HIGH_WATER_KEY)
+            ?.value?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+
+        // A completed or intentionally deferred sweep does not re-scan the old catalog
+        // on every Activity start. It only checks for newly inserted eligible IDs above
+        // the high-water mark. Due transient retries and forced scans start at ID zero.
+        if (!force && cursor == 0L) {
+            when (previousState) {
+                "complete" -> {
+                    if (library.loadAniListSynopsisRecoveryBatch(highWater, limit = 1).isEmpty()) return 0
+                    cursor = highWater
+                }
+                "pending" -> {
+                    if (retryAfter > now || retryAfter <= 0L) {
+                        if (library.loadAniListSynopsisRecoveryBatch(highWater, limit = 1).isEmpty()) return 0
+                        cursor = highWater
+                    }
+                }
+            }
         }
 
+        // One shared process-level gate prevents different service instances from
+        // dispatching duplicate requests against the same persisted cursor.
         if (!synopsisRecoveryInProgress.compareAndSet(false, true)) {
-            Log.i(TAG, "Synopsis recovery already active; the current sweep will continue.")
+            Log.i(TAG, "Synopsis recovery already active; this invocation is coalesced.")
             return 0
         }
+
         return try {
-            // One-time upgrade from the cursor-only Prompt 2 implementation. Its old
-            // cursor has no accumulated pending/failure summary, so start a single
-            // validation sweep to initialize the new summary keys consistently.
-            if (previousState.isNullOrBlank()) {
-                settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, "0")
-                initialCursor = 0L
+            if (settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)?.value != cursor.toString()) {
+                settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, cursor.toString())
             }
-            if (initialCursor == 0L) {
+            val startsNewCycle = cursor == 0L && previousState != "in_progress" ||
+                previousState == "complete" && cursor > 0L
+            if (startsNewCycle) {
                 settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "false")
                 settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_RECOVERABLE_KEY, "false")
             }
             settings.setPreference(SYNOPSIS_RECOVERY_STATE_KEY, "in_progress")
 
-            var translatedTotal = 0
-            var pendingTotal = 0
-            var recoverableFailureTotal = 0
-            var batchCount = 0
-            var hasMoreInCycle: Boolean
-            do {
-                currentCoroutineContext().ensureActive()
-                val batch = reconcilePendingSynopsisTranslationsBatch(
-                    maxCandidates = maxCandidates,
-                    maxTranslationAttempts = maxTranslationAttempts,
+            val batch = reconcilePendingSynopsisTranslationsBatch(
+                maxCandidates = maxCandidates,
+                maxTranslationAttempts = maxTranslationAttempts,
+            )
+            if (!batch.localizerAvailable) {
+                settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "true")
+                settings.setPreference(SYNOPSIS_RECOVERY_STATE_KEY, "pending")
+                settings.setPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY, "0")
+                return 0
+            }
+
+            if (batch.hasMoreInCycle) {
+                // This invocation is deliberately bounded. The Compose host starts the
+                // next batch cooperatively; the durable cursor preserves unvisited rows.
+                settings.setPreference(SYNOPSIS_RECOVERY_STATE_KEY, "in_progress")
+                Log.i(
+                    TAG,
+                    "Synopsis recovery batch scanned=" + batch.scannedCount +
+                        " translated=" + batch.translatedCount +
+                        " pending=" + batch.pendingCount +
+                        " translationRequests=" + batch.translationRequestCount +
+                        " sourceLookups=" + batch.sourceLookupCount +
+                        " cursor=" + (settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)?.value ?: "0"),
                 )
-                translatedTotal += batch.translatedCount
-                pendingTotal += batch.pendingCount
-                recoverableFailureTotal += batch.recoverableFailureCount
-                batchCount++
-                if (!batch.localizerAvailable) {
-                    settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "true")
-                    settings.setPreference(SYNOPSIS_RECOVERY_STATE_KEY, "pending")
-                    settings.setPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY, "0")
-                    return translatedTotal
-                }
-                hasMoreInCycle = batch.hasMoreInCycle
-                if (hasMoreInCycle) yield()
-            } while (hasMoreInCycle)
+                return batch.translatedCount
+            }
 
             val cycleHasPending = settings.getPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY)
-                ?.value?.toBooleanStrictOrNull() == true || pendingTotal > 0
+                ?.value?.toBooleanStrictOrNull() == true || batch.pendingCount > 0
             val cycleHasRecoverableFailure =
                 settings.getPreference(SYNOPSIS_RECOVERY_CYCLE_RECOVERABLE_KEY)
-                    ?.value?.toBooleanStrictOrNull() == true || recoverableFailureTotal > 0
+                    ?.value?.toBooleanStrictOrNull() == true || batch.recoverableFailureCount > 0
             settings.setPreference(
                 SYNOPSIS_RECOVERY_STATE_KEY,
                 if (cycleHasPending) "pending" else "complete",
@@ -452,7 +472,6 @@ class ReiAnixAniListIntegrationService(
             val nextRetryAfter = if (!cycleHasPending || !cycleHasRecoverableFailure) {
                 0L
             } else if (existingRetryAfter > System.currentTimeMillis()) {
-                // Forced scans must not extend an existing MyMemory cooldown.
                 existingRetryAfter
             } else {
                 System.currentTimeMillis() +
@@ -461,17 +480,21 @@ class ReiAnixAniListIntegrationService(
             settings.setPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY, nextRetryAfter.toString())
             Log.i(
                 TAG,
-                "Synopsis recovery sweep completed batches=" + batchCount +
-                    " translated=" + translatedTotal +
-                    " pendingObservations=" + pendingTotal +
-                    " recoverableFailures=" + recoverableFailureTotal +
+                "Synopsis recovery cycle ended translated=" + batch.translatedCount +
                     " pending=" + cycleHasPending +
+                    " recoverableFailures=" + cycleHasRecoverableFailure +
                     " nextRetryAfter=" + nextRetryAfter,
             )
-            translatedTotal
+            batch.translatedCount
         } finally {
             synopsisRecoveryInProgress.set(false)
         }
+    }
+
+    /** True only when the previous bounded batch ended and the next batch is safe to start. */
+    suspend fun shouldContinueSynopsisRecovery(): Boolean {
+        if (synopsisRecoveryInProgress.get()) return false
+        return settings.getPreference(SYNOPSIS_RECOVERY_STATE_KEY)?.value == "in_progress"
     }
 
     /** A single timer boundary derived from the existing translator failure backoff. */
@@ -488,9 +511,12 @@ class ReiAnixAniListIntegrationService(
         if (localizer == null) {
             Log.w(TAG, "Synopsis recovery unavailable because the canonical localizer is not configured")
             return SynopsisRecoveryBatchResult(
+                scannedCount = 0,
                 translatedCount = 0,
                 pendingCount = 0,
                 recoverableFailureCount = 0,
+                translationRequestCount = 0,
+                sourceLookupCount = 0,
                 hasMoreInCycle = false,
                 localizerAvailable = false,
             )
@@ -519,9 +545,15 @@ class ReiAnixAniListIntegrationService(
                 limit = minOf(SYNOPSIS_RECOVERY_PAGE_SIZE, maxCandidates - scanned),
             )
             if (page.isEmpty()) {
-                // We have reached the end of the IDs after the persisted cursor.
-                // All earlier IDs were processed by this or a previous bounded batch.
-                // Resetting to zero makes unresolved older rows eligible next cycle.
+                // Persist the high-water mark before resetting the active cursor. New
+                // eligible IDs above it can be found without walking a completed catalog.
+                if (cursor > 0L) {
+                    val knownHighWater = settings.getPreference(SYNOPSIS_RECOVERY_HIGH_WATER_KEY)
+                        ?.value?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                    if (cursor > knownHighWater) {
+                        settings.setPreference(SYNOPSIS_RECOVERY_HIGH_WATER_KEY, cursor.toString())
+                    }
+                }
                 if (cursor != 0L) settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, "0")
                 cursor = 0L
                 cycleCompleted = true
@@ -721,9 +753,12 @@ class ReiAnixAniListIntegrationService(
                 " cursor=" + cursor,
         )
         return SynopsisRecoveryBatchResult(
+            scannedCount = scanned,
             translatedCount = translatedCount,
             pendingCount = pending,
             recoverableFailureCount = recoverableFailures,
+            translationRequestCount = translationAttempts,
+            sourceLookupCount = sourceLookups,
             hasMoreInCycle = !cycleCompleted,
         )
     }
@@ -911,7 +946,9 @@ class ReiAnixAniListIntegrationService(
             "ambiguous",
         )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
+        private val synopsisRecoveryInProgress = AtomicBoolean(false)
         private const val SYNOPSIS_RECOVERY_CURSOR_KEY = "metadata.synopsis_recovery_cursor"
+        private const val SYNOPSIS_RECOVERY_HIGH_WATER_KEY = "metadata.synopsis_recovery_high_water"
         private const val SYNOPSIS_RECOVERY_STATE_KEY = "metadata.synopsis_recovery_state"
         private const val SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY = "metadata.synopsis_recovery_cycle_pending"
         private const val SYNOPSIS_RECOVERY_CYCLE_RECOVERABLE_KEY = "metadata.synopsis_recovery_cycle_recoverable"
