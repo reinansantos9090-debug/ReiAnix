@@ -2161,7 +2161,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                    action == "backup_integrity" -> {
+                    "backup_integrity" -> {
                         val report = withContext(Dispatchers.IO) { ReiAnixBackupService(applicationContext).integrityReport() }
                         if (!report.healthy) {
                             throw IllegalStateException(report.error ?: "O banco falhou na verificação de integridade.")
