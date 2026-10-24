@@ -26,6 +26,9 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
@@ -990,6 +993,25 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals("complete", settings.getPreference("metadata.synopsis_recovery_state")?.value)
     }
 
+    private class GatedSynopsisTranslationTransport(
+        private val translatedText: String,
+    ) : AniListTranslationTransport {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var calls: Int = 0
+
+        override suspend fun get(url: String): AniListTranslationHttpResponse {
+            calls++
+            started.complete(Unit)
+            release.await()
+            val body = JSONObject()
+                .put("responseStatus", 200)
+                .put("responseData", JSONObject().put("translatedText", translatedText))
+                .toString()
+            return AniListTranslationHttpResponse(200, body)
+        }
+    }
+
     private class FixedSynopsisTranslationTransport(
         private val statusCode: Int,
         private val translatedText: String,
@@ -1007,6 +1029,155 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 .toString()
             return AniListTranslationHttpResponse(statusCode, body)
         }
+    }
+
+    @Test
+    fun failedTranslationLeavesSynopsisPendingAndSchedulesTheExistingBackoff() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val source = "The story follows a young hero who protects their people from danger every day."
+        repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = source,
+                descriptionOriginal = source,
+            ),
+        )
+        val transport = FixedSynopsisTranslationTransport(statusCode = 503, translatedText = "")
+        val cacheFile = File(context.cacheDir, "synopsis-failure-" + System.nanoTime() + ".json")
+        val localizer = ReiAnixAniListDescriptionLocalizer(cacheFile, transport)
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = settings,
+            descriptionLocalizer = localizer,
+        )
+
+        assertEquals(
+            0,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+                force = true,
+            ),
+        )
+        val pending = repository.getAnime(1L)!!
+        assertNull(pending.description)
+        assertEquals(source, pending.descriptionOriginal)
+        assertEquals("pending", settings.getPreference("metadata.synopsis_recovery_state")?.value)
+        assertTrue(
+            settings.getPreference("metadata.synopsis_recovery_retry_after")!!
+                .value.toLong() > System.currentTimeMillis(),
+        )
+        assertEquals(1, transport.calls)
+    }
+
+    @Test
+    fun concurrentRecoveryRunsDoNotCompeteForTheSameAnime() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val source = "The story follows a young hero who protects their people from danger every day."
+        repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = source,
+                descriptionOriginal = source,
+            ),
+        )
+        val cacheFile = File(context.cacheDir, "synopsis-concurrent-" + System.nanoTime() + ".json")
+        val transport = GatedSynopsisTranslationTransport(
+            "A história acompanha um jovem herói que protege seu povo do perigo todos os dias.",
+        )
+        val localizer = ReiAnixAniListDescriptionLocalizer(cacheFile, transport)
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = settings,
+            descriptionLocalizer = localizer,
+        )
+
+        val first = async {
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+                force = true,
+            )
+        }
+        transport.started.await()
+        assertEquals(
+            0,
+            service.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+                force = true,
+            ),
+        )
+        transport.release.complete(Unit)
+        assertEquals(1, first.await())
+        assertEquals(1, transport.calls)
+    }
+
+    @Test
+    fun cancellationKeepsCursorBeforeUnfinishedAnimeAndAllowsResumption() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val source = "The story follows a young hero who protects their people from danger every day."
+        repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = source,
+                descriptionOriginal = source,
+            ),
+        )
+        val cacheFile = File(context.cacheDir, "synopsis-cancel-" + System.nanoTime() + ".json")
+        val gated = GatedSynopsisTranslationTransport(
+            "A história acompanha um jovem herói que protege seu povo do perigo todos os dias.",
+        )
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        val interruptedService = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = settings,
+            descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(cacheFile, gated),
+        )
+        val interrupted = async {
+            interruptedService.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+                force = true,
+            )
+        }
+        gated.started.await()
+        interrupted.cancelAndJoin()
+
+        assertEquals("0", settings.getPreference("metadata.synopsis_recovery_cursor")?.value)
+        assertEquals("in_progress", settings.getPreference("metadata.synopsis_recovery_state")?.value)
+        val pending = repository.getAnime(1L)!!
+        assertNull(pending.description)
+        assertEquals(source, pending.descriptionOriginal)
+
+        val resumedService = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = settings,
+            descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
+                cacheFile,
+                FixedSynopsisTranslationTransport(
+                    200,
+                    "A história acompanha um jovem herói que protege seu povo do perigo todos os dias.",
+                ),
+            ),
+        )
+        assertEquals(
+            1,
+            resumedService.reconcilePendingSynopsisTranslations(
+                maxCandidates = 1,
+                maxTranslationAttempts = 1,
+            ),
+        )
+        assertEquals("complete", settings.getPreference("metadata.synopsis_recovery_state")?.value)
     }
 
     @Test
