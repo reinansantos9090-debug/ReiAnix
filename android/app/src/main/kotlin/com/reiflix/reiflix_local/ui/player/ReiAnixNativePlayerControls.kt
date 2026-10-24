@@ -562,11 +562,12 @@ fun ReiAnixNativePlayerBottomControls(
             )
             PlayerBottomAction(
                 icon = Icons.Filled.AspectRatio,
-                label = "Proporção",
+                label = state.aspectLabel,
                 showLabel = !landscape,
-                contentDescription = "Alterar proporção do vídeo",
+                contentDescription = "Modo de vídeo atual: ${state.aspectLabel}. Tocar para ${if (state.aspectLabel == "Preencher") "Ajustar" else "Preencher"}",
                 onClick = onResize,
                 enabled = !state.episodeTransitionInProgress,
+                active = state.aspectLabel == "Preencher",
             )
             PlayerBottomAction(
                 icon = Icons.Filled.MoreVert,
@@ -607,6 +608,7 @@ private fun RowScope.PlayerBottomAction(
     onClick: () -> Unit,
     enabled: Boolean = true,
     showLabel: Boolean = true,
+    active: Boolean = false,
 ) {
     Column(
         modifier = Modifier.weight(1f),
@@ -626,7 +628,11 @@ private fun RowScope.PlayerBottomAction(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
+                tint = when {
+                    !enabled -> ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f)
+                    active -> ReiAnixTokens.Colors.primary
+                    else -> ReiAnixTokens.Colors.playerControl
+                },
                 modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
             )
         }
