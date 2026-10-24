@@ -227,11 +227,11 @@ class ReiAnixHomeInstrumentedTest {
     }
 
     @Test
-    fun artworkPublishedAfterInitialMissingSourceUpdatesComposeAndCompletesLoad() {
+    fun artworkStateUpdateIsDecodedAndRenderedByCompose() {
         ReiAnixDiagnosticTimeline.clear()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val artworkFile = File(context.cacheDir, "reianix-published-artwork-test.png")
-        val bitmap = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888)
+        val artworkFile = File(context.cacheDir, "reianix-home-artwork-test.png")
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
         artworkFile.outputStream().use { output ->
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
         }
@@ -243,7 +243,7 @@ class ReiAnixHomeInstrumentedTest {
                 ReiAnixComposeRoot {
                     ReiAnixLocalArtwork(
                         localPath = source.value,
-                        contentDescription = "Published artwork",
+                        contentDescription = "Artwork updated",
                         modifier = Modifier.size(100.dp),
                         identity = "anime:812",
                         artworkType = "poster",
@@ -251,7 +251,6 @@ class ReiAnixHomeInstrumentedTest {
                     )
                 }
             }
-
             composeRule.onNodeWithText("Aguardando arte").assertIsDisplayed()
             composeRule.runOnIdle { source.value = artworkFile.absolutePath }
             composeRule.waitUntil(10_000L) {
@@ -262,36 +261,10 @@ class ReiAnixHomeInstrumentedTest {
                         event.context["artwork_type"] == "poster"
                 }
             }
-            composeRule.onNodeWithContentDescription("Published artwork").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("Artwork updated").assertIsDisplayed()
         } finally {
             artworkFile.delete()
             ReiAnixDiagnosticTimeline.clear()
-        }
-    }
-
-    @Test
-    fun cachedArtworkFileIsDecodedByCompose() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val artworkFile = File(context.cacheDir, "reianix-home-artwork-test.png")
-        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
-        artworkFile.outputStream().use { output ->
-            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
-        }
-        bitmap.recycle()
-
-        try {
-            composeRule.setContent {
-                ReiAnixComposeRoot {
-                    ReiAnixLocalArtwork(
-                        localPath = artworkFile.absolutePath,
-                        contentDescription = "Cached artwork",
-                        modifier = Modifier.size(100.dp),
-                    )
-                }
-            }
-            composeRule.onNodeWithContentDescription("Cached artwork").assertIsDisplayed()
-        } finally {
-            artworkFile.delete()
         }
     }
 
