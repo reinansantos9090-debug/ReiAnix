@@ -10,6 +10,7 @@ import android.os.Debug
 import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
+import android.provider.DocumentsContract
 import com.reiflix.reiflix_local.BuildConfig
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.PerformanceDiagnostics
@@ -238,7 +239,8 @@ object ReiAnixManualDiagnostics {
                         if (!it.optBoolean("available")) "; acesso limitado ou sem registros" else ""
                 }
                 "storage" -> result?.let {
-                    "SAF: ${it.optInt("persisted_saf_grants")} autorizações persistentes; " +
+                    "SAF: ${it.optInt("persisted_saf_roots_accessible")}/${it.optInt("persisted_saf_roots_checked")} pastas acessíveis verificadas; " +
+                        "${it.optInt("persisted_saf_grants")} autorizações persistentes; " +
                         "vídeos: ${if (it.optBoolean("read_media_video_granted")) "permitido" else "sem permissão"}; " +
                         "nova varredura: não iniciada"
                 }
@@ -368,9 +370,63 @@ object ReiAnixManualDiagnostics {
         val files = context.filesDir
         val cache = context.cacheDir
         val mediaRead = hasPermission(context, "android.permission.READ_MEDIA_VIDEO")
+        val safRootAccess = JSONArray()
+        var accessibleSafRoots = 0
+        var checkedSafRoots = 0
+        // Query only the selected document/tree root; never enumerate children or start a library scan.
+        grants.take(100).forEachIndexed { index, grant ->
+            if (cancellationRequested.get()) {
+                throw java.util.concurrent.CancellationException("Storage diagnostic cancelled by user.")
+            }
+            checkedSafRoots++
+            val rootAccess = try {
+                val uri = grant.uri
+                val documentUri = if (DocumentsContract.isTreeUri(uri)) {
+                    DocumentsContract.buildDocumentUriUsingTree(
+                        uri,
+                        DocumentsContract.getTreeDocumentId(uri),
+                    )
+                } else {
+                    uri
+                }
+                context.contentResolver.query(
+                    documentUri,
+                    arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
+                    null,
+                    null,
+                    null,
+                )?.use { cursor -> cursor.moveToFirst() } ?: false
+            } catch (error: Exception) {
+                safRootAccess.put(
+                    JSONObject()
+                        .put("index", index + 1)
+                        .put("accessible", false)
+                        .put("read_permission", grant.isReadPermission)
+                        .put("write_permission", grant.isWritePermission)
+                        .put("error_type", error.javaClass.simpleName),
+                )
+                return@forEachIndexed
+            }
+            if (rootAccess) accessibleSafRoots++
+            safRootAccess.put(
+                JSONObject()
+                    .put("index", index + 1)
+                    .put("accessible", rootAccess)
+                    .put("read_permission", grant.isReadPermission)
+                    .put("write_permission", grant.isWritePermission)
+                    .put("error_type", if (rootAccess) JSONObject.NULL else "ROOT_QUERY_RETURNED_NO_DOCUMENT"),
+            )
+        }
+        val mediaVisualSelectedRead = Build.VERSION.SDK_INT >= 34 &&
+            hasPermission(context, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED")
         return JSONObject()
             .put("available", true)
             .put("persisted_saf_grants", grants.size)
+            .put("persisted_saf_roots_checked", checkedSafRoots)
+            .put("persisted_saf_roots_accessible", accessibleSafRoots)
+            .put("persisted_saf_roots", safRootAccess)
+            .put("persisted_saf_roots_check_limit", 100)
+            .put("read_media_visual_user_selected_granted", mediaVisualSelectedRead)
             .put("persisted_saf_read_grants", readable)
             .put("persisted_saf_write_grants", writable)
             .put("read_media_video_granted", mediaRead)
@@ -554,7 +610,7 @@ object ReiAnixManualDiagnostics {
         val process: java.lang.Process
         return try {
             process = ProcessBuilder(
-                "logcat", "-d", "-t", "1000", "--pid", Process.myPid().toString(),
+                "logcat", "-d", "-t", "1000", "--pid", Process.myPid().toString(), "-v", "threadtime",
             ).redirectErrorStream(true).start()
             activeLogcatProcess = process
             val outputLines = Collections.synchronizedList(mutableListOf<String>())
@@ -644,8 +700,8 @@ object ReiAnixManualDiagnostics {
             "<path>",
         )
         line = line.replace(Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE), "<email>")
-        line = Regex("(?i)(token|password|authorization|cookie|secret)(\\s*[:=]\\s*)[^\\s,;]+")
-            .replace(line) { match -> match.groupValues[1] + match.groupValues[2] + "<redacted>" }
+        line = Regex("(?i)(authorization\\s*[:=]\\s*(?:bearer\\s+)?|(?:token|password|cookie|secret|api[_-]?key)\\s*[:=]\\s*)[^\\s,;]+")
+            .replace(line) { match -> match.groupValues[1] + "<redacted>" }
         return line
     }
 
