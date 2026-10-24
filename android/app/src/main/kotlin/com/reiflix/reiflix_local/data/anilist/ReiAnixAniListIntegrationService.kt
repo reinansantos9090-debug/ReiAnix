@@ -399,14 +399,14 @@ class ReiAnixAniListIntegrationService(
         // A completed or intentionally deferred sweep does not re-scan the old catalog
         // on every Activity start. It only checks for newly inserted eligible IDs above
         // the high-water mark. Due transient retries and forced scans start at ID zero.
-        if (!force && cursor == 0L) {
+        if (cursor == 0L) {
             when (previousState) {
                 "complete" -> {
                     if (library.loadAniListSynopsisRecoveryBatch(highWater, limit = 1).isEmpty()) return 0
                     cursor = highWater
                 }
                 "pending" -> {
-                    if (retryAfter > now || retryAfter <= 0L) {
+                    if (!force && (retryAfter > now || retryAfter <= 0L)) {
                         if (library.loadAniListSynopsisRecoveryBatch(highWater, limit = 1).isEmpty()) return 0
                         cursor = highWater
                     }
