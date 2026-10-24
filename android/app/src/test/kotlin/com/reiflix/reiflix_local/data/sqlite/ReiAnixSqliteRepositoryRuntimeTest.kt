@@ -946,6 +946,55 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun unknownSynopsisOwnershipMetadataIsPreservedConservatively() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val database = ReiAnixSqliteDatabase(context)
+        val existingDisplay = "A sinopse que pode ter sido editada manualmente."
+        val source = "The old AniList synopsis."
+        database.transaction { connection ->
+            connection.execSQL(
+                """
+                UPDATE anime
+                SET description = ?, description_original = ?, metadata_source = 'anilist',
+                    metadata_status = 'available', metadata_manual_fields = ''
+                WHERE id = 1
+                """.trimIndent(),
+                arrayOf(existingDisplay, source),
+            )
+        }
+
+        assertFalse(
+            "Missing/blank field ownership is not proof that the synopsis is automatic.",
+            repository.updateAniListSynopsisIfUnchanged(
+                animeId = 1L,
+                expectedAniListId = null,
+                expectedOriginal = source,
+                expectedDescription = existingDisplay,
+                originalSource = "A newer remote original.",
+                translatedDescription = "Uma tradução automática.",
+            ),
+        )
+        val after = repository.getAnime(1L)!!
+        assertEquals(existingDisplay, after.description)
+        assertEquals(source, after.descriptionOriginal)
+
+        val associationAfter = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = "An automatic association synopsis.",
+                descriptionOriginal = "A newer association original.",
+            ),
+            anilistId = 42L,
+            manual = true,
+            score = 1.0,
+            margin = 1.0,
+        )
+        assertEquals(existingDisplay, associationAfter.description)
+        assertEquals(source, associationAfter.descriptionOriginal)
+    }
+
+    @Test
     fun recoveryContinuesAcrossCandidateAndTranslationBudgetsUntilTheEndOfTheSweep() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
