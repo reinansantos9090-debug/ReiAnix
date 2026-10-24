@@ -30,7 +30,8 @@ A gravação de associação usa updateAniListMetadataAndAssociation no reposit�
 
 ReiAnixAniListDescriptionLocalizer portou a normalização de HTML, a detecção conservadora de idioma, segmentação por parágrafo e limite de 480 bytes UTF-8 por trecho, validação da tradução e cache compatível com as entradas JSON legadas.
 
-- Serviço externo de tradução existente: https://api.mymemory.translated.net/get, com langpair=idioma|pt-BR.
+- Serviço externo de tradução existente: https://api.mymemory.translated.net/get, com langpair=idioma|pt-BR. A especificação do fornecedor documenta um máximo de 500 bytes UTF-8 por segmento e aceita o idioma destino no formato ISO/RFC3066; o código limita cada trecho a 480 bytes: https://mymemory.translated.net/doc/spec.php.
+- A API anônima documenta quota de 5.000 caracteres por dia; informar um e-mail válido via parâmetro `de` permite 50.000 caracteres/dia. O ReiAnix não configura e-mail de contato nem chave de API; bibliotecas grandes podem, portanto, ficar parcialmente pendentes até a quota voltar ou a configuração externa ser alterada: https://mymemory.translated.net/doc/usagelimits.php.
 - Endpoint de tradução é chamado fora da thread principal, com timeouts limitados, cancelamento e até três tentativas somente quando uma resposta HTTP 429/5xx traz um Retry-After explícito dentro do limite configurado. Falhas de rede ou respostas inválidas não são convertidas em tradução fictícia.
 - A tradução é validada antes de ser aceita; respostas de erro, texto vazio, saída idêntica ao original para idiomas de origem diferentes de português ou conteúdo que não passe pelo detector PT-BR não substituem a descrição.
 - O cache é limitado a 4096 entradas. Falhas temporárias recebem retry_after limitado para não repetir a mesma requisição indefinidamente.
