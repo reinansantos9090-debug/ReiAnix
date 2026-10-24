@@ -254,7 +254,7 @@ object ReiAnixManualDiagnostics {
                             if (check == null || check.length() == 0) "sem resultado" else check.optString(0)
                         } +
                         "; violações FK=${it.optInt("foreign_key_violations")}" +
-                        "; grupos duplicados=${if (it.isNull("duplicate_media_identity_groups")) "não verificável" else it.optLong("duplicate_media_identity_groups").toString()}
+                        "; grupos duplicados=${if (it.isNull("duplicate_media_identity_groups")) "não verificável" else it.optLong("duplicate_media_identity_groups").toString()}"
                 }
                 "thumbnails" -> result?.let {
                     "eventos: " + it.optInt("timeline_event_count") +
