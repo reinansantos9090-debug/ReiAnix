@@ -27,6 +27,41 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Conservative synopsis ownership classification shared with deterministic JVM tests.
+ *
+ * An empty/missing/malformed ownership list is not proof of automatic ownership. Only a
+ * non-empty JSON string array with no description field establishes field-level automatic
+ * ownership, unless row-level metadata explicitly marks the record manual.
+ */
+internal fun classifySynopsisOwnership(
+    metadataSource: String?,
+    metadataStatus: String?,
+    metadataManualFieldsJson: String?,
+): String {
+    if (
+        metadataSource.equals("manual", ignoreCase = true) ||
+        metadataStatus.equals("manual", ignoreCase = true)
+    ) return "manual"
+
+    val raw = metadataManualFieldsJson?.trim()
+    if (raw.isNullOrBlank()) return "unknown"
+    return try {
+        val fields = JSONArray(raw)
+        if (fields.length() == 0) return "unknown"
+        var ownsDescription = false
+        for (index in 0 until fields.length()) {
+            val field = fields.get(index)
+            if (field !is String || field.isBlank()) return "unknown"
+            if (field.trim().equals("description", ignoreCase = true)) ownsDescription = true
+        }
+        if (ownsDescription) "manual" else "automatic"
+    } catch (_: Exception) {
+        // Corrupt ownership metadata requires intervention; never overwrite blindly.
+        "unknown"
+    }
+}
+
 private data class SynopsisRecoveryBatchResult(
     val scannedCount: Int,
     val translatedCount: Int,
@@ -799,30 +834,13 @@ class ReiAnixAniListIntegrationService(
         )
     }
 
-    /**
-     * null = known automatic ownership; manual = protected synopsis; unknown = fail
-     * closed until the field-ownership record is repaired by the canonical editor.
-     */
-    private fun synopsisOwnershipStatus(record: ReiAnixAnimeRecord): String? {
-        if (
-            record.metadataSource.equals("manual", ignoreCase = true) ||
-            record.metadataStatus.equals("manual", ignoreCase = true)
-        ) return "manual"
-        val raw = record.metadataManualFieldsJson?.trim()
-        if (raw.isNullOrBlank()) return "unknown"
-        return try {
-            val fields = JSONArray(raw)
-            for (index in 0 until fields.length()) {
-                val field = fields.get(index)
-                if (field !is String) return "unknown"
-                if (field.trim().equals("description", ignoreCase = true)) return "manual"
-            }
-            null
-        } catch (_: Exception) {
-            // Corrupt ownership metadata requires intervention; never overwrite blindly.
-            "unknown"
-        }
-    }
+    /** null = known automatic ownership; manual = protected; unknown = fail closed. */
+    private fun synopsisOwnershipStatus(record: ReiAnixAnimeRecord): String =
+        classifySynopsisOwnership(
+            metadataSource = record.metadataSource,
+            metadataStatus = record.metadataStatus,
+            metadataManualFieldsJson = record.metadataManualFieldsJson,
+        )
 
     private suspend fun applyRemote(
         local: ReiAnixAnimeRecord,
