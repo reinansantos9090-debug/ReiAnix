@@ -481,7 +481,7 @@ object ReiAnixManualDiagnostics {
             .put("stress_test_started", false)
 
     private fun collectLogcat(): JSONObject {
-        val process: Process
+        val process: java.lang.Process
         return try {
             process = ProcessBuilder(
                 "logcat", "-d", "-t", "1000", "--pid", Process.myPid().toString(),
@@ -505,7 +505,14 @@ object ReiAnixManualDiagnostics {
                 return logcatUnavailable(if (cancellationRequested.get()) "cancelled_by_user" else "logcat_timeout")
             }
             reader.join(1000)
-            val filtered = filterRelevantLogs(outputLines.toList())
+            val rawLines = outputLines.toList()
+            val permissionDenied = rawLines.any {
+                it.contains("permission denied", ignoreCase = true) ||
+                    it.contains("access denied", ignoreCase = true) ||
+                    it.contains("not allowed", ignoreCase = true)
+            }
+            if (permissionDenied) return logcatUnavailable("logcat_access_denied")
+            val filtered = filterRelevantLogs(rawLines)
             JSONObject()
                 .put("available", true)
                 .put("collection_scope", "process_uid_only")
