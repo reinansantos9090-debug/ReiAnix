@@ -11,6 +11,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
@@ -70,12 +71,29 @@ object VideoThumbnailExtractor {
         val cacheDir = File(context.cacheDir, "reiflix/thumbnails")
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
             ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_REQUEST_FAILED",
+                name = "THUMBNAIL_CACHE_DIRECTORY_FAILED",
                 severity = "ERROR",
                 source = "VideoThumbnailExtractor",
                 result = "FAILED",
                 error = IllegalStateException("THUMBNAIL_CACHE_DIRECTORY_UNAVAILABLE"),
                 context = mapOf("stage" to "cache_directory", "source_scheme" to uri.scheme.orEmpty()),
+            )
+            return null
+        }
+        if (!cacheDir.isDirectory || !cacheDir.canRead() || !cacheDir.canWrite()) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_CACHE_ACCESS_FAILED",
+                severity = "ERROR",
+                source = "VideoThumbnailExtractor",
+                result = "FAILED",
+                error = IllegalStateException("THUMBNAIL_CACHE_NOT_ACCESSIBLE"),
+                context = mapOf(
+                    "stage" to "cache_directory",
+                    "is_directory" to cacheDir.isDirectory,
+                    "readable" to cacheDir.canRead(),
+                    "writable" to cacheDir.canWrite(),
+                    "source_scheme" to uri.scheme.orEmpty(),
+                ),
             )
             return null
         }
@@ -88,6 +106,20 @@ object VideoThumbnailExtractor {
         }
         val target = File(cacheDir, key + ".jpg")
         val requestId = "thumb-" + key.take(12)
+        if (target.exists() && !isValidCachedThumbnail(target)) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_CACHE_ENTRY_INVALID",
+                severity = "WARN",
+                source = "VideoThumbnailExtractor",
+                result = "UNUSABLE",
+                requestId = requestId,
+                context = mapOf(
+                    "stage" to "cache_read",
+                    "cache_entry_bytes" to target.length().coerceAtLeast(0L),
+                    "is_file" to target.isFile,
+                ),
+            )
+        }
         val requestStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
         ReiAnixDiagnosticTimeline.record(
             name = "THUMBNAIL_REQUESTED",
@@ -317,13 +349,37 @@ object VideoThumbnailExtractor {
         val temp = File(target.parentFile, ".$key.tmp")
         val retriever = MediaMetadataRetriever()
         var bitmap: Bitmap? = null
+        var diagnosticStage = "source_read"
         return try {
             when (uri.scheme?.lowercase()) {
                 "content" -> retriever.setDataSource(context, uri)
-                "file" -> retriever.setDataSource(uri.path ?: return null)
-                else -> return null
+                "file" -> {
+                    val path = uri.path
+                    if (path.isNullOrBlank()) {
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "THUMBNAIL_SOURCE_READ_FAILED",
+                            severity = "ERROR",
+                            source = "VideoThumbnailExtractor",
+                            result = "FAILED",
+                            context = mapOf("stage" to "source_uri", "source_scheme" to "file"),
+                        )
+                        return null
+                    }
+                    retriever.setDataSource(path)
+                }
+                else -> {
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "THUMBNAIL_SOURCE_READ_FAILED",
+                        severity = "ERROR",
+                        source = "VideoThumbnailExtractor",
+                        result = "FAILED",
+                        context = mapOf("stage" to "source_uri", "source_scheme" to uri.scheme.orEmpty()),
+                    )
+                    return null
+                }
             }
 
+            diagnosticStage = "metadata_read"
             val durationMs = parseDurationMs(
                 retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             )
@@ -339,6 +395,7 @@ object VideoThumbnailExtractor {
             val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
             val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
 
+            diagnosticStage = "frame_decode"
             bitmap = if (android.os.Build.VERSION.SDK_INT >= 27) {
                 retriever.getScaledFrameAtTime(
                     0L,
@@ -348,7 +405,18 @@ object VideoThumbnailExtractor {
                 )
             } else {
                 retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            } ?: return null
+            }
+            if (bitmap == null) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "THUMBNAIL_DECODE_FAILED",
+                    severity = "ERROR",
+                    source = "VideoThumbnailExtractor",
+                    result = "FAILED",
+                    context = mapOf("stage" to "frame_decode", "reason" to "no_frame_returned"),
+                )
+                return null
+            }
+            diagnosticStage = "image_transform"
 
             ReiAnixDiagnosticTimeline.record(
                 name = "THUMBNAIL_DECODED",
@@ -386,8 +454,11 @@ object VideoThumbnailExtractor {
             }
 
             temp.delete()
+            diagnosticStage = "cache_write"
             FileOutputStream(temp).use { output ->
-                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 84, output)) return null
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 84, output)) {
+                    throw IOException("THUMBNAIL_JPEG_COMPRESSION_FAILED")
+                }
                 output.fd.sync()
             }
 
@@ -395,6 +466,14 @@ object VideoThumbnailExtractor {
                 temp.delete()
             } else if (!temp.renameTo(target)) {
                 temp.delete()
+                ReiAnixDiagnosticTimeline.record(
+                    name = "THUMBNAIL_CACHE_WRITE_FAILED",
+                    severity = "ERROR",
+                    source = "VideoThumbnailExtractor",
+                    result = "FAILED",
+                    error = IOException("THUMBNAIL_CACHE_ATOMIC_RENAME_FAILED"),
+                    context = mapOf("stage" to "cache_commit", "temporary_bytes" to temp.length()),
+                )
                 return null
             }
 
@@ -412,13 +491,20 @@ object VideoThumbnailExtractor {
             result
         } catch (error: Exception) {
             temp.delete()
+            val eventName = when (diagnosticStage) {
+                "source_read" -> "THUMBNAIL_SOURCE_READ_FAILED"
+                "metadata_read" -> "THUMBNAIL_SOURCE_METADATA_READ_FAILED"
+                "frame_decode" -> "THUMBNAIL_DECODE_FAILED"
+                "cache_write" -> "THUMBNAIL_CACHE_WRITE_FAILED"
+                else -> "THUMBNAIL_IMAGE_PROCESSING_FAILED"
+            }
             ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_DECODE_FAILED",
+                name = eventName,
                 severity = "ERROR",
                 source = "VideoThumbnailExtractor",
                 result = "FAILED",
                 error = error,
-                context = mapOf("stage" to "decode_or_cache_write"),
+                context = mapOf("stage" to diagnosticStage),
             )
             null
         } finally {
@@ -439,6 +525,18 @@ object VideoThumbnailExtractor {
     ): CachedResult? {
         val metadataFile = cacheMetadataFile(target)
         val metadata = readCacheMetadata(metadataFile, key, size, modifiedAt)
+        if (metadataFile.exists() && metadata == null) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_CACHE_METADATA_UNUSABLE",
+                severity = "WARN",
+                source = "VideoThumbnailExtractor",
+                result = "UNUSABLE",
+                context = mapOf(
+                    "stage" to "cache_metadata_read",
+                    "metadata_bytes" to metadataFile.length().coerceAtLeast(0L),
+                ),
+            )
+        }
         if (metadata?.durationMs == null) {
             val durationMs = readDurationMs(context, uri)
             val repairedResult = Result(
@@ -477,7 +575,15 @@ object VideoThumbnailExtractor {
             parseDurationMs(
                 retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             )
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_SOURCE_METADATA_READ_FAILED",
+                severity = "WARN",
+                source = "VideoThumbnailExtractor",
+                result = "PARTIAL",
+                error = error,
+                context = mapOf("stage" to "duration_read"),
+            )
             0L
         } finally {
             runCatching { retriever.release() }
@@ -539,7 +645,19 @@ object VideoThumbnailExtractor {
                 .put("mimeType", result.mimeType ?: "")
             temporary.writeText(json.toString(), Charsets.UTF_8)
             if (metadataFile.isFile) metadataFile.delete()
-            if (!temporary.renameTo(metadataFile)) temporary.delete()
+            if (!temporary.renameTo(metadataFile)) {
+                temporary.delete()
+                throw IOException("THUMBNAIL_CACHE_METADATA_ATOMIC_RENAME_FAILED")
+            }
+        }.onFailure { error ->
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_CACHE_METADATA_WRITE_FAILED",
+                severity = "ERROR",
+                source = "VideoThumbnailExtractor",
+                result = "FAILED",
+                error = error,
+                context = mapOf("stage" to "cache_metadata_write"),
+            )
         }
     }
 
@@ -566,6 +684,15 @@ object VideoThumbnailExtractor {
                     val jpg = File(directory, metadata.nameWithoutExtension + ".jpg")
                     if (!jpg.isFile) metadata.delete()
                 }
+        }.onFailure { error ->
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_CACHE_TRIM_FAILED",
+                severity = "WARN",
+                source = "VideoThumbnailExtractor",
+                result = "PARTIAL",
+                error = error,
+                context = mapOf("stage" to "cache_trim"),
+            )
         }
     }
 
