@@ -44,6 +44,17 @@ class ReiAnixLocalArtworkTest {
     }
 
     @Test
+    fun missingOriginDoesNotCreateAnInvalidCandidateOrPretendToLoad() {
+        assertEquals(
+            emptyList<String>(),
+            artworkCandidates(null, null, "file:///missing/poster.png", "content://unsupported/cover"),
+        )
+        assertEquals("none", artworkSourceKind(null))
+        assertEquals("remote_http", artworkSourceKind("https://img.example/poster.jpg"))
+        assertEquals("content_uri", artworkSourceKind("content://media/poster/1"))
+    }
+
+    @Test
     fun composeArtworkPrefersLocalCandidatesBeforeRemoteFallbacks() {
         assertEquals(
             listOf("/cache/poster.jpg", "https://img/a.jpg", "https://img/b.jpg"),
