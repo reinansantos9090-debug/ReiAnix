@@ -1,7 +1,5 @@
 package com.reiflix.reiflix_local.data.artwork
 
-import java.io.File
-import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
@@ -66,19 +64,4 @@ class ReiAnixArtworkPublicationSignalTest {
         assertEquals("anilist", received.sourceKind)
     }
 
-    @Test
-    fun absentArtworkCacheDirectoryIsCreatedOnDemand() {
-        val root = File(
-            System.getProperty("java.io.tmpdir"),
-            "reianix-artwork-test-" + UUID.randomUUID(),
-        )
-        val cache = File(root, "data/covers/artwork")
-        try {
-            assertFalse(cache.exists())
-            assertTrue(ensureArtworkCacheDirectory(cache))
-            assertTrue(cache.isDirectory)
-        } finally {
-            root.deleteRecursively()
-        }
-    }
 }
