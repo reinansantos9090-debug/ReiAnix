@@ -68,7 +68,7 @@ object ReiAnixManualDiagnostics {
     fun requestCancellation() {
         cancellationRequested.set(true)
         runCatching { activeLogcatProcess?.destroy() }
-        runCatching { activeSqliteCancellationSignal.getAndSet(null)?.cancel() }
+        runCatching { activeSqliteCancellationSignal.get()?.cancel() }
     }
 
     fun run(context: Context, requestedCategory: String): JSONObject {
@@ -90,7 +90,10 @@ object ReiAnixManualDiagnostics {
             val categoryStart = SystemClock.elapsedRealtime()
             val outcome = try {
                 val details = collectCategory(appContext, category)
-                val status = details.optString("collection_status", "COMPLETED")
+                val status = details.optString(
+                    "collection_status",
+                    if (details.optBoolean("available", true)) "COMPLETED" else "PARTIAL",
+                )
                 details.remove("collection_status")
                 Triple(status, details, null as String?)
             } catch (error: Exception) {
@@ -229,6 +232,7 @@ object ReiAnixManualDiagnostics {
                 else -> ""
             }
             lines += (categoryLabels[key] ?: key) + ": " + entry.optString("status", "UNKNOWN") +
+                " • " + entry.optString("collected_at", "timestamp unavailable") +
                 " (" + entry.optLong("duration_ms") + " ms)" + detail
         }
         return lines.joinToString("\n")
@@ -655,14 +659,18 @@ object ReiAnixManualDiagnostics {
             .getOrDefault(false)
 
     private fun safeCount(db: SQLiteDatabase, sql: String): Long =
-        runCatching { db.rawQuery(sql, null).use { if (it.moveToFirst()) it.getLong(0) else 0L } }.getOrDefault(-1L)
+        runCatching {
+            db.rawQuery(sql, null, activeSqliteCancellationSignal.get())
+                .use { if (it.moveToFirst()) it.getLong(0) else 0L }
+        }.getOrDefault(-1L)
 
     private fun pragmaInt(db: SQLiteDatabase, name: String): Int =
-        db.rawQuery("PRAGMA $name", null).use { if (it.moveToFirst()) it.getInt(0) else -1 }
+        db.rawQuery("PRAGMA $name", null, activeSqliteCancellationSignal.get())
+            .use { if (it.moveToFirst()) it.getInt(0) else -1 }
 
     private fun columnExists(db: SQLiteDatabase, table: String, column: String): Boolean {
         var found = false
-        db.rawQuery("PRAGMA table_info(\"$table\")", null).use { cursor ->
+        db.rawQuery("PRAGMA table_info(\"$table\")", null, activeSqliteCancellationSignal.get()).use { cursor ->
             while (cursor.moveToNext()) if (cursor.getString(1) == column) found = true
         }
         return found
