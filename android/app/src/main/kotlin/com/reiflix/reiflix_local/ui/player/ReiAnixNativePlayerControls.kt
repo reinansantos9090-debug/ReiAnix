@@ -65,6 +65,7 @@ data class ReiAnixNativePlayerUiState(
     val bufferedPositionMs: Long = 0L,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
+    val hasRenderedFirstFrame: Boolean = false,
     val ended: Boolean = false,
     val errorVisible: Boolean = false,
     val controlsVisible: Boolean = true,
@@ -251,10 +252,10 @@ fun ReiAnixNativePlayerCenterControls(
                             },
                     ) {
                         when {
-                            state.isBuffering -> {
+                            state.isBuffering && state.hasRenderedFirstFrame -> {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.bufferingIndicatorSize),
-                                    color = ReiAnixTokens.Colors.playerControl,
+                                    color = ReiAnixTokens.Colors.primary,
                                     strokeWidth = ReiAnixTokens.PlayerDimensions.bufferingStroke,
                                 )
                             }

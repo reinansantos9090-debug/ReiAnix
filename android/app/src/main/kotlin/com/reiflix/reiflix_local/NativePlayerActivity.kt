@@ -20,6 +20,7 @@ import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.view.KeyEvent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -56,6 +57,7 @@ import android.animation.ValueAnimator
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.Dp
@@ -1978,7 +1980,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 Player.STATE_BUFFERING -> {
                     updatePlayPauseButton()
                     if (::preparingIndicator.isInitialized && !errorVisible) {
-                        preparingIndicator.visibility = View.VISIBLE
+                        // The native spinner handles preparation until the first frame.
+                        // After playback has rendered, Compose owns the single buffering indicator.
+                        preparingIndicator.visibility = if (firstFrameRenderedForTesting) {
+                            View.GONE
+                        } else {
+                            View.VISIBLE
+                        }
                     }
                     if (!errorVisible) scheduleControlsHide()
                 }
@@ -2511,6 +2519,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         preparingIndicator = ProgressBar(this).apply {
             tag = "reiflix_player_preparing"
             isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
             visibility = View.VISIBLE
             contentDescription = "Preparando vídeo"
         }
@@ -3088,6 +3097,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             },
             isPlaying = ::player.isInitialized && player.isPlaying,
             isBuffering = ::player.isInitialized && player.playbackState == Player.STATE_BUFFERING,
+            hasRenderedFirstFrame = firstFrameRenderedForTesting,
             ended = ::player.isInitialized && player.playbackState == Player.STATE_ENDED,
             errorVisible = errorVisible,
             controlsVisible = controlsVisible,
