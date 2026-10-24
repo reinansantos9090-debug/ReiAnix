@@ -1320,6 +1320,21 @@ private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
         anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
             DetailsExpandableSynopsis(description)
+        } ?: if (anime.descriptionTranslationPending) {
+            Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
+                Text(
+                    text = "Sinopse",
+                    style = ReiAnixTokens.TypographyTokens.sectionTitle,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    text = "Tradução para português brasileiro pendente. A sinopse será exibida após a validação da tradução.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            Unit
         }
         val knownTitles = sequenceOf(
             anime.title,
