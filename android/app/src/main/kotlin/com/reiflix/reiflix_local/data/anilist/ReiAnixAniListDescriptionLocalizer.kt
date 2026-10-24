@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.anilist
 
 import android.system.Os
 import android.text.Html
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -90,6 +91,12 @@ class ReiAnixAniListDescriptionLocalizer(
                     )
                     translated
                 } else {
+                    if (translated != null) {
+                        Log.w(
+                            TAG,
+                            "Translation response rejected by final PT-BR validation sourceLanguage=$source",
+                        )
+                    }
                     // Bound repeated failures without treating the failure as a translation.
                     cacheEntry(
                         key,
@@ -298,7 +305,15 @@ class ReiAnixAniListDescriptionLocalizer(
             } catch (_: Exception) {
                 null
             }
-            if (translated != null && isValidTranslation(text, translated)) return normalizeDescription(translated)
+            if (translated != null && isValidTranslation(text, translated)) {
+                return normalizeDescription(translated)
+            }
+            if (translated != null) {
+                Log.w(
+                    TAG,
+                    "Translation response rejected by content validation sourceLanguage=$source",
+                )
+            }
             return null
         }
         return null
@@ -405,6 +420,7 @@ class ReiAnixAniListDescriptionLocalizer(
     private fun epochSeconds(): Double = System.currentTimeMillis() / 1000.0
 
     companion object {
+        private const val TAG = "ReiAnixAniListTranslation"
         const val TARGET_LANGUAGE = "pt-BR"
         const val TRANSLATION_ENDPOINT = "https://api.mymemory.translated.net/get"
         const val MAX_TRANSLATION_BYTES = 480
