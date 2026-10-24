@@ -729,7 +729,10 @@ class ReiAnixAniListIntegrationService(
     }
 
     private fun hasManuallyOwnedSynopsis(record: ReiAnixAnimeRecord): Boolean {
-        if (record.metadataSource == "manual" || record.metadataStatus == "manual") return true
+        if (
+            record.metadataSource.equals("manual", ignoreCase = true) ||
+            record.metadataStatus.equals("manual", ignoreCase = true)
+        ) return true
         val raw = record.metadataManualFieldsJson?.trim().orEmpty()
         if (raw.isBlank()) return false
         return try {
