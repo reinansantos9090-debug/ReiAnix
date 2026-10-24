@@ -893,6 +893,14 @@ private fun HomeHero(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    } ?: if (anime.descriptionTranslationPending) {
+                        Text(
+                            text = "Sinopse em PT-BR pendente",
+                            style = ReiAnixTokens.TypographyTokens.bodySecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Unit
                     }
 
                 Row(
