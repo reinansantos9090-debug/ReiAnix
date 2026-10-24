@@ -387,6 +387,9 @@ class ReiAnixAniListIntegrationService(
         val previousState = settings.getPreference(SYNOPSIS_RECOVERY_STATE_KEY)?.value
         var cursor = settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)
             ?.value?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        // Upgrade the cursor-only state written by Prompt 2. Its pending/failure
+        // summary did not exist, so validate from the start once to seed the new state.
+        if (previousState.isNullOrBlank()) cursor = 0L
         val now = System.currentTimeMillis()
         val retryAfter = settings.getPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY)
             ?.value?.toLongOrNull() ?: 0L
