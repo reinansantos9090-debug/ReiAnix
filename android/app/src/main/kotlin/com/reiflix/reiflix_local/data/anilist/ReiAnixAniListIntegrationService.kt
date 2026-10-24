@@ -390,6 +390,8 @@ class ReiAnixAniListIntegrationService(
         }
         return try {
             var translatedTotal = 0
+            var pendingTotal = 0
+            var recoverableFailureTotal = 0
             var batchCount = 0
             var hasMoreInCycle: Boolean
             do {
@@ -399,11 +401,19 @@ class ReiAnixAniListIntegrationService(
                     maxTranslationAttempts = maxTranslationAttempts,
                 )
                 translatedTotal += batch.translatedCount
+                pendingTotal += batch.pendingCount
+                recoverableFailureTotal += batch.recoverableFailureCount
                 batchCount++
                 hasMoreInCycle = batch.hasMoreInCycle
                 if (hasMoreInCycle) yield()
             } while (hasMoreInCycle)
-            Log.i(TAG, "Synopsis recovery sweep completed batches=" + batchCount + " translated=" + translatedTotal)
+            Log.i(
+                TAG,
+                "Synopsis recovery sweep completed batches=" + batchCount +
+                    " translated=" + translatedTotal +
+                    " pendingObservations=" + pendingTotal +
+                    " recoverableFailures=" + recoverableFailureTotal,
+            )
             translatedTotal
         } finally {
             synopsisRecoveryInProgress.set(false)
@@ -417,7 +427,12 @@ class ReiAnixAniListIntegrationService(
         val localizer = descriptionLocalizer
         if (localizer == null) {
             Log.w(TAG, "Synopsis recovery unavailable because the canonical localizer is not configured")
-            return@withLock 0
+            return SynopsisRecoveryBatchResult(
+                translatedCount = 0,
+                pendingCount = 0,
+                recoverableFailureCount = 0,
+                hasMoreInCycle = false,
+            )
         }
 
         var cursor = settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)
