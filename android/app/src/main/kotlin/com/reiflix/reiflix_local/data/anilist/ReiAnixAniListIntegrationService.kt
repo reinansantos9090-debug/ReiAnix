@@ -387,6 +387,8 @@ class ReiAnixAniListIntegrationService(
         var cacheHits = 0
         var alreadyValid = 0
         var failed = 0
+        var pending = 0
+        var recoverableFailures = 0
         var conflicts = 0
         var cleared = 0
         var manualSkipped = 0
@@ -554,7 +556,15 @@ class ReiAnixAniListIntegrationService(
                     }
                     "already_valid" -> alreadyValid++
                     "manual" -> manualSkipped++
-                    "translation_failed", "unknown_source_language", "source_unavailable", "invalid_association", "error" -> failed++
+                    "unknown_source_language", "invalid_association" -> {
+                        failed++
+                        pending++
+                    }
+                    "translation_failed", "source_unavailable", "error" -> {
+                        failed++
+                        pending++
+                        recoverableFailures++
+                    }
                     "conflict" -> conflicts++
                 }
                 if (clearedStaleDisplay) cleared++
@@ -572,7 +582,11 @@ class ReiAnixAniListIntegrationService(
                 " translated=" + translatedCount +
                 " cacheHits=" + cacheHits +
                 " alreadyValid=" + alreadyValid +
-                " failedOrPending=" + failed +
+                " failed=" + failed +
+                " pending=" + pending +
+                " recoverableFailures=" + recoverableFailures +
+                " translationRequests=" + translationAttempts +
+                " sourceLookups=" + sourceLookups +
                 " staleDisplaysCleared=" + cleared +
                 " conflicts=" + conflicts +
                 " manualSkipped=" + manualSkipped +
