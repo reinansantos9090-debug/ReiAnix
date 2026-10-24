@@ -188,6 +188,35 @@ class ReiAnixAniListDescriptionLocalizerTest {
     }
 
     @Test
+    fun successfulHttpResponseInSpanishIsRejectedAsAnInvalidPtBrTranslation() = runBlocking {
+        val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-wrong-language-" + System.nanoTime())
+        assertTrue(directory.mkdirs())
+        try {
+            val source = "The story follows a young hero who protects their people from danger every day."
+            val spanish = "La historia sigue a un joven que protege a su pueblo cada día."
+            val transport = FakeTranslationTransport(
+                AniListTranslationHttpResponse(
+                    200,
+                    JSONObject()
+                        .put("responseStatus", 200)
+                        .put("responseData", JSONObject().put("translatedText", spanish))
+                        .toString(),
+                ),
+            )
+            val localizer = ReiAnixAniListDescriptionLocalizer(
+                File(directory, "anilist_description_ptbr.json"),
+                transport,
+            )
+
+            assertNull(localizer.localizeToPtBr(source, "en"))
+            assertNull(localizer.getCachedDescriptionPtBr(source, "en"))
+            assertEquals(1, transport.calls)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun emptyTranslationResponseStaysPendingAndUsesFailureBackoff() = runBlocking {
         val directory = File(System.getProperty("java.io.tmpdir"), "reianix-anilist-empty-" + System.nanoTime())
         assertTrue(directory.mkdirs())
