@@ -381,14 +381,40 @@ class ReiAnixAniListIntegrationService(
     suspend fun reconcilePendingSynopsisTranslations(
         maxCandidates: Int = MAX_SYNOPSIS_CANDIDATES_PER_RUN,
         maxTranslationAttempts: Int = MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN,
+        force: Boolean = false,
     ): Int {
         require(maxCandidates in 1..MAX_SYNOPSIS_CANDIDATES_PER_RUN)
         require(maxTranslationAttempts in 1..MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN)
+
+        val previousState = settings.getPreference(SYNOPSIS_RECOVERY_STATE_KEY)?.value
+        var initialCursor = settings.getPreference(SYNOPSIS_RECOVERY_CURSOR_KEY)
+            ?.value?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        val now = System.currentTimeMillis()
+        val retryAfter = settings.getPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY)
+            ?.value?.toLongOrNull() ?: 0L
+        if (!force && initialCursor == 0L) {
+            if (previousState == "complete") return 0
+            if (previousState == "pending" && (retryAfter <= 0L || now < retryAfter)) return 0
+        }
+
         if (!synopsisRecoveryInProgress.compareAndSet(false, true)) {
             Log.i(TAG, "Synopsis recovery already active; the current sweep will continue.")
             return 0
         }
         return try {
+            // One-time upgrade from the cursor-only Prompt 2 implementation. Its old
+            // cursor has no accumulated pending/failure summary, so start a single
+            // validation sweep to initialize the new summary keys consistently.
+            if (previousState.isNullOrBlank()) {
+                settings.setPreference(SYNOPSIS_RECOVERY_CURSOR_KEY, "0")
+                initialCursor = 0L
+            }
+            if (initialCursor == 0L) {
+                settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "false")
+                settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_RECOVERABLE_KEY, "false")
+            }
+            settings.setPreference(SYNOPSIS_RECOVERY_STATE_KEY, "in_progress")
+
             var translatedTotal = 0
             var pendingTotal = 0
             var recoverableFailureTotal = 0
@@ -407,18 +433,49 @@ class ReiAnixAniListIntegrationService(
                 hasMoreInCycle = batch.hasMoreInCycle
                 if (hasMoreInCycle) yield()
             } while (hasMoreInCycle)
+
+            val cycleHasPending = settings.getPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY)
+                ?.value?.toBooleanStrictOrNull() == true || pendingTotal > 0
+            val cycleHasRecoverableFailure =
+                settings.getPreference(SYNOPSIS_RECOVERY_CYCLE_RECOVERABLE_KEY)
+                    ?.value?.toBooleanStrictOrNull() == true || recoverableFailureTotal > 0
+            settings.setPreference(
+                SYNOPSIS_RECOVERY_STATE_KEY,
+                if (cycleHasPending) "pending" else "complete",
+            )
+
+            val existingRetryAfter = settings.getPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY)
+                ?.value?.toLongOrNull() ?: 0L
+            val nextRetryAfter = if (!cycleHasPending || !cycleHasRecoverableFailure) {
+                0L
+            } else if (existingRetryAfter > System.currentTimeMillis()) {
+                // Forced scans must not extend an existing MyMemory cooldown.
+                existingRetryAfter
+            } else {
+                System.currentTimeMillis() +
+                    (ReiAnixAniListDescriptionLocalizer.FAILED_RETRY_WINDOW_SECONDS * 1000.0).toLong()
+            }
+            settings.setPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY, nextRetryAfter.toString())
             Log.i(
                 TAG,
                 "Synopsis recovery sweep completed batches=" + batchCount +
                     " translated=" + translatedTotal +
                     " pendingObservations=" + pendingTotal +
-                    " recoverableFailures=" + recoverableFailureTotal,
+                    " recoverableFailures=" + recoverableFailureTotal +
+                    " pending=" + cycleHasPending +
+                    " nextRetryAfter=" + nextRetryAfter,
             )
             translatedTotal
         } finally {
             synopsisRecoveryInProgress.set(false)
         }
     }
+
+    /** A single timer boundary derived from the existing translator failure backoff. */
+    suspend fun nextSynopsisRecoveryRetryAfterEpochMillis(): Long? =
+        settings.getPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY)
+            ?.value?.toLongOrNull()
+            ?.takeIf { it > System.currentTimeMillis() }
 
     private suspend fun reconcilePendingSynopsisTranslationsBatch(
         maxCandidates: Int,
@@ -615,15 +672,19 @@ class ReiAnixAniListIntegrationService(
                     "unknown_source_language", "invalid_association" -> {
                         failed++
                         pending++
+                        settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "true")
                     }
                     "translation_failed", "source_unavailable", "error" -> {
                         failed++
                         pending++
                         recoverableFailures++
+                        settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "true")
+                        settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_RECOVERABLE_KEY, "true")
                     }
                     "conflict" -> {
                         conflicts++
                         pending++
+                        settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "true")
                     }
                 }
                 if (clearedStaleDisplay) cleared++
@@ -840,6 +901,10 @@ class ReiAnixAniListIntegrationService(
         )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
         private const val SYNOPSIS_RECOVERY_CURSOR_KEY = "metadata.synopsis_recovery_cursor"
+        private const val SYNOPSIS_RECOVERY_STATE_KEY = "metadata.synopsis_recovery_state"
+        private const val SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY = "metadata.synopsis_recovery_cycle_pending"
+        private const val SYNOPSIS_RECOVERY_CYCLE_RECOVERABLE_KEY = "metadata.synopsis_recovery_cycle_recoverable"
+        private const val SYNOPSIS_RECOVERY_RETRY_AFTER_KEY = "metadata.synopsis_recovery_retry_after"
         private const val SYNOPSIS_RECOVERY_PAGE_SIZE = 64
         private const val MAX_SYNOPSIS_CANDIDATES_PER_RUN = 512
         private const val MAX_SYNOPSIS_TRANSLATION_ATTEMPTS_PER_RUN = 8
