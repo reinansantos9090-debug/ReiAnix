@@ -857,6 +857,35 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun legacySynopsisRecoverySupportsRowsWithoutAnAniListAssociation() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val source = "The original synopsis remains in the legacy display field."
+        repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = source,
+                descriptionOriginal = source,
+            ),
+        )
+
+        assertTrue(
+            repository.updateAniListSynopsisIfUnchanged(
+                animeId = 1L,
+                expectedAniListId = null,
+                expectedOriginal = source,
+                expectedDescription = source,
+                originalSource = source,
+                translatedDescription = null,
+            ),
+        )
+        val pending = repository.getAnime(1L)!!
+        assertNull(pending.description)
+        assertEquals(source, pending.descriptionOriginal)
+        assertNull(pending.anilistId)
+    }
+
+    @Test
     fun genericMetadataPatchPersistsOriginalSynopsisWithoutClearingLocalFields() = runBlocking {
         createCanonicalFixture()
         val repository = ReiAnixSqliteLibraryRepository(context)
