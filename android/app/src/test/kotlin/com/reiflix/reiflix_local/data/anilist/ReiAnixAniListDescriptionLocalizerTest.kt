@@ -117,6 +117,7 @@ class ReiAnixAniListDescriptionLocalizerTest {
             File(System.getProperty("java.io.tmpdir"), "reianix-unused-" + System.nanoTime() + ".json"),
         )
         assertFalse(localizer.isPtBrDescription("François célèbre Noël à la façon d'un héros."))
+        assertFalse(localizer.isPtBrDescription("La historia sigue a un joven que protege a su pueblo cada día."))
     }
 
     @Test
