@@ -39,6 +39,7 @@ private data class SynopsisRecoveryBatchResult(
     val pendingCount: Int,
     val recoverableFailureCount: Int,
     val hasMoreInCycle: Boolean,
+    val localizerAvailable: Boolean = true,
 )
 
 class ReiAnixAniListIntegrationService(
@@ -430,6 +431,12 @@ class ReiAnixAniListIntegrationService(
                 pendingTotal += batch.pendingCount
                 recoverableFailureTotal += batch.recoverableFailureCount
                 batchCount++
+                if (!batch.localizerAvailable) {
+                    settings.setPreference(SYNOPSIS_RECOVERY_CYCLE_PENDING_KEY, "true")
+                    settings.setPreference(SYNOPSIS_RECOVERY_STATE_KEY, "pending")
+                    settings.setPreference(SYNOPSIS_RECOVERY_RETRY_AFTER_KEY, "0")
+                    return translatedTotal
+                }
                 hasMoreInCycle = batch.hasMoreInCycle
                 if (hasMoreInCycle) yield()
             } while (hasMoreInCycle)
@@ -489,6 +496,7 @@ class ReiAnixAniListIntegrationService(
                 pendingCount = 0,
                 recoverableFailureCount = 0,
                 hasMoreInCycle = false,
+                localizerAvailable = false,
             )
         }
 
