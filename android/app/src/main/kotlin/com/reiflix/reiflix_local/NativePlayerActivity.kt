@@ -2856,17 +2856,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
             tag = "reiflix_markers_button"
             contentDescription = "Marcadores e notas locais"
         }
-        addMoreRow(previousEpisode, nextEpisode)
-        addMoreRow(audio, subtitle)
-        addMoreRow(speed, horizontalSeekButton)
-        addMoreRow(markers)
-        addMoreRow(actionButton("Reiniciar", 92) {
+        val restartButton = actionButton("Reiniciar", 92) {
             if (::player.isInitialized) {
                 player.seekTo(0L)
                 saveProgress("player_progress", force = true)
                 showFeedback("00:00")
             }
-        }, actionButton("Autoplay", 92) { button ->
+        }
+        addMoreRow(previousEpisode, nextEpisode)
+        addMoreRow(audio, subtitle)
+        addMoreRow(speed, restartButton)
+        addMoreRow(markers)
+        addMoreRow(horizontalSeekButton, actionButton("Autoplay", 92) { button ->
             autoplayNext = !autoplayNext
             button.text = "Autoplay " + if (autoplayNext) "ON" else "OFF"
             persistCanonicalPlayerSetting("player.autoplay_next", autoplayNext.toString())
