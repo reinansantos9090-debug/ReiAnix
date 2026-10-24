@@ -17,6 +17,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navOptions
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
@@ -37,6 +39,7 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -107,27 +110,41 @@ class ReiAnixComposeLibraryHost(
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
-            // Repair older AniList synopses when an already-populated canonical catalog
-            // first becomes available, even if this process did not initiate a scan.
-            // The service uses a persisted stable-ID cursor and a bounded request budget.
+            // Repair existing pending synopses whenever this activity is started.
+            // The service runs bounded batches to the end of the current ID sweep,
+            // persists its cursor/state, and applies one cancellable retry at the
+            // translator's existing cooldown boundary when a transient failure remains.
             LaunchedEffect(libraryViewModel) {
-                libraryViewModel.uiState
-                    .map { it.scanInProgress to it.animes.isNotEmpty() }
-                    .distinctUntilChanged()
-                    .filter { state -> !state.first && state.second }
-                    .first()
-                val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                try {
-                    withContext(Dispatchers.IO) {
-                        dependencies.aniListIntegrationService.reconcilePendingSynopsisTranslations()
+                activity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    libraryViewModel.uiState
+                        .map { it.scanInProgress to it.animes.isNotEmpty() }
+                        .distinctUntilChanged()
+                        .filter { state -> !state.first && state.second }
+                        .first()
+                    val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                    val integration = dependencies.aniListIntegrationService
+                    try {
+                        withContext(Dispatchers.IO) {
+                            integration.reconcilePendingSynopsisTranslations()
+                        }
+                        val nextRetryAt = withContext(Dispatchers.IO) {
+                            integration.nextSynopsisRecoveryRetryAfterEpochMillis()
+                        }
+                        if (nextRetryAt != null) {
+                            val waitMillis = (nextRetryAt - System.currentTimeMillis()).coerceAtLeast(0L)
+                            if (waitMillis > 0L) delay(waitMillis)
+                            withContext(Dispatchers.IO) {
+                                integration.reconcilePendingSynopsisTranslations()
+                            }
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        android.util.Log.w(
+                            TAG,
+                            "Initial synopsis recovery failed. errorType=" + error::class.java.simpleName,
+                        )
                     }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        TAG,
-                        "Initial synopsis recovery failed. errorType=" + error::class.java.simpleName,
-                    )
                 }
             }
 
@@ -146,7 +163,7 @@ class ReiAnixComposeLibraryHost(
                         try {
                             withContext(Dispatchers.IO) {
                                 dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
-                                dependencies.aniListIntegrationService.reconcilePendingSynopsisTranslations()
+                                dependencies.aniListIntegrationService.reconcilePendingSynopsisTranslations(force = true)
                             }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
