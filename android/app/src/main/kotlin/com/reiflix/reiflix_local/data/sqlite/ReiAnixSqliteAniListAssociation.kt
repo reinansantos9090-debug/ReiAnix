@@ -41,11 +41,18 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 } else {
                     try {
                         val parsed = JSONArray(raw)
-                        buildSet<String> {
-                            for (index in 0 until parsed.length()) {
-                                val field = parsed.get(index)
-                                if (field !is String) throw IllegalStateException("Manual metadata ownership is invalid.")
-                                add(field as String)
+                        if (parsed.length() == 0) {
+                            // Empty ownership is ambiguous; protect the synopsis without
+                            // silently rewriting the stored ownership metadata.
+                            setOf("description")
+                        } else {
+                            buildSet<String> {
+                                for (index in 0 until parsed.length()) {
+                                    val field = parsed.get(index)
+                                    if (field !is String) throw IllegalStateException("Manual metadata ownership is invalid.")
+                                    if (field.isBlank()) throw IllegalStateException("Manual metadata ownership is invalid.")
+                                    add(field)
+                                }
                             }
                         }
                     } catch (error: JSONException) {
