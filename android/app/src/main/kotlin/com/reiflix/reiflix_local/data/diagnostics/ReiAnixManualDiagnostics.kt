@@ -44,7 +44,7 @@ object ReiAnixManualDiagnostics {
     private val cancellationRequested = AtomicBoolean(false)
 
     @Volatile
-    private var activeLogcatProcess: Process? = null
+    private var activeLogcatProcess: java.lang.Process? = null
 
     private val generalCategories = listOf(
         "system", "logs", "storage", "scanner", "sqlite", "thumbnails", "bridge", "performance",
@@ -270,13 +270,19 @@ object ReiAnixManualDiagnostics {
         val runtime = Runtime.getRuntime()
         val memory = Debug.MemoryInfo()
         Debug.getMemoryInfo(memory)
+        val versionCode = if (Build.VERSION.SDK_INT >= 28) {
+            packageInfo?.longVersionCode ?: 0L
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo?.versionCode?.toLong() ?: 0L
+        }
         return JSONObject()
             .put("available", true)
             .put("android_release", Build.VERSION.RELEASE.orEmpty())
             .put("android_api", Build.VERSION.SDK_INT)
             .put("app_id", context.packageName)
             .put("app_version", packageInfo?.versionName ?: BuildConfig.VERSION_NAME)
-            .put("app_version_code", if (Build.VERSION.SDK_INT >= 28) packageInfo?.longVersionCode ?: 0L else @Suppress("DEPRECATION") packageInfo?.versionCode ?: 0)
+            .put("app_version_code", versionCode)
             .put("process_id", Process.myPid())
             .put("process_uptime_ms", SystemClock.elapsedRealtime())
             .put("process_cpu_time_ms", Process.getElapsedCpuTime())
@@ -621,7 +627,9 @@ object ReiAnixManualDiagnostics {
         }.getOrDefault(JSONArray())
 
     private fun hasPermission(context: Context, permission: String): Boolean =
-        runCatching { context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED }.getOrDefault(false)
+        if (Build.VERSION.SDK_INT < 23) false
+        else runCatching { context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED }
+            .getOrDefault(false)
 
     private fun safeCount(db: SQLiteDatabase, sql: String): Long =
         runCatching { db.rawQuery(sql, null).use { if (it.moveToFirst()) it.getLong(0) else 0L } }.getOrDefault(-1L)
