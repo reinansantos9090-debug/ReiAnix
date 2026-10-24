@@ -71,7 +71,7 @@ A classificação de propriedade da sinopse é conservadora e está isolada em `
 
 Como o ciclo normal usa cursor/high-water para evitar uma varredura completa em toda abertura, uma linha antiga que estava bloqueada e teve sua propriedade reparada não será redescoberta apenas por estar abaixo do high-water. O fluxo editorial que reparar a propriedade deve solicitar uma passagem explícita com `reconcilePendingSynopsisTranslations(force = true)`; essa chamada inicia a reavaliação incremental desde o início sem exigir nova varredura física de arquivos. A chamada continua sujeita aos limites de candidatos, traduções e consultas remotas. Não há reparação automática segura quando não existe evidência confiável de propriedade.
 
-Teste JVM novo preparado: `ReiAnixAniListSynopsisOwnershipTest` cobre listas ausentes/vazias/malformadas, entradas não textuais, proteção manual e lista válida com outros campos. Ele não foi executado nesta tarefa.
+Testes JVM preparados, sem execução nesta tarefa: `ReiAnixAniListSynopsisOwnershipTest` cobre listas ausentes/vazias/malformadas, entradas não textuais, proteção manual e lista válida com outros campos; `ReiAnixSqliteRepositoryRuntimeTest.emptySynopsisOwnershipArrayIsUnknownAcrossAllSynopsisWriters` verifica que `[]` não autoriza sobrescrita no CAS de recuperação, no patch genérico nem na atualização de associação AniList.
 
 ## Verificações e evidências
 
