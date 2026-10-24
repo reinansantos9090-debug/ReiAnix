@@ -602,8 +602,8 @@ class ReiAnixSqliteLibraryRepository(
             if (current.anilistId != expectedAniListId ||
                 current.descriptionOriginal != expectedOriginal ||
                 current.description != expectedDescription ||
-                current.metadataSource == "manual" ||
-                current.metadataStatus == "manual"
+                current.metadataSource.equals("manual", ignoreCase = true) ||
+                current.metadataStatus.equals("manual", ignoreCase = true)
             ) return@transaction false
 
             val descriptionIsManuallyOwned = try {
