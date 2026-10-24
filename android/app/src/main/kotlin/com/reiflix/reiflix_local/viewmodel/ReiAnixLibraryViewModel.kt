@@ -28,6 +28,7 @@ import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
 import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
 import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
+import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import com.reiflix.reiflix_local.scanner.ScanLifecycleState
@@ -242,6 +243,7 @@ class ReiAnixLibraryViewModel(
 
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
+    private val episodeThumbnailRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
     // Legacy runtime callbacks can invalidate the same projection many times in a burst.
     // A conflated channel keeps one follow-up reload instead of launching dozens of
     // identical SQLite catalog reads while the previous reload is still in flight.
@@ -1343,6 +1345,76 @@ class ReiAnixLibraryViewModel(
             appDependencies?.artworkService?.requestAnimeArtwork(animeId)
         }
     }
+
+    /**
+     * Episode artwork is a local video-frame pipeline, independent of AniList
+     * posters/backdrops. Generate missing episode thumbnails when Details opens;
+     * the extractor commits them to the canonical artwork table and its
+     * publication signal refreshes the immutable Compose projection.
+     */
+    fun requestMissingEpisodeThumbnails(animeId: Long) {
+        if (animeId <= 0L) return
+        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
+        val pending = anime.contentEpisodes.filter { episode ->
+            episode.media.availability.name == "AVAILABLE" &&
+                episodeThumbnailSource(episode) != null &&
+                episode.artwork?.localPath?.let { File(it).isFile } != true &&
+                episodeThumbnailRequestsInFlight.add(episode.id)
+        }
+        if (pending.isEmpty()) return
+
+        viewModelScope.launch {
+            try {
+                for (episode in pending) {
+                    val rawSource = episodeThumbnailSource(episode) ?: continue
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val sourceUri = VideoThumbnailExtractor.normalizeLocalMediaUri(rawSource)
+                            if (sourceUri == null) {
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "EPISODE_THUMBNAIL_SOURCE_UNAVAILABLE",
+                                    severity = "WARN",
+                                    source = "ReiAnixLibraryViewModel",
+                                    result = "UNSUPPORTED_LOCAL_URI",
+                                    context = mapOf("episode_id" to episode.id, "anime_id" to animeId),
+                                )
+                                return@withContext
+                            }
+                            val result = VideoThumbnailExtractor.extract(
+                                appContext,
+                                sourceUri,
+                                episode.fileSizeBytes ?: 0L,
+                                episode.modifiedAt?.toLong() ?: 0L,
+                                episode.media.mediaIdentity,
+                            )
+                            if (result == null) {
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "EPISODE_THUMBNAIL_EXTRACTION_UNAVAILABLE",
+                                    severity = "WARN",
+                                    source = "ReiAnixLibraryViewModel",
+                                    result = "NO_FRAME",
+                                    context = mapOf("episode_id" to episode.id, "anime_id" to animeId),
+                                )
+                            }
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Episode thumbnail generation failed for episodeId=${episode.id}", error)
+                    } finally {
+                        episodeThumbnailRequestsInFlight.remove(episode.id)
+                    }
+                }
+            } finally {
+                pending.forEach { episodeThumbnailRequestsInFlight.remove(it.id) }
+            }
+        }
+    }
+
+    private fun episodeThumbnailSource(episode: com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel): String? =
+        episode.media.reference?.trim()?.takeIf(String::isNotEmpty)
+            ?: episode.media.uri?.trim()?.takeIf(String::isNotEmpty)
+            ?: episode.media.path?.trim()?.takeIf(String::isNotEmpty)
 
     private var canonicalConsumersStarted = false
 
