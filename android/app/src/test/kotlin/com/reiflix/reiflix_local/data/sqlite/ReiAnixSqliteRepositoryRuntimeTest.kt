@@ -912,6 +912,16 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
         }
 
+        val genericUpdated = repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = "Generic metadata write must not replace a manual synopsis.",
+                descriptionOriginal = "A newer generic original.",
+            ),
+        )
+        assertEquals(manualDescription, genericUpdated.description)
+        assertEquals(oldOriginal, genericUpdated.descriptionOriginal)
+
         val updated = repository.updateAniListMetadataAndAssociation(
             patch = ReiAnixAnimeMetadataPatch(
                 animeId = 1L,
@@ -978,6 +988,16 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val after = repository.getAnime(1L)!!
         assertEquals(existingDisplay, after.description)
         assertEquals(source, after.descriptionOriginal)
+
+        val genericAfter = repository.updateAnimeMetadata(
+            ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                description = "Must not overwrite while ownership metadata is unknown.",
+                descriptionOriginal = "New generic source.",
+            ),
+        )
+        assertEquals(existingDisplay, genericAfter.description)
+        assertEquals(source, genericAfter.descriptionOriginal)
 
         val associationAfter = repository.updateAniListMetadataAndAssociation(
             patch = ReiAnixAnimeMetadataPatch(
