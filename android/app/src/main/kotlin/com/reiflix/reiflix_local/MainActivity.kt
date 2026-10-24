@@ -1457,10 +1457,17 @@ class MainActivity : ComponentActivity() {
                     message = if (
                         action == "backup_integrity" ||
                         action == "backup_reconcile" ||
-                        action == "backup_recovery_snapshot"
+                        action == "backup_recovery_snapshot" ||
+                        action.startsWith("diagnostic_run_") ||
+                        action == "diagnostic_clear"
                     ) "Preparando a operação nativa." else if (action == "backup_recovery_restore_local") {
                         "Procurando um backup válido salvo pelo ReiAnix."
-                    } else "Aguardando o seletor de arquivos do Android.",
+                    } else if (action == "diagnostic_export" || action == "diagnostic_import_logcat" ||
+                        action == "settings_export" || action == "settings_import" ||
+                        action == "backup_create" || action == "backup_restore" ||
+                        action == "backup_recovery_restore") {
+                        "Aguardando o seletor de arquivos do Android."
+                    } else "Preparando a operação nativa.",
                 )
             }
             lifecycle.whenStarted {
