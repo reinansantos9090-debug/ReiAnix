@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.storage
 
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -67,7 +68,17 @@ object VideoThumbnailExtractor {
         mediaIdentity: String? = null,
     ): Result? {
         val cacheDir = File(context.cacheDir, "reiflix/thumbnails")
-        if (!cacheDir.exists() && !cacheDir.mkdirs()) return null
+        if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_REQUEST_FAILED",
+                severity = "ERROR",
+                source = "VideoThumbnailExtractor",
+                result = "FAILED",
+                error = IllegalStateException("THUMBNAIL_CACHE_DIRECTORY_UNAVAILABLE"),
+                context = mapOf("stage" to "cache_directory", "source_scheme" to uri.scheme.orEmpty()),
+            )
+            return null
+        }
 
         val identity = mediaIdentity?.trim().takeUnless { it.isNullOrEmpty() } ?: uri.toString()
         val key = cacheKey(identity, size, modifiedAt)
@@ -77,6 +88,19 @@ object VideoThumbnailExtractor {
         }
         val target = File(cacheDir, key + ".jpg")
         val requestId = "thumb-" + key.take(12)
+        val requestStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
+        ReiAnixDiagnosticTimeline.record(
+            name = "THUMBNAIL_REQUESTED",
+            source = "VideoThumbnailExtractor",
+            result = "STARTED",
+            requestId = requestId,
+            context = mapOf(
+                "source_scheme" to uri.scheme.orEmpty(),
+                "source_size_bytes" to size.coerceAtLeast(0L),
+                "source_modified_at_ms" to modifiedAt.coerceAtLeast(0L),
+                "has_media_identity" to !mediaIdentity.isNullOrBlank(),
+            ),
+        )
         NativeMailbox.writeBestEffort(
             context,
             org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
@@ -114,9 +138,29 @@ object VideoThumbnailExtractor {
                             ),
                     )
                 }
+                ReiAnixDiagnosticTimeline.record(
+                    name = "THUMBNAIL_CACHE_HIT",
+                    source = "VideoThumbnailExtractor",
+                    result = "COMPLETED",
+                    requestId = requestId,
+                    context = mapOf(
+                        "width" to cached.result.width,
+                        "height" to cached.result.height,
+                        "cache_bytes" to target.length(),
+                        "duration_ms" to cached.result.durationMs,
+                        "elapsed_ms" to ((android.os.SystemClock.elapsedRealtimeNanos() - requestStartedNs) / 1_000_000L),
+                    ),
+                )
                 return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
             }
         }
+        ReiAnixDiagnosticTimeline.record(
+            name = "THUMBNAIL_CACHE_MISS",
+            source = "VideoThumbnailExtractor",
+            result = "MISS",
+            requestId = requestId,
+            context = mapOf("source_size_bytes" to size.coerceAtLeast(0L)),
+        )
         NativeMailbox.writeBestEffort(
             context,
             org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
@@ -138,6 +182,13 @@ object VideoThumbnailExtractor {
                 extractionPermits.acquire()
                 permitAcquired = true
                 val startedNs = android.os.SystemClock.elapsedRealtimeNanos()
+                ReiAnixDiagnosticTimeline.record(
+                    name = "THUMBNAIL_GENERATION_STARTED",
+                    source = "VideoThumbnailExtractor",
+                    result = "RUNNING",
+                    requestId = requestId,
+                    context = mapOf("source_scheme" to uri.scheme.orEmpty()),
+                )
                 NativeMailbox.writeBestEffort(
                     context,
                     org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
@@ -157,7 +208,34 @@ object VideoThumbnailExtractor {
                             .put("requestId", requestId)
                             .put("durationMs", (android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000.0)),
                 )
-                if (result == null) return null
+                if (result == null) {
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "THUMBNAIL_FAILED",
+                        severity = "ERROR",
+                        source = "VideoThumbnailExtractor",
+                        result = "FAILED",
+                        requestId = requestId,
+                        error = IllegalStateException("THUMBNAIL_EXTRACTION_RETURNED_NULL"),
+                        context = mapOf(
+                            "stage" to "extract",
+                            "elapsed_ms" to ((android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000L),
+                        ),
+                    )
+                    return null
+                }
+                ReiAnixDiagnosticTimeline.record(
+                    name = "THUMBNAIL_GENERATION_FINISHED",
+                    source = "VideoThumbnailExtractor",
+                    result = "COMPLETED",
+                    requestId = requestId,
+                    context = mapOf(
+                        "width" to result.width,
+                        "height" to result.height,
+                        "cache_bytes" to target.length(),
+                        "duration_ms" to result.durationMs,
+                        "elapsed_ms" to ((android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000L),
+                    ),
+                )
                 return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, result)
             } finally {
                 if (permitAcquired) extractionPermits.release()
@@ -192,7 +270,31 @@ object VideoThumbnailExtractor {
                 ) == true
         }.getOrElse { error ->
             android.util.Log.w("VideoThumbnailExtractor", "Canonical thumbnail registration failed", error)
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_ARTWORK_ASSOCIATION_FAILED",
+                severity = "ERROR",
+                source = "VideoThumbnailExtractor",
+                result = "FAILED",
+                error = error,
+                context = mapOf("width" to result.width, "height" to result.height),
+            )
             false
+        }
+        if (!registered) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_ARTWORK_ASSOCIATION_MISSING",
+                severity = "WARN",
+                source = "VideoThumbnailExtractor",
+                result = "NOT_REGISTERED",
+                context = mapOf("width" to result.width, "height" to result.height),
+            )
+        } else {
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_ARTWORK_ASSOCIATED",
+                source = "VideoThumbnailExtractor",
+                result = "COMPLETED",
+                context = mapOf("width" to result.width, "height" to result.height),
+            )
         }
         return result.copy(canonicalArtworkRegistered = registered)
     }
@@ -248,6 +350,18 @@ object VideoThumbnailExtractor {
                 retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             } ?: return null
 
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_DECODED",
+                source = "VideoThumbnailExtractor",
+                result = "COMPLETED",
+                context = mapOf(
+                    "source_width" to width,
+                    "source_height" to height,
+                    "decoded_width" to bitmap.width,
+                    "decoded_height" to bitmap.height,
+                    "rotation_degrees" to rotation,
+                ),
+            )
             if (bitmap.width > MAX_FRAME_DIMENSION || bitmap.height > MAX_FRAME_DIMENSION) {
                 val scale = minOf(
                     MAX_FRAME_DIMENSION.toFloat() / bitmap.width.toFloat(),
@@ -296,8 +410,16 @@ object VideoThumbnailExtractor {
             )
             writeCacheMetadata(target, key, size, modifiedAt, result)
             result
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             temp.delete()
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_DECODE_FAILED",
+                severity = "ERROR",
+                source = "VideoThumbnailExtractor",
+                result = "FAILED",
+                error = error,
+                context = mapOf("stage" to "decode_or_cache_write"),
+            )
             null
         } finally {
             bitmap?.recycle()
