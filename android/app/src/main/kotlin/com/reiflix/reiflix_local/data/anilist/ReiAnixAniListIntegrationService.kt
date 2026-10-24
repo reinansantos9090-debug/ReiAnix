@@ -389,7 +389,6 @@ class ReiAnixAniListIntegrationService(
         var failed = 0
         var conflicts = 0
         var cleared = 0
-        var sourceUnavailable = 0
         var manualSkipped = 0
 
         while (scanned < maxCandidates && translationAttempts < maxTranslationAttempts) {
@@ -481,7 +480,8 @@ class ReiAnixAniListIntegrationService(
                                 }
                             }
 
-                            if (!source.isNullOrBlank()) {
+                            val sourceText = source?.takeIf(String::isNotBlank)
+                            if (sourceText != null) {
                                 // CAS-clearing first ensures an old English/other-language
                                 // fallback never remains presented as a completed synopsis.
                                 // The original/source is retained in description_original.
@@ -490,28 +490,30 @@ class ReiAnixAniListIntegrationService(
                                     expectedAniListId = anilistId,
                                     expectedOriginal = originalRaw,
                                     expectedDescription = displayRaw,
-                                    originalSource = source,
+                                    originalSource = sourceText,
                                     translatedDescription = null,
                                 )
                                 if (!prepared) {
                                     outcome = "conflict"
                                 } else {
                                     clearedStaleDisplay = display.isNotEmpty()
-                                    if (clearedStaleDisplay) enqueueMetadataCommit(row.id, requestArtwork = false)
+                                    if (clearedStaleDisplay || originalRaw != sourceText) {
+                                        enqueueMetadataCommit(row.id, requestArtwork = false)
+                                    }
 
-                                    val cached = localizer.getCachedDescriptionPtBr(source)
-                                        ?.takeIf { localizer.isValidPtBrResult(source, it) }
+                                    val cached = localizer.getCachedDescriptionPtBr(sourceText)
+                                        ?.takeIf { localizer.isValidPtBrResult(sourceText, it) }
                                     val translated = if (cached != null) {
                                         usedCache = true
                                         cached
                                     } else {
                                         translationAttempts++
-                                        localizer.localizeToPtBr(source)
+                                        localizer.localizeToPtBr(sourceText)
                                     }
                                     val validTranslation = translated
-                                        ?.takeIf { localizer.isValidPtBrResult(source, it) }
+                                        ?.takeIf { localizer.isValidPtBrResult(sourceText, it) }
                                     if (validTranslation == null) {
-                                        outcome = if (localizer.detectDescriptionLanguage(source).first == "unknown") {
+                                        outcome = if (localizer.detectDescriptionLanguage(sourceText).first == "unknown") {
                                             "unknown_source_language"
                                         } else {
                                             "translation_failed"
@@ -520,9 +522,9 @@ class ReiAnixAniListIntegrationService(
                                         val persisted = library.updateAniListSynopsisIfUnchanged(
                                             animeId = row.id,
                                             expectedAniListId = anilistId,
-                                            expectedOriginal = source,
+                                            expectedOriginal = sourceText,
                                             expectedDescription = null,
-                                            originalSource = source,
+                                            originalSource = sourceText,
                                             translatedDescription = validTranslation,
                                         )
                                         outcome = if (persisted) "translated" else "conflict"
