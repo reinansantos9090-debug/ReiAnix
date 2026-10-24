@@ -121,9 +121,33 @@ class ReiAnixAniListViewModel(
                                 emptyList()
                             }
                         }
+                        val presentationAnime = result.value?.let { remoteAnime ->
+                            val sourceDescription = remoteAnime.description
+                            val localizedDescription = if (sourceDescription.isNullOrBlank()) {
+                                null
+                            } else {
+                                try {
+                                    integration.localizeSynopsisForPresentation(sourceDescription)
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    android.util.Log.w(
+                                        "ReiAnixAniList",
+                                        "Remote synopsis localization failed; keeping details with pending synopsis. errorType=" +
+                                            error::class.java.simpleName,
+                                    )
+                                    null
+                                }
+                            }
+                            remoteAnime.copy(
+                                description = localizedDescription,
+                                descriptionTranslationPending = !sourceDescription.isNullOrBlank() &&
+                                    localizedDescription.isNullOrBlank(),
+                            )
+                        }
                         if (requestId == detailsRequestId) {
                             _aniListUiState.value = _aniListUiState.value.copy(
-                                selectedAnime = result.value,
+                                selectedAnime = presentationAnime,
                                 isDetailsLoading = false,
                                 detailsError = if (result.value == null) {
                                     "O AniList não encontrou esse anime."
