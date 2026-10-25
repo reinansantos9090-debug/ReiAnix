@@ -858,7 +858,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         reason: String,
     ): Int {
         if (episodeId <= 0L) return 0
-        val paths = try {
+        val paths: List<String> = try {
             database.read { db ->
                 db.rawQuery(
                     "SELECT DISTINCT local_path FROM artwork " +
@@ -867,9 +867,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         "AND status!='failed' AND local_path IS NOT NULL",
                     arrayOf(episodeId.toString()),
                 ).use { cursor ->
-                    buildList {
+                    buildList<String> {
                         while (cursor.moveToNext()) {
-                            cursor.getString(0)?.takeIf(String::isNotBlank)?.let(::add)
+                            val path = cursor.getString(0)
+                            if (!path.isNullOrBlank()) add(path)
                         }
                     }
                 }
