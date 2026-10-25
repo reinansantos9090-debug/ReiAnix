@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.data.anilist
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
@@ -37,7 +38,13 @@ internal fun shouldDiscoverMissingArtwork(
     metadataFetchedAtSeconds: Double?,
     nowSeconds: Double,
 ): Boolean {
-    if (!coverUrl.isNullOrBlank() || hasUsableLocalCover) return false
+    if (hasUsableLocalCover) return false
+    if (!coverUrl.isNullOrBlank()) {
+        val parsed = runCatching { Uri.parse(coverUrl.trim()) }.getOrNull()
+        val hasUsableHttpUrl = parsed?.scheme?.lowercase(Locale.ROOT) in setOf("http", "https") &&
+            !parsed?.host.isNullOrBlank()
+        if (hasUsableHttpUrl) return false
+    }
     if (manualMetadata && !hasAniListId) return false
     val status = matchStatus?.trim()?.lowercase(Locale.ROOT)
     if (!hasAniListId && status in setOf("not_found", "ambiguous")) return false
@@ -344,8 +351,16 @@ class ReiAnixAniListIntegrationService(
             val local = row.anime
             if (local.id <= 0L) continue
             val cachedPath = local.coverCache?.trim().orEmpty()
-            val usableLocalCover = cachedPath.isNotEmpty() &&
-                runCatching { File(cachedPath).isFile && File(cachedPath).length() > 0L }.getOrDefault(false)
+            val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
+                val file = File(cachedPath)
+                if (!file.isFile || file.length() <= 0L) {
+                    false
+                } else {
+                    val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+                    options.outWidth > 0 && options.outHeight > 0
+                }
+            }.getOrDefault(false)
             if (!shouldDiscoverMissingArtwork(
                     coverUrl = local.coverUrl,
                     hasUsableLocalCover = usableLocalCover,
