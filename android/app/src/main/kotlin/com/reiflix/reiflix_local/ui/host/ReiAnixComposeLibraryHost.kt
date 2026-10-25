@@ -132,6 +132,19 @@ class ReiAnixComposeLibraryHost(
                                     error::class.java.simpleName,
                             )
                         }
+                        try {
+                            withContext(Dispatchers.IO) {
+                                dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w(
+                                TAG,
+                                "Native missing-artwork discovery after scan failed. errorType=" +
+                                    error::class.java.simpleName,
+                            )
+                        }
                         runCatching { dependencies.artworkService.requestPendingArtwork() }
                             .onFailure { error ->
                                 android.util.Log.w(
