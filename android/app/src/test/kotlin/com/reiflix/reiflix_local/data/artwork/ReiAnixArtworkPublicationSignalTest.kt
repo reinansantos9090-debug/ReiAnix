@@ -3,6 +3,9 @@ package com.reiflix.reiflix_local.data.artwork
 import com.reiflix.reiflix_local.data.anilist.shouldDiscoverMissingArtwork
 import com.reiflix.reiflix_local.data.anilist.boundedAniListSearchTerms
 import com.reiflix.reiflix_local.data.anilist.rotateArtworkDiscoveryIds
+import com.reiflix.reiflix_local.data.anilist.MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
+import com.reiflix.reiflix_local.data.anilist.artworkDiscoveryAttemptPreferenceKey
+import com.reiflix.reiflix_local.data.anilist.shouldDeferArtworkDiscoveryAttempt
 
 import java.io.File
 import java.util.UUID
