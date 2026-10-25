@@ -585,57 +585,87 @@ object VideoThumbnailExtractor {
             var decodedCandidates = 0
             var rejectedCandidates = 0
             var failedCandidates = 0
+            var syncFallbackAttempts = 0
 
             candidateTimestampsUs.forEach { timestampUs ->
-                val frameAttempt = runCatching {
-                    if (android.os.Build.VERSION.SDK_INT >= 27) {
-                        retriever.getScaledFrameAtTime(
-                            timestampUs,
-                            MediaMetadataRetriever.OPTION_CLOSEST,
-                            MAX_FRAME_DIMENSION,
-                            MAX_FRAME_DIMENSION,
-                        )
-                    } else {
-                        retriever.getFrameAtTime(timestampUs, MediaMetadataRetriever.OPTION_CLOSEST)
-                    }
-                }
-                val candidate = frameAttempt.getOrNull()
+                var candidate: Bitmap? = null
+                var candidateQuality: FrameQualityMetrics? = null
+                var decodedAtTimestamp = false
+                var lastFrameError: Throwable? = null
 
-                if (candidate == null) {
-                    failedCandidates++
-                    val frameError = frameAttempt.exceptionOrNull()
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "THUMBNAIL_FRAME_CANDIDATE_FAILED",
-                        severity = if (frameError != null) "WARN" else "INFO",
-                        source = "VideoThumbnailExtractor",
-                        result = if (frameError != null) "DECODE_EXCEPTION" else "NO_FRAME_RETURNED",
-                        error = frameError,
-                        context = mapOf(
-                            "stage" to "frame_decode",
-                            "timestamp_ms" to timestampUs / 1_000L,
-                            "android_api" to android.os.Build.VERSION.SDK_INT,
-                            "attempt" to decodedCandidates + failedCandidates,
-                        ),
-                    )
-                    return@forEach
+                // Prefer the closest decoded frame. If that mode returns no frame or
+                // only an unusable frame, try the nearest sync frame before abandoning
+                // this timestamp. CloudStream uses CLOSEST_SYNC for its preview frames;
+                // retaining CLOSEST as the first attempt keeps ReiAnix's finer sampling.
+                intArrayOf(
+                    MediaMetadataRetriever.OPTION_CLOSEST,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                ).forEachIndexed { optionIndex, option ->
+                    if (candidate != null) return@forEachIndexed
+                    if (optionIndex > 0) syncFallbackAttempts++
+
+                    val frameAttempt = runCatching {
+                        if (android.os.Build.VERSION.SDK_INT >= 27) {
+                            retriever.getScaledFrameAtTime(
+                                timestampUs,
+                                option,
+                                MAX_FRAME_DIMENSION,
+                                MAX_FRAME_DIMENSION,
+                            )
+                        } else {
+                            retriever.getFrameAtTime(timestampUs, option)
+                        }
+                    }
+                    val decoded = frameAttempt.getOrNull()
+                    if (decoded == null) {
+                        frameAttempt.exceptionOrNull()?.let { lastFrameError = it }
+                        return@forEachIndexed
+                    }
+
+                    decodedAtTimestamp = true
+                    decodedCandidates++
+                    val quality = frameQualityMetrics(decoded)
+                    if (quality == null || !isUsableFrame(quality)) {
+                        rejectedCandidates++
+                        decoded.recycle()
+                        return@forEachIndexed
+                    }
+                    candidate = decoded
+                    candidateQuality = quality
                 }
-                decodedCandidates++
-                val quality = frameQualityMetrics(candidate)
-                if (quality == null || !isUsableFrame(quality)) {
-                    rejectedCandidates++
-                    candidate.recycle()
+
+                val selectedCandidate = candidate
+                val quality = candidateQuality
+                if (selectedCandidate == null || quality == null) {
+                    if (!decodedAtTimestamp) {
+                        failedCandidates++
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "THUMBNAIL_FRAME_CANDIDATE_FAILED",
+                            severity = if (lastFrameError != null) "WARN" else "INFO",
+                            source = "VideoThumbnailExtractor",
+                            result = if (lastFrameError != null) "DECODE_EXCEPTION" else "NO_FRAME_RETURNED",
+                            error = lastFrameError,
+                            context = mapOf(
+                                "stage" to "frame_decode",
+                                "timestamp_ms" to timestampUs / 1_000L,
+                                "android_api" to android.os.Build.VERSION.SDK_INT,
+                                "sync_fallback_attempted" to (syncFallbackAttempts > 0),
+                                "attempt" to decodedCandidates + failedCandidates,
+                            ),
+                        )
+                    }
                     return@forEach
                 }
 
                 val score = frameQualityScore(quality)
                 if (score > bestScore) {
                     bitmap?.recycle()
-                    bitmap = candidate
+                    bitmap = selectedCandidate
                     selectedTimestampUs = timestampUs
                     selectedQuality = quality
                     bestScore = score
                 } else {
-                    candidate.recycle()
+                    selectedCandidate.recycle()
                 }
             }
 
@@ -652,6 +682,7 @@ object VideoThumbnailExtractor {
                         "decoded_candidates" to decodedCandidates,
                         "rejected_candidates" to rejectedCandidates,
                         "failed_candidates" to failedCandidates,
+                        "sync_fallback_attempts" to syncFallbackAttempts,
                     ),
                 )
                 return null
@@ -665,6 +696,7 @@ object VideoThumbnailExtractor {
                     "decoded_candidates" to decodedCandidates,
                     "rejected_candidates" to rejectedCandidates,
                     "failed_candidates" to failedCandidates,
+                    "sync_fallback_attempts" to syncFallbackAttempts,
                     "selected_timestamp_ms" to selectedTimestampUs / 1_000L,
                     "selected_mean_luminance" to selectedQuality?.meanLuminance,
                     "selected_standard_deviation" to selectedQuality?.standardDeviation,
