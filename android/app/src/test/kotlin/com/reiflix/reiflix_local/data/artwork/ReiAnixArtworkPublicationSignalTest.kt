@@ -196,6 +196,16 @@ class ReiAnixArtworkPublicationSignalTest {
     fun existingUrlLocalCoverAndRecentlyFetchedRowsAreNotRediscovered() {
         assertFalse(shouldDiscoverMissingArtwork("https://example.test/poster.jpg", false, false, false, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork("not-a-url", false, false, false, null, null, 100_000.0))
+        assertTrue(shouldDiscoverMissingArtwork(
+            "https://example.test/missing.jpg",
+            hasUsableLocalCover = false,
+            hasAniListId = true,
+            hasExhaustedArtworkFailure = true,
+            manualMetadata = false,
+            matchStatus = null,
+            metadataFetchedAtSeconds = null,
+            nowSeconds = 100_000.0,
+        ))
         assertFalse(shouldDiscoverMissingArtwork(null, true, false, false, null, null, 100_000.0))
         assertFalse(shouldDiscoverMissingArtwork(null, false, true, false, null, 99_000.0, 100_000.0))
     }
