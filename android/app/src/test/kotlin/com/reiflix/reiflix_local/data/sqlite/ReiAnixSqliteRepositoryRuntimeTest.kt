@@ -20,6 +20,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
+import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryAttemptTimes
+import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -88,6 +90,26 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             ReiAnixSqliteSettingsRepository(context)
                 .getPreference("native.test.transaction_outcome")?.value,
         )
+    }
+
+    @Test
+    fun artworkDiscoveryAttemptTimestampsPersistInCanonicalPreferencesAcrossDatabaseInstances() = runBlocking {
+        createCanonicalFixture()
+        val firstDatabase = ReiAnixSqliteDatabase(context)
+        writePersistedArtworkDiscoveryAttemptAt(firstDatabase, animeId = 1L, attemptAtSeconds = 200_000.25)
+        writePersistedArtworkDiscoveryAttemptAt(firstDatabase, animeId = 812L, attemptAtSeconds = 300_000.75)
+
+        // A distinct database wrapper models a later service/process instance.
+        val reopenedDatabase = ReiAnixSqliteDatabase(context)
+        val attempts = readPersistedArtworkDiscoveryAttemptTimes(reopenedDatabase)
+        assertEquals(200_000.25, attempts[1L]!!, 0.0)
+        assertEquals(300_000.75, attempts[812L]!!, 0.0)
+        assertEquals(2, attempts.size)
+
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertEquals(29, schema.schemaVersion)
+        assertTrue(schema.missingRequiredTables.isEmpty())
+        assertTrue(schema.missingRequiredColumns.isEmpty())
     }
 
     @Test

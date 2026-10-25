@@ -18,6 +18,7 @@ import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
 import com.reiflix.reiflix_local.data.sqlite.recordAniListAutoMatchOutcome
 import com.reiflix.reiflix_local.data.sqlite.setMetadataStatusByLookupTitle
@@ -78,6 +79,58 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
 internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+
+/** Read attempt timestamps from the existing schema-v29 preferences table. */
+internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
+    database: ReiAnixSqliteDatabase,
+): Map<Long, Double> = withContext(Dispatchers.IO) {
+    database.read { connection ->
+        connection.rawQuery(
+            "SELECT key, value FROM preferences WHERE substr(key, 1, ?) = ?",
+            arrayOf(
+                ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX.length.toString(),
+                ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
+            ),
+        ).use { cursor ->
+            buildMap<Long, Double> {
+                while (cursor.moveToNext()) {
+                    val key = cursor.getString(0).orEmpty()
+                    val animeId = key.removePrefix(ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX)
+                        .toLongOrNull()
+                        ?.takeIf { it > 0L }
+                        ?: continue
+                    val attemptedAt = cursor.getString(1)?.toDoubleOrNull()
+                        ?.takeIf { it.isFinite() }
+                        ?: continue
+                    put(animeId, attemptedAt)
+                }
+            }
+        }
+    }
+}
+
+/** Commit a recovery attempt timestamp to the same canonical preferences table. */
+internal suspend fun writePersistedArtworkDiscoveryAttemptAt(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+    attemptAtSeconds: Double,
+) = withContext(Dispatchers.IO) {
+    require(animeId > 0L) { "Artwork discovery requires a positive local anime ID." }
+    require(attemptAtSeconds.isFinite()) { "Artwork discovery attempt timestamp must be finite." }
+    database.transaction { connection ->
+        val values = ContentValues().apply {
+            put("key", artworkDiscoveryAttemptPreferenceKey(animeId))
+            put("value", attemptAtSeconds.toString())
+            put("updated_at", attemptAtSeconds)
+        }
+        connection.insertWithOnConflict(
+            "preferences",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+}
 
 internal fun artworkDiscoveryAttemptPreferenceKey(animeId: Long): String {
     require(animeId > 0L) { "Artwork discovery requires a positive local anime ID." }
@@ -464,48 +517,11 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
-    private suspend fun readArtworkDiscoveryAttemptTimes(): Map<Long, Double> = withContext(Dispatchers.IO) {
-        library.database.read { connection ->
-            connection.rawQuery(
-                "SELECT key, value FROM preferences WHERE substr(key, 1, ?) = ?",
-                arrayOf(
-                    ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX.length.toString(),
-                    ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
-                ),
-            ).use { cursor ->
-                buildMap<Long, Double> {
-                    while (cursor.moveToNext()) {
-                        val key = cursor.getString(0).orEmpty()
-                        val animeId = key.removePrefix(ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX)
-                            .toLongOrNull()
-                            ?.takeIf { it > 0L }
-                            ?: continue
-                        val attemptedAt = cursor.getString(1)?.toDoubleOrNull()
-                            ?.takeIf { it.isFinite() }
-                            ?: continue
-                        put(animeId, attemptedAt)
-                    }
-                }
-            }
-        }
-    }
+    private suspend fun readArtworkDiscoveryAttemptTimes(): Map<Long, Double> =
+        readPersistedArtworkDiscoveryAttemptTimes(library.database)
 
     private suspend fun writeArtworkDiscoveryAttemptAt(animeId: Long, attemptAtSeconds: Double) =
-        withContext(Dispatchers.IO) {
-            library.database.transaction { connection ->
-                val values = ContentValues().apply {
-                    put("key", artworkDiscoveryAttemptPreferenceKey(animeId))
-                    put("value", attemptAtSeconds.toString())
-                    put("updated_at", attemptAtSeconds)
-                }
-                connection.insertWithOnConflict(
-                    "preferences",
-                    null,
-                    values,
-                    SQLiteDatabase.CONFLICT_REPLACE,
-                )
-            }
-        }
+        writePersistedArtworkDiscoveryAttemptAt(library.database, animeId, attemptAtSeconds)
 
     /**
      * Discovers artwork for existing canonical rows whose poster URL was never saved.
