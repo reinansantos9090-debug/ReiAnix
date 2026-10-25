@@ -48,6 +48,16 @@ object VideoThumbnailExtractor {
         val mimeType: String?,
     )
 
+    /** Small, deterministic frame statistics; intentionally independent of Bitmap for JVM tests. */
+    internal data class FrameQualityMetrics(
+        val meanLuminance: Double,
+        val standardDeviation: Double,
+        val darkPixelFraction: Double,
+        val brightPixelFraction: Double,
+        val dynamicRange: Int,
+        val sampleCount: Int,
+    )
+
     private const val CACHE_METADATA_VERSION = 1
 
     private val inFlight = ConcurrentHashMap<String, Any>()
@@ -60,6 +70,102 @@ object VideoThumbnailExtractor {
 
     internal fun parseDurationMs(raw: String?): Long =
         raw?.trim()?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+
+    /**
+     * Candidate timestamps avoid the exact start frame and sample only a bounded
+     * spread through the beginning and early/middle part of an episode.
+     */
+    internal fun frameCandidateTimestampsUs(durationMs: Long): List<Long> {
+        val duration = durationMs.coerceAtLeast(0L).coerceAtMost(Long.MAX_VALUE / 1_000L) * 1_000L
+        if (duration == 0L) {
+            return listOf(250_000L, 750_000L, 1_500_000L, 3_000_000L, 5_000_000L, 10_000_000L, 20_000_000L)
+        }
+        if (duration <= 100_000L) return listOf((duration / 2L).coerceAtLeast(1L))
+
+        val minimumCandidate = minOf(250_000L, duration / 4L).coerceAtLeast(1L)
+        val latestCandidate = (duration - maxOf(1_000L, duration / 100L)).coerceAtLeast(1L)
+        val fractions = doubleArrayOf(0.005, 0.02, 0.05, 0.09, 0.14, 0.20, 0.28, 0.38)
+        val candidates = fractions.map { fraction ->
+            (duration.toDouble() * fraction).toLong().coerceAtLeast(minimumCandidate).coerceAtMost(latestCandidate)
+        }.distinct().take(8)
+        return candidates.ifEmpty { listOf((duration / 2L).coerceAtLeast(1L)) }
+    }
+
+    /** Calculate basic visual usefulness from sampled luminance values (0..255). */
+    internal fun analyzeLuminanceSamples(samples: IntArray): FrameQualityMetrics? {
+        if (samples.isEmpty()) return null
+        var sum = 0.0
+        var minValue = 255
+        var maxValue = 0
+        var darkCount = 0
+        var brightCount = 0
+        val normalized = IntArray(samples.size)
+        samples.forEachIndexed { index, raw ->
+            val value = raw.coerceIn(0, 255)
+            normalized[index] = value
+            sum += value.toDouble()
+            minValue = minOf(minValue, value)
+            maxValue = maxOf(maxValue, value)
+            if (value <= 12) darkCount++
+            if (value >= 244) brightCount++
+        }
+        val mean = sum / normalized.size.toDouble()
+        var squaredError = 0.0
+        normalized.forEach { value ->
+            val delta = value.toDouble() - mean
+            squaredError += delta * delta
+        }
+        val deviation = kotlin.math.sqrt(squaredError / normalized.size.toDouble())
+        return FrameQualityMetrics(
+            meanLuminance = mean,
+            standardDeviation = deviation,
+            darkPixelFraction = darkCount.toDouble() / normalized.size.toDouble(),
+            brightPixelFraction = brightCount.toDouble() / normalized.size.toDouble(),
+            dynamicRange = maxValue - minValue,
+            sampleCount = normalized.size,
+        )
+    }
+
+    /**
+     * Rejects near-empty frames while allowing genuinely dark scenes when they
+     * still contain meaningful tonal structure.
+     */
+    internal fun isUsableFrame(metrics: FrameQualityMetrics): Boolean {
+        if (metrics.sampleCount < 16) return false
+        if (metrics.meanLuminance < 20.0 && metrics.darkPixelFraction >= 0.985) return false
+        if (metrics.meanLuminance > 235.0 && metrics.brightPixelFraction >= 0.985) return false
+        if (metrics.standardDeviation < 1.8 && metrics.dynamicRange < 7) return false
+        return true
+    }
+
+    /** Higher values favor visible detail without treating darkness alone as failure. */
+    internal fun frameQualityScore(metrics: FrameQualityMetrics): Double {
+        val tonalDetail = minOf(metrics.standardDeviation, 64.0) * 0.65
+        val dynamicDetail = minOf(metrics.dynamicRange, 180).toDouble() * 0.10
+        val brightnessPenalty = kotlin.math.abs(metrics.meanLuminance - 127.5) / 127.5 * 12.0
+        val clippingPenalty = (metrics.darkPixelFraction + metrics.brightPixelFraction) * 12.0
+        return tonalDetail + dynamicDetail - brightnessPenalty - clippingPenalty
+    }
+
+    private fun frameQualityMetrics(bitmap: Bitmap): FrameQualityMetrics? {
+        if (bitmap.width <= 0 || bitmap.height <= 0) return null
+        val columns = minOf(20, bitmap.width)
+        val rows = minOf(20, bitmap.height)
+        val samples = IntArray(columns * rows)
+        var index = 0
+        for (row in 0 until rows) {
+            val y = if (rows == 1) 0 else row * (bitmap.height - 1) / (rows - 1)
+            for (column in 0 until columns) {
+                val x = if (columns == 1) 0 else column * (bitmap.width - 1) / (columns - 1)
+                val pixel = bitmap.getPixel(x, y)
+                val red = (pixel shr 16) and 0xff
+                val green = (pixel shr 8) and 0xff
+                val blue = pixel and 0xff
+                samples[index++] = (77 * red + 150 * green + 29 * blue) ushr 8
+            }
+        }
+        return analyzeLuminanceSamples(samples)
+    }
 
     /** Pure source-reference normalization, testable without Android framework stubs. */
     internal fun normalizeLocalMediaReference(raw: String?): String? {
@@ -367,9 +473,23 @@ object VideoThumbnailExtractor {
 
     private fun isValidCachedThumbnail(file: File): Boolean = runCatching {
         if (!file.isFile || file.length() <= 0L) return false
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, options)
-        options.outWidth > 0 && options.outHeight > 0
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+
+        var sampleSize = 1
+        val largestDimension = maxOf(bounds.outWidth, bounds.outHeight)
+        while (largestDimension / sampleSize > MAX_FRAME_DIMENSION && sampleSize <= Int.MAX_VALUE / 2) {
+            sampleSize *= 2
+        }
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val decoded = BitmapFactory.decodeFile(file.absolutePath, options) ?: return false
+        try {
+            val metrics = frameQualityMetrics(decoded) ?: return false
+            isUsableFrame(metrics)
+        } finally {
+            decoded.recycle()
+        }
     }.getOrDefault(false)
 
     private fun extractLocked(
@@ -430,26 +550,84 @@ object VideoThumbnailExtractor {
             val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
 
             diagnosticStage = "frame_decode"
-            bitmap = if (android.os.Build.VERSION.SDK_INT >= 27) {
-                retriever.getScaledFrameAtTime(
-                    0L,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    MAX_FRAME_DIMENSION,
-                    MAX_FRAME_DIMENSION,
-                )
-            } else {
-                retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            val candidateTimestampsUs = frameCandidateTimestampsUs(durationMs)
+            var selectedTimestampUs = -1L
+            var selectedQuality: FrameQualityMetrics? = null
+            var bestScore = Double.NEGATIVE_INFINITY
+            var decodedCandidates = 0
+            var rejectedCandidates = 0
+            var failedCandidates = 0
+
+            candidateTimestampsUs.forEach { timestampUs ->
+                val candidate = runCatching {
+                    if (android.os.Build.VERSION.SDK_INT >= 27) {
+                        retriever.getScaledFrameAtTime(
+                            timestampUs,
+                            MediaMetadataRetriever.OPTION_CLOSEST,
+                            MAX_FRAME_DIMENSION,
+                            MAX_FRAME_DIMENSION,
+                        )
+                    } else {
+                        retriever.getFrameAtTime(timestampUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    }
+                }.getOrNull()
+
+                if (candidate == null) {
+                    failedCandidates++
+                    return@forEach
+                }
+                decodedCandidates++
+                val quality = frameQualityMetrics(candidate)
+                if (quality == null || !isUsableFrame(quality)) {
+                    rejectedCandidates++
+                    candidate.recycle()
+                    return@forEach
+                }
+
+                val score = frameQualityScore(quality)
+                if (score > bestScore) {
+                    bitmap?.recycle()
+                    bitmap = candidate
+                    selectedTimestampUs = timestampUs
+                    selectedQuality = quality
+                    bestScore = score
+                } else {
+                    candidate.recycle()
+                }
             }
+
             if (bitmap == null) {
                 ReiAnixDiagnosticTimeline.record(
                     name = "THUMBNAIL_DECODE_FAILED",
                     severity = "ERROR",
                     source = "VideoThumbnailExtractor",
                     result = "FAILED",
-                    context = mapOf("stage" to "frame_decode", "reason" to "no_frame_returned"),
+                    context = mapOf(
+                        "stage" to "frame_decode",
+                        "reason" to "no_usable_frame",
+                        "attempted_timestamps" to candidateTimestampsUs.size,
+                        "decoded_candidates" to decodedCandidates,
+                        "rejected_candidates" to rejectedCandidates,
+                        "failed_candidates" to failedCandidates,
+                    ),
                 )
                 return null
             }
+            ReiAnixDiagnosticTimeline.record(
+                name = "THUMBNAIL_FRAME_SELECTED",
+                source = "VideoThumbnailExtractor",
+                result = "COMPLETED",
+                context = mapOf(
+                    "attempted_timestamps" to candidateTimestampsUs.size,
+                    "decoded_candidates" to decodedCandidates,
+                    "rejected_candidates" to rejectedCandidates,
+                    "failed_candidates" to failedCandidates,
+                    "selected_timestamp_ms" to selectedTimestampUs / 1_000L,
+                    "selected_mean_luminance" to selectedQuality?.meanLuminance,
+                    "selected_standard_deviation" to selectedQuality?.standardDeviation,
+                    "selected_dynamic_range" to selectedQuality?.dynamicRange,
+                ),
+            )
             diagnosticStage = "image_transform"
 
             ReiAnixDiagnosticTimeline.record(
