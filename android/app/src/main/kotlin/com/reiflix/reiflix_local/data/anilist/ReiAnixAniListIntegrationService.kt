@@ -28,6 +28,7 @@ import java.io.File
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 /** Pure policy for bounded discovery of missing posters from the canonical catalogue. */
@@ -104,6 +105,7 @@ class ReiAnixAniListIntegrationService(
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
+    private val missingArtworkRecoveryRunning = AtomicBoolean(false)
 
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
@@ -449,7 +451,9 @@ class ReiAnixAniListIntegrationService(
      * A small per-run budget and persisted metadata freshness prevent startup request storms.
      */
     suspend fun recoverMissingArtworkMetadata(maxRecords: Int = 12): Int {
-        require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
+        if (!missingArtworkRecoveryRunning.compareAndSet(false, true)) return 0
+        try {
+            require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
         if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
         val rows = library.loadLibraryCatalogRows()
         if (rows.isEmpty()) return 0
@@ -558,7 +562,10 @@ class ReiAnixAniListIntegrationService(
         if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
             writeArtworkDiscoveryCursor(lastVisitedCursor)
         }
-        return recovered
+            return recovered
+        } finally {
+            missingArtworkRecoveryRunning.set(false)
+        }
     }
 
     /**
