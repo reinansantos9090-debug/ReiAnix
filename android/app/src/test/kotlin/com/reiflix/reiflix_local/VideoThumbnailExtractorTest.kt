@@ -95,6 +95,61 @@ class VideoThumbnailExtractorTest {
     }
 
     @Test
+    fun darkFrameWithSmallDetailedSubjectIsNotRejectedAsBlack() {
+        val samples = IntArray(400) { 0 }
+        // A mostly black scene can still contain a small, high-contrast subject.
+        samples[197] = 80
+        samples[198] = 120
+        samples[217] = 200
+        samples[218] = 255
+        val metrics = VideoThumbnailExtractor.analyzeLuminanceSamples(samples)!!
+
+        assertTrue(metrics.meanLuminance < 20.0)
+        assertTrue(metrics.darkPixelFraction >= 0.985)
+        assertTrue(metrics.standardDeviation > 4.0)
+        assertTrue(metrics.dynamicRange > 7)
+        assertTrue(VideoThumbnailExtractor.isUsableFrame(metrics))
+    }
+
+    @Test
+    fun brightFrameWithSmallDetailedSubjectIsNotRejectedAsUniformWhite() {
+        val samples = IntArray(400) { 255 }
+        samples[197] = 80
+        samples[198] = 120
+        samples[217] = 30
+        samples[218] = 0
+        val metrics = VideoThumbnailExtractor.analyzeLuminanceSamples(samples)!!
+
+        assertTrue(metrics.meanLuminance > 235.0)
+        assertTrue(metrics.brightPixelFraction >= 0.985)
+        assertTrue(metrics.standardDeviation > 4.0)
+        assertTrue(metrics.dynamicRange > 7)
+        assertTrue(VideoThumbnailExtractor.isUsableFrame(metrics))
+    }
+
+    @Test
+    fun malformedJpegThumbnailFilesAreRejectedBeforeImageDecoding() {
+        val root = java.io.File(
+            System.getProperty("java.io.tmpdir"),
+            "reianix-malformed-thumbnail-" + java.util.UUID.randomUUID(),
+        )
+        val file = java.io.File(root, "thumbnail.jpg")
+        try {
+            assertTrue(root.mkdirs())
+            file.writeBytes(byteArrayOf(0x00, 0x11, 0x22, 0xFF.toByte(), 0xD9.toByte()))
+            assertFalse(VideoThumbnailExtractor.isDecodableThumbnailFile(file.absolutePath))
+
+            file.writeBytes(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0x11, 0x22, 0x33, 0x44))
+            assertFalse(VideoThumbnailExtractor.isDecodableThumbnailFile(file.absolutePath))
+
+            file.writeBytes(byteArrayOf(0xFF.toByte(), 0xD8.toByte()))
+            assertFalse(VideoThumbnailExtractor.isDecodableThumbnailFile(file.absolutePath))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun detailedFrameScoresHigherThanAFlatButTechnicallyNonExtremeFrame() {
         val flat = VideoThumbnailExtractor.analyzeLuminanceSamples(IntArray(400) { 80 + (it % 16) })!!
         val detailed = VideoThumbnailExtractor.analyzeLuminanceSamples(IntArray(400) { (it * 37) % 220 + 18 })!!

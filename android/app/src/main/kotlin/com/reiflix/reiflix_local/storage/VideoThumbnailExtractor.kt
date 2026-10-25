@@ -80,18 +80,59 @@ object VideoThumbnailExtractor {
      * This is intentionally called from an IO dispatcher.
      */
     internal fun isUsableThumbnailFile(path: String?): Boolean {
-        val value = path?.trim()?.takeIf(String::isNotEmpty) ?: return false
-        val file = runCatching {
-            val parsed = Uri.parse(value)
-            when {
-                parsed.scheme.equals("file", ignoreCase = true) ->
-                    parsed.path?.let(::File)
-                parsed.scheme.isNullOrBlank() -> File(value)
-                else -> null
-            }
-        }.getOrNull() ?: return false
+        val file = localThumbnailFile(path) ?: return false
         return isValidCachedThumbnail(file)
     }
+
+    /** Validates the encoded JPEG container independently from source-frame quality. */
+    internal fun isDecodableThumbnailFile(path: String?): Boolean {
+        val file = localThumbnailFile(path) ?: return false
+        return isDecodableImageFile(file)
+    }
+
+    private fun localThumbnailFile(path: String?): File? {
+        val value = path?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        // Absolute paths may contain spaces, so handle them before URI parsing.
+        if (value.startsWith("/") && !value.startsWith("//")) return File(value)
+        val parsed = runCatching { java.net.URI(value) }.getOrNull()
+            ?: return if (!value.contains("://")) File(value) else null
+        return when {
+            parsed.scheme.equals("file", ignoreCase = true) ->
+                parsed.path?.takeIf(String::isNotBlank)?.let(::File)
+            parsed.scheme.isNullOrBlank() -> File(value)
+            else -> null
+        }
+    }
+
+    private fun isDecodableImageFile(file: File): Boolean = runCatching {
+        // Generated files must be complete JPEGs. Some platform decoders are
+        // permissive with truncated data, so validate both container markers first.
+        if (!file.isFile || file.length() < 4L) return false
+        val hasJpegStart = file.inputStream().use { input ->
+            input.read() == 0xFF && input.read() == 0xD8
+        }
+        val hasJpegEnd = java.io.RandomAccessFile(file, "r").use { input ->
+            input.seek(file.length() - 2L)
+            input.readUnsignedByte() == 0xFF && input.readUnsignedByte() == 0xD9
+        }
+        if (!hasJpegStart || !hasJpegEnd) return false
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+        var sampleSize = 1
+        val largestDimension = maxOf(bounds.outWidth, bounds.outHeight)
+        while (largestDimension / sampleSize > MAX_FRAME_DIMENSION && sampleSize <= Int.MAX_VALUE / 2) {
+            sampleSize *= 2
+        }
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val decoded = BitmapFactory.decodeFile(file.absolutePath, options) ?: return false
+        try {
+            decoded.width > 0 && decoded.height > 0
+        } finally {
+            decoded.recycle()
+        }
+    }.getOrDefault(false)
 
     /** Whether the library must regenerate a thumbnail instead of reusing its path. */
     internal fun thumbnailNeedsRegeneration(
@@ -160,8 +201,21 @@ object VideoThumbnailExtractor {
      */
     internal fun isUsableFrame(metrics: FrameQualityMetrics): Boolean {
         if (metrics.sampleCount < 16) return false
-        if (metrics.meanLuminance < 20.0 && metrics.darkPixelFraction >= 0.985) return false
-        if (metrics.meanLuminance > 235.0 && metrics.brightPixelFraction >= 0.985) return false
+
+        // Do not reject a dark/bright frame on clipping ratio alone: a small
+        // subject can occupy fewer than 1.5% of samples while still carrying real
+        // scene detail. Reject near-solid black/white only when tonal variation
+        // is also very low. This preserves dark scenes without accepting blank frames.
+        if (
+            metrics.meanLuminance < 20.0 &&
+            metrics.darkPixelFraction >= 0.985 &&
+            metrics.standardDeviation < 4.0
+        ) return false
+        if (
+            metrics.meanLuminance > 235.0 &&
+            metrics.brightPixelFraction >= 0.985 &&
+            metrics.standardDeviation < 4.0
+        ) return false
         if (metrics.standardDeviation < 1.8 && metrics.dynamicRange < 7) return false
         return true
     }
@@ -786,9 +840,10 @@ object VideoThumbnailExtractor {
                 }
             }
 
-            // Validate the committed JPEG, not only the in-memory frame, before
-            // reporting success or registering it in the canonical artwork table.
-            if (!isValidCachedThumbnail(target)) {
+            // The selected in-memory frame has already passed visual validation.
+            // Validate the persisted JPEG for decodeability, not a second time with
+            // stricter pixel heuristics: JPEG quantization can alter low-contrast metrics.
+            if (!isDecodableThumbnailFile(target.absolutePath)) {
                 target.delete()
                 cacheMetadataFile(target).delete()
                 ReiAnixDiagnosticTimeline.record(
@@ -796,7 +851,7 @@ object VideoThumbnailExtractor {
                     severity = "ERROR",
                     source = "VideoThumbnailExtractor",
                     result = "REJECTED",
-                    error = IOException("THUMBNAIL_OUTPUT_FAILED_VISUAL_VALIDATION"),
+                    error = IOException("THUMBNAIL_OUTPUT_FAILED_DECODE_VALIDATION"),
                     context = mapOf(
                         "stage" to "cache_commit_validation",
                         "output_bytes" to target.length().coerceAtLeast(0L),
