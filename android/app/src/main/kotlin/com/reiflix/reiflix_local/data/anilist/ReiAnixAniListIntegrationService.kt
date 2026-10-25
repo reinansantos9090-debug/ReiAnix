@@ -41,7 +41,8 @@ internal fun shouldDiscoverMissingArtwork(
     if (hasUsableLocalCover) return false
     if (!coverUrl.isNullOrBlank()) {
         val parsed = runCatching { Uri.parse(coverUrl.trim()) }.getOrNull()
-        val hasUsableHttpUrl = parsed?.scheme?.lowercase(Locale.ROOT) in setOf("http", "https") &&
+        val scheme = parsed?.scheme?.lowercase(Locale.ROOT)
+        val hasUsableHttpUrl = scheme != null && scheme in setOf("http", "https") &&
             !parsed?.host.isNullOrBlank()
         if (hasUsableHttpUrl) return false
     }
