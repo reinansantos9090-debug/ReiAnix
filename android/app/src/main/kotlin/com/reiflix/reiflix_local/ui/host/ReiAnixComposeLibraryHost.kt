@@ -20,6 +20,7 @@ import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
+import com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus
 import com.reiflix.reiflix_local.R
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
@@ -139,6 +140,32 @@ class ReiAnixComposeLibraryHost(
                                         error::class.java.simpleName,
                                 )
                             }
+                    }
+            }
+
+            // Recover persisted poster/backdrop URLs on ordinary app opens too.
+            // This path deliberately does not run title matching or issue AniList
+            // metadata lookups; it only replays the canonical artwork queue.
+            LaunchedEffect(
+                libraryViewModel,
+                bootstrapState.phase,
+                bootstrapState.persistenceStatus,
+                libraryState.animes.size,
+            ) {
+                if (
+                    bootstrapState.phase != ReiAnixBootstrapPhase.READY ||
+                    bootstrapState.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY ||
+                    libraryState.animes.isEmpty()
+                ) return@LaunchedEffect
+
+                val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                runCatching { dependencies.artworkService.requestPendingArtwork() }
+                    .onFailure { error ->
+                        android.util.Log.w(
+                            TAG,
+                            "Native artwork startup backfill failed. errorType=" +
+                                error::class.java.simpleName,
+                        )
                     }
             }
 
