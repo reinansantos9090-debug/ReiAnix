@@ -454,114 +454,114 @@ class ReiAnixAniListIntegrationService(
         if (!missingArtworkRecoveryRunning.compareAndSet(false, true)) return 0
         try {
             require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
-        if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
-        val rows = library.loadLibraryCatalogRows()
-        if (rows.isEmpty()) return 0
-        val rowsById = rows.associateBy { it.anime.id }
-        val discoveryCursor = readArtworkDiscoveryCursor()
-        val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
-            .mapNotNull(rowsById::get)
-        var lastVisitedCursor = discoveryCursor
-        val exhaustedPosterIds = library.database.read { connection ->
-            connection.rawQuery(
-                "SELECT DISTINCT entity_id FROM artwork WHERE entity_type IN ('anime','movie') " +
-                    "AND artwork_type='poster' AND status='failed' AND COALESCE(failure_count, 0)>=5",
-                null,
-            ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
-        }
-        var examined = 0
-        var recovered = 0
-        val nowSeconds = System.currentTimeMillis() / 1000.0
-        for (row in orderedRows) {
-            if (examined >= maxRecords) break
-            currentCoroutineContext().ensureActive()
-            val local = row.anime
-            if (local.id <= 0L) continue
-            lastVisitedCursor = local.id
-            val cachedPath = local.coverCache?.trim().orEmpty()
-            val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
-                val file = File(cachedPath)
-                if (!file.isFile || file.length() <= 0L) {
-                    false
-                } else {
-                    val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
-                    options.outWidth > 0 && options.outHeight > 0
-                }
-            }.getOrDefault(false)
-            if (!shouldDiscoverMissingArtwork(
-                    coverUrl = local.coverUrl,
-                    hasUsableLocalCover = usableLocalCover,
-                    hasAniListId = local.anilistId != null,
-                    hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
-                    manualMetadata = local.anilistMatchManual == true ||
-                        local.metadataSource == "manual" || local.metadataStatus == "manual",
-                    matchStatus = local.anilistMatchStatus,
-                    metadataFetchedAtSeconds = local.metadataFetchedAt,
-                    nowSeconds = nowSeconds,
-                )
-            ) continue
-            if (examined >= maxRecords) break
-            val attemptAt = nowSeconds.toLong()
-            val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
-            if (previousAttempt != null) {
-                if (nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS ||
-                    !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
-                ) continue
+            if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
+            val rows = library.loadLibraryCatalogRows()
+            if (rows.isEmpty()) return 0
+            val rowsById = rows.associateBy { it.anime.id }
+            val discoveryCursor = readArtworkDiscoveryCursor()
+            val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
+                .mapNotNull(rowsById::get)
+            var lastVisitedCursor = discoveryCursor
+            val exhaustedPosterIds = library.database.read { connection ->
+                connection.rawQuery(
+                    "SELECT DISTINCT entity_id FROM artwork WHERE entity_type IN ('anime','movie') " +
+                        "AND artwork_type='poster' AND status='failed' AND COALESCE(failure_count, 0)>=5",
+                    null,
+                ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             }
-            examined++
-            val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
-            if (remoteId != null) {
-                val remote = when (val result = client.getAnime(remoteId.toInt())) {
-                    is AniListResult.Success -> result.value
-                    is AniListResult.Failure -> {
-                        Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=${local.id}: ${result.error}")
-                        null
+            var examined = 0
+            var recovered = 0
+            val nowSeconds = System.currentTimeMillis() / 1000.0
+            for (row in orderedRows) {
+                if (examined >= maxRecords) break
+                currentCoroutineContext().ensureActive()
+                val local = row.anime
+                if (local.id <= 0L) continue
+                lastVisitedCursor = local.id
+                val cachedPath = local.coverCache?.trim().orEmpty()
+                val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
+                    val file = File(cachedPath)
+                    if (!file.isFile || file.length() <= 0L) {
+                        false
+                    } else {
+                        val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+                        options.outWidth > 0 && options.outHeight > 0
                     }
+                }.getOrDefault(false)
+                if (!shouldDiscoverMissingArtwork(
+                        coverUrl = local.coverUrl,
+                        hasUsableLocalCover = usableLocalCover,
+                        hasAniListId = local.anilistId != null,
+                        hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
+                        manualMetadata = local.anilistMatchManual == true ||
+                            local.metadataSource == "manual" || local.metadataStatus == "manual",
+                        matchStatus = local.anilistMatchStatus,
+                        metadataFetchedAtSeconds = local.metadataFetchedAt,
+                        nowSeconds = nowSeconds,
+                    )
+                ) continue
+                if (examined >= maxRecords) break
+                val attemptAt = nowSeconds.toLong()
+                val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
+                if (previousAttempt != null) {
+                    if (nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS ||
+                        !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
+                    ) continue
                 }
-                if (remote == null) {
-                    Log.w(TAG, "Missing-artwork AniList lookup returned no usable media record for animeId=${local.id}")
-                    continue
-                }
-                val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
-                when (val applied = applyRemote(
-                    local = local,
-                    remote = remote,
-                    manual = local.anilistMatchManual == true ||
-                        local.metadataSource == "manual" || local.metadataStatus == "manual",
-                    score = local.anilistMatchScore,
-                    margin = local.anilistMatchMargin,
-                )) {
-                    is AniListResult.Success -> {
-                        if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
-                            recovered++
-                        } else {
-                            Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=${local.id}")
+                examined++
+                val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+                if (remoteId != null) {
+                    val remote = when (val result = client.getAnime(remoteId.toInt())) {
+                        is AniListResult.Success -> result.value
+                        is AniListResult.Failure -> {
+                            Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=${local.id}: ${result.error}")
+                            null
                         }
                     }
-                    is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=${local.id}: ${applied.error}")
-                }
-            } else {
-                if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
-                when (val result = autoMatch(local.id)) {
-                    is AniListResult.Success -> {
-                        val matched = result.value as? AniListAutoMatchResult.Matched
-                        if (matched != null) {
-                            val remotePosterUrl = matched.remote.coverExtraLargeUrl ?: matched.remote.coverLargeUrl
-                            if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
+                    if (remote == null) {
+                        Log.w(TAG, "Missing-artwork AniList lookup returned no usable media record for animeId=${local.id}")
+                        continue
+                    }
+                    val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
+                    when (val applied = applyRemote(
+                        local = local,
+                        remote = remote,
+                        manual = local.anilistMatchManual == true ||
+                            local.metadataSource == "manual" || local.metadataStatus == "manual",
+                        score = local.anilistMatchScore,
+                        margin = local.anilistMatchMargin,
+                    )) {
+                        is AniListResult.Success -> {
+                            if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                 recovered++
                             } else {
-                                Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
+                                Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=${local.id}")
                             }
                         }
+                        is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=${local.id}: ${applied.error}")
                     }
-                    is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
+                } else {
+                    if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
+                    when (val result = autoMatch(local.id)) {
+                        is AniListResult.Success -> {
+                            val matched = result.value as? AniListAutoMatchResult.Matched
+                            if (matched != null) {
+                                val remotePosterUrl = matched.remote.coverExtraLargeUrl ?: matched.remote.coverLargeUrl
+                                if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
+                                    recovered++
+                                } else {
+                                    Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
+                                }
+                            }
+                        }
+                        is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
+                    }
                 }
             }
-        }
-        if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
-            writeArtworkDiscoveryCursor(lastVisitedCursor)
-        }
+            if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
+                writeArtworkDiscoveryCursor(lastVisitedCursor)
+            }
             return recovered
         } finally {
             missingArtworkRecoveryRunning.set(false)
