@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
@@ -95,6 +96,29 @@ internal fun invalidGeneratedThumbnailPaths(
     .distinct()
     .filterNot(isUsable)
 
+internal const val MAX_AUTOMATIC_ARTWORK_FAILURES = 5
+internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
+
+/**
+ * A legacy "failed" row without next_retry_at is eligible for one recovery attempt.
+ * Automatic retries are bounded; an explicit force request can always recover it.
+ */
+internal fun shouldRetryArtworkRequest(
+    status: String?,
+    retryAtSeconds: Double?,
+    failureCount: Int,
+    nowSeconds: Double,
+    force: Boolean,
+): Boolean {
+    if (force) return true
+    val normalizedStatus = status?.trim()?.lowercase(Locale.ROOT)
+    if (normalizedStatus != "failed" && normalizedStatus != "retry_wait") return true
+    if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES) return false
+    return retryAtSeconds == null ||
+        !retryAtSeconds.isFinite() ||
+        retryAtSeconds <= nowSeconds
+}
+
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
@@ -103,6 +127,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     internal val publishedArtworks: SharedFlow<ReiAnixArtworkPublication> = publicationSignal.events
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<Long, Job>()
+    private val retryJobs = ConcurrentHashMap<Long, Job>()
+    private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
     private val permits = Semaphore(2)
     private val backfillRunning = AtomicBoolean(false)
     private val cacheClearInProgress = AtomicBoolean(false)
@@ -112,7 +138,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private data class Artwork(
         val id: Long, val source: String, val sourceRef: String?, val path: String?, val url: String?,
         val manual: Boolean, val priority: Int, val status: String, val key: String?,
-        val mime: String?, val retryAt: Double?,
+        val mime: String?, val retryAt: Double?, val failureCount: Int,
     )
     private data class Downloaded(
         val file: File, val bytes: Long, val width: Int, val height: Int,
@@ -136,16 +162,38 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             return false
         }
         synchronized(jobs) {
-            if (cacheClearInProgress.get() || jobs[animeId]?.isActive == true) {
+            if (cacheClearInProgress.get()) {
                 ReiAnixDiagnosticTimeline.record(
                     name = "NATIVE_ARTWORK_REQUEST_SKIPPED",
                     source = "ReiAnixArtworkService",
-                    result = if (cacheClearInProgress.get()) "CACHE_CLEAR_IN_PROGRESS" else "ALREADY_RUNNING",
+                    result = "CACHE_CLEAR_IN_PROGRESS",
                     requestId = requestId,
                     context = mapOf("entity_id" to animeId, "force" to force),
                 )
                 return false
             }
+            if (jobs[animeId]?.isActive == true) {
+                if (force) {
+                    forceFollowUpIds.add(animeId)
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "NATIVE_ARTWORK_FORCE_FOLLOW_UP_QUEUED",
+                        source = "ReiAnixArtworkService",
+                        result = "AFTER_ACTIVE_REQUEST",
+                        requestId = requestId,
+                        context = mapOf("entity_id" to animeId),
+                    )
+                    return true
+                }
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_ARTWORK_REQUEST_SKIPPED",
+                    source = "ReiAnixArtworkService",
+                    result = "ALREADY_RUNNING",
+                    requestId = requestId,
+                    context = mapOf("entity_id" to animeId, "force" to false),
+                )
+                return false
+            }
+            retryJobs.remove(animeId)?.cancel()
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_ARTWORK_REQUESTED",
                 source = "ReiAnixArtworkService",
@@ -204,6 +252,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     Log.e(TAG, "Native artwork request failed for " + animeId, error)
                 } finally {
                     currentCoroutineContext()[Job]?.let { jobs.remove(animeId, it) }
+                    if (forceFollowUpIds.remove(animeId) && !cacheClearInProgress.get()) {
+                        requestAnimeArtwork(animeId, force = true)
+                    }
                 }
             }
             jobs[animeId] = task
@@ -262,10 +313,15 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         try {
             val backfill = backfillJob
             backfill?.cancel()
+            val scheduledRetries = retryJobs.values.toList()
+            retryJobs.clear()
+            scheduledRetries.forEach { it.cancel() }
+            forceFollowUpIds.clear()
             val inFlight = synchronized(jobs) {
                 jobs.values.toList().also { active -> active.forEach { it.cancel() } }
             }
             inFlight.joinAll()
+            scheduledRetries.joinAll()
             backfill?.join()
             synchronized(jobs) {
                 jobs.entries.toList()
@@ -399,7 +455,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 image?.let { removeIfUnreferenced(it.file) }
                 throw cancelled
             } catch (error: Exception) {
-                setFailure(rowId, error, (error as? HttpFailure)?.code)
+                val retryDelaySeconds = setFailure(rowId, error, (error as? HttpFailure)?.code)
+                if (retryDelaySeconds != null) scheduleArtworkRetry(id, retryDelaySeconds)
                 ReiAnixDiagnosticTimeline.record(
                     name = "NATIVE_ARTWORK_DOWNLOAD_FAILED",
                     severity = "ERROR",
@@ -478,11 +535,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val now = nowSeconds()
             val exact = rows.firstOrNull { it.sourceRef == url || it.key == key || it.url == url }
             if (exact != null) {
-                if (exact.status.equals("failed", true) && !force) return@transaction null
-                if (exact.status.equals("retry_wait", true) && !force && (exact.retryAt ?: 0.0) > now) return@transaction null
+                if (!shouldRetryArtworkRequest(exact.status, exact.retryAt, exact.failureCount, now, force)) {
+                    return@transaction null
+                }
                 val values = ContentValues().apply {
                     put("source", "anilist"); put("source_ref", url); put("external_url", url)
                     put("status", "downloading"); put("priority", 400); put("updated_at", now); put("last_attempt_at", now)
+                    put("failure_count", if (force) 0 else exact.failureCount)
                     putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key); put("variant", "large")
                 }
                 return@transaction if (db.update("artwork", values, "id=?", arrayOf(exact.id.toString())) > 0) exact.id else null
@@ -616,24 +675,51 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             true
         }
 
-    private fun setFailure(rowId: Long, error: Exception, httpStatus: Int?) {
+    private fun setFailure(rowId: Long, error: Exception, httpStatus: Int?): Long? {
         val retryable = when (error) {
             is HttpFailure -> httpStatus == 429 || (httpStatus != null && httpStatus in 500..599)
             is IOException -> true
             else -> false
         }
-        database.transaction { db ->
-            if (artworkById(db, rowId) == null) return@transaction
+        return database.transaction { db ->
+            if (artworkById(db, rowId) == null) return@transaction null
             val count = db.rawQuery("SELECT failure_count FROM artwork WHERE id=?", arrayOf(rowId.toString()))
                 .use { if (it.moveToFirst()) it.getInt(0) + 1 else 1 }
-            val delay = minOf(21600L, 60L * (1L shl (count - 1).coerceIn(0, 10)))
+            val automaticRetryDelay = when {
+                retryable && count < MAX_AUTOMATIC_ARTWORK_FAILURES ->
+                    minOf(21600L, 60L * (1L shl (count - 1).coerceIn(0, 10)))
+                !retryable && count < MAX_AUTOMATIC_ARTWORK_FAILURES ->
+                    PERMANENT_ARTWORK_RETRY_DELAY_SECONDS
+                else -> null
+            }
+            val retryWillBeScheduled = retryable && automaticRetryDelay != null
+            val now = nowSeconds()
             val values = ContentValues().apply {
-                put("status", if (retryable) "retry_wait" else "failed")
-                put("updated_at", nowSeconds()); put("last_attempt_at", nowSeconds()); put("failure_count", count)
-                if (retryable) put("next_retry_at", nowSeconds() + delay) else putNull("next_retry_at")
+                put("status", if (retryWillBeScheduled) "retry_wait" else "failed")
+                put("updated_at", now); put("last_attempt_at", now); put("failure_count", count)
+                if (automaticRetryDelay != null) put("next_retry_at", now + automaticRetryDelay)
+                else putNull("next_retry_at")
                 if (httpStatus == null) putNull("http_status") else put("http_status", httpStatus)
             }
             db.update("artwork", values, "id=?", arrayOf(rowId.toString()))
+            automaticRetryDelay.takeIf { retryWillBeScheduled }
+        }
+    }
+
+    private fun scheduleArtworkRetry(animeId: Long, delaySeconds: Long) {
+        if (animeId <= 0L || delaySeconds <= 0L || cacheClearInProgress.get()) return
+        val task = scope.launch(start = CoroutineStart.LAZY) {
+            delay(delaySeconds * 1000L)
+            currentCoroutineContext()[Job]?.let { retryJobs.remove(animeId, it) }
+            if (!cacheClearInProgress.get()) requestAnimeArtwork(animeId)
+        }
+        val previous = retryJobs.put(animeId, task)
+        previous?.cancel()
+        if (cacheClearInProgress.get()) {
+            retryJobs.remove(animeId, task)
+            task.cancel()
+        } else {
+            task.start()
         }
     }
 
@@ -710,6 +796,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         getInt(getColumnIndexOrThrow("priority")), getString(getColumnIndexOrThrow("status")),
         getString(getColumnIndexOrThrow("artwork_key")), getString(getColumnIndexOrThrow("content_type")),
         getColumnIndex("next_retry_at").let { if (it < 0 || isNull(it)) null else getDouble(it) },
+        getInt(getColumnIndexOrThrow("failure_count")),
     )
 
     /** Register thumbnails generated by VideoThumbnailExtractor in the canonical table. */
