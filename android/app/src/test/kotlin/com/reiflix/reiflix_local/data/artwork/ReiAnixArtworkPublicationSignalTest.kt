@@ -177,4 +177,31 @@ class ReiAnixArtworkPublicationSignalTest {
         assertEquals("anilist", received.sourceKind)
     }
 
+    @Test
+    fun missingPosterWithoutSavedUrlIsEligibleForDiscovery() {
+        assertTrue(shouldDiscoverMissingArtwork(
+            coverUrl = null,
+            hasUsableLocalCover = false,
+            hasAniListId = false,
+            manualMetadata = false,
+            matchStatus = null,
+            metadataFetchedAtSeconds = null,
+            nowSeconds = 100_000.0,
+        ))
+    }
+
+    @Test
+    fun existingUrlLocalCoverAndRecentlyFetchedRowsAreNotRediscovered() {
+        assertFalse(shouldDiscoverMissingArtwork("https://example.test/poster.jpg", false, false, false, null, null, 100_000.0))
+        assertFalse(shouldDiscoverMissingArtwork(null, true, false, false, null, null, 100_000.0))
+        assertFalse(shouldDiscoverMissingArtwork(null, false, true, false, null, 99_000.0, 100_000.0))
+    }
+
+    @Test
+    fun unresolvedAndManualRowsDoNotReceiveGuessedArtwork() {
+        assertFalse(shouldDiscoverMissingArtwork(null, false, false, false, "ambiguous", null, 100_000.0))
+        assertFalse(shouldDiscoverMissingArtwork(null, false, false, true, null, null, 100_000.0))
+        assertTrue(shouldDiscoverMissingArtwork(null, false, true, true, null, null, 100_000.0))
+    }
+
 }
