@@ -33,6 +33,16 @@ class ReiAnixLocalArtworkTest {
         assertEquals(memoryA, memoryB)
         assertEquals(diskA, diskB)
         assertNotEquals(memoryA, memoryDifferentSize)
+        val memoryRevisionA = buildArtworkMemoryCacheKey(
+            "episode:42:thumbnail", "/cache/episode.jpg", 320, 180, "1024-1000",
+        )
+        val memoryRevisionB = buildArtworkMemoryCacheKey(
+            "episode:42:thumbnail", "/cache/episode.jpg", 320, 180, "1030-2000",
+        )
+        val diskRevisionA = buildArtworkDiskCacheKey("/cache/episode.jpg", "1024-1000")
+        val diskRevisionB = buildArtworkDiskCacheKey("/cache/episode.jpg", "1030-2000")
+        assertNotEquals(memoryRevisionA, memoryRevisionB)
+        assertNotEquals(diskRevisionA, diskRevisionB)
     }
 
     @Test
