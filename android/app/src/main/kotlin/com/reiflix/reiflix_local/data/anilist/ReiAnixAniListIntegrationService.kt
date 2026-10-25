@@ -59,6 +59,19 @@ internal fun shouldDiscoverMissingArtwork(
 
 internal const val MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS = 24L * 60L * 60L
 
+internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 4): List<String> {
+    require(limit in 1..8) { "AniList title search limit must be between 1 and 8." }
+    val seen = HashSet<String>()
+    return candidates.asSequence()
+        .map { it.trim().replace(Regex("\\s+"), " ") }
+        .filter { it.length in 2..120 }
+        .filter { seen.add(it.lowercase(Locale.ROOT)) }
+        .take(limit)
+        .toList()
+}
+
+
+
 /**
  * AniList domain integration used by native ViewModels. The canonical SQLite
  * repository remains the sole persistence authority; remote failures retain
@@ -246,12 +259,58 @@ class ReiAnixAniListIntegrationService(
             return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
         }
         autoMatchAttempts[animeId] = now
-        val query = local.title.takeIf { it.isNotBlank() } ?: local.lookupTitle
-        val results = try {
-            when (val result = client.searchAnime(query, 10)) {
-                is AniListResult.Success -> result.value
+        val localTitleCandidates = buildList {
+            add(local.title)
+            add(local.lookupTitle)
+            add(local.romaji.orEmpty())
+            add(local.english.orEmpty())
+            add(local.nativeTitle.orEmpty())
+            local.aliasesJson?.let { aliasesJson ->
+                runCatching { JSONArray(aliasesJson) }.getOrNull()?.let { aliases ->
+                    for (index in 0 until aliases.length()) {
+                        val raw = aliases.opt(index)
+                        if (raw is String) add(raw)
+                    }
+                }
+            }
+        }
+        val searchTerms = boundedAniListSearchTerms(localTitleCandidates)
+        if (searchTerms.isEmpty()) {
+            autoMatchAttempts.remove(animeId)
+            return AniListResult.Failure(
+                AniListError.InvalidRequest("Local anime has no usable title for AniList lookup."),
+            )
+        }
+        val searchContext = ReiAnixAniListMatcher.Context(
+            year = local.year,
+            mediaKind = local.mediaKind,
+        )
+        fun rankCandidates(
+            candidates: Collection<AniListAnime>,
+            titles: List<String>,
+        ): List<ReiAnixAniListMatcher.RankedCandidate> = candidates.mapNotNull { candidate ->
+            titles.mapNotNull { title ->
+                ReiAnixAniListMatcher.rank(title, listOf(candidate), searchContext).firstOrNull()
+            }.maxByOrNull { it.score }
+        }.sortedWith(
+            compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }
+                .thenBy { (it.anime.titleEnglish ?: it.anime.titleRomaji ?: "").lowercase(Locale.ROOT) }
+                .thenBy { it.anime.id },
+        )
+
+        val candidatesById = linkedMapOf<Int, AniListAnime>()
+        var ranked: List<ReiAnixAniListMatcher.RankedCandidate> = emptyList()
+        for ((termIndex, searchTerm) in searchTerms.withIndex()) {
+            val searchResult = try {
+                client.searchAnime(searchTerm, 10)
+            } catch (cancelled: CancellationException) {
+                autoMatchAttempts.remove(animeId)
+                throw cancelled
+            }
+            val found = when (searchResult) {
+                is AniListResult.Success -> searchResult.value
                 is AniListResult.Failure -> {
-                    val outcome = when (val error = result.error) {
+                    val outcome = when (val error = searchResult.error) {
                         is AniListError.RateLimited -> "rate_limited"
                         is AniListError.Network -> "network_error"
                         is AniListError.Http -> when {
@@ -262,32 +321,36 @@ class ReiAnixAniListIntegrationService(
                         is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
                         is AniListError.InvalidRequest -> {
                             autoMatchAttempts.remove(animeId)
-                            return result
+                            return searchResult
                         }
                     }
-                    // Keep the per-process cooldown after a transient remote failure.
-                    // The persisted status is diagnostic, not permanently terminal:
-                    // a later refresh/restart can retry without hammering the API.
+                    // Never auto-associate from a partial candidate set after a transient
+                    // failure on one of the alternate title queries.
                     recordAutoMatchOutcome(animeId, outcome)
-                    return result
+                    return searchResult
                 }
             }
-        } catch (cancelled: CancellationException) {
-            autoMatchAttempts.remove(animeId)
-            throw cancelled
+            found.forEach { candidate -> candidatesById.putIfAbsent(candidate.id, candidate) }
+            ranked = rankCandidates(candidatesById.values, searchTerms.take(termIndex + 1))
+
+            // Preserve the fast path for an already-unambiguous primary-title result.
+            // Alternative titles are queried only when the primary result is absent,
+            // low-confidence or ambiguous, avoiding up to four requests for common cases.
+            if (termIndex == 0) {
+                val best = ranked.firstOrNull()
+                val margin = best?.let { it.score - (ranked.getOrNull(1)?.score ?: 0.0) } ?: 0.0
+                if (
+                    best != null &&
+                    best.score >= AUTO_MATCH_MIN_SCORE &&
+                    margin >= AUTO_MATCH_MIN_MARGIN
+                ) break
+            }
         }
-        if (results.isEmpty()) {
+        if (candidatesById.isEmpty()) {
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
-        val ranked = ReiAnixAniListMatcher.rank(
-            localTitle = query,
-            candidates = results,
-            context = ReiAnixAniListMatcher.Context(
-                year = local.year,
-                mediaKind = local.mediaKind,
-            ),
-        )
+        ranked = rankCandidates(candidatesById.values, searchTerms)
         if (ranked.isEmpty()) {
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
