@@ -204,9 +204,13 @@ fun ReiAnixLocalArtwork(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
         } else {
+            // A regenerated local thumbnail can keep the same path; include its file
+            // revision so Coil cannot continue serving a previously cached black frame.
+            val sourceRevision = localArtworkSourceRevision(source)
             val memoryCacheKey = remember(
                 stableIdentity,
                 source,
+                sourceRevision,
                 effectiveWidthPx,
                 effectiveHeightPx,
             ) {
@@ -215,10 +219,11 @@ fun ReiAnixLocalArtwork(
                     source = source,
                     widthPx = effectiveWidthPx,
                     heightPx = effectiveHeightPx,
+                    sourceRevision = sourceRevision,
                 )
             }
-            val diskCacheKey = remember(stableIdentity, source) {
-                buildArtworkDiskCacheKey(source)
+            val diskCacheKey = remember(stableIdentity, source, sourceRevision) {
+                buildArtworkDiskCacheKey(source, sourceRevision)
             }
             val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
             val placeholderPainter = remember(placeholderColor) {
@@ -380,16 +385,36 @@ internal fun bucketDimensionPx(dimension: Int, step: Int = 32): Int {
     return ((dimension + step / 2) / step) * step
 }
 
+internal fun localArtworkSourceRevision(source: String?): String {
+    if (source.isNullOrBlank()) return ""
+    val file = when {
+        source.startsWith("file://", ignoreCase = true) ->
+            runCatching { Uri.parse(source).path?.let(::File) }.getOrNull()
+        source.startsWith("content://", ignoreCase = true) ||
+            source.startsWith("android.resource://", ignoreCase = true) ||
+            source.startsWith("http://", ignoreCase = true) ||
+            source.startsWith("https://", ignoreCase = true) -> null
+        else -> runCatching { File(source) }.getOrNull()
+    } ?: return ""
+    if (!file.isFile) return ""
+    return file.length().toString() + "-" + file.lastModified().toString()
+}
+
 internal fun buildArtworkMemoryCacheKey(
     stableIdentity: String,
     source: String,
     widthPx: Int,
     heightPx: Int,
-): String =
-    "reianix-artwork|" + stableIdentity + "|" + source + "|" + bucketDimensionPx(widthPx) + "x" + bucketDimensionPx(heightPx)
+    sourceRevision: String = "",
+): String {
+    val base = "reianix-artwork|" + stableIdentity + "|" + source + "|" +
+        bucketDimensionPx(widthPx) + "x" + bucketDimensionPx(heightPx)
+    return if (sourceRevision.isBlank()) base else base + "|revision:" + sourceRevision
+}
 
-internal fun buildArtworkDiskCacheKey(source: String): String =
-    "reianix-artwork-disk|" + source
+internal fun buildArtworkDiskCacheKey(source: String, sourceRevision: String = ""): String =
+    "reianix-artwork-disk|" + source +
+        if (sourceRevision.isBlank()) "" else "|revision:" + sourceRevision
 
 internal fun localArtworkCandidates(
     localPath: String?,
