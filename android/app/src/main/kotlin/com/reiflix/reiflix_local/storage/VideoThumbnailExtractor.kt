@@ -629,6 +629,7 @@ object VideoThumbnailExtractor {
                 ),
             )
             diagnosticStage = "image_transform"
+            var outputBitmap = bitmap ?: return null
 
             ReiAnixDiagnosticTimeline.record(
                 name = "THUMBNAIL_DECODED",
@@ -637,38 +638,40 @@ object VideoThumbnailExtractor {
                 context = mapOf(
                     "source_width" to width,
                     "source_height" to height,
-                    "decoded_width" to bitmap.width,
-                    "decoded_height" to bitmap.height,
+                    "decoded_width" to outputBitmap.width,
+                    "decoded_height" to outputBitmap.height,
                     "rotation_degrees" to rotation,
                 ),
             )
-            if (bitmap.width > MAX_FRAME_DIMENSION || bitmap.height > MAX_FRAME_DIMENSION) {
+            if (outputBitmap.width > MAX_FRAME_DIMENSION || outputBitmap.height > MAX_FRAME_DIMENSION) {
                 val scale = minOf(
-                    MAX_FRAME_DIMENSION.toFloat() / bitmap.width.toFloat(),
-                    MAX_FRAME_DIMENSION.toFloat() / bitmap.height.toFloat(),
+                    MAX_FRAME_DIMENSION.toFloat() / outputBitmap.width.toFloat(),
+                    MAX_FRAME_DIMENSION.toFloat() / outputBitmap.height.toFloat(),
                 )
-                val scaledWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
-                val scaledHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
-                val scaled = Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
-                if (scaled !== bitmap) {
-                    bitmap.recycle()
+                val scaledWidth = (outputBitmap.width * scale).toInt().coerceAtLeast(1)
+                val scaledHeight = (outputBitmap.height * scale).toInt().coerceAtLeast(1)
+                val scaled = Bitmap.createScaledBitmap(outputBitmap, scaledWidth, scaledHeight, true)
+                if (scaled !== outputBitmap) {
+                    outputBitmap.recycle()
                     bitmap = scaled
+                    outputBitmap = scaled
                 }
             }
 
-            if (rotation != 0 && bitmap.width > 1 && bitmap.height > 1) {
+            if (rotation != 0 && outputBitmap.width > 1 && outputBitmap.height > 1) {
                 val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-                val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-                if (rotated !== bitmap) {
-                    bitmap.recycle()
+                val rotated = Bitmap.createBitmap(outputBitmap, 0, 0, outputBitmap.width, outputBitmap.height, matrix, true)
+                if (rotated !== outputBitmap) {
+                    outputBitmap.recycle()
                     bitmap = rotated
+                    outputBitmap = rotated
                 }
             }
 
             temp.delete()
             diagnosticStage = "cache_write"
             FileOutputStream(temp).use { output ->
-                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 84, output)) {
+                if (!outputBitmap.compress(Bitmap.CompressFormat.JPEG, 84, output)) {
                     throw IOException("THUMBNAIL_JPEG_COMPRESSION_FAILED")
                 }
                 output.fd.sync()
