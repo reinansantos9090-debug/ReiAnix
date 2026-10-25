@@ -234,8 +234,20 @@ jobs:
             --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListMatcherTest \
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.realDurationAndEpisodeArtworkReachUiModelUnchanged \
             --tests com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjectionTest \
+            2>&1 | tee "$RUNNER_TEMP/reianix-jvm-certification.log"
+
+      - name: Compile release Kotlin and assemble release APK
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
+        run: |
+          set -euo pipefail
+          ./android/gradlew -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
+            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
+            -PreianixBuildVersion="0.2.1" \
             :app:compileReleaseKotlin \
-            :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/reianix-jvm-certification.log"
+            :app:assembleRelease 2>&1 | tee -a "$RUNNER_TEMP/reianix-jvm-certification.log"
 
       - name: Upload JVM certification log and release APK
         if: always()
