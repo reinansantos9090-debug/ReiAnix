@@ -337,7 +337,7 @@ class ReiAnixAniListIntegrationService(
 
             // Preserve the fast path for an already-unambiguous primary-title result.
             // Alternative titles are queried only when the primary result is absent,
-            // low-confidence or ambiguous, avoiding up to four requests for common cases.
+            // low-confidence or ambiguous, avoiding extra requests for common cases.
             if (termIndex == 0) {
                 val best = ranked.firstOrNull()
                 val margin = best?.let { it.score - (ranked.getOrNull(1)?.score ?: 0.0) } ?: 0.0
@@ -465,7 +465,12 @@ class ReiAnixAniListIntegrationService(
                         Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=${local.id}: ${result.error}")
                         null
                     }
-                } ?: continue
+                }
+                if (remote == null) {
+                    Log.w(TAG, "Missing-artwork AniList lookup returned no usable media record for animeId=${local.id}")
+                    continue
+                }
+                val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
                 when (val applied = applyRemote(
                     local = local,
                     remote = remote,
@@ -474,13 +479,29 @@ class ReiAnixAniListIntegrationService(
                     score = local.anilistMatchScore,
                     margin = local.anilistMatchMargin,
                 )) {
-                    is AniListResult.Success -> if (!applied.value.coverUrl.isNullOrBlank()) recovered++
+                    is AniListResult.Success -> {
+                        if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
+                            recovered++
+                        } else {
+                            Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=${local.id}")
+                        }
+                    }
                     is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=${local.id}: ${applied.error}")
                 }
             } else {
                 if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
                 when (val result = autoMatch(local.id)) {
-                    is AniListResult.Success -> if (result.value is AniListAutoMatchResult.Matched) recovered++
+                    is AniListResult.Success -> {
+                        val matched = result.value as? AniListAutoMatchResult.Matched
+                        if (matched != null) {
+                            val remotePosterUrl = matched.remote.coverExtraLargeUrl ?: matched.remote.coverLargeUrl
+                            if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
+                                recovered++
+                            } else {
+                                Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
+                            }
+                        }
+                    }
                     is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
                 }
             }
