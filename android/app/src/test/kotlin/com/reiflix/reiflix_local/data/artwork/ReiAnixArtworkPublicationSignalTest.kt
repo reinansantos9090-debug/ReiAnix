@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.artwork
 
 import com.reiflix.reiflix_local.data.anilist.shouldDiscoverMissingArtwork
+import com.reiflix.reiflix_local.data.anilist.boundedAniListSearchTerms
 
 import java.io.File
 import java.util.UUID
@@ -216,5 +217,34 @@ class ReiAnixArtworkPublicationSignalTest {
         assertFalse(shouldDiscoverMissingArtwork(null, false, false, true, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork(null, false, true, true, null, null, 100_000.0))
     }
+
+    @Test
+    fun alternateTitleSearchTermsAreNormalizedDeduplicatedAndKeptInPriorityOrder() {
+        assertEquals(
+            listOf("Attack on Titan", "進撃の巨人", "Shingeki no Kyojin", "Attack on Titan: Junior High"),
+            boundedAniListSearchTerms(
+                listOf(
+                    " Attack on Titan ",
+                    "ATTACK   ON TITAN",
+                    "進撃の巨人",
+                    "Shingeki no Kyojin",
+                    "Attack on Titan: Junior High",
+                    "A",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun alternateTitleSearchTermsRespectRequestBudget() {
+        assertEquals(
+            listOf("A meaningful title", "Romanized title"),
+            boundedAniListSearchTerms(
+                listOf("", "A meaningful title", "Romanized title", "English title"),
+                limit = 2,
+            ),
+        )
+    }
+
 
 }
