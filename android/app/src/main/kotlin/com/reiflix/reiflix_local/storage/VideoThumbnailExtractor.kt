@@ -732,6 +732,25 @@ object VideoThumbnailExtractor {
                 }
             }
 
+            // Validate the committed JPEG, not only the in-memory frame, before
+            // reporting success or registering it in the canonical artwork table.
+            if (!isValidCachedThumbnail(target)) {
+                target.delete()
+                cacheMetadataFile(target).delete()
+                ReiAnixDiagnosticTimeline.record(
+                    name = "THUMBNAIL_CACHE_OUTPUT_INVALID",
+                    severity = "ERROR",
+                    source = "VideoThumbnailExtractor",
+                    result = "REJECTED",
+                    error = IOException("THUMBNAIL_OUTPUT_FAILED_VISUAL_VALIDATION"),
+                    context = mapOf(
+                        "stage" to "cache_commit_validation",
+                        "output_bytes" to target.length().coerceAtLeast(0L),
+                    ),
+                )
+                return null
+            }
+
             trimCache(target.parentFile ?: return null, target)
             val result = Result(
                 path = target.absolutePath,
