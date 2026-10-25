@@ -75,6 +75,7 @@ class ReiAnixAniListIntegrationService(
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
+    private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
 
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
@@ -374,6 +375,13 @@ class ReiAnixAniListIntegrationService(
             ) continue
             if (examined >= maxRecords) break
             examined++
+            val attemptAt = nowSeconds.toLong()
+            val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
+            if (previousAttempt != null) {
+                if (nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS ||
+                    !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
+                ) continue
+            }
             val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
             if (remoteId != null) {
                 val remote = when (val result = client.getAnime(remoteId.toInt())) {
@@ -386,7 +394,8 @@ class ReiAnixAniListIntegrationService(
                 when (val applied = applyRemote(
                     local = local,
                     remote = remote,
-                    manual = local.anilistMatchManual == true,
+                    manual = local.anilistMatchManual == true ||
+                        local.metadataSource == "manual" || local.metadataStatus == "manual",
                     score = local.anilistMatchScore,
                     margin = local.anilistMatchMargin,
                 )) {
