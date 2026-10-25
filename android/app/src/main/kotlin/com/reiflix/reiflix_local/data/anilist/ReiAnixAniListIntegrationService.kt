@@ -387,7 +387,7 @@ class ReiAnixAniListIntegrationService(
                 val remote = when (val result = client.getAnime(remoteId.toInt())) {
                     is AniListResult.Success -> result.value
                     is AniListResult.Failure -> {
-                        Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=\${local.id}: \${result.error}")
+                        Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=${local.id}: ${result.error}")
                         null
                     }
                 } ?: continue
@@ -400,13 +400,13 @@ class ReiAnixAniListIntegrationService(
                     margin = local.anilistMatchMargin,
                 )) {
                     is AniListResult.Success -> if (!applied.value.coverUrl.isNullOrBlank()) recovered++
-                    is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=\${local.id}: \${applied.error}")
+                    is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=${local.id}: ${applied.error}")
                 }
             } else {
                 if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
                 when (val result = autoMatch(local.id)) {
                     is AniListResult.Success -> if (result.value is AniListAutoMatchResult.Matched) recovered++
-                    is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=\${local.id}: \${result.error}")
+                    is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
                 }
             }
         }
