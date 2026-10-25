@@ -244,6 +244,10 @@ class ReiAnixLibraryViewModel(
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
     private val episodeThumbnailRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
+    // If the local-media/artwork projection changes during extraction, rerun once
+    // after the current batch releases its episode locks instead of dropping the
+    // newer request because that episode is still in flight.
+    private val episodeThumbnailRerunRequested = ConcurrentHashMap.newKeySet<Long>()
     // Legacy runtime callbacks can invalidate the same projection many times in a burst.
     // A conflated channel keeps one follow-up reload instead of launching dozens of
     // identical SQLite catalog reads while the previous reload is still in flight.
@@ -1358,9 +1362,19 @@ class ReiAnixLibraryViewModel(
         // Queue all available local episodes. Existing paths must be decoded and
         // visually checked on Dispatchers.IO before they can suppress regeneration.
         val pending = anime.contentEpisodes.filter { episode ->
-            episode.media.availability.name == "AVAILABLE" &&
-                episodeThumbnailSource(episode) != null &&
-                episodeThumbnailRequestsInFlight.add(episode.id)
+            if (episode.media.availability.name != "AVAILABLE" ||
+                episodeThumbnailSource(episode) == null
+            ) {
+                return@filter false
+            }
+            if (episodeThumbnailRequestsInFlight.add(episode.id)) {
+                true
+            } else {
+                // A newer projection arrived while this episode was being processed.
+                // The active batch may have captured an older URI, size, or timestamp.
+                episodeThumbnailRerunRequested.add(episode.id)
+                false
+            }
         }
         if (pending.isEmpty()) return
 
@@ -1468,12 +1482,25 @@ class ReiAnixLibraryViewModel(
                         throw cancelled
                     } catch (error: Exception) {
                         Log.w(TAG, "Episode thumbnail generation failed for episodeId=${episode.id}", error)
-                    } finally {
-                        episodeThumbnailRequestsInFlight.remove(episode.id)
                     }
                 }
             } finally {
-                pending.forEach { episodeThumbnailRequestsInFlight.remove(it.id) }
+                var rerunRequested = false
+                pending.forEach { episode ->
+                    episodeThumbnailRequestsInFlight.remove(episode.id)
+                    if (episodeThumbnailRerunRequested.remove(episode.id)) {
+                        rerunRequested = true
+                    }
+                }
+                if (rerunRequested) {
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "EPISODE_THUMBNAIL_RERUN_QUEUED",
+                        source = "ReiAnixLibraryViewModel",
+                        result = "SOURCE_REVISION_CHANGED_DURING_REQUEST",
+                        context = mapOf("anime_id" to animeId),
+                    )
+                    requestMissingEpisodeThumbnails(animeId)
+                }
             }
         }
     }
