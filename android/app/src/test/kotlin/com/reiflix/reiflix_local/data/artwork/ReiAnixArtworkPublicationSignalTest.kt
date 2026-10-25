@@ -213,6 +213,53 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun validHttpArtworkUrlsAreNotRediscoveredByTheJvmPolicy() {
+        for (url in listOf(
+                "https://example.test/poster.jpg",
+                "http://example.test/poster.jpg",
+                "HTTPS://example.test/poster.jpg",
+        )) {
+            assertFalse(
+                "A usable remote artwork URL must not be rediscovered: $url",
+                shouldDiscoverMissingArtwork(
+                    coverUrl = url,
+                    hasUsableLocalCover = false,
+                    hasAniListId = false,
+                    manualMetadata = false,
+                    matchStatus = null,
+                    metadataFetchedAtSeconds = null,
+                    nowSeconds = 100_000.0,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun malformedNonHttpAndCredentialBearingArtworkUrlsRemainEligibleForRecovery() {
+        for (url in listOf(
+                "not-a-url",
+                "ftp://example.test/poster.jpg",
+                "file:///cache/poster.jpg",
+                "https:///missing-host.jpg",
+                "https://bad host/poster.jpg",
+                "https://user:password@example.test/poster.jpg",
+        )) {
+            assertTrue(
+                "An unusable remote artwork reference must remain eligible for recovery: $url",
+                shouldDiscoverMissingArtwork(
+                    coverUrl = url,
+                    hasUsableLocalCover = false,
+                    hasAniListId = false,
+                    manualMetadata = false,
+                    matchStatus = null,
+                    metadataFetchedAtSeconds = null,
+                    nowSeconds = 100_000.0,
+                ),
+            )
+        }
+    }
+
+    @Test
     fun unresolvedAndManualRowsDoNotReceiveGuessedArtwork() {
         assertFalse(shouldDiscoverMissingArtwork(null, false, false, false, "ambiguous", null, 100_000.0))
         assertFalse(shouldDiscoverMissingArtwork(null, false, false, true, null, null, 100_000.0))
