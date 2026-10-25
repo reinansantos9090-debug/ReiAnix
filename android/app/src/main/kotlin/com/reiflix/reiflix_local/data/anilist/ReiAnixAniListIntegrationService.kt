@@ -375,7 +375,6 @@ class ReiAnixAniListIntegrationService(
                 )
             ) continue
             if (examined >= maxRecords) break
-            examined++
             val attemptAt = nowSeconds.toLong()
             val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
             if (previousAttempt != null) {
@@ -383,6 +382,7 @@ class ReiAnixAniListIntegrationService(
                     !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
                 ) continue
             }
+            examined++
             val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
             if (remoteId != null) {
                 val remote = when (val result = client.getAnime(remoteId.toInt())) {
