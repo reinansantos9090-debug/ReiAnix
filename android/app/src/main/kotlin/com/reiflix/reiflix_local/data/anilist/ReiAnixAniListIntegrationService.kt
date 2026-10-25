@@ -26,6 +26,30 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+
+/** Pure policy for bounded discovery of missing posters from the canonical catalogue. */
+internal fun shouldDiscoverMissingArtwork(
+    coverUrl: String?,
+    hasUsableLocalCover: Boolean,
+    hasAniListId: Boolean,
+    manualMetadata: Boolean,
+    matchStatus: String?,
+    metadataFetchedAtSeconds: Double?,
+    nowSeconds: Double,
+): Boolean {
+    if (!coverUrl.isNullOrBlank() || hasUsableLocalCover) return false
+    if (manualMetadata && !hasAniListId) return false
+    val status = matchStatus?.trim()?.lowercase(Locale.ROOT)
+    if (!hasAniListId && status in setOf("not_found", "ambiguous")) return false
+    val fetchedAt = metadataFetchedAtSeconds
+    if (fetchedAt != null && fetchedAt.isFinite() && nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS) {
+        return false
+    }
+    return true
+}
+
+internal const val MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS = 24L * 60L * 60L
+
 /**
  * AniList domain integration used by native ViewModels. The canonical SQLite
  * repository remains the sole persistence authority; remote failures retain
@@ -300,6 +324,69 @@ class ReiAnixAniListIntegrationService(
         // Publish even unresolved rows so the native projection can show their
         // persisted status. A false requestArtwork flag prevents unrelated image work.
         enqueueMetadataCommit(animeId, requestArtwork = false)
+    }
+
+    /**
+     * Discovers artwork for existing canonical rows whose poster URL was never saved.
+     * It reuses the existing AniList client, conservative matcher and SQLite writer;
+     * it does not create local anime rows or a second catalogue.
+     * A small per-run budget and persisted metadata freshness prevent startup request storms.
+     */
+    suspend fun recoverMissingArtworkMetadata(maxRecords: Int = 12): Int {
+        require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
+        if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
+        val rows = library.loadLibraryCatalogRows()
+        var examined = 0
+        var recovered = 0
+        val nowSeconds = System.currentTimeMillis() / 1000.0
+        for (row in rows) {
+            currentCoroutineContext().ensureActive()
+            val local = row.anime
+            if (local.id <= 0L) continue
+            val cachedPath = local.coverCache?.trim().orEmpty()
+            val usableLocalCover = cachedPath.isNotEmpty() &&
+                runCatching { File(cachedPath).isFile && File(cachedPath).length() > 0L }.getOrDefault(false)
+            if (!shouldDiscoverMissingArtwork(
+                    coverUrl = local.coverUrl,
+                    hasUsableLocalCover = usableLocalCover,
+                    hasAniListId = local.anilistId != null,
+                    manualMetadata = local.anilistMatchManual == true ||
+                        local.metadataSource == "manual" || local.metadataStatus == "manual",
+                    matchStatus = local.anilistMatchStatus,
+                    metadataFetchedAtSeconds = local.metadataFetchedAt,
+                    nowSeconds = nowSeconds,
+                )
+            ) continue
+            if (examined >= maxRecords) break
+            examined++
+            val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+            if (remoteId != null) {
+                val remote = when (val result = client.getAnime(remoteId.toInt())) {
+                    is AniListResult.Success -> result.value
+                    is AniListResult.Failure -> {
+                        Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=\${local.id}: \${result.error}")
+                        null
+                    }
+                } ?: continue
+                when (val applied = applyRemote(
+                    local = local,
+                    remote = remote,
+                    manual = local.anilistMatchManual == true,
+                    score = local.anilistMatchScore,
+                    margin = local.anilistMatchMargin,
+                )) {
+                    is AniListResult.Success -> if (!applied.value.coverUrl.isNullOrBlank()) recovered++
+                    is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=\${local.id}: \${applied.error}")
+                }
+            } else {
+                if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
+                when (val result = autoMatch(local.id)) {
+                    is AniListResult.Success -> if (result.value is AniListAutoMatchResult.Matched) recovered++
+                    is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=\${local.id}: \${result.error}")
+                }
+            }
+        }
+        return recovered
     }
 
     /**
