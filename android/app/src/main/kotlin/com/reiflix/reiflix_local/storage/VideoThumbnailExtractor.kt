@@ -587,7 +587,7 @@ object VideoThumbnailExtractor {
             var failedCandidates = 0
 
             candidateTimestampsUs.forEach { timestampUs ->
-                val candidate = runCatching {
+                val frameAttempt = runCatching {
                     if (android.os.Build.VERSION.SDK_INT >= 27) {
                         retriever.getScaledFrameAtTime(
                             timestampUs,
@@ -598,10 +598,25 @@ object VideoThumbnailExtractor {
                     } else {
                         retriever.getFrameAtTime(timestampUs, MediaMetadataRetriever.OPTION_CLOSEST)
                     }
-                }.getOrNull()
+                }
+                val candidate = frameAttempt.getOrNull()
 
                 if (candidate == null) {
                     failedCandidates++
+                    val frameError = frameAttempt.exceptionOrNull()
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "THUMBNAIL_FRAME_CANDIDATE_FAILED",
+                        severity = if (frameError != null) "WARN" else "INFO",
+                        source = "VideoThumbnailExtractor",
+                        result = if (frameError != null) "DECODE_EXCEPTION" else "NO_FRAME_RETURNED",
+                        error = frameError,
+                        context = mapOf(
+                            "stage" to "frame_decode",
+                            "timestamp_ms" to timestampUs / 1_000L,
+                            "android_api" to android.os.Build.VERSION.SDK_INT,
+                            "attempt" to decodedCandidates + failedCandidates,
+                        ),
+                    )
                     return@forEach
                 }
                 decodedCandidates++
