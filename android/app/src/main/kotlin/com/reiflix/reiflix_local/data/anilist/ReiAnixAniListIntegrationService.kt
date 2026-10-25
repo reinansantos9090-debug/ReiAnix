@@ -413,7 +413,7 @@ class ReiAnixAniListIntegrationService(
         val rows = library.loadLibraryCatalogRows()
         val exhaustedPosterIds = library.database.read { connection ->
             connection.rawQuery(
-                "SELECT DISTINCT entity_id FROM artwork WHERE entity_type='anime' " +
+                "SELECT DISTINCT entity_id FROM artwork WHERE entity_type IN ('anime','movie') " +
                     "AND artwork_type='poster' AND status='failed' AND COALESCE(failure_count, 0)>=5",
                 null,
             ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
