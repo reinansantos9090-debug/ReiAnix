@@ -300,7 +300,9 @@ class ReiAnixAniListIntegrationService(
 
         val candidatesById = linkedMapOf<Int, AniListAnime>()
         var ranked: List<ReiAnixAniListMatcher.RankedCandidate> = emptyList()
+        var searchedTerms: List<String> = emptyList()
         for ((termIndex, searchTerm) in searchTerms.withIndex()) {
+            searchedTerms = searchTerms.take(termIndex + 1)
             val searchResult = try {
                 client.searchAnime(searchTerm, 10)
             } catch (cancelled: CancellationException) {
@@ -350,7 +352,7 @@ class ReiAnixAniListIntegrationService(
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
-        ranked = rankCandidates(candidatesById.values, searchTerms)
+        ranked = rankCandidates(candidatesById.values, searchedTerms)
         if (ranked.isEmpty()) {
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
