@@ -72,6 +72,31 @@ object VideoThumbnailExtractor {
         raw?.trim()?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
 
     /**
+     * True only when a cached local thumbnail decodes and has useful visual
+     * structure. Used by the library before deciding to skip regeneration.
+     * This is intentionally called from an IO dispatcher.
+     */
+    internal fun isUsableThumbnailFile(path: String?): Boolean {
+        val value = path?.trim()?.takeIf(String::isNotEmpty) ?: return false
+        val file = runCatching {
+            val parsed = Uri.parse(value)
+            when {
+                parsed.scheme.equals("file", ignoreCase = true) ->
+                    parsed.path?.let(::File)
+                parsed.scheme.isNullOrBlank() -> File(value)
+                else -> null
+            }
+        }.getOrNull() ?: return false
+        return isValidCachedThumbnail(file)
+    }
+
+    /** Whether the library must regenerate a thumbnail instead of reusing its path. */
+    internal fun thumbnailNeedsRegeneration(
+        localPath: String?,
+        isUsable: Boolean,
+    ): Boolean = localPath.isNullOrBlank() || !isUsable
+
+    /**
      * Candidate timestamps avoid the exact start frame and sample only a bounded
      * spread through the beginning and early/middle part of an episode.
      */
