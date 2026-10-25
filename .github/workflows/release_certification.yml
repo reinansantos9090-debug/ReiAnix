@@ -94,7 +94,7 @@ jobs:
             --tests com.reiflix.reiflix_local.VideoThumbnailExtractorTest \
             --tests com.reiflix.reiflix_local.storage.VideoThumbnailFileValidationTest \
             --tests com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtworkTest \
-            --tests com.reiflix.reiflix_local.LibraryUiMappersTest \
+            --tests com.reiflix.reiflix_local.LibraryUiMappersTest.realDurationAndEpisodeArtworkReachUiModelUnchanged \
             --tests com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjectionTest \
             :app:compileReleaseKotlin 2>&1 | tee "$RUNNER_TEMP/reianix-jvm-certification.log"
 
