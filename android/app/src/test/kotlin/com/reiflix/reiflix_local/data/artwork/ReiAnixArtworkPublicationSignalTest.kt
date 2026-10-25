@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.artwork
 
 import com.reiflix.reiflix_local.data.anilist.shouldDiscoverMissingArtwork
 import com.reiflix.reiflix_local.data.anilist.boundedAniListSearchTerms
+import com.reiflix.reiflix_local.data.anilist.rotateArtworkDiscoveryIds
 
 import java.io.File
 import java.util.UUID
@@ -243,6 +244,23 @@ class ReiAnixArtworkPublicationSignalTest {
                 listOf("", "A meaningful title", "Romanized title", "English title"),
                 limit = 2,
             ),
+        )
+    }
+
+
+    @Test
+    fun missingArtworkDiscoveryCursorRotatesFairlyAndWraps() {
+        assertEquals(
+            listOf(30L, 40L, 10L, 20L),
+            rotateArtworkDiscoveryIds(listOf(40L, 10L, 20L, 30L), 20L),
+        )
+    }
+
+    @Test
+    fun missingArtworkDiscoveryCursorStartsAtBeginningAfterLastId() {
+        assertEquals(
+            listOf(10L, 20L, 30L),
+            rotateArtworkDiscoveryIds(listOf(30L, 10L, 20L), 99L),
         )
     }
 
