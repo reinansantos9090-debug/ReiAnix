@@ -33,11 +33,11 @@ internal fun shouldDiscoverMissingArtwork(
     coverUrl: String?,
     hasUsableLocalCover: Boolean,
     hasAniListId: Boolean,
-    hasExhaustedArtworkFailure: Boolean = false,
     manualMetadata: Boolean,
     matchStatus: String?,
     metadataFetchedAtSeconds: Double?,
     nowSeconds: Double,
+    hasExhaustedArtworkFailure: Boolean = false,
 ): Boolean {
     if (hasUsableLocalCover) return false
     if (!coverUrl.isNullOrBlank()) {
