@@ -85,7 +85,7 @@ class VideoThumbnailExtractorTest {
 
     @Test
     fun detailedFrameScoresHigherThanAFlatButTechnicallyNonExtremeFrame() {
-        val flat = VideoThumbnailExtractor.analyzeLuminanceSamples(IntArray(400) { 80 + (it % 2) })!!
+        val flat = VideoThumbnailExtractor.analyzeLuminanceSamples(IntArray(400) { 80 + (it % 16) })!!
         val detailed = VideoThumbnailExtractor.analyzeLuminanceSamples(IntArray(400) { (it * 37) % 220 + 18 })!!
 
         assertTrue(VideoThumbnailExtractor.isUsableFrame(flat))
