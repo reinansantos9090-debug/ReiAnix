@@ -707,6 +707,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val uri = mediaUri.trim()
         val file = File(thumbnailPath).absoluteFile
         if (uri.isEmpty() || !file.isFile || !validImage(file)) return false
+        if (!com.reiflix.reiflix_local.storage.VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_THUMBNAIL_REJECTED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = "VISUALLY_UNUSABLE",
+                context = mapOf("stage" to "generated_thumbnail_registration", "file_bytes" to file.length()),
+            )
+            return false
+        }
         // The extractor consumes file:// URIs, while canonical episode.path and
         // historical observations commonly store the same source as /absolute/path.
         // Match both forms before falling back to the stable media identity.
@@ -765,6 +775,61 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             }
         }
         return registered > 0
+    }
+
+    /**
+     * Hide only the exact generated episode thumbnail that failed visual validation.
+     * The video and cache file are left intact; the extractor can regenerate and
+     * register a replacement on this or a later Details visit.
+     */
+    fun invalidateGeneratedThumbnail(
+        episodeId: Long,
+        expectedLocalPath: String,
+        reason: String,
+    ): Boolean {
+        val path = expectedLocalPath.trim()
+        if (episodeId <= 0L || path.isEmpty()) return false
+        val now = nowSeconds()
+        val invalidated = runCatching {
+            database.transaction { db ->
+                val values = ContentValues().apply {
+                    put("status", STATUS_FAILED)
+                    putNull("local_path")
+                    putNull("checksum")
+                    put("byte_size", 0L)
+                    put("updated_at", now)
+                    put("last_attempt_at", now)
+                }
+                db.update(
+                    "artwork",
+                    values,
+                    "entity_type='episode' AND entity_id=? AND artwork_type='episode_thumbnail' " +
+                        "AND source='generated' AND local_path=?",
+                    arrayOf(episodeId.toString(), path),
+                ) > 0
+            }
+        }.getOrElse { error ->
+            Log.w(TAG, "Could not invalidate generated thumbnail episodeId=$episodeId", error)
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_THUMBNAIL_INVALIDATION_FAILED",
+                severity = "ERROR",
+                source = "ReiAnixArtworkService",
+                result = "FAILED",
+                error = error,
+                context = mapOf("episode_id" to episodeId, "reason" to reason),
+            )
+            false
+        }
+        if (invalidated) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_THUMBNAIL_INVALIDATED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = "REGENERATION_REQUIRED",
+                context = mapOf("episode_id" to episodeId, "reason" to reason),
+            )
+        }
+        return invalidated
     }
 
     private fun publish(
