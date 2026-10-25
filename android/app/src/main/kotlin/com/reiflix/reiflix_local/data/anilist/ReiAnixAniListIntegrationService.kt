@@ -59,7 +59,7 @@ internal fun shouldDiscoverMissingArtwork(
 
 internal const val MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS = 24L * 60L * 60L
 
-internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 4): List<String> {
+internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6): List<String> {
     require(limit in 1..8) { "AniList title search limit must be between 1 and 8." }
     val seen = HashSet<String>()
     return candidates.asSequence()
@@ -262,9 +262,9 @@ class ReiAnixAniListIntegrationService(
         val localTitleCandidates = buildList {
             add(local.title)
             add(local.lookupTitle)
+            add(local.nativeTitle.orEmpty())
             add(local.romaji.orEmpty())
             add(local.english.orEmpty())
-            add(local.nativeTitle.orEmpty())
             local.aliasesJson?.let { aliasesJson ->
                 runCatching { JSONArray(aliasesJson) }.getOrNull()?.let { aliases ->
                     for (index in 0 until aliases.length()) {
@@ -274,7 +274,7 @@ class ReiAnixAniListIntegrationService(
                 }
             }
         }
-        val searchTerms = boundedAniListSearchTerms(localTitleCandidates)
+        val searchTerms = boundedAniListSearchTerms(localTitleCandidates, limit = 6)
         if (searchTerms.isEmpty()) {
             autoMatchAttempts.remove(animeId)
             return AniListResult.Failure(
