@@ -591,6 +591,7 @@ object VideoThumbnailExtractor {
                 var candidate: Bitmap? = null
                 var candidateQuality: FrameQualityMetrics? = null
                 var decodedAtTimestamp = false
+                var syncFallbackUsed = false
                 var lastFrameError: Throwable? = null
 
                 // Prefer the closest decoded frame. If that mode returns no frame or
@@ -602,7 +603,10 @@ object VideoThumbnailExtractor {
                     MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
                 ).forEachIndexed { optionIndex, option ->
                     if (candidate != null) return@forEachIndexed
-                    if (optionIndex > 0) syncFallbackAttempts++
+                    if (optionIndex > 0) {
+                        syncFallbackAttempts++
+                        syncFallbackUsed = true
+                    }
 
                     val frameAttempt = runCatching {
                         if (android.os.Build.VERSION.SDK_INT >= 27) {
@@ -649,7 +653,7 @@ object VideoThumbnailExtractor {
                                 "stage" to "frame_decode",
                                 "timestamp_ms" to timestampUs / 1_000L,
                                 "android_api" to android.os.Build.VERSION.SDK_INT,
-                                "sync_fallback_attempted" to (syncFallbackAttempts > 0),
+                                "sync_fallback_attempted" to syncFallbackUsed,
                                 "attempt" to decodedCandidates + failedCandidates,
                             ),
                         )
