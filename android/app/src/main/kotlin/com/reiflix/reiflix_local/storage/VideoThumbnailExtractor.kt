@@ -59,6 +59,7 @@ object VideoThumbnailExtractor {
     )
 
     private const val CACHE_METADATA_VERSION = 1
+    private const val THUMBNAIL_ALGORITHM_VERSION = 2
 
     private val inFlight = ConcurrentHashMap<String, Any>()
     private val latestKeyByUri = ConcurrentHashMap<String, String>()
@@ -66,7 +67,9 @@ object VideoThumbnailExtractor {
     private const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
     private const val MAX_FRAME_DIMENSION = 320
     internal fun cacheKey(mediaIdentity: String, size: Long, modifiedAt: Long): String =
-        sha256(mediaIdentity + "|" + size + "|" + modifiedAt)
+        // Version the file identity so old black-frame files and Coil's old disk entry
+        // cannot win again after the visual selector has been corrected.
+        sha256("thumbnail-algorithm-" + THUMBNAIL_ALGORITHM_VERSION + "|" + mediaIdentity + "|" + size + "|" + modifiedAt)
 
     internal fun parseDurationMs(raw: String?): Long =
         raw?.trim()?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
