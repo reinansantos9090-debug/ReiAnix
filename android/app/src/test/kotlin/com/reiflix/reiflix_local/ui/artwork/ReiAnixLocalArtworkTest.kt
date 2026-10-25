@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.ui.artwork
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import java.io.File
 import org.junit.Test
 
 class ReiAnixLocalArtworkTest {
@@ -43,6 +44,23 @@ class ReiAnixLocalArtworkTest {
         val diskRevisionB = buildArtworkDiskCacheKey("/cache/episode.jpg", "1030-2000")
         assertNotEquals(memoryRevisionA, memoryRevisionB)
         assertNotEquals(diskRevisionA, diskRevisionB)
+    }
+
+    @Test
+    fun localArtworkSourceRevisionChangesWhenTheFileIsRegenerated() {
+        val file = File.createTempFile("reianix-thumb-revision-", ".jpg")
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3, 4))
+            val firstRevision = localArtworkSourceRevision(file.absolutePath)
+
+            file.writeBytes(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8))
+            file.setLastModified(file.lastModified() + 2_000L)
+            val secondRevision = localArtworkSourceRevision(file.absolutePath)
+
+            assertNotEquals(firstRevision, secondRevision)
+        } finally {
+            file.delete()
+        }
     }
 
     @Test
