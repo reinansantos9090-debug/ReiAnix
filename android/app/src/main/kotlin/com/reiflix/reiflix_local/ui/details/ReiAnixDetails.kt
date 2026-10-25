@@ -155,9 +155,41 @@ fun ReiAnixDetailsRoute(
     val aniListState by aniListViewModel.uiState.collectAsStateWithLifecycle()
     var showAniListDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
+    // The Details status can remain READY while the asynchronous local-library
+    // projection gains a media URI, corrected availability/duration, or a newly
+    // published thumbnail. Include those source facts in a stable effect key so a
+    // first request made before local media becomes resolvable is not the only one.
+    val thumbnailRequestRevision = remember(state.anime) {
+        state.anime?.let { anime ->
+            (anime.seasons.flatMap { it.episodes } + anime.specials + anime.mediaFiles)
+                .distinctBy { it.id }
+                .sortedBy { it.id }
+                .joinToString(separator = "|") { episode ->
+                    listOf(
+                        episode.id.toString(),
+                        episode.media.reference.orEmpty(),
+                        episode.media.uri.orEmpty(),
+                        episode.media.path.orEmpty(),
+                        episode.media.mediaIdentity.orEmpty(),
+                        episode.media.availability.name,
+                        episode.media.sourceAvailabilityState.orEmpty(),
+                        episode.fileSizeBytes?.toString().orEmpty(),
+                        episode.modifiedAt?.toString().orEmpty(),
+                        episode.durationSeconds?.toString().orEmpty(),
+                        episode.artwork?.localPath.orEmpty(),
+                    ).joinToString(separator = "\u001f")
+                }
+        }.orEmpty()
+    }
+
     LaunchedEffect(canonicalId, state.status) {
         if (state.status == ReiAnixDetailsLoadStatus.READY) {
             aniListViewModel.autoMatchAniList(canonicalId)
+        }
+    }
+
+    LaunchedEffect(canonicalId, state.status, thumbnailRequestRevision) {
+        if (state.status == ReiAnixDetailsLoadStatus.READY) {
             viewModel.requestMissingEpisodeThumbnails(canonicalId)
         }
     }
