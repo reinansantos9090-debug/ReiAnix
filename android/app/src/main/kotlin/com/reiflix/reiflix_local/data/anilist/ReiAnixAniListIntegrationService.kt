@@ -3,6 +3,8 @@ package com.reiflix.reiflix_local.data.anilist
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 
 import android.content.Context
+import android.content.ContentValues
+import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -58,6 +60,17 @@ internal fun shouldDiscoverMissingArtwork(
 }
 
 internal const val MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS = 24L * 60L * 60L
+
+
+internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long> {
+    val sorted = ids.filter { it > 0L }.distinct().sorted()
+    if (sorted.isEmpty()) return emptyList()
+    val start = sorted.indexOfFirst { it > cursor }.let { if (it < 0) 0 else it }
+    return sorted.drop(start) + sorted.take(start)
+}
+
+internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
+
 
 internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6): List<String> {
     require(limit in 1..8) { "AniList title search limit must be between 1 and 8." }
@@ -401,6 +414,34 @@ class ReiAnixAniListIntegrationService(
         enqueueMetadataCommit(animeId, requestArtwork = false)
     }
 
+
+    private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
+        library.database.read { connection ->
+            connection.rawQuery(
+                "SELECT value FROM preferences WHERE key=? LIMIT 1",
+                arrayOf(ARTWORK_DISCOVERY_CURSOR_PREFERENCE),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0)?.toLongOrNull() ?: 0L else 0L
+            }
+        }
+    }
+
+    private suspend fun writeArtworkDiscoveryCursor(animeId: Long) = withContext(Dispatchers.IO) {
+        library.database.transaction { connection ->
+            val values = ContentValues().apply {
+                put("key", ARTWORK_DISCOVERY_CURSOR_PREFERENCE)
+                put("value", animeId.toString())
+                put("updated_at", System.currentTimeMillis() / 1000.0)
+            }
+            connection.insertWithOnConflict(
+                "preferences",
+                null,
+                values,
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+        }
+    }
+
     /**
      * Discovers artwork for existing canonical rows whose poster URL was never saved.
      * It reuses the existing AniList client, conservative matcher and SQLite writer;
@@ -411,6 +452,12 @@ class ReiAnixAniListIntegrationService(
         require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
         if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
         val rows = library.loadLibraryCatalogRows()
+        if (rows.isEmpty()) return 0
+        val rowsById = rows.associateBy { it.anime.id }
+        val discoveryCursor = readArtworkDiscoveryCursor()
+        val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
+            .mapNotNull(rowsById::get)
+        var lastVisitedCursor = discoveryCursor
         val exhaustedPosterIds = library.database.read { connection ->
             connection.rawQuery(
                 "SELECT DISTINCT entity_id FROM artwork WHERE entity_type IN ('anime','movie') " +
@@ -421,10 +468,12 @@ class ReiAnixAniListIntegrationService(
         var examined = 0
         var recovered = 0
         val nowSeconds = System.currentTimeMillis() / 1000.0
-        for (row in rows) {
+        for (row in orderedRows) {
+            if (examined >= maxRecords) break
             currentCoroutineContext().ensureActive()
             val local = row.anime
             if (local.id <= 0L) continue
+            lastVisitedCursor = local.id
             val cachedPath = local.coverCache?.trim().orEmpty()
             val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
                 val file = File(cachedPath)
@@ -505,6 +554,9 @@ class ReiAnixAniListIntegrationService(
                     is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
                 }
             }
+        }
+        if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
+            writeArtworkDiscoveryCursor(lastVisitedCursor)
         }
         return recovered
     }
