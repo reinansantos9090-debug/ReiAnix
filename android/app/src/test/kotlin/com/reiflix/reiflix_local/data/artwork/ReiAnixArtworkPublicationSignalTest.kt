@@ -64,6 +64,85 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun legacyFailedArtworkWithoutRetryTimestampCanBeRetried() {
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "failed",
+                retryAtSeconds = null,
+                failureCount = 1,
+                nowSeconds = 1_000.0,
+                force = false,
+            ),
+        )
+    }
+
+    @Test
+    fun retryWaitRowsRemainDeferredUntilTheirPersistedBackoffExpires() {
+        assertFalse(
+            shouldRetryArtworkRequest(
+                status = "retry_wait",
+                retryAtSeconds = 2_000.0,
+                failureCount = 1,
+                nowSeconds = 1_999.0,
+                force = false,
+            ),
+        )
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "retry_wait",
+                retryAtSeconds = 2_000.0,
+                failureCount = 1,
+                nowSeconds = 2_000.0,
+                force = false,
+            ),
+        )
+    }
+
+    @Test
+    fun automaticRetriesAreBoundedButExplicitForceCanRecoverExhaustedRows() {
+        assertFalse(
+            shouldRetryArtworkRequest(
+                status = "failed",
+                retryAtSeconds = null,
+                failureCount = MAX_AUTOMATIC_ARTWORK_FAILURES,
+                nowSeconds = 10_000.0,
+                force = false,
+            ),
+        )
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "failed",
+                retryAtSeconds = null,
+                failureCount = MAX_AUTOMATIC_ARTWORK_FAILURES,
+                nowSeconds = 10_000.0,
+                force = true,
+            ),
+        )
+    }
+
+    @Test
+    fun permanentFailuresAreEligibleAgainAfterCooldown() {
+        assertFalse(
+            shouldRetryArtworkRequest(
+                status = "failed",
+                retryAtSeconds = 90_000.0,
+                failureCount = 2,
+                nowSeconds = 89_999.0,
+                force = false,
+            ),
+        )
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "failed",
+                retryAtSeconds = 90_000.0,
+                failureCount = 2,
+                nowSeconds = 90_000.0,
+                force = false,
+            ),
+        )
+    }
+
+    @Test
     fun invalidGeneratedThumbnailSelectionKeepsUsablePathsAndDeduplicatesInvalidRows() {
         val invalid = invalidGeneratedThumbnailPaths(
             paths = listOf(
