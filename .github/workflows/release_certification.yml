@@ -13,6 +13,138 @@ permissions:
   contents: read
 
 jobs:
+  android-sdk-adb-test:
+    name: Android SDK and ADB toolchain verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout official repository
+        uses: actions/checkout@v5
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+          accept-android-sdk-licenses: true
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Initialize Android SDK and ADB diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'ReiAnix Android SDK/ADB certification\nCommit: %s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/android-sdk-adb-certification.log"
+
+      - name: Verify Java availability and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version 2>&1 | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+          java_version="$(java -XshowSettings:properties -version 2>&1 | awk -F'= ' '/java.specification.version/ {print $2; exit}')"
+          test "$java_version" = "17"
+          printf 'java.specification.version=%s\n' "$java_version" | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+
+      - name: Verify Android SDK path and configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$sdk_root"
+          test -d "$sdk_root"
+          if [[ -n "${ANDROID_HOME:-}" && -n "${ANDROID_SDK_ROOT:-}" ]]; then
+            test "$(realpath "$ANDROID_HOME")" = "$(realpath "$ANDROID_SDK_ROOT")"
+          fi
+          {
+            printf 'ANDROID_HOME=%s\n' "${ANDROID_HOME:-unset}"
+            printf 'ANDROID_SDK_ROOT=%s\n' "${ANDROID_SDK_ROOT:-unset}"
+            printf 'Resolved SDK root=%s\n' "$sdk_root"
+          } | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+
+      - name: Verify required Android platform and Build-Tools packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          compile_sdk="$(sed -nE 's/^[[:space:]]*compileSdk[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' android/app/build.gradle.kts | head -n 1)"
+          build_tools_version="$(grep -oE 'build-tools;[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/release_certification.yml | head -n 1 | cut -d ';' -f 2)"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$compile_sdk"
+          test -n "$build_tools_version"
+          platform_dir="$sdk_root/platforms/android-$compile_sdk"
+          build_tools_dir="$sdk_root/build-tools/$build_tools_version"
+          test -s "$platform_dir/android.jar"
+          test -s "$build_tools_dir/source.properties"
+          grep -Eq "Pkg.Revision[[:space:]]*=[[:space:]]*$build_tools_version([[:space:]]|$)" "$build_tools_dir/source.properties"
+          test -x "$build_tools_dir/aapt2"
+          test -x "$build_tools_dir/zipalign"
+          {
+            printf 'compileSdk=%s\n' "$compile_sdk"
+            printf 'Android platform path=%s\n' "$platform_dir"
+            printf 'Build-Tools version=%s\n' "$build_tools_version"
+            grep -E '^Pkg.Revision' "$build_tools_dir/source.properties"
+          } | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+
+      - name: Verify sdkmanager availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager_path="$(command -v sdkmanager)"
+          test -n "$sdkmanager_path"
+          printf 'sdkmanager path=%s\n' "$sdkmanager_path" | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+          sdkmanager --version 2>&1 | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+
+      - name: Verify ADB availability and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          adb_path="$(command -v adb)"
+          test -n "$adb_path"
+          printf 'adb path=%s\n' "$adb_path" | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+          adb --version 2>&1 | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+
+      - name: Generate Gradle Wrapper for this CI run
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.11.1 --distribution-type bin
+
+      - name: Verify Gradle Wrapper availability and version
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --version 2>&1 | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+          test -s gradle/wrapper/gradle-wrapper.properties
+          grep -Fq 'gradle-8.11.1-bin.zip' gradle/wrapper/gradle-wrapper.properties
+
+      - name: List ADB devices without requiring a connected phone
+        shell: bash
+        run: |
+          set -euo pipefail
+          adb devices -l 2>&1 | tee "$RUNNER_TEMP/adb-devices.log" | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+          if ! grep -Eq '^[[:alnum:]_.:-]+[[:space:]]+device([[:space:]]|$)' "$RUNNER_TEMP/adb-devices.log"; then
+            echo "No accessible Android device is attached to this runner; tool verification remains valid." | tee -a "$RUNNER_TEMP/android-sdk-adb-certification.log"
+          fi
+
+      - name: Upload Android SDK and ADB diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-android-sdk-adb-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/android-sdk-adb-certification.log
+            ${{ runner.temp }}/adb-devices.log
+          retention-days: 7
+          if-no-files-found: warn
+
   native-certification:
     name: Native Kotlin compilation certification
     runs-on: ubuntu-latest
@@ -39,6 +171,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
+
+      - name: Generate temporary Gradle Wrapper for CI
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.11.1 --distribution-type bin
 
       - name: Validate native entry point and repository integrity
         shell: bash
@@ -76,7 +212,7 @@ jobs:
           gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"
           jq '. + {statements: ((.table_sql | to_entries | sort_by(.key) | map(.value)) + ([.indexes | sort_by(.name)[] | select(.sql != null) | .sql]))}' "$contract" > "$fixture"
           jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$fixture" >/dev/null
-          gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
+          ./android/gradlew -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
