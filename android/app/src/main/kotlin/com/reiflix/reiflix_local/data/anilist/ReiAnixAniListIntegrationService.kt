@@ -5,7 +5,6 @@ import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import android.content.Context
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
-import android.net.Uri
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
@@ -25,6 +24,7 @@ import com.reiflix.reiflix_local.data.sqlite.setMetadataStatusByLookupTitle
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 
 import java.io.File
+import java.net.URI
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -44,10 +44,16 @@ internal fun shouldDiscoverMissingArtwork(
 ): Boolean {
     if (hasUsableLocalCover) return false
     if (!coverUrl.isNullOrBlank()) {
-        val parsed = runCatching { Uri.parse(coverUrl.trim()) }.getOrNull()
+        // Keep this eligibility policy deterministic in both Android runtime and plain
+        // JVM unit tests. android.net.Uri methods can be unimplemented in the mockable
+        // android.jar used by local unit tests; swallowing that exception misclassifies
+        // every valid HTTP(S) URL as missing artwork.
+        val parsed = runCatching { URI(coverUrl.trim()) }.getOrNull()
         val scheme = parsed?.scheme?.lowercase(Locale.ROOT)
-        val hasUsableHttpUrl = scheme != null && scheme in setOf("http", "https") &&
-            !parsed?.host.isNullOrBlank()
+        val hasUsableHttpUrl = scheme != null &&
+            scheme in setOf("http", "https") &&
+            !parsed?.host.isNullOrBlank() &&
+            parsed?.rawUserInfo == null
         if (hasUsableHttpUrl && !hasExhaustedArtworkFailure) return false
     }
     if (manualMetadata && !hasAniListId) return false
