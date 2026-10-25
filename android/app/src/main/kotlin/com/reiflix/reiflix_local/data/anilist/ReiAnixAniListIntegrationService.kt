@@ -33,6 +33,7 @@ internal fun shouldDiscoverMissingArtwork(
     coverUrl: String?,
     hasUsableLocalCover: Boolean,
     hasAniListId: Boolean,
+    hasExhaustedArtworkFailure: Boolean = false,
     manualMetadata: Boolean,
     matchStatus: String?,
     metadataFetchedAtSeconds: Double?,
@@ -44,7 +45,7 @@ internal fun shouldDiscoverMissingArtwork(
         val scheme = parsed?.scheme?.lowercase(Locale.ROOT)
         val hasUsableHttpUrl = scheme != null && scheme in setOf("http", "https") &&
             !parsed?.host.isNullOrBlank()
-        if (hasUsableHttpUrl) return false
+        if (hasUsableHttpUrl && !hasExhaustedArtworkFailure) return false
     }
     if (manualMetadata && !hasAniListId) return false
     val status = matchStatus?.trim()?.lowercase(Locale.ROOT)
@@ -345,6 +346,13 @@ class ReiAnixAniListIntegrationService(
         require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
         if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
         val rows = library.loadLibraryCatalogRows()
+        val exhaustedPosterIds = library.database.read { connection ->
+            connection.rawQuery(
+                "SELECT DISTINCT entity_id FROM artwork WHERE entity_type='anime' " +
+                    "AND artwork_type='poster' AND status='failed' AND COALESCE(failure_count, 0)>=5",
+                null,
+            ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+        }
         var examined = 0
         var recovered = 0
         val nowSeconds = System.currentTimeMillis() / 1000.0
@@ -367,6 +375,7 @@ class ReiAnixAniListIntegrationService(
                     coverUrl = local.coverUrl,
                     hasUsableLocalCover = usableLocalCover,
                     hasAniListId = local.anilistId != null,
+                    hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
                     manualMetadata = local.anilistMatchManual == true ||
                         local.metadataSource == "manual" || local.metadataStatus == "manual",
                     matchStatus = local.anilistMatchStatus,
