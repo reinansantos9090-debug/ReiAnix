@@ -77,6 +77,20 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 }
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
+internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+
+internal fun artworkDiscoveryAttemptPreferenceKey(animeId: Long): String {
+    require(animeId > 0L) { "Artwork discovery requires a positive local anime ID." }
+    return ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX + animeId
+}
+
+internal fun shouldDeferArtworkDiscoveryAttempt(
+    lastAttemptSeconds: Double?,
+    nowSeconds: Double,
+): Boolean {
+    val lastAttempt = lastAttemptSeconds?.takeIf { it.isFinite() } ?: return false
+    return nowSeconds - lastAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
+}
 
 
 internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6): List<String> {
@@ -450,6 +464,49 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
+    private suspend fun readArtworkDiscoveryAttemptTimes(): Map<Long, Double> = withContext(Dispatchers.IO) {
+        library.database.read { connection ->
+            connection.rawQuery(
+                "SELECT key, value FROM preferences WHERE substr(key, 1, ?) = ?",
+                arrayOf(
+                    ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX.length.toString(),
+                    ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
+                ),
+            ).use { cursor ->
+                buildMap<Long, Double> {
+                    while (cursor.moveToNext()) {
+                        val key = cursor.getString(0).orEmpty()
+                        val animeId = key.removePrefix(ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX)
+                            .toLongOrNull()
+                            ?.takeIf { it > 0L }
+                            ?: continue
+                        val attemptedAt = cursor.getString(1)?.toDoubleOrNull()
+                            ?.takeIf { it.isFinite() }
+                            ?: continue
+                        put(animeId, attemptedAt)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun writeArtworkDiscoveryAttemptAt(animeId: Long, attemptAtSeconds: Double) =
+        withContext(Dispatchers.IO) {
+            library.database.transaction { connection ->
+                val values = ContentValues().apply {
+                    put("key", artworkDiscoveryAttemptPreferenceKey(animeId))
+                    put("value", attemptAtSeconds.toString())
+                    put("updated_at", attemptAtSeconds)
+                }
+                connection.insertWithOnConflict(
+                    "preferences",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+            }
+        }
+
     /**
      * Discovers artwork for existing canonical rows whose poster URL was never saved.
      * It reuses the existing AniList client, conservative matcher and SQLite writer;
@@ -465,6 +522,7 @@ class ReiAnixAniListIntegrationService(
             if (rows.isEmpty()) return 0
             val rowsById = rows.associateBy { it.anime.id }
             val discoveryCursor = readArtworkDiscoveryCursor()
+            val persistedAttemptTimes = readArtworkDiscoveryAttemptTimes().toMutableMap()
             val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
                 .mapNotNull(rowsById::get)
             var lastVisitedCursor = discoveryCursor
@@ -507,6 +565,9 @@ class ReiAnixAniListIntegrationService(
                         nowSeconds = nowSeconds,
                     )
                 ) continue
+                if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds)) {
+                    continue
+                }
                 if (examined >= maxRecords) break
                 val attemptAt = nowSeconds.toLong()
                 val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
@@ -516,6 +577,11 @@ class ReiAnixAniListIntegrationService(
                     ) continue
                 }
                 examined++
+                // Persist before the request starts so a process restart after a network
+                // failure/crash cannot immediately repeat the same lookup.
+                val attemptAtSeconds = attemptAt.toDouble()
+                writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
+                persistedAttemptTimes[local.id] = attemptAtSeconds
                 val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
                 if (remoteId != null) {
                     val remote = when (val result = client.getAnime(remoteId.toInt())) {

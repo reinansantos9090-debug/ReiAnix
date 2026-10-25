@@ -296,6 +296,28 @@ class ReiAnixArtworkPublicationSignalTest {
 
 
     @Test
+    fun persistedArtworkDiscoveryAttemptsEnforceCooldownAcrossProcessRestarts() {
+        assertTrue(shouldDeferArtworkDiscoveryAttempt(90_000.0, 100_000.0))
+        assertTrue(shouldDeferArtworkDiscoveryAttempt(100_000.0, 100_000.0))
+        assertFalse(
+            shouldDeferArtworkDiscoveryAttempt(
+                100_000.0 - MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS,
+                100_000.0,
+            ),
+        )
+        assertFalse(shouldDeferArtworkDiscoveryAttempt(null, 100_000.0))
+        assertFalse(shouldDeferArtworkDiscoveryAttempt(Double.NaN, 100_000.0))
+    }
+
+    @Test
+    fun artworkDiscoveryAttemptPreferencesUseStablePositiveAnimeIds() {
+        assertEquals(
+            "__reianix.internal.artwork_discovery_attempt_v1.812",
+            artworkDiscoveryAttemptPreferenceKey(812L),
+        )
+    }
+
+    @Test
     fun missingArtworkDiscoveryCursorRotatesFairlyAndWraps() {
         assertEquals(
             listOf(30L, 40L, 10L, 20L),
