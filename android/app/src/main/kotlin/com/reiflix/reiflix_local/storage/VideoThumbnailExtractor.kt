@@ -59,7 +59,7 @@ object VideoThumbnailExtractor {
     )
 
     private const val CACHE_METADATA_VERSION = 1
-    private const val THUMBNAIL_ALGORITHM_VERSION = 2
+    private const val THUMBNAIL_ALGORITHM_VERSION = 3
 
     private val inFlight = ConcurrentHashMap<String, Any>()
     private val latestKeyByUri = ConcurrentHashMap<String, String>()
@@ -112,10 +112,10 @@ object VideoThumbnailExtractor {
 
         val minimumCandidate = minOf(250_000L, duration / 4L).coerceAtLeast(1L)
         val latestCandidate = (duration - maxOf(1_000L, duration / 100L)).coerceAtLeast(1L)
-        val fractions = doubleArrayOf(0.005, 0.02, 0.05, 0.09, 0.14, 0.20, 0.28, 0.38)
+        val fractions = doubleArrayOf(0.005, 0.02, 0.05, 0.10, 0.18, 0.30, 0.48, 0.65, 0.82, 0.93)
         val candidates = fractions.map { fraction ->
             (duration.toDouble() * fraction).toLong().coerceAtLeast(minimumCandidate).coerceAtMost(latestCandidate)
-        }.distinct().take(8)
+        }.distinct().take(10)
         return candidates.ifEmpty { listOf((duration / 2L).coerceAtLeast(1L)) }
     }
 

@@ -1399,12 +1399,15 @@ class ReiAnixLibraryViewModel(
                                     "file_bytes" to file.length().coerceAtLeast(0L),
                                 ),
                             )
-                            oldAssociationInvalidated = appDependencies?.artworkService
-                                ?.invalidateGeneratedThumbnail(
+                            // The selected row is only the first one in the canonical
+                            // projection. Invalidate every generated row for this episode
+                            // whose saved pixels are actually unusable, so an older black
+                            // duplicate cannot become the next selected row after refresh.
+                            oldAssociationInvalidated = (appDependencies?.artworkService
+                                ?.invalidateVisuallyUnusableGeneratedThumbnails(
                                     episodeId = episode.id,
-                                    expectedLocalPath = existingPath,
                                     reason = reason,
-                                ) == true
+                                ) ?: 0) > 0
                         }
                         Triple(episode, rawSource, oldAssociationInvalidated)
                     }

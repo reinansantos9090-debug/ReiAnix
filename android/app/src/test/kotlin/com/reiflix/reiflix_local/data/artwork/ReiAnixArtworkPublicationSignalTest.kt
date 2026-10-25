@@ -64,6 +64,22 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun invalidGeneratedThumbnailSelectionKeepsUsablePathsAndDeduplicatesInvalidRows() {
+        val invalid = invalidGeneratedThumbnailPaths(
+            paths = listOf(
+                "/cache/black.jpg",
+                "/cache/valid.jpg",
+                "/cache/black.jpg",
+                "",
+                "   ",
+            ),
+            isUsable = { it.endsWith("/valid.jpg") },
+        )
+
+        assertEquals(listOf("/cache/black.jpg"), invalid)
+    }
+
+    @Test
     fun committedArtworkPublicationCanBeObservedAfterConsumerStarts() = runBlocking {
         val signal = ReiAnixArtworkPublicationSignal()
         assertTrue(

@@ -83,6 +83,30 @@ class ReiAnixLocalArtworkTest {
     }
 
     @Test
+    fun episodeThumbnailCandidatesNeverFallBackToRemoteSeriesArtwork() {
+        assertEquals(
+            listOf("/cache/generated-episode.jpg"),
+            artworkCandidatesForType(
+                artworkType = "episode_thumbnail",
+                localPath = "/cache/generated-episode.jpg",
+                fallbackLocalPath = null,
+                externalUrl = "https://cdn.example/series-poster.jpg",
+                fallbackExternalUrl = "https://cdn.example/backdrop.jpg",
+            ),
+        )
+        assertEquals(
+            emptyList<String>(),
+            artworkCandidatesForType(
+                artworkType = "episode_thumbnail",
+                localPath = null,
+                fallbackLocalPath = null,
+                externalUrl = "https://cdn.example/series-poster.jpg",
+                fallbackExternalUrl = null,
+            ),
+        )
+    }
+
+    @Test
     fun composeArtworkPrefersLocalCandidatesBeforeRemoteFallbacks() {
         assertEquals(
             listOf("/cache/poster.jpg", "https://img/a.jpg", "https://img/b.jpg"),

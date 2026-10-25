@@ -55,10 +55,13 @@ class VideoThumbnailExtractorTest {
         val durationMs = 24L * 60L * 1_000L
         val candidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs)
 
-        assertEquals(8, candidates.size)
+        assertEquals(10, candidates.size)
         assertTrue(candidates.all { it > 0L && it < durationMs * 1_000L })
         assertTrue(candidates.zipWithNext().all { (first, second) -> first < second })
-        assertTrue(VideoThumbnailExtractor.frameCandidateTimestampsUs(0L).size <= 8)
+        // Candidate coverage must extend well beyond the first third: some local
+        // videos have a black opening or long intro before the actual scene.
+        assertTrue(candidates.last() > durationMs * 900L)
+        assertTrue(VideoThumbnailExtractor.frameCandidateTimestampsUs(0L).size <= 10)
     }
 
     @Test

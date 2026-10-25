@@ -82,6 +82,19 @@ internal class ReiAnixArtworkPublicationSignal {
 internal fun ensureArtworkCacheDirectory(directory: File): Boolean =
     directory.isDirectory || runCatching { directory.mkdirs() || directory.isDirectory }.getOrDefault(false)
 
+/**
+ * Keep only paths proven visually invalid; a valid older thumbnail must survive
+ * invalidation of a different row. This pure selection rule is unit-testable.
+ */
+internal fun invalidGeneratedThumbnailPaths(
+    paths: List<String>,
+    isUsable: (String) -> Boolean,
+): List<String> = paths
+    .map(String::trim)
+    .filter(String::isNotEmpty)
+    .distinct()
+    .filterNot(isUsable)
+
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
@@ -830,6 +843,68 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             )
         }
         return invalidated
+    }
+
+    /**
+     * Validates all generated episode-thumbnail rows for a single episode, not only
+     * the one currently winning the UI projection. Each invalid row is hidden by its
+     * exact path, while valid alternatives and non-generated/manual artwork are kept.
+     *
+     * File decoding happens outside SQLite transactions; the transaction is opened
+     * only when invalidating a path that has just failed the visual check.
+     */
+    fun invalidateVisuallyUnusableGeneratedThumbnails(
+        episodeId: Long,
+        reason: String,
+    ): Int {
+        if (episodeId <= 0L) return 0
+        val paths = try {
+            database.read { db ->
+                db.rawQuery(
+                    "SELECT DISTINCT local_path FROM artwork " +
+                        "WHERE entity_type='episode' AND entity_id=? " +
+                        "AND artwork_type='episode_thumbnail' AND source='generated' " +
+                        "AND status!='failed' AND local_path IS NOT NULL",
+                    arrayOf(episodeId.toString()),
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            cursor.getString(0)?.takeIf(String::isNotBlank)?.let(::add)
+                        }
+                    }
+                }
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not inspect generated thumbnail rows episodeId=$episodeId", error)
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_THUMBNAIL_SCAN_FAILED",
+                severity = "ERROR",
+                source = "ReiAnixArtworkService",
+                result = "FAILED",
+                error = error,
+                context = mapOf("episode_id" to episodeId, "reason" to reason),
+            )
+            return 0
+        }
+        val invalidPaths = invalidGeneratedThumbnailPaths(paths) {
+            com.reiflix.reiflix_local.storage.VideoThumbnailExtractor.isUsableThumbnailFile(it)
+        }
+        var invalidatedCount = 0
+        invalidPaths.forEach { path ->
+            if (invalidateGeneratedThumbnail(episodeId, path, reason)) invalidatedCount++
+        }
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_ARTWORK_THUMBNAIL_ROWS_VALIDATED",
+            source = "ReiAnixArtworkService",
+            result = if (invalidatedCount > 0) "INVALID_ROWS_HIDDEN" else "NO_INVALID_ROWS",
+            context = mapOf(
+                "episode_id" to episodeId,
+                "rows_checked" to paths.distinct().size,
+                "invalid_rows_hidden" to invalidatedCount,
+                "reason" to reason,
+            ),
+        )
+        return invalidatedCount
     }
 
     private fun publish(

@@ -124,8 +124,14 @@ fun ReiAnixLocalArtwork(
         val effectiveWidthPx = if (requestWidthPx > 0) requestWidthPx else fallbackDimensionPx
         val effectiveHeightPx = if (requestHeightPx > 0) requestHeightPx else fallbackDimensionPx
 
-        val candidates = remember(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl) {
-            artworkCandidates(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl)
+        val candidates = remember(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl, artworkType) {
+            artworkCandidatesForType(
+                artworkType = artworkType,
+                localPath = localPath,
+                fallbackLocalPath = fallbackLocalPath,
+                externalUrl = externalUrl,
+                fallbackExternalUrl = fallbackExternalUrl,
+            )
         }
         val stableIdentity = remember(
             identity,
@@ -430,10 +436,23 @@ internal fun localArtworkCandidates(
         .distinct()
 
 /**
- * Resolve materialized local artwork first, then the configured remote candidates.
- * Remote URLs remain presentation fallbacks; they do not become persisted artwork
- * or replace ArtworkEngine's canonical cache/materialization contract.
+ * Resolve materialized local artwork first, then configured remote candidates for
+ * poster/backdrop UI. Episode thumbnails are different: they must represent pixels
+ * extracted from the local video and must never silently fall back to a series poster.
  */
+internal fun artworkCandidatesForType(
+    artworkType: String,
+    localPath: String?,
+    fallbackLocalPath: String?,
+    externalUrl: String?,
+    fallbackExternalUrl: String?,
+): List<String> = if (artworkType.equals("episode_thumbnail", ignoreCase = true)) {
+    localArtworkCandidates(localPath, fallbackLocalPath)
+} else {
+    artworkCandidates(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl)
+}
+
+/** Resolve materialized local artwork first, then configured remote poster/backdrop candidates. */
 internal fun artworkCandidates(
     localPath: String?,
     fallbackLocalPath: String?,
