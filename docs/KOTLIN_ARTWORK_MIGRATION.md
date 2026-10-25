@@ -4,7 +4,7 @@
 
 `ReiAnixArtworkService` é o produtor persistente do caminho Compose. A instância é criada de forma lazy por `ReiAnixAppDependencies` e recebe a mesma `ReiAnixSqliteDatabase` usada pela biblioteca. A implementação utiliza a tabela existente `artwork` e os campos de `anime`; não cria outra base, repositório de cache ou tabela, nem altera o schema v29.
 
-O serviço cobre materialização de poster e backdrop a partir de URLs já persistidas, consulta dos registros locais, gravação de resultados, tentativas de recuperação e publicação de eventos. O backfill é iniciado pelo ViewModel nativo em lotes pequenos e os downloads têm concorrência limitada. A varredura e o player não aguardam pela conclusão do pipeline.
+O serviço cobre materialização de poster e backdrop a partir de URLs já persistidas, consulta dos registros locais, gravação de resultados, tentativas de recuperação e publicação de eventos. O backfill é iniciado no host Compose quando o catálogo SQLite está saudável e também após a conclusão de uma varredura; portanto, reabrir o app não depende de um novo scan para recuperar posters pendentes. O backfill só processa URLs persistidas e não inicia matching de títulos nem consultas AniList adicionais. Os downloads têm concorrência limitada. A varredura e o player não aguardam pela conclusão do pipeline.
 
 ## Download e cache de imagens
 
@@ -12,7 +12,7 @@ O download usa `HttpURLConnection` com as verificações TLS padrão do Android.
 
 A escrita persistente acontece depois da promoção e em transação na tabela `artwork`. O ponteiro `anime.cover_cache` só é atualizado se a URL atual ainda corresponder ao registro e não houver propriedade manual do campo. Uma capa local/manual é preservada e uma falha remota não limpa `cover_cache`. Falhas de rede e HTTP 429/5xx recebem `retry_wait` com horário persistido; falhas definitivas ficam `failed`, sem loop infinito de tentativas.
 
-As chaves de cache nativas preservam o formato SHA-256 previamente utilizado pelo ArtworkEngine: provedor, identidade do item/URL, tipo e variante. Os arquivos válidos existentes e caminhos legados são consultados antes de baixar novamente. A limpeza do diretório de cache só remove arquivos de imagem não referenciados por `artwork.local_path` ou `anime.cover_cache`; ela não limpa globalmente o cache.
+As chaves de cache nativas preservam o formato SHA-256 previamente utilizado pelo ArtworkEngine: provedor, identidade do item/URL, tipo e variante. Os arquivos válidos existentes e caminhos legados são consultados antes de baixar novamente. Falhas transitórias de rede/HTTP 429/5xx registram backoff exponencial (limitado a 6 horas) e agendam nova tentativa no processo atual; falhas permanentes recebem cooldown de 24 horas para permitir recuperação de registros legados/inválidos após uma abertura posterior. O fluxo limita retries automáticos a cinco falhas consecutivas por linha; uma solicitação explícita forçada reinicia essa contagem. Linhas legadas com status `failed` sem `next_retry_at` não ficam bloqueadas para sempre. A limpeza do diretório de cache cancela os retries pendentes antes de excluir dados gerenciados e só remove arquivos de imagem não referenciados por `artwork.local_path` ou `anime.cover_cache`; ela não limpa globalmente o cache.
 
 ## Integração com AniList e Compose
 
