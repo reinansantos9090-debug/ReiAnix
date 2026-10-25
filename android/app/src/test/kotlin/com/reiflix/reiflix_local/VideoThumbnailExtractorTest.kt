@@ -62,6 +62,14 @@ class VideoThumbnailExtractorTest {
     }
 
     @Test
+    fun existingBlackThumbnailPathDoesNotSuppressRegeneration() {
+        assertTrue(VideoThumbnailExtractor.thumbnailNeedsRegeneration("/cache/black.jpg", isUsable = false))
+        assertFalse(VideoThumbnailExtractor.thumbnailNeedsRegeneration("/cache/valid.jpg", isUsable = true))
+        assertTrue(VideoThumbnailExtractor.thumbnailNeedsRegeneration(null, isUsable = false))
+        assertTrue(VideoThumbnailExtractor.thumbnailNeedsRegeneration("  ", isUsable = true))
+    }
+
+    @Test
     fun frameQualityRejectsBlackWhiteAndUniformImages() {
         val black = VideoThumbnailExtractor.analyzeLuminanceSamples(IntArray(400) { 0 })!!
         val white = VideoThumbnailExtractor.analyzeLuminanceSamples(IntArray(400) { 255 })!!
