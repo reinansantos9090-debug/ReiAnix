@@ -85,6 +85,37 @@ import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
 import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 
+internal data class ReiAnixEpisodeThumbnailBackfillCandidate(
+    val animeId: Long,
+    val episodeId: Long,
+    val available: Boolean,
+    val source: String?,
+    val mediaIdentity: String?,
+    val fileSizeBytes: Long?,
+    val modifiedAtMillis: Long?,
+)
+
+/** Returns only anime with a newly-seen, available local video source revision. */
+internal fun selectNewEpisodeThumbnailBackfillAnimeIds(
+    candidates: Iterable<ReiAnixEpisodeThumbnailBackfillCandidate>,
+    scheduledSourceRevisions: MutableSet<String>,
+): List<Long> {
+    val animeIds = linkedSetOf<Long>()
+    candidates.forEach { candidate ->
+        if (candidate.animeId <= 0L || candidate.episodeId <= 0L || !candidate.available) return@forEach
+        val source = candidate.source?.trim()?.takeIf(String::isNotEmpty) ?: return@forEach
+        val revisionKey = listOf(
+            candidate.episodeId.toString(),
+            candidate.mediaIdentity.orEmpty(),
+            source,
+            (candidate.fileSizeBytes ?: 0L).toString(),
+            (candidate.modifiedAtMillis ?: 0L).toString(),
+        ).joinToString("\u0000")
+        if (scheduledSourceRevisions.add(revisionKey)) animeIds += candidate.animeId
+    }
+    return animeIds.toList()
+}
+
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
 private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
     setOf("movie", "special", "ova", "oad", "ona", "extra")
@@ -1519,21 +1550,27 @@ class ReiAnixLibraryViewModel(
      * after the canonical catalog has loaded, never on the Android main thread.
      */
     private fun enqueueMissingEpisodeThumbnailsForAvailableMedia() {
-        val animeIds = nativeCatalogState.value.animes.mapNotNull { anime ->
-            val hasNewAvailableSource = anime.contentEpisodes.any { episode ->
-                if (episode.media.availability.name != "AVAILABLE") return@any false
-                val source = episodeThumbnailSource(episode) ?: return@any false
-                val sourceRevision = listOf(
-                    episode.id.toString(),
-                    episode.media.mediaIdentity.orEmpty(),
-                    source,
-                    (episode.fileSizeBytes ?: 0L).toString(),
-                    (episode.modifiedAt?.toLong() ?: 0L).toString(),
-                ).joinToString("|")
-                scheduledEpisodeThumbnailSources.add(sourceRevision)
+        val candidates = nativeCatalogState.value.animes.flatMap { anime ->
+            anime.contentEpisodes.map { episode ->
+                val source = episodeThumbnailSource(episode)
+                val sourceIsLocal = source?.let {
+                    VideoThumbnailExtractor.normalizeLocalMediaReference(it) != null
+                } == true
+                ReiAnixEpisodeThumbnailBackfillCandidate(
+                    animeId = anime.id,
+                    episodeId = episode.id,
+                    available = episode.media.availability.name == "AVAILABLE" && sourceIsLocal,
+                    source = source,
+                    mediaIdentity = episode.media.mediaIdentity,
+                    fileSizeBytes = episode.fileSizeBytes,
+                    modifiedAtMillis = episode.modifiedAt?.toLong(),
+                )
             }
-            anime.id.takeIf { hasNewAvailableSource }
         }
+        val animeIds = selectNewEpisodeThumbnailBackfillAnimeIds(
+            candidates = candidates,
+            scheduledSourceRevisions = scheduledEpisodeThumbnailSources,
+        )
         if (animeIds.isEmpty()) return
 
         ReiAnixDiagnosticTimeline.record(
