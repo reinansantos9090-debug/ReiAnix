@@ -27,6 +27,17 @@ class ReiAnixSettingsContractTest {
         assertEquals("false", effective["gestures.volume"])
     }
 
+    @Test fun canonicalPreferencesDoNotInheritMissingKeysFromStaleProjection() {
+        val effective = ReiAnixSettingsContract.effectivePreferences(
+            canonicalPreferences = mapOf("appearance.theme" to "light"),
+            projectedPreferences = mapOf("appearance.show_thumbnails" to "false"),
+        )
+
+        assertEquals("light", effective["appearance.theme"])
+        assertEquals("true", effective["appearance.show_thumbnails"])
+        assertEquals("36", effective["library.page_size"])
+    }
+
     @Test fun persistedPreferencesOverrideDefaultsAndLegacyKeysAreRetained() {
         val effective = ReiAnixSettingsContract.withDefaults(
             mapOf(
