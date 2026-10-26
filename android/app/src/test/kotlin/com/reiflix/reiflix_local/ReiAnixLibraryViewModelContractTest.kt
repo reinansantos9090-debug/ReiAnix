@@ -9,6 +9,7 @@ import com.reiflix.reiflix_local.viewmodel.releaseUncompletedEpisodeThumbnailRev
 import com.reiflix.reiflix_local.viewmodel.selectPendingEpisodeThumbnailCandidates
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReiAnixLibraryViewModelContractTest {
