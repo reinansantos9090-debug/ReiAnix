@@ -49,7 +49,9 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             if (!manual && current.anilistMatchManual == true) return@transaction current
             val currentAniListIdIsValid = current.anilistId?.let { it in 1L..Int.MAX_VALUE.toLong() } == true
             if (!manual && currentAniListIdIsValid && current.anilistId != anilistId) return@transaction current
-            if (!manual && (score == null || score < 0.86 || margin == null || margin < 0.05)) {
+            if (!manual && !currentAniListIdIsValid &&
+                (score == null || score < 0.86 || margin == null || margin < 0.05)
+            ) {
                 return@transaction current
             }
 

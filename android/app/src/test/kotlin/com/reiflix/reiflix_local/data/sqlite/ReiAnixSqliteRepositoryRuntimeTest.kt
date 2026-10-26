@@ -6,6 +6,12 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import android.net.Uri
 import org.json.JSONObject
+import com.reiflix.reiflix_local.data.anilist.AniListHttpResponse
+import com.reiflix.reiflix_local.data.anilist.AniListTransport
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
+import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryCursor
+import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryCursor
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertEquals
@@ -139,6 +145,92 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val reopenedDatabase = ReiAnixSqliteDatabase(context)
         assertEquals(1_800_000_000_000L, readPersistedAniListAutoMatchAttemptAt(reopenedDatabase, 812L))
         assertEquals("__reianix.internal.anilist_auto_match_attempt_v1.812", aniListAutoMatchAttemptPreferenceKey(812L))
+    }
+
+    @Test
+    fun artworkDiscoveryCursorPersistsInCanonicalPreferencesAcrossDatabaseInstances() = runBlocking {
+        createCanonicalFixture()
+        val firstDatabase = ReiAnixSqliteDatabase(context)
+        assertEquals(0L, readPersistedArtworkDiscoveryCursor(firstDatabase))
+        writePersistedArtworkDiscoveryCursor(firstDatabase, 812L)
+
+        val reopenedDatabase = ReiAnixSqliteDatabase(context)
+        assertEquals(812L, readPersistedArtworkDiscoveryCursor(reopenedDatabase))
+        assertEquals(29, ReiAnixSqliteLibraryRepository(context).inspectSchema().schemaVersion)
+    }
+
+    @Test
+    fun coverRecoveryPersistsUrlForExistingAniListIdAndNotifiesArtworkPipeline() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """UPDATE anime
+                   SET cover_url=NULL, cover_cache=NULL, anilist_id=1234,
+                       anilist_match_manual=0, anilist_match_score=NULL, anilist_match_margin=NULL,
+                       anilist_match_status='matched', metadata_manual_fields='["title"]'
+                   WHERE id=1""".trimIndent(),
+            )
+        }
+        val response = AniListHttpResponse(
+            200,
+            """{"data":{"Media":{
+                "id":1234,
+                "title":{"romaji":"Original Title","english":"Remote English Title","native":"作品"},
+                "synonyms":[],
+                "description":"A remote synopsis",
+                "format":"TV",
+                "episodes":12,
+                "status":"FINISHED",
+                "averageScore":80,
+                "duration":24,
+                "season":"WINTER",
+                "seasonYear":2020,
+                "genres":[],
+                "coverImage":{"large":"https://img.example/cover.jpg","extraLarge":"https://img.example/cover-large.jpg"},
+                "bannerImage":null,
+                "studios":{"nodes":[]}
+            }}}""".trimIndent(),
+        )
+        val transport = StaticAniListTransport(response)
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val artworkNotifications = mutableListOf<Pair<Long, Boolean>>()
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(transport, minimumRequestIntervalMs = 0L),
+            library = repository,
+            settings = ReiAnixSqliteSettingsRepository(context),
+            metadataCommitPublisher = { animeId, requestArtwork ->
+                artworkNotifications += animeId to requestArtwork
+                true
+            },
+        )
+
+        assertEquals(1, service.recoverMissingArtworkMetadata(maxRecords = 1))
+        val persisted = repository.getAnime(1L)!!
+        assertEquals(1234L, persisted.anilistId)
+        assertEquals("https://img.example/cover-large.jpg", persisted.coverUrl)
+        assertEquals(listOf(1L to true), artworkNotifications)
+        assertEquals(1, transport.calls)
+        assertEquals(1234, transport.lastBody!!.getJSONObject("variables").getInt("id"))
+    }
+
+    @Test
+    fun existingValidRemoteCoverDoesNotTriggerAnotherAniListLookup() = runBlocking {
+        createCanonicalFixture()
+        val transport = StaticAniListTransport(AniListHttpResponse(200, """{"data":{"Media":null}}"""))
+        val notifications = mutableListOf<Pair<Long, Boolean>>()
+        val service = ReiAnixAniListIntegrationService(
+            client = ReiAnixAniListClient(transport, minimumRequestIntervalMs = 0L),
+            library = ReiAnixSqliteLibraryRepository(context),
+            settings = ReiAnixSqliteSettingsRepository(context),
+            metadataCommitPublisher = { animeId, requestArtwork ->
+                notifications += animeId to requestArtwork
+                true
+            },
+        )
+
+        assertEquals(0, service.recoverMissingArtworkMetadata(maxRecords = 1))
+        assertEquals(0, transport.calls)
+        assertTrue(notifications.isEmpty())
     }
 
     @Test
@@ -2149,6 +2241,21 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val result = ReiAnixPersonalListService(context).list()
         assertTrue(result is ReiAnixPersonalListService.Result.Failure)
         assertFalse(databaseFile.exists())
+    }
+
+    private class StaticAniListTransport(
+        private val response: AniListHttpResponse,
+    ) : AniListTransport {
+        var calls: Int = 0
+            private set
+        var lastBody: JSONObject? = null
+            private set
+
+        override suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse {
+            calls++
+            lastBody = JSONObject(body.toString())
+            return response
+        }
     }
 
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {

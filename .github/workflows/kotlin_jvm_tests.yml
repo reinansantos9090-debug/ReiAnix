@@ -83,6 +83,9 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.bootstrapKeepsNativeServicesGatedWhenCanonicalCoreTablesAreMissing \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.artworkDiscoveryAttemptTimestampsPersistInCanonicalPreferencesAcrossDatabaseInstances \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniListReconciliationCursorPersistsInCanonicalPreferencesAcrossDatabaseInstances \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.artworkDiscoveryCursorPersistsInCanonicalPreferencesAcrossDatabaseInstances \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.coverRecoveryPersistsUrlForExistingAniListIdAndNotifiesArtworkPipeline \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.existingValidRemoteCoverDoesNotTriggerAnotherAniListLookup \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.metadataUpdatesRespectManualOwnershipAndPreserveUserOwnedFields \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniListAssociationPersistsOriginalAndLocalizedSynopsisSeparately \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.automaticAniListOutcomeIsPersistedWithoutOverwritingManualAssociation \

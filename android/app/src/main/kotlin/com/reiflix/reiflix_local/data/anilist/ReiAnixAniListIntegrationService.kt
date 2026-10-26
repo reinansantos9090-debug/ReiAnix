@@ -186,6 +186,34 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 }
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
+
+internal suspend fun readPersistedArtworkDiscoveryCursor(
+    database: ReiAnixSqliteDatabase,
+): Long = withContext(Dispatchers.IO) {
+    database.read { connection ->
+        connection.rawQuery(
+            "SELECT value FROM preferences WHERE key=? LIMIT 1",
+            arrayOf(ARTWORK_DISCOVERY_CURSOR_PREFERENCE),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0)?.toLongOrNull()?.takeIf { it > 0L } ?: 0L else 0L
+        }
+    }
+}
+
+internal suspend fun writePersistedArtworkDiscoveryCursor(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+) = withContext(Dispatchers.IO) {
+    require(animeId >= 0L) { "Artwork discovery cursor cannot be negative." }
+    val values = ContentValues().apply {
+        put("key", ARTWORK_DISCOVERY_CURSOR_PREFERENCE)
+        put("value", animeId.toString())
+        put("updated_at", System.currentTimeMillis() / 1000.0)
+    }
+    database.transaction { connection ->
+        connection.insertWithOnConflict("preferences", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+}
 internal const val ANI_LIST_RECONCILIATION_CURSOR_PREFERENCE = "__reianix.internal.anilist_reconciliation_cursor_v1"
 internal const val ANI_LIST_AUTO_MATCH_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.anilist_auto_match_attempt_v1."
 internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
@@ -800,32 +828,11 @@ class ReiAnixAniListIntegrationService(
     }
 
 
-    private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
-        library.database.read { connection ->
-            connection.rawQuery(
-                "SELECT value FROM preferences WHERE key=? LIMIT 1",
-                arrayOf(ARTWORK_DISCOVERY_CURSOR_PREFERENCE),
-            ).use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0)?.toLongOrNull() ?: 0L else 0L
-            }
-        }
-    }
+    private suspend fun readArtworkDiscoveryCursor(): Long =
+        readPersistedArtworkDiscoveryCursor(library.database)
 
-    private suspend fun writeArtworkDiscoveryCursor(animeId: Long) = withContext(Dispatchers.IO) {
-        library.database.transaction { connection ->
-            val values = ContentValues().apply {
-                put("key", ARTWORK_DISCOVERY_CURSOR_PREFERENCE)
-                put("value", animeId.toString())
-                put("updated_at", System.currentTimeMillis() / 1000.0)
-            }
-            connection.insertWithOnConflict(
-                "preferences",
-                null,
-                values,
-                SQLiteDatabase.CONFLICT_REPLACE,
-            )
-        }
-    }
+    private suspend fun writeArtworkDiscoveryCursor(animeId: Long) =
+        writePersistedArtworkDiscoveryCursor(library.database, animeId)
 
     private suspend fun readArtworkDiscoveryAttemptTimes(): Map<Long, Double> =
         readPersistedArtworkDiscoveryAttemptTimes(library.database)
