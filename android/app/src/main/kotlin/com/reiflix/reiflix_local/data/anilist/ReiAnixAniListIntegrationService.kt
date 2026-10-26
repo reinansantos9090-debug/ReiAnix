@@ -187,7 +187,6 @@ class ReiAnixAniListIntegrationService(
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
-    private val autoMatchLocks = ConcurrentHashMap<Long, Mutex>()
     private val missingArtworkRecoveryRunning = AtomicBoolean(false)
 
     constructor(context: Context) : this(
@@ -884,6 +883,9 @@ class ReiAnixAniListIntegrationService(
     companion object {
         private const val TAG = "ReiAnixAniList"
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
+        // Shared across service instances so UI-initiated matching and background discovery
+        // cannot issue the same anime lookup concurrently.
+        private val autoMatchLocks = ConcurrentHashMap<Long, Mutex>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
         private val AUTO_MATCH_TERMINAL_STATUSES = setOf(
