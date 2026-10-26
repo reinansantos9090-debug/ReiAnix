@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
@@ -59,9 +61,16 @@ internal fun shouldDiscoverMissingArtwork(
     }
     if (manualMetadata && !hasAniListId) return false
     val status = matchStatus?.trim()?.lowercase(Locale.ROOT)
-    if (!hasAniListId && status in setOf("not_found", "ambiguous")) return false
     val fetchedAt = metadataFetchedAtSeconds
-    if (fetchedAt != null && fetchedAt.isFinite() && nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS) {
+    val recentlyFetched = fetchedAt != null && fetchedAt.isFinite() &&
+        nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
+    val previousNoMatch = !hasAniListId && status in setOf("not_found", "ambiguous")
+    if (previousNoMatch) {
+        // A no-match/ambiguous result describes one search, not a permanent resolution.
+        // The persisted attempt/freshness cooldown suppresses repeated requests, while
+        // allowing a later pass to retry as AniList data and local aliases change.
+        if (recentlyFetched) return false
+    } else if (recentlyFetched) {
         return false
     }
     return true
@@ -178,6 +187,7 @@ class ReiAnixAniListIntegrationService(
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
+    private val autoMatchLocks = ConcurrentHashMap<Long, Mutex>()
     private val missingArtworkRecoveryRunning = AtomicBoolean(false)
 
     constructor(context: Context) : this(
@@ -326,6 +336,14 @@ class ReiAnixAniListIntegrationService(
     suspend fun autoMatch(
         animeId: Long,
         force: Boolean = false,
+    ): AniListResult<AniListAutoMatchResult> {
+        val lock = autoMatchLocks.computeIfAbsent(animeId) { Mutex() }
+        return lock.withLock { autoMatchLocked(animeId, force) }
+    }
+
+    private suspend fun autoMatchLocked(
+        animeId: Long,
+        force: Boolean,
     ): AniListResult<AniListAutoMatchResult> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
@@ -593,12 +611,14 @@ class ReiAnixAniListIntegrationService(
                     ) continue
                 }
                 examined++
-                // Persist before the request starts so a process restart after a network
-                // failure/crash cannot immediately repeat the same lookup.
-                val attemptAtSeconds = attemptAt.toDouble()
-                writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
-                persistedAttemptTimes[local.id] = attemptAtSeconds
-                val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+                try {
+                    // Persist before the request starts so a process restart after a network
+                    // failure/crash cannot immediately repeat the same lookup.
+                    val attemptAtSeconds = attemptAt.toDouble()
+                    writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
+                    persistedAttemptTimes[local.id] = attemptAtSeconds
+                    Log.i(TAG, "Artwork discovery lookup started for animeId=${local.id}; lookup=${if (local.anilistId in 1L..Int.MAX_VALUE.toLong()) "anilist_id" else "conservative_title_match"}.")
+                    val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
                 if (remoteId != null) {
                     val remote = when (val result = client.getAnime(remoteId.toInt())) {
                         is AniListResult.Success -> result.value
@@ -646,9 +666,18 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
                     }
                 }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // One corrupt row, transient database problem, or unexpected service error
+                    // must not prevent the remaining canonical IDs from being considered.
+                    missingArtworkLookupAttempts.remove(local.id, attemptAt)
+                    Log.e(TAG, "Artwork discovery failed for animeId=${local.id}; continuing with the next catalogue row.", error)
+                }
             }
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
                 writeArtworkDiscoveryCursor(lastVisitedCursor)
+                Log.i(TAG, "Artwork discovery batch completed: attempted=$examined recovered=$recovered cursor=$lastVisitedCursor.")
             }
             return recovered
         } finally {
