@@ -38,6 +38,28 @@ class ReiAnixSettingsContractTest {
         assertEquals("custom-old-format", ReiAnixSettingsContract.normalize("plugin.legacy", "custom-old-format"))
     }
 
+    @Test
+    fun effectiveSettingsApplyDefaultsPreserveValidChoicesAndReplaceOnlyInvalidValues() {
+        val effective = ReiAnixSettingsContract.withDefaults(
+            mapOf(
+                "appearance.theme" to "light",
+                "appearance.show_thumbnails" to "false",
+                "gestures.horizontal_seek" to "true",
+                "player.autoplay_next" to "sometimes",
+                "library.page_size" to "37",
+                "plugin.legacy" to "custom",
+            ),
+        )
+
+        assertEquals("light", effective["appearance.theme"])
+        assertEquals("false", effective["appearance.show_thumbnails"])
+        assertEquals("true", effective["gestures.horizontal_seek"])
+        assertEquals("true", effective["player.autoplay_next"])
+        assertEquals("36", effective["library.page_size"])
+        assertEquals("true", effective["artwork.enabled"])
+        assertEquals("custom", effective["plugin.legacy"])
+    }
+
     @Test fun validatesLanguageTagsAndDecimalChoices() {
         assertEquals("pt-BR", ReiAnixSettingsContract.normalize("audio.preferred_language", "pt-BR"))
         assertEquals("1.5", ReiAnixSettingsContract.normalize("player.default_speed", "1.5"))
