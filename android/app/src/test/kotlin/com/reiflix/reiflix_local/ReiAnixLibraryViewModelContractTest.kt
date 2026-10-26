@@ -4,6 +4,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixEpisodeThumbnailBackfillCandidate
+import com.reiflix.reiflix_local.viewmodel.isSuccessfulEpisodeThumbnailResult
 import com.reiflix.reiflix_local.viewmodel.drainEpisodeThumbnailQueue
 import com.reiflix.reiflix_local.viewmodel.releaseUnattemptedEpisodeThumbnailRevisions
 import com.reiflix.reiflix_local.viewmodel.selectPendingEpisodeThumbnailCandidates
@@ -123,6 +124,35 @@ class ReiAnixLibraryViewModelContractTest {
             scheduledSourceRevisions = scheduled,
         )
         assertEquals(setOf("episode-1"), scheduled)
+    }
+
+    @Test
+    fun thumbnailResultIsSuccessfulOnlyWhenValidFileAndCanonicalAssociationExist() {
+        assertTrue(isSuccessfulEpisodeThumbnailResult(
+            path = "/cache/episode-72.jpg",
+            thumbnailFileIsUsable = true,
+            artworkAssociationPersisted = true,
+        ))
+        assertEquals(false, isSuccessfulEpisodeThumbnailResult(
+            path = "/cache/episode-72.jpg",
+            thumbnailFileIsUsable = false,
+            artworkAssociationPersisted = true,
+        ))
+        assertEquals(false, isSuccessfulEpisodeThumbnailResult(
+            path = "/cache/episode-72.jpg",
+            thumbnailFileIsUsable = true,
+            artworkAssociationPersisted = false,
+        ))
+        assertEquals(false, isSuccessfulEpisodeThumbnailResult(
+            path = null,
+            thumbnailFileIsUsable = true,
+            artworkAssociationPersisted = true,
+        ))
+        assertEquals(false, isSuccessfulEpisodeThumbnailResult(
+            path = "  ",
+            thumbnailFileIsUsable = true,
+            artworkAssociationPersisted = true,
+        ))
     }
 
     @Test
