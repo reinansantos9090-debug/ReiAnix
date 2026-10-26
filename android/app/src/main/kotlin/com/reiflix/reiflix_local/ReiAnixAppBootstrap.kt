@@ -353,6 +353,36 @@ class ReiAnixAppBootstrap internal constructor(
                 )
             ) return@withLock
 
+            // When the canonical database already exists and is healthy, materialize
+            // missing settings defaults before publishing native services as ready.
+            // This keeps service behavior independent of whether the Settings screen is opened.
+            if (validated.persistenceStatus == ReiAnixBootstrapPersistenceStatus.HEALTHY) {
+                try {
+                    val effectivePreferences =
+                        dependencies.sqliteSettingsRepository.initializeKnownDefaultsAndRepairInvalid()
+                    Log.i(
+                        TAG,
+                        "APP_SETTINGS_DEFAULTS_INITIALIZED knownSettingCount=" +
+                            com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract.definitions.size +
+                            " preferenceCount=" + effectivePreferences.size,
+                    )
+                    recordDiagnostic(
+                        name = "APP_SETTINGS_DEFAULTS_INITIALIZED",
+                        result = "COMPLETED",
+                        stage = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e(TAG, "Known settings defaults could not be persisted during bootstrap.", error)
+                    recordDiagnostic(
+                        name = "APP_SETTINGS_DEFAULTS_INITIALIZATION_FAILED",
+                        result = error::class.java.simpleName,
+                        stage = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE,
+                    )
+                }
+            }
+
             updateState {
                 it.copy(
                     phase = ReiAnixBootstrapPhase.STARTING,

@@ -244,6 +244,9 @@ class ReiAnixLibraryViewModel(
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
     private val episodeThumbnailRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
+    // Tracks source revisions that have been considered for startup/background generation.
+    // This prevents each artwork-triggered projection refresh from enqueuing the same video.
+    private val scheduledEpisodeThumbnailSources = ConcurrentHashMap.newKeySet<String>()
     // If the local-media/artwork projection changes during extraction, rerun once
     // after the current batch releases its episode locks instead of dropping the
     // newer request because that episode is still in flight.
@@ -1510,6 +1513,42 @@ class ReiAnixLibraryViewModel(
             ?: episode.media.uri?.trim()?.takeIf(String::isNotEmpty)
             ?: episode.media.path?.trim()?.takeIf(String::isNotEmpty)
 
+    /**
+     * Starts the existing local video-frame pipeline for newly discovered source
+     * revisions. This is separate from AniList poster/backdrop recovery and runs
+     * after the canonical catalog has loaded, never on the Android main thread.
+     */
+    private fun enqueueMissingEpisodeThumbnailsForAvailableMedia() {
+        val animeIds = nativeCatalogState.value.animes.mapNotNull { anime ->
+            val hasNewAvailableSource = anime.contentEpisodes.any { episode ->
+                if (episode.media.availability.name != "AVAILABLE") return@any false
+                val source = episodeThumbnailSource(episode) ?: return@any false
+                val sourceRevision = listOf(
+                    episode.id.toString(),
+                    episode.media.mediaIdentity.orEmpty(),
+                    source,
+                    (episode.fileSizeBytes ?: 0L).toString(),
+                    (episode.modifiedAt?.toLong() ?: 0L).toString(),
+                ).joinToString("|")
+                scheduledEpisodeThumbnailSources.add(sourceRevision)
+            }
+            anime.id.takeIf { hasNewAvailableSource }
+        }
+        if (animeIds.isEmpty()) return
+
+        ReiAnixDiagnosticTimeline.record(
+            name = "EPISODE_THUMBNAIL_STARTUP_BACKFILL_REQUESTED",
+            source = "ReiAnixLibraryViewModel",
+            result = "QUEUED",
+            context = mapOf("anime_count" to animeIds.size),
+        )
+        viewModelScope.launch {
+            animeIds.forEach { animeId ->
+                requestMissingEpisodeThumbnails(animeId)
+            }
+        }
+    }
+
     private var canonicalConsumersStarted = false
 
     init {
@@ -1727,6 +1766,7 @@ class ReiAnixLibraryViewModel(
                     completedOnly = filters.completedOnly,
                     reset = true,
                 )
+                enqueueMissingEpisodeThumbnailsForAvailableMedia()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
