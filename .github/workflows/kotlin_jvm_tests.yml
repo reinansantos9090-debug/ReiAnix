@@ -1,4 +1,4 @@
-name: ReiAnix Kotlin/JVM Source Validation
+name: ReiAnix Kotlin/JVM Tests (Manual)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   kotlin-jvm:
-    name: Kotlin source compilation (no emulator)
+    name: Execute Kotlin/JVM unit tests and compile release Kotlin sources (no emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -59,5 +59,13 @@ jobs:
           gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
-            :app:compileDebugUnitTestKotlin \
+            :app:testDebugUnitTest \
             :app:compileReleaseKotlin
+
+      - name: Upload Kotlin/JVM test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotlin-jvm-test-reports
+          path: android/app/build/test-results/testDebugUnitTest/**/*.xml
+          if-no-files-found: warn
