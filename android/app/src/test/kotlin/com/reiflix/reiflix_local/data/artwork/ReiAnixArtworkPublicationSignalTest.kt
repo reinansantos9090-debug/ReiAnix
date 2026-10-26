@@ -301,12 +301,13 @@ class ReiAnixArtworkPublicationSignalTest {
         val firstRun = rotateArtworkDiscoveryIds(ids, 0L).take(12)
         val secondRun = rotateArtworkDiscoveryIds(ids, firstRun.last()).take(12)
         val thirdRun = rotateArtworkDiscoveryIds(ids, secondRun.last()).take(12)
-        val fourthRun = rotateArtworkDiscoveryIds(ids, thirdRun.last()).take(12)
+        val fourthRun = rotateArtworkDiscoveryIds(ids, thirdRun.last())
 
         assertEquals((1L..12L).toList(), firstRun)
         assertEquals((13L..24L).toList(), secondRun)
         assertEquals((25L..36L).toList(), thirdRun)
-        assertEquals((37L..40L).toList(), fourthRun)
+        assertEquals((37L..40L).toList(), fourthRun.take(4))
+        assertEquals(ids.toSet(), (firstRun + secondRun + thirdRun + fourthRun.take(4)).toSet())
     }
 
     @Test
