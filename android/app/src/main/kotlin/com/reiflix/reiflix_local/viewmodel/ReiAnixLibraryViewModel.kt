@@ -1573,7 +1573,7 @@ class ReiAnixLibraryViewModel(
                                     result = "UNSUPPORTED_LOCAL_URI",
                                     context = mapOf("episode_id" to episode.id, "anime_id" to episode.animeId),
                                 )
-                                return@withContext
+                                throw IllegalStateException("EPISODE_THUMBNAIL_SOURCE_UNAVAILABLE")
                             }
                             val result = VideoThumbnailExtractor.extract(
                                 appContext,
@@ -1613,10 +1613,12 @@ class ReiAnixLibraryViewModel(
                                 ),
                             )
                             if (!outputIsUsable) {
-                                throw IllegalStateException("EPISODE_THUMBNAIL_OUTPUT_INVALID")
-                            }
-                            if (!result.canonicalArtworkRegistered) {
-                                throw IllegalStateException("EPISODE_THUMBNAIL_ARTWORK_ASSOCIATION_MISSING")
+                                val failureCode = when {
+                                    result.path.isBlank() || !thumbnailFileIsUsable ->
+                                        "EPISODE_THUMBNAIL_OUTPUT_INVALID"
+                                    else -> "EPISODE_THUMBNAIL_ARTWORK_ASSOCIATION_MISSING"
+                                }
+                                throw IllegalStateException(failureCode)
                             }
                         }
                     },
