@@ -235,6 +235,7 @@ jobs:
             --tests com.reiflix.reiflix_local.storage.VideoThumbnailFileValidationTest \
             --tests com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtworkTest \
             --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
+            --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListCoverFileValidationTest \
             --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListMatcherTest \
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.realDurationAndEpisodeArtworkReachUiModelUnchanged \
             --tests com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjectionTest \

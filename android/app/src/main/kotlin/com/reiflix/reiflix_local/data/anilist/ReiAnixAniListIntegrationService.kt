@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.anilist
 
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 
+import android.graphics.BitmapFactory
 import android.content.Context
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
@@ -77,6 +78,39 @@ internal fun shouldDiscoverMissingArtwork(
 }
 
 internal const val MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS = 24L * 60L * 60L
+
+/**
+ * Validate a persisted local cover with a bounded-memory decode, not only a header/bounds probe.
+ * Runs on an I/O dispatcher at the call site so damaged files cannot stall Compose rendering.
+ */
+internal fun isUsableLocalCoverFile(path: String?): Boolean {
+    val normalizedPath = path?.trim().orEmpty()
+    if (normalizedPath.isEmpty()) return false
+    return try {
+        val file = File(normalizedPath)
+        if (!file.isFile || !file.canRead() || file.length() <= 0L) return false
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        val width = bounds.outWidth
+        val height = bounds.outHeight
+        if (width <= 0 || height <= 0) return false
+
+        var sampleSize = 1
+        while (maxOf(width / sampleSize, height / sampleSize) > 256 && sampleSize < (1 shl 30)) {
+            sampleSize *= 2
+        }
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath, options) ?: return false
+        try {
+            bitmap.width > 0 && bitmap.height > 0
+        } finally {
+            bitmap.recycle()
+        }
+    } catch (_: Exception) {
+        false
+    }
+}
 
 
 internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long> {
@@ -576,16 +610,9 @@ class ReiAnixAniListIntegrationService(
                 if (local.id <= 0L) continue
                 lastVisitedCursor = local.id
                 val cachedPath = local.coverCache?.trim().orEmpty()
-                val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
-                    val file = File(cachedPath)
-                    if (!file.isFile || file.length() <= 0L) {
-                        false
-                    } else {
-                        val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
-                        options.outWidth > 0 && options.outHeight > 0
-                    }
-                }.getOrDefault(false)
+                val usableLocalCover = withContext(Dispatchers.IO) {
+                    isUsableLocalCoverFile(cachedPath)
+                }
                 val eligibleForDiscovery = shouldDiscoverMissingArtwork(
                     coverUrl = local.coverUrl,
                     hasUsableLocalCover = usableLocalCover,
