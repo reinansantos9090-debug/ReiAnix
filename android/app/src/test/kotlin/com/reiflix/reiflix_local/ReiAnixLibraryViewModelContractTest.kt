@@ -98,18 +98,18 @@ class ReiAnixLibraryViewModelContractTest {
             Video(14L, false),
         )
         val regenerated = mutableListOf<Long>()
+        val failed = mutableListOf<Long>()
 
         drainEpisodeThumbnailQueue(
             items = items,
             process = { video ->
                 if (!video.hasValidThumbnail) regenerated += video.id
             },
-            onFailure = { video, error ->
-                throw AssertionError("Unexpected failure for ${video.id}", error)
-            },
+            onFailure = { video, _ -> failed += video.id },
         )
 
         assertEquals(listOf(12L, 14L), regenerated)
+        assertTrue(failed.isEmpty())
     }
 
     @Test
