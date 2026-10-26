@@ -587,19 +587,23 @@ class ReiAnixAniListIntegrationService(
                         options.outWidth > 0 && options.outHeight > 0
                     }
                 }.getOrDefault(false)
-                if (!shouldDiscoverMissingArtwork(
-                        coverUrl = local.coverUrl,
-                        hasUsableLocalCover = usableLocalCover,
-                        hasAniListId = local.anilistId != null,
-                        hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
-                        manualMetadata = local.anilistMatchManual == true ||
-                            local.metadataSource == "manual" || local.metadataStatus == "manual",
-                        matchStatus = local.anilistMatchStatus,
-                        metadataFetchedAtSeconds = local.metadataFetchedAt,
-                        nowSeconds = nowSeconds,
-                    )
-                ) continue
+                val eligibleForDiscovery = shouldDiscoverMissingArtwork(
+                    coverUrl = local.coverUrl,
+                    hasUsableLocalCover = usableLocalCover,
+                    hasAniListId = local.anilistId?.let { it in 1L..Int.MAX_VALUE.toLong() } == true,
+                    hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
+                    manualMetadata = local.anilistMatchManual == true ||
+                        local.metadataSource == "manual" || local.metadataStatus == "manual",
+                    matchStatus = local.anilistMatchStatus,
+                    metadataFetchedAtSeconds = local.metadataFetchedAt,
+                    nowSeconds = nowSeconds,
+                )
+                if (!eligibleForDiscovery) {
+                    Log.d(TAG, "Artwork discovery skipped for animeId=${local.id}: cover is usable or metadata/protection cooldown applies.")
+                    continue
+                }
                 if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds)) {
+                    Log.d(TAG, "Artwork discovery deferred for animeId=${local.id}: persisted attempt cooldown has not expired.")
                     continue
                 }
                 if (examined >= maxRecords) break
@@ -608,7 +612,10 @@ class ReiAnixAniListIntegrationService(
                 if (previousAttempt != null) {
                     if (nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS ||
                         !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
-                    ) continue
+                    ) {
+                        Log.d(TAG, "Artwork discovery skipped for animeId=${local.id}: another in-process lookup owns the cooldown.")
+                        continue
+                    }
                 }
                 examined++
                 try {
@@ -648,6 +655,7 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Success -> {
                             if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                 recovered++
+                                Log.i(TAG, "AniList poster URL persisted for animeId=${local.id}; existing artwork request was dispatched by metadata commit.")
                             } else {
                                 Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=${local.id}")
                             }
@@ -663,6 +671,7 @@ class ReiAnixAniListIntegrationService(
                                 val remotePosterUrl = matched.remote.coverExtraLargeUrl ?: matched.remote.coverLargeUrl
                                 if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
                                     recovered++
+                                    Log.i(TAG, "AniList poster URL persisted after conservative title match for animeId=${local.id}; existing artwork request was dispatched by metadata commit.")
                                 } else {
                                     Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
                                 }
