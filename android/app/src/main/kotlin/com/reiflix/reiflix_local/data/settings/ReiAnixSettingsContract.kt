@@ -119,4 +119,15 @@ object ReiAnixSettingsContract {
     }
 
     fun defaultFor(key: String): String? = definitions[key]?.defaultValue
+
+    /**
+     * Builds the effective settings view used by consumers before and after SQLite
+     * loading. Persisted values always win; defaults fill only missing known keys.
+     * Unknown legacy keys are retained, and this function never writes to storage.
+     */
+    fun withDefaults(values: Map<String, String>): Map<String, String> =
+        buildMap(values.size + definitions.size) {
+            definitions.forEach { (key, definition) -> put(key, definition.defaultValue) }
+            putAll(values)
+        }
 }
