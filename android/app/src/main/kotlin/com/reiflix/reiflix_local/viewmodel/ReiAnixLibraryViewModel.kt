@@ -144,7 +144,7 @@ internal suspend fun <T> drainEpisodeThumbnailQueue(
     items: Iterable<T>,
     process: suspend (T) -> Unit,
     onFailure: (T, Exception) -> Unit,
-    onProcessed: (T) -> Unit = { _ -> },
+    onAttempted: (T) -> Unit = { _ -> },
 ) {
     for (item in items) {
         try {
@@ -154,7 +154,7 @@ internal suspend fun <T> drainEpisodeThumbnailQueue(
         } catch (error: Exception) {
             runCatching { onFailure(item, error) }
         }
-        onProcessed(item)
+        onAttempted(item)
     }
 }
 
@@ -1584,20 +1584,27 @@ class ReiAnixLibraryViewModel(
                                     result = "NO_USABLE_FRAME",
                                     context = mapOf("episode_id" to episode.id, "anime_id" to episode.animeId),
                                 )
-                            } else {
-                                val outputIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
-                                ReiAnixDiagnosticTimeline.record(
-                                    name = "EPISODE_THUMBNAIL_OUTPUT_VALIDATED",
-                                    source = "ReiAnixLibraryViewModel",
-                                    result = if (outputIsUsable) "VISUALLY_VALID" else "VISUALLY_UNUSABLE",
-                                    context = mapOf(
-                                        "episode_id" to episode.id,
-                                        "anime_id" to episode.animeId,
-                                        "file_exists" to File(result.path).isFile,
-                                        "file_bytes" to File(result.path).length().coerceAtLeast(0L),
-                                        "canonical_artwork_registered" to result.canonicalArtworkRegistered,
-                                    ),
-                                )
+                                throw IllegalStateException("EPISODE_THUMBNAIL_EXTRACTION_UNAVAILABLE")
+                            }
+
+                            val outputIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
+                            ReiAnixDiagnosticTimeline.record(
+                                name = "EPISODE_THUMBNAIL_OUTPUT_VALIDATED",
+                                source = "ReiAnixLibraryViewModel",
+                                result = if (outputIsUsable) "VISUALLY_VALID" else "VISUALLY_UNUSABLE",
+                                context = mapOf(
+                                    "episode_id" to episode.id,
+                                    "anime_id" to episode.animeId,
+                                    "file_exists" to File(result.path).isFile,
+                                    "file_bytes" to File(result.path).length().coerceAtLeast(0L),
+                                    "canonical_artwork_registered" to result.canonicalArtworkRegistered,
+                                ),
+                            )
+                            if (!outputIsUsable) {
+                                throw IllegalStateException("EPISODE_THUMBNAIL_OUTPUT_INVALID")
+                            }
+                            if (!result.canonicalArtworkRegistered) {
+                                throw IllegalStateException("EPISODE_THUMBNAIL_ARTWORK_ASSOCIATION_MISSING")
                             }
                         }
                     },
@@ -1612,7 +1619,7 @@ class ReiAnixLibraryViewModel(
                             context = mapOf("episode_id" to episode.id, "anime_id" to episode.animeId),
                         )
                     },
-                    onProcessed = { request ->
+                    onAttempted = { request ->
                         request.work.sourceRevisionKey?.let(attemptedSourceRevisions::add)
                     },
                 )
