@@ -17,6 +17,31 @@ class ReiAnixSettingsContractTest {
         assertNull(ReiAnixSettingsContract.defaultFor("future.legacy_key"))
     }
 
+    @Test fun missingPersistedSettingsUseContractDefaultsWithoutRewritingThem() {
+        val effective = ReiAnixSettingsContract.withDefaults(emptyMap())
+
+        assertEquals("true", effective["appearance.show_thumbnails"])
+        assertEquals("dark", effective["appearance.theme"])
+        assertEquals("36", effective["library.page_size"])
+        assertEquals("false", effective["player.zoom_enabled"])
+        assertEquals("false", effective["gestures.volume"])
+    }
+
+    @Test fun persistedPreferencesOverrideDefaultsAndLegacyKeysAreRetained() {
+        val effective = ReiAnixSettingsContract.withDefaults(
+            mapOf(
+                "appearance.show_thumbnails" to "false",
+                "appearance.theme" to "light",
+                "plugin.legacy" to "custom-old-format",
+            ),
+        )
+
+        assertEquals("false", effective["appearance.show_thumbnails"])
+        assertEquals("light", effective["appearance.theme"])
+        assertEquals("custom-old-format", effective["plugin.legacy"])
+        assertEquals("false", effective["player.zoom_enabled"])
+    }
+
     @Test fun normalizesBooleanAliasesWithoutChangingMeaning() {
         assertEquals("true", ReiAnixSettingsContract.normalize("player.autoplay_next", " YES "))
         assertEquals("false", ReiAnixSettingsContract.normalize("player.autoplay_next", "0"))
