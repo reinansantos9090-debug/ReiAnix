@@ -1550,36 +1550,38 @@ class ReiAnixLibraryViewModel(
      * after the canonical catalog has loaded, never on the Android main thread.
      */
     private fun enqueueMissingEpisodeThumbnailsForAvailableMedia() {
-        val candidates = nativeCatalogState.value.animes.flatMap { anime ->
-            anime.contentEpisodes.map { episode ->
-                val source = episodeThumbnailSource(episode)
-                val sourceIsLocal = source?.let {
-                    VideoThumbnailExtractor.normalizeLocalMediaReference(it) != null
-                } == true
-                ReiAnixEpisodeThumbnailBackfillCandidate(
-                    animeId = anime.id,
-                    episodeId = episode.id,
-                    available = episode.media.availability.name == "AVAILABLE" && sourceIsLocal,
-                    source = source,
-                    mediaIdentity = episode.media.mediaIdentity,
-                    fileSizeBytes = episode.fileSizeBytes,
-                    modifiedAtMillis = episode.modifiedAt?.toLong(),
-                )
+        // Source canonicalization can touch the filesystem for plain paths. Keep the
+        // catalog-wide candidate pass off Main, just like thumbnail validation/extraction.
+        viewModelScope.launch(Dispatchers.IO) {
+            val candidates = nativeCatalogState.value.animes.flatMap { anime ->
+                anime.contentEpisodes.map { episode ->
+                    val source = episodeThumbnailSource(episode)
+                    val sourceIsLocal = source?.let {
+                        VideoThumbnailExtractor.normalizeLocalMediaReference(it) != null
+                    } == true
+                    ReiAnixEpisodeThumbnailBackfillCandidate(
+                        animeId = anime.id,
+                        episodeId = episode.id,
+                        available = episode.media.availability.name == "AVAILABLE" && sourceIsLocal,
+                        source = source,
+                        mediaIdentity = episode.media.mediaIdentity,
+                        fileSizeBytes = episode.fileSizeBytes,
+                        modifiedAtMillis = episode.modifiedAt?.toLong(),
+                    )
+                }
             }
-        }
-        val animeIds = selectNewEpisodeThumbnailBackfillAnimeIds(
-            candidates = candidates,
-            scheduledSourceRevisions = scheduledEpisodeThumbnailSources,
-        )
-        if (animeIds.isEmpty()) return
+            val animeIds = selectNewEpisodeThumbnailBackfillAnimeIds(
+                candidates = candidates,
+                scheduledSourceRevisions = scheduledEpisodeThumbnailSources,
+            )
+            if (animeIds.isEmpty()) return@launch
 
-        ReiAnixDiagnosticTimeline.record(
-            name = "EPISODE_THUMBNAIL_STARTUP_BACKFILL_REQUESTED",
-            source = "ReiAnixLibraryViewModel",
-            result = "QUEUED",
-            context = mapOf("anime_count" to animeIds.size),
-        )
-        viewModelScope.launch {
+            ReiAnixDiagnosticTimeline.record(
+                name = "EPISODE_THUMBNAIL_STARTUP_BACKFILL_REQUESTED",
+                source = "ReiAnixLibraryViewModel",
+                result = "QUEUED",
+                context = mapOf("anime_count" to animeIds.size),
+            )
             animeIds.forEach { animeId ->
                 requestMissingEpisodeThumbnails(animeId)
             }
