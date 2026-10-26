@@ -109,13 +109,13 @@ internal fun episodeThumbnailSourceRevisionKey(
  * Selects work at episode granularity. Do not collapse this list to anime IDs:
  * each episode needs its own attempt/failure/completion outcome.
  */
-internal fun releaseUncompletedEpisodeThumbnailRevisions(
+internal fun releaseUnattemptedEpisodeThumbnailRevisions(
     queuedSourceRevisions: Iterable<String>,
-    completedSourceRevisions: Set<String>,
+    attemptedSourceRevisions: Set<String>,
     scheduledSourceRevisions: MutableSet<String>,
 ) {
     queuedSourceRevisions
-        .filterNot(completedSourceRevisions::contains)
+        .filterNot(attemptedSourceRevisions::contains)
         .forEach(scheduledSourceRevisions::remove)
 }
 
@@ -1470,7 +1470,7 @@ class ReiAnixLibraryViewModel(
         if (pending.isEmpty()) return
 
         viewModelScope.launch {
-            val completedSourceRevisions = ConcurrentHashMap.newKeySet<String>()
+            val attemptedSourceRevisions = ConcurrentHashMap.newKeySet<String>()
             try {
                 val regenerationRequests = mutableListOf<ReiAnixPreparedEpisodeThumbnail>()
                 var invalidatedAssociation = false
@@ -1523,7 +1523,7 @@ class ReiAnixLibraryViewModel(
                         if (prepared == null) {
                             // A valid cached image (or an item whose source disappeared)
                             // was handled without extracting a new frame.
-                            work.sourceRevisionKey?.let(completedSourceRevisions::add)
+                            work.sourceRevisionKey?.let(attemptedSourceRevisions::add)
                         } else {
                             regenerationRequests += prepared
                             invalidatedAssociation = invalidatedAssociation || prepared.oldAssociationInvalidated
@@ -1545,7 +1545,7 @@ class ReiAnixLibraryViewModel(
                         )
                         // Record this revision as attempted for this process, but continue
                         // with later videos. A new ViewModel/process can discover it again.
-                        work.sourceRevisionKey?.let(completedSourceRevisions::add)
+                        work.sourceRevisionKey?.let(attemptedSourceRevisions::add)
                     }
                 }
 
@@ -1613,7 +1613,7 @@ class ReiAnixLibraryViewModel(
                         )
                     },
                     onProcessed = { request ->
-                        request.work.sourceRevisionKey?.let(completedSourceRevisions::add)
+                        request.work.sourceRevisionKey?.let(attemptedSourceRevisions::add)
                     },
                 )
             } finally {
@@ -1624,13 +1624,12 @@ class ReiAnixLibraryViewModel(
                     if (episodeThumbnailRerunRequested.remove(episode.id)) {
                         rerunAnimeIds += episode.animeId
                     }
-                    // If cancellation interrupted this batch, only revisions that were
-                    // actually completed remain scheduled; unprocessed revisions may be
-                    // rediscovered immediately by a later catalog refresh.
+                    // If cancellation interrupted this batch, release revisions that were not
+                    // attempted so a later catalog refresh can safely rediscover them.
                 }
-                releaseUncompletedEpisodeThumbnailRevisions(
+                releaseUnattemptedEpisodeThumbnailRevisions(
                     queuedSourceRevisions = pending.mapNotNull { it.sourceRevisionKey },
-                    completedSourceRevisions = completedSourceRevisions,
+                    attemptedSourceRevisions = attemptedSourceRevisions,
                     scheduledSourceRevisions = scheduledEpisodeThumbnailSources,
                 )
                 rerunAnimeIds.forEach(::requestMissingEpisodeThumbnails)
