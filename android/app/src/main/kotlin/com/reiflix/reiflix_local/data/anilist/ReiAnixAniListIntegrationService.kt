@@ -84,7 +84,67 @@ internal fun validAniListCatalogId(id: Long?): Long? =
     id?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
 
 /**
- * Validate a persisted local cover with a bounded-memory decode, not only a header/bounds probe.
+ * Cheap container validation protects against decoders/test shadows that accept arbitrary byte
+ * streams. These are the same image formats that the existing artwork pipeline understands.
+ */
+private fun hasCompleteSupportedImageContainer(file: File): Boolean {
+    if (!file.isFile || file.length() <= 0L) return false
+    return runCatching {
+        val length = file.length()
+        java.io.RandomAccessFile(file, "r").use { input ->
+            val header = ByteArray(minOf(12L, length).toInt())
+            input.readFully(header)
+            fun matchesAt(offset: Int, bytes: ByteArray): Boolean =
+                offset >= 0 && offset + bytes.size <= header.size &&
+                    bytes.indices.all { header[offset + it] == bytes[it] }
+
+            val jpeg = header.size >= 3 &&
+                header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()
+            if (jpeg) {
+                if (length < 4L) return@use false
+                input.seek(length - 2L)
+                return@use input.readUnsignedByte() == 0xFF && input.readUnsignedByte() == 0xD9
+            }
+
+            val pngSignature = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+            if (matchesAt(0, pngSignature)) {
+                if (length < 57L) return@use false
+                val iend = byteArrayOf(0, 0, 0, 0, 0x49, 0x45, 0x4E, 0x44, 0xAE.toByte(), 0x42, 0x60, 0x82.toByte())
+                input.seek(length - iend.size)
+                val tail = ByteArray(iend.size)
+                input.readFully(tail)
+                return@use tail.contentEquals(iend)
+            }
+
+            val gif = header.size >= 6 &&
+                (String(header, 0, 6, Charsets.US_ASCII) == "GIF87a" ||
+                    String(header, 0, 6, Charsets.US_ASCII) == "GIF89a")
+            if (gif) {
+                input.seek(length - 1L)
+                return@use input.readUnsignedByte() == 0x3B
+            }
+
+            val webp = header.size >= 12 &&
+                String(header, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+                String(header, 8, 4, Charsets.US_ASCII) == "WEBP"
+            if (webp) {
+                val declaredSize = (header[4].toLong() and 0xFF) or
+                    ((header[5].toLong() and 0xFF) shl 8) or
+                    ((header[6].toLong() and 0xFF) shl 16) or
+                    ((header[7].toLong() and 0xFF) shl 24)
+                return@use declaredSize >= 4L && declaredSize + 8L <= length
+            }
+
+            val avif = header.size >= 12 &&
+                String(header, 4, 4, Charsets.US_ASCII) == "ftyp" &&
+                String(header, 8, 4, Charsets.US_ASCII) in setOf("avif", "avis")
+            avif && length >= 24L
+        }
+    }.getOrDefault(false)
+}
+
+/**
+ * Validate a persisted local cover with a bounded-memory decode and a supported container check.
  * Runs on an I/O dispatcher at the call site so damaged files cannot stall Compose rendering.
  */
 internal fun isUsableLocalCoverFile(path: String?): Boolean {
@@ -93,6 +153,7 @@ internal fun isUsableLocalCoverFile(path: String?): Boolean {
     return try {
         val file = File(normalizedPath)
         if (!file.isFile || !file.canRead() || file.length() <= 0L) return false
+        if (!hasCompleteSupportedImageContainer(file)) return false
 
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
