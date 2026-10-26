@@ -113,6 +113,45 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun startupSettingsInitializationSeedsMissingDefaultsAndRepairsOnlyInvalidKnownValues() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        val repository = ReiAnixSqliteSettingsRepository(database)
+        repository.setPreference("appearance.theme", "light")
+        repository.setPreference("gestures.horizontal_seek", "true")
+        database.transaction { connection ->
+            connection.execSQL(
+                "INSERT OR REPLACE INTO preferences(key, value, updated_at) VALUES(?, ?, ?)",
+                arrayOf("player.autoplay_next", "invalid", 1.0),
+            )
+            connection.execSQL(
+                "INSERT OR REPLACE INTO preferences(key, value, updated_at) VALUES(?, ?, ?)",
+                arrayOf("plugin.legacy", "keep-me", 1.0),
+            )
+        }
+        val originalThemeUpdatedAt = repository.getPreference("appearance.theme")!!.updatedAt
+
+        val initialized = repository.initializeKnownPreferences()
+        assertEquals("light", initialized["appearance.theme"])
+        assertEquals("true", initialized["appearance.show_thumbnails"])
+        assertEquals("true", initialized["gestures.horizontal_seek"])
+        assertEquals("true", initialized["player.autoplay_next"])
+        assertEquals("keep-me", initialized["plugin.legacy"])
+        assertEquals(
+            originalThemeUpdatedAt,
+            repository.getPreference("appearance.theme")!!.updatedAt,
+            0.0,
+        )
+
+        val secondInitialization = repository.initializeKnownPreferences()
+        assertEquals(initialized, secondInitialization)
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertEquals(29, schema.schemaVersion)
+        assertTrue(schema.missingRequiredTables.isEmpty())
+        assertTrue(schema.missingRequiredColumns.isEmpty())
+    }
+
+    @Test
     fun missingCanonicalDatabaseIsNotCreatedOrReportedAsAnEmptyLibrary() = runBlocking {
         assertFalse(databaseFile.exists())
         try {
