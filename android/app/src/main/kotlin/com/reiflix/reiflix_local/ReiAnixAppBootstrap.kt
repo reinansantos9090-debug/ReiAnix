@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local
 
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
+
 import android.content.Context
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
@@ -352,6 +354,33 @@ class ReiAnixAppBootstrap internal constructor(
                     ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
                 )
             ) return@withLock
+
+            // Never treat a missing setting as false merely because its preference row
+            // was not written by an earlier version. Defaults are materialized only
+            // after the canonical SQLite contract has been validated, and this write
+            // preserves every valid existing choice.
+            if (validated.persistenceStatus == ReiAnixBootstrapPersistenceStatus.HEALTHY) {
+                try {
+                    val effectiveSettings = dependencies.sqliteSettingsRepository.initializeKnownPreferences()
+                    Log.i(
+                        TAG,
+                        "APP_BOOTSTRAP_SETTINGS_INITIALIZED knownPreferenceCount=" +
+                            ReiAnixSettingsContract.definitions.size +
+                            " effectivePreferenceCount=" + effectiveSettings.size,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // Per-consumer contract defaults remain available as a safe fallback.
+                    // A settings-seed failure must not make a healthy catalog look degraded.
+                    Log.w(
+                        TAG,
+                        "Canonical settings default initialization failed; contract fallbacks remain active. " +
+                            "errorType=" + error::class.java.simpleName,
+                        error,
+                    )
+                }
+            }
 
             updateState {
                 it.copy(
