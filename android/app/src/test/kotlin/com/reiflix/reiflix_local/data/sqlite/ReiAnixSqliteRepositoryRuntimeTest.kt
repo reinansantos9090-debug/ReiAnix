@@ -22,6 +22,8 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryAttemptTimes
 import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
+import com.reiflix.reiflix_local.data.anilist.readPersistedAniListReconciliationCursor
+import com.reiflix.reiflix_local.data.anilist.writePersistedAniListReconciliationCursor
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -110,6 +112,18 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(29, schema.schemaVersion)
         assertTrue(schema.missingRequiredTables.isEmpty())
         assertTrue(schema.missingRequiredColumns.isEmpty())
+    }
+
+    @Test
+    fun aniListReconciliationCursorPersistsInCanonicalPreferencesAcrossDatabaseInstances() = runBlocking {
+        createCanonicalFixture()
+        val firstDatabase = ReiAnixSqliteDatabase(context)
+        assertEquals(0L, readPersistedAniListReconciliationCursor(firstDatabase))
+        writePersistedAniListReconciliationCursor(firstDatabase, 812L)
+
+        val reopenedDatabase = ReiAnixSqliteDatabase(context)
+        assertEquals(812L, readPersistedAniListReconciliationCursor(reopenedDatabase))
+        assertEquals(29, ReiAnixSqliteLibraryRepository(context).inspectSchema().schemaVersion)
     }
 
     @Test

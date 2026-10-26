@@ -125,7 +125,42 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 }
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
+internal const val ANI_LIST_RECONCILIATION_CURSOR_PREFERENCE = "__reianix.internal.anilist_reconciliation_cursor_v1"
 internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+
+/** Persisted cursor for bounded automatic metadata reconciliation, using canonical SQLite preferences. */
+internal suspend fun readPersistedAniListReconciliationCursor(
+    database: ReiAnixSqliteDatabase,
+): Long = withContext(Dispatchers.IO) {
+    database.read { connection ->
+        connection.rawQuery(
+            "SELECT value FROM preferences WHERE key=? LIMIT 1",
+            arrayOf(ANI_LIST_RECONCILIATION_CURSOR_PREFERENCE),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0)?.toLongOrNull()?.takeIf { it > 0L } ?: 0L else 0L
+        }
+    }
+}
+
+internal suspend fun writePersistedAniListReconciliationCursor(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+) = withContext(Dispatchers.IO) {
+    require(animeId >= 0L) { "AniList reconciliation cursor cannot be negative." }
+    database.transaction { connection ->
+        val values = ContentValues().apply {
+            put("key", ANI_LIST_RECONCILIATION_CURSOR_PREFERENCE)
+            put("value", animeId.toString())
+            put("updated_at", System.currentTimeMillis() / 1000.0)
+        }
+        connection.insertWithOnConflict(
+            "preferences",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+}
 
 /** Read attempt timestamps from the existing schema-v29 preferences table. */
 internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
@@ -735,34 +770,53 @@ class ReiAnixAniListIntegrationService(
      * outcomes so catalog refreshes cannot repeatedly query unresolved titles.
      * Persisted image URLs are handed to the application-scoped Kotlin artwork service.
      */
-    suspend fun reconcileUnmatchedLibraryMetadata(): Int {
+    suspend fun reconcileUnmatchedLibraryMetadata(maxRecords: Int = 12): Int {
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
+        require(maxRecords in 1..24) { "AniList reconciliation budget must be between 1 and 24." }
         val rows = library.loadLibraryCatalogRows()
+        if (rows.isEmpty()) return 0
+        val rowsById = rows.associateBy { it.anime.id }
+        val cursor = readPersistedAniListReconciliationCursor(library.database)
+        val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), cursor)
+            .mapNotNull(rowsById::get)
+        var lastVisitedCursor = cursor
+        var examined = 0
         var changedOutcomes = 0
-        for (row in rows) {
+        for (row in orderedRows) {
+            if (examined >= maxRecords) break
             currentCoroutineContext().ensureActive()
             val local = row.anime
-            if (local.id <= 0L ||
-                local.anilistId != null ||
+            if (local.id <= 0L) continue
+            lastVisitedCursor = local.id
+            if (validAniListCatalogId(local.anilistId) != null ||
                 local.anilistMatchManual == true ||
                 local.metadataSource == "manual" ||
-                local.metadataStatus == "manual"
+                local.metadataStatus == "manual" ||
+                local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES
             ) continue
-            if (local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES) continue
 
-            when (val result = autoMatch(local.id)) {
-                is AniListResult.Success -> when (result.value) {
-                    is AniListAutoMatchResult.Matched -> changedOutcomes++
-                    AniListAutoMatchResult.NoMatch -> changedOutcomes++
-                    is AniListAutoMatchResult.Ambiguous -> changedOutcomes++
-                    else -> Unit
+            examined++
+            try {
+                when (val result = autoMatch(local.id)) {
+                    is AniListResult.Success -> when (result.value) {
+                        is AniListAutoMatchResult.Matched -> changedOutcomes++
+                        AniListAutoMatchResult.NoMatch -> changedOutcomes++
+                        is AniListAutoMatchResult.Ambiguous -> changedOutcomes++
+                        else -> Unit
+                    }
+                    is AniListResult.Failure -> if (result.error !is AniListError.InvalidRequest) {
+                        changedOutcomes++
+                    }
                 }
-                is AniListResult.Failure -> if (result.error !is AniListError.InvalidRequest) {
-                    // The outcome is already persisted by autoMatch when retrying it
-                    // automatically would otherwise duplicate an identical request.
-                    changedOutcomes++
-                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "AniList metadata reconciliation failed for animeId=${local.id}; continuing with the next catalogue row.", error)
             }
+        }
+        if (lastVisitedCursor > 0L && lastVisitedCursor != cursor) {
+            writePersistedAniListReconciliationCursor(library.database, lastVisitedCursor)
+            Log.i(TAG, "AniList metadata reconciliation batch completed: attempted=$examined changed=$changedOutcomes cursor=$lastVisitedCursor.")
         }
         return changedOutcomes
     }
