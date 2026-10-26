@@ -109,6 +109,16 @@ internal fun episodeThumbnailSourceRevisionKey(
  * Selects work at episode granularity. Do not collapse this list to anime IDs:
  * each episode needs its own attempt/failure/completion outcome.
  */
+internal fun releaseUncompletedEpisodeThumbnailRevisions(
+    queuedSourceRevisions: Iterable<String>,
+    completedSourceRevisions: Set<String>,
+    scheduledSourceRevisions: MutableSet<String>,
+) {
+    queuedSourceRevisions
+        .filterNot(completedSourceRevisions::contains)
+        .forEach(scheduledSourceRevisions::remove)
+}
+
 internal fun selectPendingEpisodeThumbnailCandidates(
     candidates: Iterable<ReiAnixEpisodeThumbnailBackfillCandidate>,
     scheduledSourceRevisions: MutableSet<String>,
@@ -134,7 +144,7 @@ internal suspend fun <T> drainEpisodeThumbnailQueue(
     items: Iterable<T>,
     process: suspend (T) -> Unit,
     onFailure: (T, Exception) -> Unit,
-    onProcessed: (T) -> Unit = {},
+    onProcessed: (T) -> Unit = { _ -> },
 ) {
     for (item in items) {
         try {
@@ -1617,11 +1627,12 @@ class ReiAnixLibraryViewModel(
                     // If cancellation interrupted this batch, only revisions that were
                     // actually completed remain scheduled; unprocessed revisions may be
                     // rediscovered immediately by a later catalog refresh.
-                    val key = work.sourceRevisionKey
-                    if (key != null && key !in completedSourceRevisions) {
-                        scheduledEpisodeThumbnailSources.remove(key)
-                    }
                 }
+                releaseUncompletedEpisodeThumbnailRevisions(
+                    queuedSourceRevisions = pending.mapNotNull { it.sourceRevisionKey },
+                    completedSourceRevisions = completedSourceRevisions,
+                    scheduledSourceRevisions = scheduledEpisodeThumbnailSources,
+                )
                 rerunAnimeIds.forEach(::requestMissingEpisodeThumbnails)
             }
         }

@@ -5,6 +5,7 @@ import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixEpisodeThumbnailBackfillCandidate
 import com.reiflix.reiflix_local.viewmodel.drainEpisodeThumbnailQueue
+import com.reiflix.reiflix_local.viewmodel.releaseUncompletedEpisodeThumbnailRevisions
 import com.reiflix.reiflix_local.viewmodel.selectPendingEpisodeThumbnailCandidates
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -48,6 +49,20 @@ class ReiAnixLibraryViewModelContractTest {
             listOf(101L, 301L),
             selectPendingEpisodeThumbnailCandidates(listOf(updated, newlyAdded), scheduled).map { it.episodeId },
         )
+    }
+
+    @Test
+    fun cancelledQueueReleasesUnprocessedRevisionsForDiscoveryOnResume() {
+        val scheduled = mutableSetOf("episode-1", "episode-2", "episode-3")
+        releaseUncompletedEpisodeThumbnailRevisions(
+            queuedSourceRevisions = listOf("episode-1", "episode-2", "episode-3"),
+            completedSourceRevisions = setOf("episode-1"),
+            scheduledSourceRevisions = scheduled,
+        )
+
+        assertEquals(setOf("episode-1"), scheduled)
+        assertTrue("Unprocessed revisions must be eligible on the next discovery pass.", "episode-2" !in scheduled)
+        assertTrue("Unprocessed revisions must be eligible on the next discovery pass.", "episode-3" !in scheduled)
     }
 
     @Test
