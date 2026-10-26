@@ -128,6 +128,19 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun invalidArtworkRowsRemainEligibleWhenNoBackoffStateBlocksThem() {
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "invalid",
+                retryAtSeconds = null,
+                failureCount = 0,
+                nowSeconds = 10_000.0,
+                force = false,
+            ),
+        )
+    }
+
+    @Test
     fun permanentFailuresAreEligibleAgainAfterCooldown() {
         assertFalse(
             shouldRetryArtworkRequest(
