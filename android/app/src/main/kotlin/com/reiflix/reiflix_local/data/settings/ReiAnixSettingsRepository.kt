@@ -120,7 +120,11 @@ class ReiAnixSettingsRepository(
     private val snapshotFile = File(bridgeDirectory, "settings.json")
     private val commandResultDirectory = File(bridgeDirectory, "command-results")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val _state = MutableStateFlow(ReiAnixSettingsUiState())
+    private val _state = MutableStateFlow(
+        ReiAnixSettingsUiState(
+            settings = ReiAnixSettingsContract.withDefaults(emptyMap()),
+        ),
+    )
     val state: StateFlow<ReiAnixSettingsUiState> = _state.asStateFlow()
     private val stateLock = Any()
 
@@ -1016,11 +1020,11 @@ class ReiAnixSettingsRepository(
                         } else {
                             snapshotState.categories
                         },
-                        settings = if (persistedPreferences != null) {
-                            snapshotState.settings + persistedPreferences
-                        } else {
-                            snapshotState.settings
-                        },
+                        settings = ReiAnixSettingsContract.withDefaults(
+                            // When SQLite is readable, it is authoritative: values from a
+                            // possibly stale JSON projection must not fill missing DB keys.
+                            persistedPreferences ?: snapshotState.settings,
+                        ),
                         account = canonicalAccountState ?: snapshotState.account,
                         error = if (persistedPreferences != null) null else snapshotState.error,
                     )
@@ -1088,7 +1092,7 @@ class ReiAnixSettingsRepository(
                 categories = current.categories.ifEmpty {
                     com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsCategoryUiModel.defaultCategories()
                 },
-                settings = persistedPreferences,
+                settings = ReiAnixSettingsContract.withDefaults(persistedPreferences),
                 error = null,
             )
         }
