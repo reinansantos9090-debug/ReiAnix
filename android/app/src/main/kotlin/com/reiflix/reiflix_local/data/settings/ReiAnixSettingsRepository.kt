@@ -1020,10 +1020,9 @@ class ReiAnixSettingsRepository(
                         } else {
                             snapshotState.categories
                         },
-                        settings = ReiAnixSettingsContract.withDefaults(
-                            // When SQLite is readable, it is authoritative: values from a
-                            // possibly stale JSON projection must not fill missing DB keys.
-                            persistedPreferences ?: snapshotState.settings,
+                        settings = ReiAnixSettingsContract.effectivePreferences(
+                            canonicalPreferences = persistedPreferences,
+                            projectedPreferences = snapshotState.settings,
                         ),
                         account = canonicalAccountState ?: snapshotState.account,
                         error = if (persistedPreferences != null) null else snapshotState.error,
