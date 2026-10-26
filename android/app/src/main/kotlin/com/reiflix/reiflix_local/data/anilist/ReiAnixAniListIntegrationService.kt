@@ -126,7 +126,72 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
 internal const val ANI_LIST_RECONCILIATION_CURSOR_PREFERENCE = "__reianix.internal.anilist_reconciliation_cursor_v1"
+internal const val ANI_LIST_AUTO_MATCH_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.anilist_auto_match_attempt_v1."
 internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+
+internal fun aniListAutoMatchAttemptPreferenceKey(animeId: Long): String {
+    require(animeId > 0L) { "AniList auto-match attempt requires a positive anime ID." }
+    return ANI_LIST_AUTO_MATCH_ATTEMPT_PREFERENCE_PREFIX + animeId
+}
+
+internal fun shouldDeferAniListAutoMatchAttempt(
+    lastAttemptAtMs: Long?,
+    nowMs: Long,
+    cooldownMs: Long,
+    force: Boolean = false,
+): Boolean {
+    if (force || lastAttemptAtMs == null || lastAttemptAtMs <= 0L || cooldownMs <= 0L) return false
+    return nowMs - lastAttemptAtMs < cooldownMs
+}
+
+internal suspend fun readPersistedAniListAutoMatchAttemptAt(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+): Long? = withContext(Dispatchers.IO) {
+    val key = aniListAutoMatchAttemptPreferenceKey(animeId)
+    database.read { connection ->
+        connection.rawQuery(
+            "SELECT value FROM preferences WHERE key=? LIMIT 1",
+            arrayOf(key),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0)?.toLongOrNull()?.takeIf { it > 0L } else null
+        }
+    }
+}
+
+internal suspend fun writePersistedAniListAutoMatchAttemptAt(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+    attemptAtMs: Long,
+) = withContext(Dispatchers.IO) {
+    require(attemptAtMs > 0L) { "AniList auto-match attempt timestamp must be positive." }
+    val values = ContentValues().apply {
+        put("key", aniListAutoMatchAttemptPreferenceKey(animeId))
+        put("value", attemptAtMs.toString())
+        put("updated_at", System.currentTimeMillis() / 1000.0)
+    }
+    database.transaction { connection ->
+        connection.insertWithOnConflict(
+            "preferences",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+}
+
+internal suspend fun clearPersistedAniListAutoMatchAttemptAt(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+) = withContext(Dispatchers.IO) {
+    database.transaction { connection ->
+        connection.delete(
+            "preferences",
+            "key=?",
+            arrayOf(aniListAutoMatchAttemptPreferenceKey(animeId)),
+        )
+    }
+}
 
 /** Persisted cursor for bounded automatic metadata reconciliation, using canonical SQLite preferences. */
 internal suspend fun readPersistedAniListReconciliationCursor(
@@ -432,11 +497,14 @@ class ReiAnixAniListIntegrationService(
             return AniListResult.Success(AniListAutoMatchResult.AlreadyMatched(id))
         }
         val now = System.currentTimeMillis()
-        val previousAttempt = autoMatchAttempts[animeId]
-        if (previousAttempt != null && now - previousAttempt < AUTO_MATCH_COOLDOWN_MS) {
+        val persistedAttempt = readPersistedAniListAutoMatchAttemptAt(library.database, animeId)
+        val previousAttempt = listOfNotNull(autoMatchAttempts[animeId], persistedAttempt).maxOrNull()
+        if (shouldDeferAniListAutoMatchAttempt(previousAttempt, now, AUTO_MATCH_COOLDOWN_MS, force)) {
             return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
         }
         autoMatchAttempts[animeId] = now
+        // Persist before any remote search so a process restart cannot immediately repeat it.
+        writePersistedAniListAutoMatchAttemptAt(library.database, animeId, now)
         val localTitleCandidates = buildList {
             add(local.title)
             add(local.lookupTitle)
@@ -455,6 +523,7 @@ class ReiAnixAniListIntegrationService(
         val searchTerms = boundedAniListSearchTerms(localTitleCandidates, limit = 6)
         if (searchTerms.isEmpty()) {
             autoMatchAttempts.remove(animeId)
+            clearPersistedAniListAutoMatchAttemptAt(library.database, animeId)
             return AniListResult.Failure(
                 AniListError.InvalidRequest("Local anime has no usable title for AniList lookup."),
             )
@@ -501,6 +570,7 @@ class ReiAnixAniListIntegrationService(
                         is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
                         is AniListError.InvalidRequest -> {
                             autoMatchAttempts.remove(animeId)
+                            clearPersistedAniListAutoMatchAttemptAt(library.database, animeId)
                             return searchResult
                         }
                     }

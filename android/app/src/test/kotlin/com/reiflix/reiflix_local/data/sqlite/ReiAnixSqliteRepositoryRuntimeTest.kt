@@ -24,6 +24,9 @@ import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryAttem
 import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
 import com.reiflix.reiflix_local.data.anilist.readPersistedAniListReconciliationCursor
 import com.reiflix.reiflix_local.data.anilist.writePersistedAniListReconciliationCursor
+import com.reiflix.reiflix_local.data.anilist.aniListAutoMatchAttemptPreferenceKey
+import com.reiflix.reiflix_local.data.anilist.readPersistedAniListAutoMatchAttemptAt
+import com.reiflix.reiflix_local.data.anilist.writePersistedAniListAutoMatchAttemptAt
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -124,6 +127,18 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val reopenedDatabase = ReiAnixSqliteDatabase(context)
         assertEquals(812L, readPersistedAniListReconciliationCursor(reopenedDatabase))
         assertEquals(29, ReiAnixSqliteLibraryRepository(context).inspectSchema().schemaVersion)
+    }
+
+    @Test
+    fun aniListAutoMatchAttemptTimestampsPersistInCanonicalPreferencesAcrossDatabaseInstances() = runBlocking {
+        createCanonicalFixture()
+        val firstDatabase = ReiAnixSqliteDatabase(context)
+        assertNull(readPersistedAniListAutoMatchAttemptAt(firstDatabase, 812L))
+        writePersistedAniListAutoMatchAttemptAt(firstDatabase, 812L, 1_800_000_000_000L)
+
+        val reopenedDatabase = ReiAnixSqliteDatabase(context)
+        assertEquals(1_800_000_000_000L, readPersistedAniListAutoMatchAttemptAt(reopenedDatabase, 812L))
+        assertEquals("__reianix.internal.anilist_auto_match_attempt_v1.812", aniListAutoMatchAttemptPreferenceKey(812L))
     }
 
     @Test

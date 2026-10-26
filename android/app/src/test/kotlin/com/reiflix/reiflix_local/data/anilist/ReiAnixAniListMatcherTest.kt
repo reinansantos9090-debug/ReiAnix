@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.anilist
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,6 +15,15 @@ class ReiAnixAniListMatcherTest {
         assertEquals(1L, validAniListCatalogId(1L))
         assertEquals(Int.MAX_VALUE.toLong(), validAniListCatalogId(Int.MAX_VALUE.toLong()))
         assertNull(validAniListCatalogId(Int.MAX_VALUE.toLong() + 1L))
+    }
+
+    @Test
+    fun persistentAutoMatchCooldownSurvivesRestartsButForceCanBypassIt() {
+        val attemptedAt = 100_000L
+        assertFalse(shouldDeferAniListAutoMatchAttempt(null, attemptedAt, 21_600_000L))
+        assertTrue(shouldDeferAniListAutoMatchAttempt(attemptedAt, attemptedAt + 60_000L, 21_600_000L))
+        assertFalse(shouldDeferAniListAutoMatchAttempt(attemptedAt, attemptedAt + 21_600_000L, 21_600_000L))
+        assertFalse(shouldDeferAniListAutoMatchAttempt(attemptedAt, attemptedAt + 60_000L, 21_600_000L, force = true))
     }
 
     @Test
