@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.ui.artwork
 
+import com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import java.io.File
@@ -102,6 +103,39 @@ class ReiAnixLocalArtworkTest {
                 fallbackLocalPath = null,
                 externalUrl = "https://cdn.example/series-poster.jpg",
                 fallbackExternalUrl = null,
+            ),
+        )
+    }
+
+    @Test
+    fun projectorKeepsAllLocalAlternativesAndPutsCurrentMetadataUrlBeforeOldRows() {
+        val projected = ReiAnixNativeLibraryCatalogProjector.resolvePosterArtworkCandidates(
+            artworkLocalPaths = listOf("/missing/first.jpg", "/cache/later-valid.jpg"),
+            artworkExternalUrls = listOf("https://cdn.example/old-poster.jpg"),
+            coverCache = "/cache/cover-cache.jpg",
+            coverUrl = "https://cdn.example/current-poster.jpg",
+        )
+
+        assertEquals(
+            listOf("/missing/first.jpg", "/cache/later-valid.jpg", "/cache/cover-cache.jpg"),
+            projected.first,
+        )
+        assertEquals(
+            listOf("https://cdn.example/current-poster.jpg", "https://cdn.example/old-poster.jpg"),
+            projected.second,
+        )
+        assertEquals(
+            listOf(
+                "/missing/first.jpg", "/cache/later-valid.jpg", "/cache/cover-cache.jpg",
+                "https://cdn.example/current-poster.jpg", "https://cdn.example/old-poster.jpg",
+            ),
+            artworkCandidates(
+                localPath = projected.first.firstOrNull(),
+                fallbackLocalPath = null,
+                externalUrl = projected.second.firstOrNull(),
+                fallbackExternalUrl = null,
+                localCandidates = projected.first,
+                externalCandidates = projected.second,
             ),
         )
     }
