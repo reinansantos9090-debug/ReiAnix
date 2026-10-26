@@ -120,7 +120,11 @@ class ReiAnixSettingsRepository(
     private val snapshotFile = File(bridgeDirectory, "settings.json")
     private val commandResultDirectory = File(bridgeDirectory, "command-results")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val _state = MutableStateFlow(ReiAnixSettingsUiState())
+    private val _state = MutableStateFlow(
+        ReiAnixSettingsUiState(
+            settings = ReiAnixSettingsContract.withDefaults(emptyMap()),
+        ),
+    )
     val state: StateFlow<ReiAnixSettingsUiState> = _state.asStateFlow()
     private val stateLock = Any()
 
@@ -1017,9 +1021,15 @@ class ReiAnixSettingsRepository(
                             snapshotState.categories
                         },
                         settings = if (persistedPreferences != null) {
-                            snapshotState.settings + persistedPreferences
+                            // The canonical table is authoritative. A stale optional
+                            // snapshot cannot revive an obsolete value for a key missing
+                            // from SQLite; the contract default is used instead.
+                            val projectionOnly = snapshotState.settings.filterKeys { key ->
+                                key !in ReiAnixSettingsContract.definitions && key !in persistedPreferences
+                            }
+                            projectionOnly + ReiAnixSettingsContract.withDefaults(persistedPreferences)
                         } else {
-                            snapshotState.settings
+                            ReiAnixSettingsContract.withDefaults(snapshotState.settings)
                         },
                         account = canonicalAccountState ?: snapshotState.account,
                         error = if (persistedPreferences != null) null else snapshotState.error,
@@ -1078,17 +1088,18 @@ class ReiAnixSettingsRepository(
         persistedPreferences: Map<String, String>,
         canonicalAccountState: ReiAnixSettingsAccountUiState?,
     ) {
+        val effectiveSettings = ReiAnixSettingsContract.withDefaults(persistedPreferences)
         synchronized(stateLock) {
             val current = _state.value
             confirmedSettings.clear()
-            confirmedSettings.putAll(persistedPreferences)
+            confirmedSettings.putAll(effectiveSettings)
             _state.value = current.copy(
                 status = ReiAnixSettingsLoadStatus.READY,
                 account = canonicalAccountState ?: current.account,
                 categories = current.categories.ifEmpty {
                     com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsCategoryUiModel.defaultCategories()
                 },
-                settings = persistedPreferences,
+                settings = effectiveSettings,
                 error = null,
             )
         }
