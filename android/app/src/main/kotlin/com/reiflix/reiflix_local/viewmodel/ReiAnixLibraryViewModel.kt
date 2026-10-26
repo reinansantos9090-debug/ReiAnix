@@ -137,8 +137,8 @@ internal fun selectPendingEpisodeThumbnailCandidates(
 }
 
 /**
- * Drains every item independently. A failed item is reported and does not prevent
- * later items from running; coroutine cancellation is never swallowed.
+ * A generated thumbnail is successful only if its file is valid and its canonical
+ * episode-artwork association has been committed.
  */
 internal fun isSuccessfulEpisodeThumbnailResult(
     path: String?,
@@ -146,6 +146,10 @@ internal fun isSuccessfulEpisodeThumbnailResult(
     artworkAssociationPersisted: Boolean,
 ): Boolean = !path.isNullOrBlank() && thumbnailFileIsUsable && artworkAssociationPersisted
 
+/**
+ * Drains every item independently. A failed item is reported and does not prevent
+ * later items from running; coroutine cancellation is never swallowed.
+ */
 internal suspend fun <T> drainEpisodeThumbnailQueue(
     items: Iterable<T>,
     process: suspend (T) -> Unit,
