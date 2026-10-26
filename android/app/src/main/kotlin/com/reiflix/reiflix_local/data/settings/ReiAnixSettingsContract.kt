@@ -111,6 +111,17 @@ object ReiAnixSettingsContract {
         int("artwork.cache_limit_mb", 128, 64, 128, 256, 512),
     ).associateBy { it.key }
 
+    /** Unknown legacy keys are retained; known values get a canonical default when absent/invalid. */
+    fun withDefaults(values: Map<String, String>): Map<String, String> = buildMap {
+        putAll(values)
+        definitions.forEach { (key, definition) ->
+            val effectiveValue = values[key]?.let { raw ->
+                runCatching { definition.normalize(raw) }.getOrDefault(definition.defaultValue)
+            } ?: definition.defaultValue
+            put(key, effectiveValue)
+        }
+    }
+
     /** Unknown legacy keys are retained verbatim rather than silently discarded. */
     fun normalize(key: String, value: String): String {
         val normalizedKey = key.trim()

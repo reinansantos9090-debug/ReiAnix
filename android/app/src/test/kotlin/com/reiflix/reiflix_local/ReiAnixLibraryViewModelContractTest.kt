@@ -3,10 +3,45 @@ package com.reiflix.reiflix_local
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixEpisodeThumbnailBackfillCandidate
+import com.reiflix.reiflix_local.viewmodel.selectNewEpisodeThumbnailBackfillAnimeIds
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReiAnixLibraryViewModelContractTest {
+    @Test
+    fun startupThumbnailBackfillQueuesAvailableSourceRevisionsOnlyOnce() {
+        val scheduled = mutableSetOf<String>()
+        val source = ReiAnixEpisodeThumbnailBackfillCandidate(
+            animeId = 10L,
+            episodeId = 101L,
+            available = true,
+            source = "content://media/external/video/101",
+            mediaIdentity = "media-101",
+            fileSizeBytes = 1024L,
+            modifiedAtMillis = 202610261000L,
+        )
+        val candidates = listOf(
+            source,
+            source.copy(episodeId = 102L, source = null),
+            source.copy(animeId = 20L, episodeId = 201L, available = false),
+            source,
+        )
+
+        assertEquals(listOf(10L), selectNewEpisodeThumbnailBackfillAnimeIds(candidates, scheduled))
+        assertEquals(
+            emptyList<Long>(),
+            selectNewEpisodeThumbnailBackfillAnimeIds(candidates, scheduled),
+        )
+        assertEquals(
+            listOf(10L),
+            selectNewEpisodeThumbnailBackfillAnimeIds(
+                listOf(source.copy(fileSizeBytes = 2048L)),
+                scheduled,
+            ),
+        )
+    }
+
     @Test
     fun homeProjectionExcludesEpisodeProgressButDetailsProjectionRetainsIt() {
         val state = ReiAnixLibrarySnapshotCodec.decode(

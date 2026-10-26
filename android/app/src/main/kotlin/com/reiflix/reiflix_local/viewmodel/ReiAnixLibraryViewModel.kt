@@ -85,6 +85,37 @@ import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
 import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 
+internal data class ReiAnixEpisodeThumbnailBackfillCandidate(
+    val animeId: Long,
+    val episodeId: Long,
+    val available: Boolean,
+    val source: String?,
+    val mediaIdentity: String?,
+    val fileSizeBytes: Long?,
+    val modifiedAtMillis: Long?,
+)
+
+/** Returns only anime with a newly-seen, available local video source revision. */
+internal fun selectNewEpisodeThumbnailBackfillAnimeIds(
+    candidates: Iterable<ReiAnixEpisodeThumbnailBackfillCandidate>,
+    scheduledSourceRevisions: MutableSet<String>,
+): List<Long> {
+    val animeIds = linkedSetOf<Long>()
+    candidates.forEach { candidate ->
+        if (candidate.animeId <= 0L || candidate.episodeId <= 0L || !candidate.available) return@forEach
+        val source = candidate.source?.trim()?.takeIf(String::isNotEmpty) ?: return@forEach
+        val revisionKey = listOf(
+            candidate.episodeId.toString(),
+            candidate.mediaIdentity.orEmpty(),
+            source,
+            (candidate.fileSizeBytes ?: 0L).toString(),
+            (candidate.modifiedAtMillis ?: 0L).toString(),
+        ).joinToString("\u0000")
+        if (scheduledSourceRevisions.add(revisionKey)) animeIds += candidate.animeId
+    }
+    return animeIds.toList()
+}
+
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
 private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
     setOf("movie", "special", "ova", "oad", "ona", "extra")
@@ -244,6 +275,9 @@ class ReiAnixLibraryViewModel(
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
     private val episodeThumbnailRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
+    // Tracks source revisions that have been considered for startup/background generation.
+    // This prevents each artwork-triggered projection refresh from enqueuing the same video.
+    private val scheduledEpisodeThumbnailSources = ConcurrentHashMap.newKeySet<String>()
     // If the local-media/artwork projection changes during extraction, rerun once
     // after the current batch releases its episode locks instead of dropping the
     // newer request because that episode is still in flight.
@@ -1510,6 +1544,50 @@ class ReiAnixLibraryViewModel(
             ?: episode.media.uri?.trim()?.takeIf(String::isNotEmpty)
             ?: episode.media.path?.trim()?.takeIf(String::isNotEmpty)
 
+    /**
+     * Starts the existing local video-frame pipeline for newly discovered source
+     * revisions. This is separate from AniList poster/backdrop recovery and runs
+     * after the canonical catalog has loaded, never on the Android main thread.
+     */
+    private fun enqueueMissingEpisodeThumbnailsForAvailableMedia() {
+        // Source canonicalization can touch the filesystem for plain paths. Keep the
+        // catalog-wide candidate pass off Main, just like thumbnail validation/extraction.
+        viewModelScope.launch(Dispatchers.IO) {
+            val candidates = nativeCatalogState.value.animes.flatMap { anime ->
+                anime.contentEpisodes.map { episode ->
+                    val source = episodeThumbnailSource(episode)
+                    val sourceIsLocal = source?.let {
+                        VideoThumbnailExtractor.normalizeLocalMediaReference(it) != null
+                    } == true
+                    ReiAnixEpisodeThumbnailBackfillCandidate(
+                        animeId = anime.id,
+                        episodeId = episode.id,
+                        available = episode.media.availability.name == "AVAILABLE" && sourceIsLocal,
+                        source = source,
+                        mediaIdentity = episode.media.mediaIdentity,
+                        fileSizeBytes = episode.fileSizeBytes,
+                        modifiedAtMillis = episode.modifiedAt?.toLong(),
+                    )
+                }
+            }
+            val animeIds = selectNewEpisodeThumbnailBackfillAnimeIds(
+                candidates = candidates,
+                scheduledSourceRevisions = scheduledEpisodeThumbnailSources,
+            )
+            if (animeIds.isEmpty()) return@launch
+
+            ReiAnixDiagnosticTimeline.record(
+                name = "EPISODE_THUMBNAIL_STARTUP_BACKFILL_REQUESTED",
+                source = "ReiAnixLibraryViewModel",
+                result = "QUEUED",
+                context = mapOf("anime_count" to animeIds.size),
+            )
+            animeIds.forEach { animeId ->
+                requestMissingEpisodeThumbnails(animeId)
+            }
+        }
+    }
+
     private var canonicalConsumersStarted = false
 
     init {
@@ -1727,6 +1805,7 @@ class ReiAnixLibraryViewModel(
                     completedOnly = filters.completedOnly,
                     reset = true,
                 )
+                enqueueMissingEpisodeThumbnailsForAvailableMedia()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

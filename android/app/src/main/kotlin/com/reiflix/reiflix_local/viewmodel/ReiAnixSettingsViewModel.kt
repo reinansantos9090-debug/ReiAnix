@@ -5,6 +5,7 @@ import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsRepository
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -43,7 +44,9 @@ class ReiAnixSettingsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), "medium")
 
     val appearanceShowThumbnails: StateFlow<Boolean> = uiState
-        .map { it.settings["appearance.show_thumbnails"] == "true" }
+        .map {
+            ReiAnixSettingsContract.withDefaults(it.settings)["appearance.show_thumbnails"] == "true"
+        }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), true)
 

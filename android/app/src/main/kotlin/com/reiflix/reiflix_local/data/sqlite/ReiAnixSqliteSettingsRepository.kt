@@ -46,6 +46,60 @@ class ReiAnixSqliteSettingsRepository(
     }
 
     /**
+     * Materializes contract defaults in the canonical preferences table and repairs
+     * invalid known values in one idempotent transaction. Valid user choices and
+     * unknown legacy preferences remain unchanged. This never creates/replaces a DB.
+     */
+    suspend fun initializeKnownDefaultsAndRepairInvalid(): Map<String, String> =
+        withContext(Dispatchers.IO) {
+            val updatedAt = System.currentTimeMillis() / 1000.0
+            database.transaction { connection ->
+                ReiAnixSettingsContract.definitions.forEach { (key, definition) ->
+                    val existing = queryPreference(connection, key)
+                    val normalized = existing?.value?.let { saved ->
+                        runCatching { definition.normalize(saved) }
+                            .getOrDefault(definition.defaultValue)
+                    } ?: definition.defaultValue
+
+                    if (existing?.value != normalized) {
+                        val values = ContentValues().apply {
+                            put("value", normalized)
+                            put("updated_at", updatedAt)
+                        }
+                        val updated = connection.update(
+                            "preferences",
+                            values,
+                            "key = ?",
+                            arrayOf(key),
+                        )
+                        if (updated == 0) {
+                            connection.insertOrThrow(
+                                "preferences",
+                                null,
+                                ContentValues().apply {
+                                    put("key", key)
+                                    put("value", normalized)
+                                    put("updated_at", updatedAt)
+                                },
+                            )
+                        }
+                    }
+                }
+
+                connection.rawQuery(
+                    "SELECT key, value FROM preferences ORDER BY key COLLATE NOCASE ASC",
+                    null,
+                ).use { cursor ->
+                    buildMap {
+                        while (cursor.moveToNext()) {
+                            put(cursor.requiredString("key"), cursor.requiredString("value"))
+                        }
+                    }
+                }
+            }
+        }
+
+    /**
      * Explicit native write to the same preferences row used by LibraryStore.
      * Uses UPDATE-then-INSERT inside one transaction for Android SQLite compatibility.
      */

@@ -22,6 +22,7 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryAttemptTimes
 import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
+import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -106,6 +107,53 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(300_000.75, attempts[812L]!!, 0.0)
         assertEquals(2, attempts.size)
 
+        val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
+        assertEquals(29, schema.schemaVersion)
+        assertTrue(schema.missingRequiredTables.isEmpty())
+        assertTrue(schema.missingRequiredColumns.isEmpty())
+    }
+
+    @Test
+    fun settingsInitializationPersistsDefaultsRepairsInvalidValuesAndPreservesUserData() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "INSERT OR REPLACE INTO preferences(key, value, updated_at) VALUES(?, ?, ?)",
+                arrayOf("appearance.theme", "light", 12.0),
+            )
+            db.execSQL(
+                "INSERT OR REPLACE INTO preferences(key, value, updated_at) VALUES(?, ?, ?)",
+                arrayOf("appearance.show_thumbnails", "not-a-boolean", 13.0),
+            )
+            db.execSQL(
+                "INSERT OR REPLACE INTO preferences(key, value, updated_at) VALUES(?, ?, ?)",
+                arrayOf("legacy.custom_option", "preserve-me", 14.0),
+            )
+        }
+
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        val preferences = settings.initializeKnownDefaultsAndRepairInvalid()
+
+        assertEquals("light", preferences["appearance.theme"])
+        assertEquals("true", preferences["appearance.show_thumbnails"])
+        assertEquals("false", preferences["gestures.horizontal_seek"])
+        assertEquals("true", preferences["player.autoplay_next"])
+        assertEquals("preserve-me", preferences["legacy.custom_option"])
+        assertTrue(ReiAnixSettingsContract.definitions.keys.all(preferences::containsKey))
+
+        val themeBeforeReopen = settings.getPreference("appearance.theme")
+        val secondRead = settings.initializeKnownDefaultsAndRepairInvalid()
+        val themeAfterReopen = settings.getPreference("appearance.theme")
+        assertEquals(preferences, secondRead)
+        assertEquals(themeBeforeReopen, themeAfterReopen)
+
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT title, personal_note FROM anime WHERE id = 1", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Original Title", cursor.getString(0))
+                assertEquals("keep this note", cursor.getString(1))
+            }
+        }
         val schema = ReiAnixSqliteLibraryRepository(context).inspectSchema()
         assertEquals(29, schema.schemaVersion)
         assertTrue(schema.missingRequiredTables.isEmpty())
@@ -330,6 +378,33 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertFalse(
             state.completedStages.contains(com.reiflix.reiflix_local.ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER),
         )
+    }
+
+    @Test
+    fun healthyBootstrapInitializesMissingDefaultsBeforeNativeServicesAreReady() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "INSERT OR REPLACE INTO preferences(key, value, updated_at) VALUES(?, ?, ?)",
+                arrayOf("appearance.theme", "light", 21.0),
+            )
+        }
+
+        val dependencies = com.reiflix.reiflix_local.ReiAnixAppDependencies(context)
+        dependencies.bootstrap.awaitStarted()
+
+        assertEquals("light", dependencies.sqliteSettingsRepository.getPreference("appearance.theme")?.value)
+        assertEquals(
+            "true",
+            dependencies.sqliteSettingsRepository.getPreference("appearance.show_thumbnails")?.value,
+        )
+        assertEquals(
+            com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY,
+            dependencies.bootstrap.state.value.stage,
+        )
+        val schema = dependencies.sqliteLibraryRepository.inspectSchema()
+        assertEquals(29, schema.schemaVersion)
+        assertTrue(schema.missingRequiredTables.isEmpty())
     }
 
     @Test
