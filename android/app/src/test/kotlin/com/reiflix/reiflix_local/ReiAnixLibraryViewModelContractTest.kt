@@ -80,12 +80,49 @@ class ReiAnixLibraryViewModelContractTest {
                 if (id == 1L || id == 3L) error("synthetic item failure $id")
             },
             onFailure = { id, _ -> failures += id },
-            onProcessed = { id -> completed += id },
+            onAttempted = { id -> completed += id },
         )
 
         assertEquals(items, processed)
         assertEquals(listOf(1L, 3L), failures)
         assertEquals(items, completed)
+    }
+
+    @Test
+    fun cancellationPropagatesAndReleasesOnlyUnattemptedQueueRevisions() = runBlocking {
+        val revisions = listOf("episode-1", "episode-2", "episode-3")
+        val scheduled = revisions.toMutableSet()
+        val attempted = linkedSetOf<String>()
+        val processed = mutableListOf<String>()
+        val failures = mutableListOf<String>()
+
+        try {
+            drainEpisodeThumbnailQueue(
+                items = revisions,
+                process = { revision ->
+                    processed += revision
+                    if (revision == "episode-2") {
+                        throw kotlinx.coroutines.CancellationException("synthetic queue cancellation")
+                    }
+                },
+                onFailure = { revision, _ -> failures += revision },
+                onAttempted = attempted::add,
+            )
+            throw AssertionError("Queue cancellation must propagate to its owner.")
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            // Expected: no further items should be processed after cancellation.
+        }
+
+        assertEquals(listOf("episode-1", "episode-2"), processed)
+        assertEquals(setOf("episode-1"), attempted)
+        assertTrue(failures.isEmpty())
+
+        releaseUnattemptedEpisodeThumbnailRevisions(
+            queuedSourceRevisions = revisions,
+            attemptedSourceRevisions = attempted,
+            scheduledSourceRevisions = scheduled,
+        )
+        assertEquals(setOf("episode-1"), scheduled)
     }
 
     @Test
