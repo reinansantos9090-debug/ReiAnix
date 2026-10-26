@@ -86,6 +86,57 @@ class ReiAnixSqliteSettingsRepository(
     }
 
     /**
+     * Materializes missing contract defaults and repairs invalid known values after the
+     * canonical database has been validated by bootstrap. Valid existing values and
+     * unknown legacy keys remain unchanged. This is idempotent and uses the existing
+     * preferences table; it does not create or migrate a database.
+     */
+    suspend fun initializeKnownPreferences(
+        updatedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        require(updatedAtEpochSeconds.isFinite() && updatedAtEpochSeconds >= 0.0) {
+            "updatedAtEpochSeconds must be finite and non-negative."
+        }
+        database.transaction { connection ->
+            val stored = connection.rawQuery(
+                "SELECT key, value FROM preferences",
+                null,
+            ).use { cursor ->
+                buildMap {
+                    while (cursor.moveToNext()) {
+                        put(cursor.getString(0), cursor.getString(1))
+                    }
+                }
+            }
+            val effective = ReiAnixSettingsContract.withDefaults(stored)
+            ReiAnixSettingsContract.definitions.keys.forEach { key ->
+                val value = effective.getValue(key)
+                if (stored[key] == value) return@forEach
+
+                val values = ContentValues().apply {
+                    put("value", value)
+                    put("updated_at", updatedAtEpochSeconds)
+                }
+                val updated = connection.update(
+                    "preferences",
+                    values,
+                    "key = ?",
+                    arrayOf(key),
+                )
+                if (updated == 0) {
+                    val insertValues = ContentValues().apply {
+                        put("key", key)
+                        put("value", value)
+                        put("updated_at", updatedAtEpochSeconds)
+                    }
+                    connection.insertOrThrow("preferences", null, insertValues)
+                }
+            }
+            effective
+        }
+    }
+
+    /**
      * Validates and writes a group of preferences in one SQLite transaction.
      * Unchanged values are not rewritten, so their updated_at metadata remains stable.
      * Unknown legacy keys are preserved by ReiAnixSettingsContract for compatibility.
