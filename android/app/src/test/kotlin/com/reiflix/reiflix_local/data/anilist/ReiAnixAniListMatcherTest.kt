@@ -1,10 +1,21 @@
 package com.reiflix.reiflix_local.data.anilist
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReiAnixAniListMatcherTest {
+    @Test
+    fun onlyPositiveGraphQlIntRangeAniListIdsAreTreatedAsValidAssociations() {
+        assertNull(validAniListCatalogId(null))
+        assertNull(validAniListCatalogId(0L))
+        assertNull(validAniListCatalogId(-1L))
+        assertEquals(1L, validAniListCatalogId(1L))
+        assertEquals(Int.MAX_VALUE.toLong(), validAniListCatalogId(Int.MAX_VALUE.toLong()))
+        assertNull(validAniListCatalogId(Int.MAX_VALUE.toLong() + 1L))
+    }
+
     @Test
     fun normalizesDiacriticsReleaseTagsAndEpisodeMarkers() {
         val candidate = anime(

@@ -79,6 +79,10 @@ internal fun shouldDiscoverMissingArtwork(
 
 internal const val MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS = 24L * 60L * 60L
 
+/** Returns only AniList IDs representable by the GraphQL Int ID lookup. */
+internal fun validAniListCatalogId(id: Long?): Long? =
+    id?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+
 /**
  * Validate a persisted local cover with a bounded-memory decode, not only a header/bounds probe.
  * Runs on an I/O dispatcher at the call site so damaged files cannot stall Compose rendering.
@@ -389,8 +393,8 @@ class ReiAnixAniListIntegrationService(
         if (local.anilistMatchManual == true && local.anilistId != null) {
             return AniListResult.Success(AniListAutoMatchResult.AlreadyManuallyMatched(local.anilistId))
         }
-        if (local.anilistId != null) {
-            return AniListResult.Success(AniListAutoMatchResult.AlreadyMatched(local.anilistId))
+        validAniListCatalogId(local.anilistId)?.let { id ->
+            return AniListResult.Success(AniListAutoMatchResult.AlreadyMatched(id))
         }
         val now = System.currentTimeMillis()
         val previousAttempt = autoMatchAttempts[animeId]
@@ -616,7 +620,7 @@ class ReiAnixAniListIntegrationService(
                 val eligibleForDiscovery = shouldDiscoverMissingArtwork(
                     coverUrl = local.coverUrl,
                     hasUsableLocalCover = usableLocalCover,
-                    hasAniListId = local.anilistId?.let { it in 1L..Int.MAX_VALUE.toLong() } == true,
+                    hasAniListId = validAniListCatalogId(local.anilistId) != null,
                     hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
                     manualMetadata = local.anilistMatchManual == true ||
                         local.metadataSource == "manual" || local.metadataStatus == "manual",
@@ -650,13 +654,13 @@ class ReiAnixAniListIntegrationService(
                     val attemptAtSeconds = attemptAt.toDouble()
                     writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
                     persistedAttemptTimes[local.id] = attemptAtSeconds
-                    val lookupKind = if (local.anilistId?.let { it in 1L..Int.MAX_VALUE.toLong() } == true) {
+                    val lookupKind = if (validAniListCatalogId(local.anilistId) != null) {
                         "anilist_id"
                     } else {
                         "conservative_title_match"
                     }
                     Log.i(TAG, "Artwork discovery lookup started for animeId=${local.id}; lookup=$lookupKind.")
-                    val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+                    val remoteId = validAniListCatalogId(local.anilistId)
                 if (remoteId != null) {
                     val remote = when (val result = client.getAnime(remoteId.toInt())) {
                         is AniListResult.Success -> result.value
