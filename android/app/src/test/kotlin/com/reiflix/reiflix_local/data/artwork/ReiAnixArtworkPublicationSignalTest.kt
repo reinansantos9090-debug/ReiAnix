@@ -276,10 +276,37 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun unresolvedAndManualRowsDoNotReceiveGuessedArtwork() {
-        assertFalse(shouldDiscoverMissingArtwork(null, false, false, false, "ambiguous", null, 100_000.0))
+    fun previousNoMatchOutcomesCanBeRetriedAfterCooldownWithoutGuessingManualRows() {
+        assertTrue(shouldDiscoverMissingArtwork(null, false, false, false, "ambiguous", null, 100_000.0))
+        assertTrue(shouldDiscoverMissingArtwork(null, false, false, false, "not_found", null, 100_000.0))
+        assertFalse(
+            shouldDiscoverMissingArtwork(
+                null, false, false, false, "not_found",
+                100_000.0 - 60.0, 100_000.0,
+            ),
+        )
+        assertTrue(
+            shouldDiscoverMissingArtwork(
+                null, false, false, false, "ambiguous",
+                100_000.0 - MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS - 1.0, 100_000.0,
+            ),
+        )
         assertFalse(shouldDiscoverMissingArtwork(null, false, false, true, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork(null, false, true, true, null, null, 100_000.0))
+    }
+
+    @Test
+    fun catalogueLargerThanRunBudgetProgressesAcrossPersistedCursor() {
+        val ids = (1L..40L).toList()
+        val firstRun = rotateArtworkDiscoveryIds(ids, 0L).take(12)
+        val secondRun = rotateArtworkDiscoveryIds(ids, firstRun.last()).take(12)
+        val thirdRun = rotateArtworkDiscoveryIds(ids, secondRun.last()).take(12)
+        val fourthRun = rotateArtworkDiscoveryIds(ids, thirdRun.last()).take(12)
+
+        assertEquals((1L..12L).toList(), firstRun)
+        assertEquals((13L..24L).toList(), secondRun)
+        assertEquals((25L..36L).toList(), thirdRun)
+        assertEquals((37L..40L).toList(), fourthRun)
     }
 
     @Test
