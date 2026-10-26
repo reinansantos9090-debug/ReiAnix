@@ -216,6 +216,8 @@ jobs:
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
+            --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest.missingPersistedSettingsUseContractDefaultsWithoutRewritingThem \
+            --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest.persistedPreferencesOverrideDefaultsAndLegacyKeysAreRetained \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.compatibleLegacyColumnsAndIndexesRemainReadableWithoutRebuildingUserTables \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.migrationRepairsStaleCanonicalIndexDefinitionWithoutRebuildingCatalogTables \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.readsPreexistingCatalogAndReportsVersionWithoutChangingSchema \
