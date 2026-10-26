@@ -217,6 +217,7 @@ jobs:
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
             --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest.missingPersistedSettingsUseContractDefaultsWithoutRewritingThem \
+            --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest.canonicalPreferencesDoNotInheritMissingKeysFromStaleProjection \
             --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest.persistedPreferencesOverrideDefaultsAndLegacyKeysAreRetained \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.compatibleLegacyColumnsAndIndexesRemainReadableWithoutRebuildingUserTables \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.migrationRepairsStaleCanonicalIndexDefinitionWithoutRebuildingCatalogTables \
