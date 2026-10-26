@@ -55,6 +55,39 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun episodeThumbnailPublicationRequiresCommittedAssociationAndKeepsEpisodeIdentity() {
+        val signal = ReiAnixArtworkPublicationSignal()
+        val thumbnail = publication().copy(
+            entityType = "episode",
+            entityId = "72",
+            artworkType = "episode_thumbnail",
+            sourceKind = "generated",
+        )
+
+        assertFalse(
+            signal.publishIfCommitted(
+                publication = thumbnail,
+                associationCommitted = false,
+                sourceFileExists = true,
+            ),
+        )
+        assertTrue(signal.events.replayCache.isEmpty())
+
+        assertTrue(
+            signal.publishIfCommitted(
+                publication = thumbnail,
+                associationCommitted = true,
+                sourceFileExists = true,
+            ),
+        )
+        val published = signal.events.replayCache.single()
+        assertEquals("episode", published.entityType)
+        assertEquals("72", published.entityId)
+        assertEquals("episode_thumbnail", published.artworkType)
+        assertEquals("generated", published.sourceKind)
+    }
+
+    @Test
     fun missingNativeArtworkCacheDirectoryIsCreatedOnDemand() {
         val root = File(
             System.getProperty("java.io.tmpdir"),
