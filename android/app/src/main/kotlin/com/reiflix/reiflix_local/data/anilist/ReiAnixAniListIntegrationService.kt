@@ -437,7 +437,10 @@ class ReiAnixAniListIntegrationService(
         return library.findAnimeIdsByAniListId(anilistId.toLong())
     }
 
-    suspend fun refreshMetadata(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
+    suspend fun refreshMetadata(animeId: Long): AniListResult<ReiAnixAnimeRecord> =
+        lookupLock(animeId).withLock { refreshMetadataLocked(animeId) }
+
+    private suspend fun refreshMetadataLocked(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
         }
@@ -508,7 +511,10 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
-    suspend fun associateManually(animeId: Long, anilistId: Int): AniListResult<ReiAnixAnimeRecord> {
+    suspend fun associateManually(animeId: Long, anilistId: Int): AniListResult<ReiAnixAnimeRecord> =
+        lookupLock(animeId).withLock { associateManuallyLocked(animeId, anilistId) }
+
+    private suspend fun associateManuallyLocked(animeId: Long, anilistId: Int): AniListResult<ReiAnixAnimeRecord> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
         }
@@ -535,8 +541,91 @@ class ReiAnixAniListIntegrationService(
         animeId: Long,
         force: Boolean = false,
     ): AniListResult<AniListAutoMatchResult> {
-        val lock = autoMatchLocks.computeIfAbsent(animeId) { Mutex() }
-        return lock.withLock { autoMatchLocked(animeId, force) }
+        return lookupLock(animeId).withLock { autoMatchLocked(animeId, force) }
+    }
+
+    /** A single lock serializes every remote lookup/write flow for one canonical local anime. */
+    private fun lookupLock(animeId: Long): Mutex {
+        require(animeId > 0L) { "Local anime ID must be positive." }
+        return autoMatchLocks.computeIfAbsent(animeId) { Mutex() }
+    }
+
+    /**
+     * Reload and re-check an explicitly associated anime after entering the same lock used by
+     * refresh/manual association/auto-match. This prevents stale recovery snapshots from racing
+     * a user association or duplicating a lookup after a concurrent refresh supplies its cover.
+     */
+    private suspend fun recoverArtworkForAssociatedAnime(
+        animeId: Long,
+        expectedAniListId: Long,
+    ): Boolean = lookupLock(animeId).withLock {
+        val current = library.getAnime(animeId) ?: return@withLock false
+        if (validAniListCatalogId(current.anilistId) != expectedAniListId) {
+            Log.d(TAG, "Artwork discovery skipped for animeId=$animeId: AniList association changed during recovery.")
+            return@withLock false
+        }
+        val nowSeconds = System.currentTimeMillis() / 1000.0
+        val hasUsableLocalCover = withContext(Dispatchers.IO) {
+            isUsableLocalCoverFile(current.coverCache)
+        }
+        val exhaustedArtworkFailure = library.database.read { connection ->
+            connection.rawQuery(
+                "SELECT 1 FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
+                    "AND artwork_type='poster' AND status='failed' AND COALESCE(failure_count, 0)>=5 LIMIT 1",
+                arrayOf(animeId.toString()),
+            ).use { it.moveToFirst() }
+        }
+        val manualMetadata = current.anilistMatchManual == true ||
+            current.metadataSource == "manual" || current.metadataStatus == "manual"
+        if (!shouldDiscoverMissingArtwork(
+                coverUrl = current.coverUrl,
+                hasUsableLocalCover = hasUsableLocalCover,
+                hasAniListId = true,
+                manualMetadata = manualMetadata,
+                matchStatus = current.anilistMatchStatus,
+                metadataFetchedAtSeconds = current.metadataFetchedAt,
+                nowSeconds = nowSeconds,
+                hasExhaustedArtworkFailure = exhaustedArtworkFailure,
+            )
+        ) {
+            Log.d(TAG, "Artwork discovery skipped for animeId=$animeId: a concurrent flow already supplied usable metadata/artwork.")
+            return@withLock false
+        }
+
+        val remote = when (val result = client.getAnime(expectedAniListId.toInt())) {
+            is AniListResult.Success -> result.value
+            is AniListResult.Failure -> {
+                Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=$animeId: ${result.error}")
+                return@withLock false
+            }
+        }
+        if (remote == null) {
+            Log.w(TAG, "Missing-artwork AniList lookup returned no media record for animeId=$animeId.")
+            return@withLock false
+        }
+
+        val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
+        when (val applied = applyRemote(
+            local = current,
+            remote = remote,
+            manual = manualMetadata,
+            score = current.anilistMatchScore,
+            margin = current.anilistMatchMargin,
+        )) {
+            is AniListResult.Success -> {
+                if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
+                    Log.i(TAG, "AniList poster URL persisted for animeId=$animeId; metadata commit completed.")
+                    true
+                } else {
+                    Log.w(TAG, "AniList media record had no newly persisted poster URL for animeId=$animeId.")
+                    false
+                }
+            }
+            is AniListResult.Failure -> {
+                Log.w(TAG, "Missing-artwork metadata update failed for animeId=$animeId: ${applied.error}")
+                false
+            }
+        }
     }
 
     private suspend fun autoMatchLocked(
@@ -828,36 +917,7 @@ class ReiAnixAniListIntegrationService(
                     Log.i(TAG, "Artwork discovery lookup started for animeId=${local.id}; lookup=$lookupKind.")
                     val remoteId = validAniListCatalogId(local.anilistId)
                 if (remoteId != null) {
-                    val remote = when (val result = client.getAnime(remoteId.toInt())) {
-                        is AniListResult.Success -> result.value
-                        is AniListResult.Failure -> {
-                            Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=${local.id}: ${result.error}")
-                            null
-                        }
-                    }
-                    if (remote == null) {
-                        Log.w(TAG, "Missing-artwork AniList lookup returned no usable media record for animeId=${local.id}")
-                        continue
-                    }
-                    val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
-                    when (val applied = applyRemote(
-                        local = local,
-                        remote = remote,
-                        manual = local.anilistMatchManual == true ||
-                            local.metadataSource == "manual" || local.metadataStatus == "manual",
-                        score = local.anilistMatchScore,
-                        margin = local.anilistMatchMargin,
-                    )) {
-                        is AniListResult.Success -> {
-                            if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
-                                recovered++
-                                Log.i(TAG, "AniList poster URL persisted for animeId=${local.id}; existing artwork request was dispatched by metadata commit.")
-                            } else {
-                                Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=${local.id}")
-                            }
-                        }
-                        is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=${local.id}: ${applied.error}")
-                    }
+                    if (recoverArtworkForAssociatedAnime(local.id, remoteId)) recovered++
                 } else {
                     if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
                     when (val result = autoMatch(local.id)) {
@@ -867,7 +927,7 @@ class ReiAnixAniListIntegrationService(
                                 val remotePosterUrl = matched.remote.coverExtraLargeUrl ?: matched.remote.coverLargeUrl
                                 if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
                                     recovered++
-                                    Log.i(TAG, "AniList poster URL persisted after conservative title match for animeId=${local.id}; existing artwork request was dispatched by metadata commit.")
+                                    Log.i(TAG, "AniList poster URL persisted after conservative title match for animeId=${local.id}; metadata commit completed.")
                                 } else {
                                     Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
                                 }
