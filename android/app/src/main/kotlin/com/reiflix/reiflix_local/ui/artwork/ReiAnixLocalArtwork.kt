@@ -93,6 +93,8 @@ fun ReiAnixLocalArtwork(
     fallbackLocalPath: String? = null,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    localCandidates: List<String> = emptyList(),
+    externalCandidates: List<String> = emptyList(),
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -124,13 +126,18 @@ fun ReiAnixLocalArtwork(
         val effectiveWidthPx = if (requestWidthPx > 0) requestWidthPx else fallbackDimensionPx
         val effectiveHeightPx = if (requestHeightPx > 0) requestHeightPx else fallbackDimensionPx
 
-        val candidates = remember(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl, artworkType) {
+        val candidates = remember(
+            localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl,
+            localCandidates, externalCandidates, artworkType,
+        ) {
             artworkCandidatesForType(
                 artworkType = artworkType,
                 localPath = localPath,
                 fallbackLocalPath = fallbackLocalPath,
                 externalUrl = externalUrl,
                 fallbackExternalUrl = fallbackExternalUrl,
+                localCandidates = localCandidates,
+                externalCandidates = externalCandidates,
             )
         }
         val stableIdentity = remember(
@@ -425,8 +432,9 @@ internal fun buildArtworkDiskCacheKey(source: String, sourceRevision: String = "
 internal fun localArtworkCandidates(
     localPath: String?,
     fallbackLocalPath: String?,
+    additionalCandidates: List<String> = emptyList(),
 ): List<String> =
-    listOf(localPath, fallbackLocalPath)
+    (additionalCandidates + listOf(localPath, fallbackLocalPath))
         .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
         .filterNot { candidate ->
             val scheme = candidate.substringBefore(':')
@@ -446,10 +454,20 @@ internal fun artworkCandidatesForType(
     fallbackLocalPath: String?,
     externalUrl: String?,
     fallbackExternalUrl: String?,
+    localCandidates: List<String> = emptyList(),
+    externalCandidates: List<String> = emptyList(),
 ): List<String> = if (artworkType.equals("episode_thumbnail", ignoreCase = true)) {
+    // Never apply poster candidate lists to episode_thumbnail artwork.
     localArtworkCandidates(localPath, fallbackLocalPath)
 } else {
-    artworkCandidates(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl)
+    artworkCandidates(
+        localPath = localPath,
+        fallbackLocalPath = fallbackLocalPath,
+        externalUrl = externalUrl,
+        fallbackExternalUrl = fallbackExternalUrl,
+        localCandidates = localCandidates,
+        externalCandidates = externalCandidates,
+    )
 }
 
 /** Resolve materialized local artwork first, then configured remote poster/backdrop candidates. */
@@ -458,9 +476,13 @@ internal fun artworkCandidates(
     fallbackLocalPath: String?,
     externalUrl: String?,
     fallbackExternalUrl: String?,
+    localCandidates: List<String> = emptyList(),
+    externalCandidates: List<String> = emptyList(),
 ): List<String> {
-    val local = localArtworkCandidates(localPath, fallbackLocalPath)
-    val remote = listOf(externalUrl, fallbackExternalUrl)
+    // The projector's complete ordered list is authoritative; legacy single-path
+    // arguments remain appended for callers that do not supply candidate lists.
+    val local = localArtworkCandidates(localPath, fallbackLocalPath, localCandidates)
+    val remote = (externalCandidates + listOf(externalUrl, fallbackExternalUrl))
         .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
         .filter { it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
     return (local + remote).distinct()
