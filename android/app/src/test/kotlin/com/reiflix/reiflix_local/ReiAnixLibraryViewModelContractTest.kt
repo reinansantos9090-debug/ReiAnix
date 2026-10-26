@@ -4,42 +4,96 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixEpisodeThumbnailBackfillCandidate
-import com.reiflix.reiflix_local.viewmodel.selectNewEpisodeThumbnailBackfillAnimeIds
+import com.reiflix.reiflix_local.viewmodel.drainEpisodeThumbnailQueue
+import com.reiflix.reiflix_local.viewmodel.selectPendingEpisodeThumbnailCandidates
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReiAnixLibraryViewModelContractTest {
     @Test
-    fun startupThumbnailBackfillQueuesAvailableSourceRevisionsOnlyOnce() {
+    fun startupThumbnailBackfillSelectsEveryPendingEpisodeAndDeduplicatesOnlySameRevision() {
         val scheduled = mutableSetOf<String>()
-        val source = ReiAnixEpisodeThumbnailBackfillCandidate(
+        val firstAnimeEpisodeOne = ReiAnixEpisodeThumbnailBackfillCandidate(
             animeId = 10L,
             episodeId = 101L,
             available = true,
             source = "content://media/external/video/101",
             mediaIdentity = "media-101",
             fileSizeBytes = 1024L,
-            modifiedAtMillis = 202610261000L,
+            modifiedAtMillis = 100L,
         )
         val candidates = listOf(
-            source,
-            source.copy(episodeId = 102L, source = null),
-            source.copy(animeId = 20L, episodeId = 201L, available = false),
-            source,
+            firstAnimeEpisodeOne,
+            firstAnimeEpisodeOne.copy(episodeId = 102L, source = "content://media/external/video/102", mediaIdentity = "media-102"),
+            firstAnimeEpisodeOne.copy(episodeId = 103L, source = "content://media/external/video/103", mediaIdentity = "media-103"),
+            firstAnimeEpisodeOne.copy(animeId = 20L, episodeId = 201L, source = "content://media/external/video/201", mediaIdentity = "media-201"),
+            firstAnimeEpisodeOne.copy(episodeId = 999L, source = null),
+            firstAnimeEpisodeOne.copy(episodeId = 1000L, available = false, source = "content://media/external/video/1000"),
+            firstAnimeEpisodeOne,
         )
 
-        assertEquals(listOf(10L), selectNewEpisodeThumbnailBackfillAnimeIds(candidates, scheduled))
+        val selected = selectPendingEpisodeThumbnailCandidates(candidates, scheduled)
+        assertEquals(listOf(101L, 102L, 103L, 201L), selected.map { it.episodeId })
         assertEquals(
-            emptyList<Long>(),
-            selectNewEpisodeThumbnailBackfillAnimeIds(candidates, scheduled),
+            emptyList<ReiAnixEpisodeThumbnailBackfillCandidate>(),
+            selectPendingEpisodeThumbnailCandidates(candidates, scheduled),
         )
+
+        // A changed source revision and videos added after the initial catalog snapshot
+        // can be selected in a later discovery pass.
+        val updated = firstAnimeEpisodeOne.copy(fileSizeBytes = 2048L)
+        val newlyAdded = firstAnimeEpisodeOne.copy(episodeId = 301L, source = "content://media/external/video/301")
         assertEquals(
-            listOf(10L),
-            selectNewEpisodeThumbnailBackfillAnimeIds(
-                listOf(source.copy(fileSizeBytes = 2048L)),
-                scheduled,
-            ),
+            listOf(101L, 301L),
+            selectPendingEpisodeThumbnailCandidates(listOf(updated, newlyAdded), scheduled).map { it.episodeId },
         )
+    }
+
+    @Test
+    fun thumbnailQueueContinuesAfterFirstAndMiddleFailures() = runBlocking {
+        val items = (1L..5L).toList()
+        val processed = mutableListOf<Long>()
+        val failures = mutableListOf<Long>()
+        val completed = mutableListOf<Long>()
+
+        drainEpisodeThumbnailQueue(
+            items = items,
+            process = { id ->
+                processed += id
+                if (id == 1L || id == 3L) error("synthetic item failure $id")
+            },
+            onFailure = { id, _ -> failures += id },
+            onProcessed = { id -> completed += id },
+        )
+
+        assertEquals(items, processed)
+        assertEquals(listOf(1L, 3L), failures)
+        assertEquals(items, completed)
+    }
+
+    @Test
+    fun thumbnailQueueSkipsValidItemsButDoesNotDropOtherPendingItems() = runBlocking {
+        data class Video(val id: Long, val hasValidThumbnail: Boolean)
+        val items = listOf(
+            Video(11L, true),
+            Video(12L, false),
+            Video(13L, true),
+            Video(14L, false),
+        )
+        val regenerated = mutableListOf<Long>()
+
+        drainEpisodeThumbnailQueue(
+            items = items,
+            process = { video ->
+                if (!video.hasValidThumbnail) regenerated += video.id
+            },
+            onFailure = { video, error ->
+                throw AssertionError("Unexpected failure for ${video.id}", error)
+            },
+        )
+
+        assertEquals(listOf(12L, 14L), regenerated)
     }
 
     @Test

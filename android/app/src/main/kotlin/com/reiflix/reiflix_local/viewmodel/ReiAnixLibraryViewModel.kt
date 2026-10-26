@@ -95,26 +95,69 @@ internal data class ReiAnixEpisodeThumbnailBackfillCandidate(
     val modifiedAtMillis: Long?,
 )
 
-/** Returns only anime with a newly-seen, available local video source revision. */
-internal fun selectNewEpisodeThumbnailBackfillAnimeIds(
+internal fun episodeThumbnailSourceRevisionKey(
+    candidate: ReiAnixEpisodeThumbnailBackfillCandidate,
+): String = listOf(
+    candidate.episodeId.toString(),
+    candidate.mediaIdentity.orEmpty(),
+    candidate.source?.trim().orEmpty(),
+    (candidate.fileSizeBytes ?: 0L).toString(),
+    (candidate.modifiedAtMillis ?: 0L).toString(),
+).joinToString("\u0000")
+
+/**
+ * Selects work at episode granularity. Do not collapse this list to anime IDs:
+ * each episode needs its own attempt/failure/completion outcome.
+ */
+internal fun selectPendingEpisodeThumbnailCandidates(
     candidates: Iterable<ReiAnixEpisodeThumbnailBackfillCandidate>,
     scheduledSourceRevisions: MutableSet<String>,
-): List<Long> {
-    val animeIds = linkedSetOf<Long>()
+): List<ReiAnixEpisodeThumbnailBackfillCandidate> = buildList {
+    val selectedEpisodeIds = mutableSetOf<Long>()
     candidates.forEach { candidate ->
         if (candidate.animeId <= 0L || candidate.episodeId <= 0L || !candidate.available) return@forEach
         val source = candidate.source?.trim()?.takeIf(String::isNotEmpty) ?: return@forEach
-        val revisionKey = listOf(
-            candidate.episodeId.toString(),
-            candidate.mediaIdentity.orEmpty(),
-            source,
-            (candidate.fileSizeBytes ?: 0L).toString(),
-            (candidate.modifiedAtMillis ?: 0L).toString(),
-        ).joinToString("\u0000")
-        if (scheduledSourceRevisions.add(revisionKey)) animeIds += candidate.animeId
+        if (candidate.episodeId in selectedEpisodeIds) return@forEach
+        val normalized = candidate.copy(source = source)
+        if (scheduledSourceRevisions.add(episodeThumbnailSourceRevisionKey(normalized))) {
+            add(normalized)
+            selectedEpisodeIds += candidate.episodeId
+        }
     }
-    return animeIds.toList()
 }
+
+/**
+ * Drains every item independently. A failed item is reported and does not prevent
+ * later items from running; coroutine cancellation is never swallowed.
+ */
+internal suspend fun <T> drainEpisodeThumbnailQueue(
+    items: Iterable<T>,
+    process: suspend (T) -> Unit,
+    onFailure: (T, Exception) -> Unit,
+    onProcessed: (T) -> Unit = {},
+) {
+    for (item in items) {
+        try {
+            process(item)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            runCatching { onFailure(item, error) }
+        }
+        onProcessed(item)
+    }
+}
+
+private data class ReiAnixEpisodeThumbnailWorkItem(
+    val episode: com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel,
+    val sourceRevisionKey: String? = null,
+)
+
+private data class ReiAnixPreparedEpisodeThumbnail(
+    val work: ReiAnixEpisodeThumbnailWorkItem,
+    val rawSource: String,
+    val oldAssociationInvalidated: Boolean,
+)
 
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
 private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
@@ -1386,16 +1429,20 @@ class ReiAnixLibraryViewModel(
 
     /**
      * Episode artwork is a local video-frame pipeline, independent of AniList
-     * posters/backdrops. Generate missing episode thumbnails when Details opens;
-     * the extractor commits them to the canonical artwork table and its
-     * publication signal refreshes the immutable Compose projection.
+     * posters/backdrops. Details may request a repair for one anime, while startup
+     * queues newly discovered episode revisions directly at episode granularity.
      */
     fun requestMissingEpisodeThumbnails(animeId: Long) {
         if (animeId <= 0L) return
         val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
-        // Queue all available local episodes. Existing paths must be decoded and
-        // visually checked on Dispatchers.IO before they can suppress regeneration.
-        val pending = anime.contentEpisodes.filter { episode ->
+        queueEpisodeThumbnailBatch(anime.contentEpisodes.map { ReiAnixEpisodeThumbnailWorkItem(it) })
+    }
+
+    private fun queueEpisodeThumbnailBatch(workItems: List<ReiAnixEpisodeThumbnailWorkItem>) {
+        if (workItems.isEmpty()) return
+
+        val pending = workItems.distinctBy { it.episode.id }.filter { work ->
+            val episode = work.episode
             if (episode.media.availability.name != "AVAILABLE" ||
                 episodeThumbnailSource(episode) == null
             ) {
@@ -1404,8 +1451,8 @@ class ReiAnixLibraryViewModel(
             if (episodeThumbnailRequestsInFlight.add(episode.id)) {
                 true
             } else {
-                // A newer projection arrived while this episode was being processed.
-                // The active batch may have captured an older URI, size, or timestamp.
+                // A newer projection arrived while this episode was in flight. The
+                // active batch will schedule another pass after it releases the lock.
                 episodeThumbnailRerunRequested.add(episode.id)
                 false
             }
@@ -1413,71 +1460,102 @@ class ReiAnixLibraryViewModel(
         if (pending.isEmpty()) return
 
         viewModelScope.launch {
+            val completedSourceRevisions = ConcurrentHashMap.newKeySet<String>()
             try {
-                // Validate the complete batch first and hide only unusable generated
-                // associations before spending time attempting frame extraction.
-                val regenerationRequests = withContext(Dispatchers.IO) {
-                    pending.mapNotNull { episode ->
-                        val rawSource = episodeThumbnailSource(episode) ?: return@mapNotNull null
-                        val existingPath = episode.artwork?.localPath
-                        val existingIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(existingPath)
-                        if (!VideoThumbnailExtractor.thumbnailNeedsRegeneration(existingPath, existingIsUsable)) {
-                            ReiAnixDiagnosticTimeline.record(
-                                name = "EPISODE_THUMBNAIL_CACHE_REUSED",
-                                source = "ReiAnixLibraryViewModel",
-                                result = "VISUALLY_VALID",
-                                context = mapOf("episode_id" to episode.id, "anime_id" to animeId),
-                            )
-                            return@mapNotNull null
+                val regenerationRequests = mutableListOf<ReiAnixPreparedEpisodeThumbnail>()
+                var invalidatedAssociation = false
+
+                // Prepare each episode independently. Previously this was one mapNotNull
+                // expression: one unexpected validation/database exception could abort
+                // preparation for the entire anime batch before any remaining frame ran.
+                for (work in pending) {
+                    val episode = work.episode
+                    try {
+                        val prepared = withContext(Dispatchers.IO) {
+                            val rawSource = episodeThumbnailSource(episode) ?: return@withContext null
+                            val existingPath = episode.artwork?.localPath
+                            val existingIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(existingPath)
+                            if (!VideoThumbnailExtractor.thumbnailNeedsRegeneration(existingPath, existingIsUsable)) {
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "EPISODE_THUMBNAIL_CACHE_REUSED",
+                                    source = "ReiAnixLibraryViewModel",
+                                    result = "VISUALLY_VALID",
+                                    context = mapOf("episode_id" to episode.id, "anime_id" to episode.animeId),
+                                )
+                                return@withContext null
+                            }
+
+                            var oldAssociationInvalidated = false
+                            if (!existingPath.isNullOrBlank() && !existingIsUsable) {
+                                val file = File(existingPath)
+                                val reason = if (file.isFile) "VISUALLY_UNUSABLE" else "FILE_MISSING"
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "EPISODE_THUMBNAIL_EXISTING_ARTWORK_INVALID",
+                                    severity = "WARN",
+                                    source = "ReiAnixLibraryViewModel",
+                                    result = reason,
+                                    context = mapOf(
+                                        "episode_id" to episode.id,
+                                        "anime_id" to episode.animeId,
+                                        "file_exists" to file.isFile,
+                                        "file_bytes" to file.length().coerceAtLeast(0L),
+                                    ),
+                                )
+                                oldAssociationInvalidated = (appDependencies?.artworkService
+                                    ?.invalidateVisuallyUnusableGeneratedThumbnails(
+                                        episodeId = episode.id,
+                                        reason = reason,
+                                    ) ?: 0) > 0
+                            }
+                            ReiAnixPreparedEpisodeThumbnail(work, rawSource, oldAssociationInvalidated)
                         }
 
-                        var oldAssociationInvalidated = false
-                        if (!existingPath.isNullOrBlank() && !existingIsUsable) {
-                            val file = File(existingPath)
-                            val reason = if (file.isFile) "VISUALLY_UNUSABLE" else "FILE_MISSING"
-                            ReiAnixDiagnosticTimeline.record(
-                                name = "EPISODE_THUMBNAIL_EXISTING_ARTWORK_INVALID",
-                                severity = "WARN",
-                                source = "ReiAnixLibraryViewModel",
-                                result = reason,
-                                context = mapOf(
-                                    "episode_id" to episode.id,
-                                    "anime_id" to animeId,
-                                    "file_exists" to file.isFile,
-                                    "file_bytes" to file.length().coerceAtLeast(0L),
-                                ),
-                            )
-                            // The selected row is only the first one in the canonical
-                            // projection. Invalidate every generated row for this episode
-                            // whose saved pixels are actually unusable, so an older black
-                            // duplicate cannot become the next selected row after refresh.
-                            oldAssociationInvalidated = (appDependencies?.artworkService
-                                ?.invalidateVisuallyUnusableGeneratedThumbnails(
-                                    episodeId = episode.id,
-                                    reason = reason,
-                                ) ?: 0) > 0
+                        if (prepared == null) {
+                            // A valid cached image (or an item whose source disappeared)
+                            // was handled without extracting a new frame.
+                            work.sourceRevisionKey?.let(completedSourceRevisions::add)
+                        } else {
+                            regenerationRequests += prepared
+                            invalidatedAssociation = invalidatedAssociation || prepared.oldAssociationInvalidated
                         }
-                        Triple(episode, rawSource, oldAssociationInvalidated)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w(
+                            TAG,
+                            "Episode thumbnail preflight failed for episodeId=${episode.id}",
+                            error,
+                        )
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "EPISODE_THUMBNAIL_PREFLIGHT_FAILED",
+                            severity = "WARN",
+                            source = "ReiAnixLibraryViewModel",
+                            result = error::class.java.simpleName,
+                            context = mapOf("episode_id" to episode.id, "anime_id" to episode.animeId),
+                        )
+                        // Record this revision as attempted for this process, but continue
+                        // with later videos. A new ViewModel/process can discover it again.
+                        work.sourceRevisionKey?.let(completedSourceRevisions::add)
                     }
                 }
 
-                // Refresh once before decoding replacement frames. If extraction fails,
-                // the UI already shows its normal placeholder rather than a stale black JPEG.
-                if (regenerationRequests.any { it.third }) {
-                    refreshNativeCatalog()
-                }
+                // Refresh once before decoding replacement frames. The normal projection
+                // then hides stale unusable pixels without touching local video data.
+                if (invalidatedAssociation) refreshNativeCatalog()
 
-                for ((episode, rawSource, _) in regenerationRequests) {
-                    try {
+                drainEpisodeThumbnailQueue(
+                    items = regenerationRequests,
+                    process = { request ->
+                        val episode = request.work.episode
                         withContext(Dispatchers.IO) {
-                            val sourceUri = VideoThumbnailExtractor.normalizeLocalMediaUri(rawSource)
+                            val sourceUri = VideoThumbnailExtractor.normalizeLocalMediaUri(request.rawSource)
                             if (sourceUri == null) {
                                 ReiAnixDiagnosticTimeline.record(
                                     name = "EPISODE_THUMBNAIL_SOURCE_UNAVAILABLE",
                                     severity = "WARN",
                                     source = "ReiAnixLibraryViewModel",
                                     result = "UNSUPPORTED_LOCAL_URI",
-                                    context = mapOf("episode_id" to episode.id, "anime_id" to animeId),
+                                    context = mapOf("episode_id" to episode.id, "anime_id" to episode.animeId),
                                 )
                                 return@withContext
                             }
@@ -1494,7 +1572,7 @@ class ReiAnixLibraryViewModel(
                                     severity = "WARN",
                                     source = "ReiAnixLibraryViewModel",
                                     result = "NO_USABLE_FRAME",
-                                    context = mapOf("episode_id" to episode.id, "anime_id" to animeId),
+                                    context = mapOf("episode_id" to episode.id, "anime_id" to episode.animeId),
                                 )
                             } else {
                                 val outputIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
@@ -1504,7 +1582,7 @@ class ReiAnixLibraryViewModel(
                                     result = if (outputIsUsable) "VISUALLY_VALID" else "VISUALLY_UNUSABLE",
                                     context = mapOf(
                                         "episode_id" to episode.id,
-                                        "anime_id" to animeId,
+                                        "anime_id" to episode.animeId,
                                         "file_exists" to File(result.path).isFile,
                                         "file_bytes" to File(result.path).length().coerceAtLeast(0L),
                                         "canonical_artwork_registered" to result.canonicalArtworkRegistered,
@@ -1512,29 +1590,39 @@ class ReiAnixLibraryViewModel(
                                 )
                             }
                         }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
+                    },
+                    onFailure = { request, error ->
+                        val episode = request.work.episode
                         Log.w(TAG, "Episode thumbnail generation failed for episodeId=${episode.id}", error)
-                    }
-                }
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "EPISODE_THUMBNAIL_ITEM_FAILED",
+                            severity = "WARN",
+                            source = "ReiAnixLibraryViewModel",
+                            result = error::class.java.simpleName,
+                            context = mapOf("episode_id" to episode.id, "anime_id" to episode.animeId),
+                        )
+                    },
+                    onProcessed = { request ->
+                        request.work.sourceRevisionKey?.let(completedSourceRevisions::add)
+                    },
+                )
             } finally {
-                var rerunRequested = false
-                pending.forEach { episode ->
+                val rerunAnimeIds = linkedSetOf<Long>()
+                pending.forEach { work ->
+                    val episode = work.episode
                     episodeThumbnailRequestsInFlight.remove(episode.id)
                     if (episodeThumbnailRerunRequested.remove(episode.id)) {
-                        rerunRequested = true
+                        rerunAnimeIds += episode.animeId
+                    }
+                    // If cancellation interrupted this batch, only revisions that were
+                    // actually completed remain scheduled; unprocessed revisions may be
+                    // rediscovered immediately by a later catalog refresh.
+                    val key = work.sourceRevisionKey
+                    if (key != null && key !in completedSourceRevisions) {
+                        scheduledEpisodeThumbnailSources.remove(key)
                     }
                 }
-                if (rerunRequested) {
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "EPISODE_THUMBNAIL_RERUN_QUEUED",
-                        source = "ReiAnixLibraryViewModel",
-                        result = "SOURCE_REVISION_CHANGED_DURING_REQUEST",
-                        context = mapOf("anime_id" to animeId),
-                    )
-                    requestMissingEpisodeThumbnails(animeId)
-                }
+                rerunAnimeIds.forEach(::requestMissingEpisodeThumbnails)
             }
         }
     }
@@ -1545,46 +1633,63 @@ class ReiAnixLibraryViewModel(
             ?: episode.media.path?.trim()?.takeIf(String::isNotEmpty)
 
     /**
-     * Starts the existing local video-frame pipeline for newly discovered source
-     * revisions. This is separate from AniList poster/backdrop recovery and runs
-     * after the canonical catalog has loaded, never on the Android main thread.
+     * Schedule every newly discovered episode source revision, not only an anime ID.
+     * This allows the queue to associate success/failure/cancellation with each video.
      */
     private fun enqueueMissingEpisodeThumbnailsForAvailableMedia() {
-        // Source canonicalization can touch the filesystem for plain paths. Keep the
-        // catalog-wide candidate pass off Main, just like thumbnail validation/extraction.
         viewModelScope.launch(Dispatchers.IO) {
-            val candidates = nativeCatalogState.value.animes.flatMap { anime ->
-                anime.contentEpisodes.map { episode ->
-                    val source = episodeThumbnailSource(episode)
-                    val sourceIsLocal = source?.let {
-                        VideoThumbnailExtractor.normalizeLocalMediaReference(it) != null
-                    } == true
-                    ReiAnixEpisodeThumbnailBackfillCandidate(
-                        animeId = anime.id,
-                        episodeId = episode.id,
-                        available = episode.media.availability.name == "AVAILABLE" && sourceIsLocal,
-                        source = source,
-                        mediaIdentity = episode.media.mediaIdentity,
-                        fileSizeBytes = episode.fileSizeBytes,
-                        modifiedAtMillis = episode.modifiedAt?.toLong(),
-                    )
-                }
+            val catalogAnimes = nativeCatalogState.value.animes
+            val catalogEpisodes = catalogAnimes
+                .flatMap { it.contentEpisodes }
+                .distinctBy { it.id }
+            val candidates = catalogEpisodes.map { episode ->
+                val source = episodeThumbnailSource(episode)
+                val sourceIsLocal = source?.let {
+                    VideoThumbnailExtractor.normalizeLocalMediaReference(it) != null
+                } == true
+                ReiAnixEpisodeThumbnailBackfillCandidate(
+                    animeId = episode.animeId,
+                    episodeId = episode.id,
+                    available = episode.media.availability.name == "AVAILABLE" && sourceIsLocal,
+                    source = source,
+                    mediaIdentity = episode.media.mediaIdentity,
+                    fileSizeBytes = episode.fileSizeBytes,
+                    modifiedAtMillis = episode.modifiedAt?.toLong(),
+                )
             }
-            val animeIds = selectNewEpisodeThumbnailBackfillAnimeIds(
+            val selectedCandidates = selectPendingEpisodeThumbnailCandidates(
                 candidates = candidates,
                 scheduledSourceRevisions = scheduledEpisodeThumbnailSources,
             )
-            if (animeIds.isEmpty()) return@launch
+            if (selectedCandidates.isEmpty()) return@launch
+
+            val episodeById = catalogEpisodes.associateBy { it.id }
+            val selectedWork = selectedCandidates.mapNotNull { candidate ->
+                val episode = episodeById[candidate.episodeId]
+                if (episode == null) {
+                    scheduledEpisodeThumbnailSources.remove(
+                        episodeThumbnailSourceRevisionKey(candidate),
+                    )
+                    null
+                } else {
+                    ReiAnixEpisodeThumbnailWorkItem(
+                        episode = episode,
+                        sourceRevisionKey = episodeThumbnailSourceRevisionKey(candidate),
+                    )
+                }
+            }
+            if (selectedWork.isEmpty()) return@launch
 
             ReiAnixDiagnosticTimeline.record(
                 name = "EPISODE_THUMBNAIL_STARTUP_BACKFILL_REQUESTED",
                 source = "ReiAnixLibraryViewModel",
                 result = "QUEUED",
-                context = mapOf("anime_count" to animeIds.size),
+                context = mapOf(
+                    "episode_count" to selectedWork.size,
+                    "anime_count" to selectedWork.map { it.episode.animeId }.distinct().size,
+                ),
             )
-            animeIds.forEach { animeId ->
-                requestMissingEpisodeThumbnails(animeId)
-            }
+            queueEpisodeThumbnailBatch(selectedWork)
         }
     }
 
