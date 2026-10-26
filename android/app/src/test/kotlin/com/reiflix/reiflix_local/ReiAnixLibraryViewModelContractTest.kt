@@ -72,7 +72,7 @@ class ReiAnixLibraryViewModelContractTest {
         val items = (1L..5L).toList()
         val processed = mutableListOf<Long>()
         val failures = mutableListOf<Long>()
-        val completed = mutableListOf<Long>()
+        val attempted = mutableListOf<Long>()
 
         drainEpisodeThumbnailQueue(
             items = items,
@@ -81,12 +81,12 @@ class ReiAnixLibraryViewModelContractTest {
                 if (id == 1L || id == 3L) error("synthetic item failure $id")
             },
             onFailure = { id, _ -> failures += id },
-            onAttempted = { id -> completed += id },
+            onAttempted = { id -> attempted += id },
         )
 
         assertEquals(items, processed)
         assertEquals(listOf(1L, 3L), failures)
-        assertEquals(items, completed)
+        assertEquals(items, attempted)
     }
 
     @Test
