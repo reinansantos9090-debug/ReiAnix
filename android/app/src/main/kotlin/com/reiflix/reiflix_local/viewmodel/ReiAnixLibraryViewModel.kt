@@ -140,6 +140,12 @@ internal fun selectPendingEpisodeThumbnailCandidates(
  * Drains every item independently. A failed item is reported and does not prevent
  * later items from running; coroutine cancellation is never swallowed.
  */
+internal fun isSuccessfulEpisodeThumbnailResult(
+    path: String?,
+    thumbnailFileIsUsable: Boolean,
+    artworkAssociationPersisted: Boolean,
+): Boolean = !path.isNullOrBlank() && thumbnailFileIsUsable && artworkAssociationPersisted
+
 internal suspend fun <T> drainEpisodeThumbnailQueue(
     items: Iterable<T>,
     process: suspend (T) -> Unit,
@@ -1587,11 +1593,17 @@ class ReiAnixLibraryViewModel(
                                 throw IllegalStateException("EPISODE_THUMBNAIL_EXTRACTION_UNAVAILABLE")
                             }
 
-                            val outputIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
+                            val thumbnailFileIsUsable =
+                                VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
+                            val outputIsUsable = isSuccessfulEpisodeThumbnailResult(
+                                path = result.path,
+                                thumbnailFileIsUsable = thumbnailFileIsUsable,
+                                artworkAssociationPersisted = result.canonicalArtworkRegistered,
+                            )
                             ReiAnixDiagnosticTimeline.record(
                                 name = "EPISODE_THUMBNAIL_OUTPUT_VALIDATED",
                                 source = "ReiAnixLibraryViewModel",
-                                result = if (outputIsUsable) "VISUALLY_VALID" else "VISUALLY_UNUSABLE",
+                                result = if (thumbnailFileIsUsable) "VISUALLY_VALID" else "VISUALLY_UNUSABLE",
                                 context = mapOf(
                                     "episode_id" to episode.id,
                                     "anime_id" to episode.animeId,
