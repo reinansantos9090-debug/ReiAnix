@@ -617,7 +617,12 @@ class ReiAnixAniListIntegrationService(
                     val attemptAtSeconds = attemptAt.toDouble()
                     writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
                     persistedAttemptTimes[local.id] = attemptAtSeconds
-                    Log.i(TAG, "Artwork discovery lookup started for animeId=${local.id}; lookup=${if (local.anilistId in 1L..Int.MAX_VALUE.toLong()) "anilist_id" else "conservative_title_match"}.")
+                    val lookupKind = if (local.anilistId?.let { it in 1L..Int.MAX_VALUE.toLong() } == true) {
+                        "anilist_id"
+                    } else {
+                        "conservative_title_match"
+                    }
+                    Log.i(TAG, "Artwork discovery lookup started for animeId=${local.id}; lookup=$lookupKind.")
                     val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
                 if (remoteId != null) {
                     val remote = when (val result = client.getAnime(remoteId.toInt())) {
