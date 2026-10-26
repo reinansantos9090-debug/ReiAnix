@@ -93,6 +93,8 @@ class ReiAnixLocalArtworkTest {
                 fallbackLocalPath = null,
                 externalUrl = "https://cdn.example/series-poster.jpg",
                 fallbackExternalUrl = "https://cdn.example/backdrop.jpg",
+                localCandidates = listOf("/cache/not-an-episode-thumbnail.jpg"),
+                externalCandidates = listOf("https://cdn.example/alternate-series-poster.jpg"),
             ),
         )
         assertEquals(
@@ -103,6 +105,8 @@ class ReiAnixLocalArtworkTest {
                 fallbackLocalPath = null,
                 externalUrl = "https://cdn.example/series-poster.jpg",
                 fallbackExternalUrl = null,
+                localCandidates = listOf("/cache/not-an-episode-thumbnail.jpg"),
+                externalCandidates = listOf("https://cdn.example/alternate-series-poster.jpg"),
             ),
         )
     }
