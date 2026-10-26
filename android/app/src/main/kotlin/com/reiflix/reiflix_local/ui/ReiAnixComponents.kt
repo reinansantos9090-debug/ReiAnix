@@ -651,6 +651,8 @@ fun ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
         artworkExternalUrl = anime.artwork?.externalUrl,
+        artworkLocalCandidates = anime.artwork?.localCandidates.orEmpty(),
+        artworkExternalCandidates = anime.artwork?.externalCandidates.orEmpty(),
         metadata = buildList {
             anime.year?.let { add(it.toString()) }
             anime.episodeCountLabel.takeIf { anime.availableContentCount > 0 }?.let(::add)
@@ -684,6 +686,8 @@ fun ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
         artworkExternalUrl = anime.artwork?.externalUrl,
+        artworkLocalCandidates = anime.artwork?.localCandidates.orEmpty(),
+        artworkExternalCandidates = anime.artwork?.externalCandidates.orEmpty(),
         metadata = buildList {
             anime.year?.let { add(it.toString()) }
             anime.availableContentCount.takeIf { it > 0 }?.let {
@@ -709,6 +713,8 @@ fun ReiAnixAnimeCard(
     title: String,
     artworkPath: String?,
     artworkExternalUrl: String? = null,
+    artworkLocalCandidates: List<String> = emptyList(),
+    artworkExternalCandidates: List<String> = emptyList(),
     metadata: List<String> = emptyList(),
     progress: Float? = null,
     favorite: Boolean = false,
@@ -774,6 +780,8 @@ fun ReiAnixAnimeCard(
                     identity = artworkIdentity,
                     maxDimensionPx = maxDimensionPx,
                     externalUrl = artworkExternalUrl,
+                    localCandidates = artworkLocalCandidates,
+                    externalCandidates = artworkExternalCandidates,
                 )
                 if (favorite || watching || watched || completed) {
                     Text(
