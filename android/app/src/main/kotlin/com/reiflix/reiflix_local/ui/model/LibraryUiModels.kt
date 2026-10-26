@@ -71,6 +71,10 @@ data class ReiAnixArtworkUiModel(
     val externalUrl: String?,
     val backdropLocalPath: String? = null,
     val backdropExternalUrl: String? = null,
+    /** Ordered fallback candidates supplied by the canonical catalog projection. */
+    val localCandidates: List<String> = emptyList(),
+    /** Current metadata URL first, then remaining same-entity poster candidates. */
+    val externalCandidates: List<String> = emptyList(),
 ) {
     /** True only when Compose has a materialized local file to decode. */
     val isAvailable: Boolean
