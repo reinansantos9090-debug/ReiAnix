@@ -510,6 +510,8 @@ fun ReiAnixPoster(
     maxDimensionPx: Int = 512,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    localCandidates: List<String> = emptyList(),
+    externalCandidates: List<String> = emptyList(),
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -524,6 +526,8 @@ fun ReiAnixPoster(
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
+        localCandidates = localCandidates,
+        externalCandidates = externalCandidates,
     )
 }
 
