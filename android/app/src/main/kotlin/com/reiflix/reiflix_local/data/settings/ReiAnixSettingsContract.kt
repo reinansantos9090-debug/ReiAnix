@@ -119,4 +119,26 @@ object ReiAnixSettingsContract {
     }
 
     fun defaultFor(key: String): String? = definitions[key]?.defaultValue
+
+    /**
+     * Resolves the effective preference set without changing valid user choices.
+     * Missing known keys receive their declared default, invalid known values fall
+     * back to that key's default, and unknown legacy/plugin keys are retained.
+     */
+    fun withDefaults(values: Map<String, String>): Map<String, String> {
+        val effective = LinkedHashMap<String, String>(definitions.size + values.size)
+        definitions.forEach { (key, definition) ->
+            val persisted = values[key]
+            effective[key] = if (persisted == null) {
+                definition.defaultValue
+            } else {
+                runCatching { definition.normalize(persisted) }
+                    .getOrDefault(definition.defaultValue)
+            }
+        }
+        values.forEach { (key, value) ->
+            if (key !in definitions) effective[key] = value
+        }
+        return effective
+    }
 }
