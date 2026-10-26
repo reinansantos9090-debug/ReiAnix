@@ -152,10 +152,34 @@ object LibraryUiMappers {
                 .flatMap { map -> keys.asSequence().mapNotNull { map.stringOrNull(it) } }
                 .firstOrNull { it.isNotBlank() }
 
-        val posterLocalPath = firstNonBlank(
+        fun allNonBlank(keys: List<String>): List<String> =
+            sources.asSequence()
+                .flatMap { map -> keys.asSequence().mapNotNull { map.stringOrNull(it) } }
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .distinct()
+                .toList()
+
+        fun allCandidateListValues(key: String): List<String> =
+            sources.asSequence()
+                .flatMap { map -> map.stringList(key).asSequence() }
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .distinct()
+                .toList()
+
+        val posterLocalCandidates = (
+            allCandidateListValues("artwork_local_candidates") +
+                allNonBlank(listOf("artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"))
+            ).distinct()
+        val posterExternalCandidates = (
+            allCandidateListValues("artwork_external_candidates") +
+                allNonBlank(listOf("artwork_external_url", "cover_url", "external_url"))
+            ).distinct()
+        val posterLocalPath = posterLocalCandidates.firstOrNull() ?: firstNonBlank(
             listOf("artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"),
         )
-        val posterExternalUrl = firstNonBlank(
+        val posterExternalUrl = posterExternalCandidates.firstOrNull() ?: firstNonBlank(
             listOf("artwork_external_url", "cover_url", "external_url"),
         )
         val backdropLocalPath = firstNonBlank(
@@ -165,8 +189,8 @@ object LibraryUiMappers {
             listOf("backdrop_external_url", "banner_url"),
         )
         return if (
-            posterLocalPath == null &&
-            posterExternalUrl == null &&
+            posterLocalCandidates.isEmpty() &&
+            posterExternalCandidates.isEmpty() &&
             backdropLocalPath == null &&
             backdropExternalUrl == null
         ) {
@@ -177,6 +201,8 @@ object LibraryUiMappers {
                 externalUrl = posterExternalUrl,
                 backdropLocalPath = backdropLocalPath,
                 backdropExternalUrl = backdropExternalUrl,
+                localCandidates = posterLocalCandidates,
+                externalCandidates = posterExternalCandidates,
             )
         }
     }
