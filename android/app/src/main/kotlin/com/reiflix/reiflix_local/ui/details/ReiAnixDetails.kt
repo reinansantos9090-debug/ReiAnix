@@ -917,7 +917,10 @@ private fun DetailsHero(
                             .clip(ReiAnixTokens.Shapes.artwork).offset(y = -posterOverlap),
                         identity = anime.stableKey + ":poster",
                         maxDimensionPx = 512,
-                        externalUrl = anime.artwork?.externalUrl)
+                        externalUrl = anime.artwork?.externalUrl,
+                        localCandidates = anime.artwork?.localCandidates.orEmpty(),
+                        externalCandidates = anime.artwork?.externalCandidates.orEmpty(),
+                    )
                     Text(text = anime.title, style = ReiAnixTokens.TypographyTokens.heroTitle, color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -937,7 +940,10 @@ private fun DetailsHero(
                             modifier = Modifier.width(ReiAnixTokens.Dimensions.detailsHeroPosterWidth).aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio).clip(ReiAnixTokens.Shapes.artwork),
                             identity = anime.stableKey + ":poster",
                             maxDimensionPx = 512,
-                            externalUrl = anime.artwork?.externalUrl)
+                            externalUrl = anime.artwork?.externalUrl,
+                        localCandidates = anime.artwork?.localCandidates.orEmpty(),
+                        externalCandidates = anime.artwork?.externalCandidates.orEmpty(),
+                    )
                     }
                     Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
                     Column(modifier = Modifier.weight(1f).padding(top = ReiAnixTokens.Spacing.sm), verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
