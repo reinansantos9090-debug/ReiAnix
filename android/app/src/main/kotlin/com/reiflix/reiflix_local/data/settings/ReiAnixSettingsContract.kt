@@ -130,4 +130,13 @@ object ReiAnixSettingsContract {
             definitions.forEach { (key, definition) -> put(key, definition.defaultValue) }
             putAll(values)
         }
+
+    /**
+     * Uses the canonical SQLite values whenever that read succeeded. The legacy
+     * projection is only a fallback when canonical preferences are unavailable.
+     */
+    fun effectivePreferences(
+        canonicalPreferences: Map<String, String>?,
+        projectedPreferences: Map<String, String>,
+    ): Map<String, String> = withDefaults(canonicalPreferences ?: projectedPreferences)
 }
