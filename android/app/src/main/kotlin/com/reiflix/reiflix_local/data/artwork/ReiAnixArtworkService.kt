@@ -98,10 +98,29 @@ internal fun invalidGeneratedThumbnailPaths(
 
 internal const val MAX_AUTOMATIC_ARTWORK_FAILURES = 5
 internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
+internal const val EXHAUSTED_ARTWORK_RETRY_DELAY_SECONDS = 7L * 24L * 60L * 60L
 
 /**
- * A legacy "failed" row without next_retry_at is eligible for one recovery attempt.
- * Automatic retries are bounded; an explicit force request can always recover it.
+ * Retry aggressively only for a bounded number of failures. Once that window is
+ * exhausted, keep a persisted seven-day recovery window instead of permanently
+ * poisoning a cover because of a previous outage or an invalid historical row.
+ */
+internal fun artworkRetryDelaySeconds(failureCount: Int, retryable: Boolean): Long? {
+    if (failureCount <= 0) return null
+    if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES) {
+        return EXHAUSTED_ARTWORK_RETRY_DELAY_SECONDS
+    }
+    return if (retryable) {
+        minOf(21600L, 60L * (1L shl (failureCount - 1).coerceIn(0, 10)))
+    } else {
+        PERMANENT_ARTWORK_RETRY_DELAY_SECONDS
+    }
+}
+
+/**
+ * Failed legacy rows with no retry timestamp remain recoverable. After the normal
+ * retry window is exhausted, the persisted backoff throttles attempts to once a week;
+ * an explicit force request can still recover a cover immediately.
  */
 internal fun shouldRetryArtworkRequest(
     status: String?,
@@ -113,7 +132,9 @@ internal fun shouldRetryArtworkRequest(
     if (force) return true
     val normalizedStatus = status?.trim()?.lowercase(Locale.ROOT)
     if (normalizedStatus != "failed" && normalizedStatus != "retry_wait") return true
-    if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES) return false
+    if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES &&
+        (retryAtSeconds == null || !retryAtSeconds.isFinite())
+    ) return true
     return retryAtSeconds == null ||
         !retryAtSeconds.isFinite() ||
         retryAtSeconds <= nowSeconds
@@ -455,7 +476,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 image?.let { removeIfUnreferenced(it.file) }
                 throw cancelled
             } catch (error: Exception) {
-                val retryDelaySeconds = setFailure(rowId, error, (error as? HttpFailure)?.code)
+                val retryDelaySeconds = setFailure(rowId, id, type, error, (error as? HttpFailure)?.code, requestId)
                 if (retryDelaySeconds != null) scheduleArtworkRetry(id, retryDelaySeconds)
                 ReiAnixDiagnosticTimeline.record(
                     name = "NATIVE_ARTWORK_DOWNLOAD_FAILED",
@@ -675,35 +696,100 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             true
         }
 
-    private fun setFailure(rowId: Long, error: Exception, httpStatus: Int?): Long? {
-        val retryable = when (error) {
-            is HttpFailure -> httpStatus == 429 || (httpStatus != null && httpStatus in 500..599)
-            is IOException -> true
-            else -> false
-        }
-        return database.transaction { db ->
-            if (artworkById(db, rowId) == null) return@transaction null
-            val count = db.rawQuery("SELECT failure_count FROM artwork WHERE id=?", arrayOf(rowId.toString()))
-                .use { if (it.moveToFirst()) it.getInt(0) + 1 else 1 }
-            val automaticRetryDelay = when {
-                retryable && count < MAX_AUTOMATIC_ARTWORK_FAILURES ->
-                    minOf(21600L, 60L * (1L shl (count - 1).coerceIn(0, 10)))
-                !retryable && count < MAX_AUTOMATIC_ARTWORK_FAILURES ->
-                    PERMANENT_ARTWORK_RETRY_DELAY_SECONDS
-                else -> null
+    private fun setFailure(
+        rowId: Long,
+        animeId: Long,
+        type: String,
+        error: Exception,
+        httpStatus: Int?,
+        requestId: String,
+    ): Long? {
+        // Decode outside the SQLite transaction. A corrupt/missing cached file must
+        // not remain projected as a usable image while its replacement is retried.
+        val observedRow = database.read { db -> artworkById(db, rowId) } ?: return null
+        val invalidLocalPath = observedRow.path?.takeIf { !validImage(it) }
+        var invalidatedLocalPath = false
+
+        val retryDelay = database.transaction { db ->
+            val row = artworkById(db, rowId) ?: return@transaction null
+            // An artwork editor/local import may win while a remote request is in
+            // flight. Never let that older request overwrite its manual/local state.
+            if (row.manual || row.source.equals("manual", true) || row.source.equals("local", true)) {
+                return@transaction null
             }
+            val count = db.rawQuery(
+                "SELECT failure_count FROM artwork WHERE id=?",
+                arrayOf(rowId.toString()),
+            ).use { if (it.moveToFirst()) it.getInt(0) + 1 else 1 }
+            val retryable = when (error) {
+                is HttpFailure -> httpStatus == 429 || (httpStatus != null && httpStatus in 500..599)
+                is IOException -> true
+                else -> false
+            }
+            val automaticRetryDelay = artworkRetryDelaySeconds(count, retryable)
             val retryWillBeScheduled = retryable && automaticRetryDelay != null
             val now = nowSeconds()
+            val shouldClearInvalidPath = invalidLocalPath != null && row.path == invalidLocalPath
             val values = ContentValues().apply {
                 put("status", if (retryWillBeScheduled) "retry_wait" else "failed")
-                put("updated_at", now); put("last_attempt_at", now); put("failure_count", count)
+                put("updated_at", now)
+                put("last_attempt_at", now)
+                put("failure_count", count)
                 if (automaticRetryDelay != null) put("next_retry_at", now + automaticRetryDelay)
                 else putNull("next_retry_at")
                 if (httpStatus == null) putNull("http_status") else put("http_status", httpStatus)
+                if (shouldClearInvalidPath) {
+                    putNull("local_path")
+                    putNull("checksum")
+                    putNull("width")
+                    putNull("height")
+                    putNull("content_type")
+                    put("byte_size", 0L)
+                }
             }
             db.update("artwork", values, "id=?", arrayOf(rowId.toString()))
+
+            if (shouldClearInvalidPath) {
+                invalidatedLocalPath = true
+                if (type == "poster") {
+                    val pointer = db.rawQuery(
+                        "SELECT cover_cache,metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
+                        arrayOf(animeId.toString()),
+                    ).use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null
+                    }
+                    if (pointer?.first == invalidLocalPath &&
+                        !ownsManualField(pointer.second, "cover_cache")
+                    ) {
+                        // Clear only this invalid pointer; the old image is never
+                        // deleted here, and valid/manual artwork remains untouched.
+                        db.update(
+                            "anime",
+                            ContentValues().apply { put("cover_cache", "") },
+                            "id=? AND cover_cache=?",
+                            arrayOf(animeId.toString(), invalidLocalPath),
+                        )
+                    }
+                }
+            }
             automaticRetryDelay.takeIf { retryWillBeScheduled }
         }
+
+        if (invalidatedLocalPath) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_CACHE_ENTRY_INVALIDATED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = "INVALID_LOCAL_FILE_REMOVED_FROM_PROJECTION",
+                requestId = requestId,
+                context = mapOf(
+                    "entity_id" to animeId,
+                    "artwork_type" to type,
+                    "source_kind" to "local_cache",
+                ),
+            )
+        }
+        return retryDelay
     }
 
     private fun scheduleArtworkRetry(animeId: Long, delaySeconds: Long) {

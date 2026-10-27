@@ -31,6 +31,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Dimension
@@ -47,6 +49,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 private const val TAG = "ReiAnixLocalArtwork"
+private const val MAX_COIL_ARTWORK_DISK_CACHE_BYTES = 32L * 1024L * 1024L
 
 /**
  * One process-wide Coil loader for Compose artwork.
@@ -63,6 +66,20 @@ private object ReiAnixArtworkImageLoader {
         instance?.let { return it }
         return synchronized(this) {
             instance ?: ImageLoader.Builder(context.applicationContext)
+                .memoryCache {
+                    // Keep the thumbnail-heavy grids inside a predictable heap budget.
+                    MemoryCache.Builder()
+                        .maxSizePercent(context.applicationContext, 0.10)
+                        .build()
+                }
+                .diskCache {
+                    // Coil handles remote fallbacks; native artwork files remain the
+                    // persistent canonical cache. Keep this secondary cache bounded.
+                    DiskCache.Builder()
+                        .directory(File(context.cacheDir, "reianix_artwork_images"))
+                        .maxSizeBytes(MAX_COIL_ARTWORK_DISK_CACHE_BYTES)
+                        .build()
+                }
                 .memoryCachePolicy(CachePolicy.ENABLED)
                 .diskCachePolicy(CachePolicy.ENABLED)
                 .networkCachePolicy(CachePolicy.ENABLED)

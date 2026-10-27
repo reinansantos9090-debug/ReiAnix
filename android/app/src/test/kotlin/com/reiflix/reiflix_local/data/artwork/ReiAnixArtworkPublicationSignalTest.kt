@@ -106,8 +106,8 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun automaticRetriesAreBoundedButExplicitForceCanRecoverExhaustedRows() {
-        assertFalse(
+    fun exhaustedLegacyFailuresWithoutBackoffRemainRecoverable() {
+        assertTrue(
             shouldRetryArtworkRequest(
                 status = "failed",
                 retryAtSeconds = null,
@@ -124,6 +124,45 @@ class ReiAnixArtworkPublicationSignalTest {
                 nowSeconds = 10_000.0,
                 force = true,
             ),
+        )
+    }
+
+    @Test
+    fun exhaustedFailuresRespectPersistedSevenDayBackoffThenRecover() {
+        assertFalse(
+            shouldRetryArtworkRequest(
+                status = "retry_wait",
+                retryAtSeconds = 20_000.0,
+                failureCount = MAX_AUTOMATIC_ARTWORK_FAILURES,
+                nowSeconds = 19_999.0,
+                force = false,
+            ),
+        )
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "retry_wait",
+                retryAtSeconds = 20_000.0,
+                failureCount = MAX_AUTOMATIC_ARTWORK_FAILURES,
+                nowSeconds = 20_000.0,
+                force = false,
+            ),
+        )
+    }
+
+    @Test
+    fun retryBackoffIsBoundedAndNeverPermanentlyLocksExhaustedArtwork() {
+        assertEquals(60L, artworkRetryDelaySeconds(1, retryable = true))
+        assertEquals(
+            PERMANENT_ARTWORK_RETRY_DELAY_SECONDS,
+            artworkRetryDelaySeconds(1, retryable = false),
+        )
+        assertEquals(
+            EXHAUSTED_ARTWORK_RETRY_DELAY_SECONDS,
+            artworkRetryDelaySeconds(MAX_AUTOMATIC_ARTWORK_FAILURES, retryable = true),
+        )
+        assertEquals(
+            EXHAUSTED_ARTWORK_RETRY_DELAY_SECONDS,
+            artworkRetryDelaySeconds(MAX_AUTOMATIC_ARTWORK_FAILURES, retryable = false),
         )
     }
 

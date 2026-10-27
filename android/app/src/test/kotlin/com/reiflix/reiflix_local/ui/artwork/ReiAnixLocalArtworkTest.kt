@@ -34,6 +34,7 @@ class ReiAnixLocalArtworkTest {
 
         assertEquals(memoryA, memoryB)
         assertEquals(diskA, diskB)
+        assertNotEquals(diskA, buildArtworkDiskCacheKey("https://img/b.jpg"))
         assertNotEquals(memoryA, memoryDifferentSize)
         assertNotEquals(memoryA, buildArtworkMemoryCacheKey("anime:11:poster", "https://img/a.jpg", 320, 480))
         assertNotEquals(memoryA, buildArtworkMemoryCacheKey("anime:10:poster", "https://img/b.jpg", 320, 480))
