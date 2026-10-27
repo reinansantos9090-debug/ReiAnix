@@ -1297,6 +1297,37 @@ class ReiAnixSqliteLibraryRepository(
         }
 
     /**
+     * Reads only one anime and its committed poster/backdrop rows from the canonical
+     * SQLite snapshot. Artwork publications use this narrow read to update current
+     * Compose models without reloading the full library and episode catalog.
+     */
+    suspend fun loadAnimeArtworkSnapshot(
+        animeId: Long,
+    ): Pair<ReiAnixAnimeRecord, List<ReiAnixArtworkRecord>>? = withContext(Dispatchers.IO) {
+        require(animeId > 0L) { "Anime ID must be a positive persisted ID." }
+        database.readConsistentSnapshot { connection ->
+            val anime = connection.rawQuery(
+                "SELECT * FROM anime WHERE id = ? LIMIT 1",
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) cursor.toAnimeRecord() else null
+            } ?: return@readConsistentSnapshot null
+
+            val artwork = connection.rawQuery(
+                "SELECT * FROM artwork WHERE entity_id = ? " +
+                    "AND entity_type IN ('anime','movie') AND status != 'failed' " +
+                    "ORDER BY priority DESC, updated_at DESC, id DESC",
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.toArtworkRecord())
+                }
+            }
+            anime to artwork
+        }
+    }
+
+    /**
      * Atomically updates only the supplied playback fields on the existing episode.
      * Missing rows and SQLite errors are propagated; they are never treated as success.
      */

@@ -7,6 +7,7 @@ import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.resolveNativePlaybackStartPosition
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublication
 import com.reiflix.reiflix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
@@ -54,6 +55,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.conflate
@@ -66,6 +68,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
@@ -1338,6 +1341,45 @@ class ReiAnixLibraryViewModel(
     }
 
     /**
+     * Re-projects the cover/backdrop for one persisted anime after the artwork service
+     * commits it. Both poster cards and Details observe the updated canonical model;
+     * Library's currently visible page is patched by ID without reloading its items.
+     */
+    private suspend fun refreshAnimeArtworkProjection(animeId: Long) {
+        val snapshot = try {
+            nativeLibraryRepository.loadAnimeArtworkSnapshot(animeId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(
+                TAG,
+                "Native targeted artwork projection failed. entityId=$animeId errorType=" +
+                    error::class.java.simpleName,
+            )
+            return
+        } ?: return
+
+        val artwork = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
+            .projectArtwork(snapshot.first, snapshot.second)
+
+        nativeCatalogReloadMutex.withLock {
+            val catalog = nativeCatalogState.value
+            val updatedCatalog = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
+                .replaceArtworkForAnime(catalog.animes, animeId, artwork)
+            if (updatedCatalog !== catalog.animes) {
+                nativeCatalogState.value = catalog.copy(animes = updatedCatalog)
+            }
+
+            val page = nativePagedLibraryState.value
+            val updatedPage = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
+                .replaceArtworkForAnime(page.animes, animeId, artwork)
+            if (updatedPage !== page.animes) {
+                nativePagedLibraryState.value = page.copy(animes = updatedPage)
+            }
+        }
+    }
+
+    /**
      * Refreshes the local Details projection directly from canonical SQLite and
      * asks the native artwork pipeline to repair this item's poster/backdrop.
      * This read path deliberately does not issue a legacy Python catalog command.
@@ -1574,8 +1616,13 @@ class ReiAnixLibraryViewModel(
         // several list items) into one canonical re-read, without rescanning media.
         appDependencies?.artworkService?.publishedArtworks?.let { publications ->
             viewModelScope.launch {
+                // Keep every committed publication during the debounce window. A plain
+                // debounce + collectLatest would drop updates for other anime in the same
+                // burst, so drain the accumulated queue and deduplicate by stable local ID.
+                val pendingPublications = ConcurrentLinkedQueue<ReiAnixArtworkPublication>()
                 publications
                     .onEach { publication ->
+                        pendingPublications.offer(publication)
                         ReiAnixDiagnosticTimeline.record(
                             name = "ARTWORK_PROJECTION_INVALIDATION_QUEUED",
                             source = "ReiAnixLibraryViewModel",
@@ -1590,21 +1637,64 @@ class ReiAnixLibraryViewModel(
                         )
                     }
                     .debounce(ARTWORK_PROJECTION_REFRESH_DEBOUNCE_MS)
-                    .collectLatest { publication ->
-                        ReiAnixDiagnosticTimeline.record(
-                            name = "ARTWORK_PROJECTION_REFRESH_REQUESTED",
-                            source = "ReiAnixLibraryViewModel",
-                            result = "CANONICAL_SQLITE_RELOAD",
-                            requestId = publication.requestId,
-                            context = mapOf(
-                                "entity_type" to publication.entityType,
-                                "entity_id" to publication.entityId,
-                                "artwork_type" to publication.artworkType,
-                                "source_kind" to publication.sourceKind,
-                                "refresh_mode" to "PROJECTION_ONLY",
-                            ),
-                        )
-                        refreshCatalogProjection()
+                    .collect { latestPublication ->
+                        val batch = buildList {
+                            while (true) {
+                                val next = pendingPublications.poll() ?: break
+                                add(next)
+                            }
+                        }.ifEmpty { listOf(latestPublication) }
+
+                        // Episode thumbnails remain on their existing projection-refresh
+                        // path. This prompt changes anime covers only, not episode artwork.
+                        val requiresFullProjection = batch.any { publication ->
+                            val entityType = publication.entityType
+                            (!entityType.equals("anime", ignoreCase = true) &&
+                                !entityType.equals("movie", ignoreCase = true)) ||
+                                publication.artworkType.equals("episode_thumbnail", ignoreCase = true) ||
+                                (publication.entityId.toLongOrNull() ?: 0L) <= 0L
+                        }
+
+                        if (requiresFullProjection) {
+                            batch.forEach { publication ->
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "ARTWORK_PROJECTION_REFRESH_REQUESTED",
+                                    source = "ReiAnixLibraryViewModel",
+                                    result = "CANONICAL_SQLITE_RELOAD",
+                                    requestId = publication.requestId,
+                                    context = mapOf(
+                                        "entity_type" to publication.entityType,
+                                        "entity_id" to publication.entityId,
+                                        "artwork_type" to publication.artworkType,
+                                        "source_kind" to publication.sourceKind,
+                                        "refresh_mode" to "COMPATIBILITY_PROJECTION",
+                                    ),
+                                )
+                            }
+                            refreshCatalogProjection()
+                        } else {
+                            val animeIds = batch.mapNotNull { publication ->
+                                publication.entityId.toLongOrNull()
+                            }.distinct()
+                            batch.forEach { publication ->
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "ARTWORK_PROJECTION_REFRESH_REQUESTED",
+                                    source = "ReiAnixLibraryViewModel",
+                                    result = "TARGETED_ANIME_ARTWORK_UPDATE",
+                                    requestId = publication.requestId,
+                                    context = mapOf(
+                                        "entity_type" to publication.entityType,
+                                        "entity_id" to publication.entityId,
+                                        "artwork_type" to publication.artworkType,
+                                        "source_kind" to publication.sourceKind,
+                                        "refresh_mode" to "SINGLE_ANIME_ARTWORK",
+                                    ),
+                                )
+                            }
+                            animeIds.forEach { animeId ->
+                                refreshAnimeArtworkProjection(animeId)
+                            }
+                        }
                     }
             }
         }
@@ -1838,7 +1928,11 @@ class ReiAnixLibraryViewModel(
                         refreshNativeCatalog()
                         return@launch
                     }
-                    val pageItems = pageResult.animeIds.mapNotNull(byId::get)
+                    val latestArtworkById = nativeCatalogState.value.animes.associateBy { it.id }
+                    val pageItems = pageResult.animeIds.mapNotNull { animeId ->
+                        val pageAnime = byId[animeId] ?: return@mapNotNull null
+                        pageAnime.copy(artwork = latestArtworkById[animeId]?.artwork ?: pageAnime.artwork)
+                    }
                     if (generation != nativePageGeneration.get()) return@launch
                     val currentState = nativePagedLibraryState.value
                     if (currentState.generation != generation) return@launch

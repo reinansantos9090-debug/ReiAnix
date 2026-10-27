@@ -1,10 +1,13 @@
 package com.reiflix.reiflix_local.data.library
 
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
@@ -39,6 +42,65 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             .mapNotNull(::validReiAnixArtworkHttpUrl)
             .distinct()
         return local to external
+    }
+
+    /**
+     * Projects poster and backdrop metadata through the same path used by the full
+     * catalog. The input records are read from canonical SQLite; this function has no
+     * IO, cache, or image-loading side effects.
+     */
+    internal fun projectArtwork(
+        anime: ReiAnixAnimeRecord,
+        artworkRows: List<ReiAnixArtworkRecord>,
+    ): ReiAnixArtworkUiModel? {
+        val backdrop = artworkRows.firstOrNull {
+            it.artworkType.equals("backdrop", ignoreCase = true) ||
+                it.artworkType.equals("banner", ignoreCase = true)
+        }
+        val posterRows = artworkRows.filterNot {
+            it.artworkType.equals("backdrop", ignoreCase = true) ||
+                it.artworkType.equals("banner", ignoreCase = true)
+        }
+        val (localCandidates, externalCandidates) = resolvePosterArtworkCandidates(
+            artworkLocalPaths = posterRows.map { it.localPath },
+            artworkExternalUrls = posterRows.map { it.externalUrl },
+            coverCache = anime.coverCache,
+            coverUrl = anime.coverUrl,
+        )
+        val backdropLocalPath = backdrop?.localPath?.trim()?.takeIf(String::isNotEmpty)
+        val backdropExternalUrl = backdrop?.externalUrl?.trim()?.takeIf(String::isNotEmpty)
+        if (
+            localCandidates.isEmpty() &&
+            externalCandidates.isEmpty() &&
+            backdropLocalPath == null &&
+            backdropExternalUrl == null
+        ) {
+            return null
+        }
+        return ReiAnixArtworkUiModel(
+            localPath = localCandidates.firstOrNull(),
+            externalUrl = externalCandidates.firstOrNull(),
+            backdropLocalPath = backdropLocalPath,
+            backdropExternalUrl = backdropExternalUrl,
+            localCandidates = localCandidates,
+            externalCandidates = externalCandidates,
+        )
+    }
+
+    /**
+     * Replaces only the artwork field for one persisted anime identity. Missing artwork
+     * never removes the anime from its collection, and unrelated model instances retain
+     * their identity/state so Compose grids and filters remain stable.
+     */
+    internal fun replaceArtworkForAnime(
+        animes: List<ReiAnixAnimeUiModel>,
+        animeId: Long,
+        artwork: ReiAnixArtworkUiModel?,
+    ): List<ReiAnixAnimeUiModel> {
+        if (animes.none { it.id == animeId }) return animes
+        return animes.map { anime ->
+            if (anime.id == animeId) anime.copy(artwork = artwork) else anime
+        }
     }
 
     fun project(rows: List<ReiAnixLibraryCatalogRow>): ReiAnixNativeLibraryCatalogSnapshot {
@@ -97,23 +159,9 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         val regularEpisodes = orderedEpisodes.filter {
             it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
         }
-        val animeArtwork = row.animeArtwork
-        val backdrop = animeArtwork.firstOrNull {
-            it.artworkType.equals("backdrop", ignoreCase = true) ||
-                it.artworkType.equals("banner", ignoreCase = true)
-        }
-        val posterCandidates = animeArtwork.filterNot {
-            it.artworkType.equals("backdrop", ignoreCase = true) ||
-                it.artworkType.equals("banner", ignoreCase = true)
-        }
-        val (posterLocalCandidates, posterExternalCandidates) = resolvePosterArtworkCandidates(
-            artworkLocalPaths = posterCandidates.map { it.localPath },
-            artworkExternalUrls = posterCandidates.map { it.externalUrl },
-            coverCache = anime.coverCache,
-            coverUrl = anime.coverUrl,
-        )
-        val primaryLocalArtwork = posterLocalCandidates.firstOrNull()
-        val primaryExternalArtwork = posterExternalCandidates.firstOrNull()
+        val artwork = projectArtwork(anime, row.animeArtwork)
+        val primaryLocalArtwork = artwork?.localPath
+        val primaryExternalArtwork = artwork?.externalUrl
         val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name }
             else parseStringArray(anime.genresJson)
         val genreIds = if (row.genres.isNotEmpty()) row.genres.map { it.id } else emptyList()
@@ -179,10 +227,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank()),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
-            "artwork_local_candidates" to posterLocalCandidates,
-            "artwork_external_candidates" to posterExternalCandidates,
-            "artwork_backdrop_local_path" to backdrop?.localPath,
-            "backdrop_external_url" to backdrop?.externalUrl,
+            "artwork_local_candidates" to artwork?.localCandidates.orEmpty(),
+            "artwork_external_candidates" to artwork?.externalCandidates.orEmpty(),
+            "artwork_backdrop_local_path" to artwork?.backdropLocalPath,
+            "backdrop_external_url" to artwork?.backdropExternalUrl,
             "playback_target_episode_id" to target?.id,
             "score" to anime.score?.toDouble(),
             "year" to anime.year,
