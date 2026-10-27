@@ -380,6 +380,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 if (cacheClearInProgress.get()) return@launch
                 var afterId = readPersistedArtworkMaterializationCursor(database)
                 var scannedThisPass = 0
+                var mayWrapToStart = afterId > 0L
                 var wrapped = false
                 while (
                     currentCoroutineContext().isActive &&
@@ -398,7 +399,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             arrayOf(afterId.toString(), limit.toString()),
                         ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
                     }
-                    if (ids.isEmpty() && afterId > 0L && !wrapped) {
+                    if (ids.isEmpty() && mayWrapToStart && !wrapped) {
                         afterId = 0L
                         wrapped = true
                         writePersistedArtworkMaterializationCursor(database, 0L)
@@ -415,6 +416,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         writePersistedArtworkMaterializationCursor(database, 0L)
                         break
                     }
+                    // Only wrap when the saved cursor already points past the remaining rows.
+                    // Once any rows after the cursor are found, reaching the tail ends this pass.
+                    mayWrapToStart = false
                     val batch = ArrayList<Job>()
                     ids.forEach { id ->
                         if (!cacheClearInProgress.get()) {
