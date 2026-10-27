@@ -173,6 +173,9 @@ class ReiAnixArtworkPublicationSignalTest {
 
     @Test
     fun retryBackoffIsBoundedAndNeverPermanentlyLocksExhaustedArtwork() {
+        assertTrue(shouldScheduleArtworkRetry(MAX_AUTOMATIC_ARTWORK_FAILURES - 1, retryable = true))
+        assertFalse(shouldScheduleArtworkRetry(MAX_AUTOMATIC_ARTWORK_FAILURES, retryable = true))
+        assertFalse(shouldScheduleArtworkRetry(1, retryable = false))
         assertEquals(60L, artworkRetryDelaySeconds(1, retryable = true))
         assertEquals(
             PERMANENT_ARTWORK_RETRY_DELAY_SECONDS,

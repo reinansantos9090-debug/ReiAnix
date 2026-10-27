@@ -115,6 +115,9 @@ internal fun shouldReuseLegacyCoverCache(
  * exhausted, keep a persisted seven-day recovery window instead of permanently
  * poisoning a cover because of a previous outage or an invalid historical row.
  */
+internal fun shouldScheduleArtworkRetry(failureCount: Int, retryable: Boolean): Boolean =
+    retryable && failureCount in 1 until MAX_AUTOMATIC_ARTWORK_FAILURES
+
 internal fun artworkRetryDelaySeconds(failureCount: Int, retryable: Boolean): Long? {
     if (failureCount <= 0) return null
     if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES) {
@@ -761,7 +764,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 else -> false
             }
             val automaticRetryDelay = artworkRetryDelaySeconds(count, retryable)
-            val retryWillBeScheduled = retryable && automaticRetryDelay != null
+            val retryWillBeScheduled = shouldScheduleArtworkRetry(count, retryable) && automaticRetryDelay != null
             val now = nowSeconds()
             val shouldClearInvalidPath = invalidLocalPath != null && row.path == invalidLocalPath
             val values = ContentValues().apply {
