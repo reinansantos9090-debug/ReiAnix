@@ -93,6 +93,38 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun invalidCoverPointerIsClearedOnlyWhenStillCurrentAndNotUserOwned() {
+        assertTrue(
+            shouldClearInvalidArtworkPointer(
+                invalidPointerCandidate = "/cache/broken-cover.jpg",
+                currentPointer = "/cache/broken-cover.jpg",
+                currentPointerIsManual = false,
+            ),
+        )
+        assertFalse(
+            shouldClearInvalidArtworkPointer(
+                invalidPointerCandidate = "/cache/broken-cover.jpg",
+                currentPointer = "/cache/new-cover.jpg",
+                currentPointerIsManual = false,
+            ),
+        )
+        assertFalse(
+            shouldClearInvalidArtworkPointer(
+                invalidPointerCandidate = "/cache/broken-cover.jpg",
+                currentPointer = "/cache/broken-cover.jpg",
+                currentPointerIsManual = true,
+            ),
+        )
+        assertFalse(
+            shouldClearInvalidArtworkPointer(
+                invalidPointerCandidate = null,
+                currentPointer = "/cache/broken-cover.jpg",
+                currentPointerIsManual = false,
+            ),
+        )
+    }
+
+    @Test
     fun legacyFailedArtworkWithoutRetryTimestampCanBeRetried() {
         assertTrue(
             shouldRetryArtworkRequest(

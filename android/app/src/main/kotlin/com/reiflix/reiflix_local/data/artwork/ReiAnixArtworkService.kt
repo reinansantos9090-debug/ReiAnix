@@ -109,6 +109,21 @@ internal fun shouldReuseLegacyCoverCache(
     hasCurrentOrLocalAssociation: Boolean,
 ): Boolean = hasArtworkPathAssociation && hasCurrentOrLocalAssociation
 
+/**
+ * Clear a stale pointer only if it still points at the path observed as invalid.
+ * A newer pointer or a user-owned cover must survive a failed remote refresh.
+ */
+internal fun shouldClearInvalidArtworkPointer(
+    invalidPointerCandidate: String?,
+    currentPointer: String?,
+    currentPointerIsManual: Boolean,
+): Boolean {
+    val candidate = invalidPointerCandidate?.trim().orEmpty()
+    return candidate.isNotEmpty() &&
+        !currentPointerIsManual &&
+        currentPointer?.trim() == candidate
+}
+
 
 /**
  * Retry aggressively only for a bounded number of failures. Once that window is
@@ -745,6 +760,28 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         // not remain projected as a usable image while its replacement is retried.
         val observedRow = database.read { db -> artworkById(db, rowId) } ?: return null
         val invalidLocalPath = observedRow.path?.takeIf { !validImage(it) }
+        val observedCoverPointer = if (type == "poster") {
+            database.read { db ->
+                db.rawQuery(
+                    "SELECT cover_cache,metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
+                    arrayOf(animeId.toString()),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        cursor.getString(0)?.trim().orEmpty() to cursor.getString(1)
+                    } else {
+                        null
+                    }
+                }
+            }
+        } else {
+            null
+        }
+        val invalidCoverCachePointer = observedCoverPointer?.first?.takeIf { path ->
+            path.isNotEmpty() &&
+                !ownsManualField(observedCoverPointer.second, "cover_cache") &&
+                !validImage(path)
+        }
+        val invalidPointerCandidates = listOfNotNull(invalidLocalPath, invalidCoverCachePointer).distinct()
         var invalidatedLocalPath = false
 
         val retryDelay = database.transaction { db ->
@@ -786,27 +823,33 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             }
             db.update("artwork", values, "id=?", arrayOf(rowId.toString()))
 
-            if (shouldClearInvalidPath) {
-                invalidatedLocalPath = true
-                if (type == "poster") {
-                    val pointer = db.rawQuery(
-                        "SELECT cover_cache,metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
-                        arrayOf(animeId.toString()),
-                    ).use { cursor ->
-                        if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null
-                    }
-                    if (pointer?.first == invalidLocalPath &&
-                        !ownsManualField(pointer.second, "cover_cache")
-                    ) {
-                        // Clear only this invalid pointer; the old image is never
-                        // deleted here, and valid/manual artwork remains untouched.
-                        db.update(
-                            "anime",
-                            ContentValues().apply { put("cover_cache", "") },
-                            "id=? AND cover_cache=?",
-                            arrayOf(animeId.toString(), invalidLocalPath),
-                        )
-                    }
+            if (shouldClearInvalidPath) invalidatedLocalPath = true
+
+            if (type == "poster" && invalidPointerCandidates.isNotEmpty()) {
+                val pointer = db.rawQuery(
+                    "SELECT cover_cache,metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
+                    arrayOf(animeId.toString()),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null
+                }
+                val currentPointer = pointer?.first?.trim()
+                val invalidPointerToClear = invalidPointerCandidates.firstOrNull { candidate ->
+                    shouldClearInvalidArtworkPointer(
+                        invalidPointerCandidate = candidate,
+                        currentPointer = currentPointer,
+                        currentPointerIsManual = ownsManualField(pointer?.second, "cover_cache"),
+                    )
+                }
+                if (invalidPointerToClear != null) {
+                    // Remove the stale database pointer only. Never delete the file
+                    // here; another artwork row or another screen may still reference it.
+                    db.update(
+                        "anime",
+                        ContentValues().apply { put("cover_cache", "") },
+                        "id=? AND cover_cache=?",
+                        arrayOf(animeId.toString(), invalidPointerToClear),
+                    )
+                    invalidatedLocalPath = true
                 }
             }
             automaticRetryDelay.takeIf { retryWillBeScheduled }
