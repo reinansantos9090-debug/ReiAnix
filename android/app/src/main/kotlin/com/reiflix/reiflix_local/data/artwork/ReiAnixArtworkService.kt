@@ -133,6 +133,10 @@ internal fun shouldClearInvalidArtworkPointer(
 internal fun shouldScheduleArtworkRetry(failureCount: Int, retryable: Boolean): Boolean =
     retryable && failureCount in 1 until MAX_AUTOMATIC_ARTWORK_FAILURES
 
+internal fun shouldPreserveScheduledArtworkRetry(force: Boolean, retryJobActive: Boolean): Boolean =
+    retryJobActive && !force
+
+
 internal fun artworkRetryDelaySeconds(failureCount: Int, retryable: Boolean): Long? {
     if (failureCount <= 0) return null
     if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES) {
@@ -237,6 +241,20 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     name = "NATIVE_ARTWORK_REQUEST_SKIPPED",
                     source = "ReiAnixArtworkService",
                     result = "ALREADY_RUNNING",
+                    requestId = requestId,
+                    context = mapOf("entity_id" to animeId, "force" to false),
+                )
+                return false
+            }
+            if (shouldPreserveScheduledArtworkRetry(
+                    force = force,
+                    retryJobActive = retryJobs[animeId]?.isActive == true,
+                )
+            ) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_ARTWORK_REQUEST_SKIPPED",
+                    source = "ReiAnixArtworkService",
+                    result = "RETRY_ALREADY_SCHEDULED",
                     requestId = requestId,
                     context = mapOf("entity_id" to animeId, "force" to false),
                 )

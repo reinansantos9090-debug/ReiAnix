@@ -224,6 +224,13 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun duplicateOrdinaryRequestsPreserveScheduledRetryButForceMayReplaceIt() {
+        assertTrue(shouldPreserveScheduledArtworkRetry(force = false, retryJobActive = true))
+        assertFalse(shouldPreserveScheduledArtworkRetry(force = true, retryJobActive = true))
+        assertFalse(shouldPreserveScheduledArtworkRetry(force = false, retryJobActive = false))
+    }
+
+    @Test
     fun invalidArtworkRowsRemainEligibleWhenNoBackoffStateBlocksThem() {
         assertTrue(
             shouldRetryArtworkRequest(
