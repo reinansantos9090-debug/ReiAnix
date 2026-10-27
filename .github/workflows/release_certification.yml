@@ -230,6 +230,7 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationRejectsEmptyExistingDatabaseWithoutReplacingIt \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationDoesNotOverwriteAnUnexpectedSqliteUserVersion \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.bootstrapKeepsNativeServicesGatedWhenCanonicalCoreTablesAreMissing \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.artworkMaterializationCursorPersistsAcrossDatabaseInstancesAndUsesABoundedPass \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.artworkDiscoveryAttemptTimestampsPersistInCanonicalPreferencesAcrossDatabaseInstances \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniListReconciliationCursorPersistsInCanonicalPreferencesAcrossDatabaseInstances \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.artworkDiscoveryCursorPersistsInCanonicalPreferencesAcrossDatabaseInstances \

@@ -12,6 +12,10 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryCursor
 import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryCursor
+import com.reiflix.reiflix_local.data.artwork.ARTWORK_MATERIALIZATION_BATCH_SIZE
+import com.reiflix.reiflix_local.data.artwork.ARTWORK_MATERIALIZATION_MAX_ROWS_PER_PASS
+import com.reiflix.reiflix_local.data.artwork.readPersistedArtworkMaterializationCursor
+import com.reiflix.reiflix_local.data.artwork.writePersistedArtworkMaterializationCursor
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertEquals
@@ -101,6 +105,23 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             ReiAnixSqliteSettingsRepository(context)
                 .getPreference("native.test.transaction_outcome")?.value,
         )
+    }
+
+    @Test
+    fun artworkMaterializationCursorPersistsAcrossDatabaseInstancesAndUsesABoundedPass() = runBlocking {
+        createCanonicalFixture()
+        val firstDatabase = ReiAnixSqliteDatabase(context)
+        assertEquals(0L, readPersistedArtworkMaterializationCursor(firstDatabase))
+
+        writePersistedArtworkMaterializationCursor(firstDatabase, cursorId = 812L)
+        val reopenedDatabase = ReiAnixSqliteDatabase(context)
+        assertEquals(812L, readPersistedArtworkMaterializationCursor(reopenedDatabase))
+
+        assertEquals(16, ARTWORK_MATERIALIZATION_BATCH_SIZE)
+        assertEquals(64, ARTWORK_MATERIALIZATION_MAX_ROWS_PER_PASS)
+
+        writePersistedArtworkMaterializationCursor(reopenedDatabase, cursorId = 0L)
+        assertEquals(0L, readPersistedArtworkMaterializationCursor(ReiAnixSqliteDatabase(context)))
     }
 
     @Test

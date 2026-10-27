@@ -179,6 +179,42 @@ internal fun shouldRetryArtworkRequest(
 }
 
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
+internal const val ARTWORK_MATERIALIZATION_CURSOR_PREFERENCE = "__reianix.internal.artwork_materialization_cursor_v1"
+internal const val ARTWORK_MATERIALIZATION_BATCH_SIZE = 16
+internal const val ARTWORK_MATERIALIZATION_MAX_ROWS_PER_PASS = 64
+
+internal suspend fun readPersistedArtworkMaterializationCursor(
+    database: ReiAnixSqliteDatabase,
+): Long = database.read { connection ->
+    connection.rawQuery(
+        "SELECT value FROM preferences WHERE key=? LIMIT 1",
+        arrayOf(ARTWORK_MATERIALIZATION_CURSOR_PREFERENCE),
+    ).use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0)?.toLongOrNull()?.takeIf { it >= 0L } ?: 0L
+        else 0L
+    }
+}
+
+internal suspend fun writePersistedArtworkMaterializationCursor(
+    database: ReiAnixSqliteDatabase,
+    cursorId: Long,
+) {
+    require(cursorId >= 0L) { "Artwork materialization cursor cannot be negative." }
+    val values = ContentValues().apply {
+        put("key", ARTWORK_MATERIALIZATION_CURSOR_PREFERENCE)
+        put("value", cursorId.toString())
+        put("updated_at", System.currentTimeMillis() / 1000.0)
+    }
+    database.transaction { connection ->
+        connection.insertWithOnConflict(
+            "preferences",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+}
+
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
     private val cacheDirectory = File(File(appContext.filesDir, "data/covers"), "artwork")
@@ -342,16 +378,43 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         backfillJob = scope.launch {
             try {
                 if (cacheClearInProgress.get()) return@launch
-                var afterId = 0L
-                while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
-                    val ids = database.read { db ->
+                var afterId = readPersistedArtworkMaterializationCursor(database)
+                var scannedThisPass = 0
+                var wrapped = false
+                while (
+                    currentCoroutineContext().isActive &&
+                    !cacheClearInProgress.get() &&
+                    scannedThisPass < ARTWORK_MATERIALIZATION_MAX_ROWS_PER_PASS
+                ) {
+                    val limit = minOf(
+                        ARTWORK_MATERIALIZATION_BATCH_SIZE,
+                        ARTWORK_MATERIALIZATION_MAX_ROWS_PER_PASS - scannedThisPass,
+                    )
+                    var ids = database.read { db ->
                         db.rawQuery(
-                            "SELECT id FROM anime WHERE id>? AND (TRIM(COALESCE(cover_url,''))!='' " +
-                                "OR TRIM(COALESCE(banner_url,''))!='') ORDER BY id LIMIT 16",
-                            arrayOf(afterId.toString()),
-                        ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
+                            "SELECT id FROM anime WHERE id>? AND " +
+                                "(TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='') " +
+                                "ORDER BY id LIMIT ?",
+                            arrayOf(afterId.toString(), limit.toString()),
+                        ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
                     }
-                    if (ids.isEmpty()) break
+                    if (ids.isEmpty() && afterId > 0L && !wrapped) {
+                        afterId = 0L
+                        wrapped = true
+                        writePersistedArtworkMaterializationCursor(database, 0L)
+                        ids = database.read { db ->
+                            db.rawQuery(
+                                "SELECT id FROM anime WHERE id>? AND " +
+                                    "(TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='') " +
+                                    "ORDER BY id LIMIT ?",
+                                arrayOf("0", limit.toString()),
+                            ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
+                        }
+                    }
+                    if (ids.isEmpty()) {
+                        writePersistedArtworkMaterializationCursor(database, 0L)
+                        break
+                    }
                     val batch = ArrayList<Job>()
                     ids.forEach { id ->
                         if (!cacheClearInProgress.get()) {
@@ -361,7 +424,26 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     }
                     batch.distinct().joinAll()
                     afterId = ids.last()
+                    writePersistedArtworkMaterializationCursor(database, afterId)
+                    scannedThisPass += ids.size
+                    if (ids.size < limit) {
+                        writePersistedArtworkMaterializationCursor(database, 0L)
+                        afterId = 0L
+                        break
+                    }
                 }
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_ARTWORK_BACKFILL_PASS_COMPLETED",
+                    source = "ReiAnixArtworkService",
+                    result = "BOUNDED_PASS",
+                    context = mapOf(
+                        "rows_scanned" to scannedThisPass,
+                        "row_budget" to ARTWORK_MATERIALIZATION_MAX_ROWS_PER_PASS,
+                        "batch_size" to ARTWORK_MATERIALIZATION_BATCH_SIZE,
+                        "cursor" to afterId,
+                        "wrapped" to wrapped,
+                    ),
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
