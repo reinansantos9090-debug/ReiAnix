@@ -46,6 +46,16 @@ class ReiAnixNativeLibraryCatalogProjectorArtworkTest {
     }
 
     @Test
+    fun metadataBannerRemainsBackdropFallbackWhenNoBackdropRowExists() {
+        val projected = ReiAnixNativeLibraryCatalogProjector.projectArtwork(
+            anime = animeRecord(bannerUrl = "https://cdn.example/banner.jpg"),
+            artworkRows = emptyList(),
+        )
+
+        assertEquals("https://cdn.example/banner.jpg", projected?.backdropExternalUrl)
+    }
+
+    @Test
     fun changedMetadataUrlIsProjectedWithoutKeepingTheOldUrlAsPrimary() {
         val first = ReiAnixNativeLibraryCatalogProjector.projectArtwork(
             anime = animeRecord(),
@@ -132,6 +142,7 @@ class ReiAnixNativeLibraryCatalogProjectorArtworkTest {
     private fun animeRecord(
         coverUrl: String? = "https://cdn.example/current.jpg",
         coverCache: String? = "/cache/cover-cache.jpg",
+        bannerUrl: String? = null,
     ) = ReiAnixAnimeRecord(
         id = 42L,
         lookupTitle = "anime",
@@ -145,7 +156,7 @@ class ReiAnixNativeLibraryCatalogProjectorArtworkTest {
         descriptionOriginal = null,
         coverUrl = coverUrl,
         coverCache = coverCache,
-        bannerUrl = null,
+        bannerUrl = bannerUrl,
         genresJson = null,
         year = 2024,
         season = null,

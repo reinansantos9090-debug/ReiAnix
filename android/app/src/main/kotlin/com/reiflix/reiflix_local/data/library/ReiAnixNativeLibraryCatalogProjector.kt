@@ -69,6 +69,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         )
         val backdropLocalPath = backdrop?.localPath?.trim()?.takeIf(String::isNotEmpty)
         val backdropExternalUrl = backdrop?.externalUrl?.trim()?.takeIf(String::isNotEmpty)
+            ?: anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
         if (
             localCandidates.isEmpty() &&
             externalCandidates.isEmpty() &&
