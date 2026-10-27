@@ -92,6 +92,7 @@ jobs:
             --tests com.reiflix.reiflix_local.VideoThumbnailExtractorTest \
             --tests com.reiflix.reiflix_local.storage.VideoThumbnailFileValidationTest \
             --tests com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtworkTest \
+            --tests com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModelSearchGenerationTest \
             --tests com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjectorArtworkTest \
             --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
             --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \

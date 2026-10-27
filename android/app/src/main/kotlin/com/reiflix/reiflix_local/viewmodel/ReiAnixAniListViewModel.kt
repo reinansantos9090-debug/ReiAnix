@@ -326,24 +326,24 @@ class ReiAnixAniListViewModel(
         searchJob = viewModelScope.launch {
             try {
                 when (val result = integration.search(query)) {
-                    is AniListResult.Success -> if (requestId == searchRequestId) {
+                    is AniListResult.Success -> if (isCurrentAniListSearchRequest(requestId, searchRequestId)) {
                         _aniListUiState.value = _aniListUiState.value.copy(
                             isSearchLoading = false, results = result.value, error = null,
                         )
                     }
-                    is AniListResult.Failure -> if (requestId == searchRequestId) {
+                    is AniListResult.Failure -> if (isCurrentAniListSearchRequest(requestId, searchRequestId)) {
                         _aniListUiState.value = _aniListUiState.value.copy(
                             isSearchLoading = false, results = emptyList(), error = result.error.userMessage(),
                         )
                     }
                 }
             } catch (cancelled: CancellationException) {
-                if (requestId == searchRequestId) {
+                if (isCurrentAniListSearchRequest(requestId, searchRequestId)) {
                     _aniListUiState.value = _aniListUiState.value.copy(isSearchLoading = false)
                 }
                 throw cancelled
             } catch (error: Exception) {
-                if (requestId == searchRequestId) {
+                if (isCurrentAniListSearchRequest(requestId, searchRequestId)) {
                     _aniListUiState.value = _aniListUiState.value.copy(
                         isSearchLoading = false, results = emptyList(),
                         error = error.message?.takeIf(String::isNotBlank)
@@ -351,7 +351,7 @@ class ReiAnixAniListViewModel(
                     )
                 }
             } finally {
-                if (requestId == searchRequestId && _aniListUiState.value.isSearchLoading) {
+                if (isCurrentAniListSearchRequest(requestId, searchRequestId) && _aniListUiState.value.isSearchLoading) {
                     _aniListUiState.value = _aniListUiState.value.copy(isSearchLoading = false)
                 }
             }
@@ -462,3 +462,13 @@ private fun AniListError.userMessage(): String = when (this) {
     is AniListError.InvalidRequest -> message
     is AniListError.InvalidResponse -> "Resposta inválida do AniList ou falha ao salvar os metadados."
 }
+
+
+/**
+ * Guard used by every AniList search completion path: cancellation/failure of an
+ * older query must not overwrite the state owned by the latest query.
+ */
+internal fun isCurrentAniListSearchRequest(
+    requestId: Long,
+    currentRequestId: Long,
+): Boolean = requestId == currentRequestId
