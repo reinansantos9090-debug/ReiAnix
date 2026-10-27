@@ -85,6 +85,7 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniListReconciliationCursorPersistsInCanonicalPreferencesAcrossDatabaseInstances \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.artworkDiscoveryCursorPersistsInCanonicalPreferencesAcrossDatabaseInstances \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.coverRecoveryPersistsUrlForExistingAniListIdAndNotifiesArtworkPipeline \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.artworkDiscoveryUsesBoundedCanonicalAnimeBatchesAndCanResumeById \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.existingValidRemoteCoverDoesNotTriggerAnotherAniListLookup \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.metadataUpdatesRespectManualOwnershipAndPreserveUserOwnedFields \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniListAssociationPersistsOriginalAndLocalizedSynopsisSeparately \
@@ -94,6 +95,8 @@ jobs:
             --tests com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtworkTest \
             --tests com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModelSearchGenerationTest \
             --tests com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjectorArtworkTest \
+            --tests com.reiflix.reiflix_local.LibraryUiMappersTest.explicitNativePosterCandidatesDoNotReintroduceAnUnassociatedLegacyCachePointer \
+            --tests com.reiflix.reiflix_local.data.anilist.ReiAnixArtworkDiscoveryPolicyTest \
             --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
             --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
             --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \

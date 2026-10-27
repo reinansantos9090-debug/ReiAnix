@@ -160,6 +160,39 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun artworkDiscoveryUsesBoundedCanonicalAnimeBatchesAndCanResumeById() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            for (id in 2L..5L) {
+                db.execSQL(
+                    """
+                    INSERT INTO anime (
+                        id, lookup_title, title, added_at, metadata_manual_fields,
+                        favorite, user_tags, is_pinned, personal_note
+                    ) VALUES (?, ?, ?, ?, '[]', 0, '[]', 0, '')
+                    """.trimIndent(),
+                    arrayOf(id, "catalog-key-$id", "Anime $id", 1000.0 + id),
+                )
+            }
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+
+        assertEquals(
+            listOf(1L, 2L),
+            repository.loadArtworkDiscoveryAnimeBatch(afterId = 0L, limit = 2).map { it.id },
+        )
+        assertEquals(
+            listOf(3L, 4L),
+            repository.loadArtworkDiscoveryAnimeBatch(afterId = 2L, limit = 2).map { it.id },
+        )
+        assertEquals(
+            listOf(5L),
+            repository.loadArtworkDiscoveryAnimeBatch(afterId = 4L, limit = 2).map { it.id },
+        )
+        assertTrue(repository.loadArtworkDiscoveryAnimeBatch(afterId = 5L, limit = 2).isEmpty())
+    }
+
+    @Test
     fun coverRecoveryPersistsUrlForExistingAniListIdAndNotifiesArtworkPipeline() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->

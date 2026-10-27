@@ -14,10 +14,16 @@ class ReiAnixNativeLibraryCatalogProjectorArtworkTest {
     @Test
     fun targetedProjectionKeepsCurrentCoverFirstAndSeparatesBackdrop() {
         val projected = ReiAnixNativeLibraryCatalogProjector.projectArtwork(
-            anime = animeRecord(),
+            anime = animeRecord(bannerUrl = "https://cdn.example/backdrop.jpg"),
             artworkRows = listOf(
                 artwork(
                     id = 1L,
+                    artworkType = "poster",
+                    localPath = "/cache/current-poster.jpg",
+                    externalUrl = "https://cdn.example/current.jpg",
+                ),
+                artwork(
+                    id = 3L,
                     artworkType = "poster",
                     localPath = "/cache/alternate-poster.jpg",
                     externalUrl = "https://cdn.example/alternate.jpg",
@@ -31,11 +37,8 @@ class ReiAnixNativeLibraryCatalogProjectorArtworkTest {
             ),
         )
 
-        assertEquals("/cache/alternate-poster.jpg", projected?.localPath)
-        assertEquals(
-            listOf("/cache/alternate-poster.jpg", "/cache/cover-cache.jpg"),
-            projected?.localCandidates,
-        )
+        assertEquals("/cache/current-poster.jpg", projected?.localPath)
+        assertEquals(listOf("/cache/current-poster.jpg"), projected?.localCandidates)
         assertEquals("https://cdn.example/current.jpg", projected?.externalUrl)
         assertEquals(
             listOf("https://cdn.example/current.jpg", "https://cdn.example/alternate.jpg"),
@@ -53,6 +56,82 @@ class ReiAnixNativeLibraryCatalogProjectorArtworkTest {
         )
 
         assertEquals("https://cdn.example/banner.jpg", projected?.backdropExternalUrl)
+    }
+
+    @Test
+    fun staleRemoteCacheCannotMaskTheCurrentUrlOrItsAlternativeSources() {
+        val projected = ReiAnixNativeLibraryCatalogProjector.projectArtwork(
+            anime = animeRecord(
+                coverUrl = "https://cdn.example/current.jpg",
+                coverCache = "/cache/stale-cover.jpg",
+            ),
+            artworkRows = listOf(
+                artwork(
+                    id = 1L,
+                    artworkType = "poster",
+                    localPath = "/cache/stale-cover.jpg",
+                    externalUrl = "https://cdn.example/old.jpg",
+                ),
+                artwork(
+                    id = 2L,
+                    artworkType = "poster",
+                    localPath = null,
+                    externalUrl = "https://cdn.example/alternate.jpg",
+                ),
+            ),
+        )
+
+        assertNull(projected?.localPath)
+        assertEquals(emptyList<String>(), projected?.localCandidates)
+        assertEquals("https://cdn.example/current.jpg", projected?.externalUrl)
+        assertEquals(
+            listOf(
+                "https://cdn.example/current.jpg",
+                "https://cdn.example/old.jpg",
+                "https://cdn.example/alternate.jpg",
+            ),
+            projected?.externalCandidates,
+        )
+    }
+
+    @Test
+    fun manuallyOwnedLocalPosterSurvivesAnAniListUrlChange() {
+        val projected = ReiAnixNativeLibraryCatalogProjector.projectArtwork(
+            anime = animeRecord(
+                coverUrl = "https://cdn.example/current.jpg",
+                coverCache = "/cache/manual-cover.jpg",
+            ),
+            artworkRows = listOf(
+                artwork(
+                    id = 7L,
+                    artworkType = "poster",
+                    localPath = "/cache/manual-cover.jpg",
+                    externalUrl = "https://cdn.example/user-selected.jpg",
+                ).copy(source = "manual", manual = true),
+            ),
+        )
+
+        assertEquals("/cache/manual-cover.jpg", projected?.localPath)
+        assertEquals(listOf("/cache/manual-cover.jpg"), projected?.localCandidates)
+        assertEquals("https://cdn.example/current.jpg", projected?.externalUrl)
+    }
+
+    @Test
+    fun staleBackdropCacheDoesNotOverrideCurrentBannerUrl() {
+        val projected = ReiAnixNativeLibraryCatalogProjector.projectArtwork(
+            anime = animeRecord(bannerUrl = "https://cdn.example/current-banner.jpg"),
+            artworkRows = listOf(
+                artwork(
+                    id = 8L,
+                    artworkType = "backdrop",
+                    localPath = "/cache/old-banner.jpg",
+                    externalUrl = "https://cdn.example/old-banner.jpg",
+                ),
+            ),
+        )
+
+        assertNull(projected?.backdropLocalPath)
+        assertEquals("https://cdn.example/current-banner.jpg", projected?.backdropExternalUrl)
     }
 
     @Test

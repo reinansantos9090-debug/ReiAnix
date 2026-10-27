@@ -519,6 +519,30 @@ class LibraryUiMappersTest {
 
 
     @Test
+    fun explicitNativePosterCandidatesDoNotReintroduceAnUnassociatedLegacyCachePointer() {
+        val anime = LibraryUiMappers.anime(
+            mapOf(
+                "id" to 55L,
+                "title" to "Artwork candidate test",
+                "artwork_available" to true,
+                "artwork_local_path" to null,
+                "artwork_external_url" to "https://cdn.example/current.jpg",
+                "artwork_local_candidates" to emptyList<String>(),
+                "artwork_external_candidates" to listOf("https://cdn.example/current.jpg"),
+                "meta" to mapOf(
+                    "title" to "Artwork candidate test",
+                    "cover_url" to "https://cdn.example/current.jpg",
+                    "cover_cache" to "/cache/old-cover.jpg",
+                ),
+            ),
+        )
+
+        assertEquals(emptyList<String>(), anime.artwork?.localCandidates)
+        assertNull(anime.artwork?.localPath)
+        assertEquals("https://cdn.example/current.jpg", anime.artwork?.externalUrl)
+    }
+
+    @Test
     fun remoteArtworkUrlDoesNotCountAsLocalArtworkAvailability() {
         val source = animeSource(
             id = 600L,
