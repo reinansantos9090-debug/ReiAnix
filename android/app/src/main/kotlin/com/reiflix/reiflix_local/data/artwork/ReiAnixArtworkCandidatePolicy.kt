@@ -41,5 +41,5 @@ internal fun aniListArtworkCandidateKey(
     require(aniListId > 0L) { "AniList ID must be positive." }
     val material = "reianix|anime:$animeId|anilist:$aniListId|$url|$artworkType|candidate"
     val digest = MessageDigest.getInstance("SHA-256").digest(material.toByteArray(Charsets.UTF_8))
-    return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
+    return digest.joinToString(separator = "") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
 }

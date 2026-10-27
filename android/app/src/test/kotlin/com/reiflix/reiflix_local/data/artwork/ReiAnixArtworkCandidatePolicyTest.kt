@@ -43,6 +43,7 @@ class ReiAnixArtworkCandidatePolicyTest {
     @Test
     fun candidateKeysAreStableAndDifferentForLocalAnimeAndImageUrl() {
         val first = aniListArtworkCandidateKey(10L, 16498L, "https://img.example/cover.jpg")
+        assertEquals(64, first.length)
         assertEquals(first, aniListArtworkCandidateKey(10L, 16498L, "https://img.example/cover.jpg"))
         assertNotEquals(first, aniListArtworkCandidateKey(11L, 16498L, "https://img.example/cover.jpg"))
         assertNotEquals(first, aniListArtworkCandidateKey(10L, 1535L, "https://img.example/cover.jpg"))
