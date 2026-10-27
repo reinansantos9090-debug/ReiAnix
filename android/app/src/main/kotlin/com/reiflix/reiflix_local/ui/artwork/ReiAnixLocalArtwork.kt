@@ -68,8 +68,8 @@ private object ReiAnixArtworkImageLoader {
             instance ?: ImageLoader.Builder(context.applicationContext)
                 .memoryCache {
                     // Keep the thumbnail-heavy grids inside a predictable heap budget.
-                    MemoryCache.Builder()
-                        .maxSizePercent(context.applicationContext, 0.10)
+                    MemoryCache.Builder(context.applicationContext)
+                        .maxSizePercent(0.10)
                         .build()
                 }
                 .diskCache {
