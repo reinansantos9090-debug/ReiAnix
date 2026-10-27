@@ -1138,11 +1138,6 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Notifies projection consumers after the canonical metadata transaction commits.
-     * The Kotlin artwork service is queued separately, and mailbox failure does not
-     * roll back metadata that has already been persisted.
-     */
-    /**
      * Persists secondary URL variants into the existing v29 artwork table. The current cover_url
      * remains authoritative; the rows are lower-priority UI fallbacks, not a second catalog or
      * downloader. Failed URLs that become alternates may be reconsidered in their new role.
@@ -1247,6 +1242,11 @@ class ReiAnixAniListIntegrationService(
         val status: String?,
     )
 
+    /**
+     * Notifies projection consumers after the canonical metadata transaction commits.
+     * The Kotlin artwork service is queued separately, and mailbox failure does not
+     * roll back metadata that has already been persisted.
+     */
     private suspend fun enqueueMetadataCommit(animeId: Long, requestArtwork: Boolean) {
         val publisher = metadataCommitPublisher ?: return
         try {
