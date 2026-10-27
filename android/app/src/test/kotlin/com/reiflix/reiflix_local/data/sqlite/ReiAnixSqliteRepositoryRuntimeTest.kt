@@ -209,6 +209,21 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(1234L, persisted.anilistId)
         assertEquals("https://img.example/cover-large.jpg", persisted.coverUrl)
         assertEquals(listOf(1L to true), artworkNotifications)
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                "SELECT external_url, status, variant, artwork_key FROM artwork " +
+                    "WHERE entity_type='anime' AND entity_id='1' AND artwork_type='poster' " +
+                    "AND status='source_candidate' ORDER BY priority DESC, id DESC",
+                null,
+            ).use { cursor ->
+                assertTrue("The lower-priority AniList cover must be persisted as a fallback.", cursor.moveToFirst())
+                assertEquals("https://img.example/cover.jpg", cursor.getString(0))
+                assertEquals("source_candidate", cursor.getString(1))
+                assertEquals("large", cursor.getString(2))
+                assertTrue(cursor.getString(3).isNotBlank())
+                assertFalse("Only the current alternate should be projected.", cursor.moveToNext())
+            }
+        }
         assertEquals(1, transport.calls)
         assertEquals(1234, transport.lastBody!!.getJSONObject("variables").getInt("id"))
     }
