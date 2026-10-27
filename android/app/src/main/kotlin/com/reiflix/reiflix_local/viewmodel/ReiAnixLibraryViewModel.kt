@@ -1928,18 +1928,16 @@ class ReiAnixLibraryViewModel(
                         refreshNativeCatalog()
                         return@launch
                     }
-                    val latestArtworkById = nativeCatalogState.value.animes.associateBy { it.id }
-                    val pageItems = pageResult.animeIds.mapNotNull { animeId ->
-                        val pageAnime = byId[animeId] ?: return@mapNotNull null
-                        pageAnime.copy(artwork = latestArtworkById[animeId]?.artwork ?: pageAnime.artwork)
-                    }
+                    val pageItems = pageResult.animeIds.mapNotNull(byId::get)
+                    val reconciledPageItems = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
+                        .mergeLatestArtwork(pageItems, nativeCatalogState.value.animes)
                     if (generation != nativePageGeneration.get()) return@launch
                     val currentState = nativePagedLibraryState.value
                     if (currentState.generation != generation) return@launch
                     val pageAnimes = if (reset || requestedPage == 0) {
-                        pageItems
+                        reconciledPageItems
                     } else {
-                        (currentState.animes + pageItems).distinctBy { it.id }
+                        (currentState.animes + reconciledPageItems).distinctBy { it.id }
                     }
                     nativePagedLibraryState.value = currentState.copy(
                         status = if (pageResult.totalCount > 0) {

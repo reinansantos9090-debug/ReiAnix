@@ -103,6 +103,24 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         }
     }
 
+    /**
+     * Reconciles a page result with the latest canonical artwork projection.
+     * A present canonical item with null artwork intentionally clears an older image;
+     * a missing canonical item leaves the page item untouched.
+     */
+    internal fun mergeLatestArtwork(
+        pageAnimes: List<ReiAnixAnimeUiModel>,
+        canonicalAnimes: List<ReiAnixAnimeUiModel>,
+    ): List<ReiAnixAnimeUiModel> {
+        if (pageAnimes.isEmpty() || canonicalAnimes.isEmpty()) return pageAnimes
+        val canonicalById = canonicalAnimes.associateBy { it.id }
+        return pageAnimes.map { pageAnime ->
+            val canonical = canonicalById[pageAnime.id] ?: return@map pageAnime
+            if (pageAnime.artwork == canonical.artwork) pageAnime
+            else pageAnime.copy(artwork = canonical.artwork)
+        }
+    }
+
     fun project(rows: List<ReiAnixLibraryCatalogRow>): ReiAnixNativeLibraryCatalogSnapshot {
         val animes = rows.map(::projectAnime)
         val lastPlayedByEpisodeId = rows.asSequence()

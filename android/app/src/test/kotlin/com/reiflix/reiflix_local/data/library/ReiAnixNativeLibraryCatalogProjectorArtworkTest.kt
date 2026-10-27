@@ -88,6 +88,34 @@ class ReiAnixNativeLibraryCatalogProjectorArtworkTest {
     }
 
     @Test
+    fun newerCanonicalMissingArtworkClearsStalePageArtwork() {
+        val pageAnime = LibraryUiMappers.anime(mapOf("id" to 10L, "title" to "Anime A"))
+            .copy(
+                artwork = ReiAnixArtworkUiModel(
+                    localPath = "/cache/stale.jpg",
+                    externalUrl = "https://cdn.example/stale.jpg",
+                ),
+            )
+        val secondPageAnime = LibraryUiMappers.anime(mapOf("id" to 20L, "title" to "Anime B"))
+        val canonicalAnime = pageAnime.copy(artwork = null)
+        val canonicalSecondAnime = secondPageAnime.copy(
+            artwork = ReiAnixArtworkUiModel(
+                localPath = "/cache/current.jpg",
+                externalUrl = "https://cdn.example/current.jpg",
+            ),
+        )
+
+        val merged = ReiAnixNativeLibraryCatalogProjector.mergeLatestArtwork(
+            pageAnimes = listOf(pageAnime, secondPageAnime),
+            canonicalAnimes = listOf(canonicalAnime, canonicalSecondAnime),
+        )
+
+        assertNull(merged[0].artwork)
+        assertEquals(pageAnime.stableKey, merged[0].stableKey)
+        assertEquals(canonicalSecondAnime.artwork, merged[1].artwork)
+    }
+
+    @Test
     fun unknownAnimeIdentityLeavesTheListUntouched() {
         val anime = LibraryUiMappers.anime(mapOf("id" to 10L, "title" to "Anime A"))
         val animes = listOf(anime)
