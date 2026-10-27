@@ -101,6 +101,16 @@ internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val EXHAUSTED_ARTWORK_RETRY_DELAY_SECONDS = 7L * 24L * 60L * 60L
 
 /**
+ * A legacy cover_cache pointer has no URL revision of its own. Reuse it for the
+ * current URL only when canonical artwork metadata proves that association.
+ */
+internal fun shouldReuseLegacyCoverCache(
+    hasArtworkPathAssociation: Boolean,
+    hasCurrentOrLocalAssociation: Boolean,
+): Boolean = hasArtworkPathAssociation && hasCurrentOrLocalAssociation
+
+
+/**
  * Retry aggressively only for a bounded number of failures. Once that window is
  * exhausted, keep a persisted seven-day recovery window instead of permanently
  * poisoning a cover because of a previous outage or an invalid historical row.
@@ -517,10 +527,34 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val oldPath = loadAnime(id)?.coverCache?.trim().orEmpty()
         if (oldPath.isEmpty() || !validImage(oldPath)) return false
         val pathRows = rowsForPath(entity, id.toString(), type, oldPath)
-        if (pathRows.isNotEmpty() && pathRows.none {
-                it.status.equals("ready", true) && (it.source.equals("manual", true) ||
-                    it.source.equals("local", true) || it.url == url)
-            }) return false
+        val hasCurrentOrLocalAssociation = pathRows.any {
+            it.status.equals("ready", true) && (
+                it.manual || it.source.equals("manual", true) ||
+                    it.source.equals("local", true) || it.url == url
+                )
+        }
+        if (!shouldReuseLegacyCoverCache(
+                hasArtworkPathAssociation = pathRows.isNotEmpty(),
+                hasCurrentOrLocalAssociation = hasCurrentOrLocalAssociation,
+            )
+        ) {
+            if (pathRows.isEmpty()) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_ARTWORK_LEGACY_CACHE_ASSOCIATION_UNKNOWN",
+                    severity = "WARN",
+                    source = "ReiAnixArtworkService",
+                    result = "FETCH_CURRENT_URL",
+                    requestId = requestId,
+                    context = mapOf(
+                        "entity_type" to entity,
+                        "entity_id" to id,
+                        "artwork_type" to type,
+                        "source_kind" to "legacy_cover_cache",
+                    ),
+                )
+            }
+            return false
+        }
         val file = File(oldPath)
         val dims = dimensions(oldPath) ?: return false
         val digest = checksum(file) ?: return false

@@ -71,6 +71,28 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun legacyCoverCacheRequiresAnArtworkAssociationBeforeItCanSatisfyCurrentUrl() {
+        assertFalse(
+            shouldReuseLegacyCoverCache(
+                hasArtworkPathAssociation = false,
+                hasCurrentOrLocalAssociation = false,
+            ),
+        )
+        assertFalse(
+            shouldReuseLegacyCoverCache(
+                hasArtworkPathAssociation = true,
+                hasCurrentOrLocalAssociation = false,
+            ),
+        )
+        assertTrue(
+            shouldReuseLegacyCoverCache(
+                hasArtworkPathAssociation = true,
+                hasCurrentOrLocalAssociation = true,
+            ),
+        )
+    }
+
+    @Test
     fun legacyFailedArtworkWithoutRetryTimestampCanBeRetried() {
         assertTrue(
             shouldRetryArtworkRequest(
