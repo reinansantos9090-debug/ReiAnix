@@ -348,6 +348,43 @@ internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
 }
 
 /** Commit a recovery attempt timestamp to the same canonical preferences table. */
+/**
+ * Read only attempt timestamps for the IDs in the current discovery window. Avoid scanning
+ * an ever-growing preferences table when each recovery pass can inspect at most 192 anime.
+ */
+internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
+    database: ReiAnixSqliteDatabase,
+    animeIds: Collection<Long>,
+): Map<Long, Double> = withContext(Dispatchers.IO) {
+    val ids = animeIds.filter { it > 0L }.distinct()
+    if (ids.isEmpty()) return@withContext emptyMap()
+
+    val keys = ids.associateBy(
+        keySelector = { artworkDiscoveryAttemptPreferenceKey(it) },
+        valueTransform = { it },
+    )
+    val placeholders = keys.keys.joinToString(",") { "?" }
+    database.read { connection ->
+        connection.rawQuery(
+            "SELECT key, value FROM preferences WHERE key IN ($placeholders)",
+            keys.keys.toTypedArray(),
+        ).use { cursor ->
+            buildMap<Long, Double> {
+                while (cursor.moveToNext()) {
+                    val animeId = keys[cursor.getString(0)] ?: continue
+                    val attemptedAt = cursor.getString(1)?.toDoubleOrNull()?.takeIf { it.isFinite() } ?: continue
+                    put(animeId, attemptedAt)
+                }
+            }
+        }
+    }
+}
+
+internal fun artworkDiscoveryScanLimit(maxRecords: Int): Int {
+    require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
+    return (maxRecords * 8).coerceIn(32, 192)
+}
+
 internal suspend fun writePersistedArtworkDiscoveryAttemptAt(
     database: ReiAnixSqliteDatabase,
     animeId: Long,
@@ -836,8 +873,8 @@ class ReiAnixAniListIntegrationService(
     private suspend fun writeArtworkDiscoveryCursor(animeId: Long) =
         writePersistedArtworkDiscoveryCursor(library.database, animeId)
 
-    private suspend fun readArtworkDiscoveryAttemptTimes(): Map<Long, Double> =
-        readPersistedArtworkDiscoveryAttemptTimes(library.database)
+    private suspend fun readArtworkDiscoveryAttemptTimes(animeIds: Collection<Long>): Map<Long, Double> =
+        readPersistedArtworkDiscoveryAttemptTimes(library.database, animeIds)
 
     private suspend fun writeArtworkDiscoveryAttemptAt(animeId: Long, attemptAtSeconds: Double) =
         writePersistedArtworkDiscoveryAttemptAt(library.database, animeId, attemptAtSeconds)
@@ -853,30 +890,40 @@ class ReiAnixAniListIntegrationService(
         try {
             require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
             if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
-            val rows = library.loadLibraryCatalogRows()
-            if (rows.isEmpty()) return 0
-            val rowsById = rows.associateBy { it.anime.id }
+
             val discoveryCursor = readArtworkDiscoveryCursor()
-            val persistedAttemptTimes = readArtworkDiscoveryAttemptTimes().toMutableMap()
-            val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
-                .mapNotNull(rowsById::get)
-            var lastVisitedCursor = discoveryCursor
+            val scanLimit = artworkDiscoveryScanLimit(maxRecords)
+            // Keyset pagination bounds memory/IO. If a persisted cursor now points beyond
+            // the last row (e.g. catalog deletions), wrap once and resume from the start.
+            var orderedRows = library.loadArtworkDiscoveryAnimeBatch(discoveryCursor, scanLimit)
+            if (orderedRows.isEmpty() && discoveryCursor > 0L) {
+                writeArtworkDiscoveryCursor(0L)
+                orderedRows = library.loadArtworkDiscoveryAnimeBatch(afterId = 0L, limit = scanLimit)
+            }
+            if (orderedRows.isEmpty()) return 0
+
+            val candidateIds = orderedRows.map { it.id }
+            val persistedAttemptTimes = readArtworkDiscoveryAttemptTimes(candidateIds).toMutableMap()
+            val placeholders = candidateIds.joinToString(",") { "?" }
             val exhaustedPosterIds = library.database.read { connection ->
                 connection.rawQuery(
                     "SELECT DISTINCT entity_id FROM artwork WHERE entity_type IN ('anime','movie') " +
-                        "AND artwork_type='poster' AND status='failed' AND COALESCE(failure_count, 0)>=5",
-                    null,
+                        "AND artwork_type='poster' AND status='failed' AND COALESCE(failure_count, 0)>=5 " +
+                        "AND entity_id IN ($placeholders)",
+                    candidateIds.map { it.toString() }.toTypedArray(),
                 ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             }
+
             var examined = 0
             var recovered = 0
+            var lastVisitedCursor = discoveryCursor
             val nowSeconds = System.currentTimeMillis() / 1000.0
-            for (row in orderedRows) {
+            for (local in orderedRows) {
                 if (examined >= maxRecords) break
                 currentCoroutineContext().ensureActive()
-                val local = row.anime
                 if (local.id <= 0L) continue
                 lastVisitedCursor = local.id
+
                 val cachedPath = local.coverCache?.trim().orEmpty()
                 val usableLocalCover = withContext(Dispatchers.IO) {
                     isUsableLocalCoverFile(cachedPath)
@@ -900,7 +947,7 @@ class ReiAnixAniListIntegrationService(
                     Log.d(TAG, "Artwork discovery deferred for animeId=${local.id}: persisted attempt cooldown has not expired.")
                     continue
                 }
-                if (examined >= maxRecords) break
+
                 val attemptAt = nowSeconds.toLong()
                 val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
                 if (previousAttempt != null) {
@@ -911,52 +958,59 @@ class ReiAnixAniListIntegrationService(
                         continue
                     }
                 }
+
                 examined++
                 try {
-                    // Persist before the request starts so a process restart after a network
-                    // failure/crash cannot immediately repeat the same lookup.
+                    // Persist before the lookup so process death cannot immediately repeat it.
+                    // The keyset cursor advances independently of success; unresolved IDs are
+                    // revisited after their persisted cooldown expires and the cursor wraps.
                     val attemptAtSeconds = attemptAt.toDouble()
                     writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
                     persistedAttemptTimes[local.id] = attemptAtSeconds
-                    val lookupKind = if (validAniListCatalogId(local.anilistId) != null) {
-                        "anilist_id"
-                    } else {
-                        "conservative_title_match"
-                    }
-                    Log.i(TAG, "Artwork discovery lookup started for animeId=${local.id}; lookup=$lookupKind.")
+
                     val remoteId = validAniListCatalogId(local.anilistId)
-                if (remoteId != null) {
-                    if (recoverArtworkForAssociatedAnime(local.id, remoteId)) recovered++
-                } else {
-                    if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
-                    when (val result = autoMatch(local.id)) {
-                        is AniListResult.Success -> {
-                            val matched = result.value as? AniListAutoMatchResult.Matched
-                            if (matched != null) {
-                                val remotePosterUrl = matched.remote.coverCandidates.firstOrNull()?.url
-                                if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
-                                    recovered++
-                                    Log.i(TAG, "AniList poster URL persisted after conservative title match for animeId=${local.id}; metadata commit completed.")
-                                } else {
-                                    Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
+                    if (remoteId != null) {
+                        if (recoverArtworkForAssociatedAnime(local.id, remoteId)) recovered++
+                    } else {
+                        if (
+                            local.anilistMatchManual == true ||
+                            local.metadataSource == "manual" ||
+                            local.metadataStatus == "manual"
+                        ) continue
+
+                        when (val result = autoMatch(local.id)) {
+                            is AniListResult.Success -> {
+                                val matched = result.value as? AniListAutoMatchResult.Matched
+                                if (matched != null) {
+                                    val remotePosterUrl = matched.remote.coverCandidates.firstOrNull()?.url
+                                    if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
+                                        recovered++
+                                        Log.i(TAG, "AniList poster URL persisted after conservative title match for animeId=${local.id}; metadata commit completed.")
+                                    } else {
+                                        Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
+                                    }
                                 }
                             }
+                            is AniListResult.Failure -> Log.w(
+                                TAG,
+                                "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}",
+                            )
                         }
-                        is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
                     }
-                }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    // One corrupt row, transient database problem, or unexpected service error
-                    // must not prevent the remaining canonical IDs from being considered.
                     missingArtworkLookupAttempts.remove(local.id, attemptAt)
                     Log.e(TAG, "Artwork discovery failed for animeId=${local.id}; continuing with the next catalogue row.", error)
                 }
             }
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
                 writeArtworkDiscoveryCursor(lastVisitedCursor)
-                Log.i(TAG, "Artwork discovery batch completed: attempted=$examined recovered=$recovered cursor=$lastVisitedCursor.")
+                Log.i(
+                    TAG,
+                    "Artwork discovery batch completed: attempted=$examined recovered=$recovered " +
+                        "cursor=$lastVisitedCursor scanned=${orderedRows.size}/$scanLimit.",
+                )
             }
             return recovered
         } finally {

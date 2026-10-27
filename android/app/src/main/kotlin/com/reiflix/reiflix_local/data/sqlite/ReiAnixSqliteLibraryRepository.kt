@@ -1381,6 +1381,29 @@ class ReiAnixSqliteLibraryRepository(
     }
 
     /**
+     * Keyset-paged anime records for missing-cover discovery. Reads only canonical anime rows,
+     * not every episode/artwork join in the Compose catalog. The caller persists the last visited
+     * ID in preferences, keeping each recovery pass bounded and resumable.
+     */
+    suspend fun loadArtworkDiscoveryAnimeBatch(
+        afterId: Long,
+        limit: Int,
+    ): List<ReiAnixAnimeRecord> = withContext(Dispatchers.IO) {
+        require(afterId >= 0L) { "Artwork discovery cursor cannot be negative." }
+        require(limit in 1..192) { "Artwork discovery batch must be between 1 and 192 records." }
+        database.read { connection ->
+            connection.rawQuery(
+                "SELECT * FROM anime WHERE id > ? ORDER BY id ASC LIMIT ?",
+                arrayOf(afterId.toString(), limit.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.toAnimeRecord())
+                }
+            }
+        }
+    }
+
+    /**
      * Reads a coherent bounded domain of catalog records from the existing SQLite source.
      * The UI already requires anime and episode relationships in memory; grouping is performed
      * after set-based SQL queries, rather than issuing one query per anime or per artwork item.

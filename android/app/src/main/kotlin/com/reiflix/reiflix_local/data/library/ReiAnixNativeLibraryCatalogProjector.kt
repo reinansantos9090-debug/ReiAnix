@@ -53,7 +53,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         anime: ReiAnixAnimeRecord,
         artworkRows: List<ReiAnixArtworkRecord>,
     ): ReiAnixArtworkUiModel? {
-        val backdrop = artworkRows.firstOrNull {
+        val backdropRows = artworkRows.filter {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
         }
@@ -61,15 +61,38 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
         }
+        val currentCoverUrl = validReiAnixArtworkHttpUrl(anime.coverUrl)
+        val trustedLocalPosterRows = posterRows.filter { row ->
+            val source = row.source.trim()
+            row.manual == true ||
+                source.equals("manual", ignoreCase = true) ||
+                source.equals("local", ignoreCase = true) ||
+                (currentCoverUrl != null &&
+                    validReiAnixArtworkHttpUrl(row.externalUrl) == currentCoverUrl)
+        }
+        val trustedCoverCache = anime.coverCache?.trim()?.takeIf { path ->
+            path.isNotEmpty() && trustedLocalPosterRows.any { it.localPath?.trim() == path }
+        }
         val (localCandidates, externalCandidates) = resolvePosterArtworkCandidates(
-            artworkLocalPaths = posterRows.map { it.localPath },
+            artworkLocalPaths = trustedLocalPosterRows.map { it.localPath },
             artworkExternalUrls = posterRows.map { it.externalUrl },
-            coverCache = anime.coverCache,
-            coverUrl = anime.coverUrl,
+            coverCache = trustedCoverCache,
+            coverUrl = currentCoverUrl,
         )
-        val backdropLocalPath = backdrop?.localPath?.trim()?.takeIf(String::isNotEmpty)
-        val backdropExternalUrl = backdrop?.externalUrl?.trim()?.takeIf(String::isNotEmpty)
-            ?: anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
+
+        val currentBannerUrl = validReiAnixArtworkHttpUrl(anime.bannerUrl)
+        val trustedBackdropRows = backdropRows.filter { row ->
+            val source = row.source.trim()
+            row.manual == true ||
+                source.equals("manual", ignoreCase = true) ||
+                source.equals("local", ignoreCase = true) ||
+                (currentBannerUrl != null &&
+                    validReiAnixArtworkHttpUrl(row.externalUrl) == currentBannerUrl)
+        }
+        val backdropLocalPath = trustedBackdropRows
+            .firstNotNullOfOrNull { it.localPath?.trim()?.takeIf(String::isNotEmpty) }
+        val backdropExternalUrl = currentBannerUrl
+            ?: backdropRows.asSequence().mapNotNull { validReiAnixArtworkHttpUrl(it.externalUrl) }.firstOrNull()
         if (
             localCandidates.isEmpty() &&
             externalCandidates.isEmpty() &&
@@ -243,7 +266,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 ),
             ),
             "media_files" to movieEpisodes.map { episodeMap(it, anime.id, row) },
-            "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank()),
+            "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !primaryExternalArtwork.isNullOrBlank()),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
             "artwork_local_candidates" to artwork?.localCandidates.orEmpty(),

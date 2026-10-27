@@ -168,20 +168,37 @@ object LibraryUiMappers {
                 .distinct()
                 .toList()
 
-        val posterLocalCandidates = (
-            allCandidateListValues("artwork_local_candidates") +
-                allNonBlank(listOf("artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"))
-            ).distinct()
+        val hasExplicitPosterLocalCandidates = sources.any { it.containsKey("artwork_local_candidates") }
+        val posterLocalCandidates = if (hasExplicitPosterLocalCandidates) {
+            // The native projector has already checked current-URL association and ownership.
+            // Do not reintroduce a stale cover_cache pointer from nested metadata here.
+            (
+                allCandidateListValues("artwork_local_candidates") +
+                    allNonBlank(listOf("artwork_local_path"))
+                ).distinct()
+        } else {
+            allNonBlank(listOf("artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"))
+                .distinct()
+        }
         val posterExternalCandidates = (
             allCandidateListValues("artwork_external_candidates") +
                 allNonBlank(listOf("artwork_external_url", "cover_url", "external_url"))
             ).distinct()
-        val posterLocalPath = posterLocalCandidates.firstOrNull() ?: firstNonBlank(
-            listOf("artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"),
-        )
-        val posterExternalUrl = posterExternalCandidates.firstOrNull() ?: firstNonBlank(
-            listOf("artwork_external_url", "cover_url", "external_url"),
-        )
+        val posterLocalPath = if (hasExplicitPosterLocalCandidates) {
+            posterLocalCandidates.firstOrNull()
+        } else {
+            posterLocalCandidates.firstOrNull() ?: firstNonBlank(
+                listOf("artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"),
+            )
+        }
+        val hasExplicitPosterExternalCandidates = sources.any { it.containsKey("artwork_external_candidates") }
+        val posterExternalUrl = if (hasExplicitPosterExternalCandidates) {
+            posterExternalCandidates.firstOrNull()
+        } else {
+            posterExternalCandidates.firstOrNull() ?: firstNonBlank(
+                listOf("artwork_external_url", "cover_url", "external_url"),
+            )
+        }
         val backdropLocalPath = firstNonBlank(
             listOf("backdrop_local_path", "artwork_backdrop_local_path"),
         )
