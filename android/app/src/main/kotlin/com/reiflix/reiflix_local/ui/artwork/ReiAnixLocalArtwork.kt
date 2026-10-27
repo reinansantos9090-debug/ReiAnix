@@ -39,6 +39,8 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.ui.ReiAnixArtworkMissingState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import java.io.File
+import java.net.URI
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -367,9 +369,10 @@ fun ReiAnixLocalArtwork(
                             "elapsed_ms" to (SystemClock.elapsedRealtime() - artworkRequestStartedAt).coerceAtLeast(0L),
                         ),
                     )
-                    if (candidateIndex < candidates.lastIndex) {
+                    val nextCandidateIndex = nextArtworkCandidateIndex(candidateIndex, candidates.size)
+                    if (nextCandidateIndex != null) {
                         isMissing = false
-                        candidateIndex += 1
+                        candidateIndex = nextCandidateIndex
                     } else {
                         isMissing = true
                     }
@@ -435,13 +438,33 @@ internal fun localArtworkCandidates(
     additionalCandidates: List<String> = emptyList(),
 ): List<String> =
     (additionalCandidates + listOf(localPath, fallbackLocalPath))
-        .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-        .filterNot { candidate ->
-            val scheme = candidate.substringBefore(':')
-            scheme.equals("http", ignoreCase = true) ||
-                scheme.equals("https", ignoreCase = true)
-        }
+        .mapNotNull(::validLocalArtworkReference)
         .distinct()
+
+/** Keep raw paths and supported Android URI schemes; reject invalid/unsupported schemes. */
+internal fun validLocalArtworkReference(value: String?): String? {
+    val candidate = value?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    if (candidate.any { it.isISOControl() }) return null
+    val scheme = Regex("^([A-Za-z][A-Za-z0-9+.-]*):").find(candidate)
+        ?.groupValues?.get(1)?.lowercase(Locale.ROOT) ?: return candidate
+    val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
+    return when (scheme) {
+        "file" -> candidate.takeIf { !uri.path.isNullOrBlank() && uri.rawUserInfo == null }
+        "content" -> candidate.takeIf { !uri.host.isNullOrBlank() && uri.rawUserInfo == null }
+        "android.resource" -> candidate.takeIf {
+            (!uri.host.isNullOrBlank() || !uri.path.isNullOrBlank()) && uri.rawUserInfo == null
+        }
+        else -> null
+    }
+}
+
+/** One failure advances to the next candidate; the caller renders the neutral fallback at exhaustion. */
+internal fun nextArtworkCandidateIndex(currentIndex: Int, candidateCount: Int): Int? =
+    if (currentIndex >= 0 && candidateCount > 0 && currentIndex < candidateCount - 1) {
+        currentIndex + 1
+    } else {
+        null
+    }
 
 /**
  * Resolve materialized local artwork first, then configured remote candidates for
@@ -483,8 +506,8 @@ internal fun artworkCandidates(
     // arguments remain appended for callers that do not supply candidate lists.
     val local = localArtworkCandidates(localPath, fallbackLocalPath, localCandidates)
     val remote = (externalCandidates + listOf(externalUrl, fallbackExternalUrl))
-        .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-        .filter { it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
+        .mapNotNull(::validReiAnixArtworkHttpUrl)
+        .distinct()
     return (local + remote).distinct()
 }
 

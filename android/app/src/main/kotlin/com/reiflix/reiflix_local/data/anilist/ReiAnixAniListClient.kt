@@ -11,6 +11,9 @@ import com.reiflix.reiflix_local.data.contract.arrayOrNull
 import com.reiflix.reiflix_local.data.contract.intOrNull
 import com.reiflix.reiflix_local.data.contract.objectOrNull
 import com.reiflix.reiflix_local.data.contract.stringOrNull
+import com.reiflix.reiflix_local.data.artwork.ReiAnixAniListCoverCandidate
+import com.reiflix.reiflix_local.data.artwork.resolveAniListCoverCandidates
+import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -225,8 +228,8 @@ class ReiAnixAniListClient(
             season = media.stringOrNull("season").nonBlankOrNull(),
             seasonYear = seasonYear,
             genres = genres,
-            coverLargeUrl = cover?.stringOrNull("large").nonBlankOrNull(),
-            coverExtraLargeUrl = cover?.stringOrNull("extraLarge").nonBlankOrNull(),
+            coverLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("large").nonBlankOrNull()),
+            coverExtraLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("extraLarge").nonBlankOrNull()),
             bannerUrl = media.stringOrNull("bannerImage").nonBlankOrNull(),
             studios = studioNames,
         )
@@ -279,6 +282,10 @@ data class AniListAnime(
     val bannerUrl: String?,
     val studios: List<String>,
 ) {
+    /** Valid cover URLs ordered by image quality; invalid and duplicate variants are excluded. */
+    internal val coverCandidates: List<ReiAnixAniListCoverCandidate>
+        get() = resolveAniListCoverCandidates(coverExtraLargeUrl, coverLargeUrl)
+
     val preferredTitle: String
         get() = titleEnglish ?: titleRomaji ?: titleNative ?: synonyms.firstOrNull().orEmpty()
 }

@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.library
 
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
+import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
@@ -35,7 +36,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
             .distinct()
         val external = (listOf(coverUrl) + artworkExternalUrls)
-            .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+            .mapNotNull(::validReiAnixArtworkHttpUrl)
             .distinct()
         return local to external
     }

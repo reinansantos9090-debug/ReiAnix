@@ -1,6 +1,8 @@
 package com.reiflix.reiflix_local.data.anilist
 
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
+import com.reiflix.reiflix_local.data.artwork.aniListArtworkCandidateKey
+import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 
 import android.graphics.BitmapFactory
 import android.content.Context
@@ -632,7 +634,7 @@ class ReiAnixAniListIntegrationService(
             return@withLock false
         }
 
-        val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
+        val remotePosterUrl = remote.coverCandidates.firstOrNull()?.url
         when (val applied = applyRemote(
             local = current,
             remote = remote,
@@ -931,7 +933,7 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Success -> {
                             val matched = result.value as? AniListAutoMatchResult.Matched
                             if (matched != null) {
-                                val remotePosterUrl = matched.remote.coverExtraLargeUrl ?: matched.remote.coverLargeUrl
+                                val remotePosterUrl = matched.remote.coverCandidates.firstOrNull()?.url
                                 if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
                                     recovered++
                                     Log.i(TAG, "AniList poster URL persisted after conservative title match for animeId=${local.id}; metadata commit completed.")
@@ -1070,7 +1072,7 @@ class ReiAnixAniListIntegrationService(
                     aliasesJson = remote.synonyms.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     description = displayDescription,
                     descriptionOriginal = remoteOriginalDescription,
-                    coverUrl = if (artworkEnabled) remote.coverExtraLargeUrl ?: remote.coverLargeUrl else null,
+                    coverUrl = if (artworkEnabled) remote.coverCandidates.firstOrNull()?.url else null,
                     bannerUrl = remote.bannerUrl.takeIf { artworkEnabled },
                     genresJson = remote.genres.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     year = remote.seasonYear,
@@ -1096,6 +1098,17 @@ class ReiAnixAniListIntegrationService(
                 )
             }
             // The metadata patch above is already committed to the canonical database.
+            // Persist alternate AniList covers before notifying Compose, so a failed primary URL
+            // can fall through to the valid lower-resolution variant in the same catalog.
+            if (artworkEnabled) {
+                try {
+                    persistAniListCoverFallbackCandidates(updated.id, updated.mediaKind, remote)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Could not persist AniList fallback cover candidates for animeId=${updated.id}", error)
+                }
+            }
             // Keep genre identity associations aligned when AniList supplied real labels;
             // empty remote arrays intentionally do not erase previously persisted genres.
             if (remote.genres.isNotEmpty() && !manualFieldOwnsGenres(updated.metadataManualFieldsJson)) {
@@ -1129,6 +1142,111 @@ class ReiAnixAniListIntegrationService(
      * The Kotlin artwork service is queued separately, and mailbox failure does not
      * roll back metadata that has already been persisted.
      */
+    /**
+     * Persists secondary URL variants into the existing v29 artwork table. The current cover_url
+     * remains authoritative; the rows are lower-priority UI fallbacks, not a second catalog or
+     * downloader. Failed URLs that become alternates may be reconsidered in their new role.
+     */
+    private suspend fun persistAniListCoverFallbackCandidates(
+        animeId: Long,
+        mediaKind: String?,
+        remote: AniListAnime,
+    ) {
+        if (animeId <= 0L) return
+        val candidates = remote.coverCandidates.drop(1)
+        val entityType = if (mediaKind.equals("movie", ignoreCase = true)) "movie" else "anime"
+        val now = System.currentTimeMillis() / 1000.0
+        library.database.transaction { db ->
+            // Candidate rows reflect the latest remote record; remove stale secondary URLs first.
+            db.delete(
+                "artwork",
+                "entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster' " +
+                    "AND source='anilist' AND manual=0 AND status='source_candidate'",
+                arrayOf(animeId.toString()),
+            )
+            for (candidate in candidates) {
+                val url = validReiAnixArtworkHttpUrl(candidate.url) ?: continue
+                val key = aniListArtworkCandidateKey(animeId, remote.id.toLong(), url)
+                val existing = db.rawQuery(
+                    "SELECT id, source, local_path, manual, status FROM artwork " +
+                        "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster' " +
+                        "AND (external_url=? OR source_ref=? OR artwork_key=?) " +
+                        "ORDER BY priority DESC, updated_at DESC, id DESC LIMIT 1",
+                    arrayOf(animeId.toString(), url, url, key),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else ExistingCoverCandidateRow(
+                        id = cursor.getLong(0),
+                        source = cursor.getString(1),
+                        localPath = cursor.getString(2),
+                        manual = cursor.getInt(3) != 0,
+                        status = cursor.getString(4),
+                    )
+                }
+
+                if (existing != null) {
+                    // Preserve user-owned/local art and any already selectable successful remote row.
+                    if (existing.manual || existing.source.equals("manual", true) ||
+                        existing.source.equals("local", true) || !existing.localPath.isNullOrBlank() ||
+                        (existing.status != null && !existing.status.equals("failed", true))
+                    ) continue
+
+                    // A URL which used to be primary but is now an alternate can be tried as fallback.
+                    val values = ContentValues().apply {
+                        put("source", "anilist")
+                        put("source_ref", url)
+                        put("external_url", url)
+                        put("status", "source_candidate")
+                        put("priority", 350)
+                        put("updated_at", now)
+                        put("failure_count", 0)
+                        put("artwork_key", key)
+                        put("variant", candidate.variant)
+                        putNull("next_retry_at")
+                        putNull("http_status")
+                    }
+                    db.update("artwork", values, "id=? AND manual=0", arrayOf(existing.id.toString()))
+                    continue
+                }
+
+                val values = ContentValues().apply {
+                    put("entity_type", entityType)
+                    put("entity_id", animeId.toString())
+                    put("artwork_type", "poster")
+                    put("source", "anilist")
+                    put("source_ref", url)
+                    putNull("local_path")
+                    put("external_url", url)
+                    put("manual", 0)
+                    put("priority", 350)
+                    put("status", "source_candidate")
+                    put("discovered_at", now)
+                    put("updated_at", now)
+                    putNull("last_attempt_at")
+                    put("failure_count", 0)
+                    put("artwork_key", key)
+                    put("variant", candidate.variant)
+                    putNull("byte_size")
+                    putNull("width")
+                    putNull("height")
+                    putNull("checksum")
+                    putNull("content_type")
+                    putNull("last_access")
+                    putNull("next_retry_at")
+                    putNull("http_status")
+                }
+                db.insertOrThrow("artwork", null, values)
+            }
+        }
+    }
+
+    private data class ExistingCoverCandidateRow(
+        val id: Long,
+        val source: String?,
+        val localPath: String?,
+        val manual: Boolean,
+        val status: String?,
+    )
+
     private suspend fun enqueueMetadataCommit(animeId: Long, requestArtwork: Boolean) {
         val publisher = metadataCommitPublisher ?: return
         try {

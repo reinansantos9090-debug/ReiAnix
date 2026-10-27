@@ -35,6 +35,8 @@ class ReiAnixLocalArtworkTest {
         assertEquals(memoryA, memoryB)
         assertEquals(diskA, diskB)
         assertNotEquals(memoryA, memoryDifferentSize)
+        assertNotEquals(memoryA, buildArtworkMemoryCacheKey("anime:11:poster", "https://img/a.jpg", 320, 480))
+        assertNotEquals(memoryA, buildArtworkMemoryCacheKey("anime:10:poster", "https://img/b.jpg", 320, 480))
         val memoryRevisionA = buildArtworkMemoryCacheKey(
             "episode:42:thumbnail", "/cache/episode.jpg", 320, 180, "1024-1000",
         )
@@ -142,6 +144,29 @@ class ReiAnixLocalArtworkTest {
                 externalCandidates = projected.second,
             ),
         )
+    }
+
+    @Test
+    fun malformedOrUnsupportedSourcesAreRejectedAndDuplicateCandidatesAreRemoved() {
+        assertEquals(
+            listOf("/cache/local.jpg", "content://media/poster/10", "https://img.example/cover.jpg"),
+            artworkCandidates(
+                localPath = "/cache/local.jpg",
+                fallbackLocalPath = "ftp://host/not-a-local-file.jpg",
+                externalUrl = "https://img.example/cover.jpg",
+                fallbackExternalUrl = " https://img.example/cover.jpg ",
+                localCandidates = listOf("/cache/local.jpg", "content://media/poster/10", "content://media/poster/10"),
+                externalCandidates = listOf("not a URL", "file:///tmp/invalid.jpg", "https://user:pass@img.example/private.jpg"),
+            ),
+        )
+    }
+
+    @Test
+    fun aFailedCandidateAdvancesOnceThenRequestsNeutralFallback() {
+        assertEquals(1, nextArtworkCandidateIndex(currentIndex = 0, candidateCount = 2))
+        assertEquals(null, nextArtworkCandidateIndex(currentIndex = 1, candidateCount = 2))
+        assertEquals(null, nextArtworkCandidateIndex(currentIndex = 0, candidateCount = 1))
+        assertEquals(null, nextArtworkCandidateIndex(currentIndex = -1, candidateCount = 2))
     }
 
     @Test

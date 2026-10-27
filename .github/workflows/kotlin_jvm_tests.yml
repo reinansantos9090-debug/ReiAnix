@@ -93,6 +93,7 @@ jobs:
             --tests com.reiflix.reiflix_local.storage.VideoThumbnailFileValidationTest \
             --tests com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtworkTest \
             --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
+            --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
             --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
             --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListCoverFileValidationTest \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniListAutoMatchAttemptTimestampsPersistInCanonicalPreferencesAcrossDatabaseInstances \

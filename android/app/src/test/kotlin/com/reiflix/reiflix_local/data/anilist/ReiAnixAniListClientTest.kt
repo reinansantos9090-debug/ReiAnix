@@ -45,6 +45,11 @@ class ReiAnixAniListClientTest {
         assertEquals(24, anime.durationMinutes)
         assertEquals(listOf("Action", "Drama"), anime.genres)
         assertEquals("https://img.example/cover.jpg", anime.coverLargeUrl)
+        assertEquals(
+            listOf("https://img.example/cover-large.jpg", "https://img.example/cover.jpg"),
+            anime.coverCandidates.map { it.url },
+        )
+        assertEquals(listOf("extraLarge", "large"), anime.coverCandidates.map { it.variant })
         assertEquals(listOf("Wit Studio"), anime.studios)
         assertEquals(ReiAnixAniListClient.ENDPOINT, transport.endpoint)
         assertFalse(transport.requestBody?.optString("query").isNullOrBlank())
