@@ -266,7 +266,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 ),
             ),
             "media_files" to movieEpisodes.map { episodeMap(it, anime.id, row) },
-            "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !primaryExternalArtwork.isNullOrBlank()),
+            "artwork_available" to !primaryLocalArtwork.isNullOrBlank(),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
             "artwork_local_candidates" to artwork?.localCandidates.orEmpty(),

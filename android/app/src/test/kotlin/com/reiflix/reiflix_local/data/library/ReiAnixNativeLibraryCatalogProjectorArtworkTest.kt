@@ -2,9 +2,12 @@ package com.reiflix.reiflix_local.data.library
 
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
 import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -132,6 +135,36 @@ class ReiAnixNativeLibraryCatalogProjectorArtworkTest {
 
         assertNull(projected?.backdropLocalPath)
         assertEquals("https://cdn.example/current-banner.jpg", projected?.backdropExternalUrl)
+    }
+
+    @Test
+    fun remoteCoverUrlDoesNotMarkArtworkReadyBeforeLocalMaterialization() {
+        val currentUrl = "https://cdn.example/current.jpg"
+        val projected = ReiAnixNativeLibraryCatalogProjector.project(
+            rows = listOf(
+                ReiAnixLibraryCatalogRow(
+                    anime = animeRecord(coverUrl = currentUrl, coverCache = null),
+                    episodes = emptyList(),
+                    animeArtwork = listOf(
+                        artwork(
+                            id = 12L,
+                            artworkType = "poster",
+                            localPath = null,
+                            externalUrl = currentUrl,
+                        ),
+                    ),
+                    episodeArtwork = emptyMap(),
+                    genres = emptyList(),
+                ),
+            ),
+        ).animes.single()
+
+        assertEquals(currentUrl, projected.artwork?.externalUrl)
+        assertFalse(projected.artwork?.isAvailable ?: true)
+        assertEquals(
+            ReiAnixPresentationState.METADATA_READY_ARTWORK_PENDING,
+            projected.presentationState,
+        )
     }
 
     @Test
