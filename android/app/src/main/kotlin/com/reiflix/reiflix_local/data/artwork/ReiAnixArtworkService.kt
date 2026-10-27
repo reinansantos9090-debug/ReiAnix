@@ -136,6 +136,12 @@ internal fun shouldScheduleArtworkRetry(failureCount: Int, retryable: Boolean): 
 internal fun shouldPreserveScheduledArtworkRetry(force: Boolean, retryJobActive: Boolean): Boolean =
     retryJobActive && !force
 
+internal fun shouldApplyArtworkFailure(
+    requestUrlIsCurrent: Boolean,
+    artworkIsUserOwned: Boolean,
+): Boolean = requestUrlIsCurrent && !artworkIsUserOwned
+
+
 
 internal fun artworkRetryDelaySeconds(failureCount: Int, retryable: Boolean): Long? {
     if (failureCount <= 0) return null
@@ -522,7 +528,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 image?.let { removeIfUnreferenced(it.file) }
                 throw cancelled
             } catch (error: Exception) {
-                val retryDelaySeconds = setFailure(rowId, id, type, error, (error as? HttpFailure)?.code, requestId)
+                val retryDelaySeconds = setFailure(rowId, id, type, url, error, (error as? HttpFailure)?.code, requestId)
                 if (retryDelaySeconds != null) scheduleArtworkRetry(id, retryDelaySeconds)
                 ReiAnixDiagnosticTimeline.record(
                     name = "NATIVE_ARTWORK_DOWNLOAD_FAILED",
@@ -770,6 +776,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         rowId: Long,
         animeId: Long,
         type: String,
+        url: String,
         error: Exception,
         httpStatus: Int?,
         requestId: String,
@@ -801,12 +808,17 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
         val invalidPointerCandidates = listOfNotNull(invalidLocalPath, invalidCoverCachePointer).distinct()
         var invalidatedLocalPath = false
+        var staleRequestIgnored = false
 
         val retryDelay = database.transaction { db ->
             val row = artworkById(db, rowId) ?: return@transaction null
-            // An artwork editor/local import may win while a remote request is in
-            // flight. Never let that older request overwrite its manual/local state.
-            if (row.manual || row.source.equals("manual", true) || row.source.equals("local", true)) {
+            // A URL may have changed while this request was downloading. Ignore the
+            // stale failure before it can change retry state or invalidate a newer path.
+            val requestUrlIsCurrent = urlCurrent(db, animeId, type, url)
+            val artworkIsUserOwned = row.manual ||
+                row.source.equals("manual", true) || row.source.equals("local", true)
+            if (!shouldApplyArtworkFailure(requestUrlIsCurrent, artworkIsUserOwned)) {
+                staleRequestIgnored = !requestUrlIsCurrent
                 return@transaction null
             }
             val count = db.rawQuery(
@@ -873,6 +885,20 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             automaticRetryDelay.takeIf { retryWillBeScheduled }
         }
 
+        if (staleRequestIgnored) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_STALE_FAILURE_IGNORED",
+                severity = "INFO",
+                source = "ReiAnixArtworkService",
+                result = "CANONICAL_URL_CHANGED_DURING_REQUEST",
+                requestId = requestId,
+                context = mapOf(
+                    "entity_id" to animeId,
+                    "artwork_type" to type,
+                    "source_kind" to "anilist",
+                ),
+            )
+        }
         if (invalidatedLocalPath) {
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_ARTWORK_CACHE_ENTRY_INVALIDATED",

@@ -224,6 +224,34 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun staleRequestFailuresCannotMutateCurrentArtworkOrUserOwnedArtwork() {
+        assertTrue(
+            shouldApplyArtworkFailure(
+                requestUrlIsCurrent = true,
+                artworkIsUserOwned = false,
+            ),
+        )
+        assertFalse(
+            shouldApplyArtworkFailure(
+                requestUrlIsCurrent = false,
+                artworkIsUserOwned = false,
+            ),
+        )
+        assertFalse(
+            shouldApplyArtworkFailure(
+                requestUrlIsCurrent = true,
+                artworkIsUserOwned = true,
+            ),
+        )
+        assertFalse(
+            shouldApplyArtworkFailure(
+                requestUrlIsCurrent = false,
+                artworkIsUserOwned = true,
+            ),
+        )
+    }
+
+    @Test
     fun duplicateOrdinaryRequestsPreserveScheduledRetryButForceMayReplaceIt() {
         assertTrue(shouldPreserveScheduledArtworkRetry(force = false, retryJobActive = true))
         assertFalse(shouldPreserveScheduledArtworkRetry(force = true, retryJobActive = true))
