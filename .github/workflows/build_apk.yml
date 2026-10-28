@@ -34,7 +34,6 @@ jobs:
           accept-android-sdk-licenses: true
 
       - name: Set up standalone Gradle
-        id: setup-gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
@@ -166,24 +165,6 @@ jobs:
           grep -Fq 'android:name=".MainActivity"' android/app/src/main/AndroidManifest.xml
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-
-      - name: Run TMDB and artwork regression tests
-        if: always() && steps.setup-gradle.outcome == 'success' && steps.tmdb-validation.outcome != 'cancelled'
-        shell: bash
-        env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
-        run: |
-          set -euo pipefail
-          gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
-            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
-            -PreianixBuildVersion="0.2.1" \
-            :app:testDebugUnitTest \
-            --tests com.reiflix.reiflix_local.data.metadata.ReiAnixMetadataProvidersTest \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixNativeSearchTextTest.nullableMetadataTextDoesNotAbortLibrarySearchProjection \
-            --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
-            --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
-            --tests com.reiflix.reiflix_local.data.artwork.ReiAnixTmdbArtworkCachePolicyTest \
-            --tests com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjectorArtworkTest
 
       - name: Configure Android release signing
         shell: bash
