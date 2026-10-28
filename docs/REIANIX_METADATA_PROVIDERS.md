@@ -36,7 +36,7 @@ To deploy it, the owner needs a Cloudflare account and control of the account wh
 
 IP rate limiting and a restricted endpoint help prevent abuse but are not strong proof that a request came from the official app. Before production distribution, add a suitable server-verified app-attestation/authorization design and edge quotas. Do not embed a shared client key in the APK; it would be extractable too.
 
-The previous public APK 7433 included the real token in its compiled DEX and its two Actions artifacts also contain that APK. Do not redistribute or install those artifacts. The current GitHub Repository Secret is not consumed by the modified build workflow, but it still needs to be revoked or rotated by the credential owner because the old distributed artifact contained it. This repository change does not rotate the credential or delete historical Actions artifacts.
+The previous APK 7433 included a credential-shaped JWT value in its compiled DEX, and the two Actions artifacts from run 7433 contain that APK. Do not redistribute or install those artifacts; remove them manually from the run page because this connector cannot delete workflow artifacts. The owner has explicitly chosen to retain the current token. That choice is respected here, but the value must be treated as already disclosed: storing it as a Cloudflare Worker secret prevents new APKs from including it, but does not invalidate copies that may have been extracted from APK 7433. The modified build workflow does not consume the GitHub Repository Secret. This repository change does not alter any credential or delete historical Actions artifacts.
 
 ## Attribution, copyright, and release obligations
 
