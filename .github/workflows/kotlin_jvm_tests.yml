@@ -35,6 +35,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
+          cache-read-only: true
 
       - name: Validate native source layout
         shell: bash
@@ -53,7 +54,7 @@ jobs:
       - name: Run targeted Kotlin/JVM regression tests and compile release Kotlin sources
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
+          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
           contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
