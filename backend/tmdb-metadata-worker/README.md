@@ -16,21 +16,23 @@ IP rate limiting and an allowlisted API operation reduce abuse but are not stron
 
 1. Install a supported Node.js runtime and Wrangler CLI, then authenticate Wrangler to the correct Cloudflare account.
 2. From this directory, run `npm test`.
-3. Configure the token as an encrypted Worker secret, not a plaintext `vars` entry or committed file:
-
-   ```sh
-   npx wrangler secret put TMDB_READ_ACCESS_TOKEN
-   ```
-
-   Paste the credential only into the Wrangler terminal prompt. Do not put it in this README, GitHub issues, Android project properties, CI variables that are passed to Gradle, or application source.
-4. Verify the rate-limit binding and deploy:
+3. Deploy the Worker code first. It fails closed with HTTP 503 while the server-side token is missing:
 
    ```sh
    npx wrangler deploy
    ```
 
-5. Check `GET https://<your-deployed-worker-host>/healthz`, then test the POST endpoint with a known title. Verify HTTP status, result JSON and poster-path filtering. Do not publish the URL as configured in the Android app until those live checks pass.
-6. Configure the repository **Actions variable** `REIANIX_TMDB_METADATA_BACKEND_URL` to the HTTPS origin of the deployed Worker (for example, a hostname supplied by Cloudflare). This is a public endpoint address, not a secret. The workflow checks it when present and Gradle embeds only this URL. No backend URL has been guessed or set in this repository.
+4. Add the NEW TMDB read token as an encrypted Worker secret. Wrangler prompts for the value and deploys a new Worker version:
+
+   ```sh
+   npx wrangler secret put TMDB_READ_ACCESS_TOKEN
+   ```
+
+   Paste the credential only into the Wrangler terminal prompt. Do not put it in this README, GitHub issues, Android project properties, GitHub Actions secrets/variables, Gradle properties, or application source. Never reuse the token that was embedded in APK 7433.
+
+5. Check `GET https://<your-deployed-worker-host>/healthz`, then send a real `POST /v1/metadata/tmdb/search` request for a known title. Confirm HTTP 200, valid JSON and at least one result with a usable `poster_path`. The repository Actions workflow repeats these live checks and refuses to build an APK when the backend URL is missing or validation fails. Do not claim the integration is live until these checks pass.
+
+6. Configure the repository **Actions variable** `REIANIX_TMDB_METADATA_BACKEND_URL` to the HTTPS origin of the deployed Worker (for example, a hostname supplied by Cloudflare). This is a public endpoint address, not a secret. No backend URL has been guessed or set in this repository.
 
 ## Local tests and limits
 
