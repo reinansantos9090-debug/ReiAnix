@@ -163,6 +163,7 @@ class ReiAnixMetadataProviderRegistry(
 }
 
 private const val MAX_TITLE_VARIANTS = 4
+private const val MAX_METADATA_CANDIDATES = 20
 
 /** Accent/punctuation-insensitive title comparison used only for candidate validation. */
 internal fun normalizeReiAnixMetadataTitle(value: String): String {
@@ -297,7 +298,7 @@ class ReiAnixTmdbMetadataProvider(
                 }
             }
             if (successfulRequests == 0 && lastFailure != null) throw lastFailure
-            byId.values.sortedByDescending { it.confidence }.take(MAX_CANDIDATES)
+            byId.values.sortedByDescending { it.confidence }.take(MAX_METADATA_CANDIDATES)
         }
     }
 
@@ -364,7 +365,6 @@ class ReiAnixTmdbMetadataProvider(
         const val READ_TIMEOUT_MS = 10_000
         const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
         const val MAX_RESULTS_PER_QUERY = 20
-        const val MAX_CANDIDATES = 20
         const val MAX_HTTP_RETRIES = 2
         const val MAX_RETRY_AFTER_SECONDS = 3L
     }
@@ -410,7 +410,7 @@ class ReiAnixAniListMetadataProvider(
             }
         }
         if (ranked.isEmpty() && lastFailure != null) throw lastFailure
-        return ranked.values.sortedByDescending { it.confidence }.take(MAX_CANDIDATES)
+        return ranked.values.sortedByDescending { it.confidence }.take(MAX_METADATA_CANDIDATES)
     }
 
     private fun AniListAnime.toMetadataCandidate(matchedTitle: String): ReiAnixMetadataCandidate? {
