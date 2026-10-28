@@ -147,7 +147,7 @@ test("invalid method, media kind, year, and oversized query are rejected before 
   assert.equal((await handleRequest(request({ query: "x", mediaKind: "person" }), makeEnv(), fetchImpl)).status, 400);
   assert.equal((await handleRequest(request({ query: "x".repeat(161), mediaKind: "tv" }), makeEnv(), fetchImpl)).status, 400);
   assert.equal((await handleRequest(request({ query: "x", mediaKind: "tv", year: 2200 }), makeEnv(), fetchImpl)).status, 400);
-  assert.equal((await handleRequest(request({ query: "bad\\nquery", mediaKind: "tv" }), makeEnv(), fetchImpl)).status, 400);
+  assert.equal((await handleRequest(request({ query: "bad" + String.fromCharCode(10) + "query", mediaKind: "tv" }), makeEnv(), fetchImpl)).status, 400);
   assert.equal(calls, 0);
 });
 
