@@ -39,6 +39,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
+          cache-read-only: true
 
       - name: Initialize Android SDK and ADB diagnostics
         shell: bash
@@ -202,7 +203,7 @@ jobs:
       - name: Run JVM SQLite regression tests and compile release Kotlin sources
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
+          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
           contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
@@ -258,7 +259,7 @@ jobs:
         if: always() && !cancelled()
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
+          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
           ./android/gradlew -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
