@@ -155,7 +155,7 @@ export async function handleRequest(request, env, fetchImpl = globalThis.fetch) 
   const language = input.language === undefined ? "pt-BR" : input.language;
   const year = input.year;
 
-  if (!query || query.length > MAX_QUERY_LENGTH || /[\\u0000-\\u001f\\u007f]/.test(query)) {
+  if (!query || query.length > MAX_QUERY_LENGTH || /[\u0000-\u001f\u007f]/.test(query)) {
     return jsonResponse(400, { error: "invalid_query" });
   }
   if (mediaKind !== "tv" && mediaKind !== "movie") return jsonResponse(400, { error: "invalid_media_kind" });
