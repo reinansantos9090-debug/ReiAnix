@@ -76,15 +76,18 @@ jobs:
           fi
 
       - name: Validate optional TMDB read token and live search response
+        id: tmdb-validation
         shell: bash
         env:
           REIANIX_TMDB_READ_ACCESS_TOKEN: ${{ secrets.REIANIX_TMDB_READ_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
+          echo "credential_status=not_validated" >> "$GITHUB_OUTPUT"
           token="${REIANIX_TMDB_READ_ACCESS_TOKEN:-}"
           if [[ -z "${token//[[:space:]]/}" ]]; then
-            echo "::warning::REIANIX_TMDB_READ_ACCESS_TOKEN is missing or blank; TMDB search will be skipped in this APK. AniList remains available."
-            echo "TMDB credential: missing; TMDB search disabled at provider level; AniList remains available." >> "$GITHUB_STEP_SUMMARY"
+            echo "credential_status=missing" >> "$GITHUB_OUTPUT"
+            echo "::warning::REIANIX_TMDB_READ_ACCESS_TOKEN is missing or blank; no APK will be packaged from this run. AniList remains available in builds made with the default empty token."
+            echo "TMDB credential: missing; live TMDB search not validated; Kotlin compilation will run, but APK/ZIP artifacts are withheld. AniList remains available." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -128,6 +131,7 @@ jobs:
             exit 1
           fi
 
+          echo "credential_status=validated" >> "$GITHUB_OUTPUT"
           echo "TMDB authenticated read token: accepted."
           echo "TMDB authenticated search: HTTP 200; JSON shape valid; results=$result_count; poster_candidates=$poster_count."
           echo "TMDB credential: accepted; live search returned HTTP 200 and $poster_count usable poster candidates from $result_count results. AniList remains independent." >> "$GITHUB_STEP_SUMMARY"
@@ -222,6 +226,7 @@ jobs:
           test -s build/reiflix-build-identity.json
 
       - name: Build native Android release APK
+        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         env:
           REIANIX_TMDB_READ_ACCESS_TOKEN: ${{ secrets.REIANIX_TMDB_READ_ACCESS_TOKEN }}
@@ -246,6 +251,7 @@ jobs:
             :app:compileReleaseKotlin
 
       - name: Locate APK
+        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         id: apk
         shell: bash
         run: |
@@ -258,6 +264,7 @@ jobs:
           echo "path=build/ReiAnix.apk" >> "$GITHUB_OUTPUT"
 
       - name: Verify native APK payload and Android package metadata
+        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -315,6 +322,7 @@ jobs:
           done
 
       - name: Print and publish APK SHA-256
+        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -329,6 +337,7 @@ jobs:
           test -s build/reiflix-release-metadata.txt
 
       - name: Print APK signing certificate fingerprints
+        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -336,6 +345,8 @@ jobs:
 
       - name: Final Git integrity check
         if: always()
+        env:
+          TMDB_CREDENTIAL_STATUS: ${{ steps.tmdb-validation.outputs.credential_status }}
         shell: bash
         run: |
           set -euo pipefail
@@ -352,10 +363,19 @@ jobs:
             git diff --stat
             exit 1
           fi
-          test -s build/ReiAnix.apk
           test -s build/reiflix-build-identity.json
+          if [[ "${TMDB_CREDENTIAL_STATUS:-not_validated}" == "validated" ]]; then
+            test -s build/ReiAnix.apk
+          else
+            if [[ -e build/ReiAnix.apk || -e build/ReiAnix.apk.sha256 || -e build/ReiAnix-apk.zip ]]; then
+              echo "Unvalidated APK/ZIP files must not remain in this run."
+              exit 1
+            fi
+            echo "APK generation withheld because the live TMDB credential/search check did not pass."
+          fi
 
       - name: Write Portuguese install instructions
+        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -370,6 +390,7 @@ jobs:
           test -s build/LEIA-ANTES-DE-INSTALAR.txt
 
       - name: Create downloadable APK ZIP
+        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -385,7 +406,7 @@ jobs:
           test "$zip_bytes" -le "$((apk_bytes + 1048576))"
 
       - name: Publish APK and ZIP to rolling GitHub Release
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && steps.tmdb-validation.outputs.credential_status == 'validated'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: reianix-ci-latest
@@ -412,7 +433,7 @@ jobs:
           fi
 
       - name: Upload APK to Actions run
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
+        if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request') && steps.tmdb-validation.outputs.credential_status == 'validated'
         uses: actions/upload-artifact@v4
         with:
           name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}
@@ -427,7 +448,7 @@ jobs:
 
 
       - name: Upload APK ZIP to Actions run
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
+        if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request') && steps.tmdb-validation.outputs.credential_status == 'validated'
         uses: actions/upload-artifact@v4
         with:
           name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
