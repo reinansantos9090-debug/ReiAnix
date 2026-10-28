@@ -21,8 +21,8 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
-import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.Locale
 
@@ -226,17 +226,43 @@ internal fun tmdbPosterImageUrl(posterPath: String?): String? {
  * Official TMDB REST search provider. The read token is supplied by build configuration and is
  * never appended to URLs or diagnostics. No token means this provider is skipped cleanly.
  */
+private fun normalizeReiAnixTmdbBackendBaseUrl(value: String): String {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return ""
+    return try {
+        val uri = URI(trimmed)
+        if (
+            uri.scheme.equals("https", ignoreCase = true) &&
+            !uri.host.isNullOrBlank() &&
+            uri.rawUserInfo == null &&
+            uri.rawQuery == null &&
+            uri.rawFragment == null &&
+            (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")
+        ) {
+            uri.toASCIIString().trimEnd('/')
+        } else {
+            ""
+        }
+    } catch (_: Exception) {
+        ""
+    }
+}
+
+/**
+ * Calls the ReiAnix metadata backend. The TMDB read token stays on the server and is never
+ * provided to Android, Gradle, BuildConfig, request headers, diagnostics, or the APK.
+ */
 class ReiAnixTmdbMetadataProvider(
-    readAccessToken: String,
+    backendBaseUrl: String,
     private val connectionFactory: (URL) -> HttpURLConnection = {
         it.openConnection() as HttpURLConnection
     },
     private val language: String = "pt-BR",
 ) : ReiAnixMetadataProvider {
-    private val token = readAccessToken.trim()
+    private val backendBaseUrl = normalizeReiAnixTmdbBackendBaseUrl(backendBaseUrl)
     override val providerId: String = "tmdb"
     override val priority: Int = 375
-    override val isConfigured: Boolean get() = token.isNotEmpty()
+    override val isConfigured: Boolean get() = backendBaseUrl.isNotEmpty()
 
     override suspend fun search(query: ReiAnixMetadataQuery): List<ReiAnixMetadataCandidate> {
         if (!isConfigured || query.searchTitles.isEmpty()) return emptyList()
@@ -305,12 +331,8 @@ class ReiAnixTmdbMetadataProvider(
     }
 
     private suspend fun requestSearch(kind: String, title: String, year: Int?): JSONObject {
-        val query = "query=" + URLEncoder.encode(title, Charsets.UTF_8.name()) +
-            "&include_adult=false&language=" + URLEncoder.encode(language, Charsets.UTF_8.name()) +
-            "&page=1" + (year?.let {
-                (if (kind == "movie") "&year=" else "&first_air_date_year=") + it
-            } ?: "")
-        val url = URL("https://api.themoviedb.org/3/search/" + kind + "?" + query)
+        if (title.length > MAX_QUERY_LENGTH) throw IOException("TMDB_INVALID_REQUEST")
+        val url = URL(backendBaseUrl + BACKEND_SEARCH_PATH)
         var attempt = 0
         while (true) {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -320,12 +342,23 @@ class ReiAnixTmdbMetadataProvider(
                 if (cause is CancellationException) connection.disconnect()
             }
             try {
-                connection.requestMethod = "GET"
+                val payload = JSONObject()
+                    .put("query", title)
+                    .put("mediaKind", kind)
+                    .put("language", language)
+                    .put("includeAdult", false)
+                if (year != null) payload.put("year", year)
+
+                connection.requestMethod = "POST"
+                connection.doOutput = true
                 connection.connectTimeout = CONNECT_TIMEOUT_MS
                 connection.readTimeout = READ_TIMEOUT_MS
                 connection.instanceFollowRedirects = false
                 connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("Authorization", "Bearer " + token)
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                connection.outputStream.use { output ->
+                    output.write(payload.toString().toByteArray(Charsets.UTF_8))
+                }
                 connection.connect()
                 val status = connection.responseCode
                 if ((status == 429 || status in 500..599) && attempt < MAX_HTTP_RETRIES) {
@@ -363,10 +396,12 @@ class ReiAnixTmdbMetadataProvider(
     }
 
     private companion object {
+        const val BACKEND_SEARCH_PATH = "/v1/metadata/tmdb/search"
         const val CONNECT_TIMEOUT_MS = 8_000
         const val READ_TIMEOUT_MS = 10_000
         const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
         const val MAX_RESULTS_PER_QUERY = 20
+        const val MAX_QUERY_LENGTH = 160
         const val MAX_HTTP_RETRIES = 2
         const val MAX_RETRY_AFTER_SECONDS = 3L
     }
