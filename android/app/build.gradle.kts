@@ -4,14 +4,19 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val tmdbReadAccessToken = (
-    providers.gradleProperty("reianixTmdbReadAccessToken").orNull
-        ?: System.getenv("REIANIX_TMDB_READ_ACCESS_TOKEN").orEmpty()
-    ).trim()
-if (tmdbReadAccessToken.isEmpty()) {
-    logger.warn("TMDB read access token is not configured; TMDB search will be skipped for this build. AniList remains available.")
+val tmdbMetadataBackendUrl = (
+    providers.gradleProperty("reianixTmdbMetadataBackendUrl").orNull
+        ?: System.getenv("REIANIX_TMDB_METADATA_BACKEND_URL").orEmpty()
+    ).trim().trimEnd('/')
+require(
+    tmdbMetadataBackendUrl.isEmpty() || tmdbMetadataBackendUrl.startsWith("https://", ignoreCase = true),
+) {
+    "TMDB metadata backend URL must use HTTPS."
 }
-val tmdbReadAccessTokenLiteral = "\"" + tmdbReadAccessToken
+if (tmdbMetadataBackendUrl.isEmpty()) {
+    logger.warn("TMDB metadata backend is not configured; TMDB search will be skipped for this build. AniList remains available.")
+}
+val tmdbMetadataBackendUrlLiteral = "\"" + tmdbMetadataBackendUrl
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
     .replace("\n", "")
@@ -34,7 +39,7 @@ android {
         applicationId = "com.reiflix.reiflix_local"
         minSdk = 24
         targetSdk = 36
-        buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", tmdbReadAccessTokenLiteral)
+        buildConfigField("String", "TMDB_METADATA_BACKEND_URL", tmdbMetadataBackendUrlLiteral)
         versionCode = providers.gradleProperty("reianixBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2
         versionName = providers.gradleProperty("reianixBuildVersion").orNull?.takeIf { it.isNotBlank() } ?: "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
