@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -261,29 +261,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import re
-          import sys
-          import zipfile
-
-          apk_path = "build/ReiAnix.apk"
-          jwt_pattern = re.compile(rb"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
-          findings = []
-          with zipfile.ZipFile(apk_path) as apk:
-              for item in apk.infolist():
-                  if item.is_dir():
-                      continue
-                  data = apk.read(item.filename)
-                  if b"TMDB_READ_ACCESS_TOKEN" in data:
-                      findings.append((item.filename, "legacy BuildConfig field name"))
-                  if jwt_pattern.search(data):
-                      findings.append((item.filename, "JWT-shaped credential string"))
-          if findings:
-              for path, reason in findings:
-                  print(f"APK credential scan failed: {reason} detected in {path}.")
-              sys.exit(1)
-          print("APK credential scan passed: no legacy TMDB token field or JWT-shaped credential string found in APK entries.")
-          PY
+          apk_path="build/ReiAnix.apk"
+          test -s "$apk_path"
+          entries="$(unzip -Z1 "$apk_path")"
+          while IFS= read -r entry; do
+            [[ -n "$entry" ]] || continue
+            if unzip -p "$apk_path" "$entry" | LC_ALL=C grep -aF 'TMDB_READ_ACCESS_TOKEN' >/dev/null; then
+              echo "APK credential scan failed: legacy TMDB token field name detected in $entry."
+              exit 1
+            fi
+            if unzip -p "$apk_path" "$entry" | LC_ALL=C grep -aE 'eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}' >/dev/null; then
+              echo "APK credential scan failed: JWT-shaped credential string detected in $entry."
+              exit 1
+            fi
+          done <<< "$entries"
+          echo "APK credential scan passed: no legacy TMDB token field or JWT-shaped credential string found in APK entries."
 
       - name: Verify native APK payload and Android package metadata
         shell: bash
@@ -417,8 +409,67 @@ jobs:
           printf 'APK_SIZE_BYTES=%s\nZIP_SIZE_BYTES=%s\n' "$apk_bytes" "$zip_bytes"
           test "$zip_bytes" -le "$((apk_bytes + 1048576))"
 
+      - name: Upload APK to Actions run
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}
+          path: |
+            build/ReiAnix.apk
+            build/ReiAnix.apk.sha256
+            build/LEIA-ANTES-DE-INSTALAR.txt
+            build/reiflix-release-metadata.txt
+            build/reiflix-build-identity.json
+          retention-days: 1
+          if-no-files-found: error
+
+
+      - name: Upload APK ZIP to Actions run
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
+          path: build/ReiAnix-apk.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  publish-rolling-release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_rolling_release }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download validated APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}
+          path: build
+
+      - name: Download distributable APK ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
+          path: build
+
+      - name: Verify artifacts before release publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build/ReiAnix.apk
+          test -s build/ReiAnix.apk.sha256
+          test -s build/ReiAnix-apk.zip
+          (cd build && sha256sum -c ReiAnix.apk.sha256)
+          unzip -tq build/ReiAnix-apk.zip
+          unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'ReiAnix.apk'
+          unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'ReiAnix.apk.sha256'
+          extracted_apk="$(mktemp)"
+          trap 'rm -f "$extracted_apk"' EXIT
+          unzip -p build/ReiAnix-apk.zip ReiAnix.apk > "$extracted_apk"
+          cmp -s build/ReiAnix.apk "$extracted_apk"
+          echo "Release inputs verified; publishing remains gated by explicit workflow_dispatch opt-in."
+
       - name: Publish APK and ZIP to rolling GitHub Release
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_rolling_release }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: reianix-ci-latest
@@ -443,25 +494,3 @@ jobs:
               build/LEIA-ANTES-DE-INSTALAR.txt build/reiflix-release-metadata.txt \
               build/reiflix-build-identity.json "${release_args[@]}" --target "$GITHUB_SHA"
           fi
-
-      - name: Upload APK to Actions run
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}
-          path: |
-            build/ReiAnix.apk
-            build/ReiAnix.apk.sha256
-            build/LEIA-ANTES-DE-INSTALAR.txt
-            build/reiflix-release-metadata.txt
-            build/reiflix-build-identity.json
-          retention-days: 1
-          if-no-files-found: error
-
-
-      - name: Upload APK ZIP to Actions run
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
-          path: build/ReiAnix-apk.zip
-          retention-days: 1
-          if-no-files-found: error
