@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_rolling_release:
+        description: "Publish the rolling GitHub Release (explicit opt-in only)"
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -91,9 +97,9 @@ jobs:
           set -euo pipefail
           backend_url="${REIANIX_TMDB_METADATA_BACKEND_URL:-}"
           if [[ -z "${backend_url//[[:space:]]/}" ]]; then
-            echo "::notice::TMDB metadata backend is not configured; the APK will keep AniList available and skip TMDB search."
-            echo "TMDB metadata backend: not configured; this APK will not perform TMDB fallback until a real backend origin is configured." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            echo "::error::TMDB metadata backend is not configured. Refusing to build or package an APK until live backend health and poster-search checks pass."
+            echo "BLOCKED: TMDB metadata backend URL is missing; no APK should be built or packaged from this run." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
           if [[ ! "$backend_url" =~ ^https://([[:alnum:]-]+\.)+[[:alnum:]-]+(:[0-9]{1,5})?/?$ ]]; then
             echo "::error::TMDB metadata backend must be an HTTPS origin without credentials, path, query, or fragment."
@@ -231,7 +237,7 @@ jobs:
         shell: bash
         env:
           REIANIX_TMDB_METADATA_BACKEND_URL: ${{ vars.REIANIX_TMDB_METADATA_BACKEND_URL }}
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
+          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --console=plain \
@@ -408,6 +414,7 @@ jobs:
           test "$zip_bytes" -le "$((apk_bytes + 1048576))"
 
       - name: Publish APK and ZIP to rolling GitHub Release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_rolling_release }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: reianix-ci-latest
