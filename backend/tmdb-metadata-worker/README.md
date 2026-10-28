@@ -22,13 +22,15 @@ IP rate limiting and an allowlisted API operation reduce abuse but are not stron
    npx wrangler deploy
    ```
 
-4. Add the NEW TMDB read token as an encrypted Worker secret. Wrangler prompts for the value and deploys a new Worker version:
+4. Add the currently retained TMDB read token as an encrypted Worker secret. You can use the Wrangler prompt below or the private Cloudflare dashboard procedure after it. The owner has chosen to retain the current token; APK 7433 contained a credential-shaped JWT value, so this token must be treated as already disclosed. Putting it in the Worker prevents new APKs from including it but cannot undo the previous exposure:
 
    ```sh
    npx wrangler secret put TMDB_READ_ACCESS_TOKEN
    ```
 
-   Paste the credential only into the Wrangler terminal prompt. Do not put it in this README, GitHub issues, Android project properties, GitHub Actions secrets/variables, Gradle properties, or application source. Never reuse the token that was embedded in APK 7433.
+   Paste the credential only into the Wrangler terminal prompt. Do not put it in this README, GitHub issues, Android project properties, GitHub Actions variables, Gradle properties, or application source. A saved GitHub Actions secret is write-only and cannot be displayed/exported; if it is the only remaining copy, retrieve the same current API Read Access Token from the TMDB account's Settings > API page rather than pasting it into chat.
+
+   To set it through the private Cloudflare dashboard instead: open **Workers & Pages** > select the deployed Worker **reianix-tmdb-metadata** > **Settings** > **Variables and Secrets** > **Add**; choose type **Secret**, set the name to `TMDB_READ_ACCESS_TOKEN`, enter the existing token in the private value field, and select **Deploy**. Cloudflare hides the value after it is saved. The Worker must be deployed first; /healthz remains HTTP 503 until the secret and rate-limit binding are configured.
 
 5. Check `GET https://<your-deployed-worker-host>/healthz`, then send a real `POST /v1/metadata/tmdb/search` request for a known title. Confirm HTTP 200, valid JSON and at least one result with a usable `poster_path`. The repository Actions workflow repeats these live checks and refuses to build an APK when the backend URL is missing or validation fails. Do not claim the integration is live until these checks pass.
 
