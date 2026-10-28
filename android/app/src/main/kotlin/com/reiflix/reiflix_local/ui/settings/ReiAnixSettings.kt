@@ -98,7 +98,7 @@ data class ReiAnixSettingsCategoryUiModel(
             ReiAnixSettingsCategoryUiModel("Player", "Reprodução, vídeo e controles", Icons.Filled.PlayArrow),
             ReiAnixSettingsCategoryUiModel("Gestos", "Toque, swipe, seek e zoom", Icons.Filled.TouchApp),
             ReiAnixSettingsCategoryUiModel("Áudio e Legendas", "Idiomas, faixas e legendas", Icons.Filled.Headphones),
-            ReiAnixSettingsCategoryUiModel("Metadata", "AniList e correspondência", Icons.Filled.ManageSearch),
+            ReiAnixSettingsCategoryUiModel("Metadata", "AniList, TMDB e correspondência", Icons.Filled.ManageSearch),
             ReiAnixSettingsCategoryUiModel("Artwork", "Capas, thumbnails e cache", Icons.Filled.Image),
             ReiAnixSettingsCategoryUiModel("Armazenamento", "SAF, MediaStore, permissões e volumes", Icons.Filled.Storage),
             ReiAnixSettingsCategoryUiModel("Dados e Cache", "Configurações e dados temporários", Icons.Filled.Cached),
@@ -1051,6 +1051,16 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
                         )
                     }
+                    item(key = "section:metadata:tmdb") { SettingsSectionLabel("Fallback TMDB") }
+                    item(key = "setting:metadata.tmdb_enabled") {
+                        BooleanSettingRow(
+                            keyName = "metadata.tmdb_enabled",
+                            title = "Usar TMDB para capas",
+                            description = "Busca pôsteres quando a capa atual não é utilizável. Requer token de leitura configurado no ambiente de build.",
+                            checked = state.settings["metadata.tmdb_enabled"] != "false",
+                            onCheckedChange = { onUpdateSetting("metadata.tmdb_enabled", it.toString()) },
+                        )
+                    }
                 }
 
                 "Artwork" -> {
@@ -1633,6 +1643,16 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 Text(
                                     text = "Armazenamento: MediaStore / SAF / scanners nativos existentes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "TMDB fornece metadados e pôsteres. Consulte os créditos e a atribuição oficial do TMDB.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

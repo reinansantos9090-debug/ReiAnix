@@ -4,6 +4,16 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val tmdbReadAccessToken = (
+    providers.gradleProperty("reianixTmdbReadAccessToken").orNull
+        ?: System.getenv("REIANIX_TMDB_READ_ACCESS_TOKEN").orEmpty()
+    ).trim()
+val tmdbReadAccessTokenLiteral = "\"" + tmdbReadAccessToken
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\n", "")
+    .replace("\r", "") + "\""
+
 android {
     namespace = "com.reiflix.reiflix_local"
     compileSdk = 36
@@ -21,6 +31,7 @@ android {
         applicationId = "com.reiflix.reiflix_local"
         minSdk = 24
         targetSdk = 36
+        buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", tmdbReadAccessTokenLiteral)
         versionCode = providers.gradleProperty("reianixBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2
         versionName = providers.gradleProperty("reianixBuildVersion").orNull?.takeIf { it.isNotBlank() } ?: "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
