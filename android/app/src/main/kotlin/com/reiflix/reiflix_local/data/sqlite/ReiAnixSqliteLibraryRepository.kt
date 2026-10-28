@@ -425,9 +425,7 @@ class ReiAnixSqliteLibraryRepository(
     }
 
 
-            .replace("[^\\p{L}\\p{Nd}]+".toRegex(), " ")
-            .trim()
-            .replace("\\s+".toRegex(), " ")
+
 
     private fun nativeSearchCharacterVariants(character: String): Set<String> {
         val base = java.text.Normalizer.normalize(character, java.text.Normalizer.Form.NFD)
@@ -1850,6 +1848,9 @@ internal fun normalizeNativeSearchText(value: String?): String =
     java.text.Normalizer.normalize(value.orEmpty(), java.text.Normalizer.Form.NFKD)
         .replace("\\p{M}+".toRegex(), "")
         .lowercase(java.util.Locale.ROOT)
+        .replace("[^\\p{L}\\p{Nd}]+".toRegex(), " ")
+        .trim()
+        .replace("\\s+".toRegex(), " ")
 
 internal fun Cursor.toAnimeRecord() = ReiAnixAnimeRecord(
     id = requiredLong("id"),

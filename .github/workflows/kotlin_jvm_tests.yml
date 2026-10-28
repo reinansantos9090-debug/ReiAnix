@@ -106,4 +106,6 @@ jobs:
             --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListMatcherTest \
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.realDurationAndEpisodeArtworkReachUiModelUnchanged \
             --tests com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjectionTest \
+            --tests com.reiflix.reiflix_local.data.metadata.ReiAnixMetadataProvidersTest \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixNativeSearchTextTest.nullableMetadataTextDoesNotAbortLibrarySearchProjection \
             :app:compileReleaseKotlin
