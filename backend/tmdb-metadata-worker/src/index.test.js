@@ -169,3 +169,48 @@ test("TMDB failures do not expose server credentials or upstream bodies", async 
   assert.equal(body.includes(SERVER_ONLY_TOKEN), false);
   assert.equal(body.includes("Authorization"), false);
 });
+
+
+test("readiness fails closed when the rate-limit binding is malformed", async () => {
+  const response = await handleRequest(
+    new Request("https://worker.example.invalid/healthz"),
+    makeEnv({ TMDB_RATE_LIMITER: {} }),
+    async () => { throw new Error("upstream should not be called"); },
+  );
+  assert.equal(response.status, 503);
+  assert.deepEqual(JSON.parse(await response.text()), { error: "service_not_configured" });
+});
+
+test("oversized request bodies are rejected before calling TMDB", async () => {
+  let calls = 0;
+  const oversizedRequest = new Request(SEARCH_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.10",
+    },
+    body: JSON.stringify({
+      query: "Cowboy Bebop",
+      mediaKind: "tv",
+      padding: "x".repeat(5000),
+    }),
+  });
+  const response = await handleRequest(oversizedRequest, makeEnv(), async () => {
+    calls += 1;
+    return new Response("{}", { status: 200 });
+  });
+  assert.equal(response.status, 400);
+  assert.equal(calls, 0);
+});
+
+test("oversized upstream responses are rejected without returning their body", async () => {
+  const response = await handleRequest(
+    request({ query: "Cowboy Bebop", mediaKind: "tv" }),
+    makeEnv(),
+    async () => new Response("x".repeat(2 * 1024 * 1024 + 1), { status: 200 }),
+  );
+  assert.equal(response.status, 502);
+  const body = await response.text();
+  assert.deepEqual(JSON.parse(body), { error: "metadata_response_too_large" });
+  assert.equal(body.includes(SERVER_ONLY_TOKEN), false);
+});
