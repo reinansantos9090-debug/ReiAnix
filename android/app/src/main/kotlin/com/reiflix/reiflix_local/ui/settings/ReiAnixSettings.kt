@@ -1064,7 +1064,11 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         BooleanSettingRow(
                             keyName = "metadata.tmdb_enabled",
                             title = "Usar TMDB para capas",
-                            description = "Busca pôsteres quando a capa atual não é utilizável. Requer token de leitura configurado no ambiente de build.",
+                            description = if (BuildConfig.TMDB_READ_ACCESS_TOKEN.isBlank()) {
+                                "Busca pôsteres quando a capa atual não é utilizável. Este APK foi compilado sem token TMDB; as buscas TMDB serão ignoradas. AniList continua disponível."
+                            } else {
+                                "Busca pôsteres quando a capa atual não é utilizável. Este APK inclui uma credencial TMDB; a validade depende da aceitação pelo serviço. AniList continua disponível independentemente."
+                            },
                             checked = state.settings["metadata.tmdb_enabled"] != "false",
                             onCheckedChange = { onUpdateSetting("metadata.tmdb_enabled", it.toString()) },
                         )

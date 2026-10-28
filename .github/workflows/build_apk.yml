@@ -75,6 +75,40 @@ jobs:
             echo "GOOGLE_WEB_CLIENT_ID missing; login will show configuration required."
           fi
 
+      - name: Validate optional TMDB read token without exposing it
+        shell: bash
+        env:
+          REIANIX_TMDB_READ_ACCESS_TOKEN: ${{ secrets.REIANIX_TMDB_READ_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${REIANIX_TMDB_READ_ACCESS_TOKEN:-}"
+          if [[ -z "${token//[[:space:]]/}" ]]; then
+            echo "::warning::REIANIX_TMDB_READ_ACCESS_TOKEN is missing or blank; TMDB search will be skipped in this APK. AniList remains available."
+            echo "TMDB credential: missing; TMDB search disabled at provider level; AniList remains available." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          auth_config="$(mktemp)"
+          chmod 600 "$auth_config"
+          trap 'rm -f "$auth_config"' EXIT
+          printf 'header = "Authorization: Bearer %s"\n' "$token" > "$auth_config"
+          unset token REIANIX_TMDB_READ_ACCESS_TOKEN
+          http_status="$(curl --config "$auth_config" --silent --output /dev/null --write-out '%{http_code}' --max-time 15 'https://api.themoviedb.org/3/configuration' 2>/dev/null || true)"
+          case "$http_status" in
+            200)
+              echo "TMDB read token check: valid."
+              echo "TMDB credential: accepted by TMDB configuration endpoint; AniList remains independent." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            401|403)
+              echo "::warning::TMDB rejected the configured read token (HTTP $http_status); TMDB search may not work in this APK. AniList remains available."
+              echo "TMDB credential: rejected by TMDB (HTTP $http_status); AniList remains available." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::warning::TMDB token validation could not be confirmed (HTTP status unavailable or $http_status); build continues and AniList remains available."
+              echo "TMDB credential: present but validity unverified (network/HTTP result unavailable or $http_status); AniList remains available." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
+
       - name: Validate native Kotlin entry point and repository integrity
         shell: bash
         run: |
@@ -167,6 +201,7 @@ jobs:
       - name: Build native Android release APK
         shell: bash
         env:
+          REIANIX_TMDB_READ_ACCESS_TOKEN: ${{ secrets.REIANIX_TMDB_READ_ACCESS_TOKEN }}
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
         run: |
           set -euo pipefail
@@ -178,6 +213,7 @@ jobs:
       - name: Explicitly verify release Kotlin compilation
         shell: bash
         env:
+          REIANIX_TMDB_READ_ACCESS_TOKEN: ${{ secrets.REIANIX_TMDB_READ_ACCESS_TOKEN }}
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
         run: |
           set -euo pipefail

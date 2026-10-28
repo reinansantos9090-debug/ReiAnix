@@ -8,6 +8,9 @@ val tmdbReadAccessToken = (
     providers.gradleProperty("reianixTmdbReadAccessToken").orNull
         ?: System.getenv("REIANIX_TMDB_READ_ACCESS_TOKEN").orEmpty()
     ).trim()
+if (tmdbReadAccessToken.isEmpty()) {
+    logger.warn("TMDB read access token is not configured; TMDB search will be skipped for this build. AniList remains available.")
+}
 val tmdbReadAccessTokenLiteral = "\"" + tmdbReadAccessToken
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")

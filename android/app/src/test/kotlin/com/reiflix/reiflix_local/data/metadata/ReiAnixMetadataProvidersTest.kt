@@ -17,6 +17,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -270,6 +271,28 @@ class ReiAnixMetadataProvidersTest {
         yield()
         request.cancelAndJoin()
         assertTrue(providerCancelled.get())
+    }
+
+
+    @Test
+    fun tmdbNetworkFailureDoesNotSuppressAniListCandidate() = runBlocking {
+        val token = "configured-test-token"
+        val offlineTmdb = ReiAnixTmdbMetadataProvider(
+            readAccessToken = token,
+            connectionFactory = { throw IOException("simulated network unavailable") },
+        )
+        val aniList = FixedProvider(
+            providerId = "anilist",
+            priority = 400,
+            candidates = listOf(candidate(title = "Cowboy Bebop", year = 1998, providerId = "anilist")),
+        )
+
+        val result = ReiAnixMetadataProviderRegistry(listOf(offlineTmdb, aniList))
+            .search(ReiAnixMetadataQuery(title = "Cowboy Bebop", year = 1998))
+
+        assertEquals("anilist", result.candidates.single().providerId)
+        assertEquals("network_or_http", result.failures.single().category)
+        assertFalse(result.failures.toString().contains(token))
     }
 
     @Test
