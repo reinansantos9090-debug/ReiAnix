@@ -37,6 +37,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
+          cache-read-only: true
 
       - name: Validate canonical SQLite v29 runtime contract
         shell: bash
@@ -75,66 +76,48 @@ jobs:
             echo "GOOGLE_WEB_CLIENT_ID missing; login will show configuration required."
           fi
 
-      - name: Validate optional TMDB read token and live search response
-        id: tmdb-validation
+      - name: Validate optional TMDB metadata backend and live search
         shell: bash
         env:
-          REIANIX_TMDB_READ_ACCESS_TOKEN: ${{ secrets.REIANIX_TMDB_READ_ACCESS_TOKEN }}
+          REIANIX_TMDB_METADATA_BACKEND_URL: ${{ vars.REIANIX_TMDB_METADATA_BACKEND_URL }}
         run: |
           set -euo pipefail
-          echo "credential_status=not_validated" >> "$GITHUB_OUTPUT"
-          token="${REIANIX_TMDB_READ_ACCESS_TOKEN:-}"
-          if [[ -z "${token//[[:space:]]/}" ]]; then
-            echo "credential_status=missing" >> "$GITHUB_OUTPUT"
-            echo "::warning::REIANIX_TMDB_READ_ACCESS_TOKEN is missing or blank; no APK will be packaged from this run. AniList remains available in builds made with the default empty token."
-            echo "TMDB credential: missing; live TMDB search not validated; Kotlin compilation will run, but APK/ZIP artifacts are withheld. AniList remains available." >> "$GITHUB_STEP_SUMMARY"
+          backend_url="${REIANIX_TMDB_METADATA_BACKEND_URL:-}"
+          if [[ -z "${backend_url//[[:space:]]/}" ]]; then
+            echo "::notice::TMDB metadata backend is not configured; the APK will keep AniList available and skip TMDB search."
+            echo "TMDB metadata backend: not configured; this APK will not perform TMDB fallback until a real backend origin is configured." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-
-          auth_config="$(mktemp)"
+          if [[ ! "$backend_url" =~ ^https://([[:alnum:]-]+\.)+[[:alnum:]-]+(:[0-9]{1,5})?/?$ ]]; then
+            echo "::error::TMDB metadata backend must be an HTTPS origin without credentials, path, query, or fragment."
+            exit 1
+          fi
+          backend_url="${backend_url%/}"
+          health_file="$(mktemp)"
           response_file="$(mktemp)"
-          chmod 600 "$auth_config" "$response_file"
-          trap 'rm -f "$auth_config" "$response_file"' EXIT
-          printf 'header = "Authorization: Bearer %s"\n' "$token" > "$auth_config"
-          unset token REIANIX_TMDB_READ_ACCESS_TOKEN
-
-          config_status="$(curl --config "$auth_config" --silent --output /dev/null --write-out '%{http_code}' --max-time 15 'https://api.themoviedb.org/3/configuration' 2>/dev/null || true)"
-          if [[ "$config_status" != "200" ]]; then
-            if [[ "$config_status" == "401" || "$config_status" == "403" ]]; then
-              echo "::error::TMDB rejected the configured read token (HTTP $config_status). No APK will be produced by this workflow run."
-              echo "TMDB credential: rejected (HTTP $config_status); build blocked until the secret is corrected. AniList remains independent." >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "::error::TMDB credential validation could not be confirmed (HTTP status $config_status). No APK will be produced by this workflow run."
-              echo "TMDB credential: validity unverified (HTTP $config_status); build blocked because authenticated validation did not pass." >> "$GITHUB_STEP_SUMMARY"
-            fi
+          chmod 600 "$health_file" "$response_file"
+          trap 'rm -f "$health_file" "$response_file"' EXIT
+          health_status="$(curl --silent --output "$health_file" --write-out '%{http_code}' --max-time 10 "$backend_url/healthz" 2>/dev/null || true)"
+          if [[ "$health_status" != "200" ]] || ! jq -e '.status == "ok"' "$health_file" >/dev/null; then
+            echo "::error::Configured TMDB metadata backend health check did not pass (HTTP $health_status). No live-backend claim is made."
             exit 1
           fi
-
-          search_status="$(curl --config "$auth_config" --silent --output "$response_file" --write-out '%{http_code}' --max-time 20 'https://api.themoviedb.org/3/search/tv?query=Cowboy%20Bebop&language=en-US&page=1' 2>/dev/null || true)"
-          if [[ "$search_status" != "200" ]]; then
-            echo "::error::Authenticated TMDB TV search failed (HTTP $search_status). No APK will be produced by this workflow run."
-            echo "TMDB search validation: failed (HTTP $search_status); build blocked until the live search check passes." >> "$GITHUB_STEP_SUMMARY"
+          search_status="$(curl --silent --output "$response_file" --write-out '%{http_code}' --max-time 20 \
+            -H 'Content-Type: application/json' \
+            --data '{"query":"Cowboy Bebop","mediaKind":"tv","language":"en-US","year":1998,"includeAdult":false}' \
+            "$backend_url/v1/metadata/tmdb/search" 2>/dev/null || true)"
+          if [[ "$search_status" != "200" ]] || ! jq -e '(.results | type == "array") and all(.results[]; (.id | type == "number") and ((.name | type == "string") or (.name == null)) and ((.poster_path | type == "string") or (.poster_path == null)))' "$response_file" >/dev/null; then
+            echo "::error::Configured TMDB metadata backend search did not return valid JSON (HTTP $search_status). No live-backend claim is made."
             exit 1
           fi
-
-          if ! jq -e '(.results | type == "array") and all(.results[]; (.id | type == "number") and ((.name | type == "string") or (.name == null)) and ((.poster_path | type == "string") or (.poster_path == null)))' "$response_file" >/dev/null; then
-            echo "::error::Authenticated TMDB search returned an unexpected response shape. No APK will be produced by this workflow run."
-            echo "TMDB search validation: HTTP 200 but response shape was invalid; build blocked." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
           result_count="$(jq '.results | length' "$response_file")"
           poster_count="$(jq '[.results[] | select((.poster_path | type == "string") and (.poster_path | startswith("/")) and (.poster_path | startswith("//") | not))] | length' "$response_file")"
           if [[ "$result_count" -eq 0 || "$poster_count" -eq 0 ]]; then
-            echo "::error::Authenticated TMDB search returned no usable poster candidates. No APK will be produced by this workflow run."
-            echo "TMDB search validation: HTTP 200, results=$result_count, poster_candidates=$poster_count; build blocked pending a usable live candidate." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Configured backend returned no usable poster candidate; APK creation is blocked for this configuration."
             exit 1
           fi
-
-          echo "credential_status=validated" >> "$GITHUB_OUTPUT"
-          echo "TMDB authenticated read token: accepted."
-          echo "TMDB authenticated search: HTTP 200; JSON shape valid; results=$result_count; poster_candidates=$poster_count."
-          echo "TMDB credential: accepted; live search returned HTTP 200 and $poster_count usable poster candidates from $result_count results. AniList remains independent." >> "$GITHUB_STEP_SUMMARY"
+          echo "TMDB metadata backend live check: HTTP 200; JSON valid; results=$result_count; poster_candidates=$poster_count."
+          echo "TMDB metadata backend: live health and search checks passed; results=$result_count; usable poster candidates=$poster_count." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate native Kotlin entry point and repository integrity
         shell: bash
@@ -226,11 +209,10 @@ jobs:
           test -s build/reiflix-build-identity.json
 
       - name: Build native Android release APK
-        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         env:
-          REIANIX_TMDB_READ_ACCESS_TOKEN: ${{ secrets.REIANIX_TMDB_READ_ACCESS_TOKEN }}
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
+          REIANIX_TMDB_METADATA_BACKEND_URL: ${{ vars.REIANIX_TMDB_METADATA_BACKEND_URL }}
+          GRADLE_OPTS: "-Dorg.gradle.caching=false -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --console=plain --stacktrace \
@@ -241,7 +223,7 @@ jobs:
       - name: Explicitly verify release Kotlin compilation
         shell: bash
         env:
-          REIANIX_TMDB_READ_ACCESS_TOKEN: ${{ secrets.REIANIX_TMDB_READ_ACCESS_TOKEN }}
+          REIANIX_TMDB_METADATA_BACKEND_URL: ${{ vars.REIANIX_TMDB_METADATA_BACKEND_URL }}
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
         run: |
           set -euo pipefail
@@ -251,7 +233,6 @@ jobs:
             :app:compileReleaseKotlin
 
       - name: Locate APK
-        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         id: apk
         shell: bash
         run: |
@@ -263,8 +244,35 @@ jobs:
           file build/ReiAnix.apk
           echo "path=build/ReiAnix.apk" >> "$GITHUB_OUTPUT"
 
+      - name: Verify APK contains no TMDB client credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          import sys
+          import zipfile
+
+          apk_path = "build/ReiAnix.apk"
+          jwt_pattern = re.compile(rb"eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}")
+          findings = []
+          with zipfile.ZipFile(apk_path) as apk:
+              for item in apk.infolist():
+                  if item.is_dir():
+                      continue
+                  data = apk.read(item.filename)
+                  if b"TMDB_READ_ACCESS_TOKEN" in data:
+                      findings.append((item.filename, "legacy BuildConfig field name"))
+                  if jwt_pattern.search(data):
+                      findings.append((item.filename, "JWT-shaped credential string"))
+          if findings:
+              for path, reason in findings:
+                  print(f"APK credential scan failed: {reason} detected in {path}.")
+              sys.exit(1)
+          print("APK credential scan passed: no legacy TMDB token field or JWT-shaped credential string found in APK entries.")
+          PY
+
       - name: Verify native APK payload and Android package metadata
-        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -322,7 +330,6 @@ jobs:
           done
 
       - name: Print and publish APK SHA-256
-        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -337,7 +344,6 @@ jobs:
           test -s build/reiflix-release-metadata.txt
 
       - name: Print APK signing certificate fingerprints
-        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -345,8 +351,6 @@ jobs:
 
       - name: Final Git integrity check
         if: always()
-        env:
-          TMDB_CREDENTIAL_STATUS: ${{ steps.tmdb-validation.outputs.credential_status }}
         shell: bash
         run: |
           set -euo pipefail
@@ -364,18 +368,10 @@ jobs:
             exit 1
           fi
           test -s build/reiflix-build-identity.json
-          if [[ "${TMDB_CREDENTIAL_STATUS:-not_validated}" == "validated" ]]; then
-            test -s build/ReiAnix.apk
-          else
-            if [[ -e build/ReiAnix.apk || -e build/ReiAnix.apk.sha256 || -e build/ReiAnix-apk.zip ]]; then
-              echo "Unvalidated APK/ZIP files must not remain in this run."
-              exit 1
-            fi
-            echo "APK generation withheld because the live TMDB credential/search check did not pass."
-          fi
+          test -s build/ReiAnix.apk
+          test -s build/ReiAnix.apk.sha256
 
       - name: Write Portuguese install instructions
-        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -390,7 +386,6 @@ jobs:
           test -s build/LEIA-ANTES-DE-INSTALAR.txt
 
       - name: Create downloadable APK ZIP
-        if: steps.tmdb-validation.outputs.credential_status == 'validated'
         shell: bash
         run: |
           set -euo pipefail
@@ -406,7 +401,6 @@ jobs:
           test "$zip_bytes" -le "$((apk_bytes + 1048576))"
 
       - name: Publish APK and ZIP to rolling GitHub Release
-        if: github.event_name == 'workflow_dispatch' && steps.tmdb-validation.outputs.credential_status == 'validated'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: reianix-ci-latest
@@ -433,7 +427,6 @@ jobs:
           fi
 
       - name: Upload APK to Actions run
-        if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request') && steps.tmdb-validation.outputs.credential_status == 'validated'
         uses: actions/upload-artifact@v4
         with:
           name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}
@@ -448,7 +441,6 @@ jobs:
 
 
       - name: Upload APK ZIP to Actions run
-        if: ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request') && steps.tmdb-validation.outputs.credential_status == 'validated'
         uses: actions/upload-artifact@v4
         with:
           name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
