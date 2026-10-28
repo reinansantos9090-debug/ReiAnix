@@ -4,12 +4,13 @@ import com.reiflix.reiflix_local.data.anilist.AniListHttpResponse
 import com.reiflix.reiflix_local.data.anilist.AniListTransport
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.yield
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -253,10 +254,12 @@ class ReiAnixMetadataProvidersTest {
     @Test
     fun registryPropagatesCallerCancellation() = runBlocking {
         val providerCancelled = AtomicBoolean(false)
+        val providerEntered = CompletableDeferred<Unit>()
         val provider = object : ReiAnixMetadataProvider {
             override val providerId = "cancellable"
             override val priority = 1
             override suspend fun search(query: ReiAnixMetadataQuery): List<ReiAnixMetadataCandidate> {
+                providerEntered.complete(Unit)
                 try {
                     awaitCancellation()
                 } finally {
@@ -268,7 +271,7 @@ class ReiAnixMetadataProvidersTest {
             ReiAnixMetadataProviderRegistry(listOf(provider), providerTimeoutMillis = 30_000L)
                 .search(ReiAnixMetadataQuery(title = "Cancel"))
         }
-        yield()
+        withTimeout(1_000L) { providerEntered.await() }
         request.cancelAndJoin()
         assertTrue(providerCancelled.get())
     }

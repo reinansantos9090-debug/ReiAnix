@@ -107,6 +107,8 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Use a real JVM JSON implementation rather than Android's unmocked org.json stubs in local unit tests.
+    testImplementation("org.json:json:20260814")
     // Robolectric exercises Android SQLiteDatabase on the JVM; no emulator or instrumentation runner.
     testImplementation("org.robolectric:robolectric:4.14.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
