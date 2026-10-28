@@ -244,7 +244,7 @@ class ReiAnixArtworkService(
     private val appContext = context.applicationContext
     private val cacheDirectory = File(File(appContext.filesDir, "data/covers"), "artwork")
     private val aniListMetadataProvider = ReiAnixAniListMetadataProvider(aniListClient)
-    private val tmdbMetadataProvider = ReiAnixTmdbMetadataProvider(BuildConfig.TMDB_READ_ACCESS_TOKEN)
+    private val tmdbMetadataProvider = ReiAnixTmdbMetadataProvider(BuildConfig.TMDB_METADATA_BACKEND_URL)
     private val publicationSignal = ReiAnixArtworkPublicationSignal()
     internal val publishedArtworks: SharedFlow<ReiAnixArtworkPublication> = publicationSignal.events
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
