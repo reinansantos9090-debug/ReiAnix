@@ -88,7 +88,7 @@ Os artefatos da execução 7433 (run `40734478239`) contêm o APK com o token in
 - `ReiAnix-apk-instalacao-direta-7433`, artifact ID `12839771385`.
 - `ReiAnix-ZIP-extraia-primeiro-7433`, artifact ID `12840545296`.
 
-Remova-os manualmente na página da execução do GitHub Actions, abrindo a seção **Artifacts** e selecionando a ação de exclusão de cada artefato, se disponível para sua permissão. Confirme que ambos deixam de aparecer depois da exclusão. Isso não apaga cópias já baixadas ou caches externos, e esta correção não afirma que os artefatos antigos foram excluídos. O token utilizado pelo build 7433 deve ser revogado/rotacionado pelo proprietário após a decisão dele; essa ação não é executada aqui.
+Remova-os manualmente na página da execução do GitHub Actions, abrindo a seção **Artifacts** e selecionando a ação de exclusão de cada artefato, se disponível para sua permissão. Confirme que ambos deixam de aparecer depois da exclusão. Isso não apaga cópias já baixadas ou caches externos, e esta correção não afirma que os artefatos antigos foram excluídos. A decisão atual do proprietário é manter o token existente; nenhuma rotação foi realizada. Como o APK 7433 continha uma string com formato JWT, o token deve ser tratado como previamente exposto. A configuração privada no Worker protege os builds futuros, mas não desfaz a exposição da cópia antiga.
 
 ## 4. Relato dos resultados
 
