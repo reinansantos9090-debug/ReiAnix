@@ -109,7 +109,7 @@ class ReiAnixAppDependencies(context: Context) {
     }
 
     val artworkService: ReiAnixArtworkService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        ReiAnixArtworkService(appContext, sqliteDatabase)
+        ReiAnixArtworkService(appContext, sqliteDatabase, aniListClient)
     }
 
     val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

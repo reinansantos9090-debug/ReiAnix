@@ -107,6 +107,7 @@ object ReiAnixSettingsContract {
         bool("audio.subtitle_embedded_style", true),
         bool("metadata.anilist_enabled", true),
         bool("metadata.auto_match", true),
+        bool("metadata.tmdb_enabled", true),
         bool("artwork.enabled", true),
         int("artwork.cache_limit_mb", 128, 64, 128, 256, 512),
     ).associateBy { it.key }

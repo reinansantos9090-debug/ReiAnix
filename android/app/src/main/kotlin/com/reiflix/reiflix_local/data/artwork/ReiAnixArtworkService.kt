@@ -9,6 +9,15 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.BuildConfig
+import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
+import com.reiflix.reiflix_local.data.metadata.ReiAnixAniListMetadataProvider
+import com.reiflix.reiflix_local.data.metadata.ReiAnixMetadataProvider
+import com.reiflix.reiflix_local.data.metadata.ReiAnixMetadataProviderRegistry
+import com.reiflix.reiflix_local.data.metadata.ReiAnixMetadataQuery
+import com.reiflix.reiflix_local.data.metadata.ReiAnixMetadataCandidate
+import com.reiflix.reiflix_local.data.metadata.ReiAnixTmdbMetadataProvider
+import com.reiflix.reiflix_local.data.metadata.normalizeReiAnixMetadataTitle
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -99,6 +108,18 @@ internal fun invalidGeneratedThumbnailPaths(
 internal const val MAX_AUTOMATIC_ARTWORK_FAILURES = 5
 internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val EXHAUSTED_ARTWORK_RETRY_DELAY_SECONDS = 7L * 24L * 60L * 60L
+
+/** Conservative in-app TTL: TMDB content is evicted before the six-month terms limit. */
+internal const val TMDB_ARTWORK_CACHE_MAX_AGE_SECONDS = 180L * 24L * 60L * 60L
+
+internal fun shouldExpireTmdbArtworkCache(
+    discoveredAtSeconds: Double?,
+    updatedAtSeconds: Double?,
+    nowSeconds: Double,
+): Boolean {
+    val sourceObservedAt = discoveredAtSeconds ?: updatedAtSeconds ?: 0.0
+    return sourceObservedAt <= nowSeconds - TMDB_ARTWORK_CACHE_MAX_AGE_SECONDS
+}
 
 /**
  * A legacy cover_cache pointer has no URL revision of its own. Reuse it for the
@@ -215,9 +236,15 @@ internal suspend fun writePersistedArtworkMaterializationCursor(
     }
 }
 
-class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
+class ReiAnixArtworkService(
+    context: Context,
+    private val database: ReiAnixSqliteDatabase,
+    private val aniListClient: ReiAnixAniListClient = ReiAnixAniListClient(),
+) {
     private val appContext = context.applicationContext
     private val cacheDirectory = File(File(appContext.filesDir, "data/covers"), "artwork")
+    private val aniListMetadataProvider = ReiAnixAniListMetadataProvider(aniListClient)
+    private val tmdbMetadataProvider = ReiAnixTmdbMetadataProvider(BuildConfig.TMDB_READ_ACCESS_TOKEN)
     private val publicationSignal = ReiAnixArtworkPublicationSignal()
     internal val publishedArtworks: SharedFlow<ReiAnixArtworkPublication> = publicationSignal.events
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -225,11 +252,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val retryJobs = ConcurrentHashMap<Long, Job>()
     private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
     private val permits = Semaphore(2)
+    private val metadataSearchPermits = Semaphore(1)
     private val backfillRunning = AtomicBoolean(false)
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
 
-    private data class Anime(val anilistId: Long?, val kind: String?, val coverUrl: String?, val coverCache: String?, val bannerUrl: String?)
+    private data class Anime(
+        val anilistId: Long?, val kind: String?, val title: String, val romaji: String?,
+        val english: String?, val nativeTitle: String?, val aliasesJson: String?, val year: Int?,
+        val coverUrl: String?, val coverCache: String?, val bannerUrl: String?,
+    )
     private data class Artwork(
         val id: Long, val source: String, val sourceRef: String?, val path: String?, val url: String?,
         val manual: Boolean, val priority: Int, val status: String, val key: String?,
@@ -325,26 +357,98 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         return@launch
                     }
                     val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
-                    val posterUrl = anime.coverUrl?.trim()?.takeIf { it.isNotEmpty() }
+                    val configuredPosterUrl = anime.coverUrl?.trim()?.takeIf { it.isNotEmpty() }
                     val backdropUrl = anime.bannerUrl?.trim()?.takeIf { it.isNotEmpty() }
                     ReiAnixDiagnosticTimeline.record(
                         name = "NATIVE_ARTWORK_SOURCES_RESOLVED",
                         source = "ReiAnixArtworkService",
-                        result = if (posterUrl != null || backdropUrl != null) "SOURCE_CONFIGURED" else "NO_SOURCE_CONFIGURED",
+                        result = if (configuredPosterUrl != null || backdropUrl != null) "SOURCE_CONFIGURED" else "NO_SOURCE_CONFIGURED",
                         requestId = requestId,
                         context = mapOf(
                             "entity_type" to entityType,
                             "entity_id" to animeId,
-                            "poster_source_configured" to (posterUrl != null),
+                            "poster_source_configured" to (configuredPosterUrl != null),
                             "backdrop_source_configured" to (backdropUrl != null),
                             "anilist_id_present" to (anime.anilistId != null),
                         ),
                     )
-                    posterUrl?.let {
-                        materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
+                    var posterMaterialized = false
+                    configuredPosterUrl?.let {
+                        posterMaterialized = materialize(
+                            animeId, entityType, "poster", it, anime.anilistId, force, requestId,
+                            sourceKind = "anilist",
+                        )
+                    }
+                    if (!posterMaterialized) {
+                        val query = metadataQuery(anime)
+                        if (query.searchTitles.isNotEmpty()) {
+                            val aniListEnabled = isMetadataProviderEnabled(
+                                "metadata.anilist_enabled",
+                                defaultEnabled = true,
+                            )
+                            val tmdbEnabled = isMetadataProviderEnabled(
+                                "metadata.tmdb_enabled",
+                                defaultEnabled = true,
+                            )
+                            val providers = buildList<ReiAnixMetadataProvider> {
+                                if (aniListEnabled) add(aniListMetadataProvider)
+                                if (tmdbEnabled) add(tmdbMetadataProvider)
+                            }
+                            if (providers.isNotEmpty()) {
+                                val resolution = metadataSearchPermits.withPermit {
+                                    ReiAnixMetadataProviderRegistry(providers).search(query)
+                                }
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "NATIVE_METADATA_PROVIDERS_RESOLVED",
+                                    severity = if (resolution.failures.isEmpty()) "INFO" else "WARN",
+                                    source = "ReiAnixArtworkService",
+                                    result = when {
+                                        resolution.candidates.isNotEmpty() -> "CANDIDATES_FOUND"
+                                        resolution.failures.isNotEmpty() -> "PARTIAL_OR_TOTAL_FAILURE"
+                                        else -> "NO_CANDIDATES"
+                                    },
+                                    requestId = requestId,
+                                    context = mapOf(
+                                        "candidate_count" to resolution.candidates.size,
+                                        "failure_provider_ids" to resolution.failures.map { it.providerId }.distinct().joinToString(","),
+                                        "failure_categories" to resolution.failures.map { it.category }.distinct().joinToString(","),
+                                        "skipped_providers" to resolution.skippedProviders.joinToString(","),
+                                    ),
+                                )
+                                val candidates = selectMetadataCandidates(query, resolution.candidates)
+                                for (candidate in candidates) {
+                                    ReiAnixDiagnosticTimeline.record(
+                                        name = "NATIVE_METADATA_CANDIDATE_SELECTED",
+                                        source = "ReiAnixArtworkService",
+                                        result = "TRYING_CANDIDATE",
+                                        requestId = requestId,
+                                        context = mapOf(
+                                            "provider_id" to candidate.providerId,
+                                            "external_id" to candidate.externalId,
+                                            "provenance" to candidate.provenance,
+                                            "confidence" to candidate.confidence,
+                                        ),
+                                    )
+                                    val url = candidate.posterUrl.orEmpty()
+                                    val sourceKind = candidate.providerId
+                                    val sourceRef = registerExternalCandidate(animeId, entityType, candidate)
+                                    if (sourceRef != null && materialize(
+                                            animeId, entityType, "poster", url, anime.anilistId, force, requestId,
+                                            sourceKind = sourceKind, providerSourceRef = sourceRef,
+                                        )
+                                    ) {
+                                        posterMaterialized = true
+                                        break
+                                    }
+                                }
+                            }
+                        }
                     }
                     backdropUrl?.let {
-                        materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
+                        materialize(
+                            animeId, entityType, "backdrop", it, anime.anilistId, force, requestId,
+                            sourceKind = "anilist",
+                        )
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -372,11 +476,102 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return true
     }
 
-    /** Repair existing persisted image URLs in bounded asynchronous batches. */
+    private data class ExpiredTmdbArtwork(
+        val rowId: Long,
+        val entityType: String,
+        val entityId: String,
+        val artworkType: String,
+        val localPath: String?,
+    )
+
+    /**
+     * TMDB's API terms cap caching API data/images at six months.
+     * Use existing v29 artwork rows and timestamps; preserve user-owned pointers.
+     */
+    private fun expireExpiredTmdbArtwork(): List<Long> {
+        val now = nowSeconds()
+        val affectedAnimeIds = linkedSetOf<Long>()
+        val expiredPaths = linkedSetOf<String>()
+        database.transaction { db ->
+            val expiredRows = db.rawQuery(
+                "SELECT id,entity_type,entity_id,artwork_type,local_path,discovered_at,updated_at " +
+                    "FROM artwork WHERE source_ref LIKE 'tmdb:%' AND manual=0",
+                null,
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val discoveredAt = if (cursor.isNull(5)) null else cursor.getDouble(5)
+                        val updatedAt = if (cursor.isNull(6)) null else cursor.getDouble(6)
+                        if (shouldExpireTmdbArtworkCache(discoveredAt, updatedAt, now)) {
+                            add(
+                                ExpiredTmdbArtwork(
+                                    rowId = cursor.getLong(0),
+                                    entityType = cursor.getString(1).orEmpty(),
+                                    entityId = cursor.getString(2).orEmpty(),
+                                    artworkType = cursor.getString(3).orEmpty(),
+                                    localPath = cursor.getString(4)?.trim()?.takeIf(String::isNotEmpty),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            if (expiredRows.isEmpty()) return@transaction
+            expiredRows
+                .filter { it.artworkType == POSTER && it.entityType in setOf("anime", "movie") }
+                .mapNotNull { it.entityId.toLongOrNull() }
+                .forEach(affectedAnimeIds::add)
+            expiredRows.forEach { row ->
+                db.delete("artwork", "id=?", arrayOf(row.rowId.toString()))
+                row.localPath?.let(expiredPaths::add)
+            }
+            expiredPaths.forEach { path ->
+                val pointers = db.rawQuery(
+                    "SELECT id,metadata_manual_fields FROM anime WHERE cover_cache=?",
+                    arrayOf(path),
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) add(cursor.getLong(0) to cursor.getString(1))
+                    }
+                }
+                pointers.forEach { (animeId, manualFields) ->
+                    if (!ownsManualField(manualFields, "cover_cache")) {
+                        db.update(
+                            "anime",
+                            ContentValues().apply { put("cover_cache", "") },
+                            "id=? AND cover_cache=?",
+                            arrayOf(animeId.toString(), path),
+                        )
+                    }
+                }
+            }
+        }
+        expiredPaths.forEach { path ->
+            val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return@forEach
+            if (isWithin(cacheDirectory, file) && !isArtworkPathReferenced(path)) {
+                runCatching { if (file.isFile) file.delete() }
+            }
+        }
+        return affectedAnimeIds.toList()
+    }
+
+    /** Repair persisted image URLs and evict stale TMDB content before bounded backfill. */
     fun requestPendingArtwork(): Boolean {
         if (cacheClearInProgress.get() || !backfillRunning.compareAndSet(false, true)) return false
         backfillJob = scope.launch {
             try {
+                if (cacheClearInProgress.get()) return@launch
+                val expiredTmdbIds = runCatching { expireExpiredTmdbArtwork() }
+                    .onFailure { Log.e(TAG, "TMDB artwork cache expiry failed", it) }
+                    .getOrDefault(emptyList())
+                val expiredJobs = ArrayList<Job>()
+                expiredTmdbIds.forEach { id ->
+                    if (!cacheClearInProgress.get()) {
+                        requestAnimeArtwork(id, force = true)
+                        jobs[id]?.let(expiredJobs::add)
+                    }
+                }
+                expiredJobs.distinct().joinAll()
                 if (cacheClearInProgress.get()) return@launch
                 var afterId = readPersistedArtworkMaterializationCursor(database)
                 var scannedThisPass = 0
@@ -491,7 +686,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val removedPaths = database.transaction { db ->
                 val paths = db.rawQuery(
                     "SELECT DISTINCT local_path FROM artwork " +
-                        "WHERE source IN ('cache','anilist') AND manual=0 AND local_path IS NOT NULL",
+                        "WHERE source IN ('cache','anilist','tmdb') AND manual=0 AND local_path IS NOT NULL",
                     null,
                 ).use { cursor ->
                     buildList {
@@ -501,7 +696,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         }
                     }
                 }
-                db.delete("artwork", "source IN ('cache','anilist') AND manual=0", null)
+                db.delete("artwork", "source IN ('cache','anilist','tmdb') AND manual=0", null)
                 // Match Settings' existing cache-clear contract: expire remote metadata
                 // and clear stale cover pointers without deleting the library records.
                 db.execSQL("UPDATE anime SET metadata_updated_at=NULL, cover_cache=''")
@@ -566,7 +761,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         aniId: Long?,
         force: Boolean,
         requestId: String,
-    ) {
+        sourceKind: String = "anilist",
+        providerSourceRef: String? = null,
+    ): Boolean {
+        val sourceRef = providerSourceRef ?: url
         if (!safeUrl(url)) {
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_ARTWORK_SOURCE_REJECTED",
@@ -576,7 +774,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 requestId = requestId,
                 context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
             )
-            return
+            return false
         }
         if (!isUrlCurrent(id, type, url)) {
             ReiAnixDiagnosticTimeline.record(
@@ -587,13 +785,14 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 requestId = requestId,
                 context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
             )
-            return
+            return false
         }
-        permits.withPermit {
+        return permits.withPermit {
             currentCoroutineContext().ensureActive()
-            if (reuseLocal(id, entity, type, url, aniId, requestId)) return@withPermit
-            val key = remoteKey(aniId, url, type)
-            val rowId = prepareRow(id, entity, type, url, key, force) ?: return@withPermit
+            if (reuseLocal(id, entity, type, url, aniId, requestId, sourceKind, sourceRef)) return@withPermit true
+            val key = remoteKey(aniId, url, type, sourceKind, sourceRef)
+            val rowId = prepareRow(id, entity, type, url, key, force, sourceKind, sourceRef)
+                ?: return@withPermit false
             var image: Downloaded? = null
             try {
                 val completedImage = download(key, url)
@@ -602,13 +801,14 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 val saved = persistDownloaded(rowId, id, type, url, key, completedImage)
                 if (!saved.saved) {
                     removeIfUnreferenced(completedImage.file)
-                    return@withPermit
+                    return@withPermit false
                 }
                 if (saved.current) publish(
                     "artwork_published", entity, id.toString(), type,
                     completedImage.file.absolutePath, url, key, url, completedImage.mime, requestId,
                 )
                 trimCache()
+                saved.current
             } catch (cancelled: CancellationException) {
                 setCancelled(rowId)
                 image?.let { removeIfUnreferenced(it.file) }
@@ -627,27 +827,33 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         "entity_type" to entity,
                         "entity_id" to id,
                         "artwork_type" to type,
-                        "source_kind" to "anilist",
+                        "source_kind" to sourceKind,
                         "association_status" to "CHECKED_BEFORE_DOWNLOAD",
                         "http_status" to ((error as? HttpFailure)?.code ?: -1),
                     ),
                 )
                 image?.let { removeIfUnreferenced(it.file) }
                 Log.w(TAG, "ARTWORK_DOWNLOAD_FAILED entity=" + entity + ":" + id + " type=" + type, error)
+                false
             }
         }
     }
 
-    private fun reuseLocal(id: Long, entity: String, type: String, url: String, aniId: Long?, requestId: String): Boolean {
+    private fun reuseLocal(
+        id: Long, entity: String, type: String, url: String, aniId: Long?, requestId: String,
+        sourceKind: String, sourceRef: String,
+    ): Boolean {
         val rows = candidates(entity, id.toString(), type, url)
         if (rows.any { it.manual || it.source.equals("manual", true) }) return true
         if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return true
-        val existing = rows.firstOrNull { it.url == url && validImage(it.path) }
+        val existing = rows.firstOrNull {
+            it.url == url && it.sourceRef == sourceRef && validImage(it.path)
+        }
         if (existing != null) {
             val path = existing.path ?: return false
             if (markReady(existing.id, id, type, url, path)) {
                 publish("artwork_published", entity, id.toString(), type, path, url,
-                    existing.key ?: remoteKey(aniId, url, type), url, existing.mime ?: mime(path), requestId)
+                    existing.key ?: remoteKey(aniId, url, type, sourceKind, sourceRef), url, existing.mime ?: mime(path), requestId)
             }
             return true
         }
@@ -694,7 +900,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val values = ContentValues().apply {
                 put("source", "cache"); put("source_ref", url); put("local_path", oldPath); put("external_url", url)
                 put("manual", 0); put("priority", 400); put("status", "ready"); put("updated_at", now)
-                put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")
+                put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key)
+                put("variant", if (sourceKind == "tmdb") "w500" else "large")
                 put("byte_size", file.length()); put("width", dims.first.takeIf { it > 0 })
                 put("height", dims.second.takeIf { it > 0 }); put("checksum", digest); put("content_type", mime(oldPath))
                 put("last_access", now); putNull("next_retry_at"); putNull("http_status")
@@ -709,23 +916,31 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return inserted
     }
 
-    private fun prepareRow(id: Long, entity: String, type: String, url: String, key: String, force: Boolean): Long? =
+    private fun prepareRow(
+        id: Long, entity: String, type: String, url: String, key: String, force: Boolean,
+        sourceKind: String, sourceRef: String,
+    ): Long? =
         database.transaction { db ->
             if (!urlCurrent(db, id, type, url)) return@transaction null
             val rows = queryCandidates(db, entity, id.toString(), type, url)
             if (rows.any { it.manual || it.source.equals("manual", true) }) return@transaction null
             if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return@transaction null
             val now = nowSeconds()
-            val exact = rows.firstOrNull { it.sourceRef == url || it.key == key || it.url == url }
+            val exact = rows.firstOrNull {
+                it.sourceRef == sourceRef || it.key == key || (sourceRef == url && it.url == url)
+            }
             if (exact != null) {
                 if (!shouldRetryArtworkRequest(exact.status, exact.retryAt, exact.failureCount, now, force)) {
                     return@transaction null
                 }
                 val values = ContentValues().apply {
-                    put("source", "anilist"); put("source_ref", url); put("external_url", url)
-                    put("status", "downloading"); put("priority", 400); put("updated_at", now); put("last_attempt_at", now)
+                    put("source", sourceKind); put("source_ref", sourceRef); put("external_url", url)
+                    put("status", "downloading")
+                    put("priority", if (sourceKind == "tmdb") TMDB_PRIORITY else POSTER_PRIORITY)
+                    put("updated_at", now); put("last_attempt_at", now)
                     put("failure_count", if (force) 0 else exact.failureCount)
-                    putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key); put("variant", "large")
+                    putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key)
+                    put("variant", if (sourceKind == "tmdb") "w500" else "large")
                 }
                 return@transaction if (db.update("artwork", values, "id=?", arrayOf(exact.id.toString())) > 0) exact.id else null
             }
@@ -737,9 +952,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             )
             val values = ContentValues().apply {
                 put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", type)
-                put("source", "anilist"); put("source_ref", url); put("external_url", url); put("manual", 0)
-                put("priority", 400); put("status", "downloading"); put("discovered_at", now); put("updated_at", now)
-                put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")
+                put("source", sourceKind); put("source_ref", sourceRef); put("external_url", url); put("manual", 0)
+                put("priority", if (sourceKind == "tmdb") TMDB_PRIORITY else POSTER_PRIORITY)
+                put("status", "downloading"); put("discovered_at", now); put("updated_at", now)
+                put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key)
+                put("variant", if (sourceKind == "tmdb") "w500" else "large")
             }
             runCatching { db.insertOrThrow("artwork", null, values) }.getOrNull()
         }
@@ -1032,7 +1249,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             "SELECT cover_url,cover_cache,metadata_manual_fields,media_kind FROM anime WHERE id=? LIMIT 1",
             arrayOf(id.toString()),
         ).use { c -> if (!c.moveToFirst()) return false else arrayOf(c.getString(0), c.getString(1), c.getString(2), c.getString(3)) }
-        if (row[0]?.trim() != url || ownsManualField(row[2], "cover_cache")) return false
+        val directSourceCurrent = row[0]?.trim() == url
+        val providerSourceCurrent = !directSourceCurrent &&
+            currentExternalSourceRefs(db, id, "poster", url).isNotEmpty()
+        if ((!directSourceCurrent && !providerSourceCurrent) || ownsManualField(row[2], "cover_cache")) return false
         val oldPath = row[1]?.trim().orEmpty()
         if (oldPath == newPath) return false
         if (oldPath.isNotEmpty() && validImage(oldPath)) {
@@ -1041,8 +1261,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (previous.isEmpty() || previous.any { it.manual || it.source.equals("manual", true) || it.source.equals("local", true) } ||
                 previous.any { it.url == url }) return false
         }
-        return db.update("anime", ContentValues().apply { put("cover_cache", newPath) },
-            "id=? AND cover_url=?", arrayOf(id.toString(), url)) > 0
+        val values = ContentValues().apply { put("cover_cache", newPath) }
+        return if (directSourceCurrent) {
+            db.update("anime", values, "id=? AND cover_url=?", arrayOf(id.toString(), url)) > 0
+        } else {
+            db.update("anime", values, "id=?", arrayOf(id.toString())) > 0
+        }
     }
 
     private fun ownsManualField(fields: String?, field: String): Boolean {
@@ -1054,17 +1278,171 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun isUrlCurrent(id: Long, type: String, url: String) = database.read { urlCurrent(it, id, type, url) }
     private fun urlCurrent(db: SQLiteDatabase, id: Long, type: String, url: String): Boolean {
         val column = if (type == "backdrop") "banner_url" else "cover_url"
-        return db.rawQuery("SELECT $column FROM anime WHERE id=? LIMIT 1", arrayOf(id.toString()))
+        val direct = db.rawQuery("SELECT $column FROM anime WHERE id=? LIMIT 1", arrayOf(id.toString()))
             .use { it.moveToFirst() && it.getString(0)?.trim() == url }
+        if (direct) return true
+        if (type != "poster") return false
+        return currentExternalSourceRefs(db, id, type, url).isNotEmpty()
     }
+
     private fun loadAnime(id: Long): Anime? = database.read { db ->
-        db.rawQuery("SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url FROM anime WHERE id=? LIMIT 1",
-            arrayOf(id.toString())).use { c ->
+        db.rawQuery(
+            "SELECT anilist_id,media_kind,title,romaji,english,native,aliases,year,cover_url,cover_cache,banner_url " +
+                "FROM anime WHERE id=? LIMIT 1",
+            arrayOf(id.toString()),
+        ).use { c ->
             if (!c.moveToFirst()) return@use null
-            val index = c.getColumnIndexOrThrow("anilist_id")
-            Anime(if (c.isNull(index)) null else c.getLong(index), c.getString(1), c.getString(2), c.getString(3), c.getString(4))
+            Anime(
+                anilistId = if (c.isNull(0)) null else c.getLong(0),
+                kind = c.getString(1),
+                title = c.getString(2).orEmpty(),
+                romaji = c.getString(3),
+                english = c.getString(4),
+                nativeTitle = c.getString(5),
+                aliasesJson = c.getString(6),
+                year = if (c.isNull(7)) null else c.getInt(7),
+                coverUrl = c.getString(8),
+                coverCache = c.getString(9),
+                bannerUrl = c.getString(10),
+            )
         }
     }
+
+    private suspend fun isMetadataProviderEnabled(key: String, defaultEnabled: Boolean): Boolean =
+        database.read { db ->
+            db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1", arrayOf(key)).use { cursor ->
+                if (!cursor.moveToFirst()) defaultEnabled
+                else cursor.getString(0).orEmpty().trim().lowercase(Locale.ROOT) !in
+                    setOf("false", "0", "off", "no")
+            }
+        }
+
+    private fun selectMetadataCandidates(
+        query: ReiAnixMetadataQuery,
+        candidates: List<ReiAnixMetadataCandidate>,
+    ): List<ReiAnixMetadataCandidate> {
+        val sorted = candidates.filter {
+            it.providerId in setOf("anilist", "tmdb") && !it.posterUrl.isNullOrBlank()
+        }.sortedWith(
+            compareByDescending<ReiAnixMetadataCandidate> { it.confidence }
+                .thenByDescending { if (it.providerId == "anilist") ANILIST_PROVIDER_PRIORITY else TMDB_PRIORITY }
+                .thenBy { it.externalId },
+        )
+        if (sorted.isEmpty()) return emptyList()
+        if (query.year == null) {
+            val queryTitles = query.searchTitles.map(::normalizeReiAnixMetadataTitle).toSet()
+            val matching = sorted.filter { candidate ->
+                (listOf(candidate.title, candidate.originalTitle.orEmpty()) + candidate.alternateTitles)
+                    .map(::normalizeReiAnixMetadataTitle)
+                    .any { it in queryTitles }
+            }
+            if (matching.mapNotNull { it.year }.distinct().size > 1) return emptyList()
+        }
+        return sorted
+    }
+
+    private fun metadataQuery(anime: Anime): ReiAnixMetadataQuery {
+        val aliases = parseMetadataAliases(anime.aliasesJson)
+        val titleOptions = listOfNotNull(anime.title, anime.english, anime.romaji, anime.nativeTitle) + aliases
+        val title = titleOptions.firstOrNull { it.isNotBlank() }.orEmpty()
+        return ReiAnixMetadataQuery(
+            title = title,
+            alternateTitles = titleOptions.filter { it.isNotBlank() && it != title }.distinct(),
+            year = anime.year,
+            mediaKind = anime.kind,
+        )
+    }
+
+    private fun parseMetadataAliases(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList { for (index in 0 until array.length()) add(array.optString(index)) }
+        }.getOrDefault(emptyList())
+    }
+
+    private suspend fun registerExternalCandidate(
+        id: Long,
+        entity: String,
+        candidate: ReiAnixMetadataCandidate,
+    ): String? {
+        val url = candidate.posterUrl?.takeIf { safeUrl(it) } ?: return null
+        val sourceKind = candidate.providerId.takeIf { it in setOf("anilist", "tmdb") } ?: return null
+        val sourceRef = externalSourceRef(sourceKind, candidate.externalId, candidate.matchedQueryTitle)
+        return database.transaction { db ->
+            if (!externalReferenceMatchesCurrentTitle(db, id, sourceRef)) return@transaction null
+            val rows = queryCandidates(db, entity, id.toString(), "poster", url)
+            if (rows.any { it.manual || it.source.equals("manual", true) }) return@transaction null
+            if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return@transaction null
+            val existingId = db.rawQuery(
+                "SELECT id FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='poster' " +
+                    "AND external_url=? AND source_ref=? AND manual=0 ORDER BY updated_at DESC,id DESC LIMIT 1",
+                arrayOf(entity, id.toString(), url, sourceRef),
+            ).use { if (it.moveToFirst()) it.getLong(0) else null }
+            if (existingId != null) {
+                val existing = artworkById(db, existingId)
+                if (existing?.status == STATUS_READY && validImage(existing.path)) return@transaction sourceRef
+            }
+            val now = nowSeconds()
+            val values = ContentValues().apply {
+                put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", "poster")
+                put("source", sourceKind); put("source_ref", sourceRef); put("external_url", url)
+                put("manual", 0)
+                put("priority", if (sourceKind == "anilist") ANILIST_PROVIDER_PRIORITY else TMDB_PRIORITY)
+                put("status", STATUS_NOT_REQUESTED)
+                put("updated_at", now); put("discovered_at", now); put("last_attempt_at", now)
+                put("failure_count", 0)
+                put("variant", if (sourceKind == "tmdb") "w500" else "large")
+                put("artwork_key", sha256(sourceKind + "|" + sourceRef + "|" + url + "|poster|large"))
+                putNull("next_retry_at"); putNull("http_status")
+            }
+            if (existingId != null) {
+                db.update("artwork", values, "id=?", arrayOf(existingId.toString()))
+                sourceRef
+            } else {
+                val inserted = runCatching { db.insertOrThrow("artwork", null, values) }.getOrNull()
+                sourceRef.takeIf { inserted != null }
+            }
+        }
+    }
+
+    private fun currentExternalSourceRefs(
+        db: SQLiteDatabase,
+        id: Long,
+        type: String,
+        url: String,
+    ): List<String> {
+        val mediaKind = db.rawQuery("SELECT media_kind FROM anime WHERE id=? LIMIT 1", arrayOf(id.toString()))
+            .use { if (it.moveToFirst()) it.getString(0) else null }
+        val entity = if (mediaKind.equals("movie", true)) "movie" else "anime"
+        val refs = db.rawQuery(
+            "SELECT source_ref FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type=? " +
+                "AND external_url=? AND (source_ref LIKE 'tmdb:%' OR source_ref LIKE 'anilist:%') " +
+                "AND manual=0 ORDER BY priority DESC,updated_at DESC",
+            arrayOf(entity, id.toString(), type, url),
+        ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0).orEmpty()) } }
+        return refs.filter { externalReferenceMatchesCurrentTitle(db, id, it) }
+    }
+
+    private fun externalReferenceMatchesCurrentTitle(db: SQLiteDatabase, id: Long, sourceRef: String): Boolean {
+        if (!sourceRef.startsWith("tmdb:") && !sourceRef.startsWith("anilist:")) return false
+        val fingerprint = sourceRef.substringAfterLast(':')
+        if (!Regex("[a-f0-9]{16}").matches(fingerprint)) return false
+        val titles = db.rawQuery(
+            "SELECT title,romaji,english,native,aliases FROM anime WHERE id=? LIMIT 1",
+            arrayOf(id.toString()),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) emptyList()
+            else buildList {
+                for (index in 0..3) add(cursor.getString(index).orEmpty())
+                addAll(parseMetadataAliases(cursor.getString(4)))
+            }
+        }
+        return titles.any { it.isNotBlank() && sha256(normalizeReiAnixMetadataTitle(it)).take(16) == fingerprint }
+    }
+
+    private fun externalSourceRef(providerId: String, externalId: String, matchedTitle: String): String =
+        providerId + ":" + externalId + ":" + sha256(normalizeReiAnixMetadataTitle(matchedTitle)).take(16)
 
     private fun candidates(entity: String, id: String, type: String, url: String): List<Artwork> =
         database.read { queryCandidates(it, entity, id, type, url) }
@@ -1460,9 +1838,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         ".jpg", ".jpeg" -> "image/jpeg"; ".png" -> "image/png"; ".webp" -> "image/webp"
         ".gif" -> "image/gif"; ".avif" -> "image/avif"; else -> "application/octet-stream"
     }
-    private fun remoteKey(aniId: Long?, url: String, type: String): String {
-        val provider = if (aniId != null) "anilist" else "url"
-        val identity = (aniId?.toString() ?: url) + "|" + url
+    private fun remoteKey(
+        aniId: Long?, url: String, type: String, sourceKind: String = "anilist", sourceRef: String = url,
+    ): String {
+        val provider = if (sourceRef != url) sourceKind else if (aniId != null) "anilist" else "url"
+        val identity = if (sourceRef != url) sourceRef else (aniId?.toString() ?: url) + "|" + url
         return sha256(provider + "|" + identity + "|" + type + "|large")
     }
     private fun legacyCoverKey(aniId: Long?, url: String, path: String): String {
@@ -1475,6 +1855,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun nowSeconds() = System.currentTimeMillis() / 1000.0
 
     private companion object {
+        const val ANILIST_PROVIDER_PRIORITY = 400
+        const val TMDB_PRIORITY = 375
         const val TAG = "ReiAnixArtwork"
         const val POSTER = "poster"
         const val BACKDROP = "backdrop"

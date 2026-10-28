@@ -370,7 +370,7 @@ class ReiAnixSqliteLibraryRepository(
                         .filter(String::isNotBlank)
                     val aliases = normalizeNativeSearchText(cursor.getString(5))
                     val studio = normalizeNativeSearchText(cursor.getString(15))
-                    val genres = normalizeNativeSearchText(cursor.getString(10) + " " + cursor.getString(20))
+                    val genres = normalizeNativeSearchText(cursor.getString(10).orEmpty() + " " + cursor.getString(20).orEmpty())
                     var score = when {
                         terms.isEmpty() -> 0
                         title == queryText -> 1000
@@ -424,13 +424,8 @@ class ReiAnixSqliteLibraryRepository(
         }
     }
 
-    private fun normalizeNativeSearchText(value: String): String =
-        java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
-            .replace("\\p{M}+".toRegex(), "")
-            .lowercase(java.util.Locale.ROOT)
-            .replace("[^\\p{L}\\p{Nd}]+".toRegex(), " ")
-            .trim()
-            .replace("\\s+".toRegex(), " ")
+
+
 
     private fun nativeSearchCharacterVariants(character: String): Set<String> {
         val base = java.text.Normalizer.normalize(character, java.text.Normalizer.Form.NFD)
@@ -1847,6 +1842,15 @@ class ReiAnixSqliteLibraryRepository(
             if (cursor.moveToFirst()) cursor.toEpisodeRecord() else null
         }
 }
+
+/** Normalizes optional SQLite text safely; nullable metadata is valid in schema v29. */
+internal fun normalizeNativeSearchText(value: String?): String =
+    java.text.Normalizer.normalize(value.orEmpty(), java.text.Normalizer.Form.NFKD)
+        .replace("\\p{M}+".toRegex(), "")
+        .lowercase(java.util.Locale.ROOT)
+        .replace("[^\\p{L}\\p{Nd}]+".toRegex(), " ")
+        .trim()
+        .replace("\\s+".toRegex(), " ")
 
 internal fun Cursor.toAnimeRecord() = ReiAnixAnimeRecord(
     id = requiredLong("id"),

@@ -4,6 +4,19 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val tmdbReadAccessToken = (
+    providers.gradleProperty("reianixTmdbReadAccessToken").orNull
+        ?: System.getenv("REIANIX_TMDB_READ_ACCESS_TOKEN").orEmpty()
+    ).trim()
+if (tmdbReadAccessToken.isEmpty()) {
+    logger.warn("TMDB read access token is not configured; TMDB search will be skipped for this build. AniList remains available.")
+}
+val tmdbReadAccessTokenLiteral = "\"" + tmdbReadAccessToken
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\n", "")
+    .replace("\r", "") + "\""
+
 android {
     namespace = "com.reiflix.reiflix_local"
     compileSdk = 36
@@ -21,6 +34,7 @@ android {
         applicationId = "com.reiflix.reiflix_local"
         minSdk = 24
         targetSdk = 36
+        buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", tmdbReadAccessTokenLiteral)
         versionCode = providers.gradleProperty("reianixBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2
         versionName = providers.gradleProperty("reianixBuildVersion").orNull?.takeIf { it.isNotBlank() } ?: "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -68,6 +82,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil:2.7.0")
+    implementation("io.coil-kt:coil-svg:2.7.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
@@ -92,6 +107,8 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Use a real JVM JSON implementation rather than Android's unmocked org.json stubs in local unit tests.
+    testImplementation("org.json:json:20260814")
     // Robolectric exercises Android SQLiteDatabase on the JVM; no emulator or instrumentation runner.
     testImplementation("org.robolectric:robolectric:4.14.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

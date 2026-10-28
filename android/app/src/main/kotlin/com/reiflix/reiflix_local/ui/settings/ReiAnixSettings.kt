@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -46,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -54,7 +57,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.decode.SvgDecoder
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -98,7 +106,7 @@ data class ReiAnixSettingsCategoryUiModel(
             ReiAnixSettingsCategoryUiModel("Player", "Reprodução, vídeo e controles", Icons.Filled.PlayArrow),
             ReiAnixSettingsCategoryUiModel("Gestos", "Toque, swipe, seek e zoom", Icons.Filled.TouchApp),
             ReiAnixSettingsCategoryUiModel("Áudio e Legendas", "Idiomas, faixas e legendas", Icons.Filled.Headphones),
-            ReiAnixSettingsCategoryUiModel("Metadata", "AniList e correspondência", Icons.Filled.ManageSearch),
+            ReiAnixSettingsCategoryUiModel("Metadata", "AniList, TMDB e correspondência", Icons.Filled.ManageSearch),
             ReiAnixSettingsCategoryUiModel("Artwork", "Capas, thumbnails e cache", Icons.Filled.Image),
             ReiAnixSettingsCategoryUiModel("Armazenamento", "SAF, MediaStore, permissões e volumes", Icons.Filled.Storage),
             ReiAnixSettingsCategoryUiModel("Dados e Cache", "Configurações e dados temporários", Icons.Filled.Cached),
@@ -1051,6 +1059,20 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
                         )
                     }
+                    item(key = "section:metadata:tmdb") { SettingsSectionLabel("Fallback TMDB") }
+                    item(key = "setting:metadata.tmdb_enabled") {
+                        BooleanSettingRow(
+                            keyName = "metadata.tmdb_enabled",
+                            title = "Usar TMDB para capas",
+                            description = if (BuildConfig.TMDB_READ_ACCESS_TOKEN.isBlank()) {
+                                "Busca pôsteres quando a capa atual não é utilizável. Este APK foi compilado sem token TMDB; as buscas TMDB serão ignoradas. AniList continua disponível."
+                            } else {
+                                "Busca pôsteres quando a capa atual não é utilizável. Este APK inclui uma credencial TMDB; a validade depende da aceitação pelo serviço. AniList continua disponível independentemente."
+                            },
+                            checked = state.settings["metadata.tmdb_enabled"] != "false",
+                            onCheckedChange = { onUpdateSetting("metadata.tmdb_enabled", it.toString()) },
+                        )
+                    }
                 }
 
                 "Artwork" -> {
@@ -1603,6 +1625,17 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 "Sobre" -> {
                     item(key = "section:about:identity") { SettingsSectionLabel("ReiAnix") }
                     item(key = "about:app") {
+                        val context = LocalContext.current
+                        val tmdbLogoImageLoader = remember(context.applicationContext) {
+                            ImageLoader.Builder(context.applicationContext)
+                                .components { add(SvgDecoder.Factory()) }
+                                .build()
+                        }
+                        val tmdbLogo = remember(context.applicationContext) {
+                            runCatching {
+                                context.assets.open("tmdb-logo.svg").use { it.readBytes() }
+                            }.getOrNull()
+                        }
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -1633,6 +1666,30 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 Text(
                                     text = "Armazenamento: MediaStore / SAF / scanners nativos existentes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                tmdbLogo?.let { logo ->
+                                    AsyncImage(
+                                        model = logo,
+                                        imageLoader = tmdbLogoImageLoader,
+                                        contentDescription = "TMDB — The Movie Database",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.width(170.dp).height(32.dp),
+                                    )
+                                }
+                                Text(
+                                    text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "TMDB fornece metadados e pôsteres. Consulte os créditos e a atribuição oficial do TMDB.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
