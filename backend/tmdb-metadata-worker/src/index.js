@@ -53,11 +53,50 @@ function projectResult(item, mediaKind) {
   };
 }
 
+async function readStreamTextLimited(stream, maxBytes) {
+  if (!stream) return "";
+  const reader = stream.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        try { await reader.cancel(); } catch {}
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 async function readJsonBody(request) {
-  const declaredLength = Number(request.headers.get("content-length") || "0");
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) return null;
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_REQUEST_BYTES) return null;
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null) {
+    const declaredLength = Number(contentLength);
+    if (!Number.isSafeInteger(declaredLength) || declaredLength < 0 || declaredLength > MAX_REQUEST_BYTES) {
+      return null;
+    }
+  }
+  let text;
+  try {
+    text = await readStreamTextLimited(request.body, MAX_REQUEST_BYTES);
+  } catch {
+    return null;
+  }
+  if (text === null) return null;
   try {
     return JSON.parse(text);
   } catch {
@@ -70,7 +109,10 @@ export async function handleRequest(request, env, fetchImpl = globalThis.fetch) 
 
   if (url.pathname === "/healthz") {
     if (request.method !== "GET") return jsonResponse(405, { error: "method_not_allowed" });
-    if (!String(env?.TMDB_READ_ACCESS_TOKEN || "").trim() || !env?.TMDB_RATE_LIMITER) {
+    if (
+      !String(env?.TMDB_READ_ACCESS_TOKEN || "").trim() ||
+      typeof env?.TMDB_RATE_LIMITER?.limit !== "function"
+    ) {
       return jsonResponse(503, { error: "service_not_configured" });
     }
     return jsonResponse(200, { status: "ok" });
@@ -145,12 +187,16 @@ export async function handleRequest(request, env, fetchImpl = globalThis.fetch) 
     });
   }
 
+  let raw;
+  try {
+    raw = await readStreamTextLimited(upstream.body, MAX_RESPONSE_BYTES);
+  } catch {
+    return jsonResponse(502, { error: "metadata_upstream_invalid_response" });
+  }
+  if (raw === null) return jsonResponse(502, { error: "metadata_response_too_large" });
+
   let payload;
   try {
-    const raw = await upstream.text();
-    if (new TextEncoder().encode(raw).byteLength > MAX_RESPONSE_BYTES) {
-      return jsonResponse(502, { error: "metadata_response_too_large" });
-    }
     payload = JSON.parse(raw);
   } catch {
     return jsonResponse(502, { error: "metadata_upstream_invalid_response" });
