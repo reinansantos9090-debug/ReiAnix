@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -8,10 +10,19 @@ val tmdbMetadataBackendUrl = (
     providers.gradleProperty("reianixTmdbMetadataBackendUrl").orNull
         ?: System.getenv("REIANIX_TMDB_METADATA_BACKEND_URL").orEmpty()
     ).trim().trimEnd('/')
+val tmdbMetadataBackendUri = runCatching { URI(tmdbMetadataBackendUrl) }.getOrNull()
 require(
-    tmdbMetadataBackendUrl.isEmpty() || tmdbMetadataBackendUrl.startsWith("https://", ignoreCase = true),
+    tmdbMetadataBackendUrl.isEmpty() || (
+        tmdbMetadataBackendUri != null &&
+            tmdbMetadataBackendUri.scheme.equals("https", ignoreCase = true) &&
+            !tmdbMetadataBackendUri.host.isNullOrBlank() &&
+            tmdbMetadataBackendUri.rawUserInfo == null &&
+            (tmdbMetadataBackendUri.rawPath.isNullOrEmpty() || tmdbMetadataBackendUri.rawPath == "/") &&
+            tmdbMetadataBackendUri.rawQuery == null &&
+            tmdbMetadataBackendUri.rawFragment == null
+        ),
 ) {
-    "TMDB metadata backend URL must use HTTPS."
+    "TMDB metadata backend URL must be an HTTPS origin without credentials, path, query, or fragment."
 }
 if (tmdbMetadataBackendUrl.isEmpty()) {
     logger.warn("TMDB metadata backend is not configured; TMDB search will be skipped for this build. AniList remains available.")
