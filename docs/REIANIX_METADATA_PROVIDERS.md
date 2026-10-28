@@ -2,35 +2,41 @@
 
 ## Architecture and persistence
 
-The provider contract lives in ReiAnixMetadataProviders.kt. ReiAnixMetadataProviderRegistry bounds concurrent provider calls, applies a per-provider timeout, keeps partial successes when a different provider fails, and propagates caller cancellation. Both the existing unauthenticated AniList GraphQL client and the official TMDB REST API are adapted to the same query/result contract. AniList has higher provider priority; TMDB remains the optional fallback. Provider results keep the provider ID, provider-specific external ID, the query title used for matching, confidence, and provenance.
+The provider contract lives in ReiAnixMetadataProviders.kt. ReiAnixMetadataProviderRegistry bounds concurrent provider calls, applies a per-provider timeout, keeps partial successes when a different provider fails, and propagates caller cancellation. The existing unauthenticated AniList GraphQL client and the TMDB metadata-backend adapter use the same query/result contract. AniList has higher provider priority; TMDB remains the optional fallback when a backend is configured. Provider results keep the provider ID, provider-specific external ID, the query title used for matching, confidence, and provenance.
 
 The app keeps AniList metadata and its existing poster URL first. When that poster is absent or cannot be materialized, the common registry queries the enabled AniList and TMDB providers concurrently. AniList is preferred when confidence is equal; TMDB is used when it provides the best valid result. Provider results are associated with the existing artwork rows (source_ref=<provider>:<external-id>:<title-fingerprint>) and passed to the existing artwork materializer. The persisted anime.cover_url is not overwritten; after a successful download the established cover_cache pointer is updated only when the current title still validates the stored fingerprint and no manual artwork field owns that pointer.
 
 No table, database, download pipeline, image cache, or local/anilist identifier was added. The canonical v29 SQLite schema remains unchanged. The TMDB external ID lives in the existing artwork source_ref; it is distinct from the local anime ID and AniList ID. The app continues to use its existing Coil rendering and cache/materialization path.
 
-## TMDB requests
+## TMDB requests and secret boundary
 
-The TMDB adapter uses the official API v3 endpoints:
+The Android app does **not** call the TMDB API directly and does not contain a TMDB read token. It makes a POST request to the configured backend origin:
 
-- GET https://api.themoviedb.org/3/search/tv for series/anime.
-- GET https://api.themoviedb.org/3/search/movie for movies.
-- Authentication is the official Authorization: Bearer <API Read Access Token> header, not a URL query parameter.
-- Poster URLs are built as https://image.tmdb.org/t/p/w500/<poster_path>. Only poster_path is considered for cover selection; search-result backdrops are not promoted to posters.
+- `POST /v1/metadata/tmdb/search`
+- Request fields: `query`, `mediaKind` (`tv` or `movie`), optional `year`, and `language`.
+- Response: a restricted `results` array containing only the IDs, titles, date, adult flag and `poster_path` fields required to resolve a candidate.
+- The Android client does not send an Authorization header. The server makes the official TMDB request and uses its server-only `TMDB_READ_ACCESS_TOKEN` secret in the Authorization Bearer header.
+- Poster URLs still use `https://image.tmdb.org/t/p/w500/<poster_path>`. Only a valid, single-slash `poster_path` is eligible; backdrops are not used as posters.
 
-Titles are normalized for accents, punctuation, and whitespace. Results must match a supplied title or original title exactly after normalization. When the library and TMDB both have a year, differences over one year are rejected. The request tries the canonical, English, romanized, native, and stored alias titles, with a bounded number of variants. This deliberately favors avoiding homonyms/sequel mismatches over fuzzy false positives.
+The Android provider continues to normalize titles and reject homonyms/season mismatches using the existing year/title policy. AniList retains higher priority. The metadata registry, artwork service, canonical SQLite v29 rows, artwork materializer and existing cache remain the same. No parallel database or artwork pipeline is introduced.
 
-Requests have bounded connect/read timeouts and response size. HTTP 429 and 5xx receive at most two short retries and the Retry-After value is capped. Authentication, HTTP, transport, invalid JSON, empty result, timeout, and provider failure are kept distinct without copying tokens or response bodies into diagnostics. An absent token skips TMDB cleanly; the existing AniList/local artwork path is not disabled by missing TMDB credentials.
+## Backend deployment and configuration
 
-## Configure credentials
+Source code for the backend is in `backend/tmdb-metadata-worker/`. It is a Cloudflare Worker implementation with one allowlisted search operation, input validation, response projection, per-IP edge rate limiting and no logging of credentials/upstream response bodies. The source includes unit tests for the request/response contract and error handling.
 
-Provide one of these at build time:
+**The Worker has not been deployed by this repository change. No backend URL is set or claimed to exist.** The app therefore treats the provider as unconfigured when the public backend URL is empty and skips TMDB cleanly while AniList remains available.
 
-- environment variable REIANIX_TMDB_READ_ACCESS_TOKEN, or
-- Gradle property reianixTmdbReadAccessToken.
+To deploy it, the owner needs a Cloudflare account and control of the account where the service will run. From `backend/tmdb-metadata-worker/`:
 
-Do not commit the token in gradle.properties, source code, CI logs, issue reports, or documentation. No backend or server-side secret store has been introduced. A token embedded into an Android APK can be extracted from the distributed package; build-time injection prevents accidental source-control exposure but does not make a client-side token secret. Restrict/rotate credentials as appropriate. Commercial distribution or a credential that must remain confidential requires a separately approved architecture and the appropriate service/license agreement.
+1. Run `npm test`.
+2. Authenticate Wrangler to the owner’s Cloudflare account.
+3. Set the token as an encrypted server secret with `npx wrangler secret put TMDB_READ_ACCESS_TOKEN`; enter it only in the terminal prompt. Do not put it in the Android app, Gradle properties, repository files, GitHub Actions variables, or a build step.
+4. Deploy using `npx wrangler deploy`, then verify `GET /healthz` and a live `POST /v1/metadata/tmdb/search` with valid JSON and usable poster paths.
+5. Only after these live checks pass, configure the repository Actions **variable** `REIANIX_TMDB_METADATA_BACKEND_URL` to the real HTTPS origin supplied by the deployment. This public origin is not a credential and is the only TMDB-related value embedded in BuildConfig.
 
-The provider is enabled by default through metadata.tmdb_enabled; the Settings screen allows it to be disabled. The existing metadata.anilist_enabled preference also controls whether the AniList adapter searches. When the BuildConfig token is empty, TMDB is listed as skipped and the existing no-credential AniList provider remains usable.
+IP rate limiting and a restricted endpoint help prevent abuse but are not strong proof that a request came from the official app. Before production distribution, add a suitable server-verified app-attestation/authorization design and edge quotas. Do not embed a shared client key in the APK; it would be extractable too.
+
+The previous public APK 7433 included the real token in its compiled DEX and its two Actions artifacts also contain that APK. Do not redistribute or install those artifacts. The current GitHub Repository Secret is not consumed by the modified build workflow, but it still needs to be revoked or rotated by the credential owner because the old distributed artifact contained it. This repository change does not rotate the credential or delete historical Actions artifacts.
 
 ## Attribution, copyright, and release obligations
 
@@ -60,4 +66,4 @@ This documentation and runtime integration do not constitute legal clearance. Th
 
 ## Verification limits
 
-The tests in ReiAnixMetadataProvidersTest.kt cover title normalization, URL safety, homonym/year rejection, missing credentials, official TV search response parsing, Bearer header handling, token non-disclosure, invalid JSON, empty results, and provider-failure isolation. Per repository AGENTS.md, Kotlin/JVM tests are reserved for the user's designated manual validation stage and were not run by this change. An authenticated live TMDB request was not performed because no token was supplied. CI/workflow and Android build outcomes must be recorded separately from static review.
+The tests in ReiAnixMetadataProvidersTest.kt cover title normalization, URL safety, homonym/year rejection, missing backend configuration, request/response parsing, absence of client Authorization headers, invalid JSON, empty results, and provider-failure isolation. ReiAnixBuildSecretSafetyTest rejects the old BuildConfig token field and JWT-shaped string constants, and the APK workflow scans final APK entries for the legacy field name and JWT-shaped strings. Backend unit tests use mocked upstream responses and are not evidence of a live deployment. Live backend validation remains blocked until the owner deploys and configures a real HTTPS origin. CI/workflow results, mocked tests, live backend validation, and device testing must be reported separately.
