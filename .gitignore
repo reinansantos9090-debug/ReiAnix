@@ -4,3 +4,7 @@ build/
 # Android/Gradle generated files
 android/.gradle/
 android/app/build/
+
+# Cloudflare Worker local secrets: never commit TMDB credentials
+backend/tmdb-metadata-worker/.dev.vars*
+backend/tmdb-metadata-worker/.env*
