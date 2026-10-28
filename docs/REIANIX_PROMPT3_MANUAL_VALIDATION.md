@@ -1,11 +1,12 @@
 # Prompt 3 — validação manual de provedores, artwork e APK
 
-## Estado real desta rodada
+## Estado da correção de segurança
 
-- O `AGENTS.md` reserva os testes Kotlin/JVM para a etapa manual definida pelo usuário. Esta rodada foi explicitamente designada para essa validação, mas a execução não pôde ser iniciada no ambiente do assistente: não existe Gradle instalado e a tentativa de obter o checkout com `git clone` falhou com `Could not resolve host: github.com`. Portanto, **nenhum teste Kotlin/JVM foi executado** e não há resultado PASS/FAIL da suíte.
-- O workflow Android do PR executou `:app:assembleRelease`, `:app:compileReleaseKotlin`, verificações do contrato SQLite v29, inspeção do APK, SHA-256 e assinatura. Esse workflow não executa testes Kotlin/JVM.
-- O APK é assinado com a chave de depuração. A validação em aparelho físico não foi realizada nesta rodada.
-- Não havia token TMDB de teste autorizado disponível; a consulta real autenticada continua pendente.
+- O token não pode ser fornecido ao Gradle nem embutido no APK. O campo antigo `BuildConfig.TMDB_READ_ACCESS_TOKEN` foi removido e substituído por uma URL pública opcional de backend.
+- O backend de referência em `backend/tmdb-metadata-worker/` ainda precisa ser implantado na conta Cloudflare do proprietário. Sem essa implantação, o app preserva AniList, mas pula o fallback TMDB.
+- O teste `ReiAnixBuildSecretSafetyTest` valida que o campo antigo não está no BuildConfig. O workflow também verifica os bytes do APK final quanto ao nome do campo legado e strings com formato JWT.
+- Testes simulados do Worker não comprovam uma busca real. A validação real só poderá ser registrada depois de configurar a URL HTTPS real e observar sucesso em `/healthz` e `/v1/metadata/tmdb/search`.
+- Não foi feita validação em aparelho físico.
 
 ## 1. Testes Kotlin/JVM relevantes
 
@@ -16,6 +17,7 @@ No diretório raiz do projeto, execute apenas os testes relacionados ao Prompt 3
 ```bash
 gradle -p android --no-daemon --console=plain :app:testDebugUnitTest \
   --tests 'com.reiflix.reiflix_local.data.metadata.ReiAnixMetadataProvidersTest' \
+  --tests 'com.reiflix.reiflix_local.ReiAnixBuildSecretSafetyTest' \
   --tests 'com.reiflix.reiflix_local.data.artwork.ReiAnixTmdbArtworkCachePolicyTest' \
   --tests 'com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest' \
   --tests 'com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest' \
@@ -62,20 +64,31 @@ Marque um caso como PASS somente depois de executá-lo no aparelho e guardar a e
 | D7 | Falha remota e preservação | Com uma capa válida já registrada, repita a atualização em uma condição de rede controlada na qual a atualização remota falhe. A capa previamente válida deve permanecer visível e não deve ser apagada somente porque a consulta/download falhou. Não corrompa arquivos ou banco manualmente no dispositivo principal. | PENDENTE — não executado em aparelho |
 | D8 | Sem token | Instale o APK oficial do artefato, que foi compilado sem token TMDB, e atualize um título cujo metadado AniList é conhecido. O provedor TMDB deve ser ignorado sem bloquear a pesquisa AniList. | PENDENTE — análise estática confirma o ramo; aparelho não testado |
 
-### APK com token para o caso D5
+### Backend real para o caso D5
 
-O APK do artefato normal do Actions não contém token TMDB. Para um teste real autorizado, compile localmente na branch, usando um token de teste que você possa usar nesse cliente:
+**Não compile o token TMDB no APK.** Para ativar o fallback de pôsteres, o proprietário precisa implantar o Worker em `backend/tmdb-metadata-worker/` usando uma conta Cloudflare própria:
 
 ```bash
-# Digite o token sem eco e exporte-o apenas para este processo de shell.
-read -rsp 'TMDB API Read Access Token: ' REIANIX_TMDB_READ_ACCESS_TOKEN
-export REIANIX_TMDB_READ_ACCESS_TOKEN
-printf '\n'
-gradle -p android --no-daemon --console=plain :app:assembleRelease
-unset REIANIX_TMDB_READ_ACCESS_TOKEN
+cd backend/tmdb-metadata-worker
+npm test
+npx wrangler secret put TMDB_READ_ACCESS_TOKEN
+npx wrangler deploy
 ```
 
-O token é compilado no BuildConfig e pode ser extraído do APK distribuído; portanto, não use um segredo de longa duração que deva permanecer confidencial. Não escreva o token em arquivos versionados, não publique APK/token em logs e revogue ou rode o token de teste conforme a política aplicável após o teste. Não envie o token neste chat. Uma compilação local com assinatura de depuração ainda não será compatível com uma instalação assinada por outro certificado.
+O comando de secret solicita a credencial de forma interativa. Não a escreva em arquivo, não a passe ao Gradle e não a cole neste chat.
+
+Depois de implantar, valide `GET /healthz` e uma busca real por `POST /v1/metadata/tmdb/search`. Somente após obter HTTP 200, JSON válido e um resultado com `poster_path` utilizável, configure a variável **não secreta** do repositório `REIANIX_TMDB_METADATA_BACKEND_URL` com a origem HTTPS fornecida pela implantação. Nenhuma URL foi definida ou presumida nesta correção.
+
+O backend de referência aplica validação de entrada, permite somente TV/filme, projeta os campos mínimos da resposta e impõe rate limit de borda. Isso reduz abuso, mas não substitui uma política robusta de autenticação/attestation do aplicativo. Antes de distribuição de produção, configure essa proteção adicional.
+
+### Artefatos antigos com credencial
+
+Os artefatos da execução 7433 (run `40734478239`) contêm o APK com o token incorporado:
+
+- `ReiAnix-apk-instalacao-direta-7433`, artifact ID `12839771385`.
+- `ReiAnix-ZIP-extraia-primeiro-7433`, artifact ID `12840545296`.
+
+Remova-os manualmente na página da execução do GitHub Actions, abrindo a seção **Artifacts** e selecionando a ação de exclusão de cada artefato, se disponível para sua permissão. Confirme que ambos deixam de aparecer depois da exclusão. Isso não apaga cópias já baixadas ou caches externos, e esta correção não afirma que os artefatos antigos foram excluídos. O token utilizado pelo build 7433 deve ser revogado/rotacionado pelo proprietário após a decisão dele; essa ação não é executada aqui.
 
 ## 4. Relato dos resultados
 
@@ -83,8 +96,8 @@ Preencha os estados D1–D8 apenas depois de executar cada caso. Para cada item,
 
 ## 5. Limites que permanecem
 
-- Nenhum teste Kotlin/JVM foi executado neste ambiente nesta rodada; a tentativa de checkout foi bloqueada por resolução DNS e Gradle não está instalado. O build de release anterior não é resultado da suíte unitária.
+- Os testes Kotlin/JVM devem ser registrados com SHA exato e relatórios do Gradle; testes com HTTP simulado não contam como validação real do Worker.
 - Nenhum teste em aparelho físico foi realizado aqui.
-- Nenhuma consulta autenticada real ao TMDB foi realizada, por ausência de token autorizado.
+- O backend continua não implantado até que o proprietário configure a conta e forneça uma origem real; não declare TMDB operacional antes dos checks HTTP do backend.
 - A política de expiração TMDB de 180 dias é aplicada pelo passe de manutenção/backfill existente. Se o app não executar esse passe, a limpeza aguarda a próxima execução; não há execução agendada garantida em segundo plano.
 - A chave de assinatura do APK de avaliação é de depuração; não é uma release oficial e não deve ser tratada como compatível com atualização por assinatura estável.
