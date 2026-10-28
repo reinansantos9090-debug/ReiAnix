@@ -279,7 +279,7 @@ jobs:
           import zipfile
 
           apk_path = "build/ReiAnix.apk"
-          jwt_pattern = re.compile(rb"eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}")
+          jwt_pattern = re.compile(rb"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
           findings = []
           with zipfile.ZipFile(apk_path) as apk:
               for item in apk.infolist():
