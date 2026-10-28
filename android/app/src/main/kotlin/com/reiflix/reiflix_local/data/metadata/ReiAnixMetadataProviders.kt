@@ -223,8 +223,9 @@ internal fun tmdbPosterImageUrl(posterPath: String?): String? {
 }
 
 /**
- * Official TMDB REST search provider. The read token is supplied by build configuration and is
- * never appended to URLs or diagnostics. No token means this provider is skipped cleanly.
+ * TMDB metadata proxy provider. Only the public backend origin is supplied by build configuration;
+ * the TMDB read token is held exclusively by the server. A missing backend origin skips this
+ * provider cleanly while the independent AniList provider remains available.
  */
 private fun normalizeReiAnixTmdbBackendBaseUrl(value: String): String {
     val trimmed = value.trim()
