@@ -67,6 +67,21 @@ test("TV search authenticates to TMDB server-side and projects only poster metad
             poster_path: "/adult.jpg",
           },
           {
+            id: 457,
+            name: "Missing adult classification",
+            original_name: "Missing adult classification",
+            first_air_date: "2000-01-01",
+            poster_path: "/unknown-adult.jpg",
+          },
+          {
+            id: 458,
+            adult: false,
+            name: "   ",
+            original_name: "Empty title",
+            first_air_date: "2000-01-01",
+            poster_path: "/empty-title.jpg",
+          },
+          {
             id: 789,
             adult: false,
             name: "Missing poster",
