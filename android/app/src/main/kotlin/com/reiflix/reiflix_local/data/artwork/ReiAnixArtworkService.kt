@@ -109,6 +109,18 @@ internal const val MAX_AUTOMATIC_ARTWORK_FAILURES = 5
 internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val EXHAUSTED_ARTWORK_RETRY_DELAY_SECONDS = 7L * 24L * 60L * 60L
 
+/** Conservative in-app TTL: TMDB content is evicted before the six-month terms limit. */
+internal const val TMDB_ARTWORK_CACHE_MAX_AGE_SECONDS = 180L * 24L * 60L * 60L
+
+internal fun shouldExpireTmdbArtworkCache(
+    discoveredAtSeconds: Double?,
+    updatedAtSeconds: Double?,
+    nowSeconds: Double,
+): Boolean {
+    val sourceObservedAt = discoveredAtSeconds ?: updatedAtSeconds ?: 0.0
+    return sourceObservedAt <= nowSeconds - TMDB_ARTWORK_CACHE_MAX_AGE_SECONDS
+}
+
 /**
  * A legacy cover_cache pointer has no URL revision of its own. Reuse it for the
  * current URL only when canonical artwork metadata proves that association.
@@ -403,12 +415,12 @@ class ReiAnixArtworkService(
                                         "skipped_providers" to resolution.skippedProviders.joinToString(","),
                                     ),
                                 )
-                                val candidate = selectMetadataCandidate(query, resolution.candidates)
-                                if (candidate != null) {
+                                val candidates = selectMetadataCandidates(query, resolution.candidates)
+                                for (candidate in candidates) {
                                     ReiAnixDiagnosticTimeline.record(
                                         name = "NATIVE_METADATA_CANDIDATE_SELECTED",
                                         source = "ReiAnixArtworkService",
-                                        result = "SELECTED",
+                                        result = "TRYING_CANDIDATE",
                                         requestId = requestId,
                                         context = mapOf(
                                             "provider_id" to candidate.providerId,
@@ -420,11 +432,13 @@ class ReiAnixArtworkService(
                                     val url = candidate.posterUrl.orEmpty()
                                     val sourceKind = candidate.providerId
                                     val sourceRef = registerExternalCandidate(animeId, entityType, candidate)
-                                    if (sourceRef != null) {
-                                        materialize(
+                                    if (sourceRef != null && materialize(
                                             animeId, entityType, "poster", url, anime.anilistId, force, requestId,
                                             sourceKind = sourceKind, providerSourceRef = sourceRef,
                                         )
+                                    ) {
+                                        posterMaterialized = true
+                                        break
                                     }
                                 }
                             }
@@ -462,11 +476,102 @@ class ReiAnixArtworkService(
         return true
     }
 
-    /** Repair existing persisted image URLs in bounded asynchronous batches. */
+    private data class ExpiredTmdbArtwork(
+        val rowId: Long,
+        val entityType: String,
+        val entityId: String,
+        val artworkType: String,
+        val localPath: String?,
+    )
+
+    /**
+     * TMDB's API terms cap caching API data/images at six months.
+     * Use existing v29 artwork rows and timestamps; preserve user-owned pointers.
+     */
+    private fun expireExpiredTmdbArtwork(): List<Long> {
+        val now = nowSeconds()
+        val affectedAnimeIds = linkedSetOf<Long>()
+        val expiredPaths = linkedSetOf<String>()
+        database.transaction { db ->
+            val expiredRows = db.rawQuery(
+                "SELECT id,entity_type,entity_id,artwork_type,local_path,discovered_at,updated_at " +
+                    "FROM artwork WHERE source_ref LIKE 'tmdb:%' AND manual=0",
+                null,
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val discoveredAt = if (cursor.isNull(5)) null else cursor.getDouble(5)
+                        val updatedAt = if (cursor.isNull(6)) null else cursor.getDouble(6)
+                        if (shouldExpireTmdbArtworkCache(discoveredAt, updatedAt, now)) {
+                            add(
+                                ExpiredTmdbArtwork(
+                                    rowId = cursor.getLong(0),
+                                    entityType = cursor.getString(1).orEmpty(),
+                                    entityId = cursor.getString(2).orEmpty(),
+                                    artworkType = cursor.getString(3).orEmpty(),
+                                    localPath = cursor.getString(4)?.trim()?.takeIf(String::isNotEmpty),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            if (expiredRows.isEmpty()) return@transaction
+            expiredRows
+                .filter { it.artworkType == POSTER && it.entityType in setOf("anime", "movie") }
+                .mapNotNull { it.entityId.toLongOrNull() }
+                .forEach(affectedAnimeIds::add)
+            expiredRows.forEach { row ->
+                db.delete("artwork", "id=?", arrayOf(row.rowId.toString()))
+                row.localPath?.let(expiredPaths::add)
+            }
+            expiredPaths.forEach { path ->
+                val pointers = db.rawQuery(
+                    "SELECT id,metadata_manual_fields FROM anime WHERE cover_cache=?",
+                    arrayOf(path),
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) add(cursor.getLong(0) to cursor.getString(1))
+                    }
+                }
+                pointers.forEach { (animeId, manualFields) ->
+                    if (!ownsManualField(manualFields, "cover_cache")) {
+                        db.update(
+                            "anime",
+                            ContentValues().apply { put("cover_cache", "") },
+                            "id=? AND cover_cache=?",
+                            arrayOf(animeId.toString(), path),
+                        )
+                    }
+                }
+            }
+        }
+        expiredPaths.forEach { path ->
+            val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return@forEach
+            if (isWithin(cacheDirectory, file) && !isArtworkPathReferenced(path)) {
+                runCatching { if (file.isFile) file.delete() }
+            }
+        }
+        return affectedAnimeIds.toList()
+    }
+
+    /** Repair persisted image URLs and evict stale TMDB content before bounded backfill. */
     fun requestPendingArtwork(): Boolean {
         if (cacheClearInProgress.get() || !backfillRunning.compareAndSet(false, true)) return false
         backfillJob = scope.launch {
             try {
+                if (cacheClearInProgress.get()) return@launch
+                val expiredTmdbIds = runCatching { expireExpiredTmdbArtwork() }
+                    .onFailure { Log.e(TAG, "TMDB artwork cache expiry failed", it) }
+                    .getOrDefault(emptyList())
+                val expiredJobs = ArrayList<Job>()
+                expiredTmdbIds.forEach { id ->
+                    if (!cacheClearInProgress.get()) {
+                        requestAnimeArtwork(id, force = true)
+                        jobs[id]?.let(expiredJobs::add)
+                    }
+                }
+                expiredJobs.distinct().joinAll()
                 if (cacheClearInProgress.get()) return@launch
                 var afterId = readPersistedArtworkMaterializationCursor(database)
                 var scannedThisPass = 0
@@ -581,7 +686,7 @@ class ReiAnixArtworkService(
             val removedPaths = database.transaction { db ->
                 val paths = db.rawQuery(
                     "SELECT DISTINCT local_path FROM artwork " +
-                        "WHERE source IN ('cache','anilist') AND manual=0 AND local_path IS NOT NULL",
+                        "WHERE source IN ('cache','anilist','tmdb') AND manual=0 AND local_path IS NOT NULL",
                     null,
                 ).use { cursor ->
                     buildList {
@@ -591,7 +696,7 @@ class ReiAnixArtworkService(
                         }
                     }
                 }
-                db.delete("artwork", "source IN ('cache','anilist') AND manual=0", null)
+                db.delete("artwork", "source IN ('cache','anilist','tmdb') AND manual=0", null)
                 // Match Settings' existing cache-clear contract: expire remote metadata
                 // and clear stale cover pointers without deleting the library records.
                 db.execSQL("UPDATE anime SET metadata_updated_at=NULL, cover_cache=''")
@@ -1212,10 +1317,10 @@ class ReiAnixArtworkService(
             }
         }
 
-    private fun selectMetadataCandidate(
+    private fun selectMetadataCandidates(
         query: ReiAnixMetadataQuery,
         candidates: List<ReiAnixMetadataCandidate>,
-    ): ReiAnixMetadataCandidate? {
+    ): List<ReiAnixMetadataCandidate> {
         val sorted = candidates.filter {
             it.providerId in setOf("anilist", "tmdb") && !it.posterUrl.isNullOrBlank()
         }.sortedWith(
@@ -1223,7 +1328,7 @@ class ReiAnixArtworkService(
                 .thenByDescending { if (it.providerId == "anilist") ANILIST_PROVIDER_PRIORITY else TMDB_PRIORITY }
                 .thenBy { it.externalId },
         )
-        if (sorted.isEmpty()) return null
+        if (sorted.isEmpty()) return emptyList()
         if (query.year == null) {
             val queryTitles = query.searchTitles.map(::normalizeReiAnixMetadataTitle).toSet()
             val matching = sorted.filter { candidate ->
@@ -1231,9 +1336,9 @@ class ReiAnixArtworkService(
                     .map(::normalizeReiAnixMetadataTitle)
                     .any { it in queryTitles }
             }
-            if (matching.mapNotNull { it.year }.distinct().size > 1) return null
+            if (matching.mapNotNull { it.year }.distinct().size > 1) return emptyList()
         }
-        return sorted.first()
+        return sorted
     }
 
     private fun metadataQuery(anime: Anime): ReiAnixMetadataQuery {

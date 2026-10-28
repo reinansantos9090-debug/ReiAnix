@@ -44,13 +44,19 @@ Official references:
 - FAQ and API attribution: https://developer.themoviedb.org/docs/faq
 - Approved logos and attribution: https://www.themoviedb.org/about/logos-attribution
 
-The TMDB FAQ states that its free API is for non-commercial use with attribution. It requires this prominent notice in an About/Credits section:
+The current API Terms of Use require a TMDB logo and prominent attribution in the application, prohibit implying endorsement, and prohibit retaining any TMDB API data/content for longer than six months. The About screen displays the required FAQ wording:
 
 > This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-The About screen includes that exact notice. The FAQ also requires an approved TMDB logo in the application; the approved logo asset has not yet been bundled in this change and must be added before a release that uses TMDB data. Do not alter an official logo's colors, aspect ratio, or orientation. Commercial use requires contacting TMDB for a separate license. TMDB's API legal notice says it does not claim ownership of all data/images returned by its API; downstream image rights and applicable copyright obligations still need to be respected.
+It also displays the broader wording from the current API Terms:
 
-This documentation and runtime integration do not constitute a legal clearance. Confirm that the intended distribution is non-commercial or obtain the appropriate license, add the approved official logo, and review attribution in the final packaged UI before release.
+> This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
+
+The approved short blue TMDB logo is bundled unmodified as android/app/src/main/assets/tmdb-logo.svg; its source and branding restrictions are recorded in android/app/src/main/assets/tmdb-logo.NOTICE. The existing artwork maintenance/backfill pass expires provider-owned tmdb: rows older than 180 days, clears derived cover-cache pointers when they are not user-owned, removes unreferenced managed files, then requests fresh artwork for affected anime through the existing pipeline. This does not change SQLite v29 or create a second cache. Manual/local artwork references are preserved.
+
+The official API Terms expressly prohibit commercial use unless covered by a separate written agreement with TMDB. No such license has been provided or verified in this task, so no commercial authorization is claimed. TMDB's logo is less prominent than the ReiAnix app name and is not modified. The app continues to use the existing artwork storage/loading path; retained provider content is subject to the 180-day expiry policy. Cleanup runs whenever the existing artwork maintenance pass executes; no Android background-work infrastructure was added.
+
+This documentation and runtime integration do not constitute legal clearance. The intended distribution/use category still needs to be confirmed. Any commercial use requires the applicable written license from TMDB. Do not use TMDB content for AI/ML uses prohibited by the current API Terms.
 
 ## Verification limits
 

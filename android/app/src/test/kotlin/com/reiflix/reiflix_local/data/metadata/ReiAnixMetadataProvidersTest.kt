@@ -188,6 +188,38 @@ class ReiAnixMetadataProvidersTest {
     }
 
     @Test
+    fun responseWithoutResultsArrayIsReportedAsInvalidResponse() = runBlocking {
+        val provider = ReiAnixTmdbMetadataProvider(
+            readAccessToken = "configured-token",
+            connectionFactory = { url -> FakeHttpConnection(url, 200, """{"page":1}""") },
+        )
+        val result = ReiAnixMetadataProviderRegistry(listOf(provider))
+            .search(ReiAnixMetadataQuery(title = "Cowboy Bebop"))
+
+        assertTrue(result.candidates.isEmpty())
+        assertEquals("invalid_response", result.failures.single().category)
+    }
+
+    @Test
+    fun retriesTmdbRateLimitAndUsesSuccessfulPosterResponse() = runBlocking {
+        val calls = AtomicInteger()
+        val body = """{"results":[{"id":123,"name":"Cowboy Bebop","original_name":"Cowboy Bebop",
+            "first_air_date":"1998-10-24","poster_path":"/cowboy.jpg","adult":false}]}"""
+        val provider = ReiAnixTmdbMetadataProvider(
+            readAccessToken = "configured-token",
+            connectionFactory = { url ->
+                if (calls.incrementAndGet() == 1) FakeHttpConnection(url, 429, "")
+                else FakeHttpConnection(url, 200, body)
+            },
+        )
+
+        val candidates = provider.search(ReiAnixMetadataQuery(title = "Cowboy Bebop", year = 1998, mediaKind = "tv"))
+
+        assertEquals(2, calls.get())
+        assertEquals("https://image.tmdb.org/t/p/w500/cowboy.jpg", candidates.single().posterUrl)
+    }
+
+    @Test
     fun registryBoundsConcurrentProviderCalls() = runBlocking {
         val active = AtomicInteger()
         val peak = AtomicInteger()

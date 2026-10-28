@@ -153,6 +153,7 @@ class ReiAnixMetadataProviderRegistry(
         error is IOException && error.message?.startsWith("ANILIST_HTTP_") == true -> "http_error"
         error is IOException && error.message == "ANILIST_PROVIDER_FAILURE" -> "provider_error"
         error is IOException && error.message == "TMDB_INVALID_JSON" -> "invalid_json"
+        error is IOException && error.message == "TMDB_INVALID_RESPONSE" -> "invalid_response"
         error is IOException && error.message == "TMDB_HTTP_401" -> "auth_rejected"
         error is IOException && error.message == "TMDB_HTTP_403" -> "permission_rejected"
         error is IOException && error.message == "TMDB_HTTP_429" -> "rate_limited"
@@ -248,8 +249,9 @@ class ReiAnixTmdbMetadataProvider(
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 try {
                     val response = requestSearch(kind, title, query.year)
+                    val results = response.optJSONArray("results")
+                        ?: throw IOException("TMDB_INVALID_RESPONSE")
                     successfulRequests++
-                    val results = response.optJSONArray("results") ?: continue
                     for (index in 0 until minOf(results.length(), MAX_RESULTS_PER_QUERY)) {
                         val item = results.optJSONObject(index) ?: continue
                         if (item.optBoolean("adult", false)) continue
@@ -297,7 +299,7 @@ class ReiAnixTmdbMetadataProvider(
                     if (successfulRequests == 0) break
                 }
             }
-            if (successfulRequests == 0 && lastFailure != null) throw lastFailure
+            if (byId.isEmpty() && lastFailure != null) throw lastFailure
             byId.values.sortedByDescending { it.confidence }.take(MAX_METADATA_CANDIDATES)
         }
     }
