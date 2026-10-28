@@ -18,8 +18,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
@@ -54,7 +56,7 @@ class ReiAnixMetadataProvidersTest {
     }
 
     @Test
-    fun missingTmdbTokenSkipsProviderWithoutNetwork() = runBlocking {
+    fun missingBackendUrlSkipsTmdbProviderWithoutNetwork() = runBlocking {
         val provider = ReiAnixTmdbMetadataProvider("")
         assertFalse(provider.isConfigured)
         val resolution = ReiAnixMetadataProviderRegistry(listOf(provider))
@@ -101,7 +103,7 @@ class ReiAnixMetadataProvidersTest {
             minimumRequestIntervalMs = 0L,
         )
         val tmdb = ReiAnixTmdbMetadataProvider(
-            readAccessToken = "configured-token",
+            backendBaseUrl = TEST_BACKEND_URL,
             connectionFactory = { url ->
                 FakeHttpConnection(
                     url,
@@ -122,11 +124,10 @@ class ReiAnixMetadataProvidersTest {
         assertEquals("tmdb", resolution.candidates.single().providerId)
         assertEquals("123", resolution.candidates.single().externalId)
         assertEquals("http_error", resolution.failures.single().category)
-        assertFalse(resolution.failures.toString().contains("configured-token"))
-    }
+            }
 
     @Test
-    fun tmdbTvSearchUsesBearerAndPosterPathOnly() = runBlocking {
+    fun tmdbBackendSearchUsesPostWithoutClientCredentialAndPosterPathOnly() = runBlocking {
         val body = """
             {"results":[{"id":123,"name":"Cowboy Bebop","original_name":"Cowboy Bebop",
             "first_air_date":"1998-10-24","poster_path":"/cowboy.jpg",
@@ -134,7 +135,7 @@ class ReiAnixMetadataProvidersTest {
         """.trimIndent()
         val reference = AtomicReference<FakeHttpConnection?>()
         val provider = ReiAnixTmdbMetadataProvider(
-            readAccessToken = "test-secret-token",
+            backendBaseUrl = TEST_BACKEND_URL,
             connectionFactory = { url ->
                 FakeHttpConnection(url, 200, body).also(reference::set)
             },
@@ -151,17 +152,19 @@ class ReiAnixMetadataProvidersTest {
         assertFalse(results.single().posterUrl!!.contains("wide-image"))
         val connection = reference.get()
         assertNotNull(connection)
-        assertEquals("Bearer test-secret-token", connection!!.getRequestProperty("Authorization"))
-        assertTrue(connection.url.path.endsWith("/3/search/tv"))
-        assertTrue(connection.url.query.contains("first_air_date_year=1998"))
-        assertFalse(connection.url.toString().contains("test-secret-token"))
+        assertNull(connection!!.getRequestProperty("Authorization"))
+        assertEquals("POST", connection.requestMethod)
+        assertEquals("/v1/metadata/tmdb/search", connection.url.path)
+        assertTrue(connection.requestBodyText().contains("\"query\":\"Cowboy Bebop\""))
+        assertTrue(connection.requestBodyText().contains("\"mediaKind\":\"tv\""))
+        assertTrue(connection.requestBodyText().contains("\"year\":1998"))
+        assertFalse(connection.requestBodyText().contains("Bearer"))
     }
 
     @Test
     fun providerFailureDoesNotDiscardAnotherProvidersResultsOrLeakToken() = runBlocking {
-        val token = "do-not-log-this-token"
         val failingTmdb = ReiAnixTmdbMetadataProvider(
-            readAccessToken = token,
+            backendBaseUrl = TEST_BACKEND_URL,
             connectionFactory = { url -> FakeHttpConnection(url, 401, """{"status_code":7}""") },
         )
         val registry = ReiAnixMetadataProviderRegistry(
@@ -173,13 +176,12 @@ class ReiAnixMetadataProvidersTest {
         assertEquals(1, result.candidates.size)
         assertEquals("anilist", result.candidates.single().providerId)
         assertEquals("auth_rejected", result.failures.single().category)
-        assertFalse(result.failures.toString().contains(token))
     }
 
     @Test
     fun invalidJsonIsReportedAsProviderFailure() = runBlocking {
         val provider = ReiAnixTmdbMetadataProvider(
-            readAccessToken = "configured-token",
+            backendBaseUrl = TEST_BACKEND_URL,
             connectionFactory = { url -> FakeHttpConnection(url, 200, "{not-json") },
         )
         val result = ReiAnixMetadataProviderRegistry(listOf(provider))
@@ -192,7 +194,7 @@ class ReiAnixMetadataProvidersTest {
     @Test
     fun responseWithoutResultsArrayIsReportedAsInvalidResponse() = runBlocking {
         val provider = ReiAnixTmdbMetadataProvider(
-            readAccessToken = "configured-token",
+            backendBaseUrl = TEST_BACKEND_URL,
             connectionFactory = { url -> FakeHttpConnection(url, 200, """{"page":1}""") },
         )
         val result = ReiAnixMetadataProviderRegistry(listOf(provider))
@@ -208,7 +210,7 @@ class ReiAnixMetadataProvidersTest {
         val body = """{"results":[{"id":123,"name":"Cowboy Bebop","original_name":"Cowboy Bebop",
             "first_air_date":"1998-10-24","poster_path":"/cowboy.jpg","adult":false}]}"""
         val provider = ReiAnixTmdbMetadataProvider(
-            readAccessToken = "configured-token",
+            backendBaseUrl = TEST_BACKEND_URL,
             connectionFactory = { url ->
                 if (calls.incrementAndGet() == 1) FakeHttpConnection(url, 429, "")
                 else FakeHttpConnection(url, 200, body)
@@ -279,9 +281,8 @@ class ReiAnixMetadataProvidersTest {
 
     @Test
     fun tmdbNetworkFailureDoesNotSuppressAniListCandidate() = runBlocking {
-        val token = "configured-test-token"
         val offlineTmdb = ReiAnixTmdbMetadataProvider(
-            readAccessToken = token,
+            backendBaseUrl = TEST_BACKEND_URL,
             connectionFactory = { throw IOException("simulated network unavailable") },
         )
         val aniList = FixedProvider(
@@ -295,19 +296,22 @@ class ReiAnixMetadataProvidersTest {
 
         assertEquals("anilist", result.candidates.single().providerId)
         assertEquals("network_or_http", result.failures.single().category)
-        assertFalse(result.failures.toString().contains(token))
     }
 
     @Test
     fun emptySearchIsNotTreatedAsTransportFailure() = runBlocking {
         val provider = ReiAnixTmdbMetadataProvider(
-            readAccessToken = "configured-token",
+            backendBaseUrl = TEST_BACKEND_URL,
             connectionFactory = { url -> FakeHttpConnection(url, 200, """{"results":[]}""") },
         )
         val result = ReiAnixMetadataProviderRegistry(listOf(provider))
             .search(ReiAnixMetadataQuery(title = "No Matching Title"))
         assertTrue(result.candidates.isEmpty())
         assertTrue(result.failures.isEmpty())
+    }
+
+    private companion object {
+        const val TEST_BACKEND_URL = "https://metadata.example.invalid"
     }
 
     private fun candidate(title: String, year: Int, providerId: String = "tmdb") = ReiAnixMetadataCandidate(
@@ -336,11 +340,14 @@ class ReiAnixMetadataProvidersTest {
         private val status: Int,
         private val responseBody: String,
     ) : HttpURLConnection(url) {
+        private val requestBody = ByteArrayOutputStream()
         override fun connect() = Unit
         override fun disconnect() = Unit
         override fun usingProxy(): Boolean = false
         override fun getResponseCode(): Int = status
         override fun getHeaderField(name: String?): String? = null
+        override fun getOutputStream(): OutputStream = requestBody
+        fun requestBodyText(): String = requestBody.toString(Charsets.UTF_8.name())
         override fun getInputStream(): InputStream =
             ByteArrayInputStream(responseBody.toByteArray(Charsets.UTF_8))
     }
