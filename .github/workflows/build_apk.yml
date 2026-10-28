@@ -380,9 +380,13 @@ jobs:
             git diff --stat
             exit 1
           fi
-          test -s build/reiflix-build-identity.json
-          test -s build/ReiAnix.apk
-          test -s build/ReiAnix.apk.sha256
+          if [[ "${{ steps.apk.outcome }}" == "success" ]]; then
+            test -s build/reiflix-build-identity.json
+            test -s build/ReiAnix.apk
+            test -s build/ReiAnix.apk.sha256
+          else
+            echo "APK build was blocked before artifact generation; no APK files are expected."
+          fi
 
       - name: Write Portuguese install instructions
         shell: bash
