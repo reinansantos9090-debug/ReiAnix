@@ -25,13 +25,17 @@ function safePosterPath(value) {
 
 function projectResult(item, mediaKind) {
   if (!item || typeof item !== "object" || !Number.isSafeInteger(item.id) || item.id <= 0) return null;
-  if (item.adult === true) return null;
+  // Fail closed: only TMDB records explicitly marked non-adult are eligible.
+  if (item.adult !== false) return null;
 
   const posterPath = safePosterPath(item.poster_path);
   if (!posterPath) return null;
 
   if (mediaKind === "tv") {
-    if (typeof item.name !== "string" || typeof item.original_name !== "string") return null;
+    if (
+      typeof item.name !== "string" || !item.name.trim() ||
+      typeof item.original_name !== "string" || !item.original_name.trim()
+    ) return null;
     return {
       id: item.id,
       adult: false,
@@ -42,7 +46,10 @@ function projectResult(item, mediaKind) {
     };
   }
 
-  if (typeof item.title !== "string" || typeof item.original_title !== "string") return null;
+  if (
+    typeof item.title !== "string" || !item.title.trim() ||
+    typeof item.original_title !== "string" || !item.original_title.trim()
+  ) return null;
   return {
     id: item.id,
     adult: false,
@@ -148,7 +155,9 @@ export async function handleRequest(request, env, fetchImpl = globalThis.fetch) 
   const language = input.language === undefined ? "pt-BR" : input.language;
   const year = input.year;
 
-  if (!query || query.length > MAX_QUERY_LENGTH) return jsonResponse(400, { error: "invalid_query" });
+  if (!query || query.length > MAX_QUERY_LENGTH || /[\\u0000-\\u001f\\u007f]/.test(query)) {
+    return jsonResponse(400, { error: "invalid_query" });
+  }
   if (mediaKind !== "tv" && mediaKind !== "movie") return jsonResponse(400, { error: "invalid_media_kind" });
   if (typeof language !== "string" || !/^(?:[a-z]{2}-[A-Z]{2}|[a-z]{2})$/.test(language)) {
     return jsonResponse(400, { error: "invalid_language" });
