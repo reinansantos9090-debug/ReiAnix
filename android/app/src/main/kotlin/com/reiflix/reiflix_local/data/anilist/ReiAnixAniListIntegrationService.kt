@@ -17,6 +17,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reiflix.reiflix_local.data.sqlite.updateAniListMetadataAndAssociation
@@ -27,12 +28,14 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import java.io.File
 import java.net.URI
 import java.util.Locale
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 
 /** Pure policy for bounded discovery of missing posters from the canonical catalogue. */
+@Suppress("UNUSED_PARAMETER")
 internal fun shouldDiscoverMissingArtwork(
     coverUrl: String?,
     hasUsableLocalCover: Boolean,
@@ -58,18 +61,27 @@ internal fun shouldDiscoverMissingArtwork(
         if (hasUsableHttpUrl && !hasExhaustedArtworkFailure) return false
     }
     if (manualMetadata && !hasAniListId) return false
-    val status = matchStatus?.trim()?.lowercase(Locale.ROOT)
-    if (!hasAniListId && status in setOf("not_found", "ambiguous")) return false
-    val fetchedAt = metadataFetchedAtSeconds
-    if (fetchedAt != null && fetchedAt.isFinite() && nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS) {
-        return false
-    }
+    // Stable title-search outcomes are governed by their search-signature TTL.
+    // Known-ID retries use the persisted discovery-attempt marker at the caller;
+    // transient failures clear that marker instead of being hidden by metadataFetchedAt.
     return true
 }
 
 internal const val MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS = 24L * 60L * 60L
 
 /** Temporary server/network failures must not be turned into definitive lookup cooldowns. */
+internal fun autoMatchFailureStatus(error: AniListError): String? = when (error) {
+    is AniListError.RateLimited -> "rate_limited"
+    is AniListError.Network -> "network_error"
+    is AniListError.Http -> when {
+        error.statusCode == 429 -> "rate_limited"
+        error.statusCode == 408 || error.statusCode >= 500 -> "network_error"
+        else -> "invalid_response"
+    }
+    is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
+    is AniListError.InvalidRequest -> null
+}
+
 internal fun AniListError.isTransientForAniListRetry(): Boolean = when (this) {
     is AniListError.RateLimited, is AniListError.Network,
     is AniListError.GraphQl, is AniListError.InvalidResponse -> true
@@ -87,6 +99,115 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
 internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+internal const val ANILIST_SEARCH_SIGNATURE_PREFERENCE_PREFIX = "__reianix.internal.anilist_search_signature_v1."
+internal const val ANILIST_STABLE_MATCH_RETRY_TTL_SECONDS = 7L * 24L * 60L * 60L
+
+internal data class PersistedAniListSearchSignature(
+    val signature: String,
+    val attemptedAtSeconds: Double,
+)
+
+internal fun aniListSearchTermsSignature(
+    terms: List<String>,
+    seasonEvidence: Int? = null,
+    yearEvidence: Int? = null,
+    mediaKindEvidence: String? = null,
+): String {
+    val canonical = buildList {
+        addAll(
+            terms.map(ReiAnixAniListMatcher::normalizeForLookup)
+                .filter(String::isNotBlank)
+                .distinct(),
+        )
+        add("season=${seasonEvidence ?: ""}")
+        add("year=${yearEvidence ?: ""}")
+        add("format=${mediaKindEvidence?.trim()?.lowercase(Locale.ROOT).orEmpty()}")
+    }.joinToString("\u001f")
+    val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+}
+
+internal fun shouldSkipStableAniListRetry(
+    matchStatus: String?,
+    previous: PersistedAniListSearchSignature?,
+    currentSignature: String,
+    nowSeconds: Double,
+): Boolean {
+    if (matchStatus?.lowercase(Locale.ROOT) !in setOf("not_found", "ambiguous")) return false
+    if (previous == null || previous.signature != currentSignature) return false
+    val elapsed = nowSeconds - previous.attemptedAtSeconds
+    return elapsed >= 0.0 && elapsed < ANILIST_STABLE_MATCH_RETRY_TTL_SECONDS.toDouble()
+}
+
+/** Search signatures share the canonical SQLite v29 preferences table; no DDL is needed. */
+internal suspend fun readPersistedAniListSearchSignatures(
+    database: ReiAnixSqliteDatabase,
+): Map<Long, PersistedAniListSearchSignature> = withContext(Dispatchers.IO) {
+    database.read { connection ->
+        connection.rawQuery(
+            "SELECT key, value FROM preferences WHERE substr(key, 1, ?) = ?",
+            arrayOf(
+                ANILIST_SEARCH_SIGNATURE_PREFERENCE_PREFIX.length.toString(),
+                ANILIST_SEARCH_SIGNATURE_PREFERENCE_PREFIX,
+            ),
+        ).use { cursor ->
+            buildMap<Long, PersistedAniListSearchSignature> {
+                while (cursor.moveToNext()) {
+                    val animeId = cursor.getString(0).orEmpty()
+                        .removePrefix(ANILIST_SEARCH_SIGNATURE_PREFERENCE_PREFIX)
+                        .toLongOrNull()?.takeIf { it > 0L } ?: continue
+                    val stored = cursor.getString(1).orEmpty().split('|', limit = 2)
+                    val signature = stored.getOrNull(0)?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+                        ?: continue
+                    val attemptedAt = stored.getOrNull(1)?.toDoubleOrNull()?.takeIf { it.isFinite() }
+                        ?: continue
+                    put(animeId, PersistedAniListSearchSignature(signature, attemptedAt))
+                }
+            }
+        }
+    }
+}
+
+internal suspend fun writePersistedAniListSearchSignature(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+    terms: List<String>,
+    attemptedAtSeconds: Double,
+    seasonEvidence: Int? = null,
+    yearEvidence: Int? = null,
+    mediaKindEvidence: String? = null,
+) = withContext(Dispatchers.IO) {
+    require(animeId > 0L)
+    require(attemptedAtSeconds.isFinite() && attemptedAtSeconds >= 0.0)
+    val value = aniListSearchTermsSignature(terms, seasonEvidence, yearEvidence, mediaKindEvidence) + "|" + attemptedAtSeconds
+    database.transaction { connection ->
+        val values = ContentValues().apply {
+            put("key", ANILIST_SEARCH_SIGNATURE_PREFERENCE_PREFIX + animeId)
+            put("value", value)
+            put("updated_at", attemptedAtSeconds)
+        }
+        connection.insertWithOnConflict("preferences", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+}
+
+internal suspend fun clearPersistedAniListSearchSignature(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+) = withContext(Dispatchers.IO) {
+    require(animeId > 0L)
+    database.transaction { connection ->
+        connection.delete(
+            "preferences",
+            "key=?",
+            arrayOf(ANILIST_SEARCH_SIGNATURE_PREFERENCE_PREFIX + animeId),
+        )
+    }
+}
+
+internal fun persistedAniListSearchSignaturePreferenceKey(animeId: Long): String {
+    require(animeId > 0L)
+    return ANILIST_SEARCH_SIGNATURE_PREFERENCE_PREFIX + animeId
+}
 
 /** Read attempt timestamps from the existing schema-v29 preferences table. */
 internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
@@ -168,13 +289,12 @@ internal fun shouldDeferArtworkDiscoveryAttempt(
 }
 
 
-internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6): List<String> {
+internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 8): List<String> {
     require(limit in 1..8) { "AniList title search limit must be between 1 and 8." }
-    val seen = HashSet<String>()
     return candidates.asSequence()
         .map { it.trim().replace(Regex("\\s+"), " ") }
-        .filter { it.length in 2..120 }
-        .filter { seen.add(it.lowercase(Locale.ROOT)) }
+        .filter { it.length in 2..180 && ReiAnixAniListMatcher.normalizeForLookup(it).isNotBlank() }
+        .distinctBy(ReiAnixAniListMatcher::normalizeForLookup)
         .take(limit)
         .toList()
 }
@@ -201,6 +321,7 @@ class ReiAnixAniListIntegrationService(
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
     private val missingArtworkRecoveryRunning = AtomicBoolean(false)
+    private val autoMatchBatchRunning = AtomicBoolean(false)
 
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
@@ -346,7 +467,10 @@ class ReiAnixAniListIntegrationService(
      * to this path, and candidates are returned for UI confirmation otherwise.
      */
 
-    private fun localAniListSearchTerms(local: ReiAnixAnimeRecord): List<String> {
+    private fun localAniListSearchTerms(
+        local: ReiAnixAnimeRecord,
+        additionalTitleCandidates: List<String> = emptyList(),
+    ): List<String> {
         val localTitleCandidates = buildList {
             add(local.title)
             add(local.lookupTitle)
@@ -361,20 +485,117 @@ class ReiAnixAniListIntegrationService(
                     }
                 }
             }
+            addAll(additionalTitleCandidates)
         }
-        return boundedAniListSearchTerms(localTitleCandidates, limit = 6)
+        val variants = localTitleCandidates.flatMap { candidate ->
+            buildList {
+                addAll(ReiAnixAniListMatcher.localTitleSearchVariants(candidate))
+                if (candidate.contains('/') || candidate.indexOf(92.toChar()) >= 0) {
+                    addAll(ReiAnixAniListMatcher.extractLocalTitleCandidates(candidate))
+                }
+            }
+        }
+        return boundedAniListSearchTerms(variants, limit = 8)
     }
+
+    private fun episodeSeasonEvidence(row: ReiAnixLibraryCatalogRow): Int? {
+        val seasons = buildSet {
+            row.episodes.asSequence()
+                .filter {
+                    it.identificationSource in setOf("sxxexx", "temp_episode", "x_episode") &&
+                        it.identificationConfidence.equals("high", ignoreCase = true)
+                }
+                .map { it.season }
+                .filter { it > 0 }
+                .forEach { add(it) }
+            row.episodes.asSequence()
+                .map { it.path }
+                .filter(String::isNotBlank)
+                .distinct()
+                .take(8)
+                .mapNotNull(ReiAnixAniListMatcher::extractLocalSeason)
+                .forEach { add(it) }
+        }
+        return seasons.singleOrNull()
+    }
+
+    private fun episodeYearEvidence(row: ReiAnixLibraryCatalogRow): Int? =
+        row.episodes.asSequence()
+            .map { it.path }
+            .filter(String::isNotBlank)
+            .distinct()
+            .take(8)
+            .mapNotNull(ReiAnixAniListMatcher::extractLocalYear)
+            .distinct()
+            .take(2)
+            .toList()
+            .singleOrNull()
+
+    private fun inferTitleYear(values: List<String>): Int? =
+        values.firstNotNullOfOrNull { value ->
+            Regex("(?<!\\d)(?:19|20)\\d{2}(?!\\d)").find(value)?.value?.toIntOrNull()
+        }
+
+    private fun inferTitleSeason(values: List<String>): Int? =
+        values.firstNotNullOfOrNull { value ->
+            Regex("(?i)\\b(?:s|season|temporada|temp)[ ._-]*(\\d{1,3})\\b")
+                .find(value)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("(?i)\\b(\\d{1,2})(?:st|nd|rd|th)[ ._-]*season\\b")
+                    .find(value)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }
+
+    /**
+     * Sample a few distinct source paths rather than expanding every episode path into
+     * an unbounded candidate list. The per-anime title query is capped separately.
+     */
+    private fun episodeTitleCandidates(row: ReiAnixLibraryCatalogRow): List<String> = buildList {
+        row.episodes.asSequence()
+            .map { it.path }
+            .filter(String::isNotBlank)
+            .distinct()
+            .take(4)
+            .forEach { path ->
+                val extracted = ReiAnixAniListMatcher.extractLocalTitleCandidates(path)
+                addAll(extracted)
+                val pathYear = Regex("(?<!\\d)(?:19|20)\\d{2}(?!\\d)").find(path)?.value
+                val fileTitle = extracted.firstOrNull()
+                if (pathYear != null && !fileTitle.isNullOrBlank()) add("$fileTitle $pathYear")
+            }
+        row.episodes.asSequence()
+            .mapNotNull { it.relativePath?.takeIf(String::isNotBlank) }
+            .distinct()
+            .take(2)
+            .forEach { addAll(ReiAnixAniListMatcher.extractLocalTitleCandidates(it)) }
+        row.episodes.asSequence()
+            .mapNotNull { it.fileName.takeIf(String::isNotBlank) }
+            .distinct()
+            .take(2)
+            .forEach { addAll(ReiAnixAniListMatcher.extractLocalTitleCandidates(it)) }
+        row.episodes.asSequence()
+            .mapNotNull { it.sourceFolder?.takeIf(String::isNotBlank) }
+            .distinct()
+            .take(2)
+            .forEach { addAll(ReiAnixAniListMatcher.localTitleSearchVariants(it)) }
+    }.distinctBy(ReiAnixAniListMatcher::normalizeForLookup)
+        .filter { ReiAnixAniListMatcher.normalizeForLookup(it).isNotBlank() }
+        .take(16)
 
     suspend fun autoMatch(
         animeId: Long,
         force: Boolean = false,
     ): AniListResult<AniListAutoMatchResult> =
-        autoMatchInternal(animeId, force, primarySearchResult = null)
+        autoMatchInternal(animeId, force)
 
     private suspend fun autoMatchInternal(
         animeId: Long,
         force: Boolean,
-        primarySearchResult: List<AniListAnime>?,
+        additionalTitleCandidates: List<String> = emptyList(),
+        preloadedCandidates: List<AniListAnime> = emptyList(),
+        preloadedSearchSupplied: Boolean = false,
+        preloadedSearchComplete: Boolean = true,
+        searchTermsOverride: List<String>? = null,
+        seasonEvidence: Int? = null,
+        yearEvidence: Int? = null,
     ): AniListResult<AniListAutoMatchResult> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
@@ -390,105 +611,119 @@ class ReiAnixAniListIntegrationService(
         if (local.anilistId != null) {
             return AniListResult.Success(AniListAutoMatchResult.AlreadyMatched(local.anilistId))
         }
-        val now = System.currentTimeMillis()
-        if (primarySearchResult == null) {
-            val previousAttempt = autoMatchAttempts[animeId]
-            if (previousAttempt != null && now - previousAttempt < AUTO_MATCH_COOLDOWN_MS) {
-                return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
-            }
-        }
-        // A batch caller reserves this entry before submitting its shared request.
-        autoMatchAttempts[animeId] = now
-        val searchTerms = localAniListSearchTerms(local)
+        val searchTerms = searchTermsOverride ?: localAniListSearchTerms(local, additionalTitleCandidates)
         if (searchTerms.isEmpty()) {
             autoMatchAttempts.remove(animeId)
             return AniListResult.Failure(
                 AniListError.InvalidRequest("Local anime has no usable title for AniList lookup."),
             )
         }
-        val searchContext = ReiAnixAniListMatcher.Context(
-            year = local.year,
-            mediaKind = local.mediaKind,
-        )
-        fun rankCandidates(
-            candidates: Collection<AniListAnime>,
-            titles: List<String>,
-        ): List<ReiAnixAniListMatcher.RankedCandidate> = candidates.mapNotNull { candidate ->
-            titles.mapNotNull { title ->
-                ReiAnixAniListMatcher.rank(title, listOf(candidate), searchContext).firstOrNull()
-            }.maxByOrNull { it.score }
-        }.sortedWith(
-            compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }
-                .thenBy { (it.anime.titleEnglish ?: it.anime.titleRomaji ?: "").lowercase(Locale.ROOT) }
-                .thenBy { it.anime.id },
-        )
+        val rawLocalTitles = buildList {
+            add(local.title)
+            add(local.lookupTitle)
+            add(local.nativeTitle.orEmpty())
+            add(local.romaji.orEmpty())
+            add(local.english.orEmpty())
+            addAll(additionalTitleCandidates)
+        }
+        val resolvedYear = yearEvidence ?: local.year ?: inferTitleYear(rawLocalTitles)
+        val resolvedSeason = seasonEvidence ?: local.season?.toIntOrNull() ?: inferTitleSeason(rawLocalTitles)
+        val resolvedMediaKind = local.mediaKind
+        val nowMillis = System.currentTimeMillis()
+        val nowSeconds = nowMillis / 1000.0
+        if (!force && !preloadedSearchSupplied) {
+            val previousAttempt = autoMatchAttempts[animeId]
+            val previousSignature = readPersistedAniListSearchSignatures(library.database)[animeId]
+            val currentSignature = aniListSearchTermsSignature(
+                searchTerms,
+                resolvedSeason,
+                resolvedYear,
+                resolvedMediaKind,
+            )
+            val signatureChanged = previousSignature?.signature != currentSignature
+            if (previousAttempt != null && nowMillis - previousAttempt < AUTO_MATCH_COOLDOWN_MS &&
+                !signatureChanged
+            ) {
+                return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
+            }
+            if (shouldSkipStableAniListRetry(
+                    local.anilistMatchStatus,
+                    previousSignature,
+                    currentSignature,
+                    nowSeconds,
+                )
+            ) {
+                return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
+            }
+        }
+        autoMatchAttempts[animeId] = nowMillis
 
-        val candidatesById = linkedMapOf<Int, AniListAnime>()
-        var ranked: List<ReiAnixAniListMatcher.RankedCandidate> = emptyList()
-        var searchedTerms: List<String> = emptyList()
-        for ((termIndex, searchTerm) in searchTerms.withIndex()) {
-            searchedTerms = searchTerms.take(termIndex + 1)
-            val searchResult = if (termIndex == 0 && primarySearchResult != null) {
-                AniListResult.Success(primarySearchResult)
-            } else try {
-                client.searchAnime(searchTerm, 10)
+        val candidates = if (preloadedSearchSupplied) {
+            if (!preloadedSearchComplete) {
+                recordAutoMatchOutcome(animeId, "invalid_response")
+                return AniListResult.Failure(
+                    AniListError.InvalidResponse("AniList returned an incomplete title-search batch."),
+                )
+            }
+            preloadedCandidates
+        } else {
+            val batch = try {
+                client.searchAnimeBatch(searchTerms, perTermLimit = 10)
             } catch (cancelled: CancellationException) {
                 autoMatchAttempts.remove(animeId)
                 throw cancelled
             }
-            val found = when (searchResult) {
-                is AniListResult.Success -> searchResult.value
+            when (batch) {
                 is AniListResult.Failure -> {
-                    val outcome = when (val error = searchResult.error) {
-                        is AniListError.RateLimited -> "rate_limited"
-                        is AniListError.Network -> "network_error"
-                        is AniListError.Http -> when {
-                            error.statusCode == 429 -> "rate_limited"
-                            error.statusCode >= 500 -> "network_error"
-                            else -> "invalid_response"
-                        }
-                        is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
-                        is AniListError.InvalidRequest -> {
-                            autoMatchAttempts.remove(animeId)
-                            return searchResult
+                    val status = autoMatchFailureStatus(batch.error)
+                    if (status != null) recordAutoMatchOutcome(animeId, status)
+                    else autoMatchAttempts.remove(animeId)
+                    return batch
+                }
+                is AniListResult.Success -> {
+                    val incomplete = searchTerms.any { term ->
+                        val normalized = ReiAnixAniListMatcher.normalizeForLookup(term)
+                        batch.value.incompleteKeys.any {
+                            ReiAnixAniListMatcher.normalizeForLookup(it) == normalized
+                        } || batch.value.items.keys.none {
+                            ReiAnixAniListMatcher.normalizeForLookup(it) == normalized
                         }
                     }
-                    // Never auto-associate from a partial candidate set after a transient
-                    // failure on one of the alternate title queries.
-                    recordAutoMatchOutcome(animeId, outcome)
-                    return searchResult
+                    if (incomplete) {
+                        recordAutoMatchOutcome(animeId, "invalid_response")
+                        return AniListResult.Failure(
+                            AniListError.InvalidResponse("AniList returned an incomplete title-search alias."),
+                        )
+                    }
+                    searchTerms.flatMap { term ->
+                        val normalized = ReiAnixAniListMatcher.normalizeForLookup(term)
+                        batch.value.items.entries.firstOrNull {
+                            ReiAnixAniListMatcher.normalizeForLookup(it.key) == normalized
+                        }?.value.orEmpty()
+                    }.distinctBy { it.id }
                 }
             }
-            found.forEach { candidate -> candidatesById.putIfAbsent(candidate.id, candidate) }
-            ranked = rankCandidates(candidatesById.values, searchTerms.take(termIndex + 1))
+        }
 
-            // Preserve the fast path for an already-unambiguous primary-title result.
-            // Alternative titles are queried only when the primary result is absent,
-            // low-confidence or ambiguous, avoiding extra requests for common cases.
-            if (termIndex == 0) {
-                val best = ranked.firstOrNull()
-                val margin = best?.let { it.score - (ranked.getOrNull(1)?.score ?: 0.0) } ?: 0.0
-                if (
-                    best != null &&
-                    best.score >= AUTO_MATCH_MIN_SCORE &&
-                    margin >= AUTO_MATCH_MIN_MARGIN
-                ) break
-            }
-        }
-        if (candidatesById.isEmpty()) {
-            recordAutoMatchOutcome(animeId, "not_found")
+        val searchContext = ReiAnixAniListMatcher.Context(
+            year = resolvedYear,
+            mediaKind = resolvedMediaKind,
+            season = resolvedSeason,
+        )
+        val ranked = ReiAnixAniListMatcher.rank(searchTerms, candidates, searchContext)
+        if (ranked.isEmpty() || ranked.first().score < ReiAnixAniListMatcher.MINIMUM_SCORE) {
+            recordAutoMatchOutcome(
+                animeId,
+                "not_found",
+                searchTerms = searchTerms,
+                seasonEvidence = resolvedSeason,
+                yearEvidence = resolvedYear,
+                mediaKindEvidence = resolvedMediaKind,
+            )
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
-        ranked = rankCandidates(candidatesById.values, searchedTerms)
-        if (ranked.isEmpty()) {
-            recordAutoMatchOutcome(animeId, "not_found")
-            return AniListResult.Success(AniListAutoMatchResult.NoMatch)
-        }
+
         val best = ranked.first()
-        if (best.score < ReiAnixAniListMatcher.MINIMUM_SCORE) {
-            recordAutoMatchOutcome(animeId, "not_found")
-            return AniListResult.Success(AniListAutoMatchResult.NoMatch)
-        }
         val second = ranked.getOrNull(1)?.score ?: 0.0
         val margin = best.score - second
         if (best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
@@ -497,6 +732,10 @@ class ReiAnixAniListIntegrationService(
                 "ambiguous",
                 score = best.score,
                 margin = margin,
+                searchTerms = searchTerms,
+                seasonEvidence = resolvedSeason,
+                yearEvidence = resolvedYear,
+                mediaKindEvidence = resolvedMediaKind,
             )
             return AniListResult.Success(
                 AniListAutoMatchResult.Ambiguous(ranked.take(5).map { it.anime }),
@@ -506,24 +745,57 @@ class ReiAnixAniListIntegrationService(
             val result = applyRemote(local, best.anime, manual = false, score = best.score, margin = margin)
         ) {
             is AniListResult.Success -> result.value
-            is AniListResult.Failure -> return result
+            is AniListResult.Failure -> {
+                if (result.error.isTransientForAniListRetry()) autoMatchAttempts.remove(animeId)
+                return result
+            }
         }
+        clearPersistedAniListSearchSignature(library.database, animeId)
+        autoMatchAttempts.remove(animeId)
         return AniListResult.Success(AniListAutoMatchResult.Matched(persisted, best.anime))
     }
 
-
     /**
-     * Batch primary-title searches for the entire eligible catalog. Ambiguous/low-score
-     * rows retain the existing alternate-title fallback through autoMatchInternal.
+     * Packs all local titles and alternative variants into aliases batches of at most
+     * 15 terms. One local anime is kept wholly inside one request group.
      */
     private suspend fun autoMatchBatch(
         locals: List<ReiAnixAnimeRecord>,
+        additionalTitleCandidatesByAnimeId: Map<Long, List<String>> = emptyMap(),
+        additionalSeasonEvidenceByAnimeId: Map<Long, Int> = emptyMap(),
+        additionalYearEvidenceByAnimeId: Map<Long, Int> = emptyMap(),
     ): Map<Long, AniListResult<AniListAutoMatchResult>> {
-        if (locals.isEmpty()) return emptyMap()
+        if (locals.isEmpty() || !autoMatchBatchRunning.compareAndSet(false, true)) return emptyMap()
+        return try {
+            autoMatchBatchLocked(
+                locals,
+                additionalTitleCandidatesByAnimeId,
+                additionalSeasonEvidenceByAnimeId,
+                additionalYearEvidenceByAnimeId,
+            )
+        } finally {
+            autoMatchBatchRunning.set(false)
+        }
+    }
+
+    private suspend fun autoMatchBatchLocked(
+        locals: List<ReiAnixAnimeRecord>,
+        additionalTitleCandidatesByAnimeId: Map<Long, List<String>>,
+        additionalSeasonEvidenceByAnimeId: Map<Long, Int>,
+        additionalYearEvidenceByAnimeId: Map<Long, Int>,
+    ): Map<Long, AniListResult<AniListAutoMatchResult>> {
+        data class Work(
+            val local: ReiAnixAnimeRecord,
+            val additionalTitles: List<String>,
+            val terms: List<String>,
+            val seasonEvidence: Int?,
+            val yearEvidence: Int?,
+        )
         val results = linkedMapOf<Long, AniListResult<AniListAutoMatchResult>>()
-        val termsByKey = linkedMapOf<String, String>()
-        val localsByTermKey = linkedMapOf<String, MutableList<ReiAnixAnimeRecord>>()
-        val now = System.currentTimeMillis()
+        val previousSignatures = readPersistedAniListSearchSignatures(library.database)
+        val nowMillis = System.currentTimeMillis()
+        val nowSeconds = nowMillis / 1000.0
+        val workItems = mutableListOf<Work>()
 
         for (local in locals) {
             currentCoroutineContext().ensureActive()
@@ -532,82 +804,146 @@ class ReiAnixAniListIntegrationService(
                 local.anilistId != null ||
                 local.anilistMatchManual == true ||
                 local.metadataSource == "manual" ||
-                local.metadataStatus == "manual" ||
-                local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES
+                local.metadataStatus == "manual"
             ) continue
-            val previousAttempt = autoMatchAttempts[local.id]
-            if (previousAttempt != null && now - previousAttempt < AUTO_MATCH_COOLDOWN_MS) continue
 
-            val primaryTerm = localAniListSearchTerms(local).firstOrNull()
-            if (primaryTerm == null) {
+            val additionalTitles = additionalTitleCandidatesByAnimeId[local.id].orEmpty()
+            val terms = localAniListSearchTerms(local, additionalTitles)
+            if (terms.isEmpty()) {
                 results[local.id] = AniListResult.Failure(
                     AniListError.InvalidRequest("Local anime has no usable title for AniList lookup."),
                 )
                 continue
             }
-            // Reserve all rows before the first request to avoid duplicate concurrent batches.
-            autoMatchAttempts[local.id] = now
-            val key = primaryTerm.lowercase(Locale.ROOT)
-            termsByKey.putIfAbsent(key, primaryTerm)
-            localsByTermKey.getOrPut(key) { mutableListOf() }.add(local)
+            val rawLocalTitles = buildList {
+                add(local.title)
+                add(local.lookupTitle)
+                add(local.nativeTitle.orEmpty())
+                add(local.romaji.orEmpty())
+                add(local.english.orEmpty())
+                addAll(additionalTitles)
+            }
+            val resolvedSeason = additionalSeasonEvidenceByAnimeId[local.id]
+                ?: local.season?.toIntOrNull()
+                ?: inferTitleSeason(rawLocalTitles)
+            val resolvedYear = local.year
+                ?: additionalYearEvidenceByAnimeId[local.id]
+                ?: inferTitleYear(rawLocalTitles)
+            val signature = aniListSearchTermsSignature(terms, resolvedSeason, resolvedYear, local.mediaKind)
+            if (shouldSkipStableAniListRetry(
+                    local.anilistMatchStatus,
+                    previousSignatures[local.id],
+                    signature,
+                    nowSeconds,
+                )
+            ) {
+                results[local.id] = AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
+                continue
+            }
+            val previousAttempt = autoMatchAttempts[local.id]
+            val signatureChanged = previousSignatures[local.id]?.signature != signature
+            if (previousAttempt != null && nowMillis - previousAttempt < AUTO_MATCH_COOLDOWN_MS &&
+                !signatureChanged
+            ) {
+                results[local.id] = AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
+                continue
+            }
+            // Reserve eligible IDs before issuing the first request so overlapping scans cannot duplicate work.
+            autoMatchAttempts[local.id] = nowMillis
+            workItems += Work(
+                local = local,
+                additionalTitles = additionalTitles,
+                terms = terms,
+                seasonEvidence = resolvedSeason,
+                yearEvidence = resolvedYear,
+            )
         }
 
-        for (termBatch in termsByKey.values.toList().chunked(ReiAnixAniListClient.MAX_BATCH_SIZE)) {
+        val requestGroups = mutableListOf<List<Work>>()
+        var currentGroup = mutableListOf<Work>()
+        var currentTerms = linkedMapOf<String, String>()
+        for (work in workItems) {
+            val missingKeys = work.terms.filter {
+                ReiAnixAniListMatcher.normalizeForLookup(it) !in currentTerms
+            }
+            if (currentGroup.isNotEmpty() &&
+                currentTerms.size + missingKeys.distinctBy(ReiAnixAniListMatcher::normalizeForLookup).size >
+                ReiAnixAniListClient.MAX_BATCH_SIZE
+            ) {
+                requestGroups += currentGroup.toList()
+                currentGroup = mutableListOf()
+                currentTerms = linkedMapOf()
+            }
+            currentGroup += work
+            work.terms.forEach { term ->
+                currentTerms.putIfAbsent(ReiAnixAniListMatcher.normalizeForLookup(term), term)
+            }
+        }
+        if (currentGroup.isNotEmpty()) requestGroups += currentGroup.toList()
+
+        for (group in requestGroups) {
             currentCoroutineContext().ensureActive()
-            val batchResult = try {
-                client.searchAnimeBatch(termBatch, perTermLimit = 10)
+            val queryTerms = linkedMapOf<String, String>()
+            group.forEach { work ->
+                work.terms.forEach { term ->
+                    queryTerms.putIfAbsent(ReiAnixAniListMatcher.normalizeForLookup(term), term)
+                }
+            }
+            val batch = try {
+                client.searchAnimeBatch(queryTerms.values.toList(), perTermLimit = 10)
             } catch (cancelled: CancellationException) {
-                localsByTermKey.values.asSequence()
-                    .flatten()
-                    .filterNot { it.id in results }
-                    .forEach { autoMatchAttempts.remove(it.id) }
+                workItems.filterNot { it.local.id in results }
+                    .forEach { autoMatchAttempts.remove(it.local.id) }
                 throw cancelled
             }
-            when (val batch = batchResult) {
+            when (batch) {
                 is AniListResult.Failure -> {
-                    val status = when (val error = batch.error) {
-                        is AniListError.RateLimited -> "rate_limited"
-                        is AniListError.Network -> "network_error"
-                        is AniListError.Http -> when {
-                            error.statusCode == 429 || error.statusCode == 408 -> "rate_limited"
-                            error.statusCode >= 500 -> "network_error"
-                            else -> "invalid_response"
-                        }
-                        is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
-                        is AniListError.InvalidRequest -> null
-                    }
-                    for (term in termBatch) {
-                        for (local in localsByTermKey[term.lowercase(Locale.ROOT)].orEmpty()) {
-                            if (status != null) recordAutoMatchOutcome(local.id, status)
-                            results[local.id] = AniListResult.Failure(batch.error)
-                        }
+                    val status = autoMatchFailureStatus(batch.error)
+                    for (work in group) {
+                        if (status != null) recordAutoMatchOutcome(work.local.id, status)
+                        else autoMatchAttempts.remove(work.local.id)
+                        results[work.local.id] = batch
                     }
                 }
                 is AniListResult.Success -> {
                     val payload = batch.value
-                    for (term in termBatch) {
-                        val candidates = payload.items[term]
-                        val incomplete = term in payload.incompleteKeys || candidates == null
-                        for (local in localsByTermKey[term.lowercase(Locale.ROOT)].orEmpty()) {
-                            if (incomplete) {
-                                recordAutoMatchOutcome(local.id, "invalid_response")
-                                results[local.id] = AniListResult.Failure(
-                                    AniListError.InvalidResponse("AniList returned an incomplete title-search alias."),
+                    for (work in group) {
+                        currentCoroutineContext().ensureActive()
+                        val normalizedKeys = work.terms.map(ReiAnixAniListMatcher::normalizeForLookup)
+                        val incomplete = normalizedKeys.any { key ->
+                            payload.incompleteKeys.any {
+                                ReiAnixAniListMatcher.normalizeForLookup(it) == key
+                            } || payload.items.keys.none {
+                                ReiAnixAniListMatcher.normalizeForLookup(it) == key
+                            }
+                        }
+                        if (incomplete) {
+                            recordAutoMatchOutcome(work.local.id, "invalid_response")
+                            results[work.local.id] = AniListResult.Failure(
+                                AniListError.InvalidResponse("AniList returned an incomplete title-search alias."),
+                            )
+                        } else {
+                            val candidates = normalizedKeys.flatMap { key ->
+                                payload.items.entries.firstOrNull {
+                                    ReiAnixAniListMatcher.normalizeForLookup(it.key) == key
+                                }?.value.orEmpty()
+                            }.distinctBy { it.id }
+                            results[work.local.id] = try {
+                                autoMatchInternal(
+                                    animeId = work.local.id,
+                                    force = false,
+                                    additionalTitleCandidates = work.additionalTitles,
+                                    preloadedCandidates = candidates,
+                                    preloadedSearchSupplied = true,
+                                    preloadedSearchComplete = true,
+                                    searchTermsOverride = work.terms,
+                                    seasonEvidence = work.seasonEvidence,
+                                    yearEvidence = work.yearEvidence,
                                 )
-                            } else {
-                                results[local.id] = try {
-                                    autoMatchInternal(
-                                        animeId = local.id,
-                                        force = false,
-                                        primarySearchResult = candidates,
-                                    )
-                                } catch (cancelled: CancellationException) {
-                                    localsByTermKey.values.asSequence()
-                                        .flatten()
-                                        .filterNot { it.id in results }
-                                        .forEach { autoMatchAttempts.remove(it.id) }
-                                    throw cancelled
-                                }
+                            } catch (cancelled: CancellationException) {
+                                workItems.filterNot { it.local.id in results }
+                                    .forEach { autoMatchAttempts.remove(it.local.id) }
+                                throw cancelled
                             }
                         }
                     }
@@ -622,9 +958,14 @@ class ReiAnixAniListIntegrationService(
         status: String,
         score: Double? = null,
         margin: Double? = null,
+        searchTerms: List<String>? = null,
+        seasonEvidence: Int? = null,
+        yearEvidence: Int? = null,
+        mediaKindEvidence: String? = null,
     ) {
         if (status in AUTO_MATCH_RETRYABLE_STATUSES) {
             autoMatchAttempts.remove(animeId)
+            clearPersistedAniListSearchSignature(library.database, animeId)
         }
         library.recordAniListAutoMatchOutcome(
             animeId = animeId,
@@ -632,6 +973,17 @@ class ReiAnixAniListIntegrationService(
             score = score,
             margin = margin,
         )
+        if (status in AUTO_MATCH_TERMINAL_STATUSES && !searchTerms.isNullOrEmpty()) {
+            writePersistedAniListSearchSignature(
+                library.database,
+                animeId,
+                searchTerms,
+                System.currentTimeMillis() / 1000.0,
+                seasonEvidence = seasonEvidence,
+                yearEvidence = yearEvidence,
+                mediaKindEvidence = mediaKindEvidence,
+            )
+        }
         // Publish even unresolved rows so the native projection can show their
         // persisted status. A false requestArtwork flag prevents unrelated image work.
         enqueueMetadataCommit(animeId, requestArtwork = false)
@@ -675,7 +1027,8 @@ class ReiAnixAniListIntegrationService(
      * Discovers artwork for existing canonical rows whose poster URL was never saved.
      * It reuses the existing AniList client, conservative matcher and SQLite writer;
      * it does not create local anime rows or a second catalogue.
-     * A small per-run budget and persisted metadata freshness prevent startup request storms.
+     * The full catalog is scanned with a resumable cursor; per-request aliases and local
+     * candidate windows are bounded to keep large libraries from creating request bursts.
      */
     suspend fun recoverMissingArtworkMetadata(): Int {
         if (!missingArtworkRecoveryRunning.compareAndSet(false, true)) return 0
@@ -683,14 +1036,34 @@ class ReiAnixAniListIntegrationService(
         val completedAttemptIds = mutableSetOf<Long>()
         try {
             if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
+            val autoMatchEnabled = settingEnabled("metadata.auto_match", defaultValue = true)
             val rows = library.loadLibraryCatalogRows()
             if (rows.isEmpty()) return 0
             val rowsById = rows.associateBy { it.anime.id }
             val discoveryCursor = readArtworkDiscoveryCursor()
             val persistedAttemptTimes = readArtworkDiscoveryAttemptTimes().toMutableMap()
+            val persistedSearchSignatures = readPersistedAniListSearchSignatures(library.database)
             val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
                 .mapNotNull(rowsById::get)
-            var lastVisitedCursor = discoveryCursor
+            val orderedIds = orderedRows.map { it.anime.id }
+            val completedDiscoveryIds = orderedIds.toMutableSet()
+            var completedPrefixSize = 0
+            var persistedProgressCursor = discoveryCursor
+            var persistedCursorValue = discoveryCursor
+
+            suspend fun persistCompletedDiscoveryPrefix() {
+                while (
+                    completedPrefixSize < orderedIds.size &&
+                    orderedIds[completedPrefixSize] in completedDiscoveryIds
+                ) {
+                    persistedProgressCursor = orderedIds[completedPrefixSize]
+                    completedPrefixSize++
+                }
+                if (persistedProgressCursor != persistedCursorValue) {
+                    writeArtworkDiscoveryCursor(persistedProgressCursor)
+                    persistedCursorValue = persistedProgressCursor
+                }
+            }
             val exhaustedPosterIds = library.database.read { connection ->
                 connection.rawQuery(
                     "SELECT DISTINCT entity_id FROM artwork WHERE entity_type IN ('anime','movie') " +
@@ -704,7 +1077,7 @@ class ReiAnixAniListIntegrationService(
                 currentCoroutineContext().ensureActive()
                 val local = row.anime
                 if (local.id <= 0L) continue
-                lastVisitedCursor = local.id
+                if (local.anilistId == null && !autoMatchEnabled) continue
                 val cachedPath = local.coverCache?.trim().orEmpty()
                 val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
                     val file = File(cachedPath)
@@ -728,15 +1101,54 @@ class ReiAnixAniListIntegrationService(
                         nowSeconds = nowSeconds,
                     )
                 ) continue
-                if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds)) continue
+
+                val titleEvidence = if (local.anilistId == null) episodeTitleCandidates(row) else emptyList()
+                val currentTerms = if (local.anilistId == null) {
+                    localAniListSearchTerms(local, titleEvidence)
+                } else {
+                    emptyList()
+                }
+                val localRawTitles = buildList {
+                    add(local.title)
+                    add(local.lookupTitle)
+                    add(local.nativeTitle.orEmpty())
+                    add(local.romaji.orEmpty())
+                    add(local.english.orEmpty())
+                    addAll(titleEvidence)
+                }
+                val seasonEvidence = if (local.anilistId == null) {
+                    episodeSeasonEvidence(row) ?: local.season?.toIntOrNull() ?: inferTitleSeason(localRawTitles)
+                } else null
+                val yearEvidence = if (local.anilistId == null) {
+                    local.year ?: episodeYearEvidence(row) ?: inferTitleYear(localRawTitles)
+                } else null
+                val currentSignature = aniListSearchTermsSignature(currentTerms, seasonEvidence, yearEvidence, local.mediaKind)
+                val previousSignature = persistedSearchSignatures[local.id]
+                val signatureChanged = local.anilistId == null && (
+                    previousSignature?.signature != currentSignature ||
+                        (previousSignature != null &&
+                            nowSeconds - previousSignature.attemptedAtSeconds >= ANILIST_STABLE_MATCH_RETRY_TTL_SECONDS)
+                    )
+                if (local.anilistId == null && shouldSkipStableAniListRetry(
+                        local.anilistMatchStatus,
+                        previousSignature,
+                        currentSignature,
+                        nowSeconds,
+                    )
+                ) continue
+                if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds) &&
+                    !signatureChanged
+                ) continue
 
                 val attemptAt = nowSeconds.toLong()
                 val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
                 if (previousAttempt != null) {
-                    if (nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS ||
-                        !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
+                    if (!signatureChanged &&
+                        nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
                     ) continue
+                    if (!missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)) continue
                 }
+                completedDiscoveryIds.remove(local.id)
                 selectedRows += local
             }
 
@@ -758,7 +1170,12 @@ class ReiAnixAniListIntegrationService(
                     persistedAttemptTimes.remove(local.id)
                 }
                 completedAttemptIds += local.id
+                completedDiscoveryIds += local.id
+                persistCompletedDiscoveryPrefix()
             }
+
+            // Persist any leading rows that were safely skipped before the first selected row.
+            persistCompletedDiscoveryPrefix()
 
             // Every ID chunk is fetched, decoded and persisted before the next chunk starts.
             val rowsByRemoteId = selectedRows.mapNotNull { local ->
@@ -836,10 +1253,30 @@ class ReiAnixAniListIntegrationService(
 
             // Unknown IDs are searched by aliases in groups of 15; metadata for each
             // primary-title match is persisted before the next title batch is submitted.
-            val titleRows = selectedRows.filter { it.anilistId == null }
-            val titleResults = autoMatchBatch(titleRows)
-            for (local in titleRows) {
+            val titleRows = if (autoMatchEnabled) {
+                selectedRows.filter { it.anilistId == null }
+            } else {
+                emptyList()
+            }
+            for (titleBatch in titleRows.chunked(100)) {
                 currentCoroutineContext().ensureActive()
+                val titleEvidenceByAnimeId = titleBatch.associate { local ->
+                    local.id to rowsById[local.id]?.let(::episodeTitleCandidates).orEmpty()
+                }
+                val titleSeasonEvidenceByAnimeId = titleBatch.mapNotNull { local ->
+                    rowsById[local.id]?.let(::episodeSeasonEvidence)?.let { local.id to it }
+                }.toMap()
+                val titleYearEvidenceByAnimeId = titleBatch.mapNotNull { local ->
+                    rowsById[local.id]?.let(::episodeYearEvidence)?.let { local.id to it }
+                }.toMap()
+                val titleResults = autoMatchBatch(
+                    titleBatch,
+                    titleEvidenceByAnimeId,
+                    titleSeasonEvidenceByAnimeId,
+                    titleYearEvidenceByAnimeId,
+                )
+                for (local in titleBatch) {
+                    currentCoroutineContext().ensureActive()
                 var persistCooldown = true
                 when (val result = titleResults[local.id]) {
                     is AniListResult.Success -> when (val outcome = result.value) {
@@ -860,12 +1297,11 @@ class ReiAnixAniListIntegrationService(
                     }
                     null -> persistCooldown = false
                 }
-                finishAttempt(local, persistCooldown)
+                    finishAttempt(local, persistCooldown)
+                }
             }
 
-            if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
-                writeArtworkDiscoveryCursor(lastVisitedCursor)
-            }
+            persistCompletedDiscoveryPrefix()
             return recovered
         } finally {
             // Never leave an in-memory cooldown behind for an unfinished/cancelled row.
@@ -885,19 +1321,35 @@ class ReiAnixAniListIntegrationService(
      */
     suspend fun reconcileUnmatchedLibraryMetadata(): Int {
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
-        val locals = library.loadLibraryCatalogRows()
-            .asSequence()
-            .map { it.anime }
-            .filter { local ->
-                local.id > 0L &&
-                    local.anilistId == null &&
-                    local.anilistMatchManual != true &&
-                    local.metadataSource != "manual" &&
-                    local.metadataStatus != "manual" &&
-                    local.anilistMatchStatus !in AUTO_MATCH_TERMINAL_STATUSES
+        val rows = library.loadLibraryCatalogRows()
+        val eligibleRows = rows.filter { row ->
+            val local = row.anime
+            local.id > 0L &&
+                local.anilistId == null &&
+                local.anilistMatchManual != true &&
+                local.metadataSource != "manual" &&
+                local.metadataStatus != "manual"
+        }
+        var processed = 0
+        for (catalogBatch in eligibleRows.chunked(100)) {
+            currentCoroutineContext().ensureActive()
+            val titleEvidence = catalogBatch.associate { row ->
+                row.anime.id to episodeTitleCandidates(row)
             }
-            .toList()
-        return autoMatchBatch(locals).size
+            val seasonEvidence = catalogBatch.mapNotNull { row ->
+                episodeSeasonEvidence(row)?.let { row.anime.id to it }
+            }.toMap()
+            val yearEvidence = catalogBatch.mapNotNull { row ->
+                episodeYearEvidence(row)?.let { row.anime.id to it }
+            }.toMap()
+            processed += autoMatchBatch(
+                catalogBatch.map { it.anime },
+                titleEvidence,
+                seasonEvidence,
+                yearEvidence,
+            ).size
+        }
+        return processed
     }
 
     private suspend fun applyRemote(

@@ -6,6 +6,13 @@ import com.reiflix.reiflix_local.data.anilist.rotateArtworkDiscoveryIds
 import com.reiflix.reiflix_local.data.anilist.MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
 import com.reiflix.reiflix_local.data.anilist.artworkDiscoveryAttemptPreferenceKey
 import com.reiflix.reiflix_local.data.anilist.shouldDeferArtworkDiscoveryAttempt
+import com.reiflix.reiflix_local.data.anilist.aniListSearchTermsSignature
+import com.reiflix.reiflix_local.data.anilist.shouldSkipStableAniListRetry
+import com.reiflix.reiflix_local.data.anilist.PersistedAniListSearchSignature
+import com.reiflix.reiflix_local.data.anilist.ANILIST_STABLE_MATCH_RETRY_TTL_SECONDS
+import com.reiflix.reiflix_local.data.anilist.persistedAniListSearchSignaturePreferenceKey
+import com.reiflix.reiflix_local.data.anilist.autoMatchFailureStatus
+import com.reiflix.reiflix_local.data.anilist.AniListError
 
 import java.io.File
 import java.util.UUID
@@ -198,7 +205,7 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun existingUrlLocalCoverAndRecentlyFetchedRowsAreNotRediscovered() {
+    fun validUrlAndUsableLocalCoverDoNotEnterMetadataDiscovery() {
         assertFalse(shouldDiscoverMissingArtwork("https://example.test/poster.jpg", false, false, false, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork("not-a-url", false, false, false, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork(
@@ -212,7 +219,23 @@ class ReiAnixArtworkPublicationSignalTest {
             nowSeconds = 100_000.0,
         ))
         assertFalse(shouldDiscoverMissingArtwork(null, true, false, false, null, null, 100_000.0))
-        assertFalse(shouldDiscoverMissingArtwork(null, false, true, false, null, 99_000.0, 100_000.0))
+        assertTrue(shouldDiscoverMissingArtwork(null, false, true, false, null, 99_000.0, 100_000.0))
+    }
+
+    @Test
+    fun recentMetadataTimestampDoesNotMaskRetryAfterTransientTransportFailure() {
+        assertTrue(
+            shouldDiscoverMissingArtwork(
+                coverUrl = null,
+                hasUsableLocalCover = false,
+                hasAniListId = true,
+                manualMetadata = false,
+                matchStatus = "network_error",
+                metadataFetchedAtSeconds = 99_000.0,
+                nowSeconds = 100_000.0,
+            ),
+        )
+        assertFalse(shouldDeferArtworkDiscoveryAttempt(null, 100_000.0))
     }
 
     @Test
@@ -264,7 +287,8 @@ class ReiAnixArtworkPublicationSignalTest {
 
     @Test
     fun unresolvedAndManualRowsDoNotReceiveGuessedArtwork() {
-        assertFalse(shouldDiscoverMissingArtwork(null, false, false, false, "ambiguous", null, 100_000.0))
+        assertTrue(shouldDiscoverMissingArtwork(null, false, false, false, "ambiguous", null, 100_000.0))
+        assertTrue(shouldDiscoverMissingArtwork(null, false, false, false, "not_found", null, 100_000.0))
         assertFalse(shouldDiscoverMissingArtwork(null, false, false, true, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork(null, false, true, true, null, null, 100_000.0))
     }
@@ -334,6 +358,71 @@ class ReiAnixArtworkPublicationSignalTest {
             listOf(10L, 20L, 30L),
             rotateArtworkDiscoveryIds(listOf(30L, 10L, 20L), 99L),
         )
+    }
+
+
+    @Test
+    fun stableNoMatchIsSkippedOnlyForAnUnchangedSearchSignatureWithinTtl() {
+        val terms = listOf("Attack on Titan", "Shingeki no Kyojin")
+        val signature = aniListSearchTermsSignature(terms)
+        val previous = PersistedAniListSearchSignature(signature, 100_000.0)
+
+        assertTrue(shouldSkipStableAniListRetry("not_found", previous, signature, 101_000.0))
+        assertTrue(shouldSkipStableAniListRetry("ambiguous", previous, signature, 101_000.0))
+        assertFalse(shouldSkipStableAniListRetry("not_found", previous, "changed-signature", 101_000.0))
+        assertFalse(
+            shouldSkipStableAniListRetry(
+                "not_found",
+                previous,
+                signature,
+                100_000.0 + ANILIST_STABLE_MATCH_RETRY_TTL_SECONDS + 1,
+            ),
+        )
+        assertFalse(shouldSkipStableAniListRetry("network_error", previous, signature, 101_000.0))
+    }
+
+    @Test
+    fun stableSearchSignatureDeduplicatesEquivalentUnicodeTitles() {
+        assertEquals(
+            aniListSearchTermsSignature(listOf("Shingeki no Kyōjin")),
+            aniListSearchTermsSignature(listOf("Shingeki-no-Kyojin", "Shingeki no Kyojin")),
+        )
+    }
+
+    @Test
+    fun stableSearchSignaturePreferencesUseCanonicalAnimeIds() {
+        assertEquals(
+            "__reianix.internal.anilist_search_signature_v1.812",
+            persistedAniListSearchSignaturePreferenceKey(812L),
+        )
+    }
+
+
+    @Test
+    fun titleSearchSignatureIncludesSeasonAndYearEvidence() {
+        val terms = listOf("Fruits Basket")
+        val base = aniListSearchTermsSignature(terms)
+        val season = aniListSearchTermsSignature(terms, seasonEvidence = 2)
+        val year = aniListSearchTermsSignature(terms, yearEvidence = 2019)
+        val format = aniListSearchTermsSignature(terms, mediaKindEvidence = "MOVIE")
+
+        assertEquals(64, base.length)
+        assertTrue(base != season)
+        assertTrue(base != year)
+        assertTrue(season != year)
+        assertTrue(base != format)
+        assertTrue(year != format)
+    }
+
+
+    @Test
+    fun rateLimitAndTransportFailuresRemainRetryableInsteadOfNotFound() {
+        assertEquals("rate_limited", autoMatchFailureStatus(AniListError.Http(429)))
+        assertEquals("rate_limited", autoMatchFailureStatus(AniListError.RateLimited(30)))
+        assertEquals("network_error", autoMatchFailureStatus(AniListError.Network("timeout")))
+        assertEquals("network_error", autoMatchFailureStatus(AniListError.Http(503)))
+        assertEquals("invalid_response", autoMatchFailureStatus(AniListError.GraphQl(listOf("partial"))))
+        assertTrue(autoMatchFailureStatus(AniListError.InvalidRequest("blank title")) == null)
     }
 
 

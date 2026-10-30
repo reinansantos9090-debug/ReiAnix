@@ -9,6 +9,7 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
 import com.reiflix.reiflix_local.storage.NativeIndex
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,8 +68,10 @@ data class ReiAnixBootstrapState(
  * durable evidence of an interrupted promotion keeps normal work gated until Recovery
  * Mode succeeds; an absent database without such evidence remains a fresh install.
  *
- * This class does not start a scanner, issue remote AniList requests, warm artwork,
- * create a player session, or start a second Python/Flet runtime.
+ * It also schedules one process-scoped catalog enrichment pass after database and
+ * native-service readiness. The pass reuses the existing AniList integration and
+ * artwork service; Activity/Compose recreation is not its owner. It does not start a
+ * scanner, create a player session, or start a second Python/Flet runtime.
  */
 class ReiAnixAppBootstrap internal constructor(
     context: Context,
@@ -80,6 +83,7 @@ class ReiAnixAppBootstrap internal constructor(
     private val startupLock = Any()
     private val databaseValidationMutex = Mutex()
     private val nativeServicesMutex = Mutex()
+    private val initialCatalogEnrichmentScheduled = AtomicBoolean(false)
     @Volatile
     private var nativeServicesStarted = false
     private val mutableState = MutableStateFlow(ReiAnixBootstrapState())
@@ -456,12 +460,52 @@ class ReiAnixAppBootstrap internal constructor(
                 result = state.value.phase.name,
                 stage = ReiAnixBootstrapStage.READY,
             )
+            scheduleInitialCatalogEnrichment()
             Log.i(
                 TAG,
                 "NATIVE_BOOTSTRAP_FINISHED phase=${state.value.phase} " +
                     "persistence=${state.value.persistenceStatus} " +
                     "warnings=${state.value.warnings.size}",
             )
+        }
+    }
+
+    /**
+     * One startup pass is process-owned, runs only after canonical SQLite validation,
+     * and is intentionally independent of a particular Compose route or Activity.
+     * Scan completion may still trigger the same catalog reconciliation for media
+     * discovered after this snapshot; persisted signatures/cursors prevent redundant
+     * AniList queries.
+     */
+    private fun scheduleInitialCatalogEnrichment() {
+        if (!initialCatalogEnrichmentScheduled.compareAndSet(false, true)) return
+        processScope.launch {
+            try {
+                dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+            } catch (cancelled: CancellationException) {
+                initialCatalogEnrichmentScheduled.set(false)
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Startup AniList catalog reconciliation failed. errorType=" + error::class.java.simpleName)
+            }
+
+            try {
+                dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
+            } catch (cancelled: CancellationException) {
+                initialCatalogEnrichmentScheduled.set(false)
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Startup AniList artwork metadata recovery failed. errorType=" + error::class.java.simpleName)
+            }
+
+            try {
+                dependencies.artworkService.requestPendingArtwork()
+            } catch (cancelled: CancellationException) {
+                initialCatalogEnrichmentScheduled.set(false)
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Startup native artwork backfill failed. errorType=" + error::class.java.simpleName)
+            }
         }
     }
 
