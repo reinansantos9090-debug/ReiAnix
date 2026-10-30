@@ -42,6 +42,21 @@ ReiAnixAniListDescriptionLocalizer portou a normalização de HTML, a detecção
 
 A reconciliação `reconcileUnmatchedLibraryMetadata()` é acionada pelo host Compose somente após uma transição real do estado de varredura de ativo para concluído. O fluxo descarta o primeiro snapshot com `drop(1)` e filtra a transição de término, portanto montar o host/abrir o app ou observar um estado ocioso inicial não dispara chamadas remotas. O `ReiAnixLibraryViewModel` continua isolado de AniList; o host faz a coordenação pós-scan em vez de disparar por tamanho do catálogo. O serviço lê o catálogo canônico e consulta sequencialmente apenas registros sem ID AniList e sem associação/metadata manual. Resultados estáveis (`not_found`, `ambiguous`) são persistidos por `recordAniListAutoMatchOutcome` na tabela `anime` e impedem consultas repetidas em cada refresh. Falhas transitórias (`network_error`, `rate_limited`, `invalid_response`) também são registradas para diagnóstico, mas não são tratadas como terminais; um novo ciclo de reconciliação após cooldown/varredura ou reinício pode tentar novamente. O escritor checa novamente a associação/flag manual dentro da transação para não substituir seleção concorrente. Falhas de persistência são propagadas, não convertidas em sucesso.
 
+
+## Consultas GraphQL em lotes
+
+O cliente centralizado ReiAnixAniListClient agrupa consultas de identidade/metadados em lotes com limite local de 15 itens por operação. Esse limite é intencionalmente menor que o máximo de paginação documentado pela API e evita operações excessivamente grandes.
+
+Para registros com AniList ID válido, getAnimeBatch usa Page.media(id_in: $ids, type: ANIME), com page=1 e perPage igual ao total de IDs únicos do lote. IDs não positivos são descartados, IDs repetidos são consultados uma única vez e cada resposta é indexada pelo ID remoto antes da associação aos IDs locais. Um ID ausente em uma resposta completa pode ser tratado como inexistente; quando há erro GraphQL ou forma incompleta, os resultados válidos são preservados e os IDs ausentes permanecem recuperáveis.
+
+Para registros ainda sem AniList ID, searchAnimeBatch agrupa até 15 títulos primários distintos em aliases GraphQL independentes (term0, term1, ...), cada um usando sua própria variável GraphQL. Os títulos nunca são interpolados no documento da consulta. O matcher existente e seus critérios não foram reescritos: somente a pesquisa primária é agrupada; títulos alternativos continuam sendo consultados pelo caminho atual quando a primeira lista de candidatos não é suficiente para uma associação segura.
+
+Cada operação usa o mesmo transporte ReiAnixAniListClient e o AniListGraphqlRequestController processShared já instalado no Prompt 1. Não há cliente, transporte, mutex ou controlador paralelo. A serialização, o pacing e a retomada automática de 429 continuam centralizados nesse controlador.
+
+A reconciliação percorre todos os registros elegíveis, agrupando as buscas primárias em chunks de até 15. A recuperação de metadados/capas não possui mais o orçamento fixo de 12 registros por execução: IDs conhecidos são consultados em chunks de até 15 e cada chunk é aplicado ao SQLite antes do envio do próximo. A busca por títulos sem ID também usa os aliases em chunks. A persistência continua usando a tabela anime e as preferências/cursor da base SQLite v29 já existente; as URLs remotas são entregues ao ReiAnixArtworkService por meio do publisher já existente, sem aguardar os downloads das imagens.
+
+Erros de transporte e respostas GraphQL incompletas não são convertidos em not_found. No lote de títulos, um alias com erro é marcado como incompleto sem invalidar aliases independentes que retornaram dados válidos. No lote por ID, dados válidos são preservados e ausências em um lote incompleto são tratadas como falha transitória, não como inexistência.
+
 ## Persistência e atualizações parciais
 
 ReiAnixAnimeMetadataPatch agora transporta separadamente description e descriptionOriginal. ReiAnixSqliteLibraryRepository.updateAnimeMetadata e updateAniListMetadataAndAssociation gravam a sinopse original somente quando há texto presente e o campo de descrição não pertence a uma edição manual protegida.
@@ -62,7 +77,7 @@ Não foram introduzidas bibliotecas HTTP/GraphQL adicionais, mecanismos de auten
 
 ## Verificações e evidências
 
-A suíte de regressão Python contém contratos do cliente, ViewModel, associação transacional, preservação de metadata manual e validação do pipeline nativo de artwork. Os testes Kotlin/JVM do cliente e do localizer continuam reservados para execução manual; não são executados automaticamente como parte desta alteração.
+A suíte de regressão Python contém contratos do cliente, ViewModel, associação transacional, preservação de metadata manual e validação do pipeline nativo de artwork. A certificação de release executa :app:testDebugUnitTest e :app:compileReleaseKotlin; o workflow dedicado ReiAnix Kotlin/JVM Tests permanece manual (workflow_dispatch) e sua configuração não foi alterada.
 
 O resultado final de build, regressão Python, workflows, SHA e artefatos APK/ZIP deve ser lido no resultado do GitHub Actions do commit final desta alteração; este documento não presume sucesso de um commit ou execução anterior.
 
