@@ -55,7 +55,10 @@ internal object ReiAnixAniListMatcher {
     fun extractLocalTitleCandidates(path: String): List<String> {
         val normalizedPath = path.trim().replace('\\', '/')
         if (normalizedPath.isBlank()) return emptyList()
-        val parsed = MediaFilenameParser.parseVideoPath(normalizedPath)
+        // Underscores are common filename word separators, but they are word
+        // characters to the parser's episode-marker regex (for example, _S02E03).
+        // Normalize them for parsing while retaining the untouched path for identity.
+        val parsed = MediaFilenameParser.parseVideoPath(normalizedPath.replace('_', ' '))
         val episodeOrReleaseMarker = parsed.evidence.firstNotNullOfOrNull { evidence ->
             when {
                 evidence.startsWith("EXPLICIT_SEASON_EPISODE:") ||
