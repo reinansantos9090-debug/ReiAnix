@@ -113,12 +113,21 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun automaticRetriesAreBoundedButExplicitForceCanRecoverExhaustedRows() {
-        assertFalse(
+    fun automaticRetriesRemainEligibleAfterManyFailures() {
+        assertTrue(
             shouldRetryArtworkRequest(
                 status = "failed",
                 retryAtSeconds = null,
-                failureCount = MAX_AUTOMATIC_ARTWORK_FAILURES,
+                failureCount = 99,
+                nowSeconds = 10_000.0,
+                force = false,
+            ),
+        )
+        assertFalse(
+            shouldRetryArtworkRequest(
+                status = "failed",
+                retryAtSeconds = 10_001.0,
+                failureCount = 99,
                 nowSeconds = 10_000.0,
                 force = false,
             ),
@@ -126,12 +135,69 @@ class ReiAnixArtworkPublicationSignalTest {
         assertTrue(
             shouldRetryArtworkRequest(
                 status = "failed",
-                retryAtSeconds = null,
-                failureCount = MAX_AUTOMATIC_ARTWORK_FAILURES,
+                retryAtSeconds = 10_000.0,
+                failureCount = 99,
                 nowSeconds = 10_000.0,
-                force = true,
+                force = false,
             ),
         )
+    }
+
+    @Test
+    fun backoffIsExponentialCappedAndHonorsRetryAfter() {
+        assertEquals(60L, artworkRetryDelaySeconds(failureCount = 1, retryable = true))
+        assertEquals(120L, artworkRetryDelaySeconds(failureCount = 2, retryable = true))
+        assertEquals(21_600L, artworkRetryDelaySeconds(failureCount = 99, retryable = true))
+        assertEquals(900L, artworkRetryDelaySeconds(1, true, retryAfterSeconds = 900L))
+        assertEquals(86_400L, artworkRetryDelaySeconds(failureCount = 1, retryable = false))
+    }
+
+    @Test
+    fun imageServerStatusClassificationDistinguishesTransientAndPermanentResponses() {
+        for (status in listOf(408, 425, 429, 500, 502, 503, 599)) {
+            assertTrue("Expected transient HTTP $status", isRetryableArtworkHttpStatus(status))
+        }
+        for (status in listOf(400, 401, 403, 404, 410)) {
+            assertFalse("Expected cooldown HTTP $status", isRetryableArtworkHttpStatus(status))
+        }
+    }
+
+    @Test
+    fun retryAfterSupportsDeltaSecondsAndHttpDate() {
+        assertEquals(120L, parseArtworkRetryAfterSeconds("120", 1_767_225_600_000L))
+        assertEquals(120L, parseArtworkRetryAfterSeconds(
+            "Thu, 01 Jan 2026 00:02:00 GMT",
+            1_767_225_600_000L,
+        ))
+        assertEquals(null, parseArtworkRetryAfterSeconds("not-a-date", 1_767_225_600_000L))
+    }
+
+    @Test
+    fun declaredArtworkLengthMustMatchReceivedBytes() {
+        assertTrue(artworkResponseMatchesContentLength(-1L, 0L))
+        assertTrue(artworkResponseMatchesContentLength(128L, 128L))
+        assertFalse(artworkResponseMatchesContentLength(128L, 127L))
+    }
+
+    @Test
+    fun abandonedTemporaryFilesExcludeFilesOwnedByActiveDownloads() {
+        val root = File(
+            System.getProperty("java.io.tmpdir"),
+            "reianix-artwork-temp-test-" + UUID.randomUUID(),
+        )
+        try {
+            assertTrue(root.mkdirs())
+            val abandoned = File(root, ".abandoned.tmp").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+            val active = File(root, ".active.tmp").apply { writeBytes(byteArrayOf(4, 5, 6)) }
+            File(root, "valid-cover.jpg").writeBytes(byteArrayOf(7, 8, 9))
+
+            assertEquals(
+                listOf(abandoned),
+                abandonedArtworkTemporaryFiles(root, setOf(active.absolutePath)),
+            )
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     @Test
