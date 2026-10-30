@@ -105,10 +105,36 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
-    fun http429IncludesRetryAfter() = runBlocking {
-        val transport = FakeTransport(AniListHttpResponse(429, "{}", 30))
-        val result = ReiAnixAniListClient(transport, 0).searchAnime("anime")
-        assertEquals(AniListError.RateLimited(30), (result as AniListResult.Failure).error)
+    fun http429WaitsGloballyAndRetriesTheOriginalGraphQlOperation() = runBlocking {
+        var now = 1_700_000_000_000L
+        val resetAtSeconds = (now + 8_000L) / 1_000L
+        val transport = SequenceFakeTransport(
+            listOf(
+                AniListHttpResponse(
+                    429,
+                    "{}",
+                    headers = mapOf(
+                        "Retry-After" to "5",
+                        "X-RateLimit-Limit" to "30",
+                        "X-RateLimit-Remaining" to "0",
+                        "X-RateLimit-Reset" to resetAtSeconds.toString(),
+                    ),
+                ),
+                AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""),
+            ),
+        )
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait -> now += wait },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+        val result = ReiAnixAniListClient(transport, requestController = controller)
+            .searchAnime("anime")
+
+        assertEquals(AniListResult.Success<List<AniListAnime>>(emptyList()), result)
+        assertEquals(2, transport.calls)
+        assertEquals(8_000L, now - 1_700_000_000_000L)
     }
 
     @Test
@@ -162,6 +188,18 @@ class ReiAnixAniListClientTest {
         assertEquals("", anime.preferredTitle)
         assertEquals(null, anime.episodes)
         assertTrue(anime.genres.isEmpty())
+    }
+
+    private class SequenceFakeTransport(
+        private val responses: List<AniListHttpResponse>,
+    ) : AniListTransport {
+        var calls: Int = 0
+
+        override suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse {
+            val response = responses.getOrElse(calls) { responses.last() }
+            calls++
+            return response
+        }
     }
 
     private class FakeTransport(

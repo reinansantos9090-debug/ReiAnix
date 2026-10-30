@@ -69,6 +69,14 @@ internal fun shouldDiscoverMissingArtwork(
 
 internal const val MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS = 24L * 60L * 60L
 
+/** Temporary server/network failures must not be turned into definitive lookup cooldowns. */
+internal fun AniListError.isTransientForAniListRetry(): Boolean = when (this) {
+    is AniListError.RateLimited, is AniListError.Network,
+    is AniListError.GraphQl, is AniListError.InvalidResponse -> true
+    is AniListError.Http -> statusCode == 408 || statusCode == 429 || statusCode >= 500
+    is AniListError.InvalidRequest -> false
+}
+
 
 internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long> {
     val sorted = ids.filter { it > 0L }.distinct().sorted()
@@ -128,6 +136,20 @@ internal suspend fun writePersistedArtworkDiscoveryAttemptAt(
             null,
             values,
             SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+}
+
+internal suspend fun clearPersistedArtworkDiscoveryAttemptAt(
+    database: ReiAnixSqliteDatabase,
+    animeId: Long,
+) = withContext(Dispatchers.IO) {
+    require(animeId > 0L) { "Artwork discovery requires a positive local anime ID." }
+    database.transaction { connection ->
+        connection.delete(
+            "preferences",
+            "key=?",
+            arrayOf(artworkDiscoveryAttemptPreferenceKey(animeId)),
         )
     }
 }
@@ -478,6 +500,9 @@ class ReiAnixAniListIntegrationService(
         score: Double? = null,
         margin: Double? = null,
     ) {
+        if (status in AUTO_MATCH_RETRYABLE_STATUSES) {
+            autoMatchAttempts.remove(animeId)
+        }
         library.recordAniListAutoMatchOutcome(
             animeId = animeId,
             status = status,
@@ -593,58 +618,98 @@ class ReiAnixAniListIntegrationService(
                     ) continue
                 }
                 examined++
-                // Persist before the request starts so a process restart after a network
-                // failure/crash cannot immediately repeat the same lookup.
-                val attemptAtSeconds = attemptAt.toDouble()
-                writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
-                persistedAttemptTimes[local.id] = attemptAtSeconds
                 val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
-                if (remoteId != null) {
-                    val remote = when (val result = client.getAnime(remoteId.toInt())) {
-                        is AniListResult.Success -> result.value
-                        is AniListResult.Failure -> {
-                            Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=${local.id}: ${result.error}")
-                            null
-                        }
-                    }
-                    if (remote == null) {
-                        Log.w(TAG, "Missing-artwork AniList lookup returned no usable media record for animeId=${local.id}")
-                        continue
-                    }
-                    val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
-                    when (val applied = applyRemote(
-                        local = local,
-                        remote = remote,
-                        manual = local.anilistMatchManual == true ||
-                            local.metadataSource == "manual" || local.metadataStatus == "manual",
-                        score = local.anilistMatchScore,
-                        margin = local.anilistMatchMargin,
-                    )) {
-                        is AniListResult.Success -> {
-                            if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
-                                recovered++
-                            } else {
-                                Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=${local.id}")
-                            }
-                        }
-                        is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=${local.id}: ${applied.error}")
-                    }
-                } else {
-                    if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
-                    when (val result = autoMatch(local.id)) {
-                        is AniListResult.Success -> {
-                            val matched = result.value as? AniListAutoMatchResult.Matched
-                            if (matched != null) {
-                                val remotePosterUrl = matched.remote.coverExtraLargeUrl ?: matched.remote.coverLargeUrl
-                                if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
-                                    recovered++
+                var persistAttemptCooldown = true
+                try {
+                    if (remoteId != null) {
+                        when (val lookup = client.getAnime(remoteId.toInt())) {
+                            is AniListResult.Success -> {
+                                val remote = lookup.value
+                                if (remote == null) {
+                                    Log.w(TAG, "Missing-artwork AniList lookup returned no media record for animeId=" + local.id)
                                 } else {
-                                    Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
+                                    val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
+                                    when (val applied = applyRemote(
+                                        local = local,
+                                        remote = remote,
+                                        manual = local.anilistMatchManual == true ||
+                                            local.metadataSource == "manual" || local.metadataStatus == "manual",
+                                        score = local.anilistMatchScore,
+                                        margin = local.anilistMatchMargin,
+                                    )) {
+                                        is AniListResult.Success -> {
+                                            if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
+                                                recovered++
+                                            } else {
+                                                Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=" + local.id)
+                                            }
+                                        }
+                                        is AniListResult.Failure -> {
+                                            persistAttemptCooldown = !applied.error.isTransientForAniListRetry()
+                                            Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
+                                        }
+                                    }
                                 }
                             }
+                            is AniListResult.Failure -> {
+                                persistAttemptCooldown = !lookup.error.isTransientForAniListRetry()
+                                Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=" + local.id + ": " + lookup.error)
+                            }
                         }
-                        is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
+                    } else if (local.anilistMatchManual == true ||
+                        local.metadataSource == "manual" || local.metadataStatus == "manual"
+                    ) {
+                        persistAttemptCooldown = false
+                    } else {
+                        when (val result = autoMatch(local.id)) {
+                            is AniListResult.Success -> {
+                                when (val outcome = result.value) {
+                                    is AniListAutoMatchResult.Matched -> {
+                                        val remotePosterUrl = outcome.remote.coverExtraLargeUrl ?: outcome.remote.coverLargeUrl
+                                        if (!remotePosterUrl.isNullOrBlank() && outcome.anime.coverUrl == remotePosterUrl) {
+                                            recovered++
+                                        } else {
+                                            Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=" + local.id)
+                                        }
+                                    }
+                                    AniListAutoMatchResult.RecentlyAttempted,
+                                    AniListAutoMatchResult.Disabled,
+                                    is AniListAutoMatchResult.AlreadyMatched,
+                                    is AniListAutoMatchResult.AlreadyManuallyMatched -> persistAttemptCooldown = false
+                                    AniListAutoMatchResult.NoMatch,
+                                    is AniListAutoMatchResult.Ambiguous -> Unit
+                                }
+                            }
+                            is AniListResult.Failure -> {
+                                persistAttemptCooldown = !result.error.isTransientForAniListRetry()
+                                Log.w(TAG, "Missing-artwork title discovery failed for animeId=" + local.id + ": " + result.error)
+                            }
+                        }
                     }
+                } catch (cancelled: CancellationException) {
+                    missingArtworkLookupAttempts.remove(local.id)
+                    try {
+                        clearPersistedArtworkDiscoveryAttemptAt(library.database, local.id)
+                    } catch (cleanupError: Exception) {
+                        Log.w(TAG, "Could not clear cancelled AniList artwork lookup cooldown animeId=" + local.id, cleanupError)
+                    }
+                    throw cancelled
+                }
+
+                // Keep a 24-hour negative-result cooldown only after a definitive lookup.
+                // Network errors, malformed responses, 429 waits and cancellation stay retryable.
+                if (persistAttemptCooldown) {
+                    val completedAtSeconds = System.currentTimeMillis() / 1000.0
+                    writeArtworkDiscoveryAttemptAt(local.id, completedAtSeconds)
+                    persistedAttemptTimes[local.id] = completedAtSeconds
+                } else {
+                    missingArtworkLookupAttempts.remove(local.id)
+                    try {
+                        clearPersistedArtworkDiscoveryAttemptAt(library.database, local.id)
+                    } catch (cleanupError: Exception) {
+                        Log.w(TAG, "Could not clear transient AniList artwork lookup cooldown animeId=" + local.id, cleanupError)
+                    }
+                    persistedAttemptTimes.remove(local.id)
                 }
             }
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
@@ -846,6 +911,11 @@ class ReiAnixAniListIntegrationService(
         private val AUTO_MATCH_TERMINAL_STATUSES = setOf(
             "not_found",
             "ambiguous",
+        )
+        private val AUTO_MATCH_RETRYABLE_STATUSES = setOf(
+            "network_error",
+            "rate_limited",
+            "invalid_response",
         )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     }

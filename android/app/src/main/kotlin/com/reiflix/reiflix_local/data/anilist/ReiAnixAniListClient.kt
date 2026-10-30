@@ -2,9 +2,6 @@ package com.reiflix.reiflix_local.data.anilist
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.job
 import com.reiflix.reiflix_local.data.contract.arrayOrNull
@@ -29,14 +26,20 @@ import java.util.Locale
  */
 class ReiAnixAniListClient(
     private val transport: AniListTransport = HttpUrlConnectionAniListTransport(),
-    private val minimumRequestIntervalMs: Long = DEFAULT_MINIMUM_REQUEST_INTERVAL_MS,
+    private val minimumRequestIntervalMs: Long? = null,
+    requestController: AniListGraphqlRequestController? = null,
 ) {
     init {
-        require(minimumRequestIntervalMs >= 0L) { "Request interval cannot be negative." }
+        require(minimumRequestIntervalMs == null || minimumRequestIntervalMs >= 0L) {
+            "Request interval cannot be negative."
+        }
     }
 
-    private val requestMutex = Mutex()
-    private var lastRequestAtMs = 0L
+    private val effectiveRequestController = requestController
+        ?: minimumRequestIntervalMs?.let { interval ->
+            AniListGraphqlRequestController(minimumIntervalOverrideMs = interval)
+        }
+        ?: AniListGraphqlRequestController.processShared
 
     suspend fun searchAnime(term: String, limit: Int = 10): AniListResult<List<AniListAnime>> {
         val query = term.trim()
@@ -109,13 +112,7 @@ class ReiAnixAniListClient(
         decode: (JSONObject) -> AniListResult<T>,
     ): AniListResult<T> {
         val response = try {
-            requestMutex.withLock {
-                val now = System.currentTimeMillis()
-                val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
-                if (wait > 0L) delay(wait)
-                lastRequestAtMs = System.currentTimeMillis()
-                // Keep the lock through the HTTP call so concurrent callers cannot
-                // start together after sharing the same rate-limit delay.
+            effectiveRequestController.execute(ENDPOINT) {
                 withContext(Dispatchers.IO) {
                     transport.post(ENDPOINT, JSONObject()
                         .put("query", query)
@@ -249,7 +246,7 @@ class ReiAnixAniListClient(
 
     companion object {
         const val ENDPOINT = "https://graphql.anilist.co"
-        const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
+        const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 2_200L
         private const val MEDIA_FIELDS = """
             id title { romaji english native } synonyms
             description(asHtml: false) format episodes duration status averageScore season seasonYear
@@ -301,6 +298,7 @@ data class AniListHttpResponse(
     val statusCode: Int,
     val body: String,
     val retryAfterSeconds: Long? = null,
+    val headers: Map<String, String> = emptyMap(),
 )
 
 fun interface AniListTransport {
@@ -337,8 +335,12 @@ class HttpUrlConnectionAniListTransport(
                 val code = activeConnection.responseCode
                 val stream = if (code in 200..299) activeConnection.inputStream else activeConnection.errorStream
                 val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                val retryAfter = activeConnection.getHeaderField("Retry-After")?.toLongOrNull()
-                AniListHttpResponse(code, responseBody, retryAfter)
+                val responseHeaders = activeConnection.headerFields.entries.mapNotNull { (name, values) ->
+                    if (name.isNullOrBlank() || values.isNullOrEmpty()) null
+                    else name.lowercase(Locale.ROOT) to values.first()
+                }.toMap()
+                val retryAfter = responseHeaders["retry-after"]?.toLongOrNull()
+                AniListHttpResponse(code, responseBody, retryAfter, responseHeaders)
             } finally {
                 connection?.disconnect()
             }
