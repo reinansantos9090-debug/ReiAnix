@@ -718,7 +718,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     }
 
     private suspend fun download(key: String, rawUrl: String): Downloaded {
-        check(ensureArtworkCacheDirectory(cacheDirectory)) { "Artwork cache directory unavailable." }
+        if (!ensureArtworkCacheDirectory(cacheDirectory)) throw IOException("Artwork cache directory unavailable.")
         val url = URL(rawUrl)
         val conn = url.openConnection() as? HttpURLConnection ?: throw InvalidImage("Not an HTTP connection.")
         val tmp = File(cacheDirectory, "." + key + "-" + UUID.randomUUID() + ".tmp")
