@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import android.graphics.BitmapFactory
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -702,6 +703,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
         is java.net.SocketTimeoutException -> "TRANSPORT_TIMEOUT"
         is InvalidImage -> "INVALID_IMAGE_CONTENT"
+        is SQLiteException -> "SQLITE_PERSISTENCE"
         is IOException -> "NETWORK_OR_STORAGE_IO"
         else -> "PERSISTENCE_OR_UNEXPECTED"
     }
@@ -842,7 +844,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     ): Long? {
         val retryable = when (error) {
             is HttpFailure -> isRetryableArtworkHttpStatus(httpStatus ?: error.code)
-            is IOException -> true
+            is IOException, is SQLiteException -> true
             else -> false
         }
         return database.transaction { db ->
@@ -1385,7 +1387,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val IO_BUFFER_BYTES = 64 * 1024
         const val POSTER_PRIORITY = 400
         const val STALE_PRIORITY = 350
-        const val BASE_RETRY_BACKOFF_SECONDS = 60L
         val EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif")
     }
 }
