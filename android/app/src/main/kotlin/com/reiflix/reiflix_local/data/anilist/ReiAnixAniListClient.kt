@@ -57,7 +57,7 @@ class ReiAnixAniListClient(
         return execute(gql, JSONObject()
             .put("search", query)
             .put("page", 1)
-            .put("perPage", limit)) { data ->
+            .put("perPage", limit)) { data, _ ->
             val page = data.objectOrNull("Page")
                 ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing Page object"))
             val media = page.arrayOrNull("media")
@@ -87,7 +87,7 @@ class ReiAnixAniListClient(
               Media(id: ${'$'}id, type: ANIME) { $MEDIA_FIELDS }
             }
         """.trimIndent()
-        return execute(gql, JSONObject().put("id", id)) { data ->
+        return execute(gql, JSONObject().put("id", id)) { data, _ ->
             if (!data.has("Media")) {
                 return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("Missing Media field in AniList detail response"),
@@ -106,10 +106,149 @@ class ReiAnixAniListClient(
         }
     }
 
+
+    /**
+     * Fetches up to 15 known AniList IDs with one Page.media(id_in: ...) operation.
+     * Valid media are retained when GraphQL returns partial data; the incomplete flag
+     * prevents callers from treating omitted IDs as definitive misses.
+     */
+    suspend fun getAnimeBatch(ids: List<Int>): AniListResult<AniListBatchResult<List<AniListAnime>>> {
+        val requestedIds = ids.asSequence().filter { it > 0 }.distinct().toList()
+        if (requestedIds.size > MAX_BATCH_SIZE) {
+            return AniListResult.Failure(
+                AniListError.InvalidRequest("AniList ID batch cannot exceed $MAX_BATCH_SIZE unique IDs."),
+            )
+        }
+        if (requestedIds.isEmpty()) {
+            return AniListResult.Success(AniListBatchResult(emptyList()))
+        }
+
+        val gql = """
+            query AnimeBatchByIds(${'$'}ids: [Int!]!, ${'$'}page: Int!, ${'$'}perPage: Int!) {
+              Page(page: ${'$'}page, perPage: ${'$'}perPage) {
+                media(id_in: ${'$'}ids, type: ANIME, sort: ID) {
+                  $MEDIA_FIELDS
+                }
+              }
+            }
+        """.trimIndent()
+        val variables = JSONObject()
+            .put("ids", JSONArray(requestedIds))
+            .put("page", 1)
+            .put("perPage", requestedIds.size)
+
+        return execute(gql, variables, allowPartialGraphQlErrors = true) { data, errorPaths ->
+            val page = data.objectOrNull("Page")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing Page object in AniList ID batch response"),
+                )
+            val media = page.arrayOrNull("media")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing media array in AniList ID batch response"),
+                )
+            var complete = errorPaths.isEmpty()
+            val results = ArrayList<AniListAnime>(media.length())
+            for (index in 0 until media.length()) {
+                val item = media.optJSONObject(index)
+                val anime = item?.let(::parseAnime)
+                if (anime == null) {
+                    complete = false
+                    continue
+                }
+                if (anime.id in requestedIds) results += anime
+            }
+            AniListResult.Success(
+                AniListBatchResult(
+                    items = results.distinctBy { it.id },
+                    incompleteKeys = if (complete) emptySet() else setOf(ID_BATCH_KEY),
+                ),
+            )
+        }
+    }
+
+    /**
+     * Queries up to 15 different title searches through distinct GraphQL aliases.
+     * Every title is supplied as a GraphQL variable, never interpolated into query text.
+     */
+    suspend fun searchAnimeBatch(
+        terms: List<String>,
+        perTermLimit: Int = 10,
+    ): AniListResult<AniListBatchResult<Map<String, List<AniListAnime>>>> {
+        require(perTermLimit in 1..50) { "AniList result limit must be between 1 and 50." }
+        val normalizedTerms = terms.asSequence()
+            .map { it.trim().replace(Regex("\\s+"), " ") }
+            .filter { it.length in 2..120 }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .toList()
+        if (normalizedTerms.size > MAX_BATCH_SIZE) {
+            return AniListResult.Failure(
+                AniListError.InvalidRequest("AniList title batch cannot exceed $MAX_BATCH_SIZE unique terms."),
+            )
+        }
+        if (normalizedTerms.isEmpty()) {
+            return AniListResult.Success(AniListBatchResult(emptyMap()))
+        }
+
+        val variableDefinitions = buildList {
+            normalizedTerms.indices.forEach { index -> add("${'$'}term$index: String!") }
+            add("${'$'}perPage: Int!")
+        }.joinToString(", ")
+        val aliasedSearches = normalizedTerms.indices.joinToString("\n") { index ->
+            """
+              term$index: Page(page: 1, perPage: ${'$'}perPage) {
+                media(search: ${'$'}term$index, type: ANIME, sort: SEARCH_MATCH) {
+                  ...AniListBatchMediaFields
+                }
+              }
+            """.trimIndent()
+        }
+        val gql = """
+            query SearchAnimeBatch($variableDefinitions) {
+              $aliasedSearches
+            }
+            fragment AniListBatchMediaFields on Media {
+              $MEDIA_FIELDS
+            }
+        """.trimIndent()
+        val variables = JSONObject().put("perPage", perTermLimit)
+        normalizedTerms.forEachIndexed { index, term ->
+            variables.put("term$index", term)
+        }
+
+        return execute(gql, variables, allowPartialGraphQlErrors = true) { data, errorPaths ->
+            val results = linkedMapOf<String, List<AniListAnime>>()
+            val incompleteTerms = linkedSetOf<String>()
+            if ("*" in errorPaths) incompleteTerms += normalizedTerms
+            normalizedTerms.forEachIndexed { index, term ->
+                val alias = "term$index"
+                val page = data.objectOrNull(alias)
+                val media = page?.arrayOrNull("media")
+                if (page == null || media == null || alias in errorPaths) {
+                    incompleteTerms += term
+                } else {
+                    val parsed = ArrayList<AniListAnime>(media.length())
+                    for (mediaIndex in 0 until media.length()) {
+                        val item = media.optJSONObject(mediaIndex)
+                        val anime = item?.let(::parseAnime)
+                        if (anime == null) incompleteTerms += term else parsed += anime
+                    }
+                    results[term] = parsed.distinctBy { it.id }
+                }
+            }
+            AniListResult.Success(
+                AniListBatchResult(
+                    items = results,
+                    incompleteKeys = incompleteTerms,
+                ),
+            )
+        }
+    }
+
     private suspend fun <T> execute(
         query: String,
         variables: JSONObject,
-        decode: (JSONObject) -> AniListResult<T>,
+        allowPartialGraphQlErrors: Boolean = false,
+        decode: (JSONObject, Set<String>) -> AniListResult<T>,
     ): AniListResult<T> {
         val response = try {
             effectiveRequestController.execute(ENDPOINT) {
@@ -143,10 +282,11 @@ class ReiAnixAniListClient(
         } catch (_: Exception) {
             return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL errors array"))
         }
-        if (errors != null && errors.length() > 0) {
+        val hasGraphQlErrors = errors != null && errors.length() > 0
+        if (hasGraphQlErrors && !allowPartialGraphQlErrors) {
             val messages = try {
                 buildList<String> {
-                    for (index in 0 until errors.length()) {
+                    for (index in 0 until errors!!.length()) {
                         val errorObject = errors.optJSONObject(index)
                             ?: error("Malformed GraphQL error item at index=$index")
                         val message = errorObject.stringOrNull("message").orEmpty().trim()
@@ -158,13 +298,30 @@ class ReiAnixAniListClient(
             }
             return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
         }
+        val errorPaths = if (hasGraphQlErrors) {
+            try {
+                buildSet {
+                    for (index in 0 until errors!!.length()) {
+                        val errorObject = errors.optJSONObject(index)
+                            ?: error("Malformed GraphQL error item at index=$index")
+                        val path = errorObject.arrayOrNull("path")
+                        val alias = path?.opt(0) as? String
+                        add(alias?.takeIf { it.isNotBlank() } ?: "*")
+                    }
+                }
+            } catch (_: Exception) {
+                return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
+            }
+        } else {
+            emptySet()
+        }
         val data = try {
             root.objectOrNull("data")
         } catch (_: Exception) {
             return AniListResult.Failure(AniListError.InvalidResponse("Invalid data object"))
         } ?: return AniListResult.Failure(AniListError.InvalidResponse("Missing data object"))
         return try {
-            decode(data)
+            decode(data, errorPaths)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -247,6 +404,8 @@ class ReiAnixAniListClient(
     companion object {
         const val ENDPOINT = "https://graphql.anilist.co"
         const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 2_200L
+        const val MAX_BATCH_SIZE = 15
+        private const val ID_BATCH_KEY = "ids"
         private const val MEDIA_FIELDS = """
             id title { romaji english native } synonyms
             description(asHtml: false) format episodes duration status averageScore season seasonYear
@@ -254,6 +413,13 @@ class ReiAnixAniListClient(
             studios(isMain: true) { nodes { name } }
         """
     }
+}
+
+data class AniListBatchResult<T>(
+    val items: T,
+    val incompleteKeys: Set<String> = emptySet(),
+) {
+    val isComplete: Boolean get() = incompleteKeys.isEmpty()
 }
 
 data class AniListAnime(

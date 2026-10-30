@@ -345,9 +345,36 @@ class ReiAnixAniListIntegrationService(
      * with a clear margin is persisted. Existing manual associations are immutable
      * to this path, and candidates are returned for UI confirmation otherwise.
      */
+
+    private fun localAniListSearchTerms(local: ReiAnixAnimeRecord): List<String> {
+        val localTitleCandidates = buildList {
+            add(local.title)
+            add(local.lookupTitle)
+            add(local.nativeTitle.orEmpty())
+            add(local.romaji.orEmpty())
+            add(local.english.orEmpty())
+            local.aliasesJson?.let { aliasesJson ->
+                runCatching { JSONArray(aliasesJson) }.getOrNull()?.let { aliases ->
+                    for (index in 0 until aliases.length()) {
+                        val raw = aliases.opt(index)
+                        if (raw is String) add(raw)
+                    }
+                }
+            }
+        }
+        return boundedAniListSearchTerms(localTitleCandidates, limit = 6)
+    }
+
     suspend fun autoMatch(
         animeId: Long,
         force: Boolean = false,
+    ): AniListResult<AniListAutoMatchResult> =
+        autoMatchInternal(animeId, force, primarySearchResult = null)
+
+    private suspend fun autoMatchInternal(
+        animeId: Long,
+        force: Boolean,
+        primarySearchResult: List<AniListAnime>?,
     ): AniListResult<AniListAutoMatchResult> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
@@ -369,22 +396,7 @@ class ReiAnixAniListIntegrationService(
             return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
         }
         autoMatchAttempts[animeId] = now
-        val localTitleCandidates = buildList {
-            add(local.title)
-            add(local.lookupTitle)
-            add(local.nativeTitle.orEmpty())
-            add(local.romaji.orEmpty())
-            add(local.english.orEmpty())
-            local.aliasesJson?.let { aliasesJson ->
-                runCatching { JSONArray(aliasesJson) }.getOrNull()?.let { aliases ->
-                    for (index in 0 until aliases.length()) {
-                        val raw = aliases.opt(index)
-                        if (raw is String) add(raw)
-                    }
-                }
-            }
-        }
-        val searchTerms = boundedAniListSearchTerms(localTitleCandidates, limit = 6)
+        val searchTerms = localAniListSearchTerms(local)
         if (searchTerms.isEmpty()) {
             autoMatchAttempts.remove(animeId)
             return AniListResult.Failure(
@@ -413,7 +425,9 @@ class ReiAnixAniListIntegrationService(
         var searchedTerms: List<String> = emptyList()
         for ((termIndex, searchTerm) in searchTerms.withIndex()) {
             searchedTerms = searchTerms.take(termIndex + 1)
-            val searchResult = try {
+            val searchResult = if (termIndex == 0 && primarySearchResult != null) {
+                AniListResult.Success(primarySearchResult)
+            } else try {
                 client.searchAnime(searchTerm, 10)
             } catch (cancelled: CancellationException) {
                 autoMatchAttempts.remove(animeId)
@@ -494,6 +508,93 @@ class ReiAnixAniListIntegrationService(
         return AniListResult.Success(AniListAutoMatchResult.Matched(persisted, best.anime))
     }
 
+
+    /**
+     * Batch primary-title searches for the entire eligible catalog. Ambiguous/low-score
+     * rows retain the existing alternate-title fallback through autoMatchInternal.
+     */
+    private suspend fun autoMatchBatch(
+        locals: List<ReiAnixAnimeRecord>,
+    ): Map<Long, AniListResult<AniListAutoMatchResult>> {
+        if (locals.isEmpty()) return emptyMap()
+        val results = linkedMapOf<Long, AniListResult<AniListAutoMatchResult>>()
+        val termsByKey = linkedMapOf<String, String>()
+        val localsByTermKey = linkedMapOf<String, MutableList<ReiAnixAnimeRecord>>()
+        val now = System.currentTimeMillis()
+
+        for (local in locals) {
+            currentCoroutineContext().ensureActive()
+            if (
+                local.id <= 0L ||
+                local.anilistId != null ||
+                local.anilistMatchManual == true ||
+                local.metadataSource == "manual" ||
+                local.metadataStatus == "manual" ||
+                local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES
+            ) continue
+            val previousAttempt = autoMatchAttempts[local.id]
+            if (previousAttempt != null && now - previousAttempt < AUTO_MATCH_COOLDOWN_MS) continue
+
+            val primaryTerm = localAniListSearchTerms(local).firstOrNull()
+            if (primaryTerm == null) {
+                results[local.id] = AniListResult.Failure(
+                    AniListError.InvalidRequest("Local anime has no usable title for AniList lookup."),
+                )
+                continue
+            }
+            val key = primaryTerm.lowercase(Locale.ROOT)
+            termsByKey.putIfAbsent(key, primaryTerm)
+            localsByTermKey.getOrPut(key) { mutableListOf() }.add(local)
+        }
+
+        for (termBatch in termsByKey.values.toList().chunked(ReiAnixAniListClient.MAX_BATCH_SIZE)) {
+            currentCoroutineContext().ensureActive()
+            when (val batch = client.searchAnimeBatch(termBatch, perTermLimit = 10)) {
+                is AniListResult.Failure -> {
+                    val status = when (val error = batch.error) {
+                        is AniListError.RateLimited -> "rate_limited"
+                        is AniListError.Network -> "network_error"
+                        is AniListError.Http -> when {
+                            error.statusCode == 429 || error.statusCode == 408 -> "rate_limited"
+                            error.statusCode >= 500 -> "network_error"
+                            else -> "invalid_response"
+                        }
+                        is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
+                        is AniListError.InvalidRequest -> null
+                    }
+                    for (term in termBatch) {
+                        for (local in localsByTermKey[term.lowercase(Locale.ROOT)].orEmpty()) {
+                            if (status != null) recordAutoMatchOutcome(local.id, status)
+                            results[local.id] = AniListResult.Failure(batch.error)
+                        }
+                    }
+                }
+                is AniListResult.Success -> {
+                    val payload = batch.value
+                    for (term in termBatch) {
+                        val candidates = payload.items[term]
+                        val incomplete = term in payload.incompleteKeys || candidates == null
+                        for (local in localsByTermKey[term.lowercase(Locale.ROOT)].orEmpty()) {
+                            if (incomplete) {
+                                recordAutoMatchOutcome(local.id, "invalid_response")
+                                results[local.id] = AniListResult.Failure(
+                                    AniListError.InvalidResponse("AniList returned an incomplete title-search alias."),
+                                )
+                            } else {
+                                results[local.id] = autoMatchInternal(
+                                    animeId = local.id,
+                                    force = false,
+                                    primarySearchResult = candidates,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return results
+    }
+
     private suspend fun recordAutoMatchOutcome(
         animeId: Long,
         status: String,
@@ -554,10 +655,11 @@ class ReiAnixAniListIntegrationService(
      * it does not create local anime rows or a second catalogue.
      * A small per-run budget and persisted metadata freshness prevent startup request storms.
      */
-    suspend fun recoverMissingArtworkMetadata(maxRecords: Int = 12): Int {
+    suspend fun recoverMissingArtworkMetadata(): Int {
         if (!missingArtworkRecoveryRunning.compareAndSet(false, true)) return 0
+        val selectedRows = mutableListOf<ReiAnixAnimeRecord>()
+        val completedAttemptIds = mutableSetOf<Long>()
         try {
-            require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
             if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
             val rows = library.loadLibraryCatalogRows()
             if (rows.isEmpty()) return 0
@@ -574,11 +676,9 @@ class ReiAnixAniListIntegrationService(
                     null,
                 ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             }
-            var examined = 0
-            var recovered = 0
             val nowSeconds = System.currentTimeMillis() / 1000.0
+
             for (row in orderedRows) {
-                if (examined >= maxRecords) break
                 currentCoroutineContext().ensureActive()
                 val local = row.anime
                 if (local.id <= 0L) continue
@@ -606,10 +706,8 @@ class ReiAnixAniListIntegrationService(
                         nowSeconds = nowSeconds,
                     )
                 ) continue
-                if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds)) {
-                    continue
-                }
-                if (examined >= maxRecords) break
+                if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds)) continue
+
                 val attemptAt = nowSeconds.toLong()
                 val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
                 if (previousAttempt != null) {
@@ -617,18 +715,64 @@ class ReiAnixAniListIntegrationService(
                         !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
                     ) continue
                 }
-                examined++
-                val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
-                var persistAttemptCooldown = true
-                try {
-                    if (remoteId != null) {
-                        when (val lookup = client.getAnime(remoteId.toInt())) {
+                selectedRows += local
+            }
+
+            var recovered = 0
+            suspend fun finishAttempt(local: ReiAnixAnimeRecord, persistCooldown: Boolean) {
+                if (persistCooldown) {
+                    val completedAtSeconds = System.currentTimeMillis() / 1000.0
+                    writeArtworkDiscoveryAttemptAt(local.id, completedAtSeconds)
+                    persistedAttemptTimes[local.id] = completedAtSeconds
+                } else {
+                    missingArtworkLookupAttempts.remove(local.id)
+                    try {
+                        clearPersistedArtworkDiscoveryAttemptAt(library.database, local.id)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Could not clear transient AniList artwork lookup cooldown animeId=" + local.id, error)
+                    }
+                    persistedAttemptTimes.remove(local.id)
+                }
+                completedAttemptIds += local.id
+            }
+
+            // Every ID chunk is fetched, decoded and persisted before the next chunk starts.
+            val rowsByRemoteId = selectedRows.mapNotNull { local ->
+                local.anilistId
+                    ?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+                    ?.toInt()
+                    ?.let { it to local }
+            }.groupBy({ it.first }, { it.second })
+            for (idBatch in rowsByRemoteId.keys.toList().chunked(ReiAnixAniListClient.MAX_BATCH_SIZE)) {
+                currentCoroutineContext().ensureActive()
+                val batchById: Map<Int, AniListResult<AniListAnime?>> = when (val batch = client.getAnimeBatch(idBatch)) {
+                    is AniListResult.Failure -> idBatch.associateWith { AniListResult.Failure(batch.error) }
+                    is AniListResult.Success -> {
+                        val returned = batch.value.items.associateBy { it.id }
+                        idBatch.associateWith { id ->
+                            when {
+                                returned[id] != null -> AniListResult.Success(returned[id])
+                                batch.value.isComplete -> AniListResult.Success(null)
+                                else -> AniListResult.Failure(
+                                    AniListError.InvalidResponse("AniList returned a partial ID batch without this ID."),
+                                )
+                            }
+                        }
+                    }
+                }
+                for (remoteId in idBatch) {
+                    for (local in rowsByRemoteId[remoteId].orEmpty()) {
+                        currentCoroutineContext().ensureActive()
+                        var persistCooldown = true
+                        when (val lookup = batchById.getValue(remoteId)) {
                             is AniListResult.Success -> {
                                 val remote = lookup.value
                                 if (remote == null) {
-                                    Log.w(TAG, "Missing-artwork AniList lookup returned no media record for animeId=" + local.id)
+                                    Log.w(TAG, "Missing-artwork AniList batch returned no media for animeId=" + local.id)
                                 } else {
-                                    val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
+                                    val posterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
                                     when (val applied = applyRemote(
                                         local = local,
                                         remote = remote,
@@ -638,85 +782,75 @@ class ReiAnixAniListIntegrationService(
                                         margin = local.anilistMatchMargin,
                                     )) {
                                         is AniListResult.Success -> {
-                                            if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
+                                            if (!posterUrl.isNullOrBlank() && applied.value.coverUrl == posterUrl) {
                                                 recovered++
-                                            } else {
-                                                Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=" + local.id)
                                             }
                                         }
                                         is AniListResult.Failure -> {
-                                            persistAttemptCooldown = !applied.error.isTransientForAniListRetry()
+                                            persistCooldown = !applied.error.isTransientForAniListRetry()
                                             Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
                                         }
                                     }
                                 }
                             }
                             is AniListResult.Failure -> {
-                                persistAttemptCooldown = !lookup.error.isTransientForAniListRetry()
-                                Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=" + local.id + ": " + lookup.error)
+                                persistCooldown = !lookup.error.isTransientForAniListRetry()
+                                Log.w(TAG, "Missing-artwork AniList batch failed for animeId=" + local.id + ": " + lookup.error)
                             }
                         }
-                    } else if (local.anilistMatchManual == true ||
-                        local.metadataSource == "manual" || local.metadataStatus == "manual"
-                    ) {
-                        persistAttemptCooldown = false
-                    } else {
-                        when (val result = autoMatch(local.id)) {
-                            is AniListResult.Success -> {
-                                when (val outcome = result.value) {
-                                    is AniListAutoMatchResult.Matched -> {
-                                        val remotePosterUrl = outcome.remote.coverExtraLargeUrl ?: outcome.remote.coverLargeUrl
-                                        if (!remotePosterUrl.isNullOrBlank() && outcome.anime.coverUrl == remotePosterUrl) {
-                                            recovered++
-                                        } else {
-                                            Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=" + local.id)
-                                        }
-                                    }
-                                    AniListAutoMatchResult.RecentlyAttempted,
-                                    AniListAutoMatchResult.Disabled,
-                                    is AniListAutoMatchResult.AlreadyMatched,
-                                    is AniListAutoMatchResult.AlreadyManuallyMatched -> persistAttemptCooldown = false
-                                    AniListAutoMatchResult.NoMatch,
-                                    is AniListAutoMatchResult.Ambiguous -> Unit
-                                }
-                            }
-                            is AniListResult.Failure -> {
-                                persistAttemptCooldown = !result.error.isTransientForAniListRetry()
-                                Log.w(TAG, "Missing-artwork title discovery failed for animeId=" + local.id + ": " + result.error)
-                            }
-                        }
+                        finishAttempt(local, persistCooldown)
                     }
-                } catch (cancelled: CancellationException) {
-                    missingArtworkLookupAttempts.remove(local.id)
-                    try {
-                        clearPersistedArtworkDiscoveryAttemptAt(library.database, local.id)
-                    } catch (cleanupError: Exception) {
-                        Log.w(TAG, "Could not clear cancelled AniList artwork lookup cooldown animeId=" + local.id, cleanupError)
-                    }
-                    throw cancelled
-                }
-
-                // Keep a 24-hour negative-result cooldown only after a definitive lookup.
-                // Network errors, malformed responses, 429 waits and cancellation stay retryable.
-                if (persistAttemptCooldown) {
-                    val completedAtSeconds = System.currentTimeMillis() / 1000.0
-                    writeArtworkDiscoveryAttemptAt(local.id, completedAtSeconds)
-                    persistedAttemptTimes[local.id] = completedAtSeconds
-                } else {
-                    missingArtworkLookupAttempts.remove(local.id)
-                    try {
-                        clearPersistedArtworkDiscoveryAttemptAt(library.database, local.id)
-                    } catch (cleanupError: Exception) {
-                        Log.w(TAG, "Could not clear transient AniList artwork lookup cooldown animeId=" + local.id, cleanupError)
-                    }
-                    persistedAttemptTimes.remove(local.id)
                 }
             }
+
+            // Invalid persisted IDs are not silently converted into title searches.
+            val invalidIdRows = selectedRows.filter {
+                it.anilistId != null && it.anilistId !in 1L..Int.MAX_VALUE.toLong()
+            }
+            for (local in invalidIdRows) {
+                Log.w(TAG, "Skipping invalid persisted AniList ID for local animeId=" + local.id)
+                finishAttempt(local, persistCooldown = true)
+            }
+
+            // Unknown IDs are searched by aliases in groups of 15; metadata for each
+            // primary-title match is persisted before the next title batch is submitted.
+            val titleRows = selectedRows.filter { it.anilistId == null }
+            val titleResults = autoMatchBatch(titleRows)
+            for (local in titleRows) {
+                currentCoroutineContext().ensureActive()
+                var persistCooldown = true
+                when (val result = titleResults[local.id]) {
+                    is AniListResult.Success -> when (val outcome = result.value) {
+                        is AniListAutoMatchResult.Matched -> {
+                            val posterUrl = outcome.remote.coverExtraLargeUrl ?: outcome.remote.coverLargeUrl
+                            if (!posterUrl.isNullOrBlank() && outcome.anime.coverUrl == posterUrl) recovered++
+                        }
+                        AniListAutoMatchResult.RecentlyAttempted,
+                        AniListAutoMatchResult.Disabled,
+                        is AniListAutoMatchResult.AlreadyMatched,
+                        is AniListAutoMatchResult.AlreadyManuallyMatched -> persistCooldown = false
+                        AniListAutoMatchResult.NoMatch,
+                        is AniListAutoMatchResult.Ambiguous -> Unit
+                    }
+                    is AniListResult.Failure -> {
+                        persistCooldown = !result.error.isTransientForAniListRetry()
+                        Log.w(TAG, "Missing-artwork title batch failed for animeId=" + local.id + ": " + result.error)
+                    }
+                    null -> persistCooldown = false
+                }
+                finishAttempt(local, persistCooldown)
+            }
+
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
                 writeArtworkDiscoveryCursor(lastVisitedCursor)
             }
             return recovered
         } finally {
+            // Never leave an in-memory cooldown behind for an unfinished/cancelled row.
+            selectedRows.asSequence()
+                .map { it.id }
+                .filterNot { it in completedAttemptIds }
+                .forEach(missingArtworkLookupAttempts::remove)
             missingArtworkRecoveryRunning.set(false)
         }
     }
@@ -729,34 +863,19 @@ class ReiAnixAniListIntegrationService(
      */
     suspend fun reconcileUnmatchedLibraryMetadata(): Int {
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
-        val rows = library.loadLibraryCatalogRows()
-        var changedOutcomes = 0
-        for (row in rows) {
-            currentCoroutineContext().ensureActive()
-            val local = row.anime
-            if (local.id <= 0L ||
-                local.anilistId != null ||
-                local.anilistMatchManual == true ||
-                local.metadataSource == "manual" ||
-                local.metadataStatus == "manual"
-            ) continue
-            if (local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES) continue
-
-            when (val result = autoMatch(local.id)) {
-                is AniListResult.Success -> when (result.value) {
-                    is AniListAutoMatchResult.Matched -> changedOutcomes++
-                    AniListAutoMatchResult.NoMatch -> changedOutcomes++
-                    is AniListAutoMatchResult.Ambiguous -> changedOutcomes++
-                    else -> Unit
-                }
-                is AniListResult.Failure -> if (result.error !is AniListError.InvalidRequest) {
-                    // The outcome is already persisted by autoMatch when retrying it
-                    // automatically would otherwise duplicate an identical request.
-                    changedOutcomes++
-                }
+        val locals = library.loadLibraryCatalogRows()
+            .asSequence()
+            .map { it.anime }
+            .filter { local ->
+                local.id > 0L &&
+                    local.anilistId == null &&
+                    local.anilistMatchManual != true &&
+                    local.metadataSource != "manual" &&
+                    local.metadataStatus != "manual" &&
+                    local.anilistMatchStatus !in AUTO_MATCH_TERMINAL_STATUSES
             }
-        }
-        return changedOutcomes
+            .toList()
+        return autoMatchBatch(locals).size
     }
 
     private suspend fun applyRemote(

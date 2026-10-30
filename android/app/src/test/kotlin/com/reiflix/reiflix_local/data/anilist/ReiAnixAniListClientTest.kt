@@ -190,6 +190,154 @@ class ReiAnixAniListClientTest {
         assertTrue(anime.genres.isEmpty())
     }
 
+
+    @Test
+    fun idBatchUsesOneRequestAndDeduplicatesValidIdsWithinFifteen() = runBlocking {
+        val ids = (1..15).toList()
+        val media = ids.joinToString(",") { id ->
+            """{"id":$id,"title":{"romaji":"Anime $id"},"synonyms":["Alias $id"],"coverImage":{"large":"https://img.example/$id.jpg","extraLarge":"https://img.example/${id}_large.jpg"}}"""
+        }
+        val transport = FakeTransport(
+            AniListHttpResponse(200, """{"data":{"Page":{"media":[$media]}}}"""),
+        )
+
+        val result = ReiAnixAniListClient(transport, 0)
+            .getAnimeBatch(ids + listOf(1, 1, 0, -4))
+
+        assertTrue(result is AniListResult.Success)
+        val batch = (result as AniListResult.Success).value
+        assertEquals(15, batch.items.size)
+        assertTrue(batch.isComplete)
+        assertEquals(1, transport.calls)
+        val body = transport.requestBody!!
+        val query = body.getString("query")
+        assertTrue(query.contains("media(id_in: " + '$' + "ids"))
+        val requested = body.getJSONObject("variables").getJSONArray("ids")
+        assertEquals(15, requested.length())
+        assertEquals(1, requested.getInt(0))
+        assertEquals(15, requested.getInt(14))
+        assertEquals("Anime 15", batch.items.last().titleRomaji)
+        assertEquals("https://img.example/15_large.jpg", batch.items.last().coverExtraLargeUrl)
+    }
+
+    @Test
+    fun idBatchRejectsMoreThanFifteenUniqueValidIdsWithoutNetworkRequest() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""))
+
+        val result = ReiAnixAniListClient(transport, 0).getAnimeBatch((1..16).toList())
+
+        assertTrue(result is AniListResult.Failure)
+        assertTrue((result as AniListResult.Failure).error is AniListError.InvalidRequest)
+        assertEquals(0, transport.calls)
+    }
+
+    @Test
+    fun emptyOrOnlyInvalidIdBatchDoesNotSendNetworkRequest() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""))
+
+        val empty = ReiAnixAniListClient(transport, 0).getAnimeBatch(listOf(0, -1, -9, 0))
+
+        assertEquals(AniListResult.Success<AniListBatchResult<List<AniListAnime>>>(AniListBatchResult(emptyList())), empty)
+        assertEquals(0, transport.calls)
+    }
+
+    @Test
+    fun titleBatchUsesDistinctAliasesAndOwnVariablesInOneRequest() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"data":{"term0":{"media":[{"id":21,"title":{"romaji":"Attack on Titan"}}]},"term1":{"media":[{"id":22,"title":{"romaji":"Naruto"}}]}}}""",
+            ),
+        )
+
+        val result = ReiAnixAniListClient(transport, 0)
+            .searchAnimeBatch(listOf(" Attack on Titan ", "attack ON titan", "Naruto"), perTermLimit = 7)
+
+        assertTrue(result is AniListResult.Success)
+        val batch = (result as AniListResult.Success).value
+        assertTrue(batch.isComplete)
+        assertEquals(setOf("Attack on Titan", "Naruto"), batch.items.keys)
+        assertEquals(21, batch.items["Attack on Titan"]!!.single().id)
+        assertEquals(22, batch.items["Naruto"]!!.single().id)
+        assertEquals(1, transport.calls)
+        val body = transport.requestBody!!
+        val query = body.getString("query")
+        assertTrue(query.contains("term0: Page"))
+        assertTrue(query.contains("term1: Page"))
+        assertTrue(query.contains("media(search: " + '$' + "term0"))
+        assertTrue(query.contains("media(search: " + '$' + "term1"))
+        assertFalse(query.contains("Attack on Titan"))
+        val variables = body.getJSONObject("variables")
+        assertEquals("Attack on Titan", variables.getString("term0"))
+        assertEquals("Naruto", variables.getString("term1"))
+        assertEquals(7, variables.getInt("perPage"))
+    }
+
+    @Test
+    fun titleBatchPreservesValidAliasesWhenOneAliasReturnsGraphQlError() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"errors":[{"message":"Resolver temporarily unavailable","path":["term1","media"]}],"data":{"term0":{"media":[{"id":31,"title":{"romaji":"Alpha"}}]},"term1":{"media":null},"term2":{"media":[{"id":33,"title":{"romaji":"Gamma"}}]}}}""",
+            ),
+        )
+
+        val result = ReiAnixAniListClient(transport, 0)
+            .searchAnimeBatch(listOf("Alpha", "Beta", "Gamma"))
+
+        assertTrue(result is AniListResult.Success)
+        val batch = (result as AniListResult.Success).value
+        assertEquals(setOf("Beta"), batch.incompleteKeys)
+        assertEquals(setOf("Alpha", "Gamma"), batch.items.keys)
+        assertEquals(31, batch.items["Alpha"]!!.single().id)
+        assertEquals(33, batch.items["Gamma"]!!.single().id)
+        assertEquals(1, transport.calls)
+    }
+
+
+    @Test
+    fun idBatchUsesRequestedPageSizeForSmallBatchesAndMissingIdsAreDefinitiveOnlyOnCompleteResponse() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"data":{"Page":{"media":[{"id":45,"title":{"english":"Returned anime"}}]}}}""",
+            ),
+        )
+        val result = ReiAnixAniListClient(transport, 0).getAnimeBatch(listOf(45, 46, 45))
+        assertTrue(result is AniListResult.Success)
+        val batch = (result as AniListResult.Success).value
+        assertTrue(batch.isComplete)
+        assertEquals(listOf(45), batch.items.map { it.id })
+        assertEquals(2, transport.requestBody!!.getJSONObject("variables").getJSONArray("ids").length())
+        assertEquals(2, transport.requestBody!!.getJSONObject("variables").getInt("perPage"))
+    }
+
+    @Test
+    fun idBatchRetainsValidRowsButMarksTheBatchIncompleteAfterGraphQlError() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"errors":[{"message":"Partial resolver failure","path":["Page","media",0]}],"data":{"Page":{"media":[{"id":51,"title":{"english":"Valid result"}}]}}}""",
+            ),
+        )
+        val result = ReiAnixAniListClient(transport, 0).getAnimeBatch(listOf(51, 52))
+        assertTrue(result is AniListResult.Success)
+        val batch = (result as AniListResult.Success).value
+        assertEquals(listOf(51), batch.items.map { it.id })
+        assertFalse(batch.isComplete)
+        assertEquals(setOf("ids"), batch.incompleteKeys)
+    }
+
+    @Test
+    fun titleBatchRejectsMoreThanFifteenUniqueTermsWithoutNetworkRequest() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{}}"""))
+        val result = ReiAnixAniListClient(transport, 0)
+            .searchAnimeBatch((1..16).map { "Anime title $it" })
+        assertTrue(result is AniListResult.Failure)
+        assertTrue((result as AniListResult.Failure).error is AniListError.InvalidRequest)
+        assertEquals(0, transport.calls)
+    }
+
     private class SequenceFakeTransport(
         private val responses: List<AniListHttpResponse>,
     ) : AniListTransport {
