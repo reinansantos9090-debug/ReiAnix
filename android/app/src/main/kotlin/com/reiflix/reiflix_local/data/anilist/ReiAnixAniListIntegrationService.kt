@@ -391,10 +391,13 @@ class ReiAnixAniListIntegrationService(
             return AniListResult.Success(AniListAutoMatchResult.AlreadyMatched(local.anilistId))
         }
         val now = System.currentTimeMillis()
-        val previousAttempt = autoMatchAttempts[animeId]
-        if (previousAttempt != null && now - previousAttempt < AUTO_MATCH_COOLDOWN_MS) {
-            return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
+        if (primarySearchResult == null) {
+            val previousAttempt = autoMatchAttempts[animeId]
+            if (previousAttempt != null && now - previousAttempt < AUTO_MATCH_COOLDOWN_MS) {
+                return AniListResult.Success(AniListAutoMatchResult.RecentlyAttempted)
+            }
         }
+        // A batch caller reserves this entry before submitting its shared request.
         autoMatchAttempts[animeId] = now
         val searchTerms = localAniListSearchTerms(local)
         if (searchTerms.isEmpty()) {
@@ -542,6 +545,8 @@ class ReiAnixAniListIntegrationService(
                 )
                 continue
             }
+            // Reserve all rows before the first request to avoid duplicate concurrent batches.
+            autoMatchAttempts[local.id] = now
             val key = primaryTerm.lowercase(Locale.ROOT)
             termsByKey.putIfAbsent(key, primaryTerm)
             localsByTermKey.getOrPut(key) { mutableListOf() }.add(local)
@@ -549,7 +554,14 @@ class ReiAnixAniListIntegrationService(
 
         for (termBatch in termsByKey.values.toList().chunked(ReiAnixAniListClient.MAX_BATCH_SIZE)) {
             currentCoroutineContext().ensureActive()
-            when (val batch = client.searchAnimeBatch(termBatch, perTermLimit = 10)) {
+            val batchResult = try {
+                client.searchAnimeBatch(termBatch, perTermLimit = 10)
+            } catch (cancelled: CancellationException) {
+                termBatch.flatMap { localsByTermKey[it.lowercase(Locale.ROOT)].orEmpty() }
+                    .forEach { autoMatchAttempts.remove(it.id) }
+                throw cancelled
+            }
+            when (val batch = batchResult) {
                 is AniListResult.Failure -> {
                     val status = when (val error = batch.error) {
                         is AniListError.RateLimited -> "rate_limited"
@@ -581,11 +593,17 @@ class ReiAnixAniListIntegrationService(
                                     AniListError.InvalidResponse("AniList returned an incomplete title-search alias."),
                                 )
                             } else {
-                                results[local.id] = autoMatchInternal(
-                                    animeId = local.id,
-                                    force = false,
-                                    primarySearchResult = candidates,
-                                )
+                                results[local.id] = try {
+                                    autoMatchInternal(
+                                        animeId = local.id,
+                                        force = false,
+                                        primarySearchResult = candidates,
+                                    )
+                                } catch (cancelled: CancellationException) {
+                                    termBatch.flatMap { localsByTermKey[it.lowercase(Locale.ROOT)].orEmpty() }
+                                        .forEach { autoMatchAttempts.remove(it.id) }
+                                    throw cancelled
+                                }
                             }
                         }
                     }
