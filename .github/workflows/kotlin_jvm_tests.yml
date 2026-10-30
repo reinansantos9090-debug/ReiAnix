@@ -1,4 +1,4 @@
-name: ReiAnix Kotlin/JVM Source Validation
+name: ReiAnix Kotlin/JVM Tests
 
 on:
   workflow_dispatch:
@@ -12,14 +12,14 @@ permissions:
 
 jobs:
   kotlin-jvm:
-    name: Kotlin source compilation (no emulator)
+    name: AniList Kotlin/JVM regression tests (no emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -31,7 +31,7 @@ jobs:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36"
           accept-android-sdk-licenses: true
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
@@ -50,14 +50,118 @@ jobs:
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Compile JVM test sources and release Kotlin sources
+      - name: Generate temporary Gradle Wrapper for this CI run
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.11.1 --distribution-type bin
+
+      - name: Verify Gradle Wrapper version
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --version
+          test -s gradle/wrapper/gradle-wrapper.properties
+          grep -Fq 'gradle-8.11.1-bin.zip' gradle/wrapper/gradle-wrapper.properties
+
+      - name: Run the two requested AniList Kotlin/JVM test suites
         shell: bash
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
-          gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
+          ./android/gradlew -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
-            :app:compileDebugUnitTestKotlin \
-            :app:compileReleaseKotlin
+            :app:testDebugUnitTest \
+            --tests com.reiflix.reiflix_local.data.anilist.AniListGraphqlRequestControllerTest \
+            --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
+            2>&1 | tee "$RUNNER_TEMP/reianix-anilist-jvm-tests.log"
+
+      - name: Compile release Kotlin sources
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
+        run: |
+          set -euo pipefail
+          ./android/gradlew -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
+            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
+            -PreianixBuildVersion="0.2.1" \
+            :app:compileReleaseKotlin \
+            2>&1 | tee -a "$RUNNER_TEMP/reianix-anilist-jvm-tests.log"
+
+      - name: Publish individual JVM test outcomes
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+
+          report_files = sorted(glob.glob(
+              "android/app/build/test-results/testDebugUnitTest/TEST-*.xml"
+          ))
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+          rows = []
+          totals = {"passed": 0, "failed": 0, "skipped": 0}
+
+          for report_file in report_files:
+              root = ET.parse(report_file).getroot()
+              suite_name = root.attrib.get("name", os.path.basename(report_file))
+              cases = root.findall(".//testcase")
+              for case in cases:
+                  failure = case.find("failure")
+                  error = case.find("error")
+                  skipped = case.find("skipped")
+                  if failure is not None or error is not None:
+                      status = "FAIL"
+                      totals["failed"] += 1
+                      detail_node = failure if failure is not None else error
+                      detail = detail_node.attrib.get("message", "") if detail_node is not None else ""
+                  elif skipped is not None:
+                      status = "SKIP"
+                      totals["skipped"] += 1
+                      detail = skipped.attrib.get("message", "")
+                  else:
+                      status = "PASS"
+                      totals["passed"] += 1
+                      detail = ""
+
+                  classname = case.attrib.get("classname", suite_name)
+                  test_name = case.attrib.get("name", "(unnamed test)")
+                  detail = " ".join(detail.split())[:240]
+                  rows.append((classname, test_name, status, detail))
+
+          with open(summary_path, "a", encoding="utf-8") as summary:
+              summary.write("## AniList Kotlin/JVM test results\\n\\n")
+              if not report_files:
+                  summary.write(
+                      "No JUnit XML reports were produced. The Gradle test task may have "
+                      "failed before test execution; inspect the step log and uploaded artifacts.\\n"
+                  )
+              else:
+                  summary.write(
+                      f"**Totals:** {totals['passed']} passed, {totals['failed']} failed, "
+                      f"{totals['skipped']} skipped.\\n\\n"
+                  )
+                  summary.write("| Test class | Test method | Result | Details |\\n")
+                  summary.write("|---|---|---:|---|\\n")
+                  for classname, test_name, status, detail in rows:
+                      safe = lambda value: value.replace("|", "\\|").replace("\\n", " ")
+                      summary.write(
+                          f"| {safe(classname)} | {safe(test_name)} | **{status}** | {safe(detail)} |\\n"
+                      )
+          PY
+
+      - name: Upload AniList JVM test reports and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-anilist-jvm-test-reports-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/reianix-anilist-jvm-tests.log
+            android/app/build/test-results/testDebugUnitTest/
+            android/app/build/reports/tests/testDebugUnitTest/
+          retention-days: 7
+          if-no-files-found: warn
