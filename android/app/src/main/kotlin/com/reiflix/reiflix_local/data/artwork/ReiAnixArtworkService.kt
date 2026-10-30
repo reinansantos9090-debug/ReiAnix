@@ -104,9 +104,18 @@ internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val BASE_ARTWORK_RETRY_BACKOFF_SECONDS = 60L
 internal const val MAX_ARTWORK_RETRY_BACKOFF_SECONDS = 6L * 60L * 60L
 
-/** HTTP responses that can recover without changing the source URL. */
+/** HTTP and local persistence failures that should keep an automatic recovery path. */
 internal fun isRetryableArtworkHttpStatus(statusCode: Int): Boolean =
     statusCode == 408 || statusCode == 425 || statusCode == 429 || statusCode in 500..599
+
+internal fun isRetryableArtworkFailure(
+    httpStatus: Int?,
+    transportOrFileIoFailure: Boolean,
+    sqlitePersistenceFailure: Boolean,
+): Boolean {
+    if (httpStatus != null) return isRetryableArtworkHttpStatus(httpStatus)
+    return transportOrFileIoFailure || sqlitePersistenceFailure
+}
 
 /**
  * Honors delta-seconds and RFC 1123 HTTP-date Retry-After values.
@@ -842,11 +851,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         httpStatus: Int?,
         retryAfterSeconds: Long?,
     ): Long? {
-        val retryable = when (error) {
-            is HttpFailure -> isRetryableArtworkHttpStatus(httpStatus ?: error.code)
-            is IOException, is SQLiteException -> true
-            else -> false
-        }
+        val retryable = isRetryableArtworkFailure(
+            httpStatus = (error as? HttpFailure)?.let { httpStatus ?: it.code },
+            transportOrFileIoFailure = error is IOException && error !is HttpFailure,
+            sqlitePersistenceFailure = error is SQLiteException,
+        )
         return database.transaction { db ->
             if (artworkById(db, rowId) == null) return@transaction null
             val previousCount = db.rawQuery(

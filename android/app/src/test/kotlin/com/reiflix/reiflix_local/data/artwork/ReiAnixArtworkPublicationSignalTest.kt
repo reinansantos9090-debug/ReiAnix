@@ -173,15 +173,12 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun sqliteAndTransportExceptionsStayRecoverable() {
-        assertTrue(IOException("temporary transport failure") is IOException)
-        assertFalse(shouldRetryArtworkRequest(
-            status = "failed",
-            retryAtSeconds = 20_000.0,
-            failureCount = 1,
-            nowSeconds = 10_000.0,
-            force = false,
-        ))
+    fun transportSqliteAndHttpFailurePoliciesRemainDistinct() {
+        assertTrue(isRetryableArtworkFailure(httpStatus = null, transportOrFileIoFailure = true, sqlitePersistenceFailure = false))
+        assertTrue(isRetryableArtworkFailure(httpStatus = null, transportOrFileIoFailure = false, sqlitePersistenceFailure = true))
+        assertFalse(isRetryableArtworkFailure(httpStatus = null, transportOrFileIoFailure = false, sqlitePersistenceFailure = false))
+        assertTrue(isRetryableArtworkFailure(httpStatus = 429, transportOrFileIoFailure = false, sqlitePersistenceFailure = false))
+        assertFalse(isRetryableArtworkFailure(httpStatus = 404, transportOrFileIoFailure = true, sqlitePersistenceFailure = true))
     }
 
     @Test
