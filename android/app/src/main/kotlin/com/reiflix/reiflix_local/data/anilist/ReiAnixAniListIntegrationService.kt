@@ -557,7 +557,9 @@ class ReiAnixAniListIntegrationService(
             val batchResult = try {
                 client.searchAnimeBatch(termBatch, perTermLimit = 10)
             } catch (cancelled: CancellationException) {
-                termBatch.flatMap { localsByTermKey[it.lowercase(Locale.ROOT)].orEmpty() }
+                localsByTermKey.values.asSequence()
+                    .flatten()
+                    .filterNot { it.id in results }
                     .forEach { autoMatchAttempts.remove(it.id) }
                 throw cancelled
             }
@@ -600,7 +602,9 @@ class ReiAnixAniListIntegrationService(
                                         primarySearchResult = candidates,
                                     )
                                 } catch (cancelled: CancellationException) {
-                                    termBatch.flatMap { localsByTermKey[it.lowercase(Locale.ROOT)].orEmpty() }
+                                    localsByTermKey.values.asSequence()
+                                        .flatten()
+                                        .filterNot { it.id in results }
                                         .forEach { autoMatchAttempts.remove(it.id) }
                                     throw cancelled
                                 }
