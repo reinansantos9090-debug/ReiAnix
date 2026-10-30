@@ -134,23 +134,23 @@ jobs:
                   rows.append((classname, test_name, status, detail))
 
           with open(summary_path, "a", encoding="utf-8") as summary:
-              summary.write("## AniList Kotlin/JVM test results\\n\\n")
+              summary.write("## AniList Kotlin/JVM test results\n\n")
               if not report_files:
                   summary.write(
                       "No JUnit XML reports were produced. The Gradle test task may have "
-                      "failed before test execution; inspect the step log and uploaded artifacts.\\n"
+                      "failed before test execution; inspect the step log and uploaded artifacts.\n"
                   )
               else:
                   summary.write(
                       f"**Totals:** {totals['passed']} passed, {totals['failed']} failed, "
-                      f"{totals['skipped']} skipped.\\n\\n"
+                      f"{totals['skipped']} skipped.\n\n"
                   )
-                  summary.write("| Test class | Test method | Result | Details |\\n")
-                  summary.write("|---|---|---:|---|\\n")
+                  summary.write("| Test class | Test method | Result | Details |\n")
+                  summary.write("|---|---|---:|---|\n")
                   for classname, test_name, status, detail in rows:
-                      safe = lambda value: value.replace("|", "\\|").replace("\\n", " ")
+                      safe = lambda value: value.replace("|", "\\|").replace("\n", " ")
                       summary.write(
-                          f"| {safe(classname)} | {safe(test_name)} | **{status}** | {safe(detail)} |\\n"
+                          f"| {safe(classname)} | {safe(test_name)} | **{status}** | {safe(detail)} |\n"
                       )
           PY
 
