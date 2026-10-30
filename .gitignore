@@ -2,5 +2,6 @@
 build/
 
 # Android/Gradle generated files
+android/.kotlin/
 android/.gradle/
 android/app/build/
