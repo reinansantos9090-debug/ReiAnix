@@ -1588,6 +1588,54 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun nativeSqliteSearchHandlesNullOptionalMetadataText() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """
+                UPDATE anime
+                SET romaji=NULL, english=NULL, native=NULL, aliases=NULL,
+                    description=NULL, genres=NULL, season=NULL, status=NULL,
+                    format=NULL, studio=NULL, user_tags=NULL, personal_note=NULL
+                WHERE id=1
+                """.trimIndent(),
+            )
+        }
+
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        // The initial library page has an empty query and must tolerate absent
+        // AniList metadata just as the search path does.
+        assertEquals(
+            listOf(1L),
+            repository.searchAnimeIds(
+                query = "",
+                genreKey = null,
+                favoritesOnly = false,
+                watchingOnly = false,
+                completedOnly = false,
+                sortLabel = null,
+                limit = 36,
+                offset = 0,
+                libraryOnly = true,
+            ).animeIds,
+        )
+        assertEquals(
+            listOf(1L),
+            repository.searchAnimeIds(
+                query = "original title",
+                genreKey = null,
+                favoritesOnly = false,
+                watchingOnly = false,
+                completedOnly = false,
+                sortLabel = null,
+                limit = 36,
+                offset = 0,
+                libraryOnly = true,
+            ).animeIds,
+        )
+    }
+
+    @Test
     fun nativeSqliteSearchMatchesAliasesUnicodeEpisodesFiltersAndStablePages() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
