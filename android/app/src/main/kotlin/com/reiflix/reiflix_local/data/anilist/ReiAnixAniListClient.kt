@@ -298,9 +298,9 @@ class ReiAnixAniListClient(
             }
             return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
         }
-        val errorPaths = if (hasGraphQlErrors) {
+        val errorPaths: Set<String> = if (hasGraphQlErrors) {
             try {
-                buildSet {
+                buildSet<String> {
                     for (index in 0 until errors!!.length()) {
                         val errorObject = errors.optJSONObject(index)
                             ?: error("Malformed GraphQL error item at index=$index")
@@ -313,7 +313,7 @@ class ReiAnixAniListClient(
                 return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
             }
         } else {
-            emptySet()
+            emptySet<String>()
         }
         val data = try {
             root.objectOrNull("data")
