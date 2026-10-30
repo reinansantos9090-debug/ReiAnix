@@ -414,6 +414,7 @@ internal object ReiAnixAniListMatcher {
     )
     private val YEAR_MARKERS = Regex("\\b(?:19\\d{2}|20\\d{2})\\b")
     private val YEAR_IN_TITLE = Regex("\\b((?:19\\d{2}|20\\d{2}))\\b")
+    private val NUMERIC_OR_YEAR = Regex("(?:19\\d{2}|20\\d{2}|\\d{1,4})")
     private val IGNORED_PATH_SEGMENTS = setOf(
         "anime", "video", "videos", "media", "download", "downloads",
         "storage", "primary", "emulated", "complete", "finished",
