@@ -34,7 +34,7 @@ A branch ativa contém uma aplicação Android nativa em Kotlin, Jetpack Compose
 - Não adicione upload de artefatos específico de validação com emulador.
 - Se uma validação em emulador for necessária, ela deve ocorrer fora do repositório e sem adicionar infraestrutura de emulador ao projeto.
 - Preserve os workflows e testes permanentes existentes, salvo quando uma mudança explicitamente autorizada e justificada exigir o contrário. Esta regra impede adicionar infraestrutura de emulador; não autoriza remover infraestrutura existente sem justificativa e escopo explícito.
-- Os testes Kotlin/JVM devem continuar manuais conforme a configuração e a decisão do usuário: não os dispare automaticamente nem os execute por conta própria. Não os execute durante as etapas intermediárias se a tarefa não autorizar explicitamente. A validação manual fica reservada ao momento definido pelo usuário.
+- Os testes Kotlin/JVM devem continuar exclusivamente manuais, conforme a configuração do workflow existente. As IAs e agentes estão autorizados a utilizar e disparar manualmente o workflow Test Kotlin JVM por meio de `workflow_dispatch`, quando isso for necessário e estiver relacionado à tarefa ou à validação solicitada. Também podem acompanhar a execução, consultar logs/relatórios e analisar resultados. Essa autorização não permite disparos automáticos: não adicionar `push`, `pull_request`, `schedule`, gatilhos por alteração de arquivos, chamadas automáticas por outros workflows ou qualquer mecanismo equivalente. Não converter o workflow para execução automática; somente uma ação manual pode iniciá-lo.
 
 ## Áreas críticas e contratos que devem sobreviver à migração
 
@@ -80,7 +80,7 @@ Após alterações:
 7. Verifique os resultados do GitHub Actions para o SHA exato do commit final e forneça os links dos workflows relevantes.
 8. Diferencie sucesso de testes locais, sucesso do build Android, geração real de APK/ZIP e validação em dispositivo; um não prova automaticamente os outros.
 
-A etapa só pode ser declarada concluída quando seus critérios de aceitação tiverem sido atendidos e o workflow oficial aplicável estiver concluído com sucesso no SHA final. Se o workflow falhar ou não tiver sido executado, declare a etapa como não concluída e informe o bloqueio. Não execute manualmente o workflow Kotlin/JVM enquanto estiver reservado para a validação final.
+A etapa só pode ser declarada concluída quando seus critérios de aceitação tiverem sido atendidos e o workflow oficial aplicável estiver concluído com sucesso no SHA final. Se o workflow falhar ou não tiver sido executado, declare a etapa como não concluída e informe o bloqueio. A IA está autorizada a disparar manualmente o workflow Kotlin/JVM quando a validação for pertinente à tarefa, mantendo-o exclusivamente manual e respeitando `workflow_dispatch`.
 
 ## Regra de manutenção do runtime Kotlin nativo
 
