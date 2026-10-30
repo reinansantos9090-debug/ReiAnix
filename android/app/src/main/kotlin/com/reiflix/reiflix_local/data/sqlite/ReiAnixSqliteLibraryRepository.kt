@@ -350,13 +350,17 @@ class ReiAnixSqliteLibraryRepository(
             var scannedMatches = 0
 
             connection.rawQuery(sql, queryArgs.toTypedArray()).use { cursor ->
+                // SQLite text columns such as romaji, aliases, genres and studio are
+                // optional. Cursor.getString() is a platform type, so passing its null
+                // result directly to Kotlin string functions can throw
+                // "getString(...) must not be null" while loading an otherwise valid page.
+                fun textAt(column: Int): String =
+                    if (cursor.isNull(column)) "" else cursor.getString(column).orEmpty()
+
                 while (cursor.moveToNext()) {
                     if (terms.isNotEmpty()) {
                         val searchable = buildString {
-                            for (column in 1..18) {
-                                if (!cursor.isNull(column)) append(cursor.getString(column)).append(' ')
-                            }
-                            append(cursor.getString(19)).append(' ').append(cursor.getString(20))
+                            for (column in 1..20) append(textAt(column)).append(' ')
                         }
                         val normalized = normalizeNativeSearchText(searchable)
                         if (!terms.all { term -> normalized.contains(term) }) continue
@@ -364,13 +368,13 @@ class ReiAnixSqliteLibraryRepository(
                     }
 
                     val id = cursor.getLong(0)
-                    val title = normalizeNativeSearchText(cursor.getString(1))
+                    val title = normalizeNativeSearchText(textAt(1))
                     val alternateTitles = listOf(2, 3, 4)
-                        .map { column -> normalizeNativeSearchText(cursor.getString(column)) }
+                        .map { column -> normalizeNativeSearchText(textAt(column)) }
                         .filter(String::isNotBlank)
-                    val aliases = normalizeNativeSearchText(cursor.getString(5))
-                    val studio = normalizeNativeSearchText(cursor.getString(15))
-                    val genres = normalizeNativeSearchText(cursor.getString(10) + " " + cursor.getString(20))
+                    val aliases = normalizeNativeSearchText(textAt(5))
+                    val studio = normalizeNativeSearchText(textAt(15))
+                    val genres = normalizeNativeSearchText(textAt(10) + " " + textAt(20))
                     var score = when {
                         terms.isEmpty() -> 0
                         title == queryText -> 1000
