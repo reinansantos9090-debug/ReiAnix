@@ -58,6 +58,18 @@ android {
 
 kotlin { jvmToolchain(17) }
 
+// Robolectric needs JDK 21 for Android API 36. Keep application compilation on JDK 17,
+// but run Android host-side unit tests with the JDK 21 launcher provided by CI.
+val robolectricTestLauncher = extensions
+    .getByType(org.gradle.jvm.toolchain.JavaToolchainService::class.java)
+    .launcherFor {
+        languageVersion.set(org.gradle.jvm.toolchain.JavaLanguageVersion.of(21))
+    }
+
+tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+    javaLauncher.set(robolectricTestLauncher)
+}
+
     // earlier validation stage 29: dependencies remain unchanged; the cleanup is structural and reuses
     // the existing Compose/Navigation/Lifecycle/Media3 stack without new abstractions.
 dependencies {
