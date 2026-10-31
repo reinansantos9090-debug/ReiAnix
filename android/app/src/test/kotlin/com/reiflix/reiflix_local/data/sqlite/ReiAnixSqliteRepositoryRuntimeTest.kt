@@ -2894,11 +2894,17 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         createCanonicalFixture()
         val responseImage = createValidPng("real-loopback-backdrop.png")
         val responseBytes = responseImage.readBytes()
+        val preservedPoster = createValidPng("real-loopback-preserved-poster.png")
+        val posterBytes = preservedPoster.readBytes()
         val server = LocalArtworkHttpServer(statusCode = 200, responseBytes = responseBytes)
         try {
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                // Seed the loopback URL directly in this isolated fixture. The production
+                // external-candidate API intentionally accepts HTTPS only; it is not relaxed
+                // just to let a JVM test connect to its own HTTP server.
                 db.execSQL(
-                    "UPDATE anime SET media_kind='series',cover_url=NULL,cover_cache=NULL,banner_url=NULL,metadata_manual_fields='[]' WHERE id=1",
+                    "UPDATE anime SET media_kind='series',cover_url=NULL,cover_cache=?,banner_url=?,metadata_manual_fields='[]' WHERE id=1",
+                    arrayOf(preservedPoster.absolutePath, server.url),
                 )
             }
             val database = ReiAnixSqliteDatabase(context)
@@ -2907,7 +2913,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
             // Do not replace httpConnectionFactory: this test crosses a real loopback TCP
             // socket through URL.openConnection(), just as the production transport does.
-            assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", server.url))
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
             assertTrue(artwork.requestAnimeArtwork(1L, force = true))
             withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
 
@@ -2931,10 +2937,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
             val projected = ReiAnixNativeLibraryCatalogProjector
                 .project(repository.loadLibraryCatalogRows()).animes.single()
+            assertEquals(preservedPoster.absolutePath, projected.artwork?.localPath)
+            assertEquals(posterBytes.toList(), preservedPoster.readBytes().toList())
             assertEquals(savedFile.absolutePath, projected.artwork?.backdropLocalPath)
         } finally {
             server.close()
             responseImage.delete()
+            preservedPoster.delete()
         }
     }
 

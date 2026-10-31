@@ -103,6 +103,7 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.manualPosterAndBackdropArtworkAreProtectedFromSupplementalCandidates \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.corruptBackdropAndArtworkFromAnotherEntityTypeAreNotValidForThisAnime \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.sqliteLibraryProjectionCarriesValidatedBackdropForItsOwningAnime \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.realLoopbackHttpConnectionMaterializesAndProjectsValidatedBackdrop \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.enrichmentSkipsExternalCatalogWhenPosterAndBackdropAreAlreadyValid \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.invalidHttpImageBytesNeverBecomeAPublishedBackdrop \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.httpNotFoundRateLimitAndServerErrorsPersistFiniteRetryPolicy \
