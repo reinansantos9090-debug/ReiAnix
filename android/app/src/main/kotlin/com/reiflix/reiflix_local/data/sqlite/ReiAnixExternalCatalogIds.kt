@@ -5,6 +5,8 @@ import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatch
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogMediaKind
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIds
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogAnime
+import android.content.ContentValues
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -179,6 +181,219 @@ suspend fun ReiAnixSqliteLibraryRepository.saveExternalCatalogIds(
         merged
     }
 }
+
+
+/** Builds the same strict identity snapshot used again inside saveExternalCatalogIds(). */
+internal fun ReiAnixAnimeRecord.toExternalCatalogIdentity(): ReiAnixCatalogIdentity {
+    val titles = linkedSetOf<String>().apply {
+        listOf(lookupTitle, title, romaji, english, nativeTitle)
+            .filterNotNull()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .forEach(::add)
+        aliasesJson?.let { raw ->
+            runCatching {
+                val aliases = JSONArray(raw)
+                for (index in 0 until aliases.length()) {
+                    aliases.optString(index).trim().takeIf(String::isNotEmpty)?.let(::add)
+                }
+            }
+        }
+    }
+    return ReiAnixCatalogIdentity(
+        titles = titles.ifEmpty { setOf(title) },
+        releaseYear = year,
+        format = format,
+        mediaKind = parseLocalMediaKind(mediaKind, format),
+        season = season,
+    )
+}
+
+/** Read one bounded v29 anime row without loading the entire library for enrichment. */
+suspend fun ReiAnixSqliteLibraryRepository.listAnimeAfterExternalCatalogCursor(
+    afterAnimeId: Long,
+    limit: Int = 12,
+): List<ReiAnixAnimeRecord> = withContext(Dispatchers.IO) {
+    require(afterAnimeId >= 0L)
+    require(limit in 1..50)
+    database.read { db ->
+        db.rawQuery(
+            "SELECT * FROM anime WHERE id>? ORDER BY id ASC LIMIT ?",
+            arrayOf(afterAnimeId.toString(), limit.toString()),
+        ).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.toAnimeRecord()) }
+        }
+    }
+}
+
+private fun externalCatalogAttemptPreferenceKey(animeId: Long, source: String): String {
+    require(animeId > 0L)
+    require(source == "kitsu" || source == "jikan")
+    return "__reianix.external_catalog_attempt.v1.$animeId.$source"
+}
+
+/** Existing preferences table is reused; no DDL or schema migration is needed. */
+suspend fun ReiAnixSqliteLibraryRepository.externalCatalogAttemptAt(
+    animeId: Long,
+    source: String,
+): Double? = withContext(Dispatchers.IO) {
+    val key = externalCatalogAttemptPreferenceKey(animeId, source)
+    database.read { db ->
+        db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1", arrayOf(key)).use { cursor ->
+            if (!cursor.moveToFirst()) null else cursor.getString(0)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        }
+    }
+}
+
+suspend fun ReiAnixSqliteLibraryRepository.markExternalCatalogAttempt(
+    animeId: Long,
+    source: String,
+    attemptedAtSeconds: Double = System.currentTimeMillis() / 1_000.0,
+) = withContext(Dispatchers.IO) {
+    require(attemptedAtSeconds.isFinite() && attemptedAtSeconds >= 0.0)
+    val key = externalCatalogAttemptPreferenceKey(animeId, source)
+    database.transaction { db ->
+        db.insertWithOnConflict(
+            "preferences",
+            null,
+            ContentValues().apply {
+                put("key", key)
+                put("value", attemptedAtSeconds.toString())
+                put("updated_at", System.currentTimeMillis() / 1_000.0)
+            },
+            android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+}
+
+/** Persistent round-robin cursor prevents startup from faning out over the complete library. */
+suspend fun ReiAnixSqliteLibraryRepository.externalCatalogCursor(): Long = withContext(Dispatchers.IO) {
+    database.read { db ->
+        db.rawQuery(
+            "SELECT value FROM preferences WHERE key=? LIMIT 1",
+            arrayOf(EXTERNAL_CATALOG_CURSOR_KEY),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L else 0L
+        }
+    }
+}
+
+suspend fun ReiAnixSqliteLibraryRepository.setExternalCatalogCursor(animeId: Long) = withContext(Dispatchers.IO) {
+    require(animeId >= 0L)
+    database.transaction { db ->
+        db.insertWithOnConflict(
+            "preferences",
+            null,
+            ContentValues().apply {
+                put("key", EXTERNAL_CATALOG_CURSOR_KEY)
+                put("value", animeId.toString())
+                put("updated_at", System.currentTimeMillis() / 1_000.0)
+            },
+            android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE,
+        )
+    }
+}
+
+/**
+ * Fill only missing metadata fields from a verified supplemental provider.
+ * AniList-populated data, manual fields and every non-empty editorial value remain untouched.
+ */
+suspend fun ReiAnixSqliteLibraryRepository.mergeExternalCatalogMetadata(
+    match: ReiAnixCatalogIdentityMatch,
+    remote: ReiAnixCatalogAnime,
+): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
+    require(remote.source == match.source)
+    require(remote.ids.idFor(remote.source).isNullOrBlank().not())
+    database.transaction { db ->
+        val current = db.rawQuery(
+            "SELECT * FROM anime WHERE id=? LIMIT 1",
+            arrayOf(match.localAnimeId.toString()),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) throw NoSuchElementException("Local anime ID does not exist.")
+            cursor.toAnimeRecord()
+        }
+        check(
+            ReiAnixCatalogIdentityMatcher.fingerprint(current.toExternalCatalogIdentity()) ==
+                match.localIdentityFingerprint,
+        ) { "Local anime identity changed after the external match was verified." }
+
+        val manualFields = try {
+            val parsed = JSONArray(current.metadataManualFieldsJson ?: "[]")
+            buildSet {
+                for (index in 0 until parsed.length()) {
+                    val value = parsed.opt(index)
+                    if (value !is String) throw IllegalStateException("Manual metadata ownership is malformed.")
+                    add(value)
+                }
+            }
+        } catch (error: Exception) {
+            throw IllegalStateException("Manual metadata ownership is unreadable; refusing supplemental metadata.", error)
+        }
+        val values = ContentValues()
+        fun isMissing(value: String?): Boolean = value.isNullOrBlank()
+        fun fillText(field: String, existing: String?, incoming: String?) {
+            if (field !in manualFields && isMissing(existing) && !incoming.isNullOrBlank()) {
+                values.put(field, incoming.trim())
+            }
+        }
+        fun fillInt(field: String, existing: Int?, incoming: Int?) {
+            if (field !in manualFields && existing == null && incoming != null) values.put(field, incoming)
+        }
+
+        fillText("description", current.description, remote.synopsis?.takeIf { it.trim().length >= 8 })
+        fillText("description_original", current.descriptionOriginal, remote.synopsis?.takeIf { it.trim().length >= 8 })
+        fillText("cover_url", current.coverUrl, remote.coverUrl)
+        fillText("banner_url", current.bannerUrl, remote.backdropUrl)
+        fillText("status", current.status, remote.status)
+        fillText("format", current.format, remote.format)
+        fillInt("year", current.year, remote.releaseYear)
+        fillInt("episodes_count", current.episodesCount, remote.episodes?.takeIf { it > 0 })
+        fillInt("duration", current.duration, remote.durationMinutes?.takeIf { it > 0 })
+        fillInt("score", current.score, remote.averageScore)
+
+        if ("aliases" !in manualFields) {
+            val aliases = linkedSetOf<String>()
+            current.aliasesJson?.let { raw ->
+                runCatching {
+                    val json = JSONArray(raw)
+                    for (index in 0 until json.length()) json.optString(index).trim()
+                        .takeIf(String::isNotEmpty)?.let(aliases::add)
+                }
+            }
+            val incoming = remote.alternativeTitles + remote.title
+            val known = aliases.map(ReiAnixCatalogIdentityMatcher::normalizeCatalogTitle).toMutableSet()
+            incoming.forEach { alias ->
+                val normalized = ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle(alias)
+                if (normalized.isNotEmpty() && known.add(normalized)) aliases += alias.trim()
+            }
+            if (aliases.isNotEmpty() && aliases.size != current.aliasesJson?.let {
+                runCatching { JSONArray(it).length() }.getOrDefault(0)
+            }) {
+                values.put("aliases", JSONArray(aliases.toList()).toString())
+            }
+        }
+
+        fillText("metadata_source", current.metadataSource, remote.source.key)
+        fillText("metadata_confidence", current.metadataConfidence, "verified_exact_identity")
+        fillText("metadata_status", current.metadataStatus, "supplemental")
+        if (current.metadataFetchedAt == null) {
+            values.put("metadata_fetched_at", System.currentTimeMillis() / 1_000.0)
+        }
+
+        if (values.size() == 0) return@transaction current
+        values.put("metadata_updated_at", System.currentTimeMillis() / 1_000.0)
+        db.update("anime", values, "id=?", arrayOf(match.localAnimeId.toString()))
+        db.rawQuery(
+            "SELECT * FROM anime WHERE id=? LIMIT 1",
+            arrayOf(match.localAnimeId.toString()),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.toAnimeRecord()
+            else throw NoSuchElementException("Anime disappeared after supplemental metadata update.")
+        }
+    }
+}
+
+private const val EXTERNAL_CATALOG_CURSOR_KEY = "__reianix.external_catalog_cursor.v1"
 
 private fun parseLocalMediaKind(rawKind: String?, format: String?): ReiAnixCatalogMediaKind? {
     val normalized = (rawKind ?: format).orEmpty().trim().lowercase(Locale.ROOT)
