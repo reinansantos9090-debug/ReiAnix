@@ -94,8 +94,8 @@ class ReiAnixAniPubCatalogProviderTest {
         val transport = FakeTransport(
             listOf(
                 ReiAnixCatalogHttpResponse(
-                    503,
-                    "temporarily unavailable",
+                    404,
+                    "not found",
                     emptyMap(),
                 ),
                 ReiAnixCatalogHttpResponse(
@@ -133,6 +133,34 @@ class ReiAnixAniPubCatalogProviderTest {
         assertNull(anime.format)
         assertNull(anime.mediaKind)
         assertEquals("https://anipub.org/api/info/61", transport.urls.last())
+    }
+
+    @Test
+    fun rateLimitsFromAniPubDetailsArePropagatedWithoutFallbackOrFurtherCandidates() = runBlocking {
+        val singleDetail = FakeTransport(
+            listOf(ReiAnixCatalogHttpResponse(429, "slow down", mapOf("Retry-After" to "3"))),
+        )
+        val direct = ReiAnixAniPubCatalogProvider(singleDetail).getAnime("91")
+        assertTrue(direct is ReiAnixCatalogResult.Failure)
+        assertEquals(
+            3_000L,
+            ((direct as ReiAnixCatalogResult.Failure).error as ReiAnixCatalogError.RateLimited).retryAfterMillis,
+        )
+        assertEquals(1, singleDetail.calls)
+
+        val searchWithRateLimit = FakeTransport(
+            listOf(
+                ReiAnixCatalogHttpResponse(200, """[{"Id":91,"Name":"Sample Anime"}]""", emptyMap()),
+                ReiAnixCatalogHttpResponse(429, "slow down", mapOf("Retry-After" to "2")),
+            ),
+        )
+        val searched = ReiAnixAniPubCatalogProvider(searchWithRateLimit).searchAnime("Sample Anime", 5)
+        assertTrue(searched is ReiAnixCatalogResult.Failure)
+        assertEquals(
+            2_000L,
+            ((searched as ReiAnixCatalogResult.Failure).error as ReiAnixCatalogError.RateLimited).retryAfterMillis,
+        )
+        assertEquals(2, searchWithRateLimit.calls)
     }
 
     @Test

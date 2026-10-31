@@ -59,7 +59,12 @@ class ReiAnixAniPubCatalogProvider(
         for (id in candidates) {
             when (val detail = getAnime(id)) {
                 is ReiAnixCatalogResult.Success -> detail.value?.let(details::add)
-                is ReiAnixCatalogResult.Failure -> if (firstFailure == null) firstFailure = detail.error
+                is ReiAnixCatalogResult.Failure -> {
+                    // A Retry-After from AniPub applies to the source, not just this candidate.
+                    // Propagate it so the shared coordinator defers subsequent requests.
+                    if (detail.error is ReiAnixCatalogError.RateLimited) return detail
+                    if (firstFailure == null) firstFailure = detail.error
+                }
             }
         }
         return when {
@@ -81,7 +86,18 @@ class ReiAnixAniPubCatalogProvider(
         val response = requestJson("$BASE_URL/anime/api/details/$id")
         val selected = when (response) {
             is ReiAnixCatalogResult.Success -> response
-            is ReiAnixCatalogResult.Failure -> requestJson("$BASE_URL/api/info/$id")
+            is ReiAnixCatalogResult.Failure -> when (response.error) {
+                // A missing full-details record may still exist in the basic metadata API.
+                is ReiAnixCatalogError.Http -> {
+                    if ((response.error as ReiAnixCatalogError.Http).statusCode == 404) {
+                        requestJson("$BASE_URL/api/info/$id")
+                    } else {
+                        return response
+                    }
+                }
+                // Do not bypass Retry-After, network failures, or server errors with another route.
+                else -> return response
+            }
         }
         if (selected is ReiAnixCatalogResult.Failure) return selected
         return try {
