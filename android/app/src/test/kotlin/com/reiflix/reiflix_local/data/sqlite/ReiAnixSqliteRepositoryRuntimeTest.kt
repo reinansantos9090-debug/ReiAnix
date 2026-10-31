@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContentValues
 import android.graphics.Bitmap
 import android.app.Application
+import android.os.Build
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import android.net.Uri
@@ -2800,6 +2801,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     @Test
     @Config(application = Application::class, sdk = [30])
     fun unsupportedAvifWithoutPlatformDecoderIsNotValidOrProjectedLocally() = runBlocking {
+        assertEquals(30, Build.VERSION.SDK_INT)
         createCanonicalFixture()
         val unsupportedAvif = File(context.cacheDir, "unsupported-avif-backdrop.avif")
         // ISO-BMFF ftyp/avif signature only; this deliberately contains no decodable image.
