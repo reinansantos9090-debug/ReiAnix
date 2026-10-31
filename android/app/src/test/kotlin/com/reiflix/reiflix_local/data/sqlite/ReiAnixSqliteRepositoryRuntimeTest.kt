@@ -42,16 +42,21 @@ import com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProject
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
+import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.ServerSocket
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.withTimeout
 
 /**
@@ -2885,6 +2890,55 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
 
     @Test
+    fun realLoopbackHttpConnectionMaterializesAndProjectsValidatedBackdrop() = runBlocking {
+        createCanonicalFixture()
+        val responseImage = createValidPng("real-loopback-backdrop.png")
+        val responseBytes = responseImage.readBytes()
+        val server = LocalArtworkHttpServer(statusCode = 200, responseBytes = responseBytes)
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET media_kind='series',cover_url=NULL,cover_cache=NULL,banner_url=NULL,metadata_manual_fields='[]' WHERE id=1",
+                )
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val repository = ReiAnixSqliteLibraryRepository(database)
+            val artwork = ReiAnixArtworkService(context, database)
+
+            // Do not replace httpConnectionFactory: this test crosses a real loopback TCP
+            // socket through URL.openConnection(), just as the production transport does.
+            assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", server.url))
+            assertTrue(artwork.requestAnimeArtwork(1L, force = true))
+            withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
+
+            assertTrue("The local HTTP fixture did not receive a TCP request.", server.awaitRequest())
+            assertTrue(
+                "The artwork materializer must issue a real HTTP GET.",
+                server.requestLine.orEmpty().startsWith("GET /backdrop.png HTTP/1.1"),
+            )
+            assertEquals(1, server.requestCount.get())
+
+            val row = repository.artworkForAnime(1L).single { it.artworkType == "backdrop" }
+            val savedFile = File(requireNotNull(row.localPath))
+            assertEquals("anime", row.entityType)
+            assertEquals("1", row.entityId)
+            assertEquals(server.url, row.externalUrl)
+            assertEquals("ready", row.status)
+            assertEquals(200, row.httpStatus)
+            assertEquals(responseBytes.toList(), savedFile.readBytes().toList())
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertNotNull(artwork.publishedArtworks.value["anime|1|backdrop"])
+
+            val projected = ReiAnixNativeLibraryCatalogProjector
+                .project(repository.loadLibraryCatalogRows()).animes.single()
+            assertEquals(savedFile.absolutePath, projected.artwork?.backdropLocalPath)
+        } finally {
+            server.close()
+            responseImage.delete()
+        }
+    }
+
+    @Test
     fun invalidHttpImageBytesNeverBecomeAPublishedBackdrop() = runBlocking {
         createCanonicalFixture()
         val poster = createValidPng("invalid-backdrop-poster.png")
@@ -3056,6 +3110,72 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             releaseRead.countDown()
             poster.delete()
             responseImageFile.delete()
+        }
+    }
+
+    /** One-shot local HTTP/1.1 server for exercising the production URLConnection transport. */
+    private class LocalArtworkHttpServer(
+        statusCode: Int,
+        private val responseBytes: ByteArray,
+    ) : AutoCloseable {
+        private val serverSocket = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        private val requestServed = CountDownLatch(1)
+        private val failure = AtomicReference<Throwable?>()
+        val url: String = "http://127.0.0.1:${serverSocket.localPort}/backdrop.png"
+        val requestCount = AtomicInteger()
+        @Volatile
+        var requestLine: String? = null
+            private set
+
+        private val worker = Thread({
+            try {
+                serverSocket.accept().use { socket ->
+                    socket.soTimeout = 5_000
+                    val input = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.US_ASCII))
+                    requestLine = input.readLine()
+                    check(!requestLine.isNullOrBlank()) { "The HTTP request line was empty." }
+                    while (input.readLine()?.isNotEmpty() == true) Unit
+                    requestCount.incrementAndGet()
+
+                    val reason = when (statusCode) {
+                        200 -> "OK"
+                        404 -> "Not Found"
+                        429 -> "Too Many Requests"
+                        503 -> "Service Unavailable"
+                        else -> "Fixture Response"
+                    }
+                    val responseHead = (
+                        "HTTP/1.1 $statusCode $reason\r\n" +
+                            "Content-Type: image/png\r\n" +
+                            "Content-Length: ${responseBytes.size}\r\n" +
+                            "Connection: close\r\n\r\n"
+                        ).toByteArray(Charsets.US_ASCII)
+                    val output = socket.getOutputStream()
+                    output.write(responseHead)
+                    output.write(responseBytes)
+                    output.flush()
+                }
+            } catch (error: Throwable) {
+                failure.set(error)
+            } finally {
+                requestServed.countDown()
+            }
+        }, "reianix-loopback-artwork-fixture").apply {
+            isDaemon = true
+            start()
+        }
+
+        fun awaitRequest(timeoutMillis: Long = 5_000L): Boolean {
+            val served = requestServed.await(timeoutMillis, TimeUnit.MILLISECONDS)
+            if (served) {
+                failure.get()?.let { throw AssertionError("Local HTTP fixture failed.", it) }
+            }
+            return served
+        }
+
+        override fun close() {
+            runCatching { serverSocket.close() }
+            worker.join(1_000L)
         }
     }
 
