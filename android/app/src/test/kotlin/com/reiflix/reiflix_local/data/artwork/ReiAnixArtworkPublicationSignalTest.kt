@@ -15,6 +15,7 @@ import com.reiflix.reiflix_local.data.anilist.autoMatchFailureStatus
 import com.reiflix.reiflix_local.data.anilist.AniListError
 import com.reiflix.reiflix_local.data.anilist.AniListGraphqlRequestController
 import com.reiflix.reiflix_local.data.anilist.AniListHttpResponse
+import com.reiflix.reiflix_local.data.anilist.AniListGraphqlRequestControllerTest
 
 import java.io.File
 import java.util.UUID
@@ -28,8 +29,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.JUnitCore
 
 class ReiAnixArtworkPublicationSignalTest {
+    @Test
+    fun existingAniListControllerRegressionSuiteRunsInReleaseCertification() {
+        // The release-certification allowlist already executes this class. Run the
+        // controller's complete existing JUnit class here so its separate manual-only
+        // workflow can remain workflow_dispatch without leaving those regressions out
+        // of push certification.
+        val result = JUnitCore.runClasses(AniListGraphqlRequestControllerTest::class.java)
+        val failures = result.failures.joinToString("\n") { it.trace }
+
+        assertEquals("The existing controller suite must execute all ten test cases.", 10, result.runCount)
+        assertEquals("Controller regression failures:\n$failures", 0, result.failureCount)
+        assertEquals("The controller suite must not skip tests.", 0, result.ignoreCount)
+    }
+
     @Test
     fun repeatedRateLimitResponsesStopAfterBoundedAutomaticRetries() = runBlocking {
         var now = 1_700_000_000_000L
