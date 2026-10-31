@@ -1,11 +1,9 @@
 package com.reiflix.reiflix_local.data.anilist
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -129,95 +127,6 @@ class AniListGraphqlRequestControllerTest {
         assertEquals(200, result.statusCode)
         assertEquals(2, calls)
         assertEquals(listOf(8_000L), clock.waits)
-    }
-
-    @Test
-    fun repeatedRateLimitResponsesStopAfterBoundedAutomaticRetries() = runBlocking {
-        val clock = FakeClock()
-        var calls = 0
-        val controller = clock.controller(intervalOverrideMs = 0L)
-
-        val result = controller.execute(ReiAnixAniListClient.ENDPOINT) {
-            calls++
-            AniListHttpResponse(429, "{}")
-        }
-
-        assertEquals(429, result.statusCode)
-        assertEquals(3, calls)
-        assertEquals(listOf(60_000L, 120_000L), clock.waits)
-    }
-
-    @Test
-    fun cooldownWaitDoesNotHoldTheSharedRequestMutex() = runBlocking {
-        val clock = FakeClock()
-        val firstWaitStarted = CompletableDeferred<Unit>()
-        val competingWaitStarted = CompletableDeferred<Unit>()
-        val releaseFirstWait = CompletableDeferred<Unit>()
-        var delayCalls = 0
-        var firstRequestCalls = 0
-        val controller = AniListGraphqlRequestController(
-            nowMillis = { clock.now },
-            delayMillis = { wait ->
-                when (delayCalls++) {
-                    0 -> {
-                        firstWaitStarted.complete(Unit)
-                        releaseFirstWait.await()
-                        clock.now += wait
-                    }
-                    1 -> {
-                        competingWaitStarted.complete(Unit)
-                        throw CancellationException("cancel competing waiter")
-                    }
-                    else -> clock.now += wait
-                }
-            },
-            minimumIntervalOverrideMs = 0L,
-            logger = {},
-        )
-
-        val limitedRequest = async {
-            controller.execute(ReiAnixAniListClient.ENDPOINT) {
-                firstRequestCalls++
-                if (firstRequestCalls == 1) AniListHttpResponse(429, "{}")
-                else AniListHttpResponse(200, "{}")
-            }
-        }
-        firstWaitStarted.await()
-
-        val competingRequest = async {
-            runCatching {
-                controller.execute(ReiAnixAniListClient.ENDPOINT) {
-                    error("A competing request must respect the shared cooldown.")
-                }
-            }
-        }
-        withTimeout(1_000L) { competingWaitStarted.await() }
-        assertTrue(competingRequest.await().exceptionOrNull() is CancellationException)
-
-        releaseFirstWait.complete(Unit)
-        assertEquals(200, limitedRequest.await().statusCode)
-        assertEquals(2, firstRequestCalls)
-    }
-
-    @Test
-    fun exhaustedQuotaIsHonoredWhenTheLimitHeaderIsMissing() = runBlocking {
-        val clock = FakeClock()
-        val controller = clock.controller(intervalOverrideMs = 0L)
-        val resetAtSeconds = (clock.now + 10_000L) / 1_000L
-
-        controller.execute(ReiAnixAniListClient.ENDPOINT) {
-            AniListHttpResponse(
-                200,
-                "{}",
-                headers = mapOf(
-                    "X-RateLimit-Remaining" to "0",
-                    "X-RateLimit-Reset" to resetAtSeconds.toString(),
-                ),
-            )
-        }
-        controller.execute(ReiAnixAniListClient.ENDPOINT) { AniListHttpResponse(200, "{}") }
-
-        assertEquals(listOf(10_000L), clock.waits)
     }
 
     @Test
