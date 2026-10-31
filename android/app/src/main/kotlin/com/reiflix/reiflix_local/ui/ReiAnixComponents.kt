@@ -667,6 +667,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
+        artworkRevision = anime.artwork?.revision,
         bottomBadgeText = bottomBadgeText ?: presentationStateLabel(anime.presentationState),
     )
 }
@@ -700,6 +701,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
+        artworkRevision = anime.artwork?.revision,
         bottomBadgeText = bottomBadgeText ?: presentationStateLabel(anime.presentationState),
     )
 }
@@ -721,6 +723,7 @@ fun ReiAnixAnimeCard(
     maxDimensionPx: Int = 512,
     artworkIdentity: String? = null,
     bottomBadgeText: String? = null,
+    artworkRevision: String? = null,
 ) {
     val animeAccessibilityLabel = buildList {
         add(title)
@@ -774,6 +777,7 @@ fun ReiAnixAnimeCard(
                     identity = artworkIdentity,
                     maxDimensionPx = maxDimensionPx,
                     externalUrl = artworkExternalUrl,
+                    sourceRevision = artworkRevision,
                 )
                 if (favorite || watching || watched || completed) {
                     Text(

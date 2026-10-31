@@ -47,6 +47,28 @@ class ReiAnixLocalArtworkTest {
     }
 
     @Test
+    fun persistedChecksumChangesCoilKeysWhenLocalFileMetadataIsUnchanged() {
+        val firstRevision = combineArtworkSourceRevision(
+            persistedRevision = "sha256:poster-content-a",
+            fileRevision = "4096-1700000000000",
+        )
+        val secondRevision = combineArtworkSourceRevision(
+            persistedRevision = "sha256:poster-content-b",
+            fileRevision = "4096-1700000000000",
+        )
+
+        assertNotEquals(firstRevision, secondRevision)
+        assertNotEquals(
+            buildArtworkMemoryCacheKey("anime:67:poster", "/cache/poster.jpg", 320, 480, firstRevision),
+            buildArtworkMemoryCacheKey("anime:67:poster", "/cache/poster.jpg", 320, 480, secondRevision),
+        )
+        assertNotEquals(
+            buildArtworkDiskCacheKey("/cache/poster.jpg", firstRevision),
+            buildArtworkDiskCacheKey("/cache/poster.jpg", secondRevision),
+        )
+    }
+
+    @Test
     fun localArtworkSourceRevisionChangesWhenTheFileIsRegenerated() {
         val file = File.createTempFile("reianix-thumb-revision-", ".jpg")
         try {

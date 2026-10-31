@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.library
 
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
@@ -84,10 +85,12 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
         }
-        val primaryLocalArtwork = posterCandidates.firstOrNull { !it.localPath.isNullOrBlank() }?.localPath
-            ?: anime.coverCache
+        val primaryLocalArtworkRecord = posterCandidates.firstOrNull { !it.localPath.isNullOrBlank() }
+        val primaryLocalArtwork = primaryLocalArtworkRecord?.localPath ?: anime.coverCache
         val primaryExternalArtwork = posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
             ?: anime.coverUrl
+        val primaryArtworkRevision = primaryLocalArtworkRecord?.let(::artworkRevision)
+        val backdropArtworkRevision = backdrop?.let(::artworkRevision)
         val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name }
             else parseStringArray(anime.genresJson)
         val genreIds = if (row.genres.isNotEmpty()) row.genres.map { it.id } else emptyList()
@@ -153,8 +156,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank()),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
+            "artwork_revision" to primaryArtworkRevision,
             "artwork_backdrop_local_path" to backdrop?.localPath,
             "backdrop_external_url" to backdrop?.externalUrl,
+            "artwork_backdrop_revision" to backdropArtworkRevision,
             "playback_target_episode_id" to target?.id,
             "score" to anime.score?.toDouble(),
             "year" to anime.year,
@@ -217,7 +222,18 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "volume_uuid" to episode.volumeUuid,
             "artwork_local_path" to artwork?.localPath,
             "artwork_external_url" to artwork?.externalUrl,
+            "artwork_revision" to artwork?.let(::artworkRevision),
         )
+    }
+
+    private fun artworkRevision(record: ReiAnixArtworkRecord): String? {
+        record.checksum?.trim()?.takeIf { it.isNotEmpty() }?.let { return "sha256:$it" }
+        return buildList {
+            record.artworkKey?.trim()?.takeIf { it.isNotEmpty() }?.let { add("key:$it") }
+            record.byteSize?.let { add("bytes:$it") }
+            record.updatedAt?.let { add("updated:$it") }
+            record.localPath?.trim()?.takeIf { it.isNotEmpty() }?.let { add("path:$it") }
+        }.takeIf { it.isNotEmpty() }?.joinToString("|")
     }
 
     private fun playbackTarget(

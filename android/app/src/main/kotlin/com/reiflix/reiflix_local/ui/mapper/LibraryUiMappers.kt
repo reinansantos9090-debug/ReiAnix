@@ -164,6 +164,8 @@ object LibraryUiMappers {
         val backdropExternalUrl = firstNonBlank(
             listOf("backdrop_external_url", "banner_url"),
         )
+        val posterRevision = firstNonBlank(listOf("artwork_revision"))
+        val backdropRevision = firstNonBlank(listOf("artwork_backdrop_revision"))
         return if (
             posterLocalPath == null &&
             posterExternalUrl == null &&
@@ -177,6 +179,8 @@ object LibraryUiMappers {
                 externalUrl = posterExternalUrl,
                 backdropLocalPath = backdropLocalPath,
                 backdropExternalUrl = backdropExternalUrl,
+                revision = posterRevision,
+                backdropRevision = backdropRevision,
             )
         }
     }

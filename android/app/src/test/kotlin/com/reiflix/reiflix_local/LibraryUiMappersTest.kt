@@ -68,6 +68,19 @@ class LibraryUiMappersTest {
     }
 
     @Test
+    fun posterAndBackdropRevisionsReachTheImmutableArtworkModel() {
+        val source = animeSource(id = 67L).toMutableMap().apply {
+            this["artwork_revision"] = "sha256:poster-content"
+            this["artwork_backdrop_revision"] = "sha256:backdrop-content"
+        }
+
+        val artwork = LibraryUiMappers.anime(source).artwork
+
+        assertEquals("sha256:poster-content", artwork?.revision)
+        assertEquals("sha256:backdrop-content", artwork?.backdropRevision)
+    }
+
+    @Test
     fun presentationStateDistinguishesPendingAndFailedArtwork() {
         val pending = animeSource(
             id = 18L,

@@ -71,6 +71,10 @@ data class ReiAnixArtworkUiModel(
     val externalUrl: String?,
     val backdropLocalPath: String? = null,
     val backdropExternalUrl: String? = null,
+    /** Persisted content revision of the poster selected from the canonical artwork row. */
+    val revision: String? = null,
+    /** Persisted content revision of the backdrop selected from the canonical artwork row. */
+    val backdropRevision: String? = null,
 ) {
     /** True only when Compose has a materialized local file to decode. */
     val isAvailable: Boolean
