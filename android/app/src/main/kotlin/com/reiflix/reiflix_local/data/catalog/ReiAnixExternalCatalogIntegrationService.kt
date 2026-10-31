@@ -16,6 +16,8 @@ import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Jikan are
@@ -26,6 +28,8 @@ class ReiAnixExternalCatalogIntegrationService(
     private val providers: ReiAnixCatalogProviderRegistry,
     private val artwork: ReiAnixArtworkService,
 ) {
+    private val enrichmentPassMutex = Mutex()
+
     private data class VerifiedRemote(
         val remote: ReiAnixCatalogAnime,
         val match: ReiAnixCatalogIdentityMatch,
@@ -35,7 +39,12 @@ class ReiAnixExternalCatalogIntegrationService(
      * Enriches a small round-robin slice. This method never performs a full-catalog network scan.
      * Every network and image operation is suspendable and uses the existing IO-backed services.
      */
-    suspend fun enrichLibraryGaps(batchSize: Int = DEFAULT_BATCH_SIZE): Int {
+    suspend fun enrichLibraryGaps(batchSize: Int = DEFAULT_BATCH_SIZE): Int =
+        enrichmentPassMutex.withLock {
+            runEnrichmentPass(batchSize)
+        }
+
+    private suspend fun runEnrichmentPass(batchSize: Int): Int {
         require(batchSize in 1..MAX_BATCH_SIZE)
         var cursor = library.externalCatalogCursor()
         var rows = library.listAnimeAfterExternalCatalogCursor(cursor, batchSize)
