@@ -757,6 +757,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (!urlCurrent(db, id, type, url)) return@transaction false
             val old = findByIdentity(db, entity, id.toString(), type, key, url)
             val values = ContentValues().apply {
+                // The poster may be the first artwork row inserted for this owner.
+                // Always provide all canonical v29 ownership columns when re-associating
+                // the existing cover_cache file; otherwise its NOT NULL constraint aborts
+                // the entire artwork pass before the backdrop can be downloaded.
+                put("entity_type", entity)
+                put("entity_id", id.toString())
+                put("artwork_type", type)
                 put("source", "cache"); put("source_ref", url); put("local_path", oldPath); put("external_url", url)
                 put("manual", 0); put("priority", 400); put("status", "ready"); put("updated_at", now)
                 put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")

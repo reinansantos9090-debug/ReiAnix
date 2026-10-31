@@ -253,14 +253,36 @@ internal object ReiAnixNativeLibraryCatalogProjector {
 
         val file = File(path)
         if (!file.isFile || file.length() <= 0L) return null
-        val extension = file.extension.lowercase()
-        if (extension == "avif" && Build.VERSION.SDK_INT < 31) {
-            val header = ByteArray(12)
-            val count = runCatching { file.inputStream().use { it.read(header) } }.getOrDefault(-1)
-            return path.takeIf {
-                count >= 12 && String(header, 4, 4, Charsets.US_ASCII) == "ftyp"
-            }
-        }
+
+        // Match the canonical artwork writer's signature gate before BitmapFactory.
+        // Robolectric/Android decoders can be permissive for malformed files, while the
+        // materializer requires a recognized image container before accepting bytes.
+        val header = ByteArray(32)
+        val headerBytes = runCatching {
+            file.inputStream().use { it.read(header) }
+        }.getOrDefault(-1)
+        if (headerBytes <= 0) return null
+        val signature = when {
+            headerBytes >= 3 &&
+                header[0] == 0xFF.toByte() &&
+                header[1] == 0xD8.toByte() &&
+                header[2] == 0xFF.toByte() -> "jpeg"
+            headerBytes >= 8 && byteArrayOf(
+                0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            ).indices.all { header[it] == byteArrayOf(
+                0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            )[it] } -> "png"
+            headerBytes >= 12 &&
+                String(header, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+                String(header, 8, 4, Charsets.US_ASCII) == "WEBP" -> "webp"
+            headerBytes >= 6 && String(header, 0, 6, Charsets.US_ASCII) in setOf("GIF87a", "GIF89a") -> "gif"
+            headerBytes >= 12 &&
+                String(header, 4, 4, Charsets.US_ASCII) == "ftyp" &&
+                String(header, 8, 4, Charsets.US_ASCII) in setOf("avif", "avis") -> "avif"
+            else -> null
+        } ?: return null
+
+        if (signature == "avif" && Build.VERSION.SDK_INT < 31) return path
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null

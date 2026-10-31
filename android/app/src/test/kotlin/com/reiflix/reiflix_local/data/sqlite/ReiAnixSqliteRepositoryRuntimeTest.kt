@@ -2596,6 +2596,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertEquals(1, httpCalls.get())
             assertEquals("https://cdn.myanimelist.net/backdrop-90210.png", requestedUrl)
 
+            val posterRow = repository.artworkForAnime(1L).single { it.artworkType == "poster" }
+            assertEquals("anime", posterRow.entityType)
+            assertEquals("1", posterRow.entityId)
+            assertEquals(poster.absolutePath, posterRow.localPath)
+            assertEquals("ready", posterRow.status)
+
             val publishedRow = repository.artworkForAnime(1L).single { it.artworkType == "backdrop" }
             val publishedFile = File(requireNotNull(publishedRow.localPath))
             assertTrue("The downloaded backdrop must exist as a local file.", publishedFile.isFile)
