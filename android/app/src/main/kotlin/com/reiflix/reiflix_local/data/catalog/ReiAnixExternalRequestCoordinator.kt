@@ -48,6 +48,8 @@ class ReiAnixExternalRequestCoordinator(
     private val jikanRateMutex = Mutex()
     private val jikanRequestTimes = ArrayDeque<Long>()
     private var lastJikanRequestAtMillis = Long.MIN_VALUE
+    private val sourcePauseMutex = Mutex()
+    private val sourceBlockedUntilMillis = mutableMapOf<ReiAnixCatalogSource, Long>()
 
     suspend fun <T> execute(
         source: ReiAnixCatalogSource,
@@ -68,8 +70,15 @@ class ReiAnixExternalRequestCoordinator(
                     try {
                         withTimeout(requestTimeoutMillis) {
                             permits.withPermit {
+                                awaitSourcePause(source)
                                 if (source == ReiAnixCatalogSource.JIKAN) awaitJikanRateLimit()
-                                operation()
+                                val result = operation()
+                                val rateLimit = (result as? ReiAnixCatalogResult.Failure)
+                                    ?.error as? ReiAnixCatalogError.RateLimited
+                                if (rateLimit != null) {
+                                    deferSource(source, rateLimit.retryAfterMillis ?: DEFAULT_RETRY_AFTER_MILLIS)
+                                }
+                                result
                             }
                         }
                     } finally {
@@ -89,6 +98,28 @@ class ReiAnixExternalRequestCoordinator(
         deferred.start()
         @Suppress("UNCHECKED_CAST")
         return deferred.await() as T
+    }
+
+    /** Apply Retry-After to later requests from the same source without retry loops. */
+    private suspend fun deferSource(source: ReiAnixCatalogSource, retryAfterMillis: Long) {
+        val bounded = retryAfterMillis.coerceIn(1L, MAX_RETRY_AFTER_MILLIS)
+        val until = System.currentTimeMillis() + bounded
+        sourcePauseMutex.withLock {
+            sourceBlockedUntilMillis[source] = maxOf(sourceBlockedUntilMillis[source] ?: 0L, until)
+        }
+    }
+
+    private suspend fun awaitSourcePause(source: ReiAnixCatalogSource) {
+        while (true) {
+            val waitMillis = sourcePauseMutex.withLock {
+                val until = sourceBlockedUntilMillis[source] ?: return@withLock 0L
+                val wait = (until - System.currentTimeMillis()).coerceAtLeast(0L)
+                if (wait == 0L) sourceBlockedUntilMillis.remove(source)
+                wait
+            }
+            if (waitMillis == 0L) return
+            delay(waitMillis)
+        }
     }
 
     /**
@@ -143,5 +174,7 @@ class ReiAnixExternalRequestCoordinator(
         const val JIKAN_MAX_REQUESTS_PER_MINUTE = 60
         const val JIKAN_MINIMUM_INTERVAL_MILLIS = 334L
         const val JIKAN_WINDOW_MILLIS = 60_000L
+        const val DEFAULT_RETRY_AFTER_MILLIS = 2_000L
+        const val MAX_RETRY_AFTER_MILLIS = 6L * 60L * 60L * 1_000L
     }
 }

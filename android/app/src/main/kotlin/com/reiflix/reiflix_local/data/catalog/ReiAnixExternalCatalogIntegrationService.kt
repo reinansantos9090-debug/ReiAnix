@@ -48,9 +48,8 @@ class ReiAnixExternalCatalogIntegrationService(
         var enriched = 0
         for (row in rows) {
             currentCoroutineContext().ensureActive()
+            if (isEligible(row) && enrichOne(row)) enriched++
             library.setExternalCatalogCursor(row.id)
-            if (!isEligible(row)) continue
-            if (enrichOne(row)) enriched++
         }
         return enriched
     }
@@ -105,8 +104,6 @@ class ReiAnixExternalCatalogIntegrationService(
             } catch (error: Exception) {
                 record(source, "PROVIDER_FAILED", anime.id, error)
                 null
-            } finally {
-                // Timestamp is committed below only after a completed provider attempt.
             }
 
             library.markExternalCatalogAttempt(anime.id, source.key)

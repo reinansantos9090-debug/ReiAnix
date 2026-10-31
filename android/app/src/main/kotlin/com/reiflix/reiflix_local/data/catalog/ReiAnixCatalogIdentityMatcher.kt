@@ -89,6 +89,13 @@ object ReiAnixCatalogIdentityMatcher {
             .trim()
             .replace(Regex("\\s+"), " ")
 
-    private fun normalizeCatalogFormat(value: String?): String =
-        value.orEmpty().trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+    private fun normalizeCatalogFormat(value: String?): String {
+        val normalized = value.orEmpty().trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+        return when (normalized) {
+            "tv series", "series", "anime" -> "tv"
+            "film" -> "movie"
+            "tv_short" -> "tv short"
+            else -> normalized
+        }
+    }
 }

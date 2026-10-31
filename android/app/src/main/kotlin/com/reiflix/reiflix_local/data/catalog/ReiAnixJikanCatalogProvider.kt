@@ -108,9 +108,13 @@ class ReiAnixJikanCatalogProvider(
         val score = item.catalogNumber("score")
             ?.takeIf { it.isFinite() && it in 0.0..10.0 && it > 0.0 }
             ?.let { (it * 10.0).roundToInt().coerceIn(0, 100) }
-        val duration = item.catalogText("duration")
-            ?.let { Regex("(\\d+)\\s*min", RegexOption.IGNORE_CASE).find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
-            ?.takeIf { it > 0 }
+        val duration = item.catalogText("duration")?.let { raw ->
+            val hours = Regex("(\\d+)\\s*(?:hr|hour)", RegexOption.IGNORE_CASE)
+                .find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+            val minutes = Regex("(\\d+)\\s*min", RegexOption.IGNORE_CASE)
+                .find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+            (hours * 60 + minutes).takeIf { it > 0 }
+        }
 
         return ReiAnixCatalogAnime(
             source = source,
