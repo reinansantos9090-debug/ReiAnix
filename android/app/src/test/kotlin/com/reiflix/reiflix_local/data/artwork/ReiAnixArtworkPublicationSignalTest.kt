@@ -105,6 +105,238 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun exhaustedQuotaWithoutResetRetainsTheFullSixtySecondCooldown() = runBlocking {
+        var now = 1_700_000_000_000L
+        val startedAt = now
+        val waits = mutableListOf<Long>()
+        val requestTimes = mutableListOf<Long>()
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait -> waits += wait; now += wait },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+
+        controller.execute("https://graphql.anilist.co") {
+            requestTimes += now
+            AniListHttpResponse(
+                200,
+                "{}",
+                headers = mapOf("X-RateLimit-Remaining" to "0"),
+            )
+        }
+        controller.execute("https://graphql.anilist.co") {
+            requestTimes += now
+            AniListHttpResponse(200, "{}")
+        }
+
+        assertEquals(2, requestTimes.size)
+        assertEquals(60_000L, requestTimes[1] - startedAt)
+        assertEquals(listOf(60_000L), waits)
+    }
+
+    @Test
+    fun exhaustedQuotaWithMalformedResetFallsBackToSixtySeconds() = runBlocking {
+        var now = 1_700_000_000_000L
+        val startedAt = now
+        val waits = mutableListOf<Long>()
+        val requestTimes = mutableListOf<Long>()
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait -> waits += wait; now += wait },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+
+        controller.execute("https://graphql.anilist.co") {
+            requestTimes += now
+            AniListHttpResponse(
+                200,
+                "{}",
+                headers = mapOf(
+                    "X-RateLimit-Remaining" to "0",
+                    "X-RateLimit-Reset" to "not-a-timestamp",
+                ),
+            )
+        }
+        controller.execute("https://graphql.anilist.co") {
+            requestTimes += now
+            AniListHttpResponse(200, "{}")
+        }
+
+        assertEquals(2, requestTimes.size)
+        assertEquals(60_000L, requestTimes[1] - startedAt)
+        assertEquals(listOf(60_000L), waits)
+    }
+
+    @Test
+    fun exhaustedQuotaWithExpiredResetFallsBackToSixtySeconds() = runBlocking {
+        var now = 1_700_000_000_000L
+        val startedAt = now
+        val waits = mutableListOf<Long>()
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait -> waits += wait; now += wait },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+
+        controller.execute("https://graphql.anilist.co") {
+            AniListHttpResponse(
+                200,
+                "{}",
+                headers = mapOf(
+                    "X-RateLimit-Remaining" to "0",
+                    "X-RateLimit-Reset" to ((now - 1_000L) / 1_000L).toString(),
+                ),
+            )
+        }
+        controller.execute("https://graphql.anilist.co") { AniListHttpResponse(200, "{}") }
+
+        assertEquals(60_000L, now - startedAt)
+        assertEquals(listOf(60_000L), waits)
+    }
+
+    @Test
+    fun exhaustedQuotaWithFutureResetWaitsUntilTheServerDeadline() = runBlocking {
+        var now = 1_700_000_000_000L
+        val startedAt = now
+        val resetDelayMs = 180_000L
+        val waits = mutableListOf<Long>()
+        val requestTimes = mutableListOf<Long>()
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait -> waits += wait; now += wait },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+        val resetAtSeconds = (now + resetDelayMs) / 1_000L
+
+        controller.execute("https://graphql.anilist.co") {
+            requestTimes += now
+            AniListHttpResponse(
+                200,
+                "{}",
+                headers = mapOf(
+                    "X-RateLimit-Remaining" to "0",
+                    "X-RateLimit-Reset" to resetAtSeconds.toString(),
+                ),
+            )
+        }
+        controller.execute("https://graphql.anilist.co") {
+            requestTimes += now
+            AniListHttpResponse(200, "{}")
+        }
+
+        assertEquals(2, requestTimes.size)
+        assertEquals(resetDelayMs, requestTimes[1] - startedAt)
+        assertEquals(listOf(resetDelayMs), waits)
+    }
+
+    @Test
+    fun retryAfterAndResetAlwaysUseTheLaterValidDeadline() = runBlocking {
+        val scenarios = listOf(
+            Triple(150L, 120L, 150_000L),
+            Triple(90L, 180L, 180_000L),
+        )
+        scenarios.forEach { (retryAfterSeconds, resetDelaySeconds, expectedWaitMs) ->
+            var now = 1_700_000_000_000L
+            val waits = mutableListOf<Long>()
+            var calls = 0
+            val controller = AniListGraphqlRequestController(
+                nowMillis = { now },
+                delayMillis = { wait -> waits += wait; now += wait },
+                minimumIntervalOverrideMs = 0L,
+                logger = {},
+            )
+            val resetAtSeconds = (now / 1_000L) + resetDelaySeconds
+
+            val result = controller.execute("https://graphql.anilist.co") {
+                calls++
+                if (calls == 1) {
+                    AniListHttpResponse(
+                        429,
+                        "{}",
+                        headers = mapOf(
+                            "Retry-After" to retryAfterSeconds.toString(),
+                            "X-RateLimit-Remaining" to "0",
+                            "X-RateLimit-Reset" to resetAtSeconds.toString(),
+                        ),
+                    )
+                } else {
+                    AniListHttpResponse(200, "{}")
+                }
+            }
+
+            assertEquals(200, result.statusCode)
+            assertEquals(2, calls)
+            assertEquals(listOf(expectedWaitMs), waits)
+        }
+    }
+
+    @Test
+    fun exhaustedQuotaCooldownIsSharedAndDoesNotHoldTheMutexDuringWait() = runBlocking {
+        var now = 1_700_000_000_000L
+        val firstWaitStarted = CompletableDeferred<Unit>()
+        val competingWaitStarted = CompletableDeferred<Unit>()
+        val releaseFirstWait = CompletableDeferred<Unit>()
+        var delayCalls = 0
+        var networkCalls = 0
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait ->
+                when (delayCalls++) {
+                    0 -> {
+                        firstWaitStarted.complete(Unit)
+                        releaseFirstWait.await()
+                        now += wait
+                    }
+                    1 -> {
+                        competingWaitStarted.complete(Unit)
+                        throw CancellationException("cancel competing quota waiter")
+                    }
+                    else -> now += wait
+                }
+            },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+
+        controller.execute("https://graphql.anilist.co") {
+            networkCalls++
+            AniListHttpResponse(
+                200,
+                "{}",
+                headers = mapOf("X-RateLimit-Remaining" to "0"),
+            )
+        }
+
+        val firstConsumer = async {
+            controller.execute("https://graphql.anilist.co") {
+                networkCalls++
+                AniListHttpResponse(200, "{}")
+            }
+        }
+        firstWaitStarted.await()
+
+        val secondConsumer = async {
+            runCatching {
+                controller.execute("https://graphql.anilist.co") {
+                    networkCalls++
+                    error("A competing consumer must not bypass the shared cooldown.")
+                }
+            }
+        }
+        withTimeout(1_000L) { competingWaitStarted.await() }
+        assertTrue(secondConsumer.await().exceptionOrNull() is CancellationException)
+        assertEquals(1, networkCalls)
+
+        releaseFirstWait.complete(Unit)
+        assertEquals(200, firstConsumer.await().statusCode)
+        assertEquals(2, networkCalls)
+    }
+
+    @Test
     fun exhaustedQuotaIsHonoredWhenTheLimitHeaderIsMissing() = runBlocking {
         var now = 1_700_000_000_000L
         val waits = mutableListOf<Long>()
