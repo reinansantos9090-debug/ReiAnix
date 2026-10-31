@@ -85,7 +85,9 @@ class ReiAnixAniPubCatalogProvider(
         }
         if (selected is ReiAnixCatalogResult.Failure) return selected
         return try {
-            val root = (selected as ReiAnixCatalogResult.Success).value
+            val payload = (selected as ReiAnixCatalogResult.Success).value
+            val root = payload as? JSONObject
+                ?: throw JSONException("AniPub details response must be a JSON object.")
             ReiAnixCatalogResult.Success(parseAnime(root, id))
         } catch (cancelled: CancellationException) {
             throw cancelled
