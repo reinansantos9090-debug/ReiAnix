@@ -236,6 +236,15 @@ jobs:
             --tests com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtworkTest \
             --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
             --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListMatcherTest \
+            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogContractsTest \
+            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinatorTest \
+            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
+            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixJikanCatalogProviderTest \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.verifiedExternalCatalogIdsPersistInV29PreferencesWithoutChangingLibraryRows \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.supplementalKitsuMetadataFillsOnlyGapsAndPersistsItsIdInV29Preferences \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.failedKitsuProviderDoesNotBlockVerifiedJikanFallback \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.ambiguousJikanCandidatesAreRejectedWithoutPersistingAnyExternalId \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.externalArtworkCandidateCannotReplaceManualOrValidLocalPoster \
             --tests com.reiflix.reiflix_local.ReiAnixLibraryViewModelContractTest.artworkProjectionMergePreservesPlaybackProgress \
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.posterAndBackdropRevisionsReachTheImmutableArtworkModel \
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.realDurationAndEpisodeArtworkReachUiModelUnchanged \
