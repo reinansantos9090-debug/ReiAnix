@@ -321,7 +321,7 @@ suspend fun ReiAnixSqliteLibraryRepository.mergeExternalCatalogMetadata(
 
         val manualFields = try {
             val parsed = JSONArray(current.metadataManualFieldsJson ?: "[]")
-            buildSet {
+            buildSet<String> {
                 for (index in 0 until parsed.length()) {
                     val value = parsed.opt(index)
                     if (value !is String) throw IllegalStateException("Manual metadata ownership is malformed.")
