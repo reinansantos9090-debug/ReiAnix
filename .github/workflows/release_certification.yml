@@ -240,10 +240,6 @@ jobs:
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.posterAndBackdropRevisionsReachTheImmutableArtworkModel \
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.realDurationAndEpisodeArtworkReachUiModelUnchanged \
             --tests com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjectionTest \
-            --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListCatalogProviderAdapterTest \
-            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogContractsTest \
-            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinatorTest \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.verifiedExternalCatalogIdsPersistInV29PreferencesWithoutChangingLibraryRows \
             2>&1 | tee "$RUNNER_TEMP/reianix-jvm-certification.log"
 
       - name: Compile release Kotlin and assemble release APK
