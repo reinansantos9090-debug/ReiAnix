@@ -235,7 +235,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     )
     private data class SaveResult(val saved: Boolean, val current: Boolean)
     private class HttpFailure(val code: Int, val retryAfterSeconds: Long?) : IOException("Artwork HTTP " + code)
-    private class InvalidImage(message: String) : Exception(message)
+    private class InvalidImage(message: String, val responseStatus: Int) : Exception(message)
 
     fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean {
         val requestId = UUID.randomUUID().toString()
@@ -697,10 +697,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 throw cancelled
             } catch (error: Exception) {
                 currentCoroutineContext().ensureActive()
+                val responseStatus = (error as? HttpFailure)?.code
+                    ?: (error as? InvalidImage)?.responseStatus
                 setFailure(
                     rowId = rowId,
                     error = error,
-                    httpStatus = (error as? HttpFailure)?.code,
+                    httpStatus = responseStatus,
                     retryAfterSeconds = (error as? HttpFailure)?.retryAfterSeconds,
                 )
                 ReiAnixDiagnosticTimeline.record(
@@ -716,7 +718,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         "artwork_type" to type,
                         "source_kind" to artworkCatalogSource(url),
                         "association_status" to "CHECKED_BEFORE_DOWNLOAD",
-                        "http_status" to ((error as? HttpFailure)?.code ?: -1),
+                        "http_status" to (responseStatus ?: -1),
                         "failure_kind" to artworkFailureKind(error),
                         "retry_after_seconds" to ((error as? HttpFailure)?.retryAfterSeconds ?: -1L),
                     ),
@@ -945,12 +947,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 throw HttpFailure(code, retryAfter)
             }
             if (url.protocol.equals("https", true) && !conn.url.protocol.equals("https", true)) {
-                throw InvalidImage("HTTPS artwork redirected to HTTP.")
+                throw InvalidImage("HTTPS artwork redirected to HTTP.", code)
             }
             val declared = conn.contentType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT).orEmpty()
-            if (declared.isNotEmpty() && !declared.startsWith("image/")) throw InvalidImage("Content-Type is not image.")
+            if (declared.isNotEmpty() && !declared.startsWith("image/")) throw InvalidImage("Content-Type is not image.", code)
             val expectedContentLength = conn.getHeaderFieldLong("Content-Length", -1L)
-            if (expectedContentLength > MAX_DOWNLOAD_BYTES) throw InvalidImage("Artwork exceeds 32 MiB.")
+            if (expectedContentLength > MAX_DOWNLOAD_BYTES) throw InvalidImage("Artwork exceeds 32 MiB.", code)
             val digest = MessageDigest.getInstance("SHA-256")
             val header = ByteArrayOutputStream(32)
             var total = 0L
@@ -963,7 +965,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         if (n < 0) break
                         if (n == 0) continue
                         total += n.toLong()
-                        if (total > MAX_DOWNLOAD_BYTES) throw InvalidImage("Artwork exceeds 32 MiB.")
+                        if (total > MAX_DOWNLOAD_BYTES) throw InvalidImage("Artwork exceeds 32 MiB.", code)
                         val remaining = 32 - header.size()
                         if (remaining > 0) header.write(buffer, 0, minOf(remaining, n))
                         digest.update(buffer, 0, n); output.write(buffer, 0, n)
@@ -971,13 +973,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     output.flush(); output.fd.sync()
                 }
             }
-            if (total == 0L) throw InvalidImage("Empty image response.")
+            if (total == 0L) throw InvalidImage("Empty image response.", code)
             if (!artworkResponseMatchesContentLength(expectedContentLength, total)) {
                 throw IOException("Artwork response ended before its declared Content-Length.")
             }
-            val ext = imageExtension(header.toByteArray()) ?: throw InvalidImage("Unknown image signature.")
-            if (!validImage(tmp, ext)) throw InvalidImage("Image decoding validation failed.")
-            val bounds = imageDimensions(tmp.absolutePath, ext) ?: throw InvalidImage("Invalid image dimensions.")
+            val ext = imageExtension(header.toByteArray()) ?: throw InvalidImage("Unknown image signature.", code)
+            if (!validImage(tmp, ext)) throw InvalidImage("Image decoding validation failed.", code)
+            val bounds = imageDimensions(tmp.absolutePath, ext) ?: throw InvalidImage("Invalid image dimensions.", code)
             val checksum = digest.digest().toHex()
             // Content-addressed names avoid replacing the previous valid image while an
             // update is materialized. Same-directory rename is atomic on filesystems that
