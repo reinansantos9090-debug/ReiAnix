@@ -908,7 +908,15 @@ class ReiAnixBackupService(context: Context) {
                 db.delete("scan_runs", null, null)
                 val allowed = exportedPreferenceKeys().toList().sorted()
                 val placeholders = allowed.joinToString(",") { "?" }
-                db.delete("preferences", "key NOT IN (" + placeholders + ")", allowed.toTypedArray())
+                // Preserve cross-catalog identifiers as well as exported settings.
+                db.delete(
+                    "preferences",
+                    "key NOT IN (" + placeholders + ") AND substr(key,1,?) != ?",
+                    (allowed + listOf(
+                        ReiAnixExternalCatalogIdsCodec.PREFERENCE_PREFIX.length.toString(),
+                        ReiAnixExternalCatalogIdsCodec.PREFERENCE_PREFIX,
+                    )).toTypedArray(),
+                )
                 validateDatabaseConnection(db)
                 db.setTransactionSuccessful()
             } finally {
