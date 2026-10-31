@@ -861,10 +861,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val url = URL(rawUrl)
         val conn = httpConnectionFactory(url)
         activeConnections[animeId] = conn
-        currentCoroutineContext().ensureActive()
         val tmp = File(cacheDirectory, "." + key + "-" + UUID.randomUUID() + ".tmp")
         activeTemporaryFiles.add(tmp.absolutePath)
         try {
+            currentCoroutineContext().ensureActive()
             conn.requestMethod = "GET"; conn.connectTimeout = 15000; conn.readTimeout = 15000
             conn.instanceFollowRedirects = true
             conn.setRequestProperty("User-Agent", "ReiAnix/ArtworkEngine-Kotlin")
@@ -1038,7 +1038,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         "AND EXISTS (SELECT 1 FROM anime n WHERE n.id=? AND (" +
                         "(a.artwork_type='poster' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.cover_url,''))) " +
                         "OR (a.artwork_type='backdrop' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.banner_url,'')))))",
-                    arrayOf(animeId.toString(), animeId.toString(), MAX_AUTOMATIC_ARTWORK_FAILURES.toString()),
+                    arrayOf(animeId.toString(), MAX_AUTOMATIC_ARTWORK_FAILURES.toString(), animeId.toString()),
                 ).use { cursor ->
                     if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getDouble(0) else null
                 }

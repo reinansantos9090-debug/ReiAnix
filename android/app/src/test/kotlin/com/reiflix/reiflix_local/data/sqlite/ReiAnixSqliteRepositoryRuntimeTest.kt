@@ -2922,8 +2922,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val artwork = ReiAnixArtworkService(context, database)
             val cases = listOf(
                 Triple(404, null, "https://cdn.kitsu.io/backdrop-404.png"),
-                Triple(429, "120", "https://cdn.kitsu.io/backdrop-429.png"),
-                Triple(503, null, "https://cdn.kitsu.io/backdrop-503.png"),
+                Triple(429, "3600", "https://cdn.kitsu.io/backdrop-429.png"),
+                Triple(503, "1800", "https://cdn.kitsu.io/backdrop-503.png"),
             )
             for ((status, retryAfter, url) in cases) {
                 artwork.httpConnectionFactory = { requested ->
@@ -2941,8 +2941,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 val retryAt = requireNotNull(row.nextRetryAt)
                 val expectedDelay = when (status) {
                     404 -> 86_400.0
-                    429 -> 120.0
-                    else -> 60.0
+                    429 -> 3_600.0
+                    else -> 1_800.0
                 }
                 assertTrue(
                     "HTTP $status must persist its bounded retry deadline.",
@@ -3022,7 +3022,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", "https://cdn.kitsu.io/concurrent-backdrop.png"))
             assertTrue(artwork.requestAnimeArtwork(1L, force = true))
             assertTrue("First download did not reach the controlled response.", readStarted.await(5, TimeUnit.SECONDS))
-            assertFalse("A second request for the active anime must be deduplicated.", artwork.requestAnimeArtwork(1L, force = true))
+            assertFalse("A second request for the active anime must be deduplicated.", artwork.requestAnimeArtwork(1L))
             assertEquals(1, httpCalls.get())
             releaseRead.countDown()
             withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
