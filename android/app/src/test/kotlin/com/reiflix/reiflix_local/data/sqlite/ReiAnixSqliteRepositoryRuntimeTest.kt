@@ -2772,9 +2772,9 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
             val kitsuCalls = AtomicInteger()
             val jikanCalls = AtomicInteger()
-            fun provider(source: ReiAnixCatalogSource, calls: AtomicInteger) =
+            fun provider(catalogSource: ReiAnixCatalogSource, calls: AtomicInteger) =
                 object : ReiAnixAnimeCatalogProvider {
-                    override val source = source
+                    override val source: ReiAnixCatalogSource = catalogSource
                     override suspend fun searchAnime(
                         query: String,
                         limit: Int,
