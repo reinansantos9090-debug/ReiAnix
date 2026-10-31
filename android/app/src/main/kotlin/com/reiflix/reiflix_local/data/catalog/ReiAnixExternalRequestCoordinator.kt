@@ -9,6 +9,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -44,6 +45,9 @@ class ReiAnixExternalRequestCoordinator(
     private val permits = Semaphore(maxConcurrentRequests)
     private val mutex = Mutex()
     private val inFlight = mutableMapOf<RequestKey, Deferred<Any?>>()
+    private val jikanRateMutex = Mutex()
+    private val jikanRequestTimes = ArrayDeque<Long>()
+    private var lastJikanRequestAtMillis = Long.MIN_VALUE
 
     suspend fun <T> execute(
         source: ReiAnixCatalogSource,
@@ -63,7 +67,10 @@ class ReiAnixExternalRequestCoordinator(
                 created = scope.async(start = CoroutineStart.LAZY) {
                     try {
                         withTimeout(requestTimeoutMillis) {
-                            permits.withPermit { operation() }
+                            permits.withPermit {
+                                if (source == ReiAnixCatalogSource.JIKAN) awaitJikanRateLimit()
+                                operation()
+                            }
                         }
                     } finally {
                         // Timeout/owner cancellation must not leave a completed Deferred in the
@@ -84,6 +91,40 @@ class ReiAnixExternalRequestCoordinator(
         return deferred.await() as T
     }
 
+    /**
+     * Jikan's public API allows at most 3 requests/second and 60/minute.
+     * A conservative 334ms minimum spacing satisfies the per-second window;
+     * the rolling one-minute window handles the stricter sustained limit.
+     */
+    private suspend fun awaitJikanRateLimit() {
+        while (true) {
+            val waitMillis = jikanRateMutex.withLock {
+                val now = System.currentTimeMillis()
+                while (jikanRequestTimes.isNotEmpty() && now - jikanRequestTimes.first() >= JIKAN_WINDOW_MILLIS) {
+                    jikanRequestTimes.removeFirst()
+                }
+                val spacingWait = if (lastJikanRequestAtMillis == Long.MIN_VALUE) {
+                    0L
+                } else {
+                    (JIKAN_MINIMUM_INTERVAL_MILLIS - (now - lastJikanRequestAtMillis)).coerceAtLeast(0L)
+                }
+                val minuteWait = if (jikanRequestTimes.size >= JIKAN_MAX_REQUESTS_PER_MINUTE) {
+                    (jikanRequestTimes.first() + JIKAN_WINDOW_MILLIS - now).coerceAtLeast(1L)
+                } else {
+                    0L
+                }
+                val wait = maxOf(spacingWait, minuteWait)
+                if (wait == 0L) {
+                    jikanRequestTimes.addLast(now)
+                    lastJikanRequestAtMillis = now
+                }
+                wait
+            }
+            if (waitMillis == 0L) return
+            delay(waitMillis)
+        }
+    }
+
     suspend fun activeRequestCount(): Int = mutex.withLock { inFlight.size }
 
     /** Cancels pending work and permanently closes this coordinator. */
@@ -98,5 +139,9 @@ class ReiAnixExternalRequestCoordinator(
         const val MIN_TIMEOUT_MILLIS = 100L
         const val MAX_TIMEOUT_MILLIS = 120_000L
         const val MAX_OPERATION_KEY_LENGTH = 256
+        const val JIKAN_MAX_REQUESTS_PER_SECOND = 3
+        const val JIKAN_MAX_REQUESTS_PER_MINUTE = 60
+        const val JIKAN_MINIMUM_INTERVAL_MILLIS = 334L
+        const val JIKAN_WINDOW_MILLIS = 60_000L
     }
 }

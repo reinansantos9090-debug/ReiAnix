@@ -115,12 +115,22 @@ data class ReiAnixCatalogAnime(
     val mediaKind: ReiAnixCatalogMediaKind? = null,
     val season: String? = null,
     val seasonNumber: Int? = null,
+    val episodes: Int? = null,
+    val durationMinutes: Int? = null,
+    val status: String? = null,
+    val averageScore: Int? = null,
+    val contentRating: String? = null,
+    val startDate: String? = null,
+    val endDate: String? = null,
 ) {
     init {
         require(!source.resolvesIdentifiers)
         require(title.isNotBlank())
         require(releaseYear == null || releaseYear in 1900..2200)
         require(seasonNumber == null || seasonNumber > 0)
+        require(episodes == null || episodes >= 0)
+        require(durationMinutes == null || durationMinutes > 0)
+        require(averageScore == null || averageScore in 0..100)
         coverUrl?.let {
             ReiAnixCatalogArtworkCandidate(source, ids.idFor(source).orEmpty(), ReiAnixCatalogArtworkType.POSTER, it)
         }
@@ -185,21 +195,64 @@ class ReiAnixCatalogProviderRegistry(
         private val delegate: ReiAnixAnimeCatalogProvider,
         private val coordinator: ReiAnixExternalRequestCoordinator,
     ) : ReiAnixAnimeCatalogProvider by delegate {
+        private data class CachedSuccess(
+            val result: ReiAnixCatalogResult.Success<*>,
+            val expiresAtMillis: Long,
+        )
+
+        private val cache = java.util.concurrent.ConcurrentHashMap<String, CachedSuccess>()
+
+        private suspend fun <T> executeCached(
+            key: String,
+            fallbackTtlMillis: Long,
+            operation: suspend () -> ReiAnixCatalogResult<T>,
+        ): ReiAnixCatalogResult<T> = coordinator.execute(delegate.source, key) {
+            val now = System.currentTimeMillis()
+            cache[key]?.let { cached ->
+                if (cached.expiresAtMillis > now) {
+                    @Suppress("UNCHECKED_CAST")
+                    return@executeCached cached.result as ReiAnixCatalogResult<T>
+                }
+                cache.remove(key, cached)
+            }
+            val result = operation()
+            when (result) {
+                is ReiAnixCatalogResult.Success -> {
+                    val expiry = result.expiresAtMillis ?: safeCatalogCacheExpiry(
+                        result.fetchedAtMillis,
+                        fallbackTtlMillis,
+                    )
+                    if (expiry > now) cache[key] = CachedSuccess(result, expiry)
+                }
+                is ReiAnixCatalogResult.Failure -> Unit
+            }
+            result
+        }
+
         override suspend fun searchAnime(
             query: String,
             limit: Int,
         ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
             val normalized = query.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT)
-            return coordinator.execute(delegate.source, "search:$limit:$normalized") {
+            if (normalized.isEmpty()) return ReiAnixCatalogResult.Success(emptyList())
+            val key = "search:$limit:$normalized"
+            return executeCached(key, DEFAULT_SEARCH_CACHE_TTL_MILLIS) {
                 delegate.searchAnime(query, limit)
             }
         }
 
         override suspend fun getAnime(externalId: String): ReiAnixCatalogResult<ReiAnixCatalogAnime?> {
-            val key = externalId.trim()
-            require(key.isNotEmpty()) { "External catalog ID cannot be blank." }
-            return coordinator.execute(delegate.source, "id:$key") { delegate.getAnime(key) }
+            val id = externalId.trim()
+            require(id.isNotEmpty()) { "External catalog ID cannot be blank." }
+            return executeCached("id:$id", DEFAULT_DETAIL_CACHE_TTL_MILLIS) {
+                delegate.getAnime(id)
+            }
         }
+    }
+
+    private companion object {
+        const val DEFAULT_SEARCH_CACHE_TTL_MILLIS = 30L * 60L * 1_000L
+        const val DEFAULT_DETAIL_CACHE_TTL_MILLIS = 24L * 60L * 60L * 1_000L
     }
 
     private val bySource: Map<ReiAnixCatalogSource, ReiAnixAnimeCatalogProvider>
@@ -240,6 +293,13 @@ class ReiAnixCatalogProviderRegistry(
 
     fun cancelPendingRequests() = requestCoordinator.cancelAll()
 }
+
+private fun safeCatalogCacheExpiry(fetchedAtMillis: Long, ttlMillis: Long): Long =
+    if (ttlMillis > 0L && fetchedAtMillis > Long.MAX_VALUE - ttlMillis) {
+        Long.MAX_VALUE
+    } else {
+        fetchedAtMillis + ttlMillis
+    }
 
 fun reiAnixCatalogHttpError(
     statusCode: Int,
