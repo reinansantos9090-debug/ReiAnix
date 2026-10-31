@@ -192,7 +192,7 @@ class AniListGraphqlRequestControllerTest {
             }
         }
         withTimeout(1_000L) { competingWaitStarted.await() }
-        competingRequest.await()
+        assertTrue(competingRequest.await().exceptionOrNull() is CancellationException)
 
         releaseFirstWait.complete(Unit)
         assertEquals(200, limitedRequest.await().statusCode)
