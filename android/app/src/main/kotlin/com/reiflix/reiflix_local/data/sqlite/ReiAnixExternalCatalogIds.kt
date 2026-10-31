@@ -114,7 +114,7 @@ suspend fun ReiAnixSqliteLibraryRepository.saveExternalCatalogIds(
     database.transaction { db ->
         val localIdentityAndAniListId = db.rawQuery(
             """
-            SELECT lookup_title,title,romaji,english,"native",aliases,year,format,media_kind,season,anilist_id
+            SELECT lookup_title,title,romaji,english,"native",aliases,year,format,media_kind,season,anilist_id,episodes_count
             FROM anime WHERE id=? LIMIT 1
             """.trimIndent(),
             arrayOf(match.localAnimeId.toString()),
@@ -137,6 +137,7 @@ suspend fun ReiAnixSqliteLibraryRepository.saveExternalCatalogIds(
                 format = format,
                 mediaKind = parseLocalMediaKind(cursor.getString(8), format),
                 season = cursor.getString(9),
+                episodes = if (cursor.isNull(11)) null else cursor.getInt(11).takeIf { it >= 0 },
             )
             localIdentity to if (cursor.isNull(10)) null else cursor.getLong(10).takeIf { it > 0L }
         }
@@ -206,6 +207,7 @@ internal fun ReiAnixAnimeRecord.toExternalCatalogIdentity(): ReiAnixCatalogIdent
         format = format,
         mediaKind = parseLocalMediaKind(mediaKind, format),
         season = season,
+        episodes = episodesCount?.takeIf { it >= 0 },
     )
 }
 
