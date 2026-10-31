@@ -23,6 +23,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -349,6 +351,116 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return true
     }
 
+    /** Waits for a currently queued anime artwork pass without blocking the caller thread. */
+    suspend fun awaitAnimeArtwork(animeId: Long, timeoutMillis: Long = 45_000L) {
+        require(animeId > 0L)
+        require(timeoutMillis in 1_000L..120_000L)
+        withTimeoutOrNull(timeoutMillis) {
+            jobs[animeId]?.join()
+        }
+    }
+
+    /** True only when a decoded local image or protected manual artwork already exists. */
+    suspend fun hasValidAnimeArtwork(animeId: Long, artworkType: String = "poster"): Boolean =
+        withContext(Dispatchers.IO) {
+            require(animeId > 0L)
+            require(artworkType == "poster" || artworkType == "backdrop")
+            val state = database.read { db ->
+                val anime = db.rawQuery(
+                    "SELECT cover_cache,media_kind FROM anime WHERE id=? LIMIT 1",
+                    arrayOf(animeId.toString()),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getString(1)
+                } ?: return@read null
+                val entity = if (anime.second.equals("movie", true)) "movie" else "anime"
+                val rows = db.rawQuery(
+                    "SELECT local_path,manual,source FROM artwork " +
+                        "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type=?",
+                    arrayOf(animeId.toString(), artworkType),
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            add(
+                                Triple(
+                                    cursor.getString(0),
+                                    cursor.getInt(1) != 0,
+                                    cursor.getString(2),
+                                ),
+                            )
+                        }
+                    }
+                }
+                Triple(anime.first, entity, rows)
+            } ?: return@withContext false
+            if (artworkType == "poster" && validImage(state.first)) return@withContext true
+            state.third.any { (path, manual, source) ->
+                manual || source.equals("manual", true) ||
+                    (source.equals("local", true) && validImage(path)) ||
+                    validImage(path)
+            }
+        }
+
+    /**
+     * Makes a verified external candidate eligible in the existing anime row only when
+     * there is no valid local/manual image. The existing materializer remains the sole downloader.
+     */
+    suspend fun replaceExternalArtworkCandidate(
+        animeId: Long,
+        artworkType: String,
+        rawUrl: String,
+    ): Boolean = withContext(Dispatchers.IO) {
+        require(animeId > 0L)
+        require(artworkType == "poster" || artworkType == "backdrop")
+        val url = rawUrl.trim()
+        if (!safeUrl(url) || !url.startsWith("https://", ignoreCase = true)) return@withContext false
+        database.transaction { db ->
+            val row = db.rawQuery(
+                "SELECT cover_cache,metadata_manual_fields,media_kind,cover_url,banner_url " +
+                    "FROM anime WHERE id=? LIMIT 1",
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) return@transaction false
+                arrayOf(
+                    cursor.getString(0), cursor.getString(1), cursor.getString(2),
+                    cursor.getString(3), cursor.getString(4),
+                )
+            }
+            val targetField = if (artworkType == "poster") "cover_url" else "banner_url"
+            val currentUrl = if (artworkType == "poster") row[3] else row[4]
+            if (currentUrl?.trim() == url) return@transaction true
+
+            // Any manual row is user-owned even if its file is currently unavailable.
+            val rows = db.rawQuery(
+                "SELECT local_path,manual,source FROM artwork " +
+                    "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type=?",
+                arrayOf(animeId.toString(), artworkType),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(Triple(cursor.getString(0), cursor.getInt(1) != 0, cursor.getString(2)))
+                    }
+                }
+            }
+            if (rows.any { (path, manual, source) ->
+                    manual || source.equals("manual", true) ||
+                        (source.equals("local", true) && validImage(path)) ||
+                        validImage(path)
+                }
+            ) return@transaction false
+            if (artworkType == "poster" && validImage(row[0])) return@transaction false
+
+            val manualFields = row[1]
+            val fieldIsManual = if (manualFields.isNullOrBlank()) false else runCatching {
+                val fields = JSONArray(manualFields)
+                (0 until fields.length()).any { fields.optString(it) == targetField }
+            }.getOrDefault(true)
+            if (fieldIsManual) return@transaction false
+
+            val values = ContentValues().apply { put(targetField, url) }
+            db.update("anime", values, "id=?", arrayOf(animeId.toString())) == 1
+        }
+    }
+
     /** Repair existing persisted image URLs in bounded asynchronous batches. */
     fun requestPendingArtwork(): Boolean {
         if (cacheClearInProgress.get() || !backfillRunning.compareAndSet(false, true)) return false
@@ -583,7 +695,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         "entity_type" to entity,
                         "entity_id" to id,
                         "artwork_type" to type,
-                        "source_kind" to "anilist",
+                        "source_kind" to artworkCatalogSource(url),
                         "association_status" to "CHECKED_BEFORE_DOWNLOAD",
                         "http_status" to ((error as? HttpFailure)?.code ?: -1),
                         "failure_kind" to artworkFailureKind(error),
@@ -656,7 +768,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     return@transaction null
                 }
                 val values = ContentValues().apply {
-                    put("source", "anilist"); put("source_ref", url); put("external_url", url)
+                    put("source", artworkCatalogSource(url)); put("source_ref", url); put("external_url", url)
                     put("status", "downloading"); put("priority", 400); put("updated_at", now); put("last_attempt_at", now)
                     put("failure_count", if (force) 0 else exact.failureCount)
                     putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key); put("variant", "large")
@@ -671,7 +783,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             )
             val values = ContentValues().apply {
                 put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", type)
-                put("source", "anilist"); put("source_ref", url); put("external_url", url); put("manual", 0)
+                put("source", artworkCatalogSource(url)); put("source_ref", url); put("external_url", url); put("manual", 0)
                 put("priority", 400); put("status", "downloading"); put("discovered_at", now); put("updated_at", now)
                 put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")
             }
@@ -1400,8 +1512,17 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         ".jpg", ".jpeg" -> "image/jpeg"; ".png" -> "image/png"; ".webp" -> "image/webp"
         ".gif" -> "image/gif"; ".avif" -> "image/avif"; else -> "application/octet-stream"
     }
+    private fun artworkCatalogSource(rawUrl: String): String {
+        val host = runCatching { URL(rawUrl).host.lowercase(Locale.ROOT) }.getOrDefault("")
+        return when {
+            host == "kitsu.io" || host.endsWith(".kitsu.io") || host == "kitsu.app" || host.endsWith(".kitsu.app") -> "kitsu"
+            host == "myanimelist.net" || host.endsWith(".myanimelist.net") || host.endsWith(".jikan.moe") -> "jikan"
+            else -> "anilist"
+        }
+    }
+
     private fun remoteKey(aniId: Long?, url: String, type: String): String {
-        val provider = if (aniId != null) "anilist" else "url"
+        val provider = artworkCatalogSource(url)
         val identity = (aniId?.toString() ?: url) + "|" + url
         return sha256(provider + "|" + identity + "|" + type + "|large")
     }
