@@ -113,6 +113,7 @@ internal fun invalidGeneratedThumbnailPaths(
 internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val BASE_ARTWORK_RETRY_BACKOFF_SECONDS = 60L
 internal const val MAX_ARTWORK_RETRY_BACKOFF_SECONDS = 6L * 60L * 60L
+internal const val MAX_AUTOMATIC_ARTWORK_FAILURES = 5
 
 /** HTTP and local persistence failures that should keep an automatic recovery path. */
 internal fun isRetryableArtworkHttpStatus(statusCode: Int): Boolean =
@@ -193,6 +194,7 @@ internal fun shouldRetryArtworkRequest(
     force: Boolean,
 ): Boolean {
     if (force) return true
+    if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES) return false
     val normalizedStatus = status?.trim()?.lowercase(Locale.ROOT)
     if (normalizedStatus != "failed" && normalizedStatus != "retry_wait") return true
     val retryAt = retryAtSeconds?.takeIf { it.isFinite() } ?: return true
@@ -209,6 +211,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val jobs = ConcurrentHashMap<Long, Job>()
     private val retryJobs = ConcurrentHashMap<Long, Job>()
     private val activeTemporaryFiles = ConcurrentHashMap.newKeySet<String>()
+    private val activeConnections = ConcurrentHashMap<Long, HttpURLConnection>()
+    @Volatile
+    internal var httpConnectionFactory: (URL) -> HttpURLConnection = { source ->
+        source.openConnection() as? HttpURLConnection
+            ?: throw IOException("Artwork source did not provide an HTTP connection.")
+    }
     private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
     private val permits = Semaphore(2)
     private val backfillRunning = AtomicBoolean(false)
@@ -348,6 +356,15 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             jobs[animeId] = task
             task.start()
         }
+        return true
+    }
+
+    /** Cancels the active materialization for an anime and closes its blocking HTTP stream. */
+    internal fun cancelAnimeArtworkRequest(animeId: Long): Boolean {
+        if (animeId <= 0L) return false
+        val active = synchronized(jobs) { jobs[animeId]?.takeIf { it.isActive } } ?: return false
+        activeConnections[animeId]?.disconnect()
+        active.cancel()
         return true
     }
 
@@ -661,7 +678,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             try {
                 // Re-associate a complete checksum-named file if the process stopped
                 // after promotion but before the SQLite transaction committed.
-                val completedImage = findCachedDownloadedImage(key) ?: download(key, url)
+                val completedImage = findCachedDownloadedImage(key) ?: download(id, key, url)
                 image = completedImage
                 currentCoroutineContext().ensureActive()
                 val saved = persistDownloaded(rowId, id, type, url, key, completedImage)
@@ -679,6 +696,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 image?.let { removeIfUnreferenced(it.file) }
                 throw cancelled
             } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
                 setFailure(
                     rowId = rowId,
                     error = error,
@@ -838,10 +856,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         else -> "PERSISTENCE_OR_UNEXPECTED"
     }
 
-    private suspend fun download(key: String, rawUrl: String): Downloaded {
+    private suspend fun download(animeId: Long, key: String, rawUrl: String): Downloaded {
         if (!ensureArtworkCacheDirectory(cacheDirectory)) throw IOException("Artwork cache directory unavailable.")
         val url = URL(rawUrl)
-        val conn = url.openConnection() as? HttpURLConnection ?: throw InvalidImage("Not an HTTP connection.")
+        val conn = httpConnectionFactory(url)
+        activeConnections[animeId] = conn
+        currentCoroutineContext().ensureActive()
         val tmp = File(cacheDirectory, "." + key + "-" + UUID.randomUUID() + ".tmp")
         activeTemporaryFiles.add(tmp.absolutePath)
         try {
@@ -926,6 +946,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         } finally {
             tmp.delete()
             activeTemporaryFiles.remove(tmp.absolutePath)
+            activeConnections.remove(animeId, conn)
             conn.disconnect()
         }
     }
@@ -1013,11 +1034,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "SELECT MIN(a.next_retry_at) FROM artwork a " +
                         "WHERE a.entity_id=? AND a.entity_type IN ('anime','movie') " +
                         "AND a.artwork_type IN ('poster','backdrop') " +
-                        "AND a.status IN ('retry_wait','failed') AND a.next_retry_at IS NOT NULL " +
+                        "AND a.status='retry_wait' AND a.failure_count < ? AND a.next_retry_at IS NOT NULL " +
                         "AND EXISTS (SELECT 1 FROM anime n WHERE n.id=? AND (" +
                         "(a.artwork_type='poster' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.cover_url,''))) " +
                         "OR (a.artwork_type='backdrop' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.banner_url,'')))))",
-                    arrayOf(animeId.toString(), animeId.toString()),
+                    arrayOf(animeId.toString(), animeId.toString(), MAX_AUTOMATIC_ARTWORK_FAILURES.toString()),
                 ).use { cursor ->
                     if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getDouble(0) else null
                 }

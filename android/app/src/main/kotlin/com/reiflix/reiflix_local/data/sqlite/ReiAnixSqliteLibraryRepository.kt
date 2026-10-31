@@ -1404,7 +1404,12 @@ class ReiAnixSqliteLibraryRepository(
                     (
                         art.entity_type IN ('anime','movie')
                         AND EXISTS (
-                            SELECT 1 FROM anime a WHERE CAST(a.id AS TEXT)=art.entity_id
+                            SELECT 1 FROM anime a
+                            WHERE CAST(a.id AS TEXT)=art.entity_id
+                              AND art.entity_type=CASE
+                                  WHEN LOWER(COALESCE(a.media_kind,''))='movie' THEN 'movie'
+                                  ELSE 'anime'
+                              END
                         )
                     )
                     OR (
@@ -1539,6 +1544,14 @@ class ReiAnixSqliteLibraryRepository(
                     (
                         art.entity_type IN ('anime','movie')
                         AND art.entity_id=?
+                        AND EXISTS (
+                            SELECT 1 FROM anime a
+                            WHERE CAST(a.id AS TEXT)=art.entity_id
+                              AND art.entity_type=CASE
+                                  WHEN LOWER(COALESCE(a.media_kind,''))='movie' THEN 'movie'
+                                  ELSE 'anime'
+                              END
+                        )
                     )
                     OR (
                         art.entity_type='episode' AND art.artwork_type='episode_thumbnail'

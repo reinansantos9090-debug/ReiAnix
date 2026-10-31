@@ -41,8 +41,17 @@ import com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProject
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.withTimeout
 
 /**
  * Runtime tests against the Android SQLite engine through Robolectric.
@@ -2532,6 +2541,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 format = "TV",
                 mediaKind = ReiAnixCatalogMediaKind.SERIES,
                 episodes = 12,
+                backdropUrl = "https://cdn.myanimelist.net/backdrop-90210.png",
             )
             val jikan = object : ReiAnixAnimeCatalogProvider {
                 override val source = ReiAnixCatalogSource.JIKAN
@@ -2548,6 +2558,15 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val database = ReiAnixSqliteDatabase(context)
             val repository = ReiAnixSqliteLibraryRepository(database)
             val artwork = ReiAnixArtworkService(context, database)
+            val downloadedBackdrop = createValidPng("jikan-backdrop-http-response.png")
+            val downloadedBackdropBytes = downloadedBackdrop.readBytes()
+            val httpCalls = AtomicInteger()
+            var requestedUrl: String? = null
+            artwork.httpConnectionFactory = { url ->
+                httpCalls.incrementAndGet()
+                requestedUrl = url.toString()
+                FakeArtworkHttpURLConnection(url, 200, downloadedBackdropBytes)
+            }
             assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
             assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
 
@@ -2570,11 +2589,39 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val updated = requireNotNull(repository.getAnime(1L))
             assertEquals(poster.absolutePath, updated.coverCache)
             assertEquals("https://example.invalid/old-cover.jpg", updated.coverUrl)
-            assertNull(updated.bannerUrl)
+            assertEquals("https://cdn.myanimelist.net/backdrop-90210.png", updated.bannerUrl)
             assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
-            assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertEquals(1, httpCalls.get())
+            assertEquals("https://cdn.myanimelist.net/backdrop-90210.png", requestedUrl)
+
+            val publishedRow = repository.artworkForAnime(1L).single { it.artworkType == "backdrop" }
+            val publishedFile = File(requireNotNull(publishedRow.localPath))
+            assertTrue("The downloaded backdrop must exist as a local file.", publishedFile.isFile)
+            assertEquals(downloadedBackdropBytes.toList(), publishedFile.readBytes().toList())
+            assertEquals("ready", publishedRow.status)
+            assertEquals("https://cdn.myanimelist.net/backdrop-90210.png", publishedRow.externalUrl)
+            assertEquals(downloadedBackdropBytes.size.toLong(), publishedRow.byteSize)
+            assertEquals(8, publishedRow.width)
+            assertEquals(8, publishedRow.height)
+            assertEquals(
+                MessageDigest.getInstance("SHA-256").digest(downloadedBackdropBytes).joinToString("") { "%02x".format(it.toInt() and 0xff) },
+                publishedRow.checksum,
+            )
+            assertEquals(200, publishedRow.httpStatus)
+            val publication = artwork.publishedArtworks.value["anime|1|backdrop"]
+            assertNotNull("A committed local image must publish an artwork revision.", publication)
+            assertTrue(requireNotNull(publication).revision.contains(publishedFile.canonicalPath))
+
+            val projectedRows = repository.loadLibraryCatalogRows()
+            val projected = ReiAnixNativeLibraryCatalogProjector.project(projectedRows).animes.single()
+            assertEquals(publishedFile.absolutePath, projected.artwork?.backdropLocalPath)
+            assertEquals(poster.absolutePath, updated.coverCache)
+            assertEquals(poster.readBytes().toList(), File(updated.coverCache!!).readBytes().toList())
+            assertFalse("The poster URL must not be fetched again during backdrop recovery.", httpCalls.get() > 1)
         } finally {
             poster.delete()
+            downloadedBackdrop.delete()
         }
     }
 
@@ -2703,6 +2750,9 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 localPath = ownImage.absolutePath,
             )
 
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL("UPDATE anime SET media_kind='series' WHERE id=1")
+            }
             val artwork = ReiAnixArtworkService(context, ReiAnixSqliteDatabase(context))
             assertFalse(
                 "A movie artwork row sharing the numeric ID must not be associated with an anime.",
@@ -2711,6 +2761,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertTrue(
                 "The same valid bytes remain associated with their own anime ID.",
                 artwork.hasValidAnimeArtwork(2L, "backdrop"),
+            )
+            val projected = ReiAnixNativeLibraryCatalogProjector.project(
+                ReiAnixSqliteLibraryRepository(context).loadLibraryCatalogRows(),
+            ).animes.single { it.id == 1L }
+            assertNull(
+                "The library projection must not attach a movie backdrop to a series with the same numeric ID.",
+                projected.artwork?.backdropLocalPath,
             )
         } finally {
             foreignImage.delete()
@@ -2807,6 +2864,234 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         } finally {
             poster.delete()
             backdrop.delete()
+        }
+    }
+
+
+    @Test
+    fun invalidHttpImageBytesNeverBecomeAPublishedBackdrop() = runBlocking {
+        createCanonicalFixture()
+        val poster = createValidPng("invalid-backdrop-poster.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET media_kind='series',cover_cache=?,metadata_manual_fields='[]' WHERE id=1",
+                    arrayOf(poster.absolutePath),
+                )
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val artwork = ReiAnixArtworkService(context, database)
+            val invalidBytes = "not-a-real-png".toByteArray()
+            artwork.httpConnectionFactory = { url ->
+                FakeArtworkHttpURLConnection(url, 200, invalidBytes)
+            }
+            val url = "https://cdn.kitsu.io/invalid-backdrop.png"
+            assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", url))
+            assertTrue(artwork.requestAnimeArtwork(1L, force = true))
+            withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
+
+            assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            val row = ReiAnixSqliteLibraryRepository(database).artworkForAnime(1L)
+                .single { it.artworkType == "backdrop" && it.externalUrl == url }
+            assertEquals("failed", row.status)
+            assertNull(row.localPath)
+            assertEquals(200, row.httpStatus)
+            assertFalse(artwork.publishedArtworks.value.containsKey("anime|1|backdrop"))
+            val cache = File(File(context.filesDir, "data/covers"), "artwork")
+            assertTrue(cache.listFiles().orEmpty().none { it.name.endsWith(".tmp") })
+        } finally {
+            poster.delete()
+        }
+    }
+
+    @Test
+    fun httpNotFoundRateLimitAndServerErrorsPersistFiniteRetryPolicy() = runBlocking {
+        createCanonicalFixture()
+        val poster = createValidPng("http-errors-poster.png")
+        val responseFile = createValidPng("http-error-response.png")
+        val validImageBytes = responseFile.readBytes()
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET media_kind='series',cover_cache=?,metadata_manual_fields='[]' WHERE id=1",
+                    arrayOf(poster.absolutePath),
+                )
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val repository = ReiAnixSqliteLibraryRepository(database)
+            val artwork = ReiAnixArtworkService(context, database)
+            val cases = listOf(
+                Triple(404, null, "https://cdn.kitsu.io/backdrop-404.png"),
+                Triple(429, "120", "https://cdn.kitsu.io/backdrop-429.png"),
+                Triple(503, null, "https://cdn.kitsu.io/backdrop-503.png"),
+            )
+            for ((status, retryAfter, url) in cases) {
+                artwork.httpConnectionFactory = { requested ->
+                    FakeArtworkHttpURLConnection(requested, status, validImageBytes, retryAfter)
+                }
+                assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", url))
+                val startedAt = System.currentTimeMillis() / 1_000.0
+                assertTrue(artwork.requestAnimeArtwork(1L, force = true))
+                withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
+                val row = repository.artworkForAnime(1L)
+                    .single { it.artworkType == "backdrop" && it.externalUrl == url }
+                assertEquals(status, row.httpStatus)
+                assertNull(row.localPath)
+                assertEquals(if (status == 404) "failed" else "retry_wait", row.status)
+                val retryAt = requireNotNull(row.nextRetryAt)
+                val expectedDelay = when (status) {
+                    404 -> 86_400.0
+                    429 -> 120.0
+                    else -> 60.0
+                }
+                assertTrue(
+                    "HTTP $status must persist its bounded retry deadline.",
+                    retryAt >= startedAt + expectedDelay - 1.0,
+                )
+                assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            }
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+        } finally {
+            responseFile.delete()
+            poster.delete()
+        }
+    }
+
+    @Test
+    fun cancelledBackdropDownloadDoesNotPublishTemporaryFile() = runBlocking {
+        createCanonicalFixture()
+        val poster = createValidPng("cancel-backdrop-poster.png")
+        val responseImage = createValidPng("cancel-backdrop-response.png").readBytes()
+        val readStarted = CountDownLatch(1)
+        val releaseRead = CountDownLatch(1)
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET media_kind='series',cover_cache=?,metadata_manual_fields='[]' WHERE id=1",
+                    arrayOf(poster.absolutePath),
+                )
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val artwork = ReiAnixArtworkService(context, database)
+            artwork.httpConnectionFactory = { url ->
+                FakeArtworkHttpURLConnection(url, 200, responseImage, readStarted = readStarted, releaseRead = releaseRead)
+            }
+            val url = "https://cdn.kitsu.io/cancel-backdrop.png"
+            assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", url))
+            assertTrue(artwork.requestAnimeArtwork(1L, force = true))
+            assertTrue("HTTP response did not reach the controlled read.", readStarted.await(5, TimeUnit.SECONDS))
+            assertTrue(artwork.cancelAnimeArtworkRequest(1L))
+            withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
+
+            val row = ReiAnixSqliteLibraryRepository(database).artworkForAnime(1L)
+                .single { it.artworkType == "backdrop" && it.externalUrl == url }
+            assertEquals("not_requested", row.status)
+            assertNull(row.localPath)
+            assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertFalse(artwork.publishedArtworks.value.containsKey("anime|1|backdrop"))
+            val cache = File(File(context.filesDir, "data/covers"), "artwork")
+            assertTrue(cache.listFiles().orEmpty().none { it.name.endsWith(".tmp") })
+        } finally {
+            releaseRead.countDown()
+            poster.delete()
+        }
+    }
+
+    @Test
+    fun concurrentBackdropRequestsForSameAnimeShareSingleDownload() = runBlocking {
+        createCanonicalFixture()
+        val poster = createValidPng("concurrent-backdrop-poster.png")
+        val responseImageFile = createValidPng("concurrent-backdrop-response.png")
+        val responseBytes = responseImageFile.readBytes()
+        val readStarted = CountDownLatch(1)
+        val releaseRead = CountDownLatch(1)
+        val httpCalls = AtomicInteger()
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET media_kind='series',cover_cache=?,metadata_manual_fields='[]' WHERE id=1",
+                    arrayOf(poster.absolutePath),
+                )
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val artwork = ReiAnixArtworkService(context, database)
+            artwork.httpConnectionFactory = { url ->
+                httpCalls.incrementAndGet()
+                FakeArtworkHttpURLConnection(url, 200, responseBytes, readStarted = readStarted, releaseRead = releaseRead)
+            }
+            assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", "https://cdn.kitsu.io/concurrent-backdrop.png"))
+            assertTrue(artwork.requestAnimeArtwork(1L, force = true))
+            assertTrue("First download did not reach the controlled response.", readStarted.await(5, TimeUnit.SECONDS))
+            assertFalse("A second request for the active anime must be deduplicated.", artwork.requestAnimeArtwork(1L, force = true))
+            assertEquals(1, httpCalls.get())
+            releaseRead.countDown()
+            withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertEquals(1, httpCalls.get())
+        } finally {
+            releaseRead.countDown()
+            poster.delete()
+            responseImageFile.delete()
+        }
+    }
+
+    private class FakeArtworkHttpURLConnection(
+        url: URL,
+        private val statusCode: Int,
+        private val responseBytes: ByteArray,
+        private val retryAfter: String? = null,
+        private val readStarted: CountDownLatch? = null,
+        private val releaseRead: CountDownLatch? = null,
+    ) : HttpURLConnection(url) {
+        override fun connect() {
+            connected = true
+        }
+
+        override fun disconnect() {
+            releaseRead?.countDown()
+        }
+
+        override fun usingProxy(): Boolean = false
+
+        override fun getResponseCode(): Int = statusCode
+
+        override fun getContentType(): String? = "image/png"
+
+        override fun getHeaderField(name: String?): String? = when (name?.lowercase()) {
+            "content-length" -> responseBytes.size.toString()
+            "retry-after" -> retryAfter
+            else -> null
+        }
+
+        override fun getInputStream(): InputStream {
+            if (statusCode !in 200..299) throw IOException("HTTP $statusCode")
+            val bytes = ByteArrayInputStream(responseBytes)
+            if (releaseRead == null) return bytes
+            return object : InputStream() {
+                private fun awaitReadRelease() {
+                    readStarted?.countDown()
+                    try {
+                        releaseRead.await()
+                    } catch (interrupted: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw IOException("Controlled HTTP read interrupted.", interrupted)
+                    }
+                }
+
+                override fun read(): Int {
+                    awaitReadRelease()
+                    return bytes.read()
+                }
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                    awaitReadRelease()
+                    return bytes.read(buffer, offset, length)
+                }
+
+                override fun close() {
+                    bytes.close()
+                }
+            }
         }
     }
 

@@ -104,6 +104,10 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.corruptBackdropAndArtworkFromAnotherEntityTypeAreNotValidForThisAnime \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.sqliteLibraryProjectionCarriesValidatedBackdropForItsOwningAnime \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.enrichmentSkipsExternalCatalogWhenPosterAndBackdropAreAlreadyValid \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.invalidHttpImageBytesNeverBecomeAPublishedBackdrop \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.httpNotFoundRateLimitAndServerErrorsPersistFiniteRetryPolicy \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.cancelledBackdropDownloadDoesNotPublishTemporaryFile \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.concurrentBackdropRequestsForSameAnimeShareSingleDownload \
             2>&1 | tee "$RUNNER_TEMP/reianix-anilist-jvm-tests.log"
 
       - name: Compile release Kotlin sources

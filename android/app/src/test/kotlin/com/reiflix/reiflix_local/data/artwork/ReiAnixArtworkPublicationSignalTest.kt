@@ -472,12 +472,12 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun automaticRetriesRemainEligibleAfterManyFailures() {
+    fun automaticArtworkRetriesStopAtTheConfiguredLimitButForcedRetryRemainsAvailable() {
         assertTrue(
             shouldRetryArtworkRequest(
-                status = "failed",
-                retryAtSeconds = null,
-                failureCount = 99,
+                status = "retry_wait",
+                retryAtSeconds = 10_000.0,
+                failureCount = 4,
                 nowSeconds = 10_000.0,
                 force = false,
             ),
@@ -485,7 +485,16 @@ class ReiAnixArtworkPublicationSignalTest {
         assertFalse(
             shouldRetryArtworkRequest(
                 status = "failed",
-                retryAtSeconds = 10_001.0,
+                retryAtSeconds = null,
+                failureCount = 5,
+                nowSeconds = 10_000.0,
+                force = false,
+            ),
+        )
+        assertFalse(
+            shouldRetryArtworkRequest(
+                status = "failed",
+                retryAtSeconds = 10_000.0,
                 failureCount = 99,
                 nowSeconds = 10_000.0,
                 force = false,
@@ -494,10 +503,10 @@ class ReiAnixArtworkPublicationSignalTest {
         assertTrue(
             shouldRetryArtworkRequest(
                 status = "failed",
-                retryAtSeconds = 10_000.0,
+                retryAtSeconds = 99_999.0,
                 failureCount = 99,
                 nowSeconds = 10_000.0,
-                force = false,
+                force = true,
             ),
         )
     }
