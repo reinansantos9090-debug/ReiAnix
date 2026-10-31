@@ -137,6 +137,44 @@ class ReiAnixExternalRequestCoordinatorTest {
     }
 
     @Test
+    fun successfulSearchResultsAreCachedByTheSharedProviderRegistry() = runBlocking {
+        val calls = AtomicInteger()
+        val provider = object : ReiAnixAnimeCatalogProvider {
+            override val source = ReiAnixCatalogSource.JIKAN
+            override suspend fun searchAnime(query: String, limit: Int): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                calls.incrementAndGet()
+                return ReiAnixCatalogResult.Success(emptyList())
+            }
+            override suspend fun getAnime(externalId: String) =
+                ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+        }
+        val registry = ReiAnixCatalogProviderRegistry(
+            listOf(provider),
+            ReiAnixExternalRequestCoordinator(),
+        )
+        val registered = registry.provider(ReiAnixCatalogSource.JIKAN)!!
+        registered.searchAnime("  Cached Title ", 10)
+        registered.searchAnime("cached   title", 10)
+        assertEquals(1, calls.get())
+        registry.cancelPendingRequests()
+    }
+
+    @Test
+    fun jikanRequestsRespectConservativeThreePerSecondSpacing() = runBlocking {
+        val coordinator = ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1)
+        val starts = mutableListOf<Long>()
+        coordinator.execute(ReiAnixCatalogSource.JIKAN, "first") {
+            starts += System.currentTimeMillis()
+        }
+        coordinator.execute(ReiAnixCatalogSource.JIKAN, "second") {
+            starts += System.currentTimeMillis()
+        }
+        assertEquals(2, starts.size)
+        assertTrue("Jikan requests must be spaced to stay below 3 requests/second.", starts[1] - starts[0] >= 300L)
+        coordinator.cancelAll()
+    }
+
+    @Test
     fun requestTimeoutIsFinite() = runBlocking {
         val coordinator = ReiAnixExternalRequestCoordinator(requestTimeoutMillis = 250L)
         val entered = CompletableDeferred<Unit>()
