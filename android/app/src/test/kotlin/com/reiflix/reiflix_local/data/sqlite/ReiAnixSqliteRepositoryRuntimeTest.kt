@@ -2281,7 +2281,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             synopsis = "A valid supplemental synopsis that fills the missing description.",
             coverUrl = "https://media.kitsu.io/poster.jpg",
             backdropUrl = "https://media.kitsu.io/backdrop.jpg",
-            releaseYear = 2018,
+            releaseYear = 2016,
             format = "TV",
             mediaKind = ReiAnixCatalogMediaKind.SERIES,
             episodes = 12,
