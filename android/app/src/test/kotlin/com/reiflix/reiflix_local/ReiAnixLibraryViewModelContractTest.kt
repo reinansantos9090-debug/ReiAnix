@@ -6,26 +6,76 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.mergeAnimeArtworkOnly
 import com.reiflix.reiflix_local.viewmodel.mergeContinueWatchingArtworkOnly
 import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
+import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixLocalMediaUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
+import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
+import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
+import com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState
+import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReiAnixLibraryViewModelContractTest {
     @Test
     fun artworkProjectionMergePreservesPlaybackProgress() {
-        val state = ReiAnixLibrarySnapshotCodec.decode(
-            """{"schemaVersion":1,"revision":7,"status":"READY","sourceState":"AVAILABLE","sourceAvailable":true,
-               "animes":[{"id":7,"main_title":"Local","media_kind":"series","favorite":false,
-               "year":2026,"genres":[],"genre_ids":[],"meta":{},
-               "seasons":[{"season":1,"season_name":"Season 1","episodes":[
-                 {"id":72,"anime_id":7,"season":1,"number":7,"episode_title":"E07","file_name":"E07.mkv",
-                  "path":"content://episode/72","media_identity":"episode-72","availability_state":"available",
-                  "missing":false,"progress":18.0,"duration":100.0,"watched":false,
-                  "consumption_state":"in_progress"}]}],
-               "specials":[],"media_files":[]}],
-               "continue_watching":[{"episode_id":72,"anime_id":7,"anime_title":"Local","season":1,"number":7,
-               "episode_title":"E07","file_name":"E07.mkv","progress":18.0,"duration":100.0}]}""".trimIndent(),
+        val currentEpisode = ReiAnixEpisodeUiModel(
+            id = 72L,
+            animeId = 7L,
+            seasonNumber = 1,
+            number = 7.0,
+            title = "E07",
+            fileName = "E07.mkv",
+            media = ReiAnixLocalMediaUiModel(
+                reference = "content://episode/72",
+                uri = "content://episode/72",
+                path = null,
+                mediaIdentity = "episode-72",
+                sourceAvailabilityState = "available",
+                availability = ReiAnixMediaAvailability.AVAILABLE,
+            ),
+            progressSeconds = 18.0,
+            durationSeconds = 100.0,
+            watched = false,
+            consumptionState = ReiAnixConsumptionState.IN_PROGRESS,
+            artwork = null,
         )
-        val currentAnime = state.animes.single()
+        val currentAnime = ReiAnixAnimeUiModel(
+            id = 7L,
+            title = "Local",
+            year = 2026,
+            genres = emptyList(),
+            favorite = false,
+            mediaKind = ReiAnixMediaKind.SERIES,
+            artwork = null,
+            metadataAvailability = ReiAnixMetadataAvailability.AVAILABLE,
+            presentationState = ReiAnixPresentationState.READY,
+            seasons = listOf(
+                ReiAnixSeasonUiModel(
+                    animeId = 7L,
+                    number = 1,
+                    title = "Season 1",
+                    episodes = listOf(currentEpisode),
+                ),
+            ),
+            specials = emptyList(),
+            mediaFiles = emptyList(),
+        )
+        val currentContinueWatching = ReiAnixContinueWatchingUiModel(
+            episodeId = 72L,
+            animeId = 7L,
+            animeTitle = "Local",
+            seasonNumber = 1,
+            number = 7.0,
+            title = "E07",
+            fileName = "E07.mkv",
+            progressSeconds = 18.0,
+            durationSeconds = 100.0,
+            artwork = null,
+        )
         val poster = ReiAnixArtworkUiModel(
             localPath = "/cache/poster.jpg",
             externalUrl = null,
@@ -56,7 +106,6 @@ class ReiAnixLibraryViewModelContractTest {
         assertEquals("sha256:episode", mergedEpisode.artwork?.revision)
         assertEquals(18.0, mergedEpisode.progressSeconds ?: -1.0, 0.0)
 
-        val currentContinueWatching = state.continueWatching.single()
         val refreshedContinueWatching = currentContinueWatching.copy(
             progressSeconds = 99.0,
             artwork = thumbnail,
@@ -68,7 +117,6 @@ class ReiAnixLibraryViewModelContractTest {
         assertEquals("sha256:episode", mergedContinueWatching.artwork?.revision)
         assertEquals(18.0, mergedContinueWatching.progressSeconds ?: -1.0, 0.0)
     }
-
     @Test
     fun homeProjectionExcludesEpisodeProgressButDetailsProjectionRetainsIt() {
         val state = ReiAnixLibrarySnapshotCodec.decode(
