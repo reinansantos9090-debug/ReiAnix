@@ -98,6 +98,12 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.failedKitsuProviderDoesNotBlockVerifiedJikanFallback \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.ambiguousJikanCandidatesAreRejectedWithoutPersistingAnyExternalId \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.externalArtworkCandidateCannotReplaceManualOrValidLocalPoster \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.completeMetadataValidPosterAndMissingBackdropStillTriggerSupplementalLookup \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.backdropCandidateRecoveryDoesNotReplaceAnAlreadyValidPoster \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.manualPosterAndBackdropArtworkAreProtectedFromSupplementalCandidates \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.corruptBackdropAndArtworkFromAnotherEntityTypeAreNotValidForThisAnime \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.sqliteLibraryProjectionCarriesValidatedBackdropForItsOwningAnime \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.enrichmentSkipsExternalCatalogWhenPosterAndBackdropAreAlreadyValid \
             2>&1 | tee "$RUNNER_TEMP/reianix-anilist-jvm-tests.log"
 
       - name: Compile release Kotlin sources

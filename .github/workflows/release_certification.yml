@@ -245,6 +245,12 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.failedKitsuProviderDoesNotBlockVerifiedJikanFallback \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.ambiguousJikanCandidatesAreRejectedWithoutPersistingAnyExternalId \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.externalArtworkCandidateCannotReplaceManualOrValidLocalPoster \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.completeMetadataValidPosterAndMissingBackdropStillTriggerSupplementalLookup \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.backdropCandidateRecoveryDoesNotReplaceAnAlreadyValidPoster \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.manualPosterAndBackdropArtworkAreProtectedFromSupplementalCandidates \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.corruptBackdropAndArtworkFromAnotherEntityTypeAreNotValidForThisAnime \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.sqliteLibraryProjectionCarriesBackdropForItsOwningAnime \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.enrichmentSkipsExternalCatalogWhenPosterAndBackdropAreAlreadyValid \
             --tests com.reiflix.reiflix_local.ReiAnixLibraryViewModelContractTest.artworkProjectionMergePreservesPlaybackProgress \
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.posterAndBackdropRevisionsReachTheImmutableArtworkModel \
             --tests com.reiflix.reiflix_local.LibraryUiMappersTest.realDurationAndEpisodeArtworkReachUiModelUnchanged \

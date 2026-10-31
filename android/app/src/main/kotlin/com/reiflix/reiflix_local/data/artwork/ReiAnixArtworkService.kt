@@ -375,8 +375,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 val entity = if (anime.second.equals("movie", true)) "movie" else "anime"
                 val rows = db.rawQuery(
                     "SELECT local_path,manual,source FROM artwork " +
-                        "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type=?",
-                    arrayOf(animeId.toString(), artworkType),
+                        "WHERE entity_type=? AND entity_id=? AND artwork_type=?",
+                    arrayOf(entity, animeId.toString(), artworkType),
                 ).use { cursor ->
                     buildList {
                         while (cursor.moveToNext()) {
@@ -430,10 +430,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (currentUrl?.trim() == url) return@transaction true
 
             // Any manual row is user-owned even if its file is currently unavailable.
+            val entityType = if (row[2].equals("movie", true)) "movie" else "anime"
             val rows = db.rawQuery(
                 "SELECT local_path,manual,source FROM artwork " +
-                    "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type=?",
-                arrayOf(animeId.toString(), artworkType),
+                    "WHERE entity_type=? AND entity_id=? AND artwork_type=?",
+                arrayOf(entityType, animeId.toString(), artworkType),
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) {

@@ -68,8 +68,10 @@ class ReiAnixExternalCatalogIntegrationService(
             anime.metadataSource.equals("manual", ignoreCase = true) ||
             anime.metadataStatus.equals("manual", ignoreCase = true)
         ) return false
-        val artworkReady = artwork.hasValidAnimeArtwork(anime.id, "poster")
-        return hasMetadataGap(anime) || !artworkReady
+        val metadataMissing = hasMetadataGap(anime)
+        val posterMissing = !artwork.hasValidAnimeArtwork(anime.id, "poster")
+        val backdropMissing = !artwork.hasValidAnimeArtwork(anime.id, "backdrop")
+        return metadataMissing || posterMissing || backdropMissing
     }
 
     private fun hasMetadataGap(anime: ReiAnixAnimeRecord): Boolean =
@@ -84,8 +86,14 @@ class ReiAnixExternalCatalogIntegrationService(
     private suspend fun enrichOne(initial: ReiAnixAnimeRecord): Boolean {
         var anime = library.getAnime(initial.id) ?: return false
         val identity = anime.toExternalCatalogIdentity()
-        if (!artwork.hasValidAnimeArtwork(anime.id, "poster") && !anime.coverUrl.isNullOrBlank()) {
-            // Give the already-persisted AniList candidate its normal first opportunity.
+        val posterReadyBeforeAniListArtwork = artwork.hasValidAnimeArtwork(anime.id, "poster")
+        val backdropReadyBeforeAniListArtwork = artwork.hasValidAnimeArtwork(anime.id, "backdrop")
+        val hasMissingAniListArtworkCandidate =
+            (!posterReadyBeforeAniListArtwork && !anime.coverUrl.isNullOrBlank()) ||
+                (!backdropReadyBeforeAniListArtwork && !anime.bannerUrl.isNullOrBlank())
+        if (hasMissingAniListArtworkCandidate) {
+            // Try the already-persisted AniList candidate first, including a backdrop-only gap.
+            // The canonical artwork service reuses validated poster bytes and does not redownload them.
             artwork.requestAnimeArtwork(anime.id)
             artwork.awaitAnimeArtwork(anime.id)
         }

@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.app.Application
 import android.database.sqlite.SQLiteDatabase
@@ -36,10 +37,12 @@ import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogProviderRegistry
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Runtime tests against the Android SQLite engine through Robolectric.
@@ -2485,6 +2488,365 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
         } finally {
             png.delete()
+        }
+    }
+
+
+    @Test
+    fun completeMetadataValidPosterAndMissingBackdropStillTriggerSupplementalLookup() = runBlocking {
+        createCanonicalFixture()
+        val poster = createValidPng("backdrop-only-poster.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    """
+                    UPDATE anime SET year=2016,format='TV',media_kind='series',
+                        description='Complete local synopsis for backdrop-only recovery.',
+                        episodes_count=12,duration=24,status='Finished Airing',score=86,
+                        cover_cache=? WHERE id=1
+                    """.trimIndent(),
+                    arrayOf(poster.absolutePath),
+                )
+            }
+
+            val kitsuCalls = AtomicInteger()
+            val jikanCalls = AtomicInteger()
+            val kitsu = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.KITSU
+                override suspend fun searchAnime(
+                    query: String,
+                    limit: Int,
+                ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                    kitsuCalls.incrementAndGet()
+                    return ReiAnixCatalogResult.Failure(ReiAnixCatalogError.Network("Kitsu unavailable"))
+                }
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+            val remote = ReiAnixCatalogAnime(
+                source = ReiAnixCatalogSource.JIKAN,
+                ids = ReiAnixExternalCatalogIds(myAnimeListId = 90210L),
+                title = "Original Title",
+                alternativeTitles = setOf("Old English Title"),
+                releaseYear = 2016,
+                format = "TV",
+                mediaKind = ReiAnixCatalogMediaKind.SERIES,
+                episodes = 12,
+            )
+            val jikan = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.JIKAN
+                override suspend fun searchAnime(
+                    query: String,
+                    limit: Int,
+                ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                    jikanCalls.incrementAndGet()
+                    return ReiAnixCatalogResult.Success(listOf(remote))
+                }
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val repository = ReiAnixSqliteLibraryRepository(database)
+            val artwork = ReiAnixArtworkService(context, database)
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+
+            val service = ReiAnixExternalCatalogIntegrationService(
+                library = repository,
+                providers = ReiAnixCatalogProviderRegistry(
+                    listOf(kitsu, jikan),
+                    ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
+                ),
+                artwork = artwork,
+            )
+
+            assertEquals(1, service.enrichLibraryGaps())
+            assertTrue("A failed Kitsu lookup must not suppress Jikan.", kitsuCalls.get() > 0)
+            assertTrue(
+                "A complete record with a valid poster but a missing backdrop must remain eligible.",
+                jikanCalls.get() > 0,
+            )
+            assertEquals(90210L, repository.getExternalCatalogIds(1L)?.myAnimeListId)
+            val updated = requireNotNull(repository.getAnime(1L))
+            assertEquals(poster.absolutePath, updated.coverCache)
+            assertEquals("https://example.invalid/old-cover.jpg", updated.coverUrl)
+            assertNull(updated.bannerUrl)
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+        } finally {
+            poster.delete()
+        }
+    }
+
+    @Test
+    fun backdropCandidateRecoveryDoesNotReplaceAnAlreadyValidPoster() = runBlocking {
+        createCanonicalFixture()
+        val poster = createValidPng("poster-preserved-during-backdrop-recovery.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET cover_cache=?,metadata_manual_fields='[]' WHERE id=1",
+                    arrayOf(poster.absolutePath),
+                )
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val repository = ReiAnixSqliteLibraryRepository(database)
+            val artwork = ReiAnixArtworkService(context, database)
+            val before = requireNotNull(repository.getAnime(1L))
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+
+            assertTrue(
+                artwork.replaceExternalArtworkCandidate(
+                    animeId = 1L,
+                    artworkType = "backdrop",
+                    rawUrl = "https://cdn.kitsu.io/backdrop-candidate.jpg",
+                ),
+            )
+
+            val after = requireNotNull(repository.getAnime(1L))
+            assertEquals(before.coverUrl, after.coverUrl)
+            assertEquals(before.coverCache, after.coverCache)
+            assertEquals("https://cdn.kitsu.io/backdrop-candidate.jpg", after.bannerUrl)
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            // A remote URL is only a candidate; it is not treated as a validated local backdrop.
+            assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+        } finally {
+            poster.delete()
+        }
+    }
+
+    @Test
+    fun manualPosterAndBackdropArtworkAreProtectedFromSupplementalCandidates() = runBlocking {
+        createCanonicalFixture()
+        val manualImage = createValidPng("manual-poster-and-backdrop.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL("UPDATE anime SET metadata_manual_fields='[]' WHERE id=1")
+            }
+            insertArtworkTestRow(
+                id = 20L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "poster",
+                source = "manual",
+                localPath = manualImage.absolutePath,
+                manual = true,
+            )
+            insertArtworkTestRow(
+                id = 21L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "backdrop",
+                source = "manual",
+                localPath = manualImage.absolutePath,
+                manual = true,
+            )
+
+            val database = ReiAnixSqliteDatabase(context)
+            val artwork = ReiAnixArtworkService(context, database)
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertFalse(
+                artwork.replaceExternalArtworkCandidate(
+                    1L, "poster", "https://media.kitsu.io/remote-poster.jpg",
+                ),
+            )
+            assertFalse(
+                artwork.replaceExternalArtworkCandidate(
+                    1L, "backdrop", "https://cdn.myanimelist.net/remote-backdrop.jpg",
+                ),
+            )
+            val rows = ReiAnixSqliteLibraryRepository(database).artworkForAnime(1L)
+            assertEquals(manualImage.absolutePath, rows.single { it.artworkType == "poster" }.localPath)
+            assertEquals(manualImage.absolutePath, rows.single { it.artworkType == "backdrop" }.localPath)
+        } finally {
+            manualImage.delete()
+        }
+    }
+
+    @Test
+    fun corruptBackdropAndArtworkFromAnotherEntityTypeAreNotValidForThisAnime() = runBlocking {
+        createCanonicalFixture()
+        val foreignImage = createValidPng("foreign-movie-backdrop.png")
+        val corruptImage = File(context.cacheDir, "corrupt-anime-backdrop.jpg")
+        corruptImage.writeText("this is not a decodable image")
+        val ownImage = createValidPng("second-anime-backdrop.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "INSERT INTO anime(id,lookup_title,title,added_at,media_kind) VALUES(2,'other-key','Other Anime',1001,'series')",
+                )
+            }
+            insertArtworkTestRow(
+                id = 30L,
+                entityType = "movie",
+                entityId = 1L,
+                artworkType = "backdrop",
+                source = "local",
+                localPath = foreignImage.absolutePath,
+            )
+            insertArtworkTestRow(
+                id = 31L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "backdrop",
+                source = "local",
+                localPath = corruptImage.absolutePath,
+            )
+            insertArtworkTestRow(
+                id = 32L,
+                entityType = "anime",
+                entityId = 2L,
+                artworkType = "backdrop",
+                source = "local",
+                localPath = ownImage.absolutePath,
+            )
+
+            val artwork = ReiAnixArtworkService(context, ReiAnixSqliteDatabase(context))
+            assertFalse(
+                "A movie artwork row sharing the numeric ID must not be associated with an anime.",
+                artwork.hasValidAnimeArtwork(1L, "backdrop"),
+            )
+            assertTrue(
+                "The same valid bytes remain associated with their own anime ID.",
+                artwork.hasValidAnimeArtwork(2L, "backdrop"),
+            )
+        } finally {
+            foreignImage.delete()
+            corruptImage.delete()
+            ownImage.delete()
+        }
+    }
+
+    @Test
+    fun sqliteLibraryProjectionCarriesValidatedBackdropForItsOwningAnime() = runBlocking {
+        createCanonicalFixture()
+        val backdrop = createValidPng("projected-backdrop.png")
+        try {
+            insertArtworkTestRow(
+                id = 40L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "backdrop",
+                source = "local",
+                localPath = backdrop.absolutePath,
+                externalUrl = "https://cdn.kitsu.io/projected-backdrop.jpg",
+            )
+            val repository = ReiAnixSqliteLibraryRepository(context)
+            val rows = repository.loadLibraryCatalogRows()
+            val projected = ReiAnixNativeLibraryCatalogProjector.project(rows).animes.single()
+
+            assertEquals(1L, projected.id)
+            assertEquals(backdrop.absolutePath, projected.artwork?.backdropLocalPath)
+            assertEquals("https://cdn.kitsu.io/projected-backdrop.jpg", projected.artwork?.backdropExternalUrl)
+        } finally {
+            backdrop.delete()
+        }
+    }
+
+    @Test
+    fun enrichmentSkipsExternalCatalogWhenPosterAndBackdropAreAlreadyValid() = runBlocking {
+        createCanonicalFixture()
+        val poster = createValidPng("poster-already-valid.png")
+        val backdrop = createValidPng("backdrop-already-valid.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    """
+                    UPDATE anime SET year=2016,format='TV',media_kind='series',
+                        description='Complete local synopsis for the no-download case.',
+                        episodes_count=12,duration=24,status='Finished Airing',score=86,
+                        cover_cache=? WHERE id=1
+                    """.trimIndent(),
+                    arrayOf(poster.absolutePath),
+                )
+            }
+            insertArtworkTestRow(
+                id = 50L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "backdrop",
+                source = "local",
+                localPath = backdrop.absolutePath,
+            )
+            val kitsuCalls = AtomicInteger()
+            val jikanCalls = AtomicInteger()
+            fun provider(source: ReiAnixCatalogSource, calls: AtomicInteger) =
+                object : ReiAnixAnimeCatalogProvider {
+                    override val source = source
+                    override suspend fun searchAnime(
+                        query: String,
+                        limit: Int,
+                    ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                        calls.incrementAndGet()
+                        return ReiAnixCatalogResult.Success(emptyList())
+                    }
+                    override suspend fun getAnime(externalId: String) =
+                        ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+                }
+            val database = ReiAnixSqliteDatabase(context)
+            val artwork = ReiAnixArtworkService(context, database)
+            val service = ReiAnixExternalCatalogIntegrationService(
+                library = ReiAnixSqliteLibraryRepository(database),
+                providers = ReiAnixCatalogProviderRegistry(
+                    listOf(
+                        provider(ReiAnixCatalogSource.KITSU, kitsuCalls),
+                        provider(ReiAnixCatalogSource.JIKAN, jikanCalls),
+                    ),
+                    ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
+                ),
+                artwork = artwork,
+            )
+
+            assertEquals(0, service.enrichLibraryGaps())
+            assertEquals(0, kitsuCalls.get())
+            assertEquals(0, jikanCalls.get())
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+        } finally {
+            poster.delete()
+            backdrop.delete()
+        }
+    }
+
+    private fun createValidPng(fileName: String): File {
+        val file = File(context.cacheDir, fileName)
+        val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+        try {
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            bitmap.recycle()
+        }
+        return file
+    }
+
+    private fun insertArtworkTestRow(
+        id: Long,
+        entityType: String,
+        entityId: Long,
+        artworkType: String,
+        source: String,
+        localPath: String?,
+        manual: Boolean = false,
+        externalUrl: String? = null,
+    ) {
+        val values = ContentValues().apply {
+            put("id", id)
+            put("entity_type", entityType)
+            put("entity_id", entityId.toString())
+            put("artwork_type", artworkType)
+            put("source", source)
+            if (localPath == null) putNull("local_path") else put("local_path", localPath)
+            if (externalUrl == null) putNull("external_url") else put("external_url", externalUrl)
+            put("manual", if (manual) 1 else 0)
+            put("priority", 75)
+            put("status", "ready")
+            put("discovered_at", 1_000.0)
+            put("updated_at", 1_000.0)
+        }
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.insertOrThrow("artwork", null, values)
         }
     }
 
