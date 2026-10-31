@@ -2505,6 +2505,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     fun completeMetadataValidPosterAndMissingBackdropStillTriggerSupplementalLookup() = runBlocking {
         createCanonicalFixture()
         val poster = createValidPng("backdrop-only-poster.png")
+        val downloadedBackdrop = createValidPng("jikan-backdrop-http-response.png")
         try {
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
                 db.execSQL(
@@ -2558,7 +2559,6 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val database = ReiAnixSqliteDatabase(context)
             val repository = ReiAnixSqliteLibraryRepository(database)
             val artwork = ReiAnixArtworkService(context, database)
-            val downloadedBackdrop = createValidPng("jikan-backdrop-http-response.png")
             val downloadedBackdropBytes = downloadedBackdrop.readBytes()
             val httpCalls = AtomicInteger()
             var requestedUrl: String? = null
@@ -2616,9 +2616,18 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val projectedRows = repository.loadLibraryCatalogRows()
             val projected = ReiAnixNativeLibraryCatalogProjector.project(projectedRows).animes.single()
             assertEquals(publishedFile.absolutePath, projected.artwork?.backdropLocalPath)
+            val incrementalRow = repository.loadLibraryCatalogRowForArtwork("anime", "1")
+            assertNotNull("The publication listener must be able to reload the owning library row.", incrementalRow)
+            val incrementallyProjected = ReiAnixNativeLibraryCatalogProjector
+                .project(listOf(requireNotNull(incrementalRow))).animes.single()
+            assertEquals(publishedFile.absolutePath, incrementallyProjected.artwork?.backdropLocalPath)
             assertEquals(poster.absolutePath, updated.coverCache)
             assertEquals(poster.readBytes().toList(), File(updated.coverCache!!).readBytes().toList())
             assertFalse("The poster URL must not be fetched again during backdrop recovery.", httpCalls.get() > 1)
+
+            assertTrue("A second artwork pass should be accepted for reconciliation.", artwork.requestAnimeArtwork(1L))
+            withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
+            assertEquals("Already validated local artwork must not be downloaded again.", 1, httpCalls.get())
         } finally {
             poster.delete()
             downloadedBackdrop.delete()

@@ -363,8 +363,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     internal fun cancelAnimeArtworkRequest(animeId: Long): Boolean {
         if (animeId <= 0L) return false
         val active = synchronized(jobs) { jobs[animeId]?.takeIf { it.isActive } } ?: return false
-        activeConnections[animeId]?.disconnect()
         active.cancel()
+        activeConnections[animeId]?.disconnect()
         return true
     }
 
