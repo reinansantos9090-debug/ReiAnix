@@ -134,20 +134,22 @@ class AniListGraphqlRequestController(
 
     /** Must be called under [mutex]; the returned delay is awaited outside it. */
     private fun requiredWaitMs(now: Long): Long {
-        if (resetAtMs?.let { it <= now } == true ||
-            (remainingRequests == 0L && resetAtMs == null && now >= blockedUntilMs)
-        ) {
-            remainingRequests = null
-            resetAtMs = null
-        }
         if (remainingRequests == 0L) {
-            val knownDeadline = resetAtMs?.takeIf { it > now }
-                ?: blockedUntilMs.takeIf { it > now }
-            if (knownDeadline != null) {
-                blockedUntilMs = maxOf(blockedUntilMs, knownDeadline)
+            // Keep the exhausted-quota marker until its shared deadline has actually
+            // elapsed. Clearing it merely because Reset is absent/expired would let the
+            // normal pacing interval release a request immediately after a quota response.
+            val resetDeadline = resetAtMs?.takeIf { it > now }
+            val quotaDeadline = maxOf(blockedUntilMs, resetDeadline ?: Long.MIN_VALUE)
+            if (quotaDeadline > now) {
+                if (resetDeadline != null) {
+                    blockedUntilMs = maxOf(blockedUntilMs, resetDeadline)
+                }
             } else {
-                blockedUntilMs = maxOf(blockedUntilMs, safeAdd(now, UNKNOWN_REMAINING_WAIT_MS))
+                remainingRequests = null
+                resetAtMs = null
             }
+        } else if (resetAtMs?.let { it <= now } == true) {
+            resetAtMs = null
         }
 
         val intervalMs = requiredIntervalMs(now)
@@ -206,9 +208,15 @@ class AniListGraphqlRequestController(
         // Quota exhaustion is still actionable when the limit header is absent.
         remainingRequests = remaining
         resetAtMs = resetDeadline
+        if (remainingRequests == 0L) {
+            // Reset may be absent, malformed, or already expired. In all three cases
+            // retain a conservative 60-second deadline rather than falling back to pacing.
+            val quotaDeadline = resetDeadline ?: safeAdd(now, UNKNOWN_REMAINING_WAIT_MS)
+            blockedUntilMs = maxOf(blockedUntilMs, quotaDeadline)
+        }
 
         if (response.statusCode != HTTP_TOO_MANY_REQUESTS && remainingRequests == 0L) {
-            logger("AniList GraphQL quota exhausted; reset=" + (resetAtMs ?: "unknown"))
+            logger("AniList GraphQL quota exhausted; reset=" + (resetAtMs ?: "fallback"))
         }
         return resetDeadline
     }
