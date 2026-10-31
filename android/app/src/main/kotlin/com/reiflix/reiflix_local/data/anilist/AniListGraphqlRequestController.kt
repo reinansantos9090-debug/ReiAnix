@@ -18,8 +18,9 @@ import kotlin.math.ceil
  * Requests are serialized and spaced with a safety margin. A lower header limit
  * applies immediately; a higher limit requires three consistent observations.
  *
- * A 429 is retried inside this shared critical section so other clients cannot
- * race the cooldown. delay() keeps the wait suspending and coroutine-cancellable.
+ * A 429 updates the shared cooldown before the request lock is released. Automatic retries
+ * are bounded and wait outside the mutex, so throttled calls cannot starve other consumers.
+ * delay() keeps the wait suspending and coroutine-cancellable.
  */
 class AniListGraphqlRequestController(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
