@@ -1,7 +1,6 @@
 package com.reiflix.reiflix_local.data.library
 
 import android.graphics.BitmapFactory
-import android.os.Build
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
@@ -282,7 +281,8 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             else -> null
         } ?: return null
 
-        if (signature == "avif" && Build.VERSION.SDK_INT < 31) return path
+        // Do not treat an AVIF container signature as a decodable image on API < 31.
+        // If the platform decoder cannot inspect dimensions, keep the local path out of Compose.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null

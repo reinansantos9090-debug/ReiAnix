@@ -1551,7 +1551,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun validImage(file: File, knownExtension: String? = null): Boolean {
         if (!file.isFile || file.length() <= 0) return false
         val ext = knownExtension ?: header(file)?.let(::imageExtension) ?: return false
-        if (ext == ".avif" && android.os.Build.VERSION.SDK_INT < 31) return true
+        // A file signature is not a decode. Android's platform AVIF decoder starts at API 31;
+        // older releases must reject this format rather than publish an unverified local image.
+        if (ext == ".avif" && android.os.Build.VERSION.SDK_INT < 31) return false
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
@@ -1563,9 +1565,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun imageDimensions(path: String, knownExtension: String? = null): Pair<Int, Int>? {
         val ext = knownExtension ?: header(File(path))?.let(::imageExtension) ?: return null
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        if (ext == ".avif" && android.os.Build.VERSION.SDK_INT < 31) return null
         BitmapFactory.decodeFile(path, options)
         if (options.outWidth > 0 && options.outHeight > 0) return options.outWidth to options.outHeight
-        return if (ext == ".avif" && android.os.Build.VERSION.SDK_INT < 31) 0 to 0 else null
+        return null
     }
     private fun dimensions(path: String, knownExtension: String? = null) = imageDimensions(path, knownExtension)
     private fun header(file: File): ByteArray? = runCatching {

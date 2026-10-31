@@ -2798,6 +2798,52 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    @Config(application = Application::class, sdk = [30])
+    fun unsupportedAvifWithoutPlatformDecoderIsNotValidOrProjectedLocally() = runBlocking {
+        createCanonicalFixture()
+        val unsupportedAvif = File(context.cacheDir, "unsupported-avif-backdrop.avif")
+        // ISO-BMFF ftyp/avif signature only; this deliberately contains no decodable image.
+        unsupportedAvif.writeBytes(
+            byteArrayOf(
+                0, 0, 0, 16,
+                'f'.code.toByte(), 't'.code.toByte(), 'y'.code.toByte(), 'p'.code.toByte(),
+                'a'.code.toByte(), 'v'.code.toByte(), 'i'.code.toByte(), 'f'.code.toByte(),
+                0, 0, 0, 0,
+            ),
+        )
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL("UPDATE anime SET media_kind='series',metadata_manual_fields='[]' WHERE id=1")
+            }
+            insertArtworkTestRow(
+                id = 55L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "backdrop",
+                source = "local",
+                localPath = unsupportedAvif.absolutePath,
+            )
+
+            val database = ReiAnixSqliteDatabase(context)
+            val artwork = ReiAnixArtworkService(context, database)
+            assertFalse(
+                "An AVIF signature without a platform decoder must not count as a valid backdrop on API 30.",
+                artwork.hasValidAnimeArtwork(1L, "backdrop"),
+            )
+
+            val projected = ReiAnixNativeLibraryCatalogProjector
+                .project(ReiAnixSqliteLibraryRepository(database).loadLibraryCatalogRows())
+                .animes.single()
+            assertNull(
+                "The library must not project a local AVIF path that the API 30 decoder cannot validate.",
+                projected.artwork?.backdropLocalPath,
+            )
+        } finally {
+            unsupportedAvif.delete()
+        }
+    }
+
+    @Test
     fun sqliteLibraryProjectionCarriesValidatedBackdropForItsOwningAnime() = runBlocking {
         createCanonicalFixture()
         val backdrop = createValidPng("projected-backdrop.png")
