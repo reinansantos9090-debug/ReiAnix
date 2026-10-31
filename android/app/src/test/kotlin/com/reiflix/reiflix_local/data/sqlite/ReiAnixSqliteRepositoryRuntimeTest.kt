@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.sqlite
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.app.Application
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
@@ -28,6 +29,14 @@ import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogMediaKind
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogSource
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIds
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogError
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogResult
+import com.reiflix.reiflix_local.data.catalog.ReiAnixAnimeCatalogProvider
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogProviderRegistry
+import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
+import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
+import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -2253,6 +2262,230 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val result = ReiAnixPersonalListService(context).list()
         assertTrue(result is ReiAnixPersonalListService.Result.Failure)
         assertFalse(databaseFile.exists())
+    }
+
+
+    @Test
+    fun supplementalKitsuMetadataFillsOnlyGapsAndPersistsItsIdInV29Preferences() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE anime SET year=2016, format='TV', media_kind='series' WHERE id=1")
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val local = requireNotNull(repository.getAnime(1L))
+        val remote = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(kitsuId = "kitsu-verified-42"),
+            title = "Original Title",
+            alternativeTitles = setOf("Old English Title", "Kitsu Alternate Title"),
+            synopsis = "A valid supplemental synopsis that fills the missing description.",
+            coverUrl = "https://media.kitsu.io/poster.jpg",
+            backdropUrl = "https://media.kitsu.io/backdrop.jpg",
+            releaseYear = 2018,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            episodes = 12,
+            durationMinutes = 24,
+            status = "finished",
+            averageScore = 86,
+        )
+        val match = requireNotNull(
+            ReiAnixCatalogIdentityMatcher.verify(1L, local.toExternalCatalogIdentity(), remote),
+        )
+
+        repository.saveExternalCatalogIds(match)
+        val updated = repository.mergeExternalCatalogMetadata(match, remote)
+
+        assertEquals("Original Title", updated.title)
+        assertEquals("https://example.invalid/old-cover.jpg", updated.coverUrl)
+        assertEquals("A valid supplemental synopsis that fills the missing description.", updated.description)
+        assertEquals(2016, updated.year)
+        assertEquals("TV", updated.format)
+        assertEquals(12, updated.episodesCount)
+        assertEquals(24, updated.duration)
+        assertEquals("finished", updated.status)
+        assertEquals(86, updated.score)
+        assertEquals("anilist", updated.metadataSource)
+        assertTrue(updated.aliasesJson.orEmpty().contains("Kitsu Alternate Title"))
+        assertEquals("kitsu-verified-42", repository.getExternalCatalogIds(1L)?.kitsuId)
+        assertEquals(29, repository.inspectSchema().schemaVersion)
+    }
+
+    @Test
+    fun failedKitsuProviderDoesNotBlockVerifiedJikanFallback() = runBlocking {
+        createCanonicalFixture()
+        val png = File(context.cacheDir, "external-catalog-valid-poster.png")
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        try {
+            png.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            bitmap.recycle()
+        }
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET year=2016,format='TV',media_kind='series',cover_cache=? WHERE id=1",
+                    arrayOf(png.absolutePath),
+                )
+            }
+            val kitsuCalls = java.util.concurrent.atomic.AtomicInteger()
+            val jikanCalls = java.util.concurrent.atomic.AtomicInteger()
+            val kitsu = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.KITSU
+                override suspend fun searchAnime(query: String, limit: Int): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                    kitsuCalls.incrementAndGet()
+                    return ReiAnixCatalogResult.Failure(ReiAnixCatalogError.Network("Kitsu unavailable"))
+                }
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+            val remote = ReiAnixCatalogAnime(
+                source = ReiAnixCatalogSource.JIKAN,
+                ids = ReiAnixExternalCatalogIds(myAnimeListId = 9001L),
+                title = "Original Title",
+                alternativeTitles = setOf("Old English Title"),
+                synopsis = "A complete Jikan synopsis that complements the existing AniList catalog record.",
+                releaseYear = 2016,
+                format = "TV",
+                mediaKind = ReiAnixCatalogMediaKind.SERIES,
+                episodes = 12,
+                durationMinutes = 24,
+                status = "Finished Airing",
+                averageScore = 82,
+            )
+            val jikan = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.JIKAN
+                override suspend fun searchAnime(query: String, limit: Int): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                    jikanCalls.incrementAndGet()
+                    return ReiAnixCatalogResult.Success(listOf(remote))
+                }
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val artwork = ReiAnixArtworkService(context, database)
+            val service = ReiAnixExternalCatalogIntegrationService(
+                library = ReiAnixSqliteLibraryRepository(database),
+                providers = ReiAnixCatalogProviderRegistry(
+                    listOf(kitsu, jikan),
+                    ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
+                ),
+                artwork = artwork,
+            )
+
+            assertEquals(1, service.enrichLibraryGaps())
+            val updated = requireNotNull(ReiAnixSqliteLibraryRepository(database).getAnime(1L))
+            assertTrue(kitsuCalls.get() > 0)
+            assertTrue(jikanCalls.get() > 0)
+            assertEquals(9001L, ReiAnixSqliteLibraryRepository(database).getExternalCatalogIds(1L)?.myAnimeListId)
+            assertEquals("A complete Jikan synopsis that complements the existing AniList catalog record.", updated.description)
+            assertNull(updated.anilistId)
+            assertEquals("Original Title", updated.title)
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+        } finally {
+            png.delete()
+        }
+    }
+
+    @Test
+    fun ambiguousJikanCandidatesAreRejectedWithoutPersistingAnyExternalId() = runBlocking {
+        createCanonicalFixture()
+        val png = File(context.cacheDir, "external-catalog-ambiguous-poster.png")
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        try {
+            png.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            bitmap.recycle()
+        }
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET year=2016,format='TV',media_kind='series',cover_cache=? WHERE id=1",
+                    arrayOf(png.absolutePath),
+                )
+            }
+            val kitsu = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.KITSU
+                override suspend fun searchAnime(query: String, limit: Int) =
+                    ReiAnixCatalogResult.Failure<List<ReiAnixCatalogAnime>>(ReiAnixCatalogError.Network("offline"))
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+            fun candidate(id: Long) = ReiAnixCatalogAnime(
+                source = ReiAnixCatalogSource.JIKAN,
+                ids = ReiAnixExternalCatalogIds(myAnimeListId = id),
+                title = "Original Title",
+                alternativeTitles = setOf("Old English Title"),
+                releaseYear = 2016,
+                format = "TV",
+                mediaKind = ReiAnixCatalogMediaKind.SERIES,
+                episodes = 12,
+            )
+            val jikan = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.JIKAN
+                override suspend fun searchAnime(query: String, limit: Int) =
+                    ReiAnixCatalogResult.Success(listOf(candidate(9002L), candidate(9003L)))
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val service = ReiAnixExternalCatalogIntegrationService(
+                library = ReiAnixSqliteLibraryRepository(database),
+                providers = ReiAnixCatalogProviderRegistry(
+                    listOf(kitsu, jikan),
+                    ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
+                ),
+                artwork = ReiAnixArtworkService(context, database),
+            )
+
+            assertEquals(0, service.enrichLibraryGaps())
+            assertNull(ReiAnixSqliteLibraryRepository(database).getExternalCatalogIds(1L)?.myAnimeListId)
+            assertNull(ReiAnixSqliteLibraryRepository(database).getAnime(1L)?.description)
+        } finally {
+            png.delete()
+        }
+    }
+
+    @Test
+    fun externalArtworkCandidateCannotReplaceManualOrValidLocalPoster() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        val artwork = ReiAnixArtworkService(context, database)
+
+        // The canonical fixture explicitly gives cover_url to manual metadata ownership.
+        assertFalse(
+            artwork.replaceExternalArtworkCandidate(
+                1L, "poster", "https://media.kitsu.io/replacement.jpg",
+            ),
+        )
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE anime SET metadata_manual_fields='[]' WHERE id=1")
+        }
+
+        val png = File(context.cacheDir, "external-catalog-preserved-poster.png")
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        try {
+            png.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            bitmap.recycle()
+        }
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL("UPDATE anime SET cover_cache=? WHERE id=1", arrayOf(png.absolutePath))
+            }
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            assertFalse(
+                artwork.replaceExternalArtworkCandidate(
+                    1L, "poster", "https://cdn.myanimelist.net/replacement.jpg",
+                ),
+            )
+            assertEquals(
+                "https://example.invalid/old-cover.jpg",
+                ReiAnixSqliteLibraryRepository(database).getAnime(1L)?.coverUrl,
+            )
+        } finally {
+            png.delete()
+        }
     }
 
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
