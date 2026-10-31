@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.backup
 
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.sqlite.ReiAnixExternalCatalogIdsCodec
 import com.reiflix.reiflix_local.data.contract.arrayOrDefault
 import com.reiflix.reiflix_local.data.contract.intOrNull
 import com.reiflix.reiflix_local.data.contract.intRequired
@@ -932,7 +933,15 @@ class ReiAnixBackupService(context: Context) {
                 if (sanitizeUnknownPreferences) {
                     val allowed = exportedPreferenceKeys().toList().sorted()
                     val placeholders = allowed.joinToString(",") { "?" }
-                    db.delete("preferences", "key NOT IN (" + placeholders + ")", allowed.toTypedArray())
+                    // Cross-catalog identifiers share the canonical v29 preferences table.
+                    db.delete(
+                        "preferences",
+                        "key NOT IN (" + placeholders + ") AND substr(key,1,?) != ?",
+                        (allowed + listOf(
+                            ReiAnixExternalCatalogIdsCodec.PREFERENCE_PREFIX.length.toString(),
+                            ReiAnixExternalCatalogIdsCodec.PREFERENCE_PREFIX,
+                        )).toTypedArray(),
+                    )
                 }
                 validateSettingsAndConsumption(db)
                 db.setTransactionSuccessful()
@@ -957,6 +966,13 @@ class ReiAnixBackupService(context: Context) {
             while (cursor.moveToNext()) {
                 val key = cursor.getString(0)
                 val value = cursor.getString(1)
+                if (key.startsWith(ReiAnixExternalCatalogIdsCodec.PREFERENCE_PREFIX)) {
+                    require(
+                        ReiAnixExternalCatalogIdsCodec.isExternalPreferenceKey(key) &&
+                            ReiAnixExternalCatalogIdsCodec.isValidPreferenceEntry(key, value),
+                    ) { "Mapeamento de IDs de catálogo externo inválido: " + key + "." }
+                    continue
+                }
                 if (key !in exportedPreferenceKeys()) continue
                 if (key == "settings.schema_version") {
                     val settingsSchemaVersion = value.toIntOrNull()

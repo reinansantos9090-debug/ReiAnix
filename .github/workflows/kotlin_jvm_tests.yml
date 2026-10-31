@@ -63,7 +63,7 @@ jobs:
           test -s gradle/wrapper/gradle-wrapper.properties
           grep -Fq 'gradle-8.11.1-bin.zip' gradle/wrapper/gradle-wrapper.properties
 
-      - name: Run the two requested AniList Kotlin/JVM test suites
+      - name: Run AniList and external catalog Kotlin/JVM regression suites
         shell: bash
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
@@ -75,6 +75,10 @@ jobs:
             :app:testDebugUnitTest \
             --tests com.reiflix.reiflix_local.data.anilist.AniListGraphqlRequestControllerTest \
             --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
+            --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListCatalogProviderAdapterTest \
+            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogContractsTest \
+            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinatorTest \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.verifiedExternalCatalogIdsPersistInV29PreferencesWithoutChangingLibraryRows \
             2>&1 | tee "$RUNNER_TEMP/reianix-anilist-jvm-tests.log"
 
       - name: Compile release Kotlin sources
@@ -134,7 +138,7 @@ jobs:
                   rows.append((classname, test_name, status, detail))
 
           with open(summary_path, "a", encoding="utf-8") as summary:
-              summary.write("## AniList Kotlin/JVM test results\n\n")
+              summary.write("## AniList and external catalog Kotlin/JVM test results\n\n")
               if not report_files:
                   summary.write(
                       "No JUnit XML reports were produced. The Gradle test task may have "

@@ -22,6 +22,12 @@ import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
 import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryAttemptTimes
 import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogAnime
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentity
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogMediaKind
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogSource
+import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIds
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -110,6 +116,85 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(29, schema.schemaVersion)
         assertTrue(schema.missingRequiredTables.isEmpty())
         assertTrue(schema.missingRequiredColumns.isEmpty())
+    }
+
+
+    @Test
+    fun verifiedExternalCatalogIdsPersistInV29PreferencesWithoutChangingLibraryRows() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE anime SET year=2016, format='TV', media_kind='series', season='spring' WHERE id=1")
+        }
+        val localIdentity = ReiAnixCatalogIdentity(
+            titles = setOf("catalog-key", "Original Title", "Old English Title"),
+            releaseYear = 2016,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            season = "spring",
+        )
+        val remote = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(
+                aniListId = 800L,
+                myAnimeListId = 42L,
+                kitsuId = "kitsu-42",
+                aniDbId = 91L,
+                additionalIds = mapOf("anipub" to "pub-91"),
+            ),
+            title = "Original Title",
+            alternativeTitles = setOf("Old English Title"),
+            releaseYear = 2016,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            season = "spring",
+        )
+        val match = ReiAnixCatalogIdentityMatcher.verify(1L, localIdentity, remote)
+        assertNotNull("Exact title/year/format/kind/season evidence should match.", match)
+        val verifiedMatch = requireNotNull(match)
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val saved = repository.saveExternalCatalogIds(verifiedMatch)
+        assertEquals(800L, saved.aniListId)
+        assertEquals(42L, saved.myAnimeListId)
+        assertEquals("kitsu-42", saved.kitsuId)
+        assertEquals(91L, saved.aniDbId)
+        assertEquals("pub-91", saved.additionalIds["anipub"])
+        assertEquals(saved, ReiAnixSqliteLibraryRepository(context).getExternalCatalogIds(1L))
+
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT COUNT(*) FROM anime", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("External ID discovery must not insert library anime.", 1, cursor.getInt(0))
+            }
+            db.rawQuery("SELECT COUNT(*) FROM episodes", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("External ID discovery must not change episodes.", 1, cursor.getInt(0))
+            }
+            db.rawQuery("SELECT anilist_id FROM anime WHERE id=1", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertTrue("Cross-catalog IDs must not rewrite the canonical AniList association.", cursor.isNull(0))
+            }
+        }
+
+        val conflictingMatch = ReiAnixCatalogIdentityMatcher.verify(
+            1L, localIdentity, remote.copy(ids = remote.ids.copy(kitsuId = "different-kitsu-id")),
+        )
+        assertNotNull(conflictingMatch)
+        try {
+            repository.saveExternalCatalogIds(requireNotNull(conflictingMatch))
+            fail("A conflicting verified Kitsu ID must be rejected.")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("Conflicting verified Kitsu"))
+        }
+
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE anime SET year=2017 WHERE id=1")
+        }
+        try {
+            repository.saveExternalCatalogIds(verifiedMatch)
+            fail("A mapping verified against stale local identity must be rejected.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message.orEmpty().contains("identity changed"))
+        }
     }
 
     @Test
