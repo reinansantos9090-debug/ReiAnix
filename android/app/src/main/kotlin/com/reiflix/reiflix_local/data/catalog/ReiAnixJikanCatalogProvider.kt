@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.catalog
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -71,6 +72,8 @@ class ReiAnixJikanCatalogProvider(
                 expiresAtMillis = response.cacheExpiryMillis(now, fallbackTtlMillis),
             )
         }
+    } catch (_: TimeoutCancellationException) {
+        ReiAnixCatalogResult.Failure(ReiAnixCatalogError.TimedOut)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Exception) {
