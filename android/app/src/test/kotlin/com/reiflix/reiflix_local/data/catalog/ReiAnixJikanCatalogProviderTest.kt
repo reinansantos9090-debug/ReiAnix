@@ -86,7 +86,8 @@ class ReiAnixJikanCatalogProviderTest {
         assertTrue(transport.requestedUrl.orEmpty().contains("limit=10"))
         assertTrue(transport.requestedUrl.orEmpty().contains("sfw=true"))
         assertEquals("application/json", transport.accept)
-        assertTrue((result as ReiAnixCatalogResult.Success).expiresAtMillis!! > result.fetchedAtMillis)
+        val success = result as ReiAnixCatalogResult.Success
+        assertTrue(success.expiresAtMillis!! > success.fetchedAtMillis)
     }
 
     @Test

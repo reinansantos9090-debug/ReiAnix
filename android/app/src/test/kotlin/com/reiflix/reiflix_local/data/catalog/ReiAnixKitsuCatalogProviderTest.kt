@@ -92,7 +92,8 @@ class ReiAnixKitsuCatalogProviderTest {
         assertTrue(transport.requestedUrl.orEmpty().contains("filter%5Btext%5D=Sample%20Anime%20%26%20More"))
         assertTrue(transport.requestedUrl.orEmpty().contains("page%5Blimit%5D=8"))
         assertTrue(transport.accept.orEmpty().contains("application/vnd.api+json"))
-        assertTrue((result as ReiAnixCatalogResult.Success).expiresAtMillis!! > result.fetchedAtMillis)
+        val success = result as ReiAnixCatalogResult.Success
+        assertTrue(success.expiresAtMillis!! > success.fetchedAtMillis)
     }
 
     @Test
