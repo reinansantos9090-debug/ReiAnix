@@ -157,12 +157,14 @@ class LibraryUiMappersTest {
     fun realDurationAndEpisodeArtworkReachUiModelUnchanged() {
         val source = episode(1202, 1, 0.0, 123.456, "unwatched").toMutableMap().apply {
             this["artwork_local_path"] = "/cache/episode-1202.jpg"
+            this["artwork_revision"] = "sha256:episode-1202-content"
         }
 
         val model = LibraryUiMappers.episode(source)
 
         assertEquals(123.456, model.durationSeconds!!, 0.0)
         assertEquals("/cache/episode-1202.jpg", model.artwork?.localPath)
+        assertEquals("sha256:episode-1202-content", model.artwork?.revision)
     }
 
     @Test

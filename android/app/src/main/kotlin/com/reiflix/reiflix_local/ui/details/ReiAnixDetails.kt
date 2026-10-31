@@ -1526,6 +1526,7 @@ private fun DetailsSeasonCard(
                         modifier = Modifier.fillMaxSize(),
                         identity = season.stableKey + ":preview",
                         externalUrl = previewExternal,
+                        sourceRevision = season.episodes.firstOrNull()?.artwork?.revision,
                     )
                 } else {
                     Box(

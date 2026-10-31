@@ -978,6 +978,7 @@ fun ReiAnixEpisodeCard(
                         modifier = Modifier.fillMaxSize(),
                         identity = episode.stableKey,
                         externalUrl = episode.artwork?.externalUrl,
+                        sourceRevision = episode.artwork?.revision,
                     )
                 } else {
                     Box(
