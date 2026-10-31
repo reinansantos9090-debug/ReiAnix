@@ -46,85 +46,113 @@ class AniListGraphqlRequestController(
     suspend fun execute(
         endpoint: String,
         request: suspend () -> AniListHttpResponse,
-    ): AniListHttpResponse = mutex.withLock {
+    ): AniListHttpResponse {
+        var automaticRateLimitRetries = 0
         while (true) {
-            val now = nowMillis()
-            if (resetAtMs != null && resetAtMs!! <= now) {
-                resetAtMs = null
-                remainingRequests = null
+            // Wait against shared quota state, but never hold the mutex while sleeping.
+            val waitState = mutex.withLock {
+                Triple(requiredWaitMs(nowMillis()), activeLimitPerMinute, remainingRequests)
             }
-            if (remainingRequests == 0L) {
-                val knownDeadline = resetAtMs?.takeIf { it > now }
-                    ?: blockedUntilMs.takeIf { it > now }
-                if (knownDeadline != null) {
-                    blockedUntilMs = maxOf(blockedUntilMs, knownDeadline)
-                } else {
-                    blockedUntilMs = maxOf(blockedUntilMs, safeAdd(now, UNKNOWN_REMAINING_WAIT_MS))
-                }
-            }
-
-            val intervalMs = requiredIntervalMs(now)
-            val nextPacedAt = lastRequestFinishedAtMs?.let { safeAdd(it, intervalMs) }
-            val waitUntil = maxOf(blockedUntilMs, nextPacedAt ?: Long.MIN_VALUE)
-            val waitMs = (waitUntil - now).coerceAtLeast(0L)
+            val waitMs = waitState.first
             if (waitMs > 0L) {
                 logger(
                     "AniList GraphQL waiting " + waitMs + "ms endpoint=" + endpoint +
-                        " limit=" + activeLimitPerMinute + "/min remaining=" + (remainingRequests ?: "unknown"),
+                        " limit=" + waitState.second + "/min remaining=" +
+                        (waitState.third ?: "unknown"),
                 )
                 delayMillis(waitMs)
+                continue
             }
 
-            val readyAt = nowMillis()
-            if (resetAtMs?.let { it <= readyAt } == true ||
-                (remainingRequests == 0L && resetAtMs == null && readyAt >= blockedUntilMs)
+            // Another consumer may have updated quota after the first lock was released.
+            // Re-check while acquiring the request slot; null means wait and retry.
+            val response = mutex.withLock {
+                val readyAt = nowMillis()
+                val requiredWait = requiredWaitMs(readyAt)
+                if (requiredWait > 0L) {
+                    null
+                } else {
+                    val requestIntervalMs = requiredIntervalMs(readyAt)
+                    logger(
+                        "AniList GraphQL request start endpoint=" + endpoint +
+                            " limit=" + activeLimitPerMinute + "/min remaining=" +
+                            (remainingRequests ?: "unknown") + " interval=" + requestIntervalMs + "ms",
+                    )
+                    val result = try {
+                        request()
+                    } finally {
+                        lastRequestFinishedAtMs = nowMillis()
+                    }
+
+                    val responseAt = nowMillis()
+                    val resetDeadline = updateQuotaFromHeaders(result, responseAt)
+                    if (result.statusCode != HTTP_TOO_MANY_REQUESTS) {
+                        consecutiveRateLimitResponses = 0
+                        logger(
+                            "AniList GraphQL response endpoint=" + endpoint +
+                                " status=" + result.statusCode +
+                                " limit=" + activeLimitPerMinute + "/min remaining=" +
+                                (remainingRequests ?: "unknown"),
+                        )
+                    } else {
+                        consecutiveRateLimitResponses += 1
+                        remainingRequests = 0L
+                        val retryAfterDeadline = retryAfterDeadline(result, responseAt)
+                        val knownDeadlines = listOfNotNull(retryAfterDeadline, resetDeadline)
+                            .filter { it > responseAt }
+                        val headerDeadline = knownDeadlines.maxOrNull()
+                        val fallbackDelay = fallbackDelayMs(consecutiveRateLimitResponses)
+                        val resumeAt = headerDeadline ?: safeAdd(responseAt, fallbackDelay)
+                        blockedUntilMs = maxOf(blockedUntilMs, resumeAt)
+                        logger(
+                            "AniList GraphQL HTTP 429 endpoint=" + endpoint +
+                                " Retry-After deadline=" + (retryAfterDeadline ?: "unavailable") +
+                                " reset=" + (resetDeadline ?: "unavailable") +
+                                " resumeAt=" + blockedUntilMs + " fallback=" + fallbackDelay +
+                                "ms; automaticRetries=" + automaticRateLimitRetries,
+                        )
+                    }
+                    result
+                }
+            }
+
+            if (response == null) continue
+            if (
+                response.statusCode == HTTP_TOO_MANY_REQUESTS &&
+                automaticRateLimitRetries < MAX_AUTOMATIC_429_RETRIES
             ) {
-                remainingRequests = null
-                resetAtMs = null
+                automaticRateLimitRetries += 1
+                continue
             }
-
-            val requestIntervalMs = requiredIntervalMs(readyAt)
-            logger(
-                "AniList GraphQL request start endpoint=" + endpoint +
-                    " limit=" + activeLimitPerMinute + "/min remaining=" +
-                    (remainingRequests ?: "unknown") + " interval=" + requestIntervalMs + "ms",
-            )
-            val response = try {
-                request()
-            } finally {
-                lastRequestFinishedAtMs = nowMillis()
-            }
-
-            val responseAt = nowMillis()
-            val resetDeadline = updateQuotaFromHeaders(response, responseAt)
-            if (response.statusCode != HTTP_TOO_MANY_REQUESTS) {
-                consecutiveRateLimitResponses = 0
-                logger(
-                    "AniList GraphQL response endpoint=" + endpoint +
-                        " status=" + response.statusCode +
-                        " limit=" + activeLimitPerMinute + "/min remaining=" +
-                        (remainingRequests ?: "unknown"),
-                )
-                return@withLock response
-            }
-
-            consecutiveRateLimitResponses += 1
-            remainingRequests = 0L
-            val retryAfterDeadline = retryAfterDeadline(response, responseAt)
-            val knownDeadlines = listOfNotNull(retryAfterDeadline, resetDeadline)
-                .filter { it > responseAt }
-            val headerDeadline = knownDeadlines.maxOrNull()
-            val fallbackDelay = fallbackDelayMs(consecutiveRateLimitResponses)
-            val resumeAt = headerDeadline ?: safeAdd(responseAt, fallbackDelay)
-            blockedUntilMs = maxOf(blockedUntilMs, resumeAt)
-            logger(
-                "AniList GraphQL HTTP 429 endpoint=" + endpoint +
-                    " Retry-After deadline=" + (retryAfterDeadline ?: "unavailable") +
-                    " reset=" + (resetDeadline ?: "unavailable") +
-                    " resumeAt=" + blockedUntilMs + " fallback=" + fallbackDelay + "ms; retrying automatically",
-            )
+            // Return the final 429 so the caller can persist and schedule recovery.
+            // The global cooldown still protects any subsequent AniList consumer.
+            return response
         }
         error("Unreachable AniList request controller state.")
+    }
+
+    /** Must be called under [mutex]; the returned delay is awaited outside it. */
+    private fun requiredWaitMs(now: Long): Long {
+        if (resetAtMs?.let { it <= now } == true ||
+            (remainingRequests == 0L && resetAtMs == null && now >= blockedUntilMs)
+        ) {
+            remainingRequests = null
+            resetAtMs = null
+        }
+        if (remainingRequests == 0L) {
+            val knownDeadline = resetAtMs?.takeIf { it > now }
+                ?: blockedUntilMs.takeIf { it > now }
+            if (knownDeadline != null) {
+                blockedUntilMs = maxOf(blockedUntilMs, knownDeadline)
+            } else {
+                blockedUntilMs = maxOf(blockedUntilMs, safeAdd(now, UNKNOWN_REMAINING_WAIT_MS))
+            }
+        }
+
+        val intervalMs = requiredIntervalMs(now)
+        val nextPacedAt = lastRequestFinishedAtMs?.let { safeAdd(it, intervalMs) }
+        val waitUntil = maxOf(blockedUntilMs, nextPacedAt ?: Long.MIN_VALUE)
+        return (waitUntil - now).coerceAtLeast(0L)
     }
 
     private fun updateQuotaFromHeaders(response: AniListHttpResponse, now: Long): Long? {
@@ -167,16 +195,16 @@ class AniListGraphqlRequestController(
                     pendingHigherLimitObservations = 0
                 }
             }
-            remainingRequests = remaining
-            resetAtMs = resetDeadline
         } else {
             // Incomplete or malformed quota data is never permission to speed up.
             activeLimitPerMinute = CONSERVATIVE_LIMIT_PER_MINUTE
             pendingHigherLimit = null
             pendingHigherLimitObservations = 0
-            remainingRequests = null
-            resetAtMs = resetDeadline
         }
+
+        // Quota exhaustion is still actionable when the limit header is absent.
+        remainingRequests = remaining
+        resetAtMs = resetDeadline
 
         if (response.statusCode != HTTP_TOO_MANY_REQUESTS && remainingRequests == 0L) {
             logger("AniList GraphQL quota exhausted; reset=" + (resetAtMs ?: "unknown"))
@@ -260,6 +288,7 @@ class AniListGraphqlRequestController(
         private const val SAFETY_FACTOR = 1.1
         private const val UNKNOWN_REMAINING_WAIT_MS = 60_000L
         private const val MAX_FALLBACK_BACKOFF_MS = 300_000L
+        private const val MAX_AUTOMATIC_429_RETRIES = 2
         private const val TWO_DIGIT_YEAR_WINDOW_MS = 50L * 365L * 24L * 60L * 60L * 1_000L
 
         val processShared: AniListGraphqlRequestController by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
