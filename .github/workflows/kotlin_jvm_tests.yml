@@ -63,6 +63,19 @@ jobs:
           test -s gradle/wrapper/gradle-wrapper.properties
           grep -Fq 'gradle-8.11.1-bin.zip' gradle/wrapper/gradle-wrapper.properties
 
+      - name: Prepare canonical SQLite v29 JVM test fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
+          fixture="android/app/src/test/resources/native-sqlite-schema-v29.json"
+          mkdir -p "$(dirname "$fixture")"
+          gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"
+          jq '. + {statements: ((.table_sql | to_entries | sort_by(.key) | map(.value)) + ([.indexes | sort_by(.name)[] | select(.sql != null) | .sql]))}' "$contract" > "$fixture"
+          jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$fixture" >/dev/null
+          test -s "$fixture"
+          echo "Prepared canonical SQLite v29 fixture with 14 tables."
+
       - name: Run AniList and external catalog Kotlin/JVM regression suites
         shell: bash
         env:
@@ -94,69 +107,50 @@ jobs:
             :app:compileReleaseKotlin \
             2>&1 | tee -a "$RUNNER_TEMP/reianix-anilist-jvm-tests.log"
 
-      - name: Publish individual JVM test outcomes
+      - name: Publish JVM test summary
         if: always()
         shell: bash
         run: |
-          python3 - <<'PY'
-          import glob
-          import os
-          import xml.etree.ElementTree as ET
+          set -euo pipefail
+          reports=(android/app/build/test-results/testDebugUnitTest/TEST-*.xml)
+          if [[ ! -e "${reports[0]}" ]]; then
+            {
+              echo "## AniList and external catalog Kotlin/JVM test results"
+              echo
+              echo "No JUnit XML reports were produced. Inspect the Gradle test log and uploaded artifacts."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
-          report_files = sorted(glob.glob(
-              "android/app/build/test-results/testDebugUnitTest/TEST-*.xml"
-          ))
-          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
-          rows = []
-          totals = {"passed": 0, "failed": 0, "skipped": 0}
+          read -r total failures errors skipped < <(
+            awk '
+              {
+                line=$0
+                if (line ~ /<testsuite[[:space:]]/) {
+                  tests=fail=err=skip=0
+                  if (match(line, /tests="[0-9]+"/)) { value=substr(line, RSTART+7, RLENGTH-8); tests=value+0 }
+                  if (match(line, /failures="[0-9]+"/)) { value=substr(line, RSTART+10, RLENGTH-11); fail=value+0 }
+                  if (match(line, /errors="[0-9]+"/)) { value=substr(line, RSTART+8, RLENGTH-9); err=value+0 }
+                  if (match(line, /skipped="[0-9]+"/)) { value=substr(line, RSTART+9, RLENGTH-10); skip=value+0 }
+                  total+=tests; failures+=fail; errors+=err; skipped+=skip
+                }
+              }
+              END { printf "%d %d %d %d\n", total, failures, errors, skipped }
+            ' "${reports[@]}"
+          )
+          passed=$((total - failures - errors - skipped))
+          {
+            echo "## AniList and external catalog Kotlin/JVM test results"
+            echo
+            echo "**Totals:** $passed passed, $((failures + errors)) failed, $skipped skipped ($total total)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          for report_file in report_files:
-              root = ET.parse(report_file).getroot()
-              suite_name = root.attrib.get("name", os.path.basename(report_file))
-              cases = root.findall(".//testcase")
-              for case in cases:
-                  failure = case.find("failure")
-                  error = case.find("error")
-                  skipped = case.find("skipped")
-                  if failure is not None or error is not None:
-                      status = "FAIL"
-                      totals["failed"] += 1
-                      detail_node = failure if failure is not None else error
-                      detail = detail_node.attrib.get("message", "") if detail_node is not None else ""
-                  elif skipped is not None:
-                      status = "SKIP"
-                      totals["skipped"] += 1
-                      detail = skipped.attrib.get("message", "")
-                  else:
-                      status = "PASS"
-                      totals["passed"] += 1
-                      detail = ""
-
-                  classname = case.attrib.get("classname", suite_name)
-                  test_name = case.attrib.get("name", "(unnamed test)")
-                  detail = " ".join(detail.split())[:240]
-                  rows.append((classname, test_name, status, detail))
-
-          with open(summary_path, "a", encoding="utf-8") as summary:
-              summary.write("## AniList and external catalog Kotlin/JVM test results\n\n")
-              if not report_files:
-                  summary.write(
-                      "No JUnit XML reports were produced. The Gradle test task may have "
-                      "failed before test execution; inspect the step log and uploaded artifacts.\n"
-                  )
-              else:
-                  summary.write(
-                      f"**Totals:** {totals['passed']} passed, {totals['failed']} failed, "
-                      f"{totals['skipped']} skipped.\n\n"
-                  )
-                  summary.write("| Test class | Test method | Result | Details |\n")
-                  summary.write("|---|---|---:|---|\n")
-                  for classname, test_name, status, detail in rows:
-                      safe = lambda value: value.replace("|", "\\|").replace("\n", " ")
-                      summary.write(
-                          f"| {safe(classname)} | {safe(test_name)} | **{status}** | {safe(detail)} |\n"
-                      )
-          PY
+      - name: Remove temporary SQLite v29 JVM test fixture
+        if: always()
+        shell: bash
+        run: |
+          rm -f android/app/src/test/resources/native-sqlite-schema-v29.json
+          rmdir android/app/src/test/resources 2>/dev/null || true
 
       - name: Upload AniList JVM test reports and log
         if: always()
