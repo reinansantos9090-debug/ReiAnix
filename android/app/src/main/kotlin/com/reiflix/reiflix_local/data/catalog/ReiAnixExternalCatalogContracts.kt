@@ -208,25 +208,25 @@ class ReiAnixCatalogProviderRegistry(
             operation: suspend () -> ReiAnixCatalogResult<T>,
         ): ReiAnixCatalogResult<T> = coordinator.execute(delegate.source, key) {
             val now = System.currentTimeMillis()
-            cache[key]?.let { cached ->
-                if (cached.expiresAtMillis > now) {
-                    @Suppress("UNCHECKED_CAST")
-                    return@executeCached cached.result as ReiAnixCatalogResult<T>
+            val cached = cache[key]
+            if (cached != null && cached.expiresAtMillis > now) {
+                @Suppress("UNCHECKED_CAST")
+                cached.result as ReiAnixCatalogResult<T>
+            } else {
+                if (cached != null) cache.remove(key, cached)
+                val result = operation()
+                when (result) {
+                    is ReiAnixCatalogResult.Success -> {
+                        val expiry = result.expiresAtMillis ?: safeCatalogCacheExpiry(
+                            result.fetchedAtMillis,
+                            fallbackTtlMillis,
+                        )
+                        if (expiry > now) cache[key] = CachedSuccess(result, expiry)
+                    }
+                    is ReiAnixCatalogResult.Failure -> Unit
                 }
-                cache.remove(key, cached)
+                result
             }
-            val result = operation()
-            when (result) {
-                is ReiAnixCatalogResult.Success -> {
-                    val expiry = result.expiresAtMillis ?: safeCatalogCacheExpiry(
-                        result.fetchedAtMillis,
-                        fallbackTtlMillis,
-                    )
-                    if (expiry > now) cache[key] = CachedSuccess(result, expiry)
-                }
-                is ReiAnixCatalogResult.Failure -> Unit
-            }
-            result
         }
 
         override suspend fun searchAnime(
