@@ -70,6 +70,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjection
@@ -1801,17 +1803,19 @@ class ReiAnixLibraryViewModel(
             val continueWatchingByEpisodeId = projected.continueWatching.associateBy { it.episodeId }
             nativeCatalogState.value = currentCatalog.copy(
                 animes = currentCatalog.animes.map { anime ->
-                    if (anime.id == updatedAnime.id) updatedAnime else anime
+                    if (anime.id == updatedAnime.id) mergeAnimeArtworkOnly(anime, updatedAnime) else anime
                 },
                 continueWatching = currentCatalog.continueWatching.map { current ->
-                    continueWatchingByEpisodeId[current.episodeId] ?: current
+                    continueWatchingByEpisodeId[current.episodeId]?.let { refreshed ->
+                        mergeContinueWatchingArtworkOnly(current, refreshed)
+                    } ?: current
                 },
             )
 
             val currentPage = nativePagedLibraryState.value
             nativePagedLibraryState.value = currentPage.copy(
                 animes = currentPage.animes.map { anime ->
-                    if (anime.id == updatedAnime.id) updatedAnime else anime
+                    if (anime.id == updatedAnime.id) mergeAnimeArtworkOnly(anime, updatedAnime) else anime
                 },
             )
         }
@@ -2650,3 +2654,40 @@ class ReiAnixLibraryViewModel(
     }
 }
  
+
+
+/** Applies only artwork fields from a fresh projection; playback and metadata stay current. */
+internal fun mergeAnimeArtworkOnly(
+    current: ReiAnixAnimeUiModel,
+    refreshed: ReiAnixAnimeUiModel,
+): ReiAnixAnimeUiModel {
+    val refreshedEpisodesById = refreshed.contentEpisodes.associateBy { it.id }
+    fun mergeEpisodeArtwork(episodes: List<ReiAnixEpisodeUiModel>): List<ReiAnixEpisodeUiModel> =
+        episodes.map { episode ->
+            val updated = refreshedEpisodesById[episode.id]
+            if (updated == null || episode.artwork == updated.artwork) {
+                episode
+            } else {
+                episode.copy(artwork = updated.artwork)
+            }
+        }
+
+    return current.copy(
+        artwork = refreshed.artwork,
+        seasons = current.seasons.map { season ->
+            season.copy(episodes = mergeEpisodeArtwork(season.episodes))
+        },
+        specials = mergeEpisodeArtwork(current.specials),
+        mediaFiles = mergeEpisodeArtwork(current.mediaFiles),
+    )
+}
+
+/** Updates an image without replacing the latest in-memory playback progress. */
+internal fun mergeContinueWatchingArtworkOnly(
+    current: ReiAnixContinueWatchingUiModel,
+    refreshed: ReiAnixContinueWatchingUiModel,
+): ReiAnixContinueWatchingUiModel = if (current.artwork == refreshed.artwork) {
+    current
+} else {
+    current.copy(artwork = refreshed.artwork)
+}
