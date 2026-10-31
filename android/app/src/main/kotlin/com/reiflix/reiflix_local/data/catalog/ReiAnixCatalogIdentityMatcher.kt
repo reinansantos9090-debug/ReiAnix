@@ -78,6 +78,7 @@ object ReiAnixCatalogIdentityMatcher {
         append('\u001f').append(identity.mediaKind?.name.orEmpty())
         append('\u001f').append(identity.season?.let(::normalizeCatalogFormat).orEmpty())
         append('\u001f').append(identity.seasonNumber ?: "")
+        append('\u001f').append(identity.episodes ?: "")
     }
 
     fun normalizeCatalogTitle(value: String): String =
