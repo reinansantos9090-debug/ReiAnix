@@ -2407,7 +2407,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val kitsu = object : ReiAnixAnimeCatalogProvider {
                 override val source = ReiAnixCatalogSource.KITSU
                 override suspend fun searchAnime(query: String, limit: Int) =
-                    ReiAnixCatalogResult.Failure<List<ReiAnixCatalogAnime>>(ReiAnixCatalogError.Network("offline"))
+                    ReiAnixCatalogResult.Failure(ReiAnixCatalogError.Network("offline"))
                 override suspend fun getAnime(externalId: String) =
                     ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
             }
