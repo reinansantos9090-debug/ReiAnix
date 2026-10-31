@@ -23,10 +23,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
@@ -58,28 +57,37 @@ internal data class ReiAnixArtworkPublication(
     val entityId: String,
     val artworkType: String,
     val sourceKind: String,
+    /** Stable identity of the committed bytes, never a synthetic timestamp. */
+    val revision: String,
 )
 
 /**
- * Bounded publication signal for the existing Compose projection.
- * Only a committed association with an existing image file can be published.
+ * Retained publication state for the existing Compose projection.
+ *
+ * Every entity/artwork key keeps its latest committed revision, so one consumer
+ * cannot discard another cover's update and late collectors receive current state.
  */
 internal class ReiAnixArtworkPublicationSignal {
-    private val mutableEvents = MutableSharedFlow<ReiAnixArtworkPublication>(
-        replay = 1,
-        extraBufferCapacity = 31,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    private val mutableEvents =
+        MutableStateFlow<Map<String, ReiAnixArtworkPublication>>(emptyMap())
 
-    val events: SharedFlow<ReiAnixArtworkPublication> = mutableEvents.asSharedFlow()
+    val events: StateFlow<Map<String, ReiAnixArtworkPublication>> = mutableEvents.asStateFlow()
 
+    @Synchronized
     fun publishIfCommitted(
         publication: ReiAnixArtworkPublication,
         associationCommitted: Boolean,
         sourceFileExists: Boolean,
     ): Boolean {
         if (!associationCommitted || !sourceFileExists) return false
-        return mutableEvents.tryEmit(publication)
+        val identity = listOf(
+            publication.entityType,
+            publication.entityId,
+            publication.artworkType,
+        ).joinToString("|")
+        if (mutableEvents.value[identity]?.revision == publication.revision) return false
+        mutableEvents.value = mutableEvents.value + (identity to publication)
+        return true
     }
 }
 
@@ -194,7 +202,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val appContext = context.applicationContext
     private val cacheDirectory = File(File(appContext.filesDir, "data/covers"), "artwork")
     private val publicationSignal = ReiAnixArtworkPublicationSignal()
-    internal val publishedArtworks: SharedFlow<ReiAnixArtworkPublication> = publicationSignal.events
+    internal val publishedArtworks: StateFlow<Map<String, ReiAnixArtworkPublication>> = publicationSignal.events
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<Long, Job>()
     private val retryJobs = ConcurrentHashMap<Long, Job>()
@@ -1215,20 +1223,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             url != null -> "anilist"
             else -> "local"
         }
-        val sourceFileExists = runCatching { File(path).isFile }.getOrDefault(false)
-        val publication = ReiAnixArtworkPublication(
-            requestId = requestId,
-            entityType = entity,
-            entityId = id,
-            artworkType = type,
-            sourceKind = sourceKind,
-        )
-        if (!publicationSignal.publishIfCommitted(
-                publication = publication,
-                associationCommitted = true,
-                sourceFileExists = sourceFileExists,
-            )
-        ) {
+        val sourceFile = File(path)
+        val sourceFileExists = runCatching { sourceFile.isFile }.getOrDefault(false)
+        if (!sourceFileExists) {
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_ARTWORK_PUBLICATION_SOURCE_MISSING",
                 severity = "ERROR",
@@ -1242,6 +1239,42 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "source_kind" to sourceKind,
                     "association_status" to "COMMITTED",
                     "source_file_exists" to false,
+                ),
+            )
+            return
+        }
+        val fileIdentity = runCatching { sourceFile.canonicalPath }.getOrDefault(sourceFile.absolutePath)
+        val publication = ReiAnixArtworkPublication(
+            requestId = requestId,
+            entityType = entity,
+            entityId = id,
+            artworkType = type,
+            sourceKind = sourceKind,
+            revision = listOf(
+                key,
+                fileIdentity,
+                sourceFile.length().toString(),
+                sourceFile.lastModified().toString(),
+                checksum(sourceFile).orEmpty(),
+            ).joinToString("|"),
+        )
+        if (!publicationSignal.publishIfCommitted(
+                publication = publication,
+                associationCommitted = true,
+                sourceFileExists = true,
+            )
+        ) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_PUBLICATION_UNCHANGED",
+                source = "ReiAnixArtworkService",
+                result = "DUPLICATE_REVISION",
+                requestId = requestId,
+                context = mapOf(
+                    "entity_type" to entity,
+                    "entity_id" to id,
+                    "artwork_type" to type,
+                    "source_kind" to sourceKind,
+                    "association_status" to "COMMITTED",
                 ),
             )
             return

@@ -1479,6 +1479,126 @@ class ReiAnixSqliteLibraryRepository(
     }
 
     /**
+     * Reads only the catalogue row affected by a committed artwork publication.
+     * Anime/movie IDs use the anime primary key; episode IDs resolve through SQLite
+     * to their parent anime before the same canonical projection rules are applied.
+     */
+    suspend fun loadLibraryCatalogRowForArtwork(
+        entityType: String,
+        entityId: String,
+    ): ReiAnixLibraryCatalogRow? = withContext(Dispatchers.IO) {
+        val stableEntityId = entityId.toLongOrNull()?.takeIf { it > 0L }
+            ?: return@withContext null
+
+        database.readConsistentSnapshot { connection ->
+            val animeId = when {
+                entityType.equals("anime", ignoreCase = true) ||
+                    entityType.equals("movie", ignoreCase = true) -> stableEntityId
+                entityType.equals("episode", ignoreCase = true) -> connection.rawQuery(
+                    "SELECT anime_id FROM episodes WHERE id=? LIMIT 1",
+                    arrayOf(stableEntityId.toString()),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
+                else -> null
+            }?.takeIf { it > 0L } ?: return@readConsistentSnapshot null
+
+            val anime = connection.rawQuery(
+                "SELECT * FROM anime WHERE id=? LIMIT 1",
+                arrayOf(animeId.toString()),
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.toAnimeRecord() else null }
+                ?: return@readConsistentSnapshot null
+
+            val episodes = connection.rawQuery(
+                """
+                SELECT e.* FROM episodes e
+                WHERE e.anime_id=? AND (
+                    NOT EXISTS (
+                      SELECT 1 FROM episode_observations o WHERE o.episode_id=e.id
+                    )
+                    OR EXISTS (
+                      SELECT 1 FROM episode_observations o
+                      WHERE o.episode_id=e.id AND o.state != 'scope_removed'
+                    )
+                    OR (
+                      SELECT COUNT(DISTINCT o.source_kind || '|' || COALESCE(o.scope_ref, ''))
+                      FROM episode_observations o WHERE o.episode_id=e.id
+                    ) < 2
+                )
+                ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name
+                """.trimIndent(),
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.toEpisodeRecord()) }
+            }
+            // Match the full catalogue: an anime without surviving episode rows is hidden.
+            if (episodes.isEmpty()) return@readConsistentSnapshot null
+
+            val artwork = connection.rawQuery(
+                """
+                SELECT art.* FROM artwork art
+                WHERE art.status != 'failed' AND (
+                    (
+                        art.entity_type IN ('anime','movie')
+                        AND art.entity_id=?
+                    )
+                    OR (
+                        art.entity_type='episode' AND art.artwork_type='episode_thumbnail'
+                        AND EXISTS (
+                            SELECT 1 FROM episodes e
+                            WHERE e.anime_id=? AND CAST(e.id AS TEXT)=art.entity_id
+                        )
+                    )
+                )
+                ORDER BY art.priority DESC, art.updated_at DESC, art.id DESC
+                """.trimIndent(),
+                arrayOf(animeId.toString(), animeId.toString()),
+            ).use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.toArtworkRecord()) }
+            }
+
+            val genres = connection.rawQuery(
+                """
+                SELECT DISTINCT ag.anime_id, g.id, g.canonical_name
+                FROM anime_genres ag
+                JOIN genres g ON g.id=ag.genre_id
+                WHERE ag.anime_id=?
+                ORDER BY g.normalized_name
+                """.trimIndent(),
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(
+                            ReiAnixLibraryCatalogGenre(
+                                id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
+                                name = cursor.getString(cursor.getColumnIndexOrThrow("canonical_name")),
+                            ),
+                        )
+                    }
+                }
+            }
+
+            val episodeArtwork = buildMap<Long, ReiAnixArtworkRecord> {
+                for (item in artwork) {
+                    if (item.entityType != "episode" ||
+                        item.artworkType != "episode_thumbnail"
+                    ) continue
+                    val episodeId = item.entityId.toLongOrNull() ?: continue
+                    if (item.localPath.isNullOrBlank() && item.externalUrl.isNullOrBlank()) continue
+                    if (!containsKey(episodeId)) put(episodeId, item)
+                }
+            }
+
+            ReiAnixLibraryCatalogRow(
+                anime = anime,
+                episodes = episodes,
+                animeArtwork = artwork.filter { it.entityType == "anime" || it.entityType == "movie" },
+                episodeArtwork = episodeArtwork,
+                genres = genres,
+            )
+        }
+    }
+
+    /**
      * Applies discovery facts to the canonical episodes table. Only verified,
      * in-scope items are touched; destructive missing-state reconciliation is
      * gated by the complete scan receipt and limited to source_folder descendants.

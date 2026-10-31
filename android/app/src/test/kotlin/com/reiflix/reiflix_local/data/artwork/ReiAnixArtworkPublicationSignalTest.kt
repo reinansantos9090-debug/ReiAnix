@@ -25,12 +25,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReiAnixArtworkPublicationSignalTest {
-    private fun publication() = ReiAnixArtworkPublication(
-        requestId = "request-test-17",
+    private fun publication(
+        entityId: String = "812",
+        revision: String = "sha256-revision-1",
+        requestId: String = "request-test-17",
+    ) = ReiAnixArtworkPublication(
+        requestId = requestId,
         entityType = "anime",
-        entityId = "812",
+        entityId = entityId,
         artworkType = "poster",
         sourceKind = "anilist",
+        revision = revision,
     )
 
     @Test
@@ -44,7 +49,7 @@ class ReiAnixArtworkPublicationSignalTest {
         )
 
         assertFalse(accepted)
-        assertTrue(signal.events.replayCache.isEmpty())
+        assertTrue(signal.events.value.isEmpty())
     }
 
     @Test
@@ -58,7 +63,7 @@ class ReiAnixArtworkPublicationSignalTest {
         )
 
         assertFalse(accepted)
-        assertTrue(signal.events.replayCache.isEmpty())
+        assertTrue(signal.events.value.isEmpty())
     }
 
     @Test
@@ -258,12 +263,57 @@ class ReiAnixArtworkPublicationSignalTest {
             ),
         )
 
-        val received = withTimeout(1_000L) { signal.events.first() }
+        val snapshot = withTimeout(1_000L) { signal.events.first { it.isNotEmpty() } }
+        val received = snapshot.values.single()
         assertEquals("request-test-17", received.requestId)
         assertEquals("anime", received.entityType)
         assertEquals("812", received.entityId)
         assertEquals("poster", received.artworkType)
         assertEquals("anilist", received.sourceKind)
+        assertEquals("sha256-revision-1", received.revision)
+    }
+
+    @Test
+    fun simultaneousArtworkPublicationsRemainAvailableWithoutAnActiveCollector() {
+        val signal = ReiAnixArtworkPublicationSignal()
+
+        assertTrue(signal.publishIfCommitted(publication(), associationCommitted = true, sourceFileExists = true))
+        assertTrue(
+            signal.publishIfCommitted(
+                publication(entityId = "913", requestId = "request-test-18"),
+                associationCommitted = true,
+                sourceFileExists = true,
+            ),
+        )
+
+        assertEquals(
+            setOf("812", "913"),
+            signal.events.value.values.map { it.entityId }.toSet(),
+        )
+    }
+
+    @Test
+    fun duplicateArtworkRevisionIsIgnoredButAReplacementRevisionIsRetained() {
+        val signal = ReiAnixArtworkPublicationSignal()
+        assertTrue(signal.publishIfCommitted(publication(), associationCommitted = true, sourceFileExists = true))
+
+        assertFalse(
+            signal.publishIfCommitted(
+                publication(requestId = "duplicate-request"),
+                associationCommitted = true,
+                sourceFileExists = true,
+            ),
+        )
+        assertTrue(
+            signal.publishIfCommitted(
+                publication(revision = "sha256-revision-2", requestId = "replacement-request"),
+                associationCommitted = true,
+                sourceFileExists = true,
+            ),
+        )
+
+        assertEquals(1, signal.events.value.size)
+        assertEquals("sha256-revision-2", signal.events.value.values.single().revision)
     }
 
     @Test

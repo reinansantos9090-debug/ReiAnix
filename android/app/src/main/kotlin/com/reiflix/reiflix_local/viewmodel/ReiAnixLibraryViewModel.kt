@@ -7,6 +7,7 @@ import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.resolveNativePlaybackStartPosition
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublication
 import com.reiflix.reiflix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
@@ -1568,43 +1569,71 @@ class ReiAnixLibraryViewModel(
         // Read the local canonical catalog only after bootstrap allows normal use.
         viewModelScope.launch { refreshNativeCatalog() }
 
-        // A successful artwork commit must invalidate the existing SQLite projection:
-        // Compose reads immutable models and does not consume NativeMailbox directly.
-        // Keep the publication stream bounded and debounce bursts (poster + backdrop,
-        // several list items) into one canonical re-read, without rescanning media.
+        // StateFlow retains the latest committed revision for every stable identity.
+        // A late collector sees all outstanding changes; a burst updates the retained
+        // snapshot rather than dropping the older, unrelated anime publications.
         appDependencies?.artworkService?.publishedArtworks?.let { publications ->
             viewModelScope.launch {
+                val handledRevisions = mutableMapOf<String, String>()
                 publications
-                    .onEach { publication ->
-                        ReiAnixDiagnosticTimeline.record(
-                            name = "ARTWORK_PROJECTION_INVALIDATION_QUEUED",
-                            source = "ReiAnixLibraryViewModel",
-                            result = "QUEUED",
-                            requestId = publication.requestId,
-                            context = mapOf(
-                                "entity_type" to publication.entityType,
-                                "entity_id" to publication.entityId,
-                                "artwork_type" to publication.artworkType,
-                                "source_kind" to publication.sourceKind,
-                            ),
-                        )
-                    }
                     .debounce(ARTWORK_PROJECTION_REFRESH_DEBOUNCE_MS)
-                    .collectLatest { publication ->
-                        ReiAnixDiagnosticTimeline.record(
-                            name = "ARTWORK_PROJECTION_REFRESH_REQUESTED",
-                            source = "ReiAnixLibraryViewModel",
-                            result = "CANONICAL_SQLITE_RELOAD",
-                            requestId = publication.requestId,
-                            context = mapOf(
-                                "entity_type" to publication.entityType,
-                                "entity_id" to publication.entityId,
-                                "artwork_type" to publication.artworkType,
-                                "source_kind" to publication.sourceKind,
-                                "refresh_mode" to "PROJECTION_ONLY",
-                            ),
-                        )
-                        refreshCatalogProjection()
+                    .collect { snapshot ->
+                        val pending = snapshot.filter { (identity, publication) ->
+                            handledRevisions[identity] != publication.revision
+                        }
+                        if (pending.isEmpty()) return@collect
+
+                        pending.forEach { (_, publication) ->
+                            ReiAnixDiagnosticTimeline.record(
+                                name = "ARTWORK_PROJECTION_INVALIDATION_QUEUED",
+                                source = "ReiAnixLibraryViewModel",
+                                result = "QUEUED",
+                                requestId = publication.requestId,
+                                context = mapOf(
+                                    "entity_type" to publication.entityType,
+                                    "entity_id" to publication.entityId,
+                                    "artwork_type" to publication.artworkType,
+                                    "source_kind" to publication.sourceKind,
+                                    "revision" to publication.revision,
+                                ),
+                            )
+                        }
+
+                        var targetedRefreshFailed = false
+                        pending.values.distinctBy { it.entityType to it.entityId }.forEach { publication ->
+                            try {
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "ARTWORK_PROJECTION_REFRESH_REQUESTED",
+                                    source = "ReiAnixLibraryViewModel",
+                                    result = "TARGETED_SQLITE_ROW_RELOAD",
+                                    requestId = publication.requestId,
+                                    context = mapOf(
+                                        "entity_type" to publication.entityType,
+                                        "entity_id" to publication.entityId,
+                                        "artwork_type" to publication.artworkType,
+                                        "source_kind" to publication.sourceKind,
+                                        "refresh_mode" to "AFFECTED_ANIME_ONLY",
+                                    ),
+                                )
+                                refreshArtworkProjection(publication)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                targetedRefreshFailed = true
+                                Log.e(
+                                    TAG,
+                                    "Targeted artwork projection failed for ${publication.entityType}:${publication.entityId}",
+                                    error,
+                                )
+                            }
+                        }
+
+                        // Full reload is a recovery fallback only, never the normal
+                        // artwork path, so an image update does not reset page/scroll state.
+                        if (targetedRefreshFailed) refreshCatalogProjection()
+                        pending.forEach { (identity, publication) ->
+                            handledRevisions[identity] = publication.revision
+                        }
                     }
             }
         }
@@ -1752,6 +1781,42 @@ class ReiAnixLibraryViewModel(
         }
     }
 
+    /**
+     * Reprojects one anime from a coherent SQLite snapshot after an artwork commit.
+     * Canonical and already-loaded page models are replaced by stable ID; unrelated
+     * catalogue rows, paging generation and existing UI state remain unchanged.
+     */
+    private suspend fun refreshArtworkProjection(publication: ReiAnixArtworkPublication) {
+        nativeCatalogReloadMutex.withLock {
+            val row = nativeLibraryRepository.loadLibraryCatalogRowForArtwork(
+                entityType = publication.entityType,
+                entityId = publication.entityId,
+            ) ?: return@withLock
+            val projected = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
+                .project(listOf(row))
+            val updatedAnime = projected.animes.singleOrNull() ?: return@withLock
+            val currentCatalog = nativeCatalogState.value
+            if (currentCatalog.animes.none { it.id == updatedAnime.id }) return@withLock
+
+            val continueWatchingByEpisodeId = projected.continueWatching.associateBy { it.episodeId }
+            nativeCatalogState.value = currentCatalog.copy(
+                animes = currentCatalog.animes.map { anime ->
+                    if (anime.id == updatedAnime.id) updatedAnime else anime
+                },
+                continueWatching = currentCatalog.continueWatching.map { current ->
+                    continueWatchingByEpisodeId[current.episodeId] ?: current
+                },
+            )
+
+            val currentPage = nativePagedLibraryState.value
+            nativePagedLibraryState.value = currentPage.copy(
+                animes = currentPage.animes.map { anime ->
+                    if (anime.id == updatedAnime.id) updatedAnime else anime
+                },
+            )
+        }
+    }
+
     private fun loadNativeLibraryPage(
         page: Int = 0,
         pageSize: Int = configuredLibraryPageSize,
@@ -1825,43 +1890,54 @@ class ReiAnixLibraryViewModel(
             )) {
                 is ReiAnixLibraryQueryResult.Success -> {
                     val pageResult = result.value
-                    val byId = catalog.animes.associateBy { it.id }
-                    val missingIds = pageResult.animeIds.filterNot(byId::containsKey)
-                    if (missingIds.isNotEmpty()) {
-                        nativePagedLibraryState.value = current.copy(
-                            status = if (current.animes.isEmpty()) {
-                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
-                            } else current.status,
-                            isLoading = false,
-                            error = "A consulta SQLite encontrou alterações concorrentes; a biblioteca será relida.",
-                        )
+                    var requiresCatalogReload = false
+                    nativeCatalogReloadMutex.withLock {
+                        if (generation != nativePageGeneration.get()) return@withLock
+                        val latestCatalog = nativeCatalogState.value
+                        val byId = latestCatalog.animes.associateBy { it.id }
+                        val missingIds = pageResult.animeIds.filterNot(byId::containsKey)
+                        if (missingIds.isNotEmpty()) {
+                            val currentState = nativePagedLibraryState.value
+                            nativePagedLibraryState.value = currentState.copy(
+                                status = if (currentState.animes.isEmpty()) {
+                                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                                } else currentState.status,
+                                isLoading = false,
+                                error = "A consulta SQLite encontrou alterações concorrentes; a biblioteca será relida.",
+                            )
+                            requiresCatalogReload = true
+                        } else {
+                            // Resolve page IDs against the latest catalogue while serialized
+                            // with artwork publication, never from the request-time snapshot.
+                            val pageItems = pageResult.animeIds.mapNotNull(byId::get)
+                            val currentState = nativePagedLibraryState.value
+                            if (currentState.generation != generation) return@withLock
+                            val pageAnimes = if (reset || requestedPage == 0) {
+                                pageItems
+                            } else {
+                                (currentState.animes + pageItems).distinctBy { it.id }
+                            }
+                            nativePagedLibraryState.value = currentState.copy(
+                                status = if (pageResult.totalCount > 0) {
+                                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                                } else {
+                                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                                },
+                                animes = pageAnimes,
+                                totalCount = pageResult.totalCount,
+                                hasMore = pageResult.hasMore,
+                                loadedPage = requestedPage,
+                                isLoading = false,
+                                pageSize = normalizedPageSize,
+                                requestId = null,
+                                error = null,
+                            )
+                        }
+                    }
+                    if (requiresCatalogReload) {
                         refreshNativeCatalog()
                         return@launch
                     }
-                    val pageItems = pageResult.animeIds.mapNotNull(byId::get)
-                    if (generation != nativePageGeneration.get()) return@launch
-                    val currentState = nativePagedLibraryState.value
-                    if (currentState.generation != generation) return@launch
-                    val pageAnimes = if (reset || requestedPage == 0) {
-                        pageItems
-                    } else {
-                        (currentState.animes + pageItems).distinctBy { it.id }
-                    }
-                    nativePagedLibraryState.value = currentState.copy(
-                        status = if (pageResult.totalCount > 0) {
-                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
-                        } else {
-                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
-                        },
-                        animes = pageAnimes,
-                        totalCount = pageResult.totalCount,
-                        hasMore = pageResult.hasMore,
-                        loadedPage = requestedPage,
-                        isLoading = false,
-                        pageSize = normalizedPageSize,
-                        requestId = null,
-                        error = null,
-                    )
                 }
                 is ReiAnixLibraryQueryResult.Empty -> {
                     if (generation != nativePageGeneration.get()) return@launch
