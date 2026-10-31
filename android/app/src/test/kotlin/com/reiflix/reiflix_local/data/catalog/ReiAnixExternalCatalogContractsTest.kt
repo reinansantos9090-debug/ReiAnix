@@ -149,7 +149,10 @@ class ReiAnixExternalCatalogContractsTest {
         )
         val remote = ReiAnixCatalogAnime(
             source = ReiAnixCatalogSource.ANIPUB,
-            ids = ReiAnixExternalCatalogIds(additionalIds = mapOf("anipub" to "61")),
+            ids = ReiAnixExternalCatalogIds(
+                myAnimeListId = 800L,
+                additionalIds = mapOf("anipub" to "61"),
+            ),
             title = "Sample Anime",
             releaseYear = 2020,
             format = "TV",

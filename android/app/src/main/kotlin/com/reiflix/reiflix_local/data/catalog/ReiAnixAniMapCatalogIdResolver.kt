@@ -49,7 +49,12 @@ class ReiAnixAniMapCatalogIdResolver(
                         ),
                     )
                 }
-                return ReiAnixCatalogResult.Success(value = parsed.copy(ids = mergedIds))
+                val fetchedAt = System.currentTimeMillis()
+                return ReiAnixCatalogResult.Success(
+                    value = parsed.copy(ids = mergedIds),
+                    fetchedAtMillis = fetchedAt,
+                    expiresAtMillis = response.cacheExpiryMillis(fetchedAt, SUCCESS_CACHE_TTL_MILLIS),
+                )
             }
             ReiAnixCatalogResult.Success(null)
         } catch (_: TimeoutCancellationException) {
@@ -160,6 +165,7 @@ class ReiAnixAniMapCatalogIdResolver(
     companion object {
         const val BASE_URL = "https://animap.id"
         const val ACCEPT = "application/json"
+        const val SUCCESS_CACHE_TTL_MILLIS = 24L * 60L * 60L * 1_000L
     }
 }
 

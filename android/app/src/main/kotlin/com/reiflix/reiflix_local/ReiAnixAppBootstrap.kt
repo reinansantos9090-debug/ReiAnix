@@ -505,7 +505,7 @@ class ReiAnixAppBootstrap internal constructor(
                 throw cancelled
             } catch (error: Exception) {
                 // Supplemental providers are isolated from AniList and the canonical artwork backfill.
-                Log.w(TAG, "Startup Kitsu/Jikan enrichment failed. errorType=" + error::class.java.simpleName)
+                Log.w(TAG, "Startup external catalog enrichment failed. errorType=" + error::class.java.simpleName)
             }
 
             try {

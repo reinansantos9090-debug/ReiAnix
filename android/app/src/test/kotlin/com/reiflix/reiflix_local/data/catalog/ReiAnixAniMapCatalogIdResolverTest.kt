@@ -61,7 +61,10 @@ class ReiAnixAniMapCatalogIdResolverTest {
         val second = coordinated.resolveIds(known)
 
         assertTrue(first is ReiAnixCatalogResult.Success)
-        val mapping = (first as ReiAnixCatalogResult.Success).value!!
+        val success = first as ReiAnixCatalogResult.Success
+        assertTrue(success.expiresAtMillis!! > success.fetchedAtMillis)
+        assertTrue(success.expiresAtMillis!! - success.fetchedAtMillis <= 300_000L)
+        val mapping = success.value!!
         assertEquals("Cowboy Bebop", mapping.title)
         assertEquals(1998, mapping.releaseYear)
         assertEquals("TV", mapping.format)
