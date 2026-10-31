@@ -6,6 +6,11 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogProviderRegistry
+import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
+import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
+import com.reiflix.reiflix_local.data.catalog.ReiAnixJikanCatalogProvider
+import com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProvider
 import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
@@ -110,6 +115,35 @@ class ReiAnixAppDependencies(context: Context) {
 
     val artworkService: ReiAnixArtworkService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixArtworkService(appContext, sqliteDatabase)
+    }
+
+    /** One shared request coordinator, cache and bounded concurrency policy for supplemental catalogs. */
+    val externalCatalogRequestCoordinator: ReiAnixExternalRequestCoordinator by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 2)
+    }
+
+    val externalCatalogProviderRegistry: ReiAnixCatalogProviderRegistry by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixCatalogProviderRegistry(
+            providers = listOf(
+                ReiAnixKitsuCatalogProvider(),
+                ReiAnixJikanCatalogProvider(),
+            ),
+            requestCoordinator = externalCatalogRequestCoordinator,
+        )
+    }
+
+    val externalCatalogIntegrationService: ReiAnixExternalCatalogIntegrationService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixExternalCatalogIntegrationService(
+            library = sqliteLibraryRepository,
+            providers = externalCatalogProviderRegistry,
+            artwork = artworkService,
+        )
     }
 
     val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

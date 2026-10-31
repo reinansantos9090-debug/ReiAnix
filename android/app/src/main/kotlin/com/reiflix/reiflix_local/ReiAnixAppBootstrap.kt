@@ -499,6 +499,16 @@ class ReiAnixAppBootstrap internal constructor(
             }
 
             try {
+                dependencies.externalCatalogIntegrationService.enrichLibraryGaps()
+            } catch (cancelled: CancellationException) {
+                initialCatalogEnrichmentScheduled.set(false)
+                throw cancelled
+            } catch (error: Exception) {
+                // Supplemental providers are isolated from AniList and the canonical artwork backfill.
+                Log.w(TAG, "Startup Kitsu/Jikan enrichment failed. errorType=" + error::class.java.simpleName)
+            }
+
+            try {
                 dependencies.artworkService.requestPendingArtwork()
             } catch (cancelled: CancellationException) {
                 initialCatalogEnrichmentScheduled.set(false)
