@@ -673,7 +673,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             currentCoroutineContext().ensureActive()
             if (reuseLocal(id, entity, type, url, aniId, requestId)) return@withPermit
             val key = remoteKey(aniId, url, type)
-            val rowId = prepareRow(id, entity, type, url, key, force) ?: return@withPermit
+            val rowId = prepareRow(id, entity, type, url, key, force, requestId) ?: return@withPermit
             var image: Downloaded? = null
             try {
                 // Re-associate a complete checksum-named file if the process stopped
@@ -774,40 +774,98 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return inserted
     }
 
-    private fun prepareRow(id: Long, entity: String, type: String, url: String, key: String, force: Boolean): Long? =
-        database.transaction { db ->
-            if (!urlCurrent(db, id, type, url)) return@transaction null
-            val rows = queryCandidates(db, entity, id.toString(), type, url)
-            if (rows.any { it.manual || it.source.equals("manual", true) }) return@transaction null
-            if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return@transaction null
-            val now = nowSeconds()
-            val exact = rows.firstOrNull { it.sourceRef == url || it.key == key || it.url == url }
-            if (exact != null) {
-                if (!shouldRetryArtworkRequest(exact.status, exact.retryAt, exact.failureCount, now, force)) {
-                    return@transaction null
-                }
-                val values = ContentValues().apply {
-                    put("source", artworkCatalogSource(url)); put("source_ref", url); put("external_url", url)
-                    put("status", "downloading"); put("priority", 400); put("updated_at", now); put("last_attempt_at", now)
-                    put("failure_count", if (force) 0 else exact.failureCount)
-                    putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key); put("variant", "large")
-                }
-                return@transaction if (db.update("artwork", values, "id=?", arrayOf(exact.id.toString())) > 0) exact.id else null
-            }
-            db.execSQL(
-                "UPDATE artwork SET priority=MIN(COALESCE(priority,350),350),updated_at=? WHERE entity_type=? AND entity_id=? " +
-                    "AND artwork_type=? AND external_url IS NOT NULL AND external_url!=? AND manual=0 " +
-                    "AND LOWER(COALESCE(source,'')) NOT IN ('manual','local')",
-                arrayOf(now, entity, id.toString(), type, url),
+    private fun prepareRow(
+        id: Long,
+        entity: String,
+        type: String,
+        url: String,
+        key: String,
+        force: Boolean,
+        requestId: String,
+    ): Long? = database.transaction { db ->
+        fun skipped(reason: String) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_ROW_PREPARATION_SKIPPED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = reason,
+                requestId = requestId,
+                context = mapOf(
+                    "entity_type" to entity,
+                    "entity_id" to id,
+                    "artwork_type" to type,
+                ),
             )
-            val values = ContentValues().apply {
-                put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", type)
-                put("source", artworkCatalogSource(url)); put("source_ref", url); put("external_url", url); put("manual", 0)
-                put("priority", 400); put("status", "downloading"); put("discovered_at", now); put("updated_at", now)
-                put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")
-            }
-            runCatching { db.insertOrThrow("artwork", null, values) }.getOrNull()
         }
+
+        if (!urlCurrent(db, id, type, url)) {
+            skipped("ASSOCIATION_CHANGED")
+            return@transaction null
+        }
+        val rows = queryCandidates(db, entity, id.toString(), type, url)
+        if (rows.any { it.manual || it.source.equals("manual", true) }) {
+            skipped("MANUAL_ARTWORK_PROTECTED")
+            return@transaction null
+        }
+        if (rows.any { it.source.equals("local", true) && validImage(it.path) }) {
+            skipped("VALID_LOCAL_ARTWORK_PRESERVED")
+            return@transaction null
+        }
+        val now = nowSeconds()
+        val exact = rows.firstOrNull { it.sourceRef == url || it.key == key || it.url == url }
+        if (exact != null) {
+            if (!shouldRetryArtworkRequest(exact.status, exact.retryAt, exact.failureCount, now, force)) {
+                skipped("RETRY_COOLDOWN_ACTIVE")
+                return@transaction null
+            }
+            val values = ContentValues().apply {
+                put("source", artworkCatalogSource(url)); put("source_ref", url); put("external_url", url)
+                put("status", "downloading"); put("priority", 400); put("updated_at", now); put("last_attempt_at", now)
+                put("failure_count", if (force) 0 else exact.failureCount)
+                putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key); put("variant", "large")
+            }
+            return@transaction if (db.update("artwork", values, "id=?", arrayOf(exact.id.toString())) > 0) {
+                exact.id
+            } else {
+                skipped("EXISTING_ROW_UPDATE_FAILED")
+                null
+            }
+        }
+        db.execSQL(
+            "UPDATE artwork SET priority=MIN(COALESCE(priority,350),350),updated_at=? WHERE entity_type=? AND entity_id=? " +
+                "AND artwork_type=? AND external_url IS NOT NULL AND external_url!=? AND manual=0 " +
+                "AND LOWER(COALESCE(source,'')) NOT IN ('manual','local')",
+            arrayOf(now, entity, id.toString(), type, url),
+        )
+        val values = ContentValues().apply {
+            put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", type)
+            put("source", artworkCatalogSource(url)); put("source_ref", url); put("external_url", url); put("manual", 0)
+            put("priority", 400); put("status", "downloading"); put("discovered_at", now); put("updated_at", now)
+            put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")
+        }
+        try {
+            db.insertOrThrow("artwork", null, values).takeIf { it > 0L }
+                ?: run {
+                    skipped("NEW_ROW_INSERT_RETURNED_NO_ID")
+                    null
+                }
+        } catch (error: Exception) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_ROW_INSERT_FAILED",
+                severity = "ERROR",
+                source = "ReiAnixArtworkService",
+                result = error.javaClass.simpleName,
+                requestId = requestId,
+                error = error,
+                context = mapOf(
+                    "entity_type" to entity,
+                    "entity_id" to id,
+                    "artwork_type" to type,
+                ),
+            )
+            throw error
+        }
+    }
 
     private fun findCachedDownloadedImage(key: String): Downloaded? {
         if (!cacheDirectory.isDirectory) return null

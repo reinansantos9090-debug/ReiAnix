@@ -37,6 +37,7 @@ import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogProviderRegistry
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import org.robolectric.annotation.Config
@@ -2591,7 +2592,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertEquals("https://example.invalid/old-cover.jpg", updated.coverUrl)
             assertEquals("https://cdn.myanimelist.net/backdrop-90210.png", updated.bannerUrl)
             assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
-            assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertTrue("Backdrop was not materialized: ${artworkDiagnosticSummary()}", artwork.hasValidAnimeArtwork(1L, "backdrop"))
             assertEquals(1, httpCalls.get())
             assertEquals("https://cdn.myanimelist.net/backdrop-90210.png", requestedUrl)
 
@@ -2900,8 +2901,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
 
             assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
-            val row = ReiAnixSqliteLibraryRepository(database).artworkForAnime(1L)
-                .single { it.artworkType == "backdrop" && it.externalUrl == url }
+            val rows = ReiAnixSqliteLibraryRepository(database).artworkForAnime(1L)
+            assertTrue(
+                "Invalid response must still persist a failure row. Diagnostics: ${artworkDiagnosticSummary()}",
+                rows.any { it.artworkType == "backdrop" && it.externalUrl == url },
+            )
+            val row = rows.single { it.artworkType == "backdrop" && it.externalUrl == url }
             assertEquals("failed", row.status)
             assertNull(row.localPath)
             assertEquals(200, row.httpStatus)
@@ -2942,8 +2947,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 val startedAt = System.currentTimeMillis() / 1_000.0
                 assertTrue(artwork.requestAnimeArtwork(1L, force = true))
                 withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
-                val row = repository.artworkForAnime(1L)
-                    .single { it.artworkType == "backdrop" && it.externalUrl == url }
+                val rows = repository.artworkForAnime(1L)
+                assertTrue(
+                    "HTTP $status must retain its attempt row. Diagnostics: ${artworkDiagnosticSummary()}",
+                    rows.any { it.artworkType == "backdrop" && it.externalUrl == url },
+                )
+                val row = rows.single { it.artworkType == "backdrop" && it.externalUrl == url }
                 assertEquals(status, row.httpStatus)
                 assertNull(row.localPath)
                 assertEquals(if (status == 404) "failed" else "retry_wait", row.status)
@@ -2988,7 +2997,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val url = "https://cdn.kitsu.io/cancel-backdrop.png"
             assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", url))
             assertTrue(artwork.requestAnimeArtwork(1L, force = true))
-            assertTrue("HTTP response did not reach the controlled read.", readStarted.await(5, TimeUnit.SECONDS))
+            assertTrue("HTTP response did not reach the controlled read. Diagnostics: ${artworkDiagnosticSummary()}", readStarted.await(5, TimeUnit.SECONDS))
             assertTrue(artwork.cancelAnimeArtworkRequest(1L))
             withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
 
@@ -3030,7 +3039,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             }
             assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", "https://cdn.kitsu.io/concurrent-backdrop.png"))
             assertTrue(artwork.requestAnimeArtwork(1L, force = true))
-            assertTrue("First download did not reach the controlled response.", readStarted.await(5, TimeUnit.SECONDS))
+            assertTrue("First download did not reach the controlled response. Diagnostics: ${artworkDiagnosticSummary()}", readStarted.await(5, TimeUnit.SECONDS))
             assertFalse("A second request for the active anime must be deduplicated.", artwork.requestAnimeArtwork(1L))
             assertEquals(1, httpCalls.get())
             releaseRead.countDown()
@@ -3114,6 +3123,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
         return file
     }
+
+    private fun artworkDiagnosticSummary(): String =
+        ReiAnixDiagnosticTimeline.events.value
+            .filter { it.source == "ReiAnixArtworkService" }
+            .take(20)
+            .joinToString("; ") { event ->
+                "${event.name}=${event.result.orEmpty()} error=${event.error.orEmpty()} context=${event.context}"
+            }
 
     private fun insertArtworkTestRow(
         id: Long,

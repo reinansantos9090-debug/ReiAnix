@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.data.library
 
+import android.graphics.BitmapFactory
+import android.os.Build
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
@@ -10,6 +12,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 import org.json.JSONArray
+import java.io.File
 
 /** A single canonical SQLite read projected into the existing immutable Compose models. */
 internal data class ReiAnixNativeLibraryCatalogSnapshot(
@@ -76,7 +79,8 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         val regularEpisodes = orderedEpisodes.filter {
             it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
         }
-        val animeArtwork = row.animeArtwork
+        val animeArtwork = row.animeArtwork.map(::withoutInvalidLocalArtwork)
+        val coverCache = usableLocalArtworkPath(anime.coverCache)
         val backdrop = animeArtwork.firstOrNull {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
@@ -86,7 +90,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 it.artworkType.equals("banner", ignoreCase = true)
         }
         val primaryLocalArtworkRecord = posterCandidates.firstOrNull { !it.localPath.isNullOrBlank() }
-        val primaryLocalArtwork = primaryLocalArtworkRecord?.localPath ?: anime.coverCache
+        val primaryLocalArtwork = primaryLocalArtworkRecord?.localPath ?: coverCache
         val primaryExternalArtwork = posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
             ?: anime.coverUrl
         val primaryArtworkRevision = primaryLocalArtworkRecord?.let(::artworkRevision)
@@ -102,7 +106,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "aliases" to parseStringArray(anime.aliasesJson),
             "description" to anime.description,
             "cover_url" to anime.coverUrl,
-            "cover_cache" to anime.coverCache,
+            "cover_cache" to coverCache,
             "banner_url" to anime.bannerUrl,
             "genres" to genreNames,
             "year" to anime.year,
@@ -153,7 +157,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 ),
             ),
             "media_files" to movieEpisodes.map { episodeMap(it, anime.id, row) },
-            "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank()),
+            "artwork_available" to !primaryLocalArtwork.isNullOrBlank(),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
             "artwork_revision" to primaryArtworkRevision,
@@ -224,6 +228,53 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "artwork_external_url" to artwork?.externalUrl,
             "artwork_revision" to artwork?.let(::artworkRevision),
         )
+    }
+
+    /**
+     * The SQLite row is authoritative for artwork identity, but a stale/corrupt local file
+     * must never be projected as a renderable image. URI-backed sources remain delegated
+     * to the existing Coil resolver; filesystem paths are decoded before they reach Compose.
+     */
+    private fun withoutInvalidLocalArtwork(record: ReiAnixArtworkRecord): ReiAnixArtworkRecord {
+        val path = record.localPath ?: return record
+        val validPath = usableLocalArtworkPath(path)
+        return if (validPath == path) record else record.copy(localPath = validPath)
+    }
+
+    private fun usableLocalArtworkPath(rawPath: String?): String? {
+        val path = rawPath?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val scheme = path.substringBefore(':', missingDelimiterValue = "")
+        if (scheme.equals("content", true) ||
+            scheme.equals("android.resource", true) ||
+            scheme.equals("file", true) ||
+            scheme.equals("http", true) ||
+            scheme.equals("https", true)
+        ) return path
+
+        val file = File(path)
+        if (!file.isFile || file.length() <= 0L) return null
+        val extension = file.extension.lowercase()
+        if (extension == "avif" && Build.VERSION.SDK_INT < 31) {
+            val header = ByteArray(12)
+            val count = runCatching { file.inputStream().use { it.read(header) } }.getOrDefault(-1)
+            return path.takeIf {
+                count >= 12 && String(header, 4, 4, Charsets.US_ASCII) == "ftyp"
+            }
+        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var sampleSize = 1
+        while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > 1024) {
+            sampleSize *= 2
+        }
+        val bitmap = BitmapFactory.decodeFile(
+            file.absolutePath,
+            BitmapFactory.Options().apply { inSampleSize = sampleSize },
+        ) ?: return null
+        bitmap.recycle()
+        return path
     }
 
     private fun artworkRevision(record: ReiAnixArtworkRecord): String? {
