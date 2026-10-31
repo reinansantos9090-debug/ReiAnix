@@ -20,13 +20,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Jikan are
+ * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Jikan/AniPub are
  * consulted only for metadata gaps or missing usable artwork, and every association is reverified.
  */
 class ReiAnixExternalCatalogIntegrationService(
     private val library: ReiAnixSqliteLibraryRepository,
     private val providers: ReiAnixCatalogProviderRegistry,
     private val artwork: ReiAnixArtworkService,
+    private val identifierResolver: ReiAnixCatalogIdResolver? = null,
 ) {
     private val enrichmentPassMutex = Mutex()
 
@@ -100,6 +101,48 @@ class ReiAnixExternalCatalogIntegrationService(
 
         var ids = library.getExternalCatalogIds(anime.id) ?: ReiAnixExternalCatalogIds()
         var changed = false
+
+        // AniMap is an identifier crosswalk only. Never search it by title or consume its images.
+        // Existing AniList/Kitsu/MAL/AniDB IDs are the only permitted lookup keys.
+        identifierResolver?.takeIf { ids.hasAnyId }?.let { resolver ->
+            val mappingResult = try {
+                resolver.resolveIds(ids)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                record(ReiAnixCatalogSource.ANIMAP, "IDENTIFIER_LOOKUP_FAILED", anime.id, error)
+                null
+            }
+            when (mappingResult) {
+                is ReiAnixCatalogResult.Success -> {
+                    val mapping = mappingResult.value
+                    if (mapping != null) {
+                        val mappingMatch = ReiAnixCatalogIdentityMatcher.verifyMapping(
+                            anime.id, identity, mapping,
+                        )
+                        if (mappingMatch == null) {
+                            record(ReiAnixCatalogSource.ANIMAP, "IDENTITY_MISMATCH_REJECTED", anime.id)
+                        } else {
+                            try {
+                                ids = library.saveExternalCatalogIds(mappingMatch)
+                                changed = true
+                                record(ReiAnixCatalogSource.ANIMAP, "VERIFIED_CROSSWALK_PERSISTED", anime.id)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                record(ReiAnixCatalogSource.ANIMAP, "CROSSWALK_NOT_PERSISTED", anime.id, error)
+                            }
+                        }
+                    } else {
+                        record(ReiAnixCatalogSource.ANIMAP, "NO_CROSSWALK_FOUND", anime.id)
+                    }
+                }
+                is ReiAnixCatalogResult.Failure ->
+                    record(ReiAnixCatalogSource.ANIMAP, "IDENTIFIER_LOOKUP_FAILED", anime.id)
+                null -> Unit
+            }
+        }
+
         for (source in SUPPLEMENTAL_SOURCES) {
             currentCoroutineContext().ensureActive()
             val needsMetadata = hasMetadataGap(anime)
@@ -195,7 +238,7 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
                 is ReiAnixCatalogResult.Success -> {
                     val remote = result.value ?: return Resolution.None
-                    val match = ReiAnixCatalogIdentityMatcher.verify(anime.id, identity, remote)
+                    val match = ReiAnixCatalogIdentityMatcher.verify(anime.id, identity, remote, ids)
                         ?: return run {
                             record(provider.source, "PERSISTED_IDENTITY_CONFLICT", anime.id)
                             Resolution.None
@@ -214,7 +257,7 @@ class ReiAnixExternalCatalogIntegrationService(
                 is ReiAnixCatalogResult.Failure -> record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
                 is ReiAnixCatalogResult.Success -> {
                     result.value.forEach { remote ->
-                        val match = ReiAnixCatalogIdentityMatcher.verify(anime.id, identity, remote)
+                        val match = ReiAnixCatalogIdentityMatcher.verify(anime.id, identity, remote, ids)
                             ?: return@forEach
                         val remoteId = remote.ids.idFor(remote.source) ?: return@forEach
                         verified.putIfAbsent(remoteId, VerifiedRemote(remote, match))
@@ -249,6 +292,7 @@ class ReiAnixExternalCatalogIntegrationService(
         private val SUPPLEMENTAL_SOURCES = listOf(
             ReiAnixCatalogSource.KITSU,
             ReiAnixCatalogSource.JIKAN,
+            ReiAnixCatalogSource.ANIPUB,
         )
         const val DEFAULT_BATCH_SIZE = 12
         const val MAX_BATCH_SIZE = 50

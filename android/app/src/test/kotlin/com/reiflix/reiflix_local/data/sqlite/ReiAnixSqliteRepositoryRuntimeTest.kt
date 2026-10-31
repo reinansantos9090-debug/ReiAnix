@@ -27,6 +27,8 @@ import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryAttem
 import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogAnime
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentity
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentifierMapping
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdResolver
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogMediaKind
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogSource
@@ -3405,4 +3407,95 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
         }
     }
+
+    @Test
+    fun aniMapAndAniPubEnrichmentShareVerifiedIdsAndPreserveV29LocalArtworkOwnership() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """
+                UPDATE anime
+                SET year=2016, format='TV', media_kind='series', episodes_count=12,
+                    anilist_id=777, cover_url=NULL, banner_url=NULL
+                WHERE id=1
+                """.trimIndent(),
+            )
+        }
+        val database = ReiAnixSqliteDatabase(context)
+        val library = ReiAnixSqliteLibraryRepository(database)
+        val mapping = ReiAnixCatalogIdentifierMapping(
+            ids = ReiAnixExternalCatalogIds(aniListId = 777L, myAnimeListId = 9002L, aniDbId = 23L),
+            title = "Original Title",
+            alternativeTitles = setOf("Old English Title"),
+            releaseYear = 2016,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            episodes = 12,
+        )
+        val resolver = object : ReiAnixCatalogIdResolver {
+            override suspend fun resolveIds(ids: ReiAnixExternalCatalogIds): ReiAnixCatalogResult<ReiAnixCatalogIdentifierMapping?> {
+                assertEquals(777L, ids.aniListId)
+                return ReiAnixCatalogResult.Success(mapping)
+            }
+        }
+        val remote = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.ANIPUB,
+            ids = ReiAnixExternalCatalogIds(
+                myAnimeListId = 9002L,
+                additionalIds = mapOf("anipub" to "91"),
+            ),
+            title = "Original Title",
+            alternativeTitles = setOf("Old English Title"),
+            synopsis = "AniPub contributes a verified synopsis without replacing editorial fields.",
+            releaseYear = 2016,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            episodes = 12,
+            durationMinutes = 24,
+            status = "Finished Airing",
+        )
+        val anipub = object : ReiAnixAnimeCatalogProvider {
+            var searchCalls = 0
+            override val source = ReiAnixCatalogSource.ANIPUB
+            override suspend fun searchAnime(
+                query: String,
+                limit: Int,
+            ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                searchCalls++
+                return ReiAnixCatalogResult.Success(listOf(remote))
+            }
+            override suspend fun getAnime(externalId: String) =
+                ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+        }
+        val registry = ReiAnixCatalogProviderRegistry(
+            providers = listOf(anipub),
+            requestCoordinator = ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
+        )
+        val artwork = ReiAnixArtworkService(context, database)
+        val service = ReiAnixExternalCatalogIntegrationService(
+            library = library,
+            providers = registry,
+            artwork = artwork,
+            identifierResolver = resolver,
+        )
+
+        assertEquals(1, service.enrichLibraryGaps())
+        val savedIds = requireNotNull(library.getExternalCatalogIds(1L))
+        assertEquals(777L, savedIds.aniListId)
+        assertEquals(9002L, savedIds.myAnimeListId)
+        assertEquals(23L, savedIds.aniDbId)
+        assertEquals("91", savedIds.additionalIds["anipub"])
+        val updated = requireNotNull(library.getAnime(1L))
+        assertEquals(
+            "AniPub contributes a verified synopsis without replacing editorial fields.",
+            updated.description,
+        )
+        assertEquals("Original Title", updated.title)
+        assertNull(updated.coverUrl)
+        assertNull(updated.bannerUrl)
+        assertEquals(3, anipub.searchCalls)
+        assertEquals(29, library.inspectSchema().schemaVersion)
+        registry.cancelPendingRequests()
+    }
+
 }

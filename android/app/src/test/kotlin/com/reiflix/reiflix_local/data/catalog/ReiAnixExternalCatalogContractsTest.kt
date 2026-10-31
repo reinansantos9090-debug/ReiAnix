@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.data.catalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -81,6 +82,94 @@ class ReiAnixExternalCatalogContractsTest {
         assertNull(ReiAnixCatalogIdentityMatcher.verify(12L, local, remote.copy(seasonNumber = 2)))
         assertNull(ReiAnixCatalogIdentityMatcher.verify(
             12L, local, remote.copy(title = "A Different Anime", alternativeTitles = emptySet()),
+        ))
+    }
+
+    @Test
+    fun aniMapCrosswalkRequiresExactTitleYearFormatKindAndCompatibleEpisodeCount() {
+        val local = ReiAnixCatalogIdentity(
+            titles = setOf("Cowboy Bebop", "カウボーイビバップ"),
+            releaseYear = 1998,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            episodes = 26,
+        )
+        val mapping = ReiAnixCatalogIdentifierMapping(
+            ids = ReiAnixExternalCatalogIds(
+                aniListId = 1L,
+                myAnimeListId = 1L,
+                aniDbId = 23L,
+            ),
+            title = "Cowboy Bebop",
+            alternativeTitles = setOf("カウボーイビバップ"),
+            releaseYear = 1998,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            episodes = 26,
+        )
+
+        val verified = ReiAnixCatalogIdentityMatcher.verifyMapping(44L, local, mapping)
+        assertNotNull(verified)
+        assertEquals(44L, verified?.localAnimeId)
+        assertEquals(23L, verified?.externalIds?.aniDbId)
+        assertEquals("cowboy bebop", verified?.matchedTitle)
+
+        assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
+            44L, local, mapping.copy(releaseYear = 1999),
+        ))
+        assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
+            44L, local, mapping.copy(format = "MOVIE"),
+        ))
+        assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
+            44L, local, mapping.copy(mediaKind = ReiAnixCatalogMediaKind.MOVIE),
+        ))
+        assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
+            44L, local, mapping.copy(episodes = 24),
+        ))
+        assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
+            44L, local, mapping.copy(title = "Cowboy Bebop: The Movie", alternativeTitles = emptySet()),
+        ))
+        assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
+            44L, local.copy(releaseYear = null), mapping,
+        ))
+        assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
+            44L,
+            local.copy(season = "FALL"),
+            mapping.copy(season = "SPRING"),
+        ))
+    }
+
+    @Test
+    fun providerVerificationCarriesAniMapIdsAndRejectsConflictingKnownIds() {
+        val local = ReiAnixCatalogIdentity(
+            titles = setOf("Sample Anime"),
+            releaseYear = 2020,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+        )
+        val remote = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.ANIPUB,
+            ids = ReiAnixExternalCatalogIds(additionalIds = mapOf("anipub" to "61")),
+            title = "Sample Anime",
+            releaseYear = 2020,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+        )
+
+        val verified = ReiAnixCatalogIdentityMatcher.verify(
+            12L,
+            local,
+            remote,
+            knownIds = ReiAnixExternalCatalogIds(aniListId = 700L, myAnimeListId = 800L),
+        )
+        assertEquals(700L, verified?.externalIds?.aniListId)
+        assertEquals(800L, verified?.externalIds?.myAnimeListId)
+        assertEquals("61", verified?.externalIds?.idFor(ReiAnixCatalogSource.ANIPUB))
+        assertNull(ReiAnixCatalogIdentityMatcher.verify(
+            12L,
+            local,
+            remote,
+            knownIds = ReiAnixExternalCatalogIds(myAnimeListId = 900L),
         ))
     }
 

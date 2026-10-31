@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.sqlite
 
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentity
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatch
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdMappingMatch
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogMediaKind
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIds
@@ -107,17 +108,41 @@ suspend fun ReiAnixSqliteLibraryRepository.getExternalCatalogIds(
  */
 suspend fun ReiAnixSqliteLibraryRepository.saveExternalCatalogIds(
     match: ReiAnixCatalogIdentityMatch,
-): ReiAnixExternalCatalogIds = withContext(Dispatchers.IO) {
+): ReiAnixExternalCatalogIds {
     require(match.externalIds.idFor(match.source).isNullOrBlank().not()) {
         "A verified match must include an identifier from its originating catalog."
     }
+    return persistVerifiedExternalCatalogIds(
+        animeId = match.localAnimeId,
+        localIdentityFingerprint = match.localIdentityFingerprint,
+        incomingIds = match.externalIds,
+    )
+}
+
+/** AniMap crosswalks use the same identity recheck and v29 preferences transaction. */
+suspend fun ReiAnixSqliteLibraryRepository.saveExternalCatalogIds(
+    match: ReiAnixCatalogIdMappingMatch,
+): ReiAnixExternalCatalogIds {
+    require(match.externalIds.hasAnyId)
+    return persistVerifiedExternalCatalogIds(
+        animeId = match.localAnimeId,
+        localIdentityFingerprint = match.localIdentityFingerprint,
+        incomingIds = match.externalIds,
+    )
+}
+
+private suspend fun ReiAnixSqliteLibraryRepository.persistVerifiedExternalCatalogIds(
+    animeId: Long,
+    localIdentityFingerprint: String,
+    incomingIds: ReiAnixExternalCatalogIds,
+): ReiAnixExternalCatalogIds = withContext(Dispatchers.IO) {
     database.transaction { db ->
         val localIdentityAndAniListId = db.rawQuery(
             """
             SELECT lookup_title,title,romaji,english,"native",aliases,year,format,media_kind,season,anilist_id,episodes_count
             FROM anime WHERE id=? LIMIT 1
             """.trimIndent(),
-            arrayOf(match.localAnimeId.toString()),
+            arrayOf(animeId.toString()),
         ).use { cursor ->
             if (!cursor.moveToFirst()) throw NoSuchElementException("Local anime ID does not exist.")
             val titles = linkedSetOf<String>()
@@ -144,10 +169,10 @@ suspend fun ReiAnixSqliteLibraryRepository.saveExternalCatalogIds(
 
         check(
             ReiAnixCatalogIdentityMatcher.fingerprint(localIdentityAndAniListId.first) ==
-                match.localIdentityFingerprint,
+                localIdentityFingerprint,
         ) { "Local anime identity changed after the external match was verified." }
 
-        val preferenceKey = ReiAnixExternalCatalogIdsCodec.preferenceKey(match.localAnimeId)
+        val preferenceKey = ReiAnixExternalCatalogIdsCodec.preferenceKey(animeId)
         val stored = db.rawQuery(
             "SELECT value FROM preferences WHERE key=? LIMIT 1",
             arrayOf(preferenceKey),
@@ -158,14 +183,14 @@ suspend fun ReiAnixSqliteLibraryRepository.saveExternalCatalogIds(
         } ?: ReiAnixExternalCatalogIds()
 
         val localAniListId = localIdentityAndAniListId.second
-        require(localAniListId == null || match.externalIds.aniListId == null ||
-            localAniListId == match.externalIds.aniListId
+        require(localAniListId == null || incomingIds.aniListId == null ||
+            localAniListId == incomingIds.aniListId
         ) { "The external match conflicts with the canonical local AniList association." }
         require(localAniListId == null || previous.aniListId == null ||
             localAniListId == previous.aniListId
         ) { "A stored cross-catalog AniList ID conflicts with the canonical local association." }
 
-        val merged = previous.mergeVerified(match.externalIds).let { ids ->
+        val merged = previous.mergeVerified(incomingIds).let { ids ->
             ids.copy(aniListId = localAniListId ?: ids.aniListId)
         }
         db.execSQL(
@@ -182,7 +207,6 @@ suspend fun ReiAnixSqliteLibraryRepository.saveExternalCatalogIds(
         merged
     }
 }
-
 
 /** Builds the same strict identity snapshot used again inside saveExternalCatalogIds(). */
 internal fun ReiAnixAnimeRecord.toExternalCatalogIdentity(): ReiAnixCatalogIdentity {
@@ -230,7 +254,7 @@ suspend fun ReiAnixSqliteLibraryRepository.listAnimeAfterExternalCatalogCursor(
 
 private fun externalCatalogAttemptPreferenceKey(animeId: Long, source: String): String {
     require(animeId > 0L)
-    require(source == "kitsu" || source == "jikan")
+    require(source == "kitsu" || source == "jikan" || source == "anipub")
     return "__reianix.external_catalog_attempt.v1.$animeId.$source"
 }
 

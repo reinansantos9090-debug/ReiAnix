@@ -177,10 +177,46 @@ interface ReiAnixAnimeCatalogProvider {
     suspend fun getAnime(externalId: String): ReiAnixCatalogResult<ReiAnixCatalogAnime?>
 }
 
+/**
+ * AniMap crosswalk data. The metadata fields exist only to prove record identity;
+ * they are never merged into the local anime or used as artwork.
+ */
+data class ReiAnixCatalogIdentifierMapping(
+    val ids: ReiAnixExternalCatalogIds,
+    val title: String,
+    val alternativeTitles: Set<String> = emptySet(),
+    val releaseYear: Int?,
+    val format: String?,
+    val mediaKind: ReiAnixCatalogMediaKind?,
+    /** AniMap's calendar quarter (WINTER/SPRING/SUMMER/FALL), not a sequel number. */
+    val season: String? = null,
+    val episodes: Int? = null,
+) {
+    init {
+        require(title.isNotBlank())
+        require(releaseYear == null || releaseYear in 1900..2200)
+        require(episodes == null || episodes >= 0)
+    }
+}
+
+/** Created only after the AniMap record passes the same strict local identity gates. */
+class ReiAnixCatalogIdMappingMatch internal constructor(
+    val localAnimeId: Long,
+    val externalIds: ReiAnixExternalCatalogIds,
+    internal val localIdentityFingerprint: String,
+    val matchedTitle: String,
+) {
+    init {
+        require(localAnimeId > 0L)
+        require(externalIds.hasAnyId)
+        require(matchedTitle.isNotBlank())
+    }
+}
+
 interface ReiAnixCatalogIdResolver {
     val source: ReiAnixCatalogSource
         get() = ReiAnixCatalogSource.ANIMAP
-    suspend fun resolveIds(ids: ReiAnixExternalCatalogIds): ReiAnixCatalogResult<ReiAnixExternalCatalogIds?>
+    suspend fun resolveIds(ids: ReiAnixExternalCatalogIds): ReiAnixCatalogResult<ReiAnixCatalogIdentifierMapping?>
 }
 
 /**
@@ -191,6 +227,11 @@ class ReiAnixCatalogProviderRegistry(
     providers: Collection<ReiAnixAnimeCatalogProvider>,
     private val requestCoordinator: ReiAnixExternalRequestCoordinator = ReiAnixExternalRequestCoordinator(),
 ) {
+    private data class CachedResolverSuccess(
+        val result: ReiAnixCatalogResult.Success<ReiAnixCatalogIdentifierMapping?>,
+        val expiresAtMillis: Long,
+    )
+
     private class CoordinatedProvider(
         private val delegate: ReiAnixAnimeCatalogProvider,
         private val coordinator: ReiAnixExternalRequestCoordinator,
@@ -253,8 +294,12 @@ class ReiAnixCatalogProviderRegistry(
     private companion object {
         const val DEFAULT_SEARCH_CACHE_TTL_MILLIS = 30L * 60L * 1_000L
         const val DEFAULT_DETAIL_CACHE_TTL_MILLIS = 24L * 60L * 60L * 1_000L
+        const val DEFAULT_RESOLVER_CACHE_TTL_MILLIS = 24L * 60L * 60L * 1_000L
+        const val DEFAULT_RESOLVER_MISS_CACHE_TTL_MILLIS = 60L * 60L * 1_000L
+        const val MAX_RESOLVER_CACHE_ENTRIES = 512
     }
 
+    private val resolverCache = java.util.concurrent.ConcurrentHashMap<String, CachedResolverSuccess>()
     private val bySource: Map<ReiAnixCatalogSource, ReiAnixAnimeCatalogProvider>
 
     init {
@@ -275,7 +320,7 @@ class ReiAnixCatalogProviderRegistry(
         }
         return object : ReiAnixCatalogIdResolver {
             override val source = resolver.source
-            override suspend fun resolveIds(ids: ReiAnixExternalCatalogIds): ReiAnixCatalogResult<ReiAnixExternalCatalogIds?> {
+            override suspend fun resolveIds(ids: ReiAnixExternalCatalogIds): ReiAnixCatalogResult<ReiAnixCatalogIdentifierMapping?> {
                 val canonical = buildString {
                     append(ids.aniListId ?: "").append('|').append(ids.myAnimeListId ?: "")
                     append('|').append(ids.kitsuId.orEmpty()).append('|').append(ids.aniDbId ?: "")
@@ -286,8 +331,42 @@ class ReiAnixCatalogProviderRegistry(
                 val digest = MessageDigest.getInstance("SHA-256")
                     .digest(canonical.toByteArray(Charsets.UTF_8))
                     .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-                return requestCoordinator.execute(source, "crosswalk:$digest") { resolver.resolveIds(ids) }
+                val operationKey = "crosswalk:$digest"
+                val now = System.currentTimeMillis()
+                resolverCache[operationKey]?.let { cached ->
+                    if (cached.expiresAtMillis > now) return cached.result
+                    resolverCache.remove(operationKey, cached)
+                }
+
+                val result = requestCoordinator.execute(source, operationKey) { resolver.resolveIds(ids) }
+                if (result is ReiAnixCatalogResult.Success) {
+                    val fallbackTtl = if (result.value == null) {
+                        DEFAULT_RESOLVER_MISS_CACHE_TTL_MILLIS
+                    } else {
+                        DEFAULT_RESOLVER_CACHE_TTL_MILLIS
+                    }
+                    val expiry = result.expiresAtMillis
+                        ?: safeCatalogCacheExpiry(result.fetchedAtMillis, fallbackTtl)
+                    if (expiry > System.currentTimeMillis()) {
+                        resolverCache[operationKey] = CachedResolverSuccess(result, expiry)
+                        trimResolverCache()
+                    }
+                }
+                return result
             }
+        }
+    }
+
+    private fun trimResolverCache() {
+        val now = System.currentTimeMillis()
+        resolverCache.entries.toList().forEach { (key, value) ->
+            if (value.expiresAtMillis <= now) resolverCache.remove(key, value)
+        }
+        val excess = resolverCache.size - MAX_RESOLVER_CACHE_ENTRIES
+        if (excess > 0) {
+            resolverCache.entries.sortedBy { it.value.expiresAtMillis }
+                .take(excess)
+                .forEach { (key, value) -> resolverCache.remove(key, value) }
         }
     }
 

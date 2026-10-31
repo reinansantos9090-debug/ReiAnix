@@ -40,10 +40,12 @@ object ReiAnixCatalogIdentityMatcher {
         localAnimeId: Long,
         local: ReiAnixCatalogIdentity,
         remote: ReiAnixCatalogAnime,
+        knownIds: ReiAnixExternalCatalogIds = ReiAnixExternalCatalogIds(),
     ): ReiAnixCatalogIdentityMatch? {
         if (localAnimeId <= 0L || remote.source.resolvesIdentifiers ||
             remote.ids.idFor(remote.source).isNullOrBlank()
         ) return null
+        val mergedIds = runCatching { knownIds.mergeVerified(remote.ids) }.getOrNull() ?: return null
 
         val localTitles = local.titles.map(::normalizeCatalogTitle).filter(String::isNotEmpty).toSet()
         val remoteTitles = (remote.alternativeTitles + remote.title)
@@ -67,7 +69,46 @@ object ReiAnixCatalogIdentityMatcher {
         if (local.episodes != null && remote.episodes != null && local.episodes != remote.episodes) return null
 
         return ReiAnixCatalogIdentityMatch(
-            localAnimeId, remote.source, remote.ids, fingerprint(local), exactTitle,
+            localAnimeId, remote.source, mergedIds, fingerprint(local), exactTitle,
+        )
+    }
+
+    /**
+     * An AniMap match needs exact title, known year, format and media kind on both sides.
+     * Episode counts are compared when both exist. AniMap's animeSeason.season is a
+     * calendar quarter, not a sequel-season number, so the resolver intentionally omits it.
+     */
+    fun verifyMapping(
+        localAnimeId: Long,
+        local: ReiAnixCatalogIdentity,
+        mapping: ReiAnixCatalogIdentifierMapping,
+    ): ReiAnixCatalogIdMappingMatch? {
+        if (localAnimeId <= 0L || !mapping.ids.hasAnyId) return null
+
+        val localTitles = local.titles.map(::normalizeCatalogTitle).filter(String::isNotEmpty).toSet()
+        val remoteTitles = (mapping.alternativeTitles + mapping.title)
+            .map(::normalizeCatalogTitle).filter(String::isNotEmpty).toSet()
+        val exactTitle = (localTitles intersect remoteTitles).sorted().firstOrNull() ?: return null
+        if (local.releaseYear == null || mapping.releaseYear == null ||
+            local.releaseYear != mapping.releaseYear
+        ) return null
+
+        val localFormat = normalizeCatalogFormat(local.format)
+        val remoteFormat = normalizeCatalogFormat(mapping.format)
+        if (localFormat.isEmpty() || localFormat != remoteFormat) return null
+        val localKind = local.mediaKind?.takeIf { it != ReiAnixCatalogMediaKind.UNKNOWN } ?: return null
+        val remoteKind = mapping.mediaKind?.takeIf { it != ReiAnixCatalogMediaKind.UNKNOWN } ?: return null
+        if (localKind != remoteKind) return null
+        val localSeason = local.season?.let(::normalizeCatalogFormat)?.takeIf(String::isNotEmpty)
+        val remoteSeason = mapping.season?.let(::normalizeCatalogFormat)?.takeIf(String::isNotEmpty)
+        if (localSeason != null && remoteSeason != null && localSeason != remoteSeason) return null
+        if (local.episodes != null && mapping.episodes != null && local.episodes != mapping.episodes) return null
+
+        return ReiAnixCatalogIdMappingMatch(
+            localAnimeId = localAnimeId,
+            externalIds = mapping.ids,
+            localIdentityFingerprint = fingerprint(local),
+            matchedTitle = exactTitle,
         )
     }
 

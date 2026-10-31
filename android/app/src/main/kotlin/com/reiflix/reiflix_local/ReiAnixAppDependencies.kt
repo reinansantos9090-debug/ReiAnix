@@ -7,6 +7,8 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogProviderRegistry
+import com.reiflix.reiflix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
+import com.reiflix.reiflix_local.data.catalog.ReiAnixAniPubCatalogProvider
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
 import com.reiflix.reiflix_local.data.catalog.ReiAnixJikanCatalogProvider
@@ -131,6 +133,7 @@ class ReiAnixAppDependencies(context: Context) {
             providers = listOf(
                 ReiAnixKitsuCatalogProvider(),
                 ReiAnixJikanCatalogProvider(),
+                ReiAnixAniPubCatalogProvider(),
             ),
             requestCoordinator = externalCatalogRequestCoordinator,
         )
@@ -143,6 +146,9 @@ class ReiAnixAppDependencies(context: Context) {
             library = sqliteLibraryRepository,
             providers = externalCatalogProviderRegistry,
             artwork = artworkService,
+            identifierResolver = externalCatalogProviderRegistry.coordinate(
+                ReiAnixAniMapCatalogIdResolver(),
+            ),
         )
     }
 
