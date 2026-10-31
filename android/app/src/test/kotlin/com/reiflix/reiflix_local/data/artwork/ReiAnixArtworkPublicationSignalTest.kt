@@ -13,9 +13,14 @@ import com.reiflix.reiflix_local.data.anilist.ANILIST_STABLE_MATCH_RETRY_TTL_SEC
 import com.reiflix.reiflix_local.data.anilist.persistedAniListSearchSignaturePreferenceKey
 import com.reiflix.reiflix_local.data.anilist.autoMatchFailureStatus
 import com.reiflix.reiflix_local.data.anilist.AniListError
+import com.reiflix.reiflix_local.data.anilist.AniListGraphqlRequestController
+import com.reiflix.reiflix_local.data.anilist.AniListHttpResponse
 
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
@@ -25,6 +30,107 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReiAnixArtworkPublicationSignalTest {
+    @Test
+    fun repeatedRateLimitResponsesStopAfterBoundedAutomaticRetries() = runBlocking {
+        var now = 1_700_000_000_000L
+        val waits = mutableListOf<Long>()
+        var calls = 0
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait -> waits += wait; now += wait },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+
+        val result = controller.execute("https://graphql.anilist.co") {
+            calls++
+            AniListHttpResponse(429, "{}")
+        }
+
+        assertEquals(429, result.statusCode)
+        assertEquals(3, calls)
+        assertEquals(listOf(60_000L, 120_000L), waits)
+    }
+
+    @Test
+    fun cooldownWaitDoesNotHoldTheSharedRequestMutex() = runBlocking {
+        var now = 1_700_000_000_000L
+        val firstWaitStarted = CompletableDeferred<Unit>()
+        val competingWaitStarted = CompletableDeferred<Unit>()
+        val releaseFirstWait = CompletableDeferred<Unit>()
+        var delayCalls = 0
+        var firstRequestCalls = 0
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait ->
+                when (delayCalls++) {
+                    0 -> {
+                        firstWaitStarted.complete(Unit)
+                        releaseFirstWait.await()
+                        now += wait
+                    }
+                    1 -> {
+                        competingWaitStarted.complete(Unit)
+                        throw CancellationException("cancel competing waiter")
+                    }
+                    else -> now += wait
+                }
+            },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+
+        val limitedRequest = async {
+            controller.execute("https://graphql.anilist.co") {
+                firstRequestCalls++
+                if (firstRequestCalls == 1) AniListHttpResponse(429, "{}")
+                else AniListHttpResponse(200, "{}")
+            }
+        }
+        firstWaitStarted.await()
+
+        val competingRequest = async {
+            runCatching {
+                controller.execute("https://graphql.anilist.co") {
+                    error("A competing request must respect the shared cooldown.")
+                }
+            }
+        }
+        withTimeout(1_000L) { competingWaitStarted.await() }
+        assertTrue(competingRequest.await().exceptionOrNull() is CancellationException)
+
+        releaseFirstWait.complete(Unit)
+        assertEquals(200, limitedRequest.await().statusCode)
+        assertEquals(2, firstRequestCalls)
+    }
+
+    @Test
+    fun exhaustedQuotaIsHonoredWhenTheLimitHeaderIsMissing() = runBlocking {
+        var now = 1_700_000_000_000L
+        val waits = mutableListOf<Long>()
+        val controller = AniListGraphqlRequestController(
+            nowMillis = { now },
+            delayMillis = { wait -> waits += wait; now += wait },
+            minimumIntervalOverrideMs = 0L,
+            logger = {},
+        )
+        val resetAtSeconds = (now + 10_000L) / 1_000L
+
+        controller.execute("https://graphql.anilist.co") {
+            AniListHttpResponse(
+                200,
+                "{}",
+                headers = mapOf(
+                    "X-RateLimit-Remaining" to "0",
+                    "X-RateLimit-Reset" to resetAtSeconds.toString(),
+                ),
+            )
+        }
+        controller.execute("https://graphql.anilist.co") { AniListHttpResponse(200, "{}") }
+
+        assertEquals(listOf(10_000L), waits)
+    }
+
     private fun publication(
         entityId: String = "812",
         revision: String = "sha256-revision-1",
