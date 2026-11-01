@@ -80,4 +80,39 @@ class ReiAnixAniListCatalogProviderAdapterTest {
         val result = adapter.getAnime("not-an-id")
         assertTrue(result is ReiAnixCatalogResult.Failure)
     }
+    @Test
+    fun partialGraphQlSearchIsNotExposedAsACompleteProviderCandidateSet() = runBlocking {
+        val client = ReiAnixAniListClient(
+            transport = AniListTransport { _, _ ->
+                AniListHttpResponse(
+                    statusCode = 200,
+                    body = """
+                        {
+                          "errors": [{"message":"Partial field failure","path":["Page","media",0,"bannerImage"]}],
+                          "data": {
+                            "Page": {
+                              "media": [{
+                                "id": 456,
+                                "title": {"english":"Partial anime"},
+                                "coverImage": {"large":"https://cdn.example/poster.jpg"},
+                                "bannerImage": null
+                              }]
+                            }
+                          }
+                        }
+                    """.trimIndent(),
+                )
+            },
+            minimumRequestIntervalMs = 0L,
+        )
+        val result = ReiAnixAniListCatalogProviderAdapter(client).searchAnime("Partial anime", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Failure)
+        assertTrue(
+            (result as ReiAnixCatalogResult.Failure).error.let {
+                it is com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogError.InvalidResponse
+            },
+        )
+    }
+
 }
