@@ -12,7 +12,7 @@ A integração suplementar continua usando o registro único em `ReiAnixAppDepen
 |---|---|---|---|---|
 | AniList | Fonte primária já existente | AniList ID, títulos, sinônimos, ano/sazonalidade, formato, episódios, duração, status, score e estúdios | `coverImage` → Poster; `bannerImage` → Banner | Manter |
 | Kitsu | Complemento por REST | Kitsu ID, títulos alternativos, ano, subtype/formato, episódios, duração, status e score | `posterImage` → Poster; `coverImage` → Banner | Manter |
-| AniPub | Complemento por REST | ID AniPub; título, sinônimos, ano, tipo/formato quando exposto, episódios, duração, status e score | `ImagePath` → Poster; `Cover` → Banner | Manter com isolamento |
+| AniPub | Complemento por REST | ID AniPub; título, sinônimos, ano, episódios, duração, status e score. A documentação consultada não define tipo/formato nem classificação etária; esses campos permanecem nulos | `ImagePath` → Poster; `Cover` → Banner | Manter com isolamento |
 | Tenrai | Fonte suplementar para IDs MAL | MAL ID preservado em `myAnimeListId`, títulos, sinônimos, ano, tipo, episódios, duração, status, score e rating | Variantes de `images.webp`/`images.jpg` → Poster | Aprovado como substituto operacional complementar, com ressalvas beta |
 | Jikan público | Nenhum papel ativo | IDs MAL históricos continuam preservados | Candidatos antigos já persistidos não são apagados | Desativado/removido do runtime |
 
@@ -54,7 +54,7 @@ Rotas usadas:
 
 O adapter deixou de depender de `/anime/api/details/{id}` e do objeto opcional `jikan` que esse payload poderia incluir. A consulta de metadados agora usa diretamente o endpoint de informação pública. Isso evita que uma falha ou descontinuação de Jikan interrompa AniPub.
 
-Campos efetivamente mapeados quando presentes no JSON de informação: `_id` (referência externa AniPub), `Name`, `Synonyms`, `Aired`, `Premiered`, `Type`/`Format`, `epCount`, `Duration`, `MALScore`, `Status`, `DescripTion`/`Description`, `ImagePath` e `Cover`. Um MAL ID só é preservado quando a API de informação o fornece expressamente; não é inferido de nome, slug ou ID interno AniPub.
+Campos efetivamente mapeados quando presentes no JSON de informação: `_id` (referência externa AniPub), `Name`, `Synonyms`, `Aired`, `Premiered`, `epCount`, `Duration`, `MALScore`, `Status`, `DescripTion`/`Description`, `ImagePath` e `Cover`. A documentação consultada não declara um campo estável de formato/tipo de mídia nem de classificação etária; por isso, mesmo que respostas não documentadas tragam chaves como `Type`, `Format`, `Rating` ou `AgeRating`, o adapter as ignora e deixa os campos internos correspondentes nulos. Um MAL ID só é preservado quando a API de informação o fornece expressamente; não é inferido de nome, slug ou ID interno AniPub.
 
 O contrato mantém `ImagePath` como Poster e `Cover` como Banner. A documentação pública manda prefixar caminhos relativos com `https://anipub.org/`; o adapter aplica essa regra de forma restrita, preserva URLs HTTPS absolutas recebidas e rejeita HTTP, URL protocol-relative e segmentos de caminho `.`/`..`. O download e a validação final dos bytes permanecem no pipeline já existente e fora do escopo deste prompt.
 
