@@ -2333,7 +2333,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
-    fun failedKitsuProviderDoesNotBlockVerifiedJikanFallback() = runBlocking {
+    fun failedKitsuProviderDoesNotBlockVerifiedTenraiFallback() = runBlocking {
         createCanonicalFixture()
         val png = File(context.cacheDir, "external-catalog-valid-poster.png")
         val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
@@ -2350,7 +2350,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 )
             }
             val kitsuCalls = java.util.concurrent.atomic.AtomicInteger()
-            val jikanCalls = java.util.concurrent.atomic.AtomicInteger()
+            val tenraiCalls = java.util.concurrent.atomic.AtomicInteger()
             val kitsu = object : ReiAnixAnimeCatalogProvider {
                 override val source = ReiAnixCatalogSource.KITSU
                 override suspend fun searchAnime(query: String, limit: Int): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
@@ -2361,11 +2361,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                     ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
             }
             val remote = ReiAnixCatalogAnime(
-                source = ReiAnixCatalogSource.JIKAN,
+                source = ReiAnixCatalogSource.TENRAI,
                 ids = ReiAnixExternalCatalogIds(myAnimeListId = 9001L),
                 title = "Original Title",
                 alternativeTitles = setOf("Old English Title"),
-                synopsis = "A complete Jikan synopsis that complements the existing AniList catalog record.",
+                synopsis = "A complete Tenrai synopsis that complements the existing AniList catalog record.",
                 releaseYear = 2016,
                 format = "TV",
                 mediaKind = ReiAnixCatalogMediaKind.SERIES,
@@ -2374,10 +2374,10 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 status = "Finished Airing",
                 averageScore = 82,
             )
-            val jikan = object : ReiAnixAnimeCatalogProvider {
-                override val source = ReiAnixCatalogSource.JIKAN
+            val tenrai = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.TENRAI
                 override suspend fun searchAnime(query: String, limit: Int): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
-                    jikanCalls.incrementAndGet()
+                    tenraiCalls.incrementAndGet()
                     return ReiAnixCatalogResult.Success(listOf(remote))
                 }
                 override suspend fun getAnime(externalId: String) =
@@ -2388,7 +2388,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val service = ReiAnixExternalCatalogIntegrationService(
                 library = ReiAnixSqliteLibraryRepository(database),
                 providers = ReiAnixCatalogProviderRegistry(
-                    listOf(kitsu, jikan),
+                    listOf(kitsu, tenrai),
                     ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
                 ),
                 artwork = artwork,
@@ -2397,9 +2397,9 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertEquals(1, service.enrichLibraryGaps())
             val updated = requireNotNull(ReiAnixSqliteLibraryRepository(database).getAnime(1L))
             assertTrue(kitsuCalls.get() > 0)
-            assertTrue(jikanCalls.get() > 0)
+            assertTrue(tenraiCalls.get() > 0)
             assertEquals(9001L, ReiAnixSqliteLibraryRepository(database).getExternalCatalogIds(1L)?.myAnimeListId)
-            assertEquals("A complete Jikan synopsis that complements the existing AniList catalog record.", updated.description)
+            assertEquals("A complete Tenrai synopsis that complements the existing AniList catalog record.", updated.description)
             assertNull(updated.anilistId)
             assertEquals("Original Title", updated.title)
             assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
@@ -2409,7 +2409,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
-    fun ambiguousJikanCandidatesAreRejectedWithoutPersistingAnyExternalId() = runBlocking {
+    fun ambiguousTenraiCandidatesAreRejectedWithoutPersistingAnyExternalId() = runBlocking {
         createCanonicalFixture()
         val png = File(context.cacheDir, "external-catalog-ambiguous-poster.png")
         val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
@@ -2433,7 +2433,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                     ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
             }
             fun candidate(id: Long) = ReiAnixCatalogAnime(
-                source = ReiAnixCatalogSource.JIKAN,
+                source = ReiAnixCatalogSource.TENRAI,
                 ids = ReiAnixExternalCatalogIds(myAnimeListId = id),
                 title = "Original Title",
                 alternativeTitles = setOf("Old English Title"),
@@ -2442,8 +2442,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 mediaKind = ReiAnixCatalogMediaKind.SERIES,
                 episodes = 12,
             )
-            val jikan = object : ReiAnixAnimeCatalogProvider {
-                override val source = ReiAnixCatalogSource.JIKAN
+            val tenrai = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.TENRAI
                 override suspend fun searchAnime(query: String, limit: Int) =
                     ReiAnixCatalogResult.Success(listOf(candidate(9002L), candidate(9003L)))
                 override suspend fun getAnime(externalId: String) =
@@ -2453,7 +2453,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val service = ReiAnixExternalCatalogIntegrationService(
                 library = ReiAnixSqliteLibraryRepository(database),
                 providers = ReiAnixCatalogProviderRegistry(
-                    listOf(kitsu, jikan),
+                    listOf(kitsu, tenrai),
                     ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
                 ),
                 artwork = ReiAnixArtworkService(context, database),
@@ -2514,7 +2514,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     fun completeMetadataValidPosterAndMissingBackdropStillTriggerSupplementalLookup() = runBlocking {
         createCanonicalFixture()
         val poster = createValidPng("backdrop-only-poster.png")
-        val downloadedBackdrop = createValidPng("jikan-backdrop-http-response.png")
+        val downloadedBackdrop = createValidPng("tenrai-backdrop-http-response.png")
         try {
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
                 db.execSQL(
@@ -2529,7 +2529,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             }
 
             val kitsuCalls = AtomicInteger()
-            val jikanCalls = AtomicInteger()
+            val tenraiCalls = AtomicInteger()
             val kitsu = object : ReiAnixAnimeCatalogProvider {
                 override val source = ReiAnixCatalogSource.KITSU
                 override suspend fun searchAnime(
@@ -2543,7 +2543,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                     ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
             }
             val remote = ReiAnixCatalogAnime(
-                source = ReiAnixCatalogSource.JIKAN,
+                source = ReiAnixCatalogSource.TENRAI,
                 ids = ReiAnixExternalCatalogIds(myAnimeListId = 90210L),
                 title = "Original Title",
                 alternativeTitles = setOf("Old English Title"),
@@ -2553,13 +2553,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 episodes = 12,
                 backdropUrl = "https://cdn.myanimelist.net/backdrop-90210.png",
             )
-            val jikan = object : ReiAnixAnimeCatalogProvider {
-                override val source = ReiAnixCatalogSource.JIKAN
+            val tenrai = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.TENRAI
                 override suspend fun searchAnime(
                     query: String,
                     limit: Int,
                 ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
-                    jikanCalls.incrementAndGet()
+                    tenraiCalls.incrementAndGet()
                     return ReiAnixCatalogResult.Success(listOf(remote))
                 }
                 override suspend fun getAnime(externalId: String) =
@@ -2582,17 +2582,17 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val service = ReiAnixExternalCatalogIntegrationService(
                 library = repository,
                 providers = ReiAnixCatalogProviderRegistry(
-                    listOf(kitsu, jikan),
+                    listOf(kitsu, tenrai),
                     ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
                 ),
                 artwork = artwork,
             )
 
             assertEquals(1, service.enrichLibraryGaps())
-            assertTrue("A failed Kitsu lookup must not suppress Jikan.", kitsuCalls.get() > 0)
+            assertTrue("A failed Kitsu lookup must not suppress Tenrai.", kitsuCalls.get() > 0)
             assertTrue(
                 "A complete record with a valid poster but a missing backdrop must remain eligible.",
-                jikanCalls.get() > 0,
+                tenraiCalls.get() > 0,
             )
             assertEquals(90210L, repository.getExternalCatalogIds(1L)?.myAnimeListId)
             val updated = requireNotNull(repository.getAnime(1L))
@@ -3012,7 +3012,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 localPath = banner.absolutePath,
             )
             val kitsuCalls = AtomicInteger()
-            val jikanCalls = AtomicInteger()
+            val tenraiCalls = AtomicInteger()
             fun provider(catalogSource: ReiAnixCatalogSource, calls: AtomicInteger) =
                 object : ReiAnixAnimeCatalogProvider {
                     override val source: ReiAnixCatalogSource = catalogSource
@@ -3033,7 +3033,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 providers = ReiAnixCatalogProviderRegistry(
                     listOf(
                         provider(ReiAnixCatalogSource.KITSU, kitsuCalls),
-                        provider(ReiAnixCatalogSource.JIKAN, jikanCalls),
+                        provider(ReiAnixCatalogSource.TENRAI, tenraiCalls),
                     ),
                     ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
                 ),
@@ -3042,7 +3042,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
             assertEquals(0, service.enrichLibraryGaps())
             assertEquals(0, kitsuCalls.get())
-            assertEquals(0, jikanCalls.get())
+            assertEquals(0, tenraiCalls.get())
             assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
             assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
             assertTrue(artwork.hasValidAnimeArtwork(1L, "banner"))
