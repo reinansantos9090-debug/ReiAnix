@@ -204,4 +204,43 @@ class ReiAnixAniPubCatalogProviderTest {
         assertEquals(1, transport.calls)
     }
 
+    @Test
+    fun searchWithOneFailedDetailDoesNotReturnTheSuccessfulSubset() = runBlocking {
+        val transport = FakeTransport(
+            listOf(
+                ReiAnixCatalogHttpResponse(
+                    200,
+                    """[{"Name":"Candidate One","Id":1},{"Name":"Candidate Two","Id":2}]""",
+                    emptyMap(),
+                ),
+                ReiAnixCatalogHttpResponse(
+                    200,
+                    """{"_id":1,"Name":"Candidate One","ImagePath":"one.jpg"}""",
+                    emptyMap(),
+                ),
+                ReiAnixCatalogHttpResponse(404, "not found", emptyMap()),
+            ),
+        )
+
+        val result = ReiAnixAniPubCatalogProvider(transport).searchAnime("Candidate", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Failure)
+        assertEquals(3, transport.calls)
+    }
+
+    @Test
+    fun searchWithMoreRowsThanTheBoundedDetailBudgetIsRejectedAsIncomplete() = runBlocking {
+        val entries = (1..6).joinToString(",") { """{"Name":"Candidate $it","Id":$it}""" }
+        val transport = FakeTransport(
+            listOf(
+                ReiAnixCatalogHttpResponse(200, "[$entries]", emptyMap()),
+            ),
+        )
+
+        val result = ReiAnixAniPubCatalogProvider(transport).searchAnime("Candidate", 10)
+
+        assertTrue(result is ReiAnixCatalogResult.Failure)
+        assertEquals(1, transport.calls)
+    }
+
 }
