@@ -201,6 +201,11 @@ data class ReiAnixAnimeMetadataPatch(
     val format: String? = null,
     val studio: String? = null,
     val metadataFetchedAt: Double? = null,
+    /** Independent AniList Poster candidate; never replaces manual/local artwork. */
+    val posterArtworkUrl: String? = null,
+    val posterArtworkSourceRef: String? = null,
+    val posterArtworkVariant: String = "extraLarge",
+    val posterArtworkPriority: Int = 400,
     /** Independent Banner URL; it must be persisted to artwork.artwork_type='banner'. */
     val bannerArtworkUrl: String? = null,
     val bannerArtworkSourceRef: String? = null,
@@ -212,6 +217,9 @@ data class ReiAnixAnimeMetadataPatch(
         require(metadataFetchedAt == null || (metadataFetchedAt.isFinite() && metadataFetchedAt >= 0.0)) {
             "metadataFetchedAt must be finite and non-negative."
         }
+        require(posterArtworkSourceRef == null || posterArtworkSourceRef.isNotBlank())
+        require(posterArtworkVariant.isNotBlank())
+        require(posterArtworkPriority >= 0)
         require(bannerArtworkSourceRef == null || bannerArtworkSourceRef.isNotBlank())
         require(bannerArtworkVariant.isNotBlank())
         require(bannerArtworkPriority >= 0)
@@ -219,7 +227,8 @@ data class ReiAnixAnimeMetadataPatch(
             title != null || romaji != null || english != null ||
                 nativeTitle != null || aliasesJson != null || description != null ||
                 descriptionOriginal != null || coverUrl != null || coverCache != null || bannerUrl != null ||
-                bannerArtworkUrl != null || genresJson != null || year != null || season != null || status != null ||
+                posterArtworkUrl != null || bannerArtworkUrl != null ||
+                genresJson != null || year != null || season != null || status != null ||
                 episodesCount != null || duration != null || score != null || format != null ||
                 studio != null || metadataFetchedAt != null,
         ) { "The metadata patch must supply at least one field." }
