@@ -191,11 +191,6 @@ data class ReiAnixAnimeMetadataPatch(
     val coverCache: String? = null,
     /** Legacy anime.banner_url field; its established runtime meaning is Backdrop. */
     val bannerUrl: String? = null,
-    /** Independent Banner URL; it must be persisted to artwork.artwork_type='banner'. */
-    val bannerArtworkUrl: String? = null,
-    val bannerArtworkSourceRef: String? = null,
-    val bannerArtworkVariant: String = "original",
-    val bannerArtworkPriority: Int = 400,
     val genresJson: String? = null,
     val year: Int? = null,
     val season: String? = null,
@@ -206,6 +201,11 @@ data class ReiAnixAnimeMetadataPatch(
     val format: String? = null,
     val studio: String? = null,
     val metadataFetchedAt: Double? = null,
+    /** Independent Banner URL; it must be persisted to artwork.artwork_type='banner'. */
+    val bannerArtworkUrl: String? = null,
+    val bannerArtworkSourceRef: String? = null,
+    val bannerArtworkVariant: String = "original",
+    val bannerArtworkPriority: Int = 400,
 ) {
     init {
         require(animeId > 0L) { "animeId must be a positive persisted ID." }
