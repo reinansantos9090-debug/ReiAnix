@@ -155,4 +155,25 @@ class ReiAnixTenraiCatalogProviderTest {
         assertTrue(malformed is ReiAnixCatalogResult.Failure)
         assertTrue((malformed as ReiAnixCatalogResult.Failure).error is ReiAnixCatalogError.InvalidResponse)
     }
+    @Test
+    fun invalidPosterUrlsAreIgnoredWithoutDiscardingTenraiMetadata() = runBlocking {
+        val transport = FakeTransport(
+            ReiAnixCatalogHttpResponse(
+                200,
+                """{"data":[{"mal_id":707,"title":"Metadata only","type":"TV","images":{"webp":{"large_image_url":"file:///tmp/poster.jpg"}}}]}""",
+                emptyMap(),
+            ),
+        )
+
+        val result = ReiAnixTenraiCatalogProvider(transport).searchAnime("Metadata only", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val anime = (result as ReiAnixCatalogResult.Success).value.single()
+        assertEquals("Metadata only", anime.title)
+        assertEquals(707L, anime.ids.myAnimeListId)
+        assertNull(anime.coverUrl)
+        assertNull(anime.bannerUrl)
+        assertNull(anime.backdropUrl)
+    }
+
 }
