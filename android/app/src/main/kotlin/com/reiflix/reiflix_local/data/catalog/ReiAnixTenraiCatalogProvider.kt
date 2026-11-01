@@ -110,10 +110,10 @@ class ReiAnixTenraiCatalogProvider(
         val webp = images?.optJSONObject("webp")
         val jpg = images?.optJSONObject("jpg")
         val poster = listOfNotNull(
-            webp?.catalogText("large_image_url")?.let { "images.webp.large_image_url" to it },
-            jpg?.catalogText("large_image_url")?.let { "images.jpg.large_image_url" to it },
-            webp?.catalogText("image_url")?.let { "images.webp.image_url" to it },
-            jpg?.catalogText("image_url")?.let { "images.jpg.image_url" to it },
+            webp?.catalogText("large_image_url")?.takeIf(::isValidCatalogArtworkUrl)?.let { "images.webp.large_image_url" to it },
+            jpg?.catalogText("large_image_url")?.takeIf(::isValidCatalogArtworkUrl)?.let { "images.jpg.large_image_url" to it },
+            webp?.catalogText("image_url")?.takeIf(::isValidCatalogArtworkUrl)?.let { "images.webp.image_url" to it },
+            jpg?.catalogText("image_url")?.takeIf(::isValidCatalogArtworkUrl)?.let { "images.jpg.image_url" to it },
         ).firstOrNull()
         val score = item.catalogNumber("score")
             ?.takeIf { it.isFinite() && it in 0.0..10.0 && it > 0.0 }
