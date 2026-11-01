@@ -30,7 +30,7 @@ Campos preservados:
 
 O adapter mantém `coverImage` como Poster e `bannerImage` como Banner. Nenhum deles é gravado como Backdrop. A limitação de requisições continua centralizada em `AniListGraphqlRequestController`, incluindo HTTP 429, `Retry-After` e os cabeçalhos `X-RateLimit`.
 
-Respostas GraphQL parciais agora mantêm os registros que puderam ser decodificados, mas carregam `incomplete=true`. O adapter do contrato compartilhado rejeita esse conjunto incompleto para matching/persistência automática: dados úteis não são descartados no cliente, mas uma busca parcial não se transforma em evidência completa de identidade. Erros GraphQL sem `data` continuam sendo falhas identificáveis.
+Respostas GraphQL parciais agora mantêm os registros que puderam ser decodificados, mas carregam `incomplete=true`. O adapter do contrato compartilhado rejeita esse conjunto incompleto para matching/persistência automática: dados úteis não são descartados no cliente, mas uma busca parcial não se transforma em evidência completa de identidade. Os caminhos de refresh e associação manual também recusam detalhes parciais; refresh conserva a cópia local marcada como stale. Os caminhos de busca/lookup somente-leitura expõem o indicador de incompletude ao consumidor. Erros GraphQL sem `data` continuam sendo falhas identificáveis.
 
 ## Kitsu — REST JSON:API
 
