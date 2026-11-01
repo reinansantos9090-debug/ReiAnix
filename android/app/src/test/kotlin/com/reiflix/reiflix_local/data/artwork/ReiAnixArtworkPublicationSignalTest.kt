@@ -957,11 +957,11 @@ class ReiAnixArtworkPublicationSignalTest {
     @Test
     fun artworkCacheControlExpiryHonorsMaxAgeAndRevalidationDirectives() {
         val now = 1_700_000_000.0
-        assertEquals(now + 300.0, parseArtworkCacheExpirySeconds("public, max-age=300", now)!!)
-        assertEquals(now, parseArtworkCacheExpirySeconds("no-cache", now)!!)
-        assertEquals(now, parseArtworkCacheExpirySeconds("private, no-store", now)!!)
-        assertEquals(now, parseArtworkCacheExpirySeconds("max-age=0", now)!!)
-        assertEquals(now + 31_536_000.0, parseArtworkCacheExpirySeconds("max-age=999999999", now)!!)
+        assertEquals(now + 300.0, parseArtworkCacheExpirySeconds("public, max-age=300", now)!!, 0.001)
+        assertEquals(now, parseArtworkCacheExpirySeconds("no-cache", now)!!, 0.001)
+        assertEquals(now, parseArtworkCacheExpirySeconds("private, no-store", now)!!, 0.001)
+        assertEquals(now, parseArtworkCacheExpirySeconds("max-age=0", now)!!, 0.001)
+        assertEquals(now + 31_536_000.0, parseArtworkCacheExpirySeconds("max-age=999999999", now)!!, 0.001)
         assertEquals(null, parseArtworkCacheExpirySeconds(null, now))
         assertEquals(null, parseArtworkCacheExpirySeconds("max-age=invalid", now))
         assertEquals(null, parseArtworkCacheExpirySeconds("max-age=10", Double.NaN))
