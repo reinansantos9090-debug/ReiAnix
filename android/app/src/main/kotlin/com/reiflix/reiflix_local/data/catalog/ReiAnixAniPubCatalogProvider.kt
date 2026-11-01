@@ -180,23 +180,11 @@ class ReiAnixAniPubCatalogProvider(
     private fun normalizeAniPubImageUrl(rawValue: String): String? {
         val raw = rawValue.trim()
         if (raw.isEmpty() || raw.any { it.isWhitespace() || it.code == 0 }) return null
-        val candidate = when {
-            raw.startsWith("https://", ignoreCase = true) -> raw
-            raw.startsWith("http://", ignoreCase = true) ||
-                raw.startsWith("//", ignoreCase = true) -> return null
-            else -> {
-                val relative = raw.removePrefix("/")
-                val relativeUri = runCatching { URI(relative) }.getOrNull() ?: return null
-                if (relativeUri.isAbsolute || relativeUri.rawAuthority != null ||
-                    relativeUri.path.orEmpty().split('/').any { it == "." || it == ".." }
-                ) return null
-                "https://anipub.org/$relative"
-            }
-        }
-        val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
+        val uri = runCatching { URI(raw) }.getOrNull() ?: return null
         if (!uri.scheme.equals("https", ignoreCase = true) ||
             uri.host.isNullOrBlank() || uri.userInfo != null || uri.path.isNullOrBlank()
         ) return null
+        if (uri.path.split('/').any { it == "." || it == ".." }) return null
         return uri.toASCIIString()
     }
 
