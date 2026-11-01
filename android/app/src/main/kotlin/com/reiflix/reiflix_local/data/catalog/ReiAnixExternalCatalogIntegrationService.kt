@@ -323,7 +323,7 @@ class ReiAnixExternalCatalogIntegrationService(
     companion object {
         private val SUPPLEMENTAL_SOURCES = listOf(
             ReiAnixCatalogSource.KITSU,
-            ReiAnixCatalogSource.JIKAN,
+            ReiAnixCatalogSource.TENRAI,
             ReiAnixCatalogSource.ANIPUB,
         )
         const val DEFAULT_BATCH_SIZE = 12
