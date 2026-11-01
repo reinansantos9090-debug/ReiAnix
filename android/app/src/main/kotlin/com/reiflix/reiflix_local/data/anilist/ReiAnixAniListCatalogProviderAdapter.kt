@@ -28,8 +28,15 @@ class ReiAnixAniListCatalogProviderAdapter(
             )
         }
         return when (val result = client.searchAnime(query, limit)) {
-            is AniListResult.Success ->
+            is AniListResult.Success -> if (result.incomplete) {
+                ReiAnixCatalogResult.Failure(
+                    ReiAnixCatalogError.InvalidResponse(
+                        "AniList returned a partial search result; incomplete candidate sets cannot be used for identity resolution.",
+                    ),
+                )
+            } else {
                 ReiAnixCatalogResult.Success(result.value.mapNotNull { it.toCatalogAnime() })
+            }
             is AniListResult.Failure ->
                 ReiAnixCatalogResult.Failure(result.error.toCatalogError())
         }
@@ -39,7 +46,15 @@ class ReiAnixAniListCatalogProviderAdapter(
         val id = externalId.trim().toIntOrNull()?.takeIf { it > 0 }
             ?: return ReiAnixCatalogResult.Failure(ReiAnixCatalogError.InvalidRequest("AniList ID must be positive."))
         return when (val result = client.getAnime(id)) {
-            is AniListResult.Success -> ReiAnixCatalogResult.Success(result.value?.toCatalogAnime())
+            is AniListResult.Success -> if (result.incomplete) {
+                ReiAnixCatalogResult.Failure(
+                    ReiAnixCatalogError.InvalidResponse(
+                        "AniList returned partial detail data; incomplete records cannot be used for identity resolution.",
+                    ),
+                )
+            } else {
+                ReiAnixCatalogResult.Success(result.value?.toCatalogAnime())
+            }
             is AniListResult.Failure -> ReiAnixCatalogResult.Failure(result.error.toCatalogError())
         }
     }
