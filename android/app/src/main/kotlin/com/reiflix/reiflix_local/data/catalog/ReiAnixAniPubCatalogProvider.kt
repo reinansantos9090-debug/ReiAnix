@@ -192,8 +192,11 @@ class ReiAnixAniPubCatalogProvider(
                 ?: local.optCatalogText("Description")
                 ?: jikan?.optCatalogText("synopsis"),
             coverUrl = poster,
-            // The AniPub API reference identifies ImagePath as poster and Cover as banner.
-            backdropUrl = banner,
+            coverImageField = "ImagePath",
+            // AniPub's maintained API client documents Cover as Banner, not Backdrop.
+            bannerUrl = banner,
+            bannerImageField = "Cover",
+            bannerVariant = "Cover",
             releaseYear = year,
             season = season,
             format = type?.uppercase(Locale.ROOT),
