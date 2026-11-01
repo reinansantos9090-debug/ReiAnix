@@ -937,6 +937,15 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun explicitPlaceholderArtworkUrlsAreRejectedWithoutGuessingFromOrdinaryTitles() {
+        assertTrue(isKnownArtworkPlaceholderUrl("https://cdn.example.test/images/no-image.png"))
+        assertTrue(isKnownArtworkPlaceholderUrl("https://cdn.example.test/assets/poster_placeholder.jpg"))
+        assertTrue(isKnownArtworkPlaceholderUrl("https://cdn.example.test/images/missing-image.webp"))
+        assertFalse(isKnownArtworkPlaceholderUrl("https://cdn.example.test/images/default-season-2-poster.jpg"))
+        assertFalse(isKnownArtworkPlaceholderUrl("https://cdn.example.test/images/one-piece-cover.jpg"))
+    }
+
+    @Test
     fun artworkOriginClassificationRecognizesAniPubAndOtherExternalCatalogs() {
         assertEquals("anipub", artworkSourceKindForUrl("https://anipub.org/assets/poster.jpg"))
         assertEquals("anipub", artworkSourceKindForUrl("https://cdn.anipub.org/assets/banner.jpg"))
