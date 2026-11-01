@@ -94,12 +94,12 @@ jobs:
             --tests com.reiflix.reiflix_local.data.catalog.ReiAnixAniPubCatalogProviderTest \
             --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinatorTest \
             --tests com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
-            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixJikanCatalogProviderTest \
+            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixTenraiCatalogProviderTest \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.verifiedExternalCatalogIdsPersistInV29PreferencesWithoutChangingLibraryRows \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.supplementalKitsuMetadataFillsOnlyGapsAndPersistsItsIdInV29Preferences \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniMapAndAniPubEnrichmentShareVerifiedIdsAndPreserveV29LocalArtworkOwnership \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.failedKitsuProviderDoesNotBlockVerifiedJikanFallback \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.ambiguousJikanCandidatesAreRejectedWithoutPersistingAnyExternalId \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.failedKitsuProviderDoesNotBlockVerifiedTenraiFallback \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.ambiguousTenraiCandidatesAreRejectedWithoutPersistingAnyExternalId \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.externalArtworkCandidateCannotReplaceManualOrValidLocalPoster \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.externalProviderCandidatesPersistByTypeAndKeepLegacyBannerUrlAsBackdrop \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniListBannerImagePersistsAsBannerWithoutChangingLegacyBackdrop \
