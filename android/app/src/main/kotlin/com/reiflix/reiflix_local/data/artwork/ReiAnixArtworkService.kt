@@ -621,7 +621,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 if (fieldIsManual && currentUrl?.trim() != url) return@transaction false
             }
 
-            val key = sha256(listOf(source, sourceRef, artworkType, variant, url).joinToString("|"))
+            val key = sha256(
+                listOf(entityType, animeId.toString(), source, sourceRef, artworkType, variant, url)
+                    .joinToString("|"),
+            )
             val existing = db.rawQuery(
                 "SELECT id,source,source_ref,local_path,status,artwork_key FROM artwork " +
                     "WHERE entity_type=? AND entity_id=? AND artwork_type=? " +
