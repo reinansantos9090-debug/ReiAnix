@@ -11,7 +11,7 @@ import com.reiflix.reiflix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
 import com.reiflix.reiflix_local.data.catalog.ReiAnixAniPubCatalogProvider
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
-import com.reiflix.reiflix_local.data.catalog.ReiAnixJikanCatalogProvider
+import com.reiflix.reiflix_local.data.catalog.ReiAnixTenraiCatalogProvider
 import com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProvider
 import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
@@ -132,7 +132,7 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixCatalogProviderRegistry(
             providers = listOf(
                 ReiAnixKitsuCatalogProvider(),
-                ReiAnixJikanCatalogProvider(),
+                ReiAnixTenraiCatalogProvider(),
                 ReiAnixAniPubCatalogProvider(),
             ),
             requestCoordinator = externalCatalogRequestCoordinator,
