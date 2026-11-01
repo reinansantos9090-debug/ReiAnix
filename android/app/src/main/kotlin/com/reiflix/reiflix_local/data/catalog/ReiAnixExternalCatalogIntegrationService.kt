@@ -21,7 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 
 /**
- * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Jikan/AniPub are
+ * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Tenrai/AniPub are
  * consulted only for metadata gaps or missing usable artwork, and every association is reverified.
  */
 class ReiAnixExternalCatalogIntegrationService(
