@@ -7,6 +7,7 @@ import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogMediaKind
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogResult
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogSource
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIds
+import com.reiflix.reiflix_local.data.catalog.isValidCatalogArtworkUrl
 import java.util.Locale
 
 /**
