@@ -181,6 +181,63 @@ internal fun abandonedArtworkTemporaryFiles(directory: File, activePaths: Set<St
         ?.filter { it.isFile && it.name.endsWith(".tmp", ignoreCase = true) && it.absolutePath !in activePaths }
         .orEmpty()
 
+/** Bounds decoded image dimensions before allocating a sampled bitmap. */
+internal fun artworkImageDimensionsAreSafe(width: Int, height: Int): Boolean =
+    width > 0 && height > 0 &&
+        width <= ReiAnixArtworkService.MAX_ARTWORK_IMAGE_DIMENSION &&
+        height <= ReiAnixArtworkService.MAX_ARTWORK_IMAGE_DIMENSION &&
+        width.toLong() * height.toLong() <= ReiAnixArtworkService.MAX_ARTWORK_IMAGE_PIXELS
+
+/** Requires a declared MIME type to agree with the actual file signature when supplied. */
+internal fun artworkContentTypeMatchesSignature(contentType: String?, extension: String): Boolean {
+    val declared = contentType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT).orEmpty()
+    if (declared.isEmpty() || declared == "image/*") return true
+    val normalized = when (declared) {
+        "image/jpg", "image/pjpeg" -> "image/jpeg"
+        else -> declared
+    }
+    val expected = when (extension.lowercase(Locale.ROOT)) {
+        ".jpg", ".jpeg" -> "image/jpeg"
+        ".png" -> "image/png"
+        ".webp" -> "image/webp"
+        ".gif" -> "image/gif"
+        ".avif" -> "image/avif"
+        else -> return false
+    }
+    return normalized == expected
+}
+
+/** Maps known catalog-owned media hosts to their actual provider for diagnostics/cache identity. */
+internal fun artworkSourceKindForUrl(rawUrl: String): String {
+    val host = runCatching { URL(rawUrl).host.lowercase(Locale.ROOT) }.getOrDefault("")
+    return when {
+        host == "kitsu.io" || host.endsWith(".kitsu.io") ||
+            host == "kitsu.app" || host.endsWith(".kitsu.app") -> "kitsu"
+        host == "myanimelist.net" || host.endsWith(".myanimelist.net") ||
+            host == "jikan.moe" || host.endsWith(".jikan.moe") -> "jikan"
+        host == "anipub.org" || host.endsWith(".anipub.org") -> "anipub"
+        else -> "anilist"
+    }
+}
+
+/** Reads image freshness from Cache-Control. null means the server supplied no cache directive. */
+internal fun parseArtworkCacheExpirySeconds(
+    cacheControl: String?,
+    nowSeconds: Double,
+): Double? {
+    if (!nowSeconds.isFinite() || nowSeconds < 0.0) return null
+    val directives = cacheControl.orEmpty().split(',')
+        .map { it.trim().lowercase(Locale.ROOT) }
+        .filter(String::isNotEmpty)
+    if (directives.any { it == "no-cache" || it == "no-store" }) return nowSeconds
+    val maxAge = directives.firstNotNullOfOrNull { directive ->
+        if (!directive.startsWith("max-age=")) return@firstNotNullOfOrNull null
+        directive.substringAfter('=').trim().trim('"').toLongOrNull()
+    } ?: return null
+    val bounded = maxAge.coerceIn(0L, ReiAnixArtworkService.MAX_ARTWORK_CACHE_TTL_SECONDS)
+    return nowSeconds + bounded.toDouble()
+}
+
 /**
  * A persisted retry timestamp is authoritative. No attempt counter may turn a needed
  * artwork row into a terminal state; failed rows are re-evaluated when their cooldown ends.
@@ -232,6 +289,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private data class Downloaded(
         val file: File, val bytes: Long, val width: Int, val height: Int,
         val checksum: String, val mime: String, val status: Int,
+        val cacheExpiresAtSeconds: Double? = null,
     )
     private data class SaveResult(val saved: Boolean, val current: Boolean)
     private class HttpFailure(val code: Int, val retryAfterSeconds: Long?) : IOException("Artwork HTTP " + code)
@@ -581,7 +639,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         }
                     }
                 }
-                db.delete("artwork", "source IN ('cache','anilist') AND manual=0", null)
+                db.delete(
+                    "artwork",
+                    "entity_type IN ('anime','movie') AND manual=0 " +
+                        "AND artwork_type IN ('poster','backdrop','banner') " +
+                        "AND LOWER(COALESCE(source,'')) NOT IN ('local','manual','generated')",
+                    null,
+                )
                 // Match Settings' existing cache-clear contract: expire remote metadata
                 // and clear stale cover pointers without deleting the library records.
                 db.execSQL("UPDATE anime SET metadata_updated_at=NULL, cover_cache=''")
@@ -671,14 +735,23 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
         permits.withPermit {
             currentCoroutineContext().ensureActive()
+            val cachedRow = candidates(entity, id.toString(), type, url)
+                .firstOrNull { it.url == url && it.source.equals("cache", true) && it.status.equals("ready", true) }
+            val cachedExpiry = cachedRow?.retryAt
+            val cachedImageExpired = cachedExpiry != null && cachedExpiry <= nowSeconds()
             if (reuseLocal(id, entity, type, url, aniId, requestId)) return@withPermit
             val key = remoteKey(aniId, url, type)
             val rowId = prepareRow(id, entity, type, url, key, force, requestId) ?: return@withPermit
             var image: Downloaded? = null
             try {
                 // Re-associate a complete checksum-named file if the process stopped
-                // after promotion but before the SQLite transaction committed.
-                val completedImage = findCachedDownloadedImage(key) ?: download(id, key, url)
+                // after promotion but before the SQLite transaction committed. An expired
+                // response cache is fetched again rather than silently reusing old bytes.
+                val completedImage = if (cachedImageExpired) {
+                    download(id, key, url)
+                } else {
+                    findCachedDownloadedImage(key, cachedExpiry) ?: download(id, key, url)
+                }
                 image = completedImage
                 currentCoroutineContext().ensureActive()
                 val saved = persistDownloaded(rowId, id, type, url, key, completedImage)
@@ -733,7 +806,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val rows = candidates(entity, id.toString(), type, url)
         if (rows.any { it.manual || it.source.equals("manual", true) }) return true
         if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return true
-        val existing = rows.firstOrNull { it.url == url && validImage(it.path) }
+        val now = nowSeconds()
+        val existing = rows.firstOrNull {
+            it.url == url && validImage(it.path) &&
+                (!it.source.equals("cache", true) || it.retryAt == null || it.retryAt > now)
+        }
         if (existing != null) {
             val path = existing.path ?: return false
             if (markReady(existing.id, id, type, url, path)) {
@@ -748,7 +825,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val pathRows = rowsForPath(entity, id.toString(), type, oldPath)
         if (pathRows.isNotEmpty() && pathRows.none {
                 it.status.equals("ready", true) && (it.source.equals("manual", true) ||
-                    it.source.equals("local", true) || it.url == url)
+                    it.source.equals("local", true) ||
+                    (it.url == url && (!it.source.equals("cache", true) || it.retryAt == null || it.retryAt > now)))
             }) return false
         val file = File(oldPath)
         val dims = dimensions(oldPath) ?: return false
@@ -876,7 +954,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
     }
 
-    private fun findCachedDownloadedImage(key: String): Downloaded? {
+    private fun findCachedDownloadedImage(key: String, cacheExpiresAtSeconds: Double? = null): Downloaded? {
         if (!cacheDirectory.isDirectory) return null
         val candidates = cacheDirectory.listFiles()
             ?.filter { file ->
@@ -903,6 +981,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 checksum = digest,
                 mime = mime(file.absolutePath),
                 status = 200,
+                cacheExpiresAtSeconds = cacheExpiresAtSeconds,
             )
         }
         return null
@@ -953,6 +1032,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (declared.isNotEmpty() && !declared.startsWith("image/")) throw InvalidImage("Content-Type is not image.", code)
             val expectedContentLength = conn.getHeaderFieldLong("Content-Length", -1L)
             if (expectedContentLength > MAX_DOWNLOAD_BYTES) throw InvalidImage("Artwork exceeds 32 MiB.", code)
+            val cacheExpiresAtSeconds = parseArtworkCacheExpirySeconds(
+                conn.getHeaderField("Cache-Control"),
+                nowSeconds(),
+            )
             val digest = MessageDigest.getInstance("SHA-256")
             val header = ByteArrayOutputStream(32)
             var total = 0L
@@ -978,6 +1061,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 throw IOException("Artwork response ended before its declared Content-Length.")
             }
             val ext = imageExtension(header.toByteArray()) ?: throw InvalidImage("Unknown image signature.", code)
+            if (!artworkContentTypeMatchesSignature(declared, ext)) {
+                throw InvalidImage("Content-Type does not match the image signature.", code)
+            }
             if (!validImage(tmp, ext)) throw InvalidImage("Image decoding validation failed.", code)
             val bounds = imageDimensions(tmp.absolutePath, ext) ?: throw InvalidImage("Invalid image dimensions.", code)
             val checksum = digest.digest().toHex()
@@ -992,6 +1078,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     return Downloaded(
                         target, total, bounds.first, bounds.second, checksum,
                         declared.takeIf { it.startsWith("image/") } ?: mimeFromExtension(ext), code,
+                        cacheExpiresAtSeconds,
                     )
                 }
                 if (!target.delete()) throw IOException("Could not replace an invalid artwork cache file.")
@@ -1009,6 +1096,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             return Downloaded(
                 target, total, bounds.first, bounds.second, checksum,
                 declared.takeIf { it.startsWith("image/") } ?: mimeFromExtension(ext), code,
+                cacheExpiresAtSeconds,
             )
         } finally {
             tmp.delete()
@@ -1031,7 +1119,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 put("artwork_key", key); put("variant", "large"); put("byte_size", image.bytes)
                 put("width", image.width.takeIf { it > 0 }); put("height", image.height.takeIf { it > 0 })
                 put("checksum", image.checksum); put("content_type", image.mime); put("last_access", now)
-                putNull("next_retry_at"); put("http_status", image.status)
+                if (image.cacheExpiresAtSeconds == null) putNull("next_retry_at")
+                else put("next_retry_at", image.cacheExpiresAtSeconds)
+                put("http_status", image.status)
             }
             if (db.update("artwork", values, "id=?", arrayOf(rowId.toString())) != 1) return@transaction SaveResult(false, false)
             if (current && type == "poster") updateCoverPointer(db, id, url, image.file.absolutePath)
@@ -1046,7 +1136,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val now = nowSeconds()
             val values = ContentValues().apply {
                 put("source", "cache"); put("local_path", path); put("external_url", url); put("status", "ready")
-                put("last_access", now); putNull("next_retry_at"); putNull("http_status")
+                put("last_access", now); putNull("http_status")
                 if (row.status != "ready" || row.path != path) put("updated_at", now)
             }
             db.update("artwork", values, "id=?", arrayOf(rowId.toString()))
@@ -1556,7 +1646,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         if (ext == ".avif" && android.os.Build.VERSION.SDK_INT < 31) return false
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+        if (!artworkImageDimensionsAreSafe(bounds.outWidth, bounds.outHeight)) return false
         val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight) }
         val bitmap = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return false
         bitmap.recycle()
@@ -1567,7 +1657,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         if (ext == ".avif" && android.os.Build.VERSION.SDK_INT < 31) return null
         BitmapFactory.decodeFile(path, options)
-        if (options.outWidth > 0 && options.outHeight > 0) return options.outWidth to options.outHeight
+        if (artworkImageDimensionsAreSafe(options.outWidth, options.outHeight)) {
+            return options.outWidth to options.outHeight
+        }
         return null
     }
     private fun dimensions(path: String, knownExtension: String? = null) = imageDimensions(path, knownExtension)
@@ -1604,14 +1696,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         ".jpg", ".jpeg" -> "image/jpeg"; ".png" -> "image/png"; ".webp" -> "image/webp"
         ".gif" -> "image/gif"; ".avif" -> "image/avif"; else -> "application/octet-stream"
     }
-    private fun artworkCatalogSource(rawUrl: String): String {
-        val host = runCatching { URL(rawUrl).host.lowercase(Locale.ROOT) }.getOrDefault("")
-        return when {
-            host == "kitsu.io" || host.endsWith(".kitsu.io") || host == "kitsu.app" || host.endsWith(".kitsu.app") -> "kitsu"
-            host == "myanimelist.net" || host.endsWith(".myanimelist.net") || host.endsWith(".jikan.moe") -> "jikan"
-            else -> "anilist"
-        }
-    }
+    private fun artworkCatalogSource(rawUrl: String): String = artworkSourceKindForUrl(rawUrl)
 
     private fun remoteKey(aniId: Long?, url: String, type: String): String {
         val provider = artworkCatalogSource(url)
@@ -1637,6 +1722,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val STATUS_RETRY_WAIT = "retry_wait"
         const val STATUS_NOT_REQUESTED = "not_requested"
         const val MAX_DOWNLOAD_BYTES = 32L * 1024L * 1024L
+        const val MAX_ARTWORK_IMAGE_DIMENSION = 16_384
+        const val MAX_ARTWORK_IMAGE_PIXELS = 80_000_000L
+        const val MAX_ARTWORK_CACHE_TTL_SECONDS = 31_536_000L
         const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
         const val IO_BUFFER_BYTES = 64 * 1024
