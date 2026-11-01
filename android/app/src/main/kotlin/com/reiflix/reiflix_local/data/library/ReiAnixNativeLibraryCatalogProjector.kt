@@ -83,12 +83,16 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         val animeArtwork = row.animeArtwork.map(::withoutInvalidLocalArtwork)
         val coverCache = usableLocalArtworkPath(anime.coverCache)
         val backdrop = animeArtwork.firstOrNull {
-            it.artworkType.equals("backdrop", ignoreCase = true) ||
-                it.artworkType.equals("banner", ignoreCase = true)
+            it.artworkType.equals("backdrop", ignoreCase = true)
         }
-        val posterCandidates = animeArtwork.filterNot {
-            it.artworkType.equals("backdrop", ignoreCase = true) ||
-                it.artworkType.equals("banner", ignoreCase = true)
+        val banner = animeArtwork.firstOrNull {
+            it.artworkType.equals("banner", ignoreCase = true)
+        }
+        // "cover" is the retained legacy spelling for poster rows. Other categories
+        // must not silently become a poster merely because they are not Backdrops.
+        val posterCandidates = animeArtwork.filter {
+            it.artworkType.equals("poster", ignoreCase = true) ||
+                it.artworkType.equals("cover", ignoreCase = true)
         }
         val primaryLocalArtworkRecord = posterCandidates.firstOrNull { !it.localPath.isNullOrBlank() }
         val primaryLocalArtwork = primaryLocalArtworkRecord?.localPath ?: coverCache
@@ -170,6 +174,9 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                     ?: anime.bannerUrl?.takeUnless(::isKnownArtworkPlaceholderUrl)
                 ),
             "artwork_backdrop_revision" to backdropArtworkRevision,
+            "artwork_banner_local_path" to banner?.localPath,
+            "banner_external_url" to banner?.externalUrl?.takeUnless(::isKnownArtworkPlaceholderUrl),
+            "artwork_banner_revision" to banner?.let(::artworkRevision),
             "playback_target_episode_id" to target?.id,
             "score" to anime.score?.toDouble(),
             "year" to anime.year,
