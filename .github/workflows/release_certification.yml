@@ -241,6 +241,7 @@ jobs:
             --tests com.reiflix.reiflix_local.data.catalog.ReiAnixAniMapCatalogIdResolverTest \
             --tests com.reiflix.reiflix_local.data.catalog.ReiAnixAniPubCatalogProviderTest \
             --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinatorTest \
+            --tests com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogHttpTransportTest \
             --tests com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
             --tests com.reiflix.reiflix_local.data.catalog.ReiAnixTenraiCatalogProviderTest \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.verifiedExternalCatalogIdsPersistInV29PreferencesWithoutChangingLibraryRows \
