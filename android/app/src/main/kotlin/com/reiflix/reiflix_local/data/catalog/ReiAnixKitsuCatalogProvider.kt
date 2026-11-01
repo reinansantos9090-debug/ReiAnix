@@ -35,9 +35,13 @@ class ReiAnixKitsuCatalogProvider(
                 for (index in 0 until data.length()) {
                     val item = data.optJSONObject(index)
                         ?: throw JSONException("Kitsu search contains an invalid JSON:API resource.")
+                    val resourceId = item.catalogText("id")
+                    if (resourceId == null || !resourceId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
+                        continue
+                    }
                     add(
                         parseAnime(item)
-                            ?: throw JSONException("Kitsu search resource is missing its ID or canonical title."),
+                            ?: throw JSONException("Kitsu search resource is missing its canonical title."),
                     )
                 }
             }
@@ -56,6 +60,7 @@ class ReiAnixKitsuCatalogProvider(
             val data = root.optJSONObject("data")
                 ?: throw JSONException("Kitsu detail response contains an invalid JSON:API data object.")
             parseAnime(data)
+                ?: throw JSONException("Kitsu detail resource is missing its ID or canonical title.")
         }
     }
 
