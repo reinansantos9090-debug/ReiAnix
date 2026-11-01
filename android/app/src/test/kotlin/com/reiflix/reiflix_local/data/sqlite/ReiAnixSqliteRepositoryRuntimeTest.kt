@@ -2706,6 +2706,54 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun persistedBannerCandidateUsesArtworkPipelineWithoutBecomingBackdrop() = runBlocking {
+        createCanonicalFixture()
+        val responseImage = createValidPng("persisted-banner-response.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET media_kind='series',cover_url=NULL,cover_cache=NULL," +
+                        "banner_url=NULL,metadata_manual_fields='[]' WHERE id=1",
+                )
+            }
+            val bannerUrl = "https://cdn.kitsu.io/persisted-banner.png"
+            insertArtworkTestRow(
+                id = 22L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "banner",
+                source = "kitsu",
+                localPath = null,
+                externalUrl = bannerUrl,
+            )
+
+            val database = ReiAnixSqliteDatabase(context)
+            val repository = ReiAnixSqliteLibraryRepository(database)
+            val artwork = ReiAnixArtworkService(context, database)
+            val responseBytes = responseImage.readBytes()
+            artwork.httpConnectionFactory = { url ->
+                FakeArtworkHttpURLConnection(url, 200, responseBytes)
+            }
+
+            assertTrue(artwork.requestAnimeArtwork(1L))
+            withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
+
+            val publishedRow = repository.artworkForAnime(1L).single { it.artworkType == "banner" }
+            assertEquals("ready", publishedRow.status)
+            assertEquals(bannerUrl, publishedRow.externalUrl)
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "banner"))
+            assertNotNull(artwork.publishedArtworks.value["anime|1|banner"])
+
+            val projected = ReiAnixNativeLibraryCatalogProjector
+                .project(repository.loadLibraryCatalogRows()).animes.single()
+            assertEquals(publishedRow.localPath, projected.artwork?.bannerLocalPath)
+            assertNull(projected.artwork?.backdropLocalPath)
+        } finally {
+            responseImage.delete()
+        }
+    }
+
+    @Test
     fun backdropCandidateRecoveryDoesNotReplaceAnAlreadyValidPoster() = runBlocking {
         createCanonicalFixture()
         val poster = createValidPng("poster-preserved-during-backdrop-recovery.png")
