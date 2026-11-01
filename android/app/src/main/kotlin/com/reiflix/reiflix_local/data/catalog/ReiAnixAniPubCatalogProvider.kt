@@ -35,13 +35,10 @@ class ReiAnixAniPubCatalogProvider(
         val search = requestJson("$BASE_URL/api/search/$encoded")
         if (search is ReiAnixCatalogResult.Failure) return search
         val root = (search as ReiAnixCatalogResult.Success).value
-        val entries = when {
-            root is JSONObject -> root.optJSONArray("data") ?: root.optJSONArray("results")
-            root is JSONArray -> root
-            else -> null
-        } ?: return ReiAnixCatalogResult.Failure(
-            ReiAnixCatalogError.InvalidResponse("AniPub search response is not a documented result array."),
-        )
+        val entries = root as? JSONArray
+            ?: return ReiAnixCatalogResult.Failure(
+                ReiAnixCatalogError.InvalidResponse("AniPub search response is not the documented flat result array."),
+            )
 
         val detailLimit = minOf(limit, MAX_DETAIL_LOOKUPS_PER_SEARCH)
         if (entries.length() > detailLimit) {
@@ -141,8 +138,7 @@ class ReiAnixAniPubCatalogProvider(
             throw JSONException("AniPub info response ID does not match the requested record.")
         }
         val title = root.optCatalogText("Name")
-            ?: root.optCatalogText("name")
-            ?: throw JSONException("AniPub info response has no anime title.")
+            ?: throw JSONException("AniPub info response has no documented anime title.")
 
         val alternatives = linkedSetOf<String>()
         root.optCatalogTextValues("Synonyms", alternatives)
@@ -151,7 +147,6 @@ class ReiAnixAniPubCatalogProvider(
         val ids = ReiAnixExternalCatalogIds(
             additionalIds = mapOf("anipub" to requestedId),
         )
-        val type = root.optCatalogText("Type") ?: root.optCatalogText("Format")
         val aired = root.optCatalogText("Aired")
         val year = firstAiredYear(aired)
             ?: firstAiredYear(root.optCatalogText("Premiered"))
@@ -175,13 +170,10 @@ class ReiAnixAniPubCatalogProvider(
             bannerVariant = "Cover",
             releaseYear = year,
             season = root.optCatalogText("Premiered")?.substringBefore(' ')?.toAniPubCalendarSeason(),
-            format = type?.uppercase(Locale.ROOT),
-            mediaKind = type.toAniPubMediaKind(),
             episodes = root.optCatalogInt("epCount")?.takeIf { it > 0 },
             durationMinutes = parseDurationMinutes(root.optCatalogText("Duration")),
             status = root.optCatalogText("Status"),
             averageScore = score,
-            contentRating = root.optCatalogText("Rating") ?: root.optCatalogText("AgeRating"),
         )
     }
 
@@ -275,12 +267,3 @@ private fun JSONArray.addTitleValues(target: MutableSet<String>) {
 private fun String?.toAniPubCalendarSeason(): String? =
     this?.trim()?.uppercase(Locale.ROOT)?.takeIf { it in setOf("WINTER", "SPRING", "SUMMER", "FALL") }
 
-private fun String?.toAniPubMediaKind(): ReiAnixCatalogMediaKind? = when (this?.trim()?.lowercase(Locale.ROOT)) {
-    "tv", "tv short", "tv_short", "series" -> ReiAnixCatalogMediaKind.SERIES
-    "movie", "film" -> ReiAnixCatalogMediaKind.MOVIE
-    "ova" -> ReiAnixCatalogMediaKind.OVA
-    "ona" -> ReiAnixCatalogMediaKind.ONA
-    "special" -> ReiAnixCatalogMediaKind.SPECIAL
-    "music" -> ReiAnixCatalogMediaKind.MUSIC
-    else -> null
-}
