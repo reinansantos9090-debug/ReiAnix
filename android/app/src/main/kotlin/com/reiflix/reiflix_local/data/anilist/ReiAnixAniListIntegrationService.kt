@@ -1404,6 +1404,10 @@ class ReiAnixAniListIntegrationService(
                     description = displayDescription,
                     descriptionOriginal = remoteOriginalDescription,
                     coverUrl = if (artworkEnabled) remote.coverExtraLargeUrl ?: remote.coverLargeUrl else null,
+                    posterArtworkUrl = (remote.coverExtraLargeUrl ?: remote.coverLargeUrl).takeIf { artworkEnabled },
+                    posterArtworkSourceRef = "anilist:${remote.id}:coverImage",
+                    posterArtworkVariant = if (remote.coverExtraLargeUrl != null) "extraLarge" else "large",
+                    posterArtworkPriority = 400,
                     // AniList bannerImage is Banner, not the legacy Backdrop banner_url column.
                     bannerUrl = null,
                     bannerArtworkUrl = remote.bannerUrl.takeIf { artworkEnabled },
