@@ -54,29 +54,32 @@ class ReiAnixAniListClient(
               }
             }
         """.trimIndent()
-        return execute(gql, JSONObject()
-            .put("search", query)
-            .put("page", 1)
-            .put("perPage", limit)) { data, _ ->
+        return execute(
+            gql,
+            JSONObject()
+                .put("search", query)
+                .put("page", 1)
+                .put("perPage", limit),
+            allowPartialGraphQlErrors = true,
+        ) { data, errorPaths ->
             val page = data.objectOrNull("Page")
                 ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing Page object"))
             val media = page.arrayOrNull("media")
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("Missing media array in AniList search response"),
                 )
+            var incomplete = errorPaths.isNotEmpty()
             val results = ArrayList<AniListAnime>(media.length())
-            for (i in 0 until media.length()) {
-                val item = media.optJSONObject(i)
-                    ?: return@execute AniListResult.Failure(
-                        AniListError.InvalidResponse("Invalid anime item in AniList search response"),
-                    )
-                val anime = parseAnime(item)
-                    ?: return@execute AniListResult.Failure(
-                        AniListError.InvalidResponse("Anime item is missing a valid AniList ID"),
-                    )
+            for (index in 0 until media.length()) {
+                val item = media.optJSONObject(index)
+                val anime = item?.let { runCatching { parseAnime(it) }.getOrNull() }
+                if (anime == null) {
+                    incomplete = true
+                    continue
+                }
                 results += anime
             }
-            AniListResult.Success(results)
+            AniListResult.Success(results.distinctBy { it.id }, incomplete = incomplete)
         }
     }
 
@@ -87,22 +90,24 @@ class ReiAnixAniListClient(
               Media(id: ${'$'}id, type: ANIME) { $MEDIA_FIELDS }
             }
         """.trimIndent()
-        return execute(gql, JSONObject().put("id", id)) { data, _ ->
+        return execute(gql, JSONObject().put("id", id), allowPartialGraphQlErrors = true) { data, errorPaths ->
             if (!data.has("Media")) {
                 return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("Missing Media field in AniList detail response"),
                 )
             }
-            if (data.isNull("Media")) return@execute AniListResult.Success(null)
+            if (data.isNull("Media")) {
+                return@execute AniListResult.Success(null, incomplete = errorPaths.isNotEmpty())
+            }
             val media = data.objectOrNull("Media")
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("Invalid Media object in AniList detail response"),
                 )
-            val anime = parseAnime(media)
+            val anime = runCatching { parseAnime(media) }.getOrNull()
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("AniList detail is missing a valid media ID"),
                 )
-            AniListResult.Success(anime)
+            AniListResult.Success(anime, incomplete = errorPaths.isNotEmpty())
         }
     }
 
@@ -285,18 +290,11 @@ class ReiAnixAniListClient(
         val hasGraphQlErrors = errors != null && errors.length() > 0
         if (hasGraphQlErrors && !allowPartialGraphQlErrors) {
             val messages = try {
-                buildList<String> {
-                    for (index in 0 until errors!!.length()) {
-                        val errorObject = errors.optJSONObject(index)
-                            ?: error("Malformed GraphQL error item at index=$index")
-                        val message = errorObject.stringOrNull("message").orEmpty().trim()
-                        if (message.isNotBlank()) add(message.take(160))
-                    }
-                }
+                graphQlErrorMessages(errors)
             } catch (_: Exception) {
                 return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
             }
-            return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
+            return AniListResult.Failure(AniListError.GraphQl(messages))
         }
         val errorPaths: Set<String> = if (hasGraphQlErrors) {
             try {
@@ -319,7 +317,16 @@ class ReiAnixAniListClient(
             root.objectOrNull("data")
         } catch (_: Exception) {
             return AniListResult.Failure(AniListError.InvalidResponse("Invalid data object"))
-        } ?: return AniListResult.Failure(AniListError.InvalidResponse("Missing data object"))
+        } ?: return if (hasGraphQlErrors) {
+            val messages = try {
+                graphQlErrorMessages(errors)
+            } catch (_: Exception) {
+                return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
+            }
+            AniListResult.Failure(AniListError.GraphQl(messages))
+        } else {
+            AniListResult.Failure(AniListError.InvalidResponse("Missing data object"))
+        }
         return try {
             decode(data, errorPaths)
         } catch (cancelled: CancellationException) {
@@ -328,6 +335,17 @@ class ReiAnixAniListClient(
             AniListResult.Failure(AniListError.InvalidResponse("Unexpected AniList response shape"))
         }
     }
+
+    private fun graphQlErrorMessages(errors: JSONArray?): List<String> =
+        buildList {
+            if (errors == null) return@buildList
+            for (index in 0 until errors.length()) {
+                val errorObject = errors.optJSONObject(index)
+                    ?: throw JSONException("Malformed GraphQL error item at index=$index")
+                val message = errorObject.stringOrNull("message").orEmpty().trim()
+                if (message.isNotBlank()) add(message.take(160))
+            }
+        }.ifEmpty { listOf("GraphQL request failed") }
 
     private fun parseAnime(media: JSONObject): AniListAnime? {
         val id = media.intOrNull("id")?.takeIf { it > 0 } ?: return null
@@ -447,7 +465,8 @@ data class AniListAnime(
 }
 
 sealed interface AniListResult<out T> {
-    data class Success<T>(val value: T) : AniListResult<T>
+    /** Incomplete results retain valid data but must not be used as a definitive catalog candidate set. */
+    data class Success<T>(val value: T, val incomplete: Boolean = false) : AniListResult<T>
     data class Failure(val error: AniListError) : AniListResult<Nothing>
 }
 
