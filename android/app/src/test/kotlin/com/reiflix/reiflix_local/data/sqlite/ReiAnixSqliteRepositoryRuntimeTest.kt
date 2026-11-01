@@ -3530,22 +3530,47 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals("https://cdn.anilist.co/banner.jpg", initial["banner"]?.first)
         assertEquals("anilist:777:bannerImage", initial["banner"]?.second)
 
-        // Replacing only Poster must not overwrite the other two artwork records.
+        // Updating Poster must not overwrite Backdrop or Banner.
         assertTrue(
             artwork.replaceExternalArtworkCandidate(
                 animeId = 1L, artworkType = "poster", rawUrl = "https://cdn.kitsu.io/poster-v2.jpg",
                 source = "kitsu", sourceRef = "kitsu:42:posterImage", variant = "original",
             ),
         )
-        val updated = snapshot()
-        assertEquals("https://cdn.kitsu.io/poster-v2.jpg", updated["poster"]?.first)
-        assertEquals(initial["backdrop"], updated["backdrop"])
-        assertEquals(initial["banner"], updated["banner"])
+        val afterPoster = snapshot()
+        assertEquals("https://cdn.kitsu.io/poster-v2.jpg", afterPoster["poster"]?.first)
+        assertEquals(initial["backdrop"], afterPoster["backdrop"])
+        assertEquals(initial["banner"], afterPoster["banner"])
+
+        // Updating Backdrop must not overwrite Poster or Banner.
+        assertTrue(
+            artwork.replaceExternalArtworkCandidate(
+                animeId = 1L, artworkType = "backdrop", rawUrl = "https://cdn.anipub.org/backdrop-v2.jpg",
+                source = "anipub", sourceRef = "anipub:91:Backdrop", variant = "wide",
+            ),
+        )
+        val afterBackdrop = snapshot()
+        assertEquals(afterPoster["poster"], afterBackdrop["poster"])
+        assertEquals("https://cdn.anipub.org/backdrop-v2.jpg", afterBackdrop["backdrop"]?.first)
+        assertEquals(afterPoster["banner"], afterBackdrop["banner"])
+
+        // Updating Banner must not overwrite Poster or Backdrop.
+        assertTrue(
+            artwork.replaceExternalArtworkCandidate(
+                animeId = 1L, artworkType = "banner", rawUrl = "https://cdn.anilist.co/banner-v2.jpg",
+                source = "anilist", sourceRef = "anilist:777:bannerImage", variant = "original",
+            ),
+        )
+        val afterBanner = snapshot()
+        assertEquals(afterBackdrop["poster"], afterBanner["poster"])
+        assertEquals(afterBackdrop["backdrop"], afterBanner["backdrop"])
+        assertEquals("https://cdn.anilist.co/banner-v2.jpg", afterBanner["banner"]?.first)
 
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            db.rawQuery("SELECT banner_url FROM anime WHERE id=1", null).use { cursor ->
+            db.rawQuery("SELECT cover_url,banner_url FROM anime WHERE id=1", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals("https://cdn.anipub.org/backdrop.jpg", cursor.getString(0))
+                assertEquals("https://cdn.kitsu.io/poster-v2.jpg", cursor.getString(0))
+                assertEquals("https://cdn.anipub.org/backdrop-v2.jpg", cursor.getString(1))
             }
             db.rawQuery("PRAGMA user_version", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
