@@ -6,6 +6,8 @@ import org.json.JSONArray
 import org.json.JSONException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.URL
+import java.security.MessageDigest
 
 /**
  * AniList-specific association persistence, kept separate from the generic
@@ -95,6 +97,18 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
             }
             connection.update("anime", values, "id = ?", arrayOf(patch.animeId.toString()))
+            patch.bannerArtworkUrl?.takeIf(String::isNotBlank)?.let { rawUrl ->
+                persistAniListBannerCandidate(
+                    database = connection,
+                    animeId = patch.animeId,
+                    entityType = if (current.mediaKind.equals("movie", true)) "movie" else "anime",
+                    anilistId = anilistId,
+                    sourceRef = patch.bannerArtworkSourceRef ?: "anilist:$anilistId:bannerImage",
+                    rawUrl = rawUrl,
+                    variant = patch.bannerArtworkVariant,
+                    priority = patch.bannerArtworkPriority,
+                )
+            }
             connection.rawQuery(
                 "SELECT * FROM anime WHERE id = ? LIMIT 1",
                 arrayOf(patch.animeId.toString()),
@@ -105,6 +119,78 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         }
     }
 
+
+/**
+ * Upsert AniList's semantic bannerImage into the independent canonical Banner type.
+ * It intentionally does not touch anime.banner_url, which remains a legacy Backdrop field.
+ */
+private fun persistAniListBannerCandidate(
+    database: android.database.sqlite.SQLiteDatabase,
+    animeId: Long,
+    entityType: String,
+    anilistId: Long,
+    sourceRef: String,
+    rawUrl: String,
+    variant: String,
+    priority: Int,
+) {
+    val url = rawUrl.trim()
+    val parsed = runCatching { URL(url) }.getOrNull() ?: return
+    if (!parsed.protocol.equals("https", true) || parsed.host.isBlank() || parsed.userInfo != null) return
+    if (sourceRef.isBlank() || variant.isBlank() || priority < 0) return
+
+    val manualBannerExists = database.rawQuery(
+        "SELECT 1 FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='banner' " +
+            "AND (manual=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')) LIMIT 1",
+        arrayOf(entityType, animeId.toString()),
+    ).use { it.moveToFirst() }
+    if (manualBannerExists) return
+
+    val keyInput = "anilist|$anilistId|banner|$sourceRef|$variant|$url"
+    val key = MessageDigest.getInstance("SHA-256")
+        .digest(keyInput.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    val existing = database.rawQuery(
+        "SELECT id,external_url FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='banner' " +
+            "AND (source_ref=? OR artwork_key=? OR external_url=?) ORDER BY updated_at DESC,id DESC LIMIT 1",
+        arrayOf(entityType, animeId.toString(), sourceRef, key, url),
+    ).use { cursor ->
+        if (!cursor.moveToFirst()) null else cursor.getLong(0) to cursor.getString(1)
+    }
+    // An equivalent URL is already represented. Do not reset ready rows or duplicate the image.
+    if (existing?.second == url) return
+
+    val now = System.currentTimeMillis() / 1_000.0
+    val values = ContentValues().apply {
+        put("entity_type", entityType)
+        put("entity_id", animeId.toString())
+        put("artwork_type", "banner")
+        put("source", "anilist")
+        put("source_ref", sourceRef)
+        put("external_url", url)
+        put("manual", 0)
+        put("priority", priority)
+        put("status", "not_requested")
+        put("updated_at", now)
+        put("artwork_key", key)
+        put("variant", variant)
+        if (existing == null) {
+            put("discovered_at", now)
+            put("last_attempt_at", now)
+            put("failure_count", 0)
+        } else {
+            // URL changed for the same provider/type; the old local file is no longer current.
+            putNull("local_path")
+            putNull("checksum")
+            put("byte_size", 0L)
+        }
+    }
+    if (existing == null) {
+        database.insertOrThrow("artwork", null, values)
+    } else {
+        database.update("artwork", values, "id=?", arrayOf(existing.first.toString()))
+    }
+}
 
 /**
  * Persists the outcome of an automatic lookup without changing a canonical
