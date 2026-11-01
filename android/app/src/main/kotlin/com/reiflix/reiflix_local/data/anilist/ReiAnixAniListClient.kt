@@ -155,7 +155,7 @@ class ReiAnixAniListClient(
             val results = ArrayList<AniListAnime>(media.length())
             for (index in 0 until media.length()) {
                 val item = media.optJSONObject(index)
-                val anime = item?.let(::parseAnime)
+                val anime = item?.let { runCatching { parseAnime(it) }.getOrNull() }
                 if (anime == null) {
                     complete = false
                     continue
@@ -234,7 +234,7 @@ class ReiAnixAniListClient(
                     val parsed = ArrayList<AniListAnime>(media.length())
                     for (mediaIndex in 0 until media.length()) {
                         val item = media.optJSONObject(mediaIndex)
-                        val anime = item?.let(::parseAnime)
+                        val anime = item?.let { runCatching { parseAnime(it) }.getOrNull() }
                         if (anime == null) incompleteTerms += term else parsed += anime
                     }
                     results[term] = parsed.distinctBy { it.id }
