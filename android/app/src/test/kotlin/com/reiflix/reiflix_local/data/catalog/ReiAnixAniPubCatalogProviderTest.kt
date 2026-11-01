@@ -186,4 +186,22 @@ class ReiAnixAniPubCatalogProviderTest {
         assertTrue(anime.artworkCandidates().isEmpty())
     }
 
+    @Test
+    fun infoResponseWithDifferentRecordIdIsRejected() = runBlocking {
+        val transport = FakeTransport(
+            listOf(
+                ReiAnixCatalogHttpResponse(
+                    200,
+                    """{"_id":62,"Name":"Other Anime","ImagePath":"poster.jpg"}""",
+                    emptyMap(),
+                ),
+            ),
+        )
+
+        val result = ReiAnixAniPubCatalogProvider(transport).getAnime("61")
+
+        assertTrue(result is ReiAnixCatalogResult.Failure)
+        assertEquals(1, transport.calls)
+    }
+
 }
