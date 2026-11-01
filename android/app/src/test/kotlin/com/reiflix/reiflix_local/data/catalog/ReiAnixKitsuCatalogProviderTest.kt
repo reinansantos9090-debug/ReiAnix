@@ -184,4 +184,19 @@ class ReiAnixKitsuCatalogProviderTest {
         assertNull(anime.backdropUrl)
     }
 
+    @Test
+    fun malformedSearchResourceDoesNotProduceAnIncompleteSuccessList() = runBlocking {
+        val transport = FakeTransport(
+            ReiAnixCatalogHttpResponse(
+                200,
+                """{"data":[{"id":"kitsu-1","type":"anime","attributes":{"canonicalTitle":"Valid work"}},{"type":"anime","attributes":{"canonicalTitle":"Missing ID"}}]}""",
+                emptyMap(),
+            ),
+        )
+
+        val result = ReiAnixKitsuCatalogProvider(transport).searchAnime("work", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Failure)
+    }
+
 }
