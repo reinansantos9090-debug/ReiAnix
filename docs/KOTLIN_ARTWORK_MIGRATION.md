@@ -25,7 +25,7 @@ Cada `ReiAnixCatalogArtworkCandidate` preserva provider, ID externo, tipo, URL, 
 - **AniList:** `coverImage` → Poster; `bannerImage` → Banner. Nenhum dos campos é tratado como Backdrop.
 - **Kitsu:** `posterImage` → Poster; `coverImage` → Banner. A especificação REST oficial descreve `coverImage` como o banner exibido no topo da página da mídia; o contrato GraphQL oficial expõe o mesmo atributo como `banner_image`, resolvido por `cover_image`, com a descrição “A large banner image for this media”. O adapter preserva os nomes originais dos dois campos. `coverImage` não é Backdrop.
 - **AniPub:** `ImagePath` → Poster; `Cover` → Banner, conforme a referência da API/cliente mantida pelo projeto AniPub.
-- **Jikan:** as variantes escolhidas em `images.webp`/`images.jpg` → Poster. O adapter não emite Backdrop nem Banner.
+- **Tenrai:** as variantes escolhidas em `images.webp`/`images.jpg` → Poster. O adapter não emite Backdrop nem Banner. O ID MAL permanece no campo interno histórico `myAnimeListId`; o provider ativo é identificado como `tenrai`.
 - **AniMap:** resolvedor de identificadores somente; não produz artwork.
 
 **Backdrop:** permanece um tipo válido e independente no contrato, mas os adapters listados acima não promovem campos a Backdrop sem semântica explícita documentada. O fato de um recurso se chamar “cover” não é suficiente para classificá-lo como Backdrop.
