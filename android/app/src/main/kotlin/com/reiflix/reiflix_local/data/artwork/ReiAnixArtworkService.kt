@@ -10,6 +10,7 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogSource
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -552,7 +553,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     ): Boolean = withContext(Dispatchers.IO) {
         require(animeId > 0L)
         require(artworkType in setOf("poster", "backdrop", "banner"))
-        require(source in setOf("anilist", "kitsu", "jikan", "anipub"))
+        require(
+            source == ReiAnixCatalogSource.JIKAN.key ||
+                ReiAnixCatalogSource.fromKey(source)?.let {
+                    it.providesArtwork && !it.resolvesIdentifiers
+                } == true,
+        )
         require(sourceRef.isNotBlank() && sourceRef.length <= 512)
         require(variant.isNotBlank() && variant.length <= 64)
         require(priority in 0..10_000)
