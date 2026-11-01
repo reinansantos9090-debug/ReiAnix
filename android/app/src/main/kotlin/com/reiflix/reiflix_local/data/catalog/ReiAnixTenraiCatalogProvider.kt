@@ -35,7 +35,7 @@ class ReiAnixTenraiCatalogProvider(
         val encoded = URLEncoder.encode(normalized, StandardCharsets.UTF_8.name()).replace("+", "%20")
         return execute("$BASE_URL/anime?q=$encoded&limit=$limit&sfw=true", SEARCH_CACHE_TTL_MILLIS) { root ->
             val data = root.optJSONArray("data")
-                ?: throw JSONException("Jikan search response is missing the data array.")
+                ?: throw JSONException("Tenrai search response is missing the data array.")
             buildList {
                 for (index in 0 until data.length()) {
                     val item = data.optJSONObject(index) ?: continue
@@ -53,7 +53,7 @@ class ReiAnixTenraiCatalogProvider(
         return execute("$BASE_URL/anime/$id", DETAIL_CACHE_TTL_MILLIS) { root ->
             if (!root.has("data") || root.isNull("data")) return@execute null
             val data = root.optJSONObject("data")
-                ?: throw JSONException("Jikan detail response contains an invalid data object.")
+                ?: throw JSONException("Tenrai detail response contains an invalid data object.")
             parseAnime(data)
         }
     }
