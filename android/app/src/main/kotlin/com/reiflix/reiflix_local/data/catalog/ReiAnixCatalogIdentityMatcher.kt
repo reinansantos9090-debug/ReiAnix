@@ -333,6 +333,7 @@ object ReiAnixCatalogIdentityMatcher {
             .replace('-', ' ')
             .replace('_', ' ')
             .replace(Regex("\\s+"), " ")
+        if (normalized in UNKNOWN_FORMAT_VALUES) return ""
         return when (normalized) {
             "tv series", "series", "anime" -> "tv"
             "film" -> "movie"
@@ -349,6 +350,10 @@ object ReiAnixCatalogIdentityMatcher {
             "FALL", "AUTUMN" -> "fall"
             else -> null
         }
+
+    private val UNKNOWN_FORMAT_VALUES = setOf(
+        "", "unknown", "undefined", "null", "none", "n/a", "na", "not available",
+    )
 
     private val GENERIC_TITLES = setOf(
         "anime", "series", "movie", "film", "special", "ova", "ona", "music",

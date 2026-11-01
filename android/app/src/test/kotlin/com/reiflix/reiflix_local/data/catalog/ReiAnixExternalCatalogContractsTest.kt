@@ -151,6 +151,32 @@ class ReiAnixExternalCatalogContractsTest {
         )
         assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, yearMissing.decision)
 
+        // AniMap uses UNKNOWN as a placeholder for absent type metadata.
+        // It must not contradict a known local format or manufacture positive evidence.
+        val unknownFormat = ReiAnixCatalogIdentityMatcher.evaluate(
+            7L,
+            local,
+            remote.copy(
+                releaseYear = 2021,
+                format = "UNKNOWN",
+                mediaKind = ReiAnixCatalogMediaKind.UNKNOWN,
+                episodes = 12,
+            ),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, unknownFormat.decision)
+
+        val unavailableFormat = ReiAnixCatalogIdentityMatcher.evaluate(
+            7L,
+            local,
+            remote.copy(
+                releaseYear = 2021,
+                format = "N/A",
+                mediaKind = ReiAnixCatalogMediaKind.UNKNOWN,
+                episodes = 12,
+            ),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, unavailableFormat.decision)
+
         assertEquals(
             ReiAnixCatalogIdentityDecision.REJECTED,
             ReiAnixCatalogIdentityMatcher.evaluate(7L, local, remote.copy(releaseYear = 2020)).decision,
