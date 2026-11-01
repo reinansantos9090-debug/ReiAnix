@@ -294,7 +294,14 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
 
-    private data class Anime(val anilistId: Long?, val kind: String?, val coverUrl: String?, val coverCache: String?, val bannerUrl: String?)
+    private data class Anime(
+        val anilistId: Long?,
+        val kind: String?,
+        val coverUrl: String?,
+        val coverCache: String?,
+        /** Legacy anime.banner_url is the persisted Backdrop source, not a Banner source. */
+        val legacyBackdropUrl: String?,
+    )
     private data class Artwork(
         val id: Long, val source: String, val sourceRef: String?, val path: String?, val url: String?,
         val manual: Boolean, val priority: Int, val status: String, val key: String?,
@@ -378,17 +385,41 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     }
                     val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
                     val posterUrl = anime.coverUrl?.trim()?.takeIf { it.isNotEmpty() }
-                    val backdropUrl = anime.bannerUrl?.trim()?.takeIf { it.isNotEmpty() }
+                    // The existing anime.banner_url column remains the legacy Backdrop source.
+                    val backdropUrl = anime.legacyBackdropUrl?.trim()?.takeIf { it.isNotEmpty() }
+                    // Banner candidates are independent rows in the existing v29 artwork table.
+                    // No provider or source is invented here; only persisted candidates are consumed.
+                    val bannerUrls = database.read { db ->
+                        db.rawQuery(
+                            "SELECT external_url FROM artwork WHERE entity_type=? AND entity_id=? " +
+                                "AND artwork_type='banner' AND manual=0 " +
+                                "AND LOWER(COALESCE(source,'')) NOT IN ('manual','local') " +
+                                "AND TRIM(COALESCE(external_url,''))!='' " +
+                                "ORDER BY priority DESC,updated_at DESC,id DESC",
+                            arrayOf(entityType, animeId.toString()),
+                        ).use { cursor ->
+                            buildList {
+                                while (cursor.moveToNext()) {
+                                    cursor.getString(0)?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
+                                }
+                            }.distinct()
+                        }
+                    }
                     ReiAnixDiagnosticTimeline.record(
                         name = "NATIVE_ARTWORK_SOURCES_RESOLVED",
                         source = "ReiAnixArtworkService",
-                        result = if (posterUrl != null || backdropUrl != null) "SOURCE_CONFIGURED" else "NO_SOURCE_CONFIGURED",
+                        result = if (posterUrl != null || backdropUrl != null || bannerUrls.isNotEmpty()) {
+                            "SOURCE_CONFIGURED"
+                        } else {
+                            "NO_SOURCE_CONFIGURED"
+                        },
                         requestId = requestId,
                         context = mapOf(
                             "entity_type" to entityType,
                             "entity_id" to animeId,
                             "poster_source_configured" to (posterUrl != null),
                             "backdrop_source_configured" to (backdropUrl != null),
+                            "banner_source_configured" to bannerUrls.isNotEmpty(),
                             "anilist_id_present" to (anime.anilistId != null),
                         ),
                     )
@@ -397,6 +428,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     }
                     backdropUrl?.let {
                         materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
+                    }
+                    bannerUrls.forEach { url ->
+                        materialize(animeId, entityType, "banner", url, anime.anilistId, force, requestId)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -453,7 +487,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     suspend fun hasValidAnimeArtwork(animeId: Long, artworkType: String = "poster"): Boolean =
         withContext(Dispatchers.IO) {
             require(animeId > 0L)
-            require(artworkType == "poster" || artworkType == "backdrop")
+            require(artworkType == "poster" || artworkType == "backdrop" || artworkType == "banner")
             val state = database.read { db ->
                 val anime = db.rawQuery(
                     "SELECT cover_cache,media_kind FROM anime WHERE id=? LIMIT 1",
@@ -563,7 +597,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     val ids = database.read { db ->
                         db.rawQuery(
                             "SELECT id FROM anime WHERE id>? AND (TRIM(COALESCE(cover_url,''))!='' " +
-                                "OR TRIM(COALESCE(banner_url,''))!='') ORDER BY id LIMIT 16",
+                                "OR TRIM(COALESCE(banner_url,''))!='' OR EXISTS (" +
+                                "SELECT 1 FROM artwork a WHERE a.entity_type=CASE " +
+                                "WHEN LOWER(COALESCE(anime.media_kind,''))='movie' THEN 'movie' ELSE 'anime' END " +
+                                "AND a.entity_id=CAST(anime.id AS TEXT) AND a.artwork_type='banner' AND a.manual=0 " +
+                                "AND LOWER(COALESCE(a.source,'')) NOT IN ('manual','local') " +
+                                "AND TRIM(COALESCE(a.external_url,''))!='')) ORDER BY id LIMIT 16",
                             arrayOf(afterId.toString()),
                         ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
                     }
@@ -1207,11 +1246,14 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 db.rawQuery(
                     "SELECT MIN(a.next_retry_at) FROM artwork a " +
                         "WHERE a.entity_id=? AND a.entity_type IN ('anime','movie') " +
-                        "AND a.artwork_type IN ('poster','backdrop') " +
+                        "AND a.artwork_type IN ('poster','backdrop','banner') " +
                         "AND a.status='retry_wait' AND a.failure_count < ? AND a.next_retry_at IS NOT NULL " +
                         "AND EXISTS (SELECT 1 FROM anime n WHERE n.id=? AND (" +
                         "(a.artwork_type='poster' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.cover_url,''))) " +
-                        "OR (a.artwork_type='backdrop' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.banner_url,'')))))",
+                        "OR (a.artwork_type='backdrop' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.banner_url,''))) " +
+                        "OR (a.artwork_type='banner' AND a.manual=0 " +
+                        "AND LOWER(COALESCE(a.source,'')) NOT IN ('manual','local') " +
+                        "AND TRIM(COALESCE(a.external_url,''))!='')))",
                     arrayOf(animeId.toString(), MAX_AUTOMATIC_ARTWORK_FAILURES.toString(), animeId.toString()),
                 ).use { cursor ->
                     if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getDouble(0) else null
@@ -1276,7 +1318,26 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     private fun isUrlCurrent(id: Long, type: String, url: String) = database.read { urlCurrent(it, id, type, url) }
     private fun urlCurrent(db: SQLiteDatabase, id: Long, type: String, url: String): Boolean {
-        val column = if (type == "backdrop") "banner_url" else "cover_url"
+        if (type == "banner") {
+            val entityType = db.rawQuery(
+                "SELECT media_kind FROM anime WHERE id=? LIMIT 1",
+                arrayOf(id.toString()),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) return false
+                if (cursor.getString(0).equals("movie", ignoreCase = true)) "movie" else "anime"
+            }
+            return db.rawQuery(
+                "SELECT 1 FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='banner' " +
+                    "AND external_url=? AND manual=0 " +
+                    "AND LOWER(COALESCE(source,'')) NOT IN ('manual','local') LIMIT 1",
+                arrayOf(entityType, id.toString(), url),
+            ).use { it.moveToFirst() }
+        }
+        val column = when (type) {
+            "backdrop" -> "banner_url"
+            "poster" -> "cover_url"
+            else -> return false
+        }
         return db.rawQuery("SELECT $column FROM anime WHERE id=? LIMIT 1", arrayOf(id.toString()))
             .use { it.moveToFirst() && it.getString(0)?.trim() == url }
     }
