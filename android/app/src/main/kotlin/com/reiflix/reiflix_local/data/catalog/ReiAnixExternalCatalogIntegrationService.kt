@@ -299,7 +299,10 @@ class ReiAnixExternalCatalogIntegrationService(
         // A failed or malformed title query leaves the candidate set incomplete. Do not
         // confirm a record from only the successful subset, because the failed term may
         // have returned a competing work. The next independent provider is still attempted.
-        if (incompleteSearch) return Resolution.None
+        if (incompleteSearch) {
+            record(provider.source, "INCOMPLETE_SEARCH_CANDIDATE_SET_REJECTED", anime.id)
+            return Resolution.None
+        }
 
         val evaluation = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
             anime.id, identity, candidates.values, ids,
