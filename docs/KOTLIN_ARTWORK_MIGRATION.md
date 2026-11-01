@@ -14,6 +14,21 @@ A escrita persistente acontece depois da promoção e em transação na tabela `
 
 As chaves de cache nativas preservam o formato SHA-256 previamente utilizado pelo ArtworkEngine: provedor, identidade do item/URL, tipo e variante. Arquivos válidos já associados são mantidos sem download; arquivos completos com nome baseado no checksum, promovidos antes de uma interrupção e ainda sem associação SQLite, são recuperados e associados sem nova requisição HTTP. Falhas transitórias usam backoff exponencial de 60 segundos até 6 horas; HTTP 429 e respostas que enviam `Retry-After` respeitam o maior entre o backoff local e o intervalo informado pelo servidor. Respostas permanentes recebem cooldown de 24 horas e são reavaliadas indefinidamente enquanto a URL continuar necessária; não existe limite finito de tentativas. O horário `next_retry_at` é a fonte de verdade: depois do backfill no bootstrap do processo, o serviço restaura o agendamento em memória a partir do timestamp persistido; uma reinicialização seguinte reconstrói novamente os agendamentos. O backfill também remove arquivos `.tmp` abandonados sem tocar nos temporários pertencentes a downloads ativos. O cache continua limitado a 128 MiB e não remove arquivos referenciados por `artwork.local_path` ou `anime.cover_cache`.
 
+## Contrato canônico de imagens (Prompt 2/10)
+
+A classificação interna usa exclusivamente os tipos **poster**, **backdrop** e **banner**, persistidos no campo `artwork.artwork_type`. Cada candidato conserva provedor, ID externo, campo original da resposta, URL, variante/resolução e prioridade; dimensões conhecidas podem gerar um aviso sem rejeitar nem reclassificar a imagem. A chave de identidade inclui o tipo, e as consultas/atualizações do escritor continuam limitadas a `entity_type + entity_id + artwork_type`.
+
+Mapeamento explícito dos adapters atuais:
+
+- **AniList:** `coverImage` → Poster; `bannerImage` → Banner. A API descreve `bannerImage` como banner, portanto ele não é encaminhado como Backdrop. O candidato Banner é gravado na tabela `artwork`.
+- **Kitsu:** `posterImage` → Poster. `coverImage` é mantido no DTO como campo original não classificado: a documentação pública consultada enumera a propriedade, mas não define com precisão que ela seja Backdrop ou Banner. Não se infere seu tipo pela proporção.
+- **AniPub:** `ImagePath` → Poster; `Cover` → Banner, conforme a referência do cliente/API mantido pelo projeto AniPub. Nenhum dos dois é promovido a Backdrop.
+- **Jikan:** as variantes WebP/JPG em `images` fornecem Poster. O adapter não cria Backdrop ou Banner.
+- **AniMap:** permanece exclusivamente um resolvedor de identificadores e não produz candidatos de imagem.
+
+Compatibilidade legada: `anime.cover_url` continua sendo a URL de Poster; `anime.banner_url` continua sendo o ponteiro legado de Backdrop. O nome histórico não é reinterpretado como Banner. Novos Banner são registros independentes na tabela `artwork`; nenhuma migração, limpeza ou reprocessamento de imagens é necessária para este contrato.
+
+Referências de API consultadas: [AniList Media](https://docs.anilist.co/reference/object/media), [Kitsu API](https://kitsu.docs.apiary.io/reference/posts), [AniPub API/client reference](https://github.com/AnimePub/AniPub-API).
 ## Integração com AniList e Compose
 
 Depois que os metadados são persistidos, o graph nativo pode agendar `requestAnimeArtwork`. O evento `anilist_metadata_committed` agora informa que o artwork não deve ser solicitado pelo Python; seu consumidor em `main.py` atualiza apenas a projeção. A persistência de capas é responsabilidade de `ReiAnixArtworkService`, e não há delegação para `library.artwork.sync_anime_metadata` ou `library.artwork.request` nesse fluxo.
