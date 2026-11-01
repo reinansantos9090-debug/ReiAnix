@@ -146,7 +146,7 @@ private fun persistAniListBannerCandidate(
     ).use { it.moveToFirst() }
     if (manualBannerExists) return
 
-    val keyInput = "anilist|$anilistId|banner|$sourceRef|$variant|$url"
+    val keyInput = "$entityType|$animeId|anilist|$anilistId|banner|$sourceRef|$variant|$url"
     val key = MessageDigest.getInstance("SHA-256")
         .digest(keyInput.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
