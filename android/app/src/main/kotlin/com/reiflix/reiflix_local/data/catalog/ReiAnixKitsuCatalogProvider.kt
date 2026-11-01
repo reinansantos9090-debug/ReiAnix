@@ -108,9 +108,10 @@ class ReiAnixKitsuCatalogProvider(
         val format = normalizeFormat(subtype)
         val year = attributes.catalogText("startDate")?.take(4)?.toIntOrNull()
             ?.takeIf { it in 1900..2200 }
-        val poster = attributes.optJSONObject("posterImage")?.bestImageUrl()
-            ?: attributes.optJSONObject("coverImage")?.bestImageUrl()
-        val backdrop = attributes.optJSONObject("coverImage")?.bestImageUrl()
+        val poster = attributes.optJSONObject("posterImage")?.bestImage()
+        val cover = attributes.optJSONObject("coverImage")?.bestImage()
+        // Kitsu documents posterImage and coverImage as distinct fields, but the public
+        // schema does not establish coverImage as Backdrop or Banner. Retain it unclassified.
         val rating = attributes.catalogNumber("averageRating")
             ?.takeIf { it.isFinite() && it in 0.0..100.0 }
             ?.toInt()
@@ -121,8 +122,12 @@ class ReiAnixKitsuCatalogProvider(
             title = canonical,
             alternativeTitles = alternativeTitles,
             synopsis = attributes.catalogText("synopsis"),
-            coverUrl = poster,
-            backdropUrl = backdrop,
+            coverUrl = poster?.first,
+            coverImageField = "posterImage",
+            coverVariant = poster?.second,
+            unclassifiedArtworkFields = listOfNotNull(
+                cover?.let { ReiAnixCatalogArtworkSourceField("coverImage", it.first, it.second) },
+            ),
             releaseYear = year,
             format = format,
             mediaKind = subtype.toCatalogMediaKind(),
@@ -143,9 +148,9 @@ class ReiAnixKitsuCatalogProvider(
         }
     }
 
-    private fun JSONObject.bestImageUrl(): String? =
+    private fun JSONObject.bestImage(): Pair<String, String>? =
         listOf("original", "large", "medium", "small", "tiny")
-            .firstNotNullOfOrNull { catalogText(it) }
+            .firstNotNullOfOrNull { variant -> catalogText(variant)?.let { it to variant } }
 
     private fun String?.toCatalogMediaKind(): ReiAnixCatalogMediaKind = when (
         this?.trim()?.lowercase(Locale.ROOT)
