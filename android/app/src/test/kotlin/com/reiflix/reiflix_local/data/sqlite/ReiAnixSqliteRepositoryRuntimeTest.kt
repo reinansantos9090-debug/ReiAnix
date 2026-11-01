@@ -3554,6 +3554,58 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
     }
 
+    @Test
+    fun aniListBannerImagePersistsAsBannerWithoutChangingLegacyBackdrop() = runBlocking {
+        createCanonicalFixture()
+        val legacyBackdrop = "https://cdn.example/legacy-backdrop.jpg"
+        val aniListBanner = "https://cdn.anilist.co/banner-image.jpg"
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "UPDATE anime SET media_kind='series',anilist_id=777,banner_url=?," +
+                    "metadata_manual_fields='[]' WHERE id=1",
+                arrayOf(legacyBackdrop),
+            )
+        }
+
+        val repository = ReiAnixSqliteLibraryRepository(ReiAnixSqliteDatabase(context))
+        val updated = repository.updateAniListMetadataAndAssociation(
+            patch = ReiAnixAnimeMetadataPatch(
+                animeId = 1L,
+                bannerArtworkUrl = aniListBanner,
+                bannerArtworkSourceRef = "anilist:777:bannerImage",
+                bannerArtworkVariant = "original",
+            ),
+            anilistId = 777L,
+            manual = true,
+            score = null,
+            margin = null,
+        )
+
+        assertEquals("The legacy field continues to represent Backdrop.", legacyBackdrop, updated.bannerUrl)
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                "SELECT artwork_type,source,source_ref,external_url FROM artwork " +
+                    "WHERE entity_type='anime' AND entity_id='1' AND artwork_type='banner'",
+                null,
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("banner", cursor.getString(0))
+                assertEquals("anilist", cursor.getString(1))
+                assertEquals("anilist:777:bannerImage", cursor.getString(2))
+                assertEquals(aniListBanner, cursor.getString(3))
+                assertFalse(cursor.moveToNext())
+            }
+            db.rawQuery("SELECT banner_url FROM anime WHERE id=1", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(legacyBackdrop, cursor.getString(0))
+            }
+            db.rawQuery("PRAGMA user_version", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(29, cursor.getInt(0))
+            }
+        }
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()
