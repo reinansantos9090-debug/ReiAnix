@@ -24,6 +24,7 @@ class ReiAnixAniListCatalogProviderAdapterTest {
                         "Page": {
                           "media": [{
                             "id": 123,
+                            "idMal": 456,
                             "title": {
                               "romaji": "Example Anime",
                               "english": "Example Anime",
@@ -56,6 +57,7 @@ class ReiAnixAniListCatalogProviderAdapterTest {
         val anime = (result as ReiAnixCatalogResult.Success).value.single()
         assertEquals(ReiAnixCatalogSource.ANILIST, anime.source)
         assertEquals(123L, anime.ids.aniListId)
+        assertEquals(456L, anime.ids.myAnimeListId)
         assertEquals("Example Anime", anime.title)
         assertTrue("Example Alias" in anime.alternativeTitles)
         assertEquals(2021, anime.releaseYear)
