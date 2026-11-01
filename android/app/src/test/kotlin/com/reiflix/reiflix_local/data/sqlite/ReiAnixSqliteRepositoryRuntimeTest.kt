@@ -2650,6 +2650,62 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun bannerArtworkRemainsIndependentFromPosterAndBackdropInV29Projection() = runBlocking {
+        createCanonicalFixture()
+        val poster = createValidPng("banner-separation-poster.png")
+        val backdrop = createValidPng("banner-separation-backdrop.png")
+        val banner = createValidPng("banner-separation-banner.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET media_kind='series',cover_cache=?,metadata_manual_fields='[]' WHERE id=1",
+                    arrayOf(poster.absolutePath),
+                )
+            }
+            insertArtworkTestRow(
+                id = 20L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "backdrop",
+                source = "manual",
+                localPath = backdrop.absolutePath,
+                manual = true,
+            )
+            insertArtworkTestRow(
+                id = 21L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "banner",
+                source = "manual",
+                localPath = banner.absolutePath,
+                manual = true,
+            )
+
+            val database = ReiAnixSqliteDatabase(context)
+            val repository = ReiAnixSqliteLibraryRepository(database)
+            val artwork = ReiAnixArtworkService(context, database)
+
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "banner"))
+
+            val schema = repository.inspectSchema()
+            assertEquals(29, schema.schemaVersion)
+
+            val projected = ReiAnixNativeLibraryCatalogProjector
+                .project(repository.loadLibraryCatalogRows()).animes.single()
+            assertEquals(poster.absolutePath, projected.artwork?.localPath)
+            assertEquals(backdrop.absolutePath, projected.artwork?.backdropLocalPath)
+            assertEquals(banner.absolutePath, projected.artwork?.bannerLocalPath)
+            assertFalse(projected.artwork?.bannerLocalPath == projected.artwork?.backdropLocalPath)
+        } finally {
+            poster.delete()
+            backdrop.delete()
+            banner.delete()
+        }
+    }
+
+    @Test
     fun backdropCandidateRecoveryDoesNotReplaceAnAlreadyValidPoster() = runBlocking {
         createCanonicalFixture()
         val poster = createValidPng("poster-preserved-during-backdrop-recovery.png")
