@@ -384,6 +384,7 @@ class ReiAnixAniListClient(
 
         return AniListAnime(
             id = id,
+            myAnimeListId = media.intOrNull("idMal")?.takeIf { it > 0 }?.toLong(),
             titleRomaji = title?.stringOrNull("romaji").nonBlankOrNull(),
             titleEnglish = title?.stringOrNull("english").nonBlankOrNull(),
             titleNative = title?.stringOrNull("native").nonBlankOrNull(),
@@ -425,7 +426,7 @@ class ReiAnixAniListClient(
         const val MAX_BATCH_SIZE = 15
         private const val ID_BATCH_KEY = "ids"
         private const val MEDIA_FIELDS = """
-            id title { romaji english native } synonyms
+            id idMal title { romaji english native } synonyms
             description(asHtml: false) format episodes duration status averageScore season seasonYear
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
@@ -459,6 +460,7 @@ data class AniListAnime(
     val coverExtraLargeUrl: String?,
     val bannerUrl: String?,
     val studios: List<String>,
+    val myAnimeListId: Long? = null,
 ) {
     val preferredTitle: String
         get() = titleEnglish ?: titleRomaji ?: titleNative ?: synonyms.firstOrNull().orEmpty()
