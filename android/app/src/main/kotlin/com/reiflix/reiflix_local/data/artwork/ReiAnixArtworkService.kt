@@ -211,6 +211,16 @@ internal fun artworkContentTypeMatchesSignature(contentType: String?, extension:
     return normalized == expected
 }
 
+/** Rejects only explicit placeholder markers in the path; artwork appearance is not guessed. */
+internal fun isKnownArtworkPlaceholderUrl(rawUrl: String): Boolean {
+    val path = runCatching { URL(rawUrl).path.lowercase(Locale.ROOT) }.getOrDefault("")
+    return listOf(
+        "placeholder", "no-image", "no_image", "noimage",
+        "no-poster", "no_poster", "no-cover", "no_cover",
+        "not-found", "not_found", "missing-image", "missing_image",
+    ).any(path::contains)
+}
+
 /** Maps known catalog-owned media hosts to their actual provider for diagnostics/cache identity. */
 internal fun artworkSourceKindForUrl(rawUrl: String): String {
     val host = runCatching { URL(rawUrl).host.lowercase(Locale.ROOT) }.getOrDefault("")
@@ -1684,7 +1694,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun safeUrl(s: String): Boolean {
         if (s.any { it.isWhitespace() || it.code == 0 }) return false
         val u = runCatching { URL(s) }.getOrNull() ?: return false
-        return (u.protocol.equals("https", true) || u.protocol.equals("http", true)) && u.host.isNotBlank() && u.userInfo == null
+        return (u.protocol.equals("https", true) || u.protocol.equals("http", true)) &&
+            u.host.isNotBlank() && u.userInfo == null && !isKnownArtworkPlaceholderUrl(s)
     }
     private fun imageExtension(b: ByteArray): String? {
         if (b.size >= 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() && b[2] == 0xFF.toByte()) return ".jpg"
