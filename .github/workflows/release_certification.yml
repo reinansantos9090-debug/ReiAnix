@@ -247,6 +247,7 @@ jobs:
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.supplementalKitsuMetadataFillsOnlyGapsAndPersistsItsIdInV29Preferences \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.aniMapAndAniPubEnrichmentShareVerifiedIdsAndPreserveV29LocalArtworkOwnership \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.failedKitsuProviderDoesNotBlockVerifiedTenraiFallback \
+            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.partialTenraiTitleSearchDoesNotConfirmCandidateFromSuccessfulSubset \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.ambiguousTenraiCandidatesAreRejectedWithoutPersistingAnyExternalId \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.externalArtworkCandidateCannotReplaceManualOrValidLocalPoster \
             --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.completeMetadataValidPosterAndMissingBackdropStillTriggerSupplementalLookup \
