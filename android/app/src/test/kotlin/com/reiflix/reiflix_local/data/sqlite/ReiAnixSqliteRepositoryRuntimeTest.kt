@@ -3477,6 +3477,83 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
     }
 
+
+    @Test
+    fun externalProviderCandidatesPersistByTypeAndKeepLegacyBannerUrlAsBackdrop() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "UPDATE anime SET media_kind='series',cover_url=NULL,cover_cache=NULL,banner_url=NULL," +
+                    "metadata_manual_fields='[]' WHERE id=1",
+            )
+        }
+        val database = ReiAnixSqliteDatabase(context)
+        val artwork = ReiAnixArtworkService(context, database)
+
+        assertTrue(
+            artwork.replaceExternalArtworkCandidate(
+                animeId = 1L, artworkType = "poster", rawUrl = "https://cdn.kitsu.io/poster.jpg",
+                source = "kitsu", sourceRef = "kitsu:42:posterImage", variant = "original",
+            ),
+        )
+        assertTrue(
+            artwork.replaceExternalArtworkCandidate(
+                animeId = 1L, artworkType = "backdrop", rawUrl = "https://cdn.anipub.org/backdrop.jpg",
+                source = "anipub", sourceRef = "anipub:91:Backdrop", variant = "wide",
+            ),
+        )
+        assertTrue(
+            artwork.replaceExternalArtworkCandidate(
+                animeId = 1L, artworkType = "banner", rawUrl = "https://cdn.anilist.co/banner.jpg",
+                source = "anilist", sourceRef = "anilist:777:bannerImage", variant = "original",
+            ),
+        )
+
+        fun snapshot(): Map<String, Pair<String, String>> =
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+                db.rawQuery(
+                    "SELECT artwork_type,external_url,source_ref FROM artwork " +
+                        "WHERE entity_type='anime' AND entity_id='1' AND artwork_type IN ('poster','backdrop','banner')",
+                    null,
+                ).use { cursor ->
+                    buildMap {
+                        while (cursor.moveToNext()) put(cursor.getString(0), cursor.getString(1) to cursor.getString(2))
+                    }
+                }
+            }
+
+        val initial = snapshot()
+        assertEquals("https://cdn.kitsu.io/poster.jpg", initial["poster"]?.first)
+        assertEquals("kitsu:42:posterImage", initial["poster"]?.second)
+        assertEquals("https://cdn.anipub.org/backdrop.jpg", initial["backdrop"]?.first)
+        assertEquals("anipub:91:Backdrop", initial["backdrop"]?.second)
+        assertEquals("https://cdn.anilist.co/banner.jpg", initial["banner"]?.first)
+        assertEquals("anilist:777:bannerImage", initial["banner"]?.second)
+
+        // Replacing only Poster must not overwrite the other two artwork records.
+        assertTrue(
+            artwork.replaceExternalArtworkCandidate(
+                animeId = 1L, artworkType = "poster", rawUrl = "https://cdn.kitsu.io/poster-v2.jpg",
+                source = "kitsu", sourceRef = "kitsu:42:posterImage", variant = "original",
+            ),
+        )
+        val updated = snapshot()
+        assertEquals("https://cdn.kitsu.io/poster-v2.jpg", updated["poster"]?.first)
+        assertEquals(initial["backdrop"], updated["backdrop"])
+        assertEquals(initial["banner"], updated["banner"])
+
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT banner_url FROM anime WHERE id=1", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("https://cdn.anipub.org/backdrop.jpg", cursor.getString(0))
+            }
+            db.rawQuery("PRAGMA user_version", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(29, cursor.getInt(0))
+            }
+        }
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()
