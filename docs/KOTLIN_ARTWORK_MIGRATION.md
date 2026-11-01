@@ -44,7 +44,7 @@ Os ponteiros legados mantêm a semântica histórica:
 - `anime.banner_url` representa Backdrop, apesar do nome legado da coluna.
 - Banner é armazenado como registro independente em `artwork.artwork_type='banner'`; nunca é copiado para `anime.banner_url`.
 
-As proteções de propriedade manual e arte local válida continuam ativas. Atualizar um tipo não substitui registros de outro tipo. O contrato utiliza a tabela `artwork` já existente e mantém `PRAGMA user_version = 29`; esta etapa não adiciona tabela, migração, banco paralelo nem rotina de limpeza. Registros, URLs legadas e arquivos de cache existentes são preservados.
+As proteções de propriedade manual e arte local válida continuam ativas. Atualizar um tipo não substitui registros de outro tipo. O contrato utiliza a tabela `artwork` já existente e mantém a versão `29` em `schema_migrations.version`; o `PRAGMA user_version` permanece no valor canônico `0` definido pelo asset (`sqlite_user_version`). Esta etapa não adiciona tabela, migração, banco paralelo nem rotina de limpeza. Registros, URLs legadas e arquivos de cache existentes são preservados.
 
 ## Integração Android/Kotlin
 
