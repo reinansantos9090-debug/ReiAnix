@@ -1404,7 +1404,12 @@ class ReiAnixAniListIntegrationService(
                     description = displayDescription,
                     descriptionOriginal = remoteOriginalDescription,
                     coverUrl = if (artworkEnabled) remote.coverExtraLargeUrl ?: remote.coverLargeUrl else null,
-                    bannerUrl = remote.bannerUrl.takeIf { artworkEnabled },
+                    // AniList bannerImage is Banner, not the legacy Backdrop banner_url column.
+                    bannerUrl = null,
+                    bannerArtworkUrl = remote.bannerUrl.takeIf { artworkEnabled },
+                    bannerArtworkSourceRef = "anilist:${remote.id}:bannerImage",
+                    bannerArtworkVariant = "original",
+                    bannerArtworkPriority = 400,
                     genresJson = remote.genres.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     year = remote.seasonYear,
                     season = remote.season,
