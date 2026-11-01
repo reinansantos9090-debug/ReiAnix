@@ -2978,10 +2978,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
-    fun enrichmentSkipsExternalCatalogWhenPosterAndBackdropAreAlreadyValid() = runBlocking {
+    fun enrichmentSkipsExternalCatalogWhenPosterBackdropAndBannerAreAlreadyValid() = runBlocking {
         createCanonicalFixture()
         val poster = createValidPng("poster-already-valid.png")
         val backdrop = createValidPng("backdrop-already-valid.png")
+        val banner = createValidPng("banner-already-valid.png")
         try {
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
                 db.execSQL(
@@ -3001,6 +3002,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 artworkType = "backdrop",
                 source = "local",
                 localPath = backdrop.absolutePath,
+            )
+            insertArtworkTestRow(
+                id = 51L,
+                entityType = "anime",
+                entityId = 1L,
+                artworkType = "banner",
+                source = "local",
+                localPath = banner.absolutePath,
             )
             val kitsuCalls = AtomicInteger()
             val jikanCalls = AtomicInteger()
@@ -3036,9 +3045,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertEquals(0, jikanCalls.get())
             assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
             assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "banner"))
         } finally {
             poster.delete()
             backdrop.delete()
+            banner.delete()
         }
     }
 
@@ -3572,9 +3583,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 assertEquals("https://cdn.kitsu.io/poster-v2.jpg", cursor.getString(0))
                 assertEquals("https://cdn.anipub.org/backdrop-v2.jpg", cursor.getString(1))
             }
+            db.rawQuery("SELECT MAX(version) FROM schema_migrations", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION, cursor.getInt(0))
+            }
             db.rawQuery("PRAGMA user_version", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(29, cursor.getInt(0))
+                assertEquals(loadCanonicalSchemaFixture().getInt("sqlite_user_version"), cursor.getInt(0))
             }
         }
     }
@@ -3638,9 +3653,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 assertTrue(cursor.moveToFirst())
                 assertEquals(legacyBackdrop, cursor.getString(0))
             }
+            db.rawQuery("SELECT MAX(version) FROM schema_migrations", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(ReiAnixSqliteDatabase.EXPECTED_SCHEMA_VERSION, cursor.getInt(0))
+            }
             db.rawQuery("PRAGMA user_version", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(29, cursor.getInt(0))
+                assertEquals(loadCanonicalSchemaFixture().getInt("sqlite_user_version"), cursor.getInt(0))
             }
         }
     }
