@@ -2409,6 +2409,72 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun partialTenraiTitleSearchDoesNotConfirmCandidateFromSuccessfulSubset() = runBlocking {
+        createCanonicalFixture()
+        val png = File(context.cacheDir, "external-catalog-partial-search-poster.png")
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        try {
+            png.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            bitmap.recycle()
+        }
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    "UPDATE anime SET year=2016,format='TV',media_kind='series',cover_cache=? WHERE id=1",
+                    arrayOf(png.absolutePath),
+                )
+            }
+            val kitsu = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.KITSU
+                override suspend fun searchAnime(query: String, limit: Int) =
+                    ReiAnixCatalogResult.Failure(ReiAnixCatalogError.Network("Kitsu unavailable"))
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+            val remote = ReiAnixCatalogAnime(
+                source = ReiAnixCatalogSource.TENRAI,
+                ids = ReiAnixExternalCatalogIds(myAnimeListId = 9004L),
+                title = "Original Title",
+                releaseYear = 2016,
+                format = "TV",
+                mediaKind = ReiAnixCatalogMediaKind.SERIES,
+                episodes = 12,
+            )
+            val tenraiCalls = java.util.concurrent.atomic.AtomicInteger()
+            val tenrai = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.TENRAI
+                override suspend fun searchAnime(query: String, limit: Int): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                    return if (tenraiCalls.incrementAndGet() == 1) {
+                        ReiAnixCatalogResult.Success(listOf(remote))
+                    } else {
+                        ReiAnixCatalogResult.Failure(ReiAnixCatalogError.Network("second title query unavailable"))
+                    }
+                }
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+            val database = ReiAnixSqliteDatabase(context)
+            val repository = ReiAnixSqliteLibraryRepository(database)
+            val service = ReiAnixExternalCatalogIntegrationService(
+                library = repository,
+                providers = ReiAnixCatalogProviderRegistry(
+                    listOf(kitsu, tenrai),
+                    ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
+                ),
+                artwork = ReiAnixArtworkService(context, database),
+            )
+
+            assertEquals(0, service.enrichLibraryGaps())
+            assertTrue("Both known title variants should be queried.", tenraiCalls.get() >= 2)
+            assertNull(repository.getExternalCatalogIds(1L)?.myAnimeListId)
+            assertNull(repository.getAnime(1L)?.description)
+        } finally {
+            png.delete()
+        }
+    }
+
+    @Test
     fun ambiguousTenraiCandidatesAreRejectedWithoutPersistingAnyExternalId() = runBlocking {
         createCanonicalFixture()
         val png = File(context.cacheDir, "external-catalog-ambiguous-poster.png")
