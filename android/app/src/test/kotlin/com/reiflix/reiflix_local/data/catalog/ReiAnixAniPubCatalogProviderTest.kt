@@ -38,8 +38,8 @@ class ReiAnixAniPubCatalogProviderTest {
                     {
                       "_id": 91,
                       "Name": "Sample Anime",
-                      "ImagePath": "images/sample.jpg",
-                      "Cover": "covers/sample-banner.jpg",
+                      "ImagePath": "https://anipub.org/images/sample.jpg",
+                      "Cover": "https://anipub.org/covers/sample-banner.jpg",
                       "Synonyms": "Sample Alias",
                       "Aired": "Oct 3, 2016 to Mar 30, 2017",
                       "DescripTion": "A complete AniPub synopsis for the sample anime.",
@@ -87,8 +87,8 @@ class ReiAnixAniPubCatalogProviderTest {
                     {
                       "_id": 61,
                       "Name": "Black Clover",
-                      "ImagePath": "Black-Clover.jpg",
-                      "Cover": "Cover/Black-Clover.jpg",
+                      "ImagePath": "https://anipub.org/Black-Clover.jpg",
+                      "Cover": "https://anipub.org/Cover/Black-Clover.jpg",
                       "Aired": "Oct 3, 2017 to Mar 30, 2021",
                       "Premiered": "Fall 2017",
                       "DescripTion": "A documented synopsis from AniPub.",
@@ -171,7 +171,7 @@ class ReiAnixAniPubCatalogProviderTest {
         assertTrue(malformed is ReiAnixCatalogResult.Failure)
     }
     @Test
-    fun unsafeRelativeAndNonHttpsImagePathsAreNotConvertedIntoProviderUrls() = runBlocking {
+    fun relativeAndNonHttpsImagePathsAreNotConvertedIntoProviderUrls() = runBlocking {
         val transport = FakeTransport(
             listOf(
                 ReiAnixCatalogHttpResponse(
@@ -189,6 +189,26 @@ class ReiAnixAniPubCatalogProviderTest {
         assertNull(anime.coverUrl)
         assertNull(anime.bannerUrl)
         assertTrue(anime.artworkCandidates().isEmpty())
+    }
+
+    @Test
+    fun absoluteHttpsImageUrlsArePreservedWithoutRewritingQueryParameters() = runBlocking {
+        val transport = FakeTransport(
+            listOf(
+                ReiAnixCatalogHttpResponse(
+                    200,
+                    """{"_id":8,"Name":"Absolute URLs","ImagePath":"https://cdn.anipub.org/poster.jpg?size=large","Cover":"https://cdn.anipub.org/banner.jpg?variant=original"}""",
+                    emptyMap(),
+                ),
+            ),
+        )
+
+        val result = ReiAnixAniPubCatalogProvider(transport).getAnime("8")
+
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val anime = (result as ReiAnixCatalogResult.Success).value!!
+        assertEquals("https://cdn.anipub.org/poster.jpg?size=large", anime.coverUrl)
+        assertEquals("https://cdn.anipub.org/banner.jpg?variant=original", anime.bannerUrl)
     }
 
     @Test
