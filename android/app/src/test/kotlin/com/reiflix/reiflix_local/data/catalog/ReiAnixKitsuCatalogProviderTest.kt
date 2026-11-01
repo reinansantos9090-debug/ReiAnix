@@ -105,6 +105,24 @@ class ReiAnixKitsuCatalogProviderTest {
     }
 
     @Test
+    fun malformedResourceIdsAreSkippedWithoutDiscardingOtherKitsuResults() = runBlocking {
+        val transport = FakeTransport(
+            ReiAnixCatalogHttpResponse(
+                200,
+                """{"data":[{"id":"../bad","type":"anime","attributes":{"canonicalTitle":"Invalid ID"}},{"id":"safe-77","type":"anime","attributes":{"canonicalTitle":"Valid ID"}}]}""",
+                emptyMap(),
+            ),
+        )
+
+        val result = ReiAnixKitsuCatalogProvider(transport).searchAnime("Valid ID", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val records = (result as ReiAnixCatalogResult.Success).value
+        assertEquals(1, records.size)
+        assertEquals("safe-77", records.single().ids.kitsuId)
+    }
+
+    @Test
     fun detailReadsPublicKitsuIdAndNullableFieldsWithoutInventingMetadata() = runBlocking {
         val transport = FakeTransport(
             ReiAnixCatalogHttpResponse(
