@@ -159,14 +159,17 @@ internal fun reiAnixArtworkAspectRatioWarning(
     }
 }
 
+internal fun isValidCatalogArtworkUrl(url: String?): Boolean {
+    if (url.isNullOrBlank() || url.any { it.isWhitespace() || it.code < 0x20 }) return false
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+    return (uri.scheme.equals("https", true) || uri.scheme.equals("http", true)) &&
+        !uri.host.isNullOrBlank() && uri.rawUserInfo == null
+}
+
 private fun requireValidArtworkUrl(url: String) {
-    val uri = runCatching { java.net.URL(url) }.getOrNull()
-    require(
-        uri != null &&
-            (uri.protocol.equals("https", true) || uri.protocol.equals("http", true)) &&
-            uri.host.isNotBlank() && uri.userInfo == null &&
-            url.none { it.isWhitespace() || it.code == 0 }
-    ) { "Artwork URL must be a valid HTTP(S) URL without user info." }
+    require(isValidCatalogArtworkUrl(url)) {
+        "Artwork URL must be a valid absolute HTTP(S) URL without user info."
+    }
 }
 
 /** Remote DTO only. It cannot mutate local metadata, episode identity or playback state. */
