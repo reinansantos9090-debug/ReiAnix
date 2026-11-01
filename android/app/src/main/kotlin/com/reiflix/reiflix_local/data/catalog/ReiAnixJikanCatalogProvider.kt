@@ -104,10 +104,12 @@ class ReiAnixJikanCatalogProvider(
         val images = item.optJSONObject("images")
         val webp = images?.optJSONObject("webp")
         val jpg = images?.optJSONObject("jpg")
-        val poster = webp?.catalogText("large_image_url")
-            ?: jpg?.catalogText("large_image_url")
-            ?: webp?.catalogText("image_url")
-            ?: jpg?.catalogText("image_url")
+        val poster = listOfNotNull(
+            webp?.catalogText("large_image_url")?.let { "images.webp.large_image_url" to it },
+            jpg?.catalogText("large_image_url")?.let { "images.jpg.large_image_url" to it },
+            webp?.catalogText("image_url")?.let { "images.webp.image_url" to it },
+            jpg?.catalogText("image_url")?.let { "images.jpg.image_url" to it },
+        ).firstOrNull()
         val score = item.catalogNumber("score")
             ?.takeIf { it.isFinite() && it in 0.0..10.0 && it > 0.0 }
             ?.let { (it * 10.0).roundToInt().coerceIn(0, 100) }
@@ -125,7 +127,9 @@ class ReiAnixJikanCatalogProvider(
             title = mainTitle,
             alternativeTitles = alternativeTitles,
             synopsis = item.catalogText("synopsis"),
-            coverUrl = poster,
+            coverUrl = poster?.second,
+            coverImageField = poster?.first ?: "images",
+            coverVariant = poster?.first?.substringAfterLast('.'),
             releaseYear = year,
             format = rawType?.uppercase(Locale.ROOT),
             mediaKind = rawType.toCatalogMediaKind(),
