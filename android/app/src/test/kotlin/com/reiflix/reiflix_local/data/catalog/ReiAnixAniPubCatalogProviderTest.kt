@@ -24,7 +24,7 @@ class ReiAnixAniPubCatalogProviderTest {
     }
 
     @Test
-    fun searchLoadsDocumentedFullDetailsAndMapsPosterBannerAndJikanIdentity() = runBlocking {
+    fun searchUsesDocumentedInfoRouteAndPreservesPosterBannerAndMetadata() = runBlocking {
         val transport = FakeTransport(
             listOf(
                 ReiAnixCatalogHttpResponse(
@@ -36,49 +36,35 @@ class ReiAnixAniPubCatalogProviderTest {
                     200,
                     """
                     {
-                      "local": {
-                        "_id": 91,
-                        "Name": "Sample Anime",
-                        "ImagePath": "images/sample.jpg",
-                        "Cover": "covers/sample-banner.jpg",
-                        "Synonyms": "Sample Alias",
-                        "Aired": "Oct 3, 2016 to Mar 30, 2017",
-                        "DescripTion": "A complete AniPub synopsis for the sample anime.",
-                        "Duration": "24m",
-                        "MALScore": "8.6",
-                        "Status": "Finished Airing",
-                        "epCount": 12
-                      },
-                      "jikan": {
-                        "mal_id": 321,
-                        "title": "Sample Anime",
-                        "type": "TV",
-                        "episodes": 12,
-                        "score": 8.5,
-                        "aired": {"from": "2016-10-03T00:00:00+00:00"},
-                        "synopsis": "Jikan synopsis"
-                      },
-                      "characters": []
+                      "_id": 91,
+                      "Name": "Sample Anime",
+                      "ImagePath": "images/sample.jpg",
+                      "Cover": "covers/sample-banner.jpg",
+                      "Synonyms": "Sample Alias",
+                      "Aired": "Oct 3, 2016 to Mar 30, 2017",
+                      "DescripTion": "A complete AniPub synopsis for the sample anime.",
+                      "Duration": "24m",
+                      "MALScore": "8.6",
+                      "Status": "Finished Airing",
+                      "epCount": 12
                     }
                     """.trimIndent(),
                     emptyMap(),
                 ),
             ),
         )
-        val provider = ReiAnixAniPubCatalogProvider(transport)
-
-        val result = provider.searchAnime("Sample Anime", 5)
+        val result = ReiAnixAniPubCatalogProvider(transport).searchAnime("Sample Anime", 5)
 
         assertTrue(result is ReiAnixCatalogResult.Success)
         val anime = (result as ReiAnixCatalogResult.Success).value.single()
         assertEquals(ReiAnixCatalogSource.ANIPUB, anime.source)
         assertEquals("91", anime.ids.additionalIds["anipub"])
-        assertEquals(321L, anime.ids.myAnimeListId)
+        assertNull(anime.ids.myAnimeListId)
         assertEquals("Sample Anime", anime.title)
         assertTrue("Sample Alias" in anime.alternativeTitles)
         assertEquals(2016, anime.releaseYear)
-        assertEquals("TV", anime.format)
-        assertEquals(ReiAnixCatalogMediaKind.SERIES, anime.mediaKind)
+        assertNull(anime.format)
+        assertNull(anime.mediaKind)
         assertEquals(12, anime.episodes)
         assertEquals(24, anime.durationMinutes)
         assertEquals(86, anime.averageScore)
@@ -88,18 +74,13 @@ class ReiAnixAniPubCatalogProviderTest {
         assertNull(anime.backdropUrl)
         assertEquals(setOf("poster", "banner"), anime.artworkCandidates().map { it.type.key }.toSet())
         assertEquals("https://anipub.org/api/search/Sample%20Anime", transport.urls[0])
-        assertEquals("https://anipub.org/anime/api/details/91", transport.urls[1])
+        assertEquals("https://anipub.org/api/info/91", transport.urls[1])
     }
 
     @Test
-    fun infoFallbackReturnsOnlyActuallyAvailableFieldsAndDoesNotInventFormat() = runBlocking {
+    fun infoEndpointReturnsOnlyActuallyAvailableFieldsAndDoesNotInventFormat() = runBlocking {
         val transport = FakeTransport(
             listOf(
-                ReiAnixCatalogHttpResponse(
-                    404,
-                    "not found",
-                    emptyMap(),
-                ),
                 ReiAnixCatalogHttpResponse(
                     200,
                     """
@@ -135,11 +116,12 @@ class ReiAnixAniPubCatalogProviderTest {
         assertNull(anime.backdropUrl)
         assertNull(anime.format)
         assertNull(anime.mediaKind)
-        assertEquals("https://anipub.org/api/info/61", transport.urls.last())
+        assertEquals(listOf("https://anipub.org/api/info/61"), transport.urls)
+        assertEquals(1, transport.calls)
     }
 
     @Test
-    fun rateLimitsFromAniPubDetailsArePropagatedWithoutFallbackOrFurtherCandidates() = runBlocking {
+    fun rateLimitsFromAniPubInfoArePropagatedWithoutFallbackOrFurtherCandidates() = runBlocking {
         val singleDetail = FakeTransport(
             listOf(ReiAnixCatalogHttpResponse(429, "slow down", mapOf("Retry-After" to "3"))),
         )
@@ -183,4 +165,25 @@ class ReiAnixAniPubCatalogProviderTest {
         ).searchAnime("Anime", 5)
         assertTrue(malformed is ReiAnixCatalogResult.Failure)
     }
+    @Test
+    fun unsafeRelativeAndNonHttpsImagePathsAreNotConvertedIntoProviderUrls() = runBlocking {
+        val transport = FakeTransport(
+            listOf(
+                ReiAnixCatalogHttpResponse(
+                    200,
+                    """{"_id":7,"Name":"Safe Title","ImagePath":"../outside.jpg","Cover":"//other.example/banner.jpg"}""",
+                    emptyMap(),
+                ),
+            ),
+        )
+
+        val result = ReiAnixAniPubCatalogProvider(transport).getAnime("7")
+
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val anime = (result as ReiAnixCatalogResult.Success).value!!
+        assertNull(anime.coverUrl)
+        assertNull(anime.bannerUrl)
+        assertTrue(anime.artworkCandidates().isEmpty())
+    }
+
 }
