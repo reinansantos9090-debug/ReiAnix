@@ -3558,6 +3558,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     fun aniListBannerImagePersistsAsBannerWithoutChangingLegacyBackdrop() = runBlocking {
         createCanonicalFixture()
         val legacyBackdrop = "https://cdn.example/legacy-backdrop.jpg"
+        val aniListPoster = "https://cdn.anilist.co/cover-image.jpg"
         val aniListBanner = "https://cdn.anilist.co/banner-image.jpg"
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL(
@@ -3571,6 +3572,10 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val updated = repository.updateAniListMetadataAndAssociation(
             patch = ReiAnixAnimeMetadataPatch(
                 animeId = 1L,
+                coverUrl = aniListPoster,
+                posterArtworkUrl = aniListPoster,
+                posterArtworkSourceRef = "anilist:777:coverImage",
+                posterArtworkVariant = "extraLarge",
                 bannerArtworkUrl = aniListBanner,
                 bannerArtworkSourceRef = "anilist:777:bannerImage",
                 bannerArtworkVariant = "original",
@@ -3585,15 +3590,24 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
             db.rawQuery(
                 "SELECT artwork_type,source,source_ref,external_url FROM artwork " +
-                    "WHERE entity_type='anime' AND entity_id='1' AND artwork_type='banner'",
+                    "WHERE entity_type='anime' AND entity_id='1' AND artwork_type IN ('poster','banner') " +
+                    "ORDER BY artwork_type",
                 null,
             ).use { cursor ->
-                assertTrue(cursor.moveToFirst())
-                assertEquals("banner", cursor.getString(0))
-                assertEquals("anilist", cursor.getString(1))
-                assertEquals("anilist:777:bannerImage", cursor.getString(2))
-                assertEquals(aniListBanner, cursor.getString(3))
-                assertFalse(cursor.moveToNext())
+                val rows = mutableMapOf<String, List<String>>()
+                while (cursor.moveToNext()) {
+                    rows[cursor.getString(0)] = listOf(
+                        cursor.getString(1), cursor.getString(2), cursor.getString(3),
+                    )
+                }
+                assertEquals(
+                    listOf("anilist", "anilist:777:coverImage", aniListPoster),
+                    rows["poster"],
+                )
+                assertEquals(
+                    listOf("anilist", "anilist:777:bannerImage", aniListBanner),
+                    rows["banner"],
+                )
             }
             db.rawQuery("SELECT banner_url FROM anime WHERE id=1", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
