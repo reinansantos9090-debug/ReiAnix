@@ -84,6 +84,10 @@ class ReiAnixJikanCatalogProviderTest {
         assertNull(anime.backdropUrl)
         assertNull(anime.bannerUrl)
         assertEquals(listOf("poster"), anime.artworkCandidates().map { it.type.key })
+        assertEquals(
+            "images.webp.large_image_url",
+            anime.artworkCandidates().single().originalField,
+        )
         assertTrue(transport.requestedUrl.orEmpty().startsWith("https://api.jikan.moe/v4/anime?q=Example%20Anime"))
         assertTrue(transport.requestedUrl.orEmpty().contains("limit=10"))
         assertTrue(transport.requestedUrl.orEmpty().contains("sfw=true"))
