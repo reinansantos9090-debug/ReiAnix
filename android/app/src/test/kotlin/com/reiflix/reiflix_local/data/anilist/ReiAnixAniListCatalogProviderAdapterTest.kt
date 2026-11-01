@@ -59,7 +59,13 @@ class ReiAnixAniListCatalogProviderAdapterTest {
         assertTrue("Example Alias" in anime.alternativeTitles)
         assertEquals(2021, anime.releaseYear)
         assertEquals("https://cdn.example/extra-large.jpg", anime.coverUrl)
-        assertEquals(2, anime.artworkCandidates().size)
+        assertEquals("https://cdn.example/banner.jpg", anime.bannerUrl)
+        assertNull(anime.backdropUrl)
+        val candidates = anime.artworkCandidates()
+        assertEquals(2, candidates.size)
+        assertEquals(setOf("poster", "banner"), candidates.map { it.type.key }.toSet())
+        assertEquals("bannerImage", candidates.single { it.type.key == "banner" }.originalField)
+        assertEquals("anilist:123:bannerImage", candidates.single { it.type.key == "banner" }.sourceReference)
     }
 
     @Test
