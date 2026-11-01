@@ -22,14 +22,9 @@ class ReiAnixTenraiCatalogProvider(
     ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
         val normalized = query.trim()
         if (normalized.isEmpty()) return ReiAnixCatalogResult.Success(emptyList())
-        if (limit !in 1..100) {
+        if (limit !in 1..25) {
             return ReiAnixCatalogResult.Failure(
-                ReiAnixCatalogError.InvalidRequest("Tenrai result limit must be between 1 and 100."),
-            )
-        }
-        if (normalized.length > 300) {
-            return ReiAnixCatalogResult.Failure(
-                ReiAnixCatalogError.InvalidRequest("Tenrai search query cannot exceed 300 characters."),
+                ReiAnixCatalogError.InvalidRequest("Tenrai result limit must be between 1 and 25."),
             )
         }
         val encoded = URLEncoder.encode(normalized, StandardCharsets.UTF_8.name()).replace("+", "%20")
