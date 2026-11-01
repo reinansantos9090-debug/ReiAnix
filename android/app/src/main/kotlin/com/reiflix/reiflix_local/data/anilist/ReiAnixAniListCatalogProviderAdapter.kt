@@ -109,6 +109,10 @@ private fun AniListAnime.toCatalogAnime(): ReiAnixCatalogAnime? {
         format = format,
         mediaKind = format.toCatalogMediaKind(),
         season = season,
+        episodes = episodes,
+        durationMinutes = durationMinutes,
+        status = status,
+        averageScore = averageScore,
     )
 }
 
