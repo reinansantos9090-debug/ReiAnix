@@ -4,7 +4,7 @@
 
 Auditoria da branch `main` do repositório oficial `reinansantos9090-debug/ReiAnix`. O contrato interno existente é `ReiAnixAnimeCatalogProvider`, `ReiAnixCatalogAnime`, `ReiAnixExternalCatalogIds`, `ReiAnixCatalogArtworkCandidate` e `ReiAnixCatalogResult`. Não foi criado um segundo sistema de providers.
 
-A integração suplementar continua usando o registro único em `ReiAnixAppDependencies`, o coordenador compartilhado, os mesmos serviços SQLite e a tabela `artwork` do schema v29.
+A integração suplementar continua usando o registro único em `ReiAnixAppDependencies`, o coordenador compartilhado, os mesmos serviços SQLite e a tabela `artwork` do schema v29. O composition root mantém somente Kitsu registrado enquanto não estiverem confirmadas as condições de uso do Tenrai e a autorização escrita prévia do AniPub; os adapters e testes JVM das duas fontes permanecem no projeto.
 
 ## Matriz de decisão
 
@@ -23,7 +23,7 @@ Nenhuma destas quatro integrações promove imagem a Backdrop. O tipo Backdrop c
 Endpoint de produção: `POST https://graphql.anilist.co`. O cliente envia query e variables no mesmo corpo JSON. A operação de busca e a consulta por ID usam o conjunto compartilhado de campos `MEDIA_FIELDS`; as variantes de lote existentes também são mantidas, sem uma consulta separada redundante para artwork.
 
 Campos preservados:
-- ID AniList;
+- ID AniList e ID MAL opcional `idMal`, preservado em `myAnimeListId` quando presente;
 - `title.romaji`, `title.english`, `title.native` e `synonyms`;
 - `season`, `seasonYear`, `format`, `episodes`, `duration`, `status`, `averageScore`, `description`, `genres` e estúdios;
 - `coverImage.large/extraLarge` e `bannerImage`.
@@ -56,9 +56,11 @@ O adapter deixou de depender de `/anime/api/details/{id}` e do objeto opcional `
 
 Campos efetivamente mapeados quando presentes no JSON de informação: `_id` (referência externa AniPub), `Name`, `Synonyms`, `Aired`, `Premiered`, `epCount`, `Duration`, `MALScore`, `Status`, `DescripTion`/`Description`, `ImagePath` e `Cover`. A documentação consultada não declara um campo estável de formato/tipo de mídia nem de classificação etária; por isso, mesmo que respostas não documentadas tragam chaves como `Type`, `Format`, `Rating` ou `AgeRating`, o adapter as ignora e deixa os campos internos correspondentes nulos. Um MAL ID só é preservado quando a API de informação o fornece expressamente; não é inferido de nome, slug ou ID interno AniPub.
 
-O contrato mantém `ImagePath` como Poster e `Cover` como Banner. A documentação pública manda prefixar caminhos relativos com `https://anipub.org/`; o adapter aplica essa regra de forma restrita, preserva URLs HTTPS absolutas recebidas e rejeita HTTP, URL protocol-relative e segmentos de caminho `.`/`..`. O download e a validação final dos bytes permanecem no pipeline já existente e fora do escopo deste prompt.
+O contrato mantém `ImagePath` como Poster e `Cover` como Banner, conforme a tabela de campos do README do cliente mantido por `AnimePub/AniPub-API`. O cliente documenta URLs absolutas; por isso o adapter preserva URLs HTTPS absolutas e rejeita HTTP, caminhos relativos, URL protocol-relative, userinfo e segmentos `.`/`..`, sem fabricar URLs por concatenação. O download e a validação final dos bytes permanecem no pipeline já existente e fora do escopo deste prompt.
 
-**Evidência/limitação:** a referência pública do AniPub declara API REST gratuita, sem chave, e descreve `/api/info/:id` e `/api/search/:name`. A página documental pôde ser indexada, mas a tentativa de abrir/consultar diretamente a origem durante esta execução retornou 403 no ambiente de verificação. Portanto, a estrutura do adapter foi validada contra a documentação publicada e fixtures, mas disponibilidade operacional por chamada ao vivo não é declarada como comprovada. A documentação consultada também não publica uma política numérica de rate limit; não inventamos um valor.
+**Condição de uso:** os termos do AniPub exigem consentimento de responsável legal para menores e proíbem acesso automatizado sem autorização escrita prévia. Como a autorização escrita não foi verificada nesta etapa, o provider não é registrado para chamadas automáticas no composition root; o adapter e seus testes JVM permanecem preservados até que ela seja obtida.
+
+**Evidência/limitação:** a referência pública do AniPub declara API REST gratuita, sem chave, e descreve `/api/info/:id` e `/api/search/:name`. O README mantido pela organização AnimePub esclarece `ImagePath` como Poster e `Cover` como Banner, ambos URLs absolutas. A página documental foi indexada, mas a consulta direta à origem retornou 403 no ambiente de verificação; isso não prova indisponibilidade. A disponibilidade operacional por chamada ao vivo não é declarada como comprovada. A documentação não publica política numérica de rate limit; não inventamos um valor.
 
 ## Jikan e substituição por Tenrai
 
@@ -72,7 +74,7 @@ O adapter preserva o MAL ID no campo interno histórico `myAnimeListId`, com `Re
 
 A documentação do Tenrai declara, para acesso público sem chave, 120 requisições por minuto e 4 por segundo, com HTTP 429 e `Retry-After`. O cliente do ReiAnix mantém limite conservador inferior, 60 por minuto e 3 por segundo, para deixar margem sob uso compartilhado por IP. Não é introduzida uma chave privada no app; a documentação recomenda explicitamente que Server Keys não sejam expostas em clientes móveis.
 
-**Ressalvas de aprovação:** Tenrai está em beta, não pode ser auto-hospedado no estado documental consultado, mantém respostas públicas em cache por algumas horas até o máximo publicado de 12 horas e informa que não garante precisão, completude ou disponibilidade. O estado publicado no painel estava Operational durante a auditoria, mas não houve uma resposta HTTP direta bem-sucedida do endpoint API neste ambiente. Portanto, a fonte foi aprovada como fallback complementar documentado, não como origem primária, SLA ou disponibilidade ao vivo garantida. A licença/termos e os direitos sobre dados MAL continuam pertencendo aos titulares originais; o projeto não assume titularidade desses dados.
+**Ressalvas de aprovação:** Tenrai está em beta, não pode ser auto-hospedado no estado documental consultado, mantém respostas públicas em cache por algumas horas até o máximo publicado de 12 horas e informa que não garante precisão, completude ou disponibilidade. O painel público estava Operational durante a auditoria, mas não houve resposta HTTP direta bem-sucedida do endpoint API neste ambiente. É um fallback técnico complementar documentado, não uma fonte com SLA. Os termos exigem consentimento e supervisão de responsável legal para usuários abaixo da maioridade; como essa condição não foi verificada nesta etapa, Tenrai permanece fora do composition root padrão até que o consentimento aplicável seja assegurado.
 
 Os IDs MAL existentes continuam disponíveis em `myAnimeListId`. O valor legado `jikan` permanece reconhecível somente para compatibilidade de referências antigas; não é registrado como provider ativo e não aceita novos candidatos de metadados/artwork.
 
@@ -109,7 +111,9 @@ Os adapters públicos usam o transporte GET HTTPS bounded já existente, resulta
 - Kitsu Media schema: https://github.com/hummingbird-me/api-docs/blob/c95e259bec851f4bddf13c7bce3dd2f08eba7d19/api/schemas/resources/media.yml
 - AniPub API reference: https://api.anipub.org/
 - AniPub maintained API client (documents `ImagePath` as Poster and `Cover` as Banner): https://github.com/AnimePub/AniPub-API
+- AniPub Terms (guardian consent and prior written permission for automated access): https://anipub.org/terms
 - Tenrai API documentation: https://api.tenrai.org/documentation
+- Tenrai Terms (guardian consent and supervision for underage users): https://tenrai.org/terms
 - Tenrai FAQ: https://api.tenrai.org/faq
 - Tenrai changelog: https://api.tenrai.org/changelog
 - Jikan public API discontinuation: https://github.com/jikan-me/jikan-rest/issues/613
