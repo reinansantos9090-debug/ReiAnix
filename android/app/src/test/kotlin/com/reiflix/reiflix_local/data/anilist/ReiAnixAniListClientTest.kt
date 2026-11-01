@@ -437,4 +437,62 @@ class ReiAnixAniListClientTest {
         assertTrue((malformedGenreItem as AniListResult.Failure).error is AniListError.InvalidResponse)
     }
 
+    @Test
+    fun malformedRecordInIdBatchRetainsOtherMediaAndMarksBatchIncomplete() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """
+                    {
+                      "data": {
+                        "Page": {
+                          "media": [
+                            {"id":101,"title":{"english":"Valid media"},"studios":{"nodes":[{"name":"Studio"}]}},
+                            {"id":102,"title":{"english":"Malformed media"},"studios":{"nodes":[4]}}
+                          ]
+                        }
+                      }
+                    }
+                """.trimIndent(),
+            ),
+        )
+
+        val result = ReiAnixAniListClient(transport, 0).getAnimeBatch(listOf(101, 102))
+
+        assertTrue(result is AniListResult.Success)
+        val batch = (result as AniListResult.Success).value
+        assertEquals(listOf(101), batch.items.map { it.id })
+        assertEquals(setOf("ids"), batch.incompleteKeys)
+    }
+
+    @Test
+    fun malformedRecordInTitleBatchRetainsOtherMediaAndMarksOnlyThatTermIncomplete() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """
+                    {
+                      "data": {
+                        "term0": {
+                          "Page": {
+                            "media": [
+                              {"id":111,"title":{"english":"Valid term"},"studios":{"nodes":[{"name":"Studio"}]}},
+                              {"id":112,"title":{"english":"Malformed term"},"studios":{"nodes":[4]}}
+                            ]
+                          }
+                        }
+                      }
+                    }
+                """.trimIndent(),
+            ),
+        )
+
+        val result = ReiAnixAniListClient(transport, 0).searchAnimeBatch(listOf("Valid term"))
+
+        assertTrue(result is AniListResult.Success)
+        val batch = (result as AniListResult.Success).value
+        assertEquals(listOf(111), batch.items["Valid term"]?.map { it.id })
+        assertEquals(setOf("Valid term"), batch.incompleteKeys)
+    }
+
 }
