@@ -75,6 +75,12 @@ data class ReiAnixArtworkUiModel(
     val revision: String? = null,
     /** Persisted content revision of the backdrop selected from the canonical artwork row. */
     val backdropRevision: String? = null,
+    /** Independent local Banner; never aliases the poster or Backdrop fields. */
+    val bannerLocalPath: String? = null,
+    /** External source of an independent Banner artwork row. */
+    val bannerExternalUrl: String? = null,
+    /** Persisted content revision of the independent Banner artwork row. */
+    val bannerRevision: String? = null,
 ) {
     /** True only when Compose has a materialized local file to decode. */
     val isAvailable: Boolean
@@ -86,6 +92,9 @@ data class ReiAnixArtworkUiModel(
 
     val hasBackdropLocalArtwork: Boolean
         get() = !backdropLocalPath.isNullOrBlank()
+
+    val hasBannerLocalArtwork: Boolean
+        get() = !bannerLocalPath.isNullOrBlank()
 }
 
 @Immutable
