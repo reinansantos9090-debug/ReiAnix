@@ -914,4 +914,49 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
 
+    @Test
+    fun artworkDimensionValidationRejectsInvalidAndExcessiveImages() {
+        assertFalse(artworkImageDimensionsAreSafe(0, 100))
+        assertFalse(artworkImageDimensionsAreSafe(100, -1))
+        assertFalse(artworkImageDimensionsAreSafe(16_385, 100))
+        assertFalse(artworkImageDimensionsAreSafe(10_000, 10_000))
+        assertTrue(artworkImageDimensionsAreSafe(225, 320))
+        assertTrue(artworkImageDimensionsAreSafe(3_840, 2_160))
+    }
+
+    @Test
+    fun artworkContentTypeMustAgreeWithDetectedImageSignature() {
+        assertTrue(artworkContentTypeMatchesSignature("image/jpeg; charset=binary", ".jpg"))
+        assertTrue(artworkContentTypeMatchesSignature("image/jpg", ".jpeg"))
+        assertTrue(artworkContentTypeMatchesSignature(null, ".png"))
+        assertTrue(artworkContentTypeMatchesSignature("image/*", ".webp"))
+        assertFalse(artworkContentTypeMatchesSignature("text/html", ".jpg"))
+        assertFalse(artworkContentTypeMatchesSignature("application/json", ".png"))
+        assertFalse(artworkContentTypeMatchesSignature("image/png", ".jpg"))
+        assertFalse(artworkContentTypeMatchesSignature("image/jpeg", ".avif.not-real"))
+    }
+
+    @Test
+    fun artworkOriginClassificationRecognizesAniPubAndOtherExternalCatalogs() {
+        assertEquals("anipub", artworkSourceKindForUrl("https://anipub.org/assets/poster.jpg"))
+        assertEquals("anipub", artworkSourceKindForUrl("https://cdn.anipub.org/assets/banner.jpg"))
+        assertEquals("kitsu", artworkSourceKindForUrl("https://media.kitsu.io/poster.jpg"))
+        assertEquals("jikan", artworkSourceKindForUrl("https://cdn.myanimelist.net/poster.jpg"))
+        assertEquals("anilist", artworkSourceKindForUrl("https://s4.anilist.co/file/anilistcdn/media/anime/cover/large.jpg"))
+    }
+
+    @Test
+    fun artworkCacheControlExpiryHonorsMaxAgeAndRevalidationDirectives() {
+        val now = 1_700_000_000.0
+        assertEquals(now + 300.0, parseArtworkCacheExpirySeconds("public, max-age=300", now)!!)
+        assertEquals(now, parseArtworkCacheExpirySeconds("no-cache", now)!!)
+        assertEquals(now, parseArtworkCacheExpirySeconds("private, no-store", now)!!)
+        assertEquals(now, parseArtworkCacheExpirySeconds("max-age=0", now)!!)
+        assertEquals(now + 31_536_000.0, parseArtworkCacheExpirySeconds("max-age=999999999", now)!!)
+        assertEquals(null, parseArtworkCacheExpirySeconds(null, now))
+        assertEquals(null, parseArtworkCacheExpirySeconds("max-age=invalid", now))
+        assertEquals(null, parseArtworkCacheExpirySeconds("max-age=10", Double.NaN))
+    }
+
+
 }
