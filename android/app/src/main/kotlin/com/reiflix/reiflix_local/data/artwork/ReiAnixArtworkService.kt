@@ -739,10 +739,14 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
         permits.withPermit {
             currentCoroutineContext().ensureActive()
-            val cachedRow = candidates(entity, id.toString(), type, url)
-                .firstOrNull { it.url == url && it.source.equals("cache", true) && it.status.equals("ready", true) }
+            val matchingRow = candidates(entity, id.toString(), type, url)
+                .firstOrNull { it.url == url }
+            val cachedRow = matchingRow?.takeIf {
+                it.source.equals("cache", true) && it.status.equals("ready", true)
+            }
             val cachedExpiry = cachedRow?.retryAt
             val cachedImageExpired = cachedExpiry != null && cachedExpiry <= nowSeconds()
+            val interruptedDownloadCanBeRecovered = matchingRow?.status.equals("downloading", true)
             if (reuseLocal(id, entity, type, url, aniId, requestId)) return@withPermit
             val key = remoteKey(aniId, url, type)
             val rowId = prepareRow(id, entity, type, url, key, force, requestId) ?: return@withPermit
@@ -751,7 +755,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 // Re-associate a complete checksum-named file if the process stopped
                 // after promotion but before the SQLite transaction committed. An expired
                 // response cache is fetched again rather than silently reusing old bytes.
-                val completedImage = if (cachedImageExpired) {
+                val completedImage = if (cachedImageExpired || !interruptedDownloadCanBeRecovered) {
                     download(id, key, url)
                 } else {
                     findCachedDownloadedImage(key, cachedExpiry) ?: download(id, key, url)
@@ -812,7 +816,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return true
         val now = nowSeconds()
         val existing = rows.firstOrNull {
-            it.url == url && validImage(it.path) &&
+            it.url == url && it.status.equals("ready", true) && validImage(it.path) &&
                 (!it.source.equals("cache", true) || it.retryAt == null || it.retryAt > now)
         }
         if (existing != null) {
