@@ -33,8 +33,12 @@ class ReiAnixKitsuCatalogProvider(
                 ?: throw JSONException("Kitsu search response is missing the JSON:API data array.")
             buildList {
                 for (index in 0 until data.length()) {
-                    val item = data.optJSONObject(index) ?: continue
-                    parseAnime(item)?.let(::add)
+                    val item = data.optJSONObject(index)
+                        ?: throw JSONException("Kitsu search contains an invalid JSON:API resource.")
+                    add(
+                        parseAnime(item)
+                            ?: throw JSONException("Kitsu search resource is missing its ID or canonical title."),
+                    )
                 }
             }
         }
