@@ -181,12 +181,16 @@ internal fun abandonedArtworkTemporaryFiles(directory: File, activePaths: Set<St
         ?.filter { it.isFile && it.name.endsWith(".tmp", ignoreCase = true) && it.absolutePath !in activePaths }
         .orEmpty()
 
+internal const val REIANIX_MAX_ARTWORK_IMAGE_DIMENSION = 16_384
+internal const val REIANIX_MAX_ARTWORK_IMAGE_PIXELS = 80_000_000L
+internal const val REIANIX_MAX_ARTWORK_CACHE_TTL_SECONDS = 31_536_000L
+
 /** Bounds decoded image dimensions before allocating a sampled bitmap. */
 internal fun artworkImageDimensionsAreSafe(width: Int, height: Int): Boolean =
     width > 0 && height > 0 &&
-        width <= ReiAnixArtworkService.MAX_ARTWORK_IMAGE_DIMENSION &&
-        height <= ReiAnixArtworkService.MAX_ARTWORK_IMAGE_DIMENSION &&
-        width.toLong() * height.toLong() <= ReiAnixArtworkService.MAX_ARTWORK_IMAGE_PIXELS
+        width <= REIANIX_MAX_ARTWORK_IMAGE_DIMENSION &&
+        height <= REIANIX_MAX_ARTWORK_IMAGE_DIMENSION &&
+        width.toLong() * height.toLong() <= REIANIX_MAX_ARTWORK_IMAGE_PIXELS
 
 /** Requires a declared MIME type to agree with the actual file signature when supplied. */
 internal fun artworkContentTypeMatchesSignature(contentType: String?, extension: String): Boolean {
@@ -234,7 +238,7 @@ internal fun parseArtworkCacheExpirySeconds(
         if (!directive.startsWith("max-age=")) return@firstNotNullOfOrNull null
         directive.substringAfter('=').trim().trim('"').toLongOrNull()
     } ?: return null
-    val bounded = maxAge.coerceIn(0L, ReiAnixArtworkService.MAX_ARTWORK_CACHE_TTL_SECONDS)
+    val bounded = maxAge.coerceIn(0L, REIANIX_MAX_ARTWORK_CACHE_TTL_SECONDS)
     return nowSeconds + bounded.toDouble()
 }
 
@@ -643,7 +647,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "artwork",
                     "entity_type IN ('anime','movie') AND manual=0 " +
                         "AND artwork_type IN ('poster','backdrop','banner') " +
-                        "AND LOWER(COALESCE(source,'')) NOT IN ('local','manual','generated')",
+                        "AND LOWER(COALESCE(source,'')) IN ('cache','anilist','kitsu','jikan','anipub')",
                     null,
                 )
                 // Match Settings' existing cache-clear contract: expire remote metadata
@@ -832,7 +836,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val dims = dimensions(oldPath) ?: return false
         val digest = checksum(file) ?: return false
         val key = legacyCoverKey(aniId, url, oldPath)
-        val now = nowSeconds()
         val inserted = database.transaction { db ->
             if (!urlCurrent(db, id, type, url)) return@transaction false
             val old = findByIdentity(db, entity, id.toString(), type, key, url)
@@ -1722,9 +1725,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val STATUS_RETRY_WAIT = "retry_wait"
         const val STATUS_NOT_REQUESTED = "not_requested"
         const val MAX_DOWNLOAD_BYTES = 32L * 1024L * 1024L
-        const val MAX_ARTWORK_IMAGE_DIMENSION = 16_384
-        const val MAX_ARTWORK_IMAGE_PIXELS = 80_000_000L
-        const val MAX_ARTWORK_CACHE_TTL_SECONDS = 31_536_000L
         const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
         const val IO_BUFFER_BYTES = 64 * 1024
