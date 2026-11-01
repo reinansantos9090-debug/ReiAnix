@@ -185,6 +185,17 @@ internal const val REIANIX_MAX_ARTWORK_IMAGE_DIMENSION = 16_384
 internal const val REIANIX_MAX_ARTWORK_IMAGE_PIXELS = 80_000_000L
 internal const val REIANIX_MAX_ARTWORK_CACHE_TTL_SECONDS = 31_536_000L
 
+/** Warns on strong semantic/aspect-ratio conflicts without rejecting or reclassifying valid images. */
+internal fun artworkAspectRatioWarning(type: String, width: Int, height: Int): String? {
+    if (width <= 0 || height <= 0) return null
+    val ratio = width.toDouble() / height.toDouble()
+    return when (type) {
+        "poster" -> if (ratio > 1.15) "poster_has_landscape_ratio" else null
+        "backdrop", "banner" -> if (ratio < 0.90) "horizontal_artwork_has_portrait_ratio" else null
+        else -> null
+    }
+}
+
 /** Bounds decoded image dimensions before allocating a sampled bitmap. */
 internal fun artworkImageDimensionsAreSafe(width: Int, height: Int): Boolean =
     width > 0 && height > 0 &&
@@ -305,7 +316,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private data class Artwork(
         val id: Long, val source: String, val sourceRef: String?, val path: String?, val url: String?,
         val manual: Boolean, val priority: Int, val status: String, val key: String?,
-        val mime: String?, val retryAt: Double?, val failureCount: Int,
+        val variant: String?, val mime: String?, val retryAt: Double?, val failureCount: Int,
     )
     private data class Downloaded(
         val file: File, val bytes: Long, val width: Int, val height: Int,
@@ -524,20 +535,34 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
 
     /**
-     * Makes a verified external candidate eligible in the existing anime row only when
-     * there is no valid local/manual image. The existing materializer remains the sole downloader.
+     * Persist a verified provider candidate in the canonical v29 artwork table.
+     * Poster and Backdrop keep their legacy URL projections; Banner is stored only as
+     * artwork_type='banner' and never mutates anime.banner_url (the legacy Backdrop field).
      */
     suspend fun replaceExternalArtworkCandidate(
         animeId: Long,
         artworkType: String,
         rawUrl: String,
+        source: String = artworkSourceKindForUrl(rawUrl),
+        sourceRef: String = "$source:$animeId:$artworkType",
+        variant: String = "large",
+        priority: Int = 400,
+        width: Int? = null,
+        height: Int? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         require(animeId > 0L)
-        require(artworkType == "poster" || artworkType == "backdrop")
+        require(artworkType in setOf("poster", "backdrop", "banner"))
+        require(source in setOf("anilist", "kitsu", "jikan", "anipub"))
+        require(sourceRef.isNotBlank() && sourceRef.length <= 512)
+        require(variant.isNotBlank() && variant.length <= 64)
+        require(priority in 0..10_000)
+        require(width == null || width > 0)
+        require(height == null || height > 0)
         val url = rawUrl.trim()
         if (!safeUrl(url) || !url.startsWith("https://", ignoreCase = true)) return@withContext false
+
         database.transaction { db ->
-            val row = db.rawQuery(
+            val anime = db.rawQuery(
                 "SELECT cover_cache,metadata_manual_fields,media_kind,cover_url,banner_url " +
                     "FROM anime WHERE id=? LIMIT 1",
                 arrayOf(animeId.toString()),
@@ -548,40 +573,115 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     cursor.getString(3), cursor.getString(4),
                 )
             }
-            val targetField = if (artworkType == "poster") "cover_url" else "banner_url"
-            val currentUrl = if (artworkType == "poster") row[3] else row[4]
-            if (currentUrl?.trim() == url) return@transaction true
+            val entityType = if (anime[2].equals("movie", true)) "movie" else "anime"
+            val targetField = when (artworkType) {
+                "poster" -> "cover_url"
+                "backdrop" -> "banner_url"
+                "banner" -> null
+                else -> return@transaction false
+            }
+            val currentUrl = when (artworkType) {
+                "poster" -> anime[3]
+                "backdrop" -> anime[4]
+                else -> null
+            }
 
-            // Any manual row is user-owned even if its file is currently unavailable.
-            val entityType = if (row[2].equals("movie", true)) "movie" else "anime"
+            // Manual and valid local rows are authoritative for this artwork type only.
             val rows = db.rawQuery(
-                "SELECT local_path,manual,source FROM artwork " +
-                    "WHERE entity_type=? AND entity_id=? AND artwork_type=?",
+                "SELECT id,local_path,manual,source,status FROM artwork " +
+                    "WHERE entity_type=? AND entity_id=? AND artwork_type=? " +
+                    "ORDER BY manual DESC,priority DESC,updated_at DESC,id DESC",
                 arrayOf(entityType, animeId.toString(), artworkType),
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) {
-                        add(Triple(cursor.getString(0), cursor.getInt(1) != 0, cursor.getString(2)))
+                        add(
+                            arrayOf(
+                                cursor.getLong(0).toString(),
+                                cursor.getString(1),
+                                if (cursor.getInt(2) != 0) "1" else "0",
+                                cursor.getString(3),
+                                cursor.getString(4),
+                            ),
+                        )
                     }
                 }
             }
-            if (rows.any { (path, manual, source) ->
-                    manual || source.equals("manual", true) ||
-                        (source.equals("local", true) && validImage(path)) ||
-                        validImage(path)
+            if (rows.any { it[2] == "1" || it[3].equals("manual", true) }) return@transaction false
+            if (rows.any { it[3].equals("local", true) && validImage(it[1]) }) return@transaction false
+            if (rows.any { validImage(it[1]) && it[4].equals("ready", true) }) return@transaction false
+            if (artworkType == "poster" && validImage(anime[0])) return@transaction false
+
+            if (targetField != null) {
+                val manualFields = anime[1]
+                val fieldIsManual = if (manualFields.isNullOrBlank()) false else runCatching {
+                    val fields = JSONArray(manualFields)
+                    (0 until fields.length()).any { fields.optString(it) == targetField }
+                }.getOrDefault(true)
+                if (fieldIsManual && currentUrl?.trim() != url) return@transaction false
+            }
+
+            val key = sha256(listOf(source, sourceRef, artworkType, variant, url).joinToString("|"))
+            val existing = db.rawQuery(
+                "SELECT id,source,source_ref,local_path,status,artwork_key FROM artwork " +
+                    "WHERE entity_type=? AND entity_id=? AND artwork_type=? " +
+                    "AND (source_ref=? OR artwork_key=? OR external_url=?) " +
+                    "ORDER BY CASE WHEN source_ref=? THEN 0 WHEN artwork_key=? THEN 1 ELSE 2 END, " +
+                    "priority DESC,updated_at DESC,id DESC LIMIT 1",
+                arrayOf(
+                    entityType, animeId.toString(), artworkType,
+                    sourceRef, key, url, sourceRef, key,
+                ),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null else arrayOf(
+                    cursor.getLong(0).toString(), cursor.getString(1), cursor.getString(2),
+                    cursor.getString(3), cursor.getString(4), cursor.getString(5),
+                )
+            }
+            if (existing != null && (
+                existing[1].equals("manual", true) ||
+                    existing[1].equals("local", true) ||
+                    validImage(existing[3]) && existing[4].equals("ready", true)
+                )
+            ) return@transaction true
+
+            val now = nowSeconds()
+            val values = ContentValues().apply {
+                put("entity_type", entityType)
+                put("entity_id", animeId.toString())
+                put("artwork_type", artworkType)
+                // A URL shared by two providers is represented once; its first verified
+                // provider reference remains the provenance record.
+                put("source", existing?.get(1)?.takeUnless { it.equals("cache", true) } ?: source)
+                put("source_ref", existing?.get(2)?.takeIf(String::isNotBlank) ?: sourceRef)
+                put("external_url", url)
+                put("manual", 0)
+                put("priority", priority)
+                put("status", existing?.get(4)?.takeIf { it.equals("ready", true) } ?: "not_requested")
+                put("updated_at", now)
+                if (existing == null || existing[2] == sourceRef) put("artwork_key", key)
+                put("variant", variant)
+                width?.let { put("width", it) }
+                height?.let { put("height", it) }
+                if (existing == null) {
+                    put("discovered_at", now)
+                    put("last_attempt_at", now)
+                    put("failure_count", 0)
                 }
-            ) return@transaction false
-            if (artworkType == "poster" && validImage(row[0])) return@transaction false
+            }
+            val persisted = if (existing == null) {
+                db.insertOrThrow("artwork", null, values) > 0L
+            } else {
+                db.update("artwork", values, "id=?", arrayOf(existing[0])) == 1
+            }
+            if (!persisted) return@transaction false
 
-            val manualFields = row[1]
-            val fieldIsManual = if (manualFields.isNullOrBlank()) false else runCatching {
-                val fields = JSONArray(manualFields)
-                (0 until fields.length()).any { fields.optString(it) == targetField }
-            }.getOrDefault(true)
-            if (fieldIsManual) return@transaction false
-
-            val values = ContentValues().apply { put(targetField, url) }
-            db.update("anime", values, "id=?", arrayOf(animeId.toString())) == 1
+            // Keep the legacy pointer meanings: cover_url=Poster; banner_url=Backdrop.
+            if (targetField != null && currentUrl?.trim() != url) {
+                db.update("anime", ContentValues().apply { put(targetField, url) },
+                    "id=?", arrayOf(animeId.toString()))
+            }
+            true
         }
     }
 
@@ -797,7 +897,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val cachedImageExpired = cachedExpiry != null && cachedExpiry <= nowSeconds()
             val interruptedDownloadCanBeRecovered = matchingRow?.status.equals("downloading", true)
             if (reuseLocal(id, entity, type, url, aniId, requestId)) return@withPermit
-            val key = remoteKey(aniId, url, type)
+            val key = matchingRow?.key ?: remoteKey(aniId, url, type)
             val rowId = prepareRow(id, entity, type, url, key, force, requestId) ?: return@withPermit
             var image: Downloaded? = null
             try {
@@ -811,6 +911,23 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 }
                 image = completedImage
                 currentCoroutineContext().ensureActive()
+                artworkAspectRatioWarning(type, completedImage.width, completedImage.height)?.let { warning ->
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "NATIVE_ARTWORK_SEMANTIC_RATIO_WARNING",
+                        severity = "WARN",
+                        source = "ReiAnixArtworkService",
+                        result = warning,
+                        requestId = requestId,
+                        context = mapOf(
+                            "entity_type" to entity,
+                            "entity_id" to id,
+                            "artwork_type" to type,
+                            "width" to completedImage.width,
+                            "height" to completedImage.height,
+                            "action" to "PRESERVED_WITHOUT_RECLASSIFICATION",
+                        ),
+                    )
+                }
                 val saved = persistDownloaded(rowId, id, type, url, key, completedImage)
                 if (!saved.saved) {
                     removeIfUnreferenced(completedImage.file)
@@ -962,10 +1079,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 return@transaction null
             }
             val values = ContentValues().apply {
-                put("source", artworkCatalogSource(url)); put("source_ref", url); put("external_url", url)
-                put("status", "downloading"); put("priority", 400); put("updated_at", now); put("last_attempt_at", now)
+                put("source", exact.source.takeUnless { it.equals("cache", true) } ?: artworkCatalogSource(url))
+                put("source_ref", exact.sourceRef ?: url)
+                put("external_url", url)
+                put("status", "downloading")
+                put("priority", exact.priority)
+                put("updated_at", now); put("last_attempt_at", now)
                 put("failure_count", if (force) 0 else exact.failureCount)
-                putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key); put("variant", "large")
+                putNull("next_retry_at"); putNull("http_status")
+                put("artwork_key", exact.key ?: key)
+                put("variant", exact.variant ?: "large")
             }
             return@transaction if (db.update("artwork", values, "id=?", arrayOf(exact.id.toString())) > 0) {
                 exact.id
@@ -1169,10 +1292,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val current = urlCurrent(db, id, type, url)
             val now = nowSeconds()
             val values = ContentValues().apply {
-                put("source", "cache"); put("local_path", image.file.absolutePath); put("external_url", url)
-                put("status", "ready"); put("priority", if (current) 400 else minOf(row.priority, 350))
+                // Keep the originating provider/reference on the canonical row after bytes are cached.
+                put("source", row.source.takeUnless { it.equals("cache", true) } ?: artworkCatalogSource(url))
+                put("source_ref", row.sourceRef ?: url)
+                put("local_path", image.file.absolutePath); put("external_url", url)
+                put("status", "ready"); put("priority", if (current) row.priority else minOf(row.priority, 350))
                 put("updated_at", now); put("last_attempt_at", now); put("failure_count", 0)
-                put("artwork_key", key); put("variant", "large"); put("byte_size", image.bytes)
+                put("artwork_key", row.key ?: key); put("variant", row.variant ?: "large"); put("byte_size", image.bytes)
                 put("width", image.width.takeIf { it > 0 }); put("height", image.height.takeIf { it > 0 })
                 put("checksum", image.checksum); put("content_type", image.mime); put("last_access", now)
                 if (image.cacheExpiresAtSeconds == null) putNull("next_retry_at")
@@ -1374,7 +1500,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         getString(getColumnIndexOrThrow("source_ref")), getString(getColumnIndexOrThrow("local_path")),
         getString(getColumnIndexOrThrow("external_url")), getInt(getColumnIndexOrThrow("manual")) != 0,
         getInt(getColumnIndexOrThrow("priority")), getString(getColumnIndexOrThrow("status")),
-        getString(getColumnIndexOrThrow("artwork_key")), getString(getColumnIndexOrThrow("content_type")),
+        getString(getColumnIndexOrThrow("artwork_key")), getString(getColumnIndexOrThrow("variant")),
+        getString(getColumnIndexOrThrow("content_type")),
         getColumnIndex("next_retry_at").let { if (it < 0 || isNull(it)) null else getDouble(it) },
         getInt(getColumnIndexOrThrow("failure_count")),
     )
