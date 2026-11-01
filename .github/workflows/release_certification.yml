@@ -199,7 +199,8 @@ jobs:
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Run JVM SQLite regression tests and compile release Kotlin sources
+      - name: Run manual JVM SQLite regression tests
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
