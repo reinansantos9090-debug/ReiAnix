@@ -3227,7 +3227,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                     }
                     val cacheHeader = cacheControl
                         ?.takeIf(String::isNotBlank)
-                        ?.let { "Cache-Control: $it\\r\\n" }
+                        ?.let { "Cache-Control: $it\r\n" }
                         .orEmpty()
                     val responseHead = (
                         "HTTP/1.1 $statusCode $reason\r\n" +
