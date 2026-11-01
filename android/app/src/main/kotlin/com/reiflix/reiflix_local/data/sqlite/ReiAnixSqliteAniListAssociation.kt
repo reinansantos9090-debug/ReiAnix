@@ -98,18 +98,21 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
             connection.update("anime", values, "id = ?", arrayOf(patch.animeId.toString()))
             val artworkEntityType = if (current.mediaKind.equals("movie", true)) "movie" else "anime"
-            patch.posterArtworkUrl?.takeIf(String::isNotBlank)?.let { rawUrl ->
-                persistAniListArtworkCandidate(
-                    database = connection,
-                    animeId = patch.animeId,
-                    entityType = artworkEntityType,
-                    anilistId = anilistId,
-                    artworkType = "poster",
-                    sourceRef = patch.posterArtworkSourceRef ?: "anilist:$anilistId:coverImage",
-                    rawUrl = rawUrl,
-                    variant = patch.posterArtworkVariant,
-                    priority = patch.posterArtworkPriority,
-                )
+            // A manually owned cover URL/cache must not gain a competing provider candidate.
+            if ("cover_url" !in protectedFields && "cover_cache" !in protectedFields) {
+                patch.posterArtworkUrl?.takeIf(String::isNotBlank)?.let { rawUrl ->
+                    persistAniListArtworkCandidate(
+                        database = connection,
+                        animeId = patch.animeId,
+                        entityType = artworkEntityType,
+                        anilistId = anilistId,
+                        artworkType = "poster",
+                        sourceRef = patch.posterArtworkSourceRef ?: "anilist:$anilistId:coverImage",
+                        rawUrl = rawUrl,
+                        variant = patch.posterArtworkVariant,
+                        priority = patch.posterArtworkPriority,
+                    )
+                }
             }
             patch.bannerArtworkUrl?.takeIf(String::isNotBlank)?.let { rawUrl ->
                 persistAniListArtworkCandidate(
