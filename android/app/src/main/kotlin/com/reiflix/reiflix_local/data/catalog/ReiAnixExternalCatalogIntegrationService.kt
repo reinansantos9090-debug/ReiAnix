@@ -274,20 +274,32 @@ class ReiAnixExternalCatalogIntegrationService(
         }
 
         val candidates = linkedMapOf<String, ReiAnixCatalogAnime>()
+        var incompleteSearch = false
         for (query in identity.titles.asSequence().map(String::trim).filter(String::isNotEmpty)
             .distinct().take(MAX_SEARCH_TERMS)
         ) {
             currentCoroutineContext().ensureActive()
             when (val result = provider.searchAnime(query, SEARCH_LIMIT)) {
-                is ReiAnixCatalogResult.Failure -> record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
+                is ReiAnixCatalogResult.Failure -> {
+                    incompleteSearch = true
+                    record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
+                }
                 is ReiAnixCatalogResult.Success -> {
                     result.value.forEach { remote ->
-                        val remoteId = remote.ids.idFor(remote.source) ?: return@forEach
-                        candidates.putIfAbsent(remoteId, remote)
+                        val remoteId = remote.ids.idFor(remote.source)
+                        if (remoteId.isNullOrBlank()) {
+                            incompleteSearch = true
+                        } else {
+                            candidates.putIfAbsent(remoteId, remote)
+                        }
                     }
                 }
             }
         }
+        // A failed or malformed title query leaves the candidate set incomplete. Do not
+        // confirm a record from only the successful subset, because the failed term may
+        // have returned a competing work. The next independent provider is still attempted.
+        if (incompleteSearch) return Resolution.None
 
         val evaluation = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
             anime.id, identity, candidates.values, ids,
