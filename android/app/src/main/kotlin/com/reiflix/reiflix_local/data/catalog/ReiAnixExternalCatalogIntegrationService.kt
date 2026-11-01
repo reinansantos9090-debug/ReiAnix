@@ -18,6 +18,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.Locale
 
 /**
  * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Jikan/AniPub are
@@ -72,7 +73,8 @@ class ReiAnixExternalCatalogIntegrationService(
         val metadataMissing = hasMetadataGap(anime)
         val posterMissing = !artwork.hasValidAnimeArtwork(anime.id, "poster")
         val backdropMissing = !artwork.hasValidAnimeArtwork(anime.id, "backdrop")
-        return metadataMissing || posterMissing || backdropMissing
+        val bannerMissing = !artwork.hasValidAnimeArtwork(anime.id, "banner")
+        return metadataMissing || posterMissing || backdropMissing || bannerMissing
     }
 
     private fun hasMetadataGap(anime: ReiAnixAnimeRecord): Boolean =
@@ -148,7 +150,8 @@ class ReiAnixExternalCatalogIntegrationService(
             val needsMetadata = hasMetadataGap(anime)
             val needsPoster = !artwork.hasValidAnimeArtwork(anime.id, "poster")
             val needsBackdrop = !artwork.hasValidAnimeArtwork(anime.id, "backdrop")
-            if (!needsMetadata && !needsPoster && !needsBackdrop) break
+            val needsBanner = !artwork.hasValidAnimeArtwork(anime.id, "banner")
+            if (!needsMetadata && !needsPoster && !needsBackdrop && !needsBanner) break
 
             val previousAttempt = library.externalCatalogAttemptAt(anime.id, source.key)
             val knownId = ids.idFor(source)
@@ -188,28 +191,30 @@ class ReiAnixExternalCatalogIntegrationService(
                         continue
                     }
 
-                    var posterReady = artwork.hasValidAnimeArtwork(anime.id, "poster")
-                    if (!posterReady && !verified.remote.coverUrl.isNullOrBlank()) {
-                        if (artwork.replaceExternalArtworkCandidate(anime.id, "poster", verified.remote.coverUrl)) {
-                            artwork.requestAnimeArtwork(anime.id, force = true)
-                            artwork.awaitAnimeArtwork(anime.id)
-                        }
-                        posterReady = artwork.hasValidAnimeArtwork(anime.id, "poster")
-                        if (posterReady) {
-                            record(source, "POSTER_PUBLISHED", anime.id)
-                            changed = true
-                        } else {
-                            record(source, "POSTER_CANDIDATE_FAILED", anime.id)
-                        }
-                    }
-
-                    if (!artwork.hasValidAnimeArtwork(anime.id, "backdrop") &&
-                        !verified.remote.backdropUrl.isNullOrBlank() &&
-                        artwork.replaceExternalArtworkCandidate(anime.id, "backdrop", verified.remote.backdropUrl)
-                    ) {
+                    // Every supported provider field is saved under its declared canonical type.
+                    // Unclassified fields remain in the DTO and are intentionally not persisted as candidates.
+                    for (candidate in verified.remote.artworkCandidates()) {
+                        val type = candidate.type.key
+                        val accepted = artwork.replaceExternalArtworkCandidate(
+                            animeId = anime.id,
+                            artworkType = type,
+                            rawUrl = candidate.url,
+                            source = candidate.source.key,
+                            sourceRef = candidate.sourceReference,
+                            variant = candidate.variant ?: "original",
+                            priority = candidate.priority,
+                            width = candidate.width,
+                            height = candidate.height,
+                        )
+                        if (!accepted) continue
                         artwork.requestAnimeArtwork(anime.id, force = true)
                         artwork.awaitAnimeArtwork(anime.id)
-                        if (artwork.hasValidAnimeArtwork(anime.id, "backdrop")) changed = true
+                        if (artwork.hasValidAnimeArtwork(anime.id, type)) {
+                            record(source, "${type.uppercase(Locale.ROOT)}_PUBLISHED", anime.id)
+                            changed = true
+                        } else {
+                            record(source, "${type.uppercase(Locale.ROOT)}_CANDIDATE_PERSISTED", anime.id)
+                        }
                     }
                 }
             }
