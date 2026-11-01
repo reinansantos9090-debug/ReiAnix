@@ -194,17 +194,18 @@ class ReiAnixExternalCatalogIntegrationService(
                     // Every supported provider field is saved under its declared canonical type.
                     // Unclassified fields remain in the DTO and are intentionally not persisted as candidates.
                     for (candidate in verified.remote.artworkCandidates()) {
-                        val type = candidate.type.key
+                        val persistedCandidate = candidate.copy(localAnimeId = anime.id)
+                        val type = persistedCandidate.type.key
                         val accepted = artwork.replaceExternalArtworkCandidate(
-                            animeId = anime.id,
+                            animeId = persistedCandidate.localAnimeId ?: anime.id,
                             artworkType = type,
-                            rawUrl = candidate.url,
-                            source = candidate.source.key,
-                            sourceRef = candidate.sourceReference,
-                            variant = candidate.variant ?: "original",
-                            priority = candidate.priority,
-                            width = candidate.width,
-                            height = candidate.height,
+                            rawUrl = persistedCandidate.url,
+                            source = persistedCandidate.source.key,
+                            sourceRef = persistedCandidate.sourceReference,
+                            variant = persistedCandidate.variant ?: "original",
+                            priority = persistedCandidate.priority,
+                            width = persistedCandidate.width,
+                            height = persistedCandidate.height,
                         )
                         if (!accepted) continue
                         artwork.requestAnimeArtwork(anime.id, force = true)
