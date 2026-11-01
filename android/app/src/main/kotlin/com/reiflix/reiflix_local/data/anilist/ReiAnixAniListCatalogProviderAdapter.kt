@@ -89,7 +89,10 @@ private fun AniListAnime.toCatalogAnime(): ReiAnixCatalogAnime? {
             ?.let { it to "large" }
     return ReiAnixCatalogAnime(
         source = ReiAnixCatalogSource.ANILIST,
-        ids = ReiAnixExternalCatalogIds(aniListId = id.toLong()),
+        ids = ReiAnixExternalCatalogIds(
+            aniListId = id.toLong(),
+            myAnimeListId = myAnimeListId,
+        ),
         title = preferred,
         alternativeTitles = (synonyms + listOfNotNull(titleRomaji, titleEnglish, titleNative))
             .filter { it.isNotBlank() && !it.equals(preferred, ignoreCase = true) }
