@@ -547,6 +547,36 @@ fun ReiAnixBackdrop(
     )
 }
 
+
+@Composable
+fun ReiAnixBanner(
+    localPath: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    identity: String? = null,
+    fallbackLocalPath: String? = null,
+    maxDimensionPx: Int = 1024,
+    externalUrl: String? = null,
+    fallbackExternalUrl: String? = null,
+    sourceRevision: String? = null,
+) {
+    ReiAnixLocalArtwork(
+        localPath = localPath,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+        placeholder = "Sem banner",
+        maxDimensionPx = maxDimensionPx,
+        shape = ReiAnixTokens.Shapes.hero,
+        identity = identity,
+        artworkType = "banner",
+        fallbackLocalPath = fallbackLocalPath,
+        externalUrl = externalUrl,
+        fallbackExternalUrl = fallbackExternalUrl,
+        persistedRevision = sourceRevision,
+    )
+}
+
 @Composable
 fun ReiAnixEpisodeThumbnail(
     localPath: String?,
