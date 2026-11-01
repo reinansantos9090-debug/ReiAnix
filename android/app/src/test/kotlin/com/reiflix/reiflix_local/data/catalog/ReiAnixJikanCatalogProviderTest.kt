@@ -82,6 +82,8 @@ class ReiAnixJikanCatalogProviderTest {
         assertEquals(2021, anime.releaseYear)
         assertEquals("https://cdn.myanimelist.net/images/301-large.webp", anime.coverUrl)
         assertNull(anime.backdropUrl)
+        assertNull(anime.bannerUrl)
+        assertEquals(listOf("poster"), anime.artworkCandidates().map { it.type.key })
         assertTrue(transport.requestedUrl.orEmpty().startsWith("https://api.jikan.moe/v4/anime?q=Example%20Anime"))
         assertTrue(transport.requestedUrl.orEmpty().contains("limit=10"))
         assertTrue(transport.requestedUrl.orEmpty().contains("sfw=true"))
@@ -104,6 +106,9 @@ class ReiAnixJikanCatalogProviderTest {
         val anime = (result as ReiAnixCatalogResult.Success).value!!
         assertEquals(77L, anime.ids.myAnimeListId)
         assertEquals("Bare Anime", anime.title)
+        assertNull(anime.backdropUrl)
+        assertNull(anime.bannerUrl)
+        assertEquals(listOf("poster"), anime.artworkCandidates().map { it.type.key })
         assertEquals("MOVIE", anime.format)
         assertEquals(ReiAnixCatalogMediaKind.MOVIE, anime.mediaKind)
         assertNull(anime.synopsis)
