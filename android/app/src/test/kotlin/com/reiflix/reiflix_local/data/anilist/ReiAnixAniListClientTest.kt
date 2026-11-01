@@ -157,11 +157,49 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
-    fun invalidSearchMediaEntriesAreRejectedInsteadOfSilentlyDropped() = runBlocking {
-        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[{"title":{}}]}}}"""))
+    fun invalidSearchMediaEntriesAreDroppedOnlyWithAnExplicitIncompleteResult() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"data":{"Page":{"media":[{"id":73,"title":{"english":"Valid anime"}},{"title":{}}]}}}""",
+            ),
+        )
         val result = ReiAnixAniListClient(transport, 0).searchAnime("anime")
-        assertTrue(result is AniListResult.Failure)
-        assertTrue((result as AniListResult.Failure).error is AniListError.InvalidResponse)
+        assertTrue(result is AniListResult.Success)
+        val success = result as AniListResult.Success
+        assertTrue(success.incomplete)
+        assertEquals(listOf(73), success.value.map { it.id })
+    }
+
+    @Test
+    fun partialGraphQlSearchRetainsValidRowsAndMarksResultIncomplete() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"errors":[{"message":"Banner resolver unavailable","path":["Page","media",0,"bannerImage"]}],"data":{"Page":{"media":[{"id":81,"title":{"english":"Valid anime"},"coverImage":{"large":"https://cdn.example/81.jpg"},"bannerImage":null},{"id":82,"title":{"english":"Second anime"}}]}}}""",
+            ),
+        )
+        val result = ReiAnixAniListClient(transport, 0).searchAnime("anime")
+        assertTrue(result is AniListResult.Success)
+        val success = result as AniListResult.Success
+        assertTrue(success.incomplete)
+        assertEquals(listOf(81, 82), success.value.map { it.id })
+    }
+
+    @Test
+    fun partialGraphQlDetailRetainsMediaButMarksItIncomplete() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"errors":[{"message":"Banner resolver unavailable","path":["Media","bannerImage"]}],"data":{"Media":{"id":91,"title":{"english":"Detail anime"},"coverImage":{"large":"https://cdn.example/91.jpg"}}}}""",
+            ),
+        )
+        val result = ReiAnixAniListClient(transport, 0).getAnime(91)
+        assertTrue(result is AniListResult.Success)
+        val success = result as AniListResult.Success
+        assertTrue(success.incomplete)
+        assertEquals(91, success.value?.id)
+        assertEquals("https://cdn.example/91.jpg", success.value?.coverLargeUrl)
     }
 
     @Test
