@@ -209,6 +209,73 @@ class ReiAnixExternalCatalogContractsTest {
     }
 
     @Test
+    fun candidateSetReturnsConfirmedProbableAmbiguousRejectedAndUnresolvedDecisions() {
+        val local = ReiAnixCatalogIdentity(
+            titles = setOf("Converged Work", "Converged Original"),
+            releaseYear = 2020,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            episodes = 12,
+        )
+        val confirmed = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(kitsuId = "confirmed-id"),
+            title = "Converged Work",
+            releaseYear = 2020,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            episodes = 12,
+        )
+        val probable = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(kitsuId = "probable-id"),
+            title = "Converged Work",
+        )
+        val rejected = probable.copy(
+            ids = ReiAnixExternalCatalogIds(kitsuId = "rejected-id"),
+            title = "Different Work",
+        )
+
+        val confirmedResult = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
+            70L, local, listOf(confirmed),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, confirmedResult.decision)
+        assertEquals("confirmed-id", confirmedResult.value?.match?.externalIds?.kitsuId)
+
+        val probableResult = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
+            70L, local, listOf(probable),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.PROBABLE, probableResult.decision)
+        assertNull(probableResult.value)
+
+        val ambiguousResult = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
+            70L, local, listOf(confirmed, confirmed.copy(
+                ids = ReiAnixExternalCatalogIds(kitsuId = "second-confirmed-id"),
+            )),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.AMBIGUOUS, ambiguousResult.decision)
+        assertNull(ambiguousResult.value)
+
+        val confirmedAndProbable = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
+            70L, local, listOf(confirmed, probable),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.AMBIGUOUS, confirmedAndProbable.decision)
+        assertNull(confirmedAndProbable.value)
+
+        val rejectedResult = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
+            70L, local, listOf(rejected),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.REJECTED, rejectedResult.decision)
+        assertNull(rejectedResult.value)
+
+        val unresolvedResult = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
+            70L, local, emptyList(),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.UNRESOLVED, unresolvedResult.decision)
+        assertNull(unresolvedResult.value)
+    }
+
+    @Test
     fun providerSuppliedLocalizedAndRomanizedAliasesCanConfirmWithoutFuzzyMatching() {
         val local = ReiAnixCatalogIdentity(
             titles = setOf(

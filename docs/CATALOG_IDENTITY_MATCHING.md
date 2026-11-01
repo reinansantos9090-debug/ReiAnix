@@ -20,8 +20,8 @@ A comparação que autoriza persistência permanece exata depois da normalizaç�
 2. Um campo ausente em um dos lados é desconhecido, não uma divergência. Quando ambos os lados possuem ano, formato, tipo, temporada/número ou episódios, divergências relevantes rejeitam o candidato.
 3. Uma busca por título sem ID previamente confirmado exige duas dimensões independentes que concordem. Formato e tipo de mídia contam como uma dimensão porque descrevem essencialmente a mesma classificação. Ano, classificação, temporada/sequência e contagem de episódios são dimensões separadas.
 4. Uma consulta feita por um ID já confirmado para aquele provider pode tolerar campos remotos ausentes, mas ainda exige título exato e rejeita qualquer metadado contraditório ou ID conflitante.
-5. Resultados apenas prováveis não produzem `ReiAnixCatalogIdentityMatch`, não persistem IDs e não liberam artwork. Se um provável concorrente permanecer junto de um candidato confirmado, o resultado é tratado como ambíguo.
-6. Títulos genéricos ou puramente numéricos não são evidência suficiente. Números presentes em títulos, partes e temporadas são preservados pela normalização.
+5. A avaliação agregada do conjunto de busca distingue explicitamente `CONFIRMED`, `PROBABLE`, `AMBIGUOUS`, `REJECTED` e `UNRESOLVED`. Mais de um confirmado, vários prováveis ou um provável competindo com um confirmado resultam em ambiguidade e falham de forma conservadora.
+6. Resultados prováveis, ambíguos, rejeitados ou não resolvidos nunca produzem `ReiAnixCatalogIdentityMatch`, não persistem IDs e não liberam artwork. Títulos genéricos ou puramente numéricos não são evidência suficiente. Números presentes em títulos, partes e temporadas são preservados pela normalização.
 
 A normalização usa NFKD, remove acentos latinos, uniformiza caixa/pontuação/espaços e mantém marcas combinantes de scripts japoneses. Isso evita colapsar kana distintos, como が e か. Não há transliteração automática entre japonês e romanização: o matcher depende dos títulos alternativos que os próprios catálogos fornecem.
 

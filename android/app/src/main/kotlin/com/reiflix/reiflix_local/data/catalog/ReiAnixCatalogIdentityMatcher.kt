@@ -56,6 +56,16 @@ class ReiAnixCatalogIdentityMatch internal constructor(
     }
 }
 
+data class ReiAnixCatalogVerifiedCandidate(
+    val remote: ReiAnixCatalogAnime,
+    val match: ReiAnixCatalogIdentityMatch,
+) {
+    init {
+        require(remote.source == match.source)
+        require(remote.ids.idFor(remote.source) == match.externalIds.idFor(remote.source))
+    }
+}
+
 object ReiAnixCatalogIdentityMatcher {
     /**
      * Assessment is deliberately exact-title only. Fuzzy similarity is not identity evidence:
@@ -109,6 +119,43 @@ object ReiAnixCatalogIdentityMatcher {
             if (sourceIdIsAnchored) "confirmed_by_existing_provider_id_and_exact_title"
             else "confirmed_by_exact_title_and_" + evidence.matchedDimensions + "_independent_dimensions",
         )
+    }
+
+    /**
+     * Resolves a provider search result set into one explicit decision. Multiple confirmed
+     * records, or a confirmed record competing with a probable one, are ambiguous and fail closed.
+     */
+    fun evaluateCandidates(
+        localAnimeId: Long,
+        local: ReiAnixCatalogIdentity,
+        candidates: Collection<ReiAnixCatalogAnime>,
+        knownIds: ReiAnixExternalCatalogIds = ReiAnixExternalCatalogIds(),
+    ): ReiAnixCatalogIdentityEvaluation<ReiAnixCatalogVerifiedCandidate> {
+        if (localAnimeId <= 0L) return rejected("invalid_local_anime_id")
+        if (candidates.isEmpty()) return unresolved("no_external_candidate_found")
+
+        val assessments = candidates.map { remote ->
+            remote to evaluate(localAnimeId, local, remote, knownIds)
+        }
+        val confirmedCandidates = assessments.filter {
+            it.second.decision == ReiAnixCatalogIdentityDecision.CONFIRMED
+        }
+        val probableCandidates = assessments.filter {
+            it.second.decision == ReiAnixCatalogIdentityDecision.PROBABLE
+        }
+
+        if (confirmedCandidates.size > 1 || probableCandidates.size > 1 ||
+            (confirmedCandidates.isNotEmpty() && probableCandidates.isNotEmpty())
+        ) return ambiguous("multiple_or_competing_identity_candidates")
+
+        confirmedCandidates.singleOrNull()?.let { (remote, evaluation) ->
+            return confirmed(
+                ReiAnixCatalogVerifiedCandidate(remote, requireNotNull(evaluation.value)),
+                "single_confirmed_identity_candidate",
+            )
+        }
+        if (probableCandidates.isNotEmpty()) return probable("single_candidate_requires_confirmation")
+        return rejected("all_external_candidates_rejected")
     }
 
     /** Compatibility wrapper retained for existing callers; only confirmed results are returned. */
@@ -277,6 +324,16 @@ object ReiAnixCatalogIdentityMatcher {
 
     private fun <T> rejected(reason: String) = ReiAnixCatalogIdentityEvaluation<T>(
         decision = ReiAnixCatalogIdentityDecision.REJECTED,
+        reason = reason,
+    )
+
+    private fun <T> ambiguous(reason: String) = ReiAnixCatalogIdentityEvaluation<T>(
+        decision = ReiAnixCatalogIdentityDecision.AMBIGUOUS,
+        reason = reason,
+    )
+
+    private fun <T> unresolved(reason: String) = ReiAnixCatalogIdentityEvaluation<T>(
+        decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
         reason = reason,
     )
 
