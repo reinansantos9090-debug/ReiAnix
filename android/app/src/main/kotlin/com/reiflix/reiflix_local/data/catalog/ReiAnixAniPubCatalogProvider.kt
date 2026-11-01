@@ -51,18 +51,22 @@ class ReiAnixAniPubCatalogProvider(
                 ),
             )
         }
-        val candidates = buildList {
-            for (index in 0 until entries.length()) {
-                val item = entries.optJSONObject(index)
-                    ?: throw JSONException("AniPub search contains an invalid result entry.")
-                val id = item.optCatalogText("Id") ?: item.optCatalogText("id")
-                    ?: throw JSONException("AniPub search result is missing its external ID.")
-                if (id.toLongOrNull()?.let { it > 0L } != true) {
-                    throw JSONException("AniPub search result contains an invalid external ID.")
+        val candidates = try {
+            buildList {
+                for (index in 0 until entries.length()) {
+                    val item = entries.optJSONObject(index)
+                        ?: throw JSONException("AniPub search contains an invalid result entry.")
+                    val id = item.optCatalogText("Id") ?: item.optCatalogText("id")
+                        ?: throw JSONException("AniPub search result is missing its external ID.")
+                    if (id.toLongOrNull()?.let { it > 0L } != true) {
+                        throw JSONException("AniPub search result contains an invalid external ID.")
+                    }
+                    add(id)
                 }
-                add(id)
-            }
-        }.distinct()
+            }.distinct()
+        } catch (error: Exception) {
+            return ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
+        }
 
         if (candidates.isEmpty()) return ReiAnixCatalogResult.Success(emptyList())
         val details = mutableListOf<ReiAnixCatalogAnime>()
