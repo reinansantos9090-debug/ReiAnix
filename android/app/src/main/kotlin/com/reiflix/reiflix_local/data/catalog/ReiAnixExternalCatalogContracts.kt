@@ -81,24 +81,87 @@ data class ReiAnixExternalCatalogIds(
 }
 
 enum class ReiAnixCatalogMediaKind { SERIES, MOVIE, OVA, ONA, SPECIAL, MUSIC, UNKNOWN }
-enum class ReiAnixCatalogArtworkType { POSTER, BACKDROP }
 
+enum class ReiAnixCatalogArtworkType(val key: String) {
+    POSTER("poster"),
+    BACKDROP("backdrop"),
+    BANNER("banner"),
+}
+
+/** Provider image field retained without guessing a canonical meaning. */
+data class ReiAnixCatalogArtworkSourceField(
+    val originalField: String,
+    val url: String,
+    val variant: String? = null,
+) {
+    init {
+        require(originalField.isNotBlank())
+        requireValidArtworkUrl(url)
+        require(variant == null || variant.isNotBlank())
+    }
+}
+
+/**
+ * Fully typed provider candidate. Dimensions may produce a warning, never a type conversion.
+ * The local anime row ID is attached only after the external identity is verified.
+ */
 data class ReiAnixCatalogArtworkCandidate(
     val source: ReiAnixCatalogSource,
     val externalRecordId: String,
     val type: ReiAnixCatalogArtworkType,
     val url: String,
+    val originalField: String,
+    val variant: String? = null,
+    val priority: Int = 400,
+    val entityType: String = "anime",
+    val width: Int? = null,
+    val height: Int? = null,
 ) {
     init {
         require(source.providesArtwork && !source.resolvesIdentifiers) {
             "Identifier-only sources cannot provide artwork."
         }
         require(externalRecordId.isNotBlank() && externalRecordId.length <= 128)
-        val uri = runCatching { java.net.URL(url) }.getOrNull()
-        require(uri != null && (uri.protocol.equals("https", true) || uri.protocol.equals("http", true)) &&
-            uri.host.isNotBlank() && uri.userInfo == null && url.none { it.isWhitespace() || it.code == 0 }
-        ) { "Artwork URL must be a valid HTTP(S) URL without user info." }
+        require(entityType == "anime")
+        require(originalField.isNotBlank())
+        require(variant == null || variant.isNotBlank())
+        require(priority >= 0)
+        require(width == null || width > 0)
+        require(height == null || height > 0)
+        requireValidArtworkUrl(url)
     }
+
+    /** Provider/reference/field tuple remains stable through internal conversion. */
+    val sourceReference: String
+        get() = "${source.key}:$externalRecordId:$originalField"
+
+    /** A geometry discrepancy is observable but cannot rewrite [type]. */
+    val orientationWarning: String?
+        get() = width?.let { w -> height?.let { h -> reiAnixArtworkAspectRatioWarning(type, w, h) } }
+}
+
+internal fun reiAnixArtworkAspectRatioWarning(
+    type: ReiAnixCatalogArtworkType,
+    width: Int,
+    height: Int,
+): String? {
+    if (width <= 0 || height <= 0) return null
+    val ratio = width.toDouble() / height.toDouble()
+    return when (type) {
+        ReiAnixCatalogArtworkType.POSTER -> if (ratio > 1.15) "poster_has_landscape_ratio" else null
+        ReiAnixCatalogArtworkType.BACKDROP, ReiAnixCatalogArtworkType.BANNER ->
+            if (ratio < 0.90) "horizontal_artwork_has_portrait_ratio" else null
+    }
+}
+
+private fun requireValidArtworkUrl(url: String) {
+    val uri = runCatching { java.net.URL(url) }.getOrNull()
+    require(
+        uri != null &&
+            (uri.protocol.equals("https", true) || uri.protocol.equals("http", true)) &&
+            uri.host.isNotBlank() && uri.userInfo == null &&
+            url.none { it.isWhitespace() || it.code == 0 }
+    ) { "Artwork URL must be a valid HTTP(S) URL without user info." }
 }
 
 /** Remote DTO only. It cannot mutate local metadata, episode identity or playback state. */
@@ -108,7 +171,9 @@ data class ReiAnixCatalogAnime(
     val title: String,
     val alternativeTitles: Set<String> = emptySet(),
     val synopsis: String? = null,
+    /** Canonical Poster URL. Kept under its historic property name for source compatibility. */
     val coverUrl: String? = null,
+    /** Populated only when the provider explicitly documents a Backdrop field. */
     val backdropUrl: String? = null,
     val releaseYear: Int? = null,
     val format: String? = null,
@@ -122,6 +187,16 @@ data class ReiAnixCatalogAnime(
     val contentRating: String? = null,
     val startDate: String? = null,
     val endDate: String? = null,
+    /** Canonical Banner URL; it is never copied into the legacy Backdrop field. */
+    val bannerUrl: String? = null,
+    val coverImageField: String = "coverImage",
+    val coverVariant: String? = null,
+    val backdropImageField: String = "backdropImage",
+    val backdropVariant: String? = null,
+    val bannerImageField: String = "bannerImage",
+    val bannerVariant: String? = null,
+    /** Raw provider fields lacking enough evidence for a canonical artwork type. */
+    val unclassifiedArtworkFields: List<ReiAnixCatalogArtworkSourceField> = emptyList(),
 ) {
     init {
         require(!source.resolvesIdentifiers)
@@ -131,18 +206,22 @@ data class ReiAnixCatalogAnime(
         require(episodes == null || episodes >= 0)
         require(durationMinutes == null || durationMinutes > 0)
         require(averageScore == null || averageScore in 0..100)
-        coverUrl?.let {
-            ReiAnixCatalogArtworkCandidate(source, ids.idFor(source).orEmpty(), ReiAnixCatalogArtworkType.POSTER, it)
-        }
-        backdropUrl?.let {
-            ReiAnixCatalogArtworkCandidate(source, ids.idFor(source).orEmpty(), ReiAnixCatalogArtworkType.BACKDROP, it)
-        }
+        coverUrl?.let { ReiAnixCatalogArtworkCandidate(source, ids.idFor(source).orEmpty(),
+            ReiAnixCatalogArtworkType.POSTER, it, coverImageField, coverVariant) }
+        backdropUrl?.let { ReiAnixCatalogArtworkCandidate(source, ids.idFor(source).orEmpty(),
+            ReiAnixCatalogArtworkType.BACKDROP, it, backdropImageField, backdropVariant) }
+        bannerUrl?.let { ReiAnixCatalogArtworkCandidate(source, ids.idFor(source).orEmpty(),
+            ReiAnixCatalogArtworkType.BANNER, it, bannerImageField, bannerVariant) }
     }
 
     fun artworkCandidates(): List<ReiAnixCatalogArtworkCandidate> = buildList {
         val externalId = ids.idFor(source) ?: return@buildList
-        coverUrl?.let { add(ReiAnixCatalogArtworkCandidate(source, externalId, ReiAnixCatalogArtworkType.POSTER, it)) }
-        backdropUrl?.let { add(ReiAnixCatalogArtworkCandidate(source, externalId, ReiAnixCatalogArtworkType.BACKDROP, it)) }
+        coverUrl?.let { add(ReiAnixCatalogArtworkCandidate(source, externalId,
+            ReiAnixCatalogArtworkType.POSTER, it, coverImageField, coverVariant)) }
+        backdropUrl?.let { add(ReiAnixCatalogArtworkCandidate(source, externalId,
+            ReiAnixCatalogArtworkType.BACKDROP, it, backdropImageField, backdropVariant)) }
+        bannerUrl?.let { add(ReiAnixCatalogArtworkCandidate(source, externalId,
+            ReiAnixCatalogArtworkType.BANNER, it, bannerImageField, bannerVariant)) }
     }
 }
 
