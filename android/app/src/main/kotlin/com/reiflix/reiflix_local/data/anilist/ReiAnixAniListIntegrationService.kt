@@ -412,7 +412,16 @@ class ReiAnixAniListIntegrationService(
             return retainStaleMetadata()
         }
         val remote = when (remoteResult) {
-            is AniListResult.Success -> remoteResult.value
+            is AniListResult.Success -> {
+                if (remoteResult.incomplete) {
+                    Log.w(
+                        "ReiAnixAniList",
+                        "Metadata refresh returned partial GraphQL data; retaining stale local metadata animeId=$animeId",
+                    )
+                    return retainStaleMetadata()
+                }
+                remoteResult.value
+            }
             is AniListResult.Failure -> {
                 Log.w(
                     "ReiAnixAniList",
@@ -451,7 +460,16 @@ class ReiAnixAniListIntegrationService(
         val local = library.getAnime(animeId)
             ?: return AniListResult.Failure(AniListError.InvalidRequest("Local anime does not exist."))
         val remote = when (val result = client.getAnime(anilistId)) {
-            is AniListResult.Success -> result.value
+            is AniListResult.Success -> {
+                if (result.incomplete) {
+                    return AniListResult.Failure(
+                        AniListError.InvalidResponse(
+                            "AniList returned partial GraphQL data; manual association requires a complete record.",
+                        ),
+                    )
+                }
+                result.value
+            }
             is AniListResult.Failure -> return result
         } ?: return AniListResult.Failure(AniListError.InvalidResponse("AniList returned no anime for this ID."))
         val patched = when (val result = applyRemote(local, remote, manual = true, score = 1.0, margin = 1.0)) {
