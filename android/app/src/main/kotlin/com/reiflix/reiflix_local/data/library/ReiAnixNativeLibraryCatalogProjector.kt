@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
+import com.reiflix.reiflix_local.data.artwork.isKnownArtworkPlaceholderUrl
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
@@ -91,8 +92,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         }
         val primaryLocalArtworkRecord = posterCandidates.firstOrNull { !it.localPath.isNullOrBlank() }
         val primaryLocalArtwork = primaryLocalArtworkRecord?.localPath ?: coverCache
-        val primaryExternalArtwork = posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
-            ?: anime.coverUrl
+        val primaryExternalArtwork = posterCandidates.firstOrNull {
+            !it.externalUrl.isNullOrBlank() && !isKnownArtworkPlaceholderUrl(it.externalUrl)
+        }?.externalUrl
+            ?: anime.coverUrl?.takeUnless(::isKnownArtworkPlaceholderUrl)
         val primaryArtworkRevision = primaryLocalArtworkRecord?.let(::artworkRevision)
         val backdropArtworkRevision = backdrop?.let(::artworkRevision)
         val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name }
@@ -162,7 +165,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "artwork_external_url" to primaryExternalArtwork,
             "artwork_revision" to primaryArtworkRevision,
             "artwork_backdrop_local_path" to backdrop?.localPath,
-            "backdrop_external_url" to backdrop?.externalUrl,
+            "backdrop_external_url" to (
+                backdrop?.externalUrl?.takeUnless(::isKnownArtworkPlaceholderUrl)
+                    ?: anime.bannerUrl?.takeUnless(::isKnownArtworkPlaceholderUrl)
+                ),
             "artwork_backdrop_revision" to backdropArtworkRevision,
             "playback_target_episode_id" to target?.id,
             "score" to anime.score?.toDouble(),
