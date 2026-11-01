@@ -32,6 +32,10 @@ class ReiAnixAniListCatalogProviderAdapterTest {
                             },
                             "synonyms": ["Example Alias"],
                             "format": "TV",
+                            "episodes": 12,
+                            "duration": 24,
+                            "status": "FINISHED",
+                            "averageScore": 88,
                             "seasonYear": 2021,
                             "season": "SPRING",
                             "coverImage": {
@@ -61,6 +65,11 @@ class ReiAnixAniListCatalogProviderAdapterTest {
         assertEquals("Example Anime", anime.title)
         assertTrue("Example Alias" in anime.alternativeTitles)
         assertEquals(2021, anime.releaseYear)
+        assertEquals("TV", anime.format)
+        assertEquals(12, anime.episodes)
+        assertEquals(24, anime.durationMinutes)
+        assertEquals("FINISHED", anime.status)
+        assertEquals(88, anime.averageScore)
         assertEquals("https://cdn.example/extra-large.jpg", anime.coverUrl)
         assertEquals("https://cdn.example/banner.jpg", anime.bannerUrl)
         assertNull(anime.backdropUrl)
