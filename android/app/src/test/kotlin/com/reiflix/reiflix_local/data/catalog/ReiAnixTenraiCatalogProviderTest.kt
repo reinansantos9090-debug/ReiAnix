@@ -88,7 +88,7 @@ class ReiAnixTenraiCatalogProviderTest {
             "images.webp.large_image_url",
             anime.artworkCandidates().single().originalField,
         )
-        assertTrue(transport.requestedUrl.orEmpty().startsWith("https://api.tenrai.moe/v4/anime?q=Example%20Anime"))
+        assertTrue(transport.requestedUrl.orEmpty().startsWith("https://api.tenrai.org/v1/anime?q=Example%20Anime"))
         assertTrue(transport.requestedUrl.orEmpty().contains("limit=10"))
         assertTrue(transport.requestedUrl.orEmpty().contains("sfw=true"))
         assertEquals("application/json", transport.accept)
