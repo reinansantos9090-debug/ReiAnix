@@ -108,6 +108,7 @@ Os adapters públicos usam o transporte GET HTTPS bounded já existente, resulta
 - Kitsu API docs: https://github.com/hummingbird-me/api-docs
 - Kitsu Media schema: https://github.com/hummingbird-me/api-docs/blob/c95e259bec851f4bddf13c7bce3dd2f08eba7d19/api/schemas/resources/media.yml
 - AniPub API reference: https://api.anipub.org/
+- AniPub maintained API client (documents `ImagePath` as Poster and `Cover` as Banner): https://github.com/AnimePub/AniPub-API
 - Tenrai API documentation: https://api.tenrai.org/documentation
 - Tenrai FAQ: https://api.tenrai.org/faq
 - Tenrai changelog: https://api.tenrai.org/changelog
