@@ -8,10 +8,8 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
 import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogProviderRegistry
 import com.reiflix.reiflix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
-import com.reiflix.reiflix_local.data.catalog.ReiAnixAniPubCatalogProvider
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
 import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
-import com.reiflix.reiflix_local.data.catalog.ReiAnixTenraiCatalogProvider
 import com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProvider
 import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
@@ -130,10 +128,11 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixCatalogProviderRegistry(
+            // Tenrai requires guardian consent/supervision for underage use. AniPub additionally
+            // requires prior written permission for automated access. Keep both adapters and
+            // JVM coverage, but do not issue automatic requests until these conditions are verified.
             providers = listOf(
                 ReiAnixKitsuCatalogProvider(),
-                ReiAnixTenraiCatalogProvider(),
-                ReiAnixAniPubCatalogProvider(),
             ),
             requestCoordinator = externalCatalogRequestCoordinator,
         )
