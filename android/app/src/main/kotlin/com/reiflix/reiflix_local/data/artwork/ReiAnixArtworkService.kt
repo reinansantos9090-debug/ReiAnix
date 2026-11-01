@@ -238,8 +238,8 @@ internal fun artworkSourceKindForUrl(rawUrl: String): String {
     return when {
         host == "kitsu.io" || host.endsWith(".kitsu.io") ||
             host == "kitsu.app" || host.endsWith(".kitsu.app") -> "kitsu"
-        host == "myanimelist.net" || host.endsWith(".myanimelist.net") ||
-            host == "jikan.moe" || host.endsWith(".jikan.moe") -> "jikan"
+        host == "jikan.moe" || host.endsWith(".jikan.moe") -> "jikan"
+        host == "myanimelist.net" || host.endsWith(".myanimelist.net") -> "tenrai"
         host == "anipub.org" || host.endsWith(".anipub.org") -> "anipub"
         else -> "anilist"
     }
@@ -799,7 +799,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "artwork",
                     "entity_type IN ('anime','movie') AND manual=0 " +
                         "AND artwork_type IN ('poster','backdrop','banner') " +
-                        "AND LOWER(COALESCE(source,'')) IN ('cache','anilist','kitsu','jikan','anipub')",
+                        "AND LOWER(COALESCE(source,'')) IN ('cache','anilist','kitsu','jikan','tenrai','anipub')",
                     null,
                 )
                 // Match Settings' existing cache-clear contract: expire remote metadata
