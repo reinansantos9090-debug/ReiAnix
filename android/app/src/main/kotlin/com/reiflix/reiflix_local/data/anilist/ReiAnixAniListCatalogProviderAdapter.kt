@@ -70,10 +70,10 @@ private fun AniListAnime.toCatalogAnime(): ReiAnixCatalogAnime? {
             .filter { it.isNotBlank() && !it.equals(preferred, ignoreCase = true) }
             .toSet(),
         synopsis = description,
-        coverUrl = coverExtraLargeUrl ?: coverLargeUrl,
+        coverUrl = (coverExtraLargeUrl ?: coverLargeUrl).takeIf(::isValidCatalogArtworkUrl),
         coverImageField = "coverImage",
         coverVariant = if (coverExtraLargeUrl != null) "extraLarge" else "large",
-        bannerUrl = bannerUrl,
+        bannerUrl = bannerUrl.takeIf(::isValidCatalogArtworkUrl),
         bannerImageField = "bannerImage",
         bannerVariant = "original",
         releaseYear = seasonYear,
