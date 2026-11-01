@@ -95,7 +95,11 @@ class ReiAnixAniPubCatalogProviderTest {
                       "Duration": "25m",
                       "MALScore": "8.88",
                       "Status": "Finished Airing",
-                      "epCount": 170
+                      "epCount": 170,
+                      "Type": "TV",
+                      "Format": "TV",
+                      "Rating": "PG-13",
+                      "AgeRating": "PG-13"
                     }
                     """.trimIndent(),
                     emptyMap(),
@@ -116,6 +120,7 @@ class ReiAnixAniPubCatalogProviderTest {
         assertNull(anime.backdropUrl)
         assertNull(anime.format)
         assertNull(anime.mediaKind)
+        assertNull(anime.contentRating)
         assertEquals(listOf("https://anipub.org/api/info/61"), transport.urls)
         assertEquals(1, transport.calls)
     }
