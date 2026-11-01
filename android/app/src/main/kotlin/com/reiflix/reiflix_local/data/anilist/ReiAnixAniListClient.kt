@@ -231,7 +231,11 @@ class ReiAnixAniListClient(
             if ("*" in errorPaths) incompleteTerms += normalizedTerms
             normalizedTerms.forEachIndexed { index, term ->
                 val alias = "term$index"
-                val page = data.objectOrNull(alias)
+                val aliasResult = data.objectOrNull(alias)
+                // The provider normally returns the aliased Page object directly. Also
+                // accept a Page envelope for partial/legacy response fixtures without
+                // discarding otherwise valid records from that term.
+                val page = aliasResult?.optJSONObject("Page") ?: aliasResult
                 val media = page?.arrayOrNull("media")
                 if (page == null || media == null || alias in errorPaths) {
                     incompleteTerms += term
