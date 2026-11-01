@@ -19,6 +19,8 @@ class ReiAnixExternalCatalogContractsTest {
         assertFalse(ReiAnixCatalogSource.ANIMAP.providesMetadata)
         assertFalse(ReiAnixCatalogSource.ANIMAP.providesArtwork)
         assertEquals(ReiAnixCatalogSource.KITSU, ReiAnixCatalogSource.fromKey("Kitsu"))
+        assertEquals(ReiAnixCatalogSource.JIKAN, ReiAnixCatalogSource.fromKey("jikan"))
+        assertEquals(ReiAnixCatalogSource.TENRAI, ReiAnixCatalogSource.fromKey("tenrai"))
         assertNull(ReiAnixCatalogSource.fromKey("unknown"))
     }
 
@@ -438,7 +440,7 @@ class ReiAnixExternalCatalogContractsTest {
     @Test
     fun missingArtworkTypeDoesNotProduceAFictitiousCandidate() {
         val anime = ReiAnixCatalogAnime(
-            source = ReiAnixCatalogSource.JIKAN,
+            source = ReiAnixCatalogSource.TENRAI,
             ids = ReiAnixExternalCatalogIds(myAnimeListId = 1L),
             title = "Poster Only",
             coverUrl = "https://cdn.example/poster.jpg",
@@ -449,7 +451,7 @@ class ReiAnixExternalCatalogContractsTest {
     @Test
     fun artworkCandidatesRequireAValidHttpUrl() {
         val anime = ReiAnixCatalogAnime(
-            source = ReiAnixCatalogSource.JIKAN,
+            source = ReiAnixCatalogSource.TENRAI,
             ids = ReiAnixExternalCatalogIds(myAnimeListId = 1L),
             title = "Anime", releaseYear = 2020, format = "TV",
             mediaKind = ReiAnixCatalogMediaKind.SERIES,
