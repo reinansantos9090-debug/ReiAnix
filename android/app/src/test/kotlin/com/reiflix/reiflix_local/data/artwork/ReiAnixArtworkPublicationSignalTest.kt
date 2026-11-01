@@ -950,7 +950,7 @@ class ReiAnixArtworkPublicationSignalTest {
         assertEquals("anipub", artworkSourceKindForUrl("https://anipub.org/assets/poster.jpg"))
         assertEquals("anipub", artworkSourceKindForUrl("https://cdn.anipub.org/assets/banner.jpg"))
         assertEquals("kitsu", artworkSourceKindForUrl("https://media.kitsu.io/poster.jpg"))
-        assertEquals("jikan", artworkSourceKindForUrl("https://cdn.myanimelist.net/poster.jpg"))
+        assertEquals("tenrai", artworkSourceKindForUrl("https://cdn.myanimelist.net/poster.jpg"))
         assertEquals("anilist", artworkSourceKindForUrl("https://s4.anilist.co/file/anilistcdn/media/anime/cover/large.jpg"))
     }
 
