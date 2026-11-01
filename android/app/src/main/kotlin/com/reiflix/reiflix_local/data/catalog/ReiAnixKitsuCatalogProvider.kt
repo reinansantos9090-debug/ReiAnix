@@ -110,8 +110,7 @@ class ReiAnixKitsuCatalogProvider(
             ?.takeIf { it in 1900..2200 }
         val poster = attributes.optJSONObject("posterImage")?.bestImage()
         val cover = attributes.optJSONObject("coverImage")?.bestImage()
-        // Kitsu documents posterImage and coverImage as distinct fields, but the public
-        // schema does not establish coverImage as Backdrop or Banner. Retain it unclassified.
+        // Kitsu's REST schema defines coverImage as the banner displayed at the top of a media page.
         val rating = attributes.catalogNumber("averageRating")
             ?.takeIf { it.isFinite() && it in 0.0..100.0 }
             ?.toInt()
@@ -125,9 +124,9 @@ class ReiAnixKitsuCatalogProvider(
             coverUrl = poster?.first,
             coverImageField = "posterImage",
             coverVariant = poster?.second,
-            unclassifiedArtworkFields = listOfNotNull(
-                cover?.let { ReiAnixCatalogArtworkSourceField("coverImage", it.first, it.second) },
-            ),
+            bannerUrl = cover?.first,
+            bannerImageField = "coverImage",
+            bannerVariant = cover?.second,
             releaseYear = year,
             format = format,
             mediaKind = subtype.toCatalogMediaKind(),
