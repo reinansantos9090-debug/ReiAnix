@@ -79,6 +79,11 @@ class ReiAnixAniListClient(
                 }
                 results += anime
             }
+            if (results.isEmpty() && media.length() > 0) {
+                return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("AniList search contained no valid media records"),
+                )
+            }
             AniListResult.Success(results.distinctBy { it.id }, incomplete = incomplete)
         }
     }
