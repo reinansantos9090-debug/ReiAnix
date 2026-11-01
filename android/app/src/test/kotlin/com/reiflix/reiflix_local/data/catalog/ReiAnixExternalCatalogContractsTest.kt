@@ -193,6 +193,8 @@ class ReiAnixExternalCatalogContractsTest {
         val candidates = anime.artworkCandidates()
         assertEquals(setOf("poster", "backdrop", "banner"), candidates.map { it.type.key }.toSet())
         assertEquals(3, candidates.map { it.sourceReference + "|" + it.type.key }.toSet().size)
+        assertEquals(44L, candidates.single { it.type == ReiAnixCatalogArtworkType.BANNER }
+            .copy(localAnimeId = 44L).localAnimeId)
         assertEquals("coverImage", candidates.single { it.type == ReiAnixCatalogArtworkType.POSTER }.originalField)
         assertEquals("bannerImage", candidates.single { it.type == ReiAnixCatalogArtworkType.BANNER }.originalField)
         assertEquals("poster_has_landscape_ratio",
