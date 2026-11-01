@@ -24,13 +24,14 @@ Cada `ReiAnixCatalogArtworkCandidate` preserva provider, ID externo, tipo, URL, 
 
 - **AniList:** `coverImage` → Poster; `bannerImage` → Banner. Nenhum dos campos é tratado como Backdrop.
 - **Kitsu:** `posterImage` → Poster; `coverImage` → Banner. A especificação REST oficial descreve `coverImage` como o banner exibido no topo da página da mídia; o contrato GraphQL oficial expõe o mesmo atributo como `banner_image`, resolvido por `cover_image`, com a descrição “A large banner image for this media”. O adapter preserva os nomes originais dos dois campos. `coverImage` não é Backdrop.
-- **AniPub:** `ImagePath` → Poster; `Cover` → Banner, conforme a referência da API/cliente mantida pelo projeto AniPub.
+- **AniPub:** `ImagePath` → Poster; `Cover` → Banner, conforme a tabela de campos do README do cliente mantido pela organização AnimePub, que documenta ambos como URLs absolutas.
 - **Tenrai:** as variantes escolhidas em `images.webp`/`images.jpg` → Poster. O adapter não emite Backdrop nem Banner. O ID MAL permanece no campo interno histórico `myAnimeListId`; o provider ativo é identificado como `tenrai`.
 - **AniMap:** resolvedor de identificadores somente; não produz artwork.
 
 **Backdrop:** permanece um tipo válido e independente no contrato, mas os adapters listados acima não promovem campos a Backdrop sem semântica explícita documentada. O fato de um recurso se chamar “cover” não é suficiente para classificá-lo como Backdrop.
 
-Referências oficiais/técnicas consultadas para o mapeamento Kitsu:
+Referências oficiais/técnicas consultadas para o mapeamento Kitsu e AniPub:
+- [AniPub maintained API client](https://github.com/AnimePub/AniPub-API): a tabela `AnimeInfo` define `ImagePath` como Poster e `Cover` como Banner; o cliente descreve URLs absolutas.
 - [Kitsu OpenAPI — schema de Media](https://github.com/hummingbird-me/api-docs/blob/c95e259bec851f4bddf13c7bce3dd2f08eba7d19/api/schemas/resources/media.yml): descreve `coverImage` como “Banner displayed at the top of the media page” e documenta `posterImage` separadamente.
 - [Kitsu GraphQL — interface Media](https://github.com/hummingbird-me/kitsu-server/blob/e6575ed9fd73ba8cccb920fe2e3f1ef873a71333/app/graphql/types/interface/media.rb): define `poster_image` como poster e `banner_image` como banner grande, com `method: :cover_image`.
 - [Kitsu REST — MediaResource](https://github.com/hummingbird-me/kitsu-server/blob/e6575ed9fd73ba8cccb920fe2e3f1ef873a71333/app/resources/media_resource.rb): expõe `poster_image` e `cover_image` como atributos distintos do mesmo recurso de mídia.
@@ -50,7 +51,7 @@ As proteções de propriedade manual e arte local válida continuam ativas. Atua
 
 O launcher declarado no Manifest é `MainActivity : ComponentActivity`. O runtime Android usa Kotlin, Jetpack Compose, os serviços/repositórios nativos e a mesma instância de `ReiAnixSqliteDatabase` compartilhada pela biblioteca. `ReiAnixArtworkService` é o escritor canônico dos candidatos externos; Coil atua como renderer, não como persistência alternativa.
 
-A integração AniList encaminha Poster e Banner por campos distintos do patch SQLite. `coverImage` do AniList permanece Poster e `bannerImage` permanece Banner. O patch não usa o campo legado `anime.banner_url` para gravar Banner e respeita os campos protegidos por edição manual.
+A integração AniList encaminha Poster e Banner por campos distintos do patch SQLite. `coverImage` do AniList permanece Poster e `bannerImage` permanece Banner. O identificador opcional `idMal` é preservado em `myAnimeListId`, sem consulta GraphQL redundante ou migração SQLite. O patch não usa o campo legado `anime.banner_url` para gravar Banner e respeita os campos protegidos por edição manual.
 
 ## Limites deste contrato
 
