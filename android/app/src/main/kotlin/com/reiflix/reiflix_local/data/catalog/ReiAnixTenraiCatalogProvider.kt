@@ -33,8 +33,12 @@ class ReiAnixTenraiCatalogProvider(
                 ?: throw JSONException("Tenrai search response is missing the data array.")
             buildList {
                 for (index in 0 until data.length()) {
-                    val item = data.optJSONObject(index) ?: continue
-                    parseAnime(item)?.let(::add)
+                    val item = data.optJSONObject(index)
+                        ?: throw JSONException("Tenrai search contains an invalid anime entry.")
+                    add(
+                        parseAnime(item)
+                            ?: throw JSONException("Tenrai search entry is missing its MAL ID or title."),
+                    )
                 }
             }
         }
