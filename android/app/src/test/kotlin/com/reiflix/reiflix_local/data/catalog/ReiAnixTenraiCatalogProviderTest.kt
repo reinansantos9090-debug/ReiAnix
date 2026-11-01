@@ -176,4 +176,19 @@ class ReiAnixTenraiCatalogProviderTest {
         assertNull(anime.backdropUrl)
     }
 
+    @Test
+    fun malformedSearchEntryDoesNotProduceAnIncompleteSuccessList() = runBlocking {
+        val transport = FakeTransport(
+            ReiAnixCatalogHttpResponse(
+                200,
+                """{"data":[{"mal_id":1,"title":"Valid work"},{"title":"Missing MAL ID"}]}""",
+                emptyMap(),
+            ),
+        )
+
+        val result = ReiAnixTenraiCatalogProvider(transport).searchAnime("work", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Failure)
+    }
+
 }
