@@ -161,16 +161,25 @@ object LibraryUiMappers {
         val backdropLocalPath = firstNonBlank(
             listOf("backdrop_local_path", "artwork_backdrop_local_path"),
         )
+        // banner_url is a legacy SQLite field used as a Backdrop source; do not
+        // reinterpret it as the independent Banner category.
         val backdropExternalUrl = firstNonBlank(
             listOf("backdrop_external_url", "banner_url"),
         )
+        val bannerLocalPath = firstNonBlank(
+            listOf("banner_local_path", "artwork_banner_local_path"),
+        )
+        val bannerExternalUrl = firstNonBlank(listOf("banner_external_url"))
         val posterRevision = firstNonBlank(listOf("artwork_revision"))
         val backdropRevision = firstNonBlank(listOf("artwork_backdrop_revision"))
+        val bannerRevision = firstNonBlank(listOf("artwork_banner_revision"))
         return if (
             posterLocalPath == null &&
             posterExternalUrl == null &&
             backdropLocalPath == null &&
-            backdropExternalUrl == null
+            backdropExternalUrl == null &&
+            bannerLocalPath == null &&
+            bannerExternalUrl == null
         ) {
             null
         } else {
@@ -181,6 +190,9 @@ object LibraryUiMappers {
                 backdropExternalUrl = backdropExternalUrl,
                 revision = posterRevision,
                 backdropRevision = backdropRevision,
+                bannerLocalPath = bannerLocalPath,
+                bannerExternalUrl = bannerExternalUrl,
+                bannerRevision = bannerRevision,
             )
         }
     }
