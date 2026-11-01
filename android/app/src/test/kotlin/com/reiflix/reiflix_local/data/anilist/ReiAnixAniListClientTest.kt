@@ -17,6 +17,7 @@ class ReiAnixAniListClientTest {
             {
               "data": {"Page": {"media": [{
                 "id": 16498,
+                "idMal": 21990,
                 "title": {"romaji":"Shingeki no Kyojin","english":"Attack on Titan","native":"進撃の巨人"},
                 "synonyms": ["Attack on Titan"],
                 "description": "Humanity fights titans",
@@ -38,6 +39,7 @@ class ReiAnixAniListClientTest {
         assertTrue(result is AniListResult.Success)
         val anime = (result as AniListResult.Success).value.single()
         assertEquals(16498, anime.id)
+        assertEquals(21990L, anime.myAnimeListId)
         assertEquals("Attack on Titan", anime.preferredTitle)
         assertTrue(anime.synonyms.contains("Shingeki no Kyojin"))
         assertEquals(25, anime.episodes)
@@ -62,6 +64,7 @@ class ReiAnixAniListClientTest {
         assertTrue(query.contains("\$page"))
         assertTrue(query.contains("\$perPage"))
         assertTrue(query.contains("media(search: \$search, type: ANIME"))
+        assertTrue(query.contains("idMal"))
         val variables = body.getJSONObject("variables")
         assertEquals("Dorohedoro", variables.getString("search"))
         assertEquals(1, variables.getInt("page"))
