@@ -41,6 +41,23 @@ class ReiAnixExternalCatalogContractsTest {
     }
 
     @Test
+    fun retiredJikanCannotBeRegisteredAsAnActiveMetadataProvider() {
+        val provider = object : ReiAnixAnimeCatalogProvider {
+            override val source = ReiAnixCatalogSource.JIKAN
+            override suspend fun searchAnime(query: String, limit: Int) =
+                ReiAnixCatalogResult.Success(emptyList<ReiAnixCatalogAnime>())
+            override suspend fun getAnime(externalId: String) =
+                ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+        }
+        try {
+            ReiAnixCatalogProviderRegistry(listOf(provider))
+            throw AssertionError("Retired Jikan must not be registered as an active provider.")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("Only metadata/artwork sources"))
+        }
+    }
+
+    @Test
     fun animapCannotBeRegisteredAsAnAnimeMetadataProvider() {
         val provider = object : ReiAnixAnimeCatalogProvider {
             override val source = ReiAnixCatalogSource.ANIMAP
