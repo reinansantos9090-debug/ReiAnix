@@ -176,6 +176,43 @@ class ReiAnixExternalCatalogContractsTest {
         ))
     }
 
+
+    @Test
+    fun posterBackdropAndBannerHaveIndependentCanonicalIdentityAndAspectWarnings() {
+        val anime = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.ANILIST,
+            ids = ReiAnixExternalCatalogIds(aniListId = 123L),
+            title = "Typed Artwork",
+            coverUrl = "https://cdn.example/poster.jpg",
+            backdropUrl = "https://cdn.example/backdrop.jpg",
+            bannerUrl = "https://cdn.example/banner.jpg",
+            coverImageField = "coverImage",
+            backdropImageField = "documentedBackdrop",
+            bannerImageField = "bannerImage",
+        )
+        val candidates = anime.artworkCandidates()
+        assertEquals(setOf("poster", "backdrop", "banner"), candidates.map { it.type.key }.toSet())
+        assertEquals(3, candidates.map { it.sourceReference + "|" + it.type.key }.toSet().size)
+        assertEquals("coverImage", candidates.single { it.type == ReiAnixCatalogArtworkType.POSTER }.originalField)
+        assertEquals("bannerImage", candidates.single { it.type == ReiAnixCatalogArtworkType.BANNER }.originalField)
+        assertEquals("poster_has_landscape_ratio",
+            reiAnixArtworkAspectRatioWarning(ReiAnixCatalogArtworkType.POSTER, 1600, 900))
+        assertEquals("horizontal_artwork_has_portrait_ratio",
+            reiAnixArtworkAspectRatioWarning(ReiAnixCatalogArtworkType.BANNER, 600, 900))
+        assertNull(reiAnixArtworkAspectRatioWarning(ReiAnixCatalogArtworkType.BANNER, 1600, 900))
+    }
+
+    @Test
+    fun missingArtworkTypeDoesNotProduceAFictitiousCandidate() {
+        val anime = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.JIKAN,
+            ids = ReiAnixExternalCatalogIds(myAnimeListId = 1L),
+            title = "Poster Only",
+            coverUrl = "https://cdn.example/poster.jpg",
+        )
+        assertEquals(listOf("poster"), anime.artworkCandidates().map { it.type.key })
+    }
+
     @Test
     fun artworkCandidatesRequireAValidHttpUrl() {
         val anime = ReiAnixCatalogAnime(
