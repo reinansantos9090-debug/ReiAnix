@@ -122,6 +122,10 @@ class ReiAnixAniPubCatalogProvider(
     }
 
     private fun parseAnime(root: JSONObject, requestedId: String): ReiAnixCatalogAnime? {
+        val responseId = root.optCatalogText("_id") ?: requestedId
+        if (responseId != requestedId) {
+            throw JSONException("AniPub info response ID does not match the requested record.")
+        }
         val title = root.optCatalogText("Name")
             ?: root.optCatalogText("name")
             ?: throw JSONException("AniPub info response has no anime title.")
