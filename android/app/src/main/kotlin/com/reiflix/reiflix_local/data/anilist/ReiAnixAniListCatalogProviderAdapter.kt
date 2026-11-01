@@ -35,7 +35,16 @@ class ReiAnixAniListCatalogProviderAdapter(
                     ),
                 )
             } else {
-                ReiAnixCatalogResult.Success(result.value.mapNotNull { it.toCatalogAnime() })
+                val mapped = result.value.map { it.toCatalogAnime() }
+                if (mapped.any { it == null }) {
+                    ReiAnixCatalogResult.Failure(
+                        ReiAnixCatalogError.InvalidResponse(
+                            "AniList returned a media record without a usable title; the candidate set is incomplete.",
+                        ),
+                    )
+                } else {
+                    ReiAnixCatalogResult.Success(mapped.filterNotNull())
+                }
             }
             is AniListResult.Failure ->
                 ReiAnixCatalogResult.Failure(result.error.toCatalogError())
@@ -53,7 +62,17 @@ class ReiAnixAniListCatalogProviderAdapter(
                     ),
                 )
             } else {
-                ReiAnixCatalogResult.Success(result.value?.toCatalogAnime())
+                val remote = result.value
+                val mapped = remote?.toCatalogAnime()
+                if (remote != null && mapped == null) {
+                    ReiAnixCatalogResult.Failure(
+                        ReiAnixCatalogError.InvalidResponse(
+                            "AniList detail has no usable title for provider identity resolution.",
+                        ),
+                    )
+                } else {
+                    ReiAnixCatalogResult.Success(mapped)
+                }
             }
             is AniListResult.Failure -> ReiAnixCatalogResult.Failure(result.error.toCatalogError())
         }
@@ -62,6 +81,12 @@ class ReiAnixAniListCatalogProviderAdapter(
 
 private fun AniListAnime.toCatalogAnime(): ReiAnixCatalogAnime? {
     val preferred = preferredTitle.trim().takeIf(String::isNotEmpty) ?: return null
+    val poster = coverExtraLargeUrl
+        ?.takeIf(::isValidCatalogArtworkUrl)
+        ?.let { it to "extraLarge" }
+        ?: coverLargeUrl
+            ?.takeIf(::isValidCatalogArtworkUrl)
+            ?.let { it to "large" }
     return ReiAnixCatalogAnime(
         source = ReiAnixCatalogSource.ANILIST,
         ids = ReiAnixExternalCatalogIds(aniListId = id.toLong()),
@@ -70,9 +95,9 @@ private fun AniListAnime.toCatalogAnime(): ReiAnixCatalogAnime? {
             .filter { it.isNotBlank() && !it.equals(preferred, ignoreCase = true) }
             .toSet(),
         synopsis = description,
-        coverUrl = (coverExtraLargeUrl ?: coverLargeUrl).takeIf(::isValidCatalogArtworkUrl),
+        coverUrl = poster?.first,
         coverImageField = "coverImage",
-        coverVariant = if (coverExtraLargeUrl != null) "extraLarge" else "large",
+        coverVariant = poster?.second,
         bannerUrl = bannerUrl.takeIf(::isValidCatalogArtworkUrl),
         bannerImageField = "bannerImage",
         bannerVariant = "original",
