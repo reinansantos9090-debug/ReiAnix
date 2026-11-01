@@ -149,7 +149,9 @@ class ReiAnixKitsuCatalogProvider(
 
     private fun JSONObject.bestImage(): Pair<String, String>? =
         listOf("original", "large", "medium", "small", "tiny")
-            .firstNotNullOfOrNull { variant -> catalogText(variant)?.let { it to variant } }
+            .firstNotNullOfOrNull { variant ->
+                catalogText(variant)?.takeIf(::isValidCatalogArtworkUrl)?.let { it to variant }
+            }
 
     private fun String?.toCatalogMediaKind(): ReiAnixCatalogMediaKind = when (
         this?.trim()?.lowercase(Locale.ROOT)
