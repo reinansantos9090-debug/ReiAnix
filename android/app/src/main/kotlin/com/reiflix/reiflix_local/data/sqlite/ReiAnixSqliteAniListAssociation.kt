@@ -97,12 +97,27 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
             }
             connection.update("anime", values, "id = ?", arrayOf(patch.animeId.toString()))
-            patch.bannerArtworkUrl?.takeIf(String::isNotBlank)?.let { rawUrl ->
-                persistAniListBannerCandidate(
+            val artworkEntityType = if (current.mediaKind.equals("movie", true)) "movie" else "anime"
+            patch.posterArtworkUrl?.takeIf(String::isNotBlank)?.let { rawUrl ->
+                persistAniListArtworkCandidate(
                     database = connection,
                     animeId = patch.animeId,
-                    entityType = if (current.mediaKind.equals("movie", true)) "movie" else "anime",
+                    entityType = artworkEntityType,
                     anilistId = anilistId,
+                    artworkType = "poster",
+                    sourceRef = patch.posterArtworkSourceRef ?: "anilist:$anilistId:coverImage",
+                    rawUrl = rawUrl,
+                    variant = patch.posterArtworkVariant,
+                    priority = patch.posterArtworkPriority,
+                )
+            }
+            patch.bannerArtworkUrl?.takeIf(String::isNotBlank)?.let { rawUrl ->
+                persistAniListArtworkCandidate(
+                    database = connection,
+                    animeId = patch.animeId,
+                    entityType = artworkEntityType,
+                    anilistId = anilistId,
+                    artworkType = "banner",
                     sourceRef = patch.bannerArtworkSourceRef ?: "anilist:$anilistId:bannerImage",
                     rawUrl = rawUrl,
                     variant = patch.bannerArtworkVariant,
@@ -121,39 +136,41 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
 
 
 /**
- * Upsert AniList's semantic bannerImage into the independent canonical Banner type.
- * It intentionally does not touch anime.banner_url, which remains a legacy Backdrop field.
+ * Upsert a semantic AniList image field into its independent canonical artwork type.
+ * Neither Poster nor Banner is inferred from anime.banner_url (the legacy Backdrop field).
  */
-private fun persistAniListBannerCandidate(
+private fun persistAniListArtworkCandidate(
     database: android.database.sqlite.SQLiteDatabase,
     animeId: Long,
     entityType: String,
     anilistId: Long,
+    artworkType: String,
     sourceRef: String,
     rawUrl: String,
     variant: String,
     priority: Int,
 ) {
+    if (artworkType !in setOf("poster", "banner")) return
     val url = rawUrl.trim()
     val parsed = runCatching { URL(url) }.getOrNull() ?: return
     if (!parsed.protocol.equals("https", true) || parsed.host.isBlank() || parsed.userInfo != null) return
     if (sourceRef.isBlank() || variant.isBlank() || priority < 0) return
 
-    val manualBannerExists = database.rawQuery(
-        "SELECT 1 FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='banner' " +
+    val manualArtworkExists = database.rawQuery(
+        "SELECT 1 FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type=? " +
             "AND (manual=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')) LIMIT 1",
-        arrayOf(entityType, animeId.toString()),
+        arrayOf(entityType, animeId.toString(), artworkType),
     ).use { it.moveToFirst() }
-    if (manualBannerExists) return
+    if (manualArtworkExists) return
 
-    val keyInput = "$entityType|$animeId|anilist|$anilistId|banner|$sourceRef|$variant|$url"
+    val keyInput = "$entityType|$animeId|anilist|$anilistId|$artworkType|$sourceRef|$variant|$url"
     val key = MessageDigest.getInstance("SHA-256")
         .digest(keyInput.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     val existing = database.rawQuery(
-        "SELECT id,external_url FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='banner' " +
+        "SELECT id,external_url FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type=? " +
             "AND (source_ref=? OR artwork_key=? OR external_url=?) ORDER BY updated_at DESC,id DESC LIMIT 1",
-        arrayOf(entityType, animeId.toString(), sourceRef, key, url),
+        arrayOf(entityType, animeId.toString(), artworkType, sourceRef, key, url),
     ).use { cursor ->
         if (!cursor.moveToFirst()) null else cursor.getLong(0) to cursor.getString(1)
     }
@@ -164,7 +181,7 @@ private fun persistAniListBannerCandidate(
     val values = ContentValues().apply {
         put("entity_type", entityType)
         put("entity_id", animeId.toString())
-        put("artwork_type", "banner")
+        put("artwork_type", artworkType)
         put("source", "anilist")
         put("source_ref", sourceRef)
         put("external_url", url)
@@ -183,6 +200,9 @@ private fun persistAniListBannerCandidate(
             putNull("local_path")
             putNull("checksum")
             put("byte_size", 0L)
+            putNull("next_retry_at")
+            putNull("http_status")
+            put("failure_count", 0)
         }
     }
     if (existing == null) {
