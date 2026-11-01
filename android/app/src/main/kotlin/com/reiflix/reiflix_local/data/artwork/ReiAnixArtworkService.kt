@@ -1020,9 +1020,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 put("entity_type", entity)
                 put("entity_id", id.toString())
                 put("artwork_type", type)
-                put("source", "cache"); put("source_ref", url); put("local_path", oldPath); put("external_url", url)
-                put("manual", 0); put("priority", 400); put("status", "ready"); put("updated_at", now)
-                put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")
+                put("source", "cache")
+                put("source_ref", old?.sourceRef ?: url)
+                put("local_path", oldPath); put("external_url", url)
+                put("manual", 0); put("priority", old?.priority ?: 400)
+                put("status", "ready"); put("updated_at", now)
+                put("last_attempt_at", now); put("failure_count", 0)
+                put("artwork_key", old?.key ?: key); put("variant", old?.variant ?: "large")
                 put("byte_size", file.length()); put("width", dims.first.takeIf { it > 0 })
                 put("height", dims.second.takeIf { it > 0 }); put("checksum", digest); put("content_type", mime(oldPath))
                 put("last_access", now); putNull("next_retry_at"); putNull("http_status")
@@ -1082,7 +1086,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 return@transaction null
             }
             val values = ContentValues().apply {
-                put("source", exact.source.takeUnless { it.equals("cache", true) } ?: artworkCatalogSource(url))
+                // Keep the established materialized-row marker. Provider/field provenance
+                // remains in source_ref and artwork_key.
+                put("source", "cache")
                 put("source_ref", exact.sourceRef ?: url)
                 put("external_url", url)
                 put("status", "downloading")
@@ -1108,7 +1114,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         )
         val values = ContentValues().apply {
             put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", type)
-            put("source", artworkCatalogSource(url)); put("source_ref", url); put("external_url", url); put("manual", 0)
+            put("source", "cache"); put("source_ref", url); put("external_url", url); put("manual", 0)
             put("priority", 400); put("status", "downloading"); put("discovered_at", now); put("updated_at", now)
             put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")
         }
@@ -1295,8 +1301,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val current = urlCurrent(db, id, type, url)
             val now = nowSeconds()
             val values = ContentValues().apply {
-                // Keep the originating provider/reference on the canonical row after bytes are cached.
-                put("source", row.source.takeUnless { it.equals("cache", true) } ?: artworkCatalogSource(url))
+                // Preserve the established cache lifecycle marker while retaining provider
+                // and source-field provenance in source_ref and artwork_key.
+                put("source", "cache")
                 put("source_ref", row.sourceRef ?: url)
                 put("local_path", image.file.absolutePath); put("external_url", url)
                 put("status", "ready"); put("priority", if (current) row.priority else minOf(row.priority, 350))
