@@ -12,8 +12,8 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * Read-only AniPub adapter. It uses the documented metadata search/details routes only;
- * streaming/player endpoints are deliberately outside this catalog integration.
+ * Read-only AniPub adapter. It uses the documented search and public info routes only;
+ * streaming/player routes and embedded third-party catalog data are deliberately excluded.
  */
 class ReiAnixAniPubCatalogProvider(
     private val transport: ReiAnixCatalogGetTransport = HttpUrlConnectionReiAnixCatalogGetTransport(),
@@ -81,34 +81,19 @@ class ReiAnixAniPubCatalogProvider(
                 ReiAnixCatalogError.InvalidRequest("AniPub ID must be a positive integer."),
             )
         }
-        // Prefer the documented full-details API (local AniPub data + Jikan identity fields).
-        // Fall back to the documented /api/info endpoint for metadata-only availability.
-        val response = requestJson("$BASE_URL/anime/api/details/$id")
-        val selected = when (response) {
-            is ReiAnixCatalogResult.Success -> response
-            is ReiAnixCatalogResult.Failure -> when (response.error) {
-                // A missing full-details record may still exist in the basic metadata API.
-                is ReiAnixCatalogError.Http -> {
-                    if ((response.error as ReiAnixCatalogError.Http).statusCode == 404) {
-                        requestJson("$BASE_URL/api/info/$id")
-                    } else {
-                        return response
-                    }
-                }
-                // Do not bypass Retry-After, network failures, or server errors with another route.
-                else -> return response
+        // Use AniPub's documented metadata endpoint directly. The richer details endpoint
+        // embeds an optional Jikan payload and must not make AniPub depend on the retired API.
+        return when (val response = requestJson("$BASE_URL/api/info/$id")) {
+            is ReiAnixCatalogResult.Failure -> response
+            is ReiAnixCatalogResult.Success -> try {
+                val root = response.value as? JSONObject
+                    ?: throw JSONException("AniPub info response must be a JSON object.")
+                ReiAnixCatalogResult.Success(parseAnime(root, id))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
             }
-        }
-        if (selected is ReiAnixCatalogResult.Failure) return selected
-        return try {
-            val payload = (selected as ReiAnixCatalogResult.Success).value
-            val root = payload as? JSONObject
-                ?: throw JSONException("AniPub details response must be a JSON object.")
-            ReiAnixCatalogResult.Success(parseAnime(root, id))
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
         }
     }
 
@@ -137,77 +122,48 @@ class ReiAnixAniPubCatalogProvider(
     }
 
     private fun parseAnime(root: JSONObject, requestedId: String): ReiAnixCatalogAnime? {
-        val local = root.optJSONObject("local") ?: root
-        val jikanRoot = root.optJSONObject("jikan")
-        val jikan = jikanRoot?.optJSONObject("data") ?: jikanRoot
-        val title = local.optCatalogText("Name")
-            ?: local.optCatalogText("name")
-            ?: jikan?.optCatalogText("title")
-            ?: throw JSONException("AniPub details response has no anime title.")
+        val title = root.optCatalogText("Name")
+            ?: root.optCatalogText("name")
+            ?: throw JSONException("AniPub info response has no anime title.")
 
         val alternatives = linkedSetOf<String>()
-        local.optCatalogTextValues("Synonyms", alternatives)
-        jikan?.optCatalogText("title_english")?.let(alternatives::add)
-        jikan?.optCatalogText("title_japanese")?.let(alternatives::add)
-        jikan?.optJSONArray("title_synonyms")?.addValues(alternatives)
-        jikan?.optJSONArray("titles")?.addTitleValues(alternatives)
+        root.optCatalogTextValues("Synonyms", alternatives)
         alternatives.removeAll { it.equals(title, ignoreCase = true) }
 
-        val malId = jikan?.optCatalogLong("mal_id")?.takeIf { it > 0L }
         val ids = ReiAnixExternalCatalogIds(
-            myAnimeListId = malId,
             additionalIds = mapOf("anipub" to requestedId),
         )
-        val type = jikan?.optCatalogText("type")
-            ?: local.optCatalogText("Type")
-            ?: local.optCatalogText("Format")
-        val aired = jikan?.optJSONObject("aired")
-        val startDate = aired?.optCatalogText("from")
-        val year = startDate?.take(4)?.toIntOrNull()?.takeIf { it in 1900..2200 }
-            ?: jikan?.optCatalogInt("year")?.takeIf { it in 1900..2200 }
-            ?: firstAiredYear(local.optCatalogText("Aired"))
-            ?: firstAiredYear(local.optCatalogText("Premiered"))
-        val score = local.optCatalogDouble("MALScore")
+        val type = root.optCatalogText("Type") ?: root.optCatalogText("Format")
+        val aired = root.optCatalogText("Aired")
+        val year = firstAiredYear(aired)
+            ?: firstAiredYear(root.optCatalogText("Premiered"))
+        val score = root.optCatalogDouble("MALScore")
             ?.takeIf { it.isFinite() && it in 0.0..10.0 && it > 0.0 }
             ?.let { (it * 10.0).roundToInt().coerceIn(0, 100) }
-            ?: jikan?.optCatalogDouble("score")
-                ?.takeIf { it.isFinite() && it in 0.0..10.0 && it > 0.0 }
-                ?.let { (it * 10.0).roundToInt().coerceIn(0, 100) }
-
-        val poster = local.optCatalogText("ImagePath")?.let(::normalizeAniPubImageUrl)
-        val banner = local.optCatalogText("Cover")?.let(::normalizeAniPubImageUrl)
-        val episodes = jikan?.optCatalogInt("episodes")?.takeIf { it > 0 }
-            ?: local.optCatalogInt("epCount")?.takeIf { it > 0 }
-        val duration = parseDurationMinutes(local.optCatalogText("Duration"))
-            ?: jikan?.optCatalogText("duration")?.let(::parseDurationMinutes)
-        val season = jikan?.optCatalogText("season")?.toAniPubCalendarSeason()
-            ?: local.optCatalogText("Premiered")?.substringBefore(' ')?.toAniPubCalendarSeason()
+        val poster = root.optCatalogText("ImagePath")?.let(::normalizeAniPubImageUrl)
+        val banner = root.optCatalogText("Cover")?.let(::normalizeAniPubImageUrl)
 
         return ReiAnixCatalogAnime(
             source = source,
             ids = ids,
             title = title,
             alternativeTitles = alternatives,
-            synopsis = local.optCatalogText("DescripTion")
-                ?: local.optCatalogText("Description")
-                ?: jikan?.optCatalogText("synopsis"),
+            synopsis = root.optCatalogText("DescripTion")
+                ?: root.optCatalogText("Description"),
             coverUrl = poster,
             coverImageField = "ImagePath",
-            // AniPub's maintained API client documents Cover as Banner, not Backdrop.
             bannerUrl = banner,
             bannerImageField = "Cover",
             bannerVariant = "Cover",
             releaseYear = year,
-            season = season,
+            season = root.optCatalogText("Premiered")?.substringBefore(' ')?.toAniPubCalendarSeason(),
             format = type?.uppercase(Locale.ROOT),
             mediaKind = type.toAniPubMediaKind(),
-            episodes = episodes,
-            durationMinutes = duration,
-            status = local.optCatalogText("Status") ?: jikan?.optCatalogText("status"),
+            episodes = root.optCatalogInt("epCount")?.takeIf { it > 0 },
+            durationMinutes = parseDurationMinutes(root.optCatalogText("Duration")),
+            status = root.optCatalogText("Status"),
             averageScore = score,
-            contentRating = jikan?.optCatalogText("rating"),
-            startDate = startDate,
-            endDate = aired?.optCatalogText("to"),
+            contentRating = root.optCatalogText("Rating") ?: root.optCatalogText("AgeRating"),
         )
     }
 
@@ -218,7 +174,14 @@ class ReiAnixAniPubCatalogProvider(
             raw.startsWith("https://", ignoreCase = true) -> raw
             raw.startsWith("http://", ignoreCase = true) ||
                 raw.startsWith("//", ignoreCase = true) -> return null
-            else -> "https://anipub.org/" + raw.removePrefix("/")
+            else -> {
+                val relative = raw.removePrefix("/")
+                val relativeUri = runCatching { URI(relative) }.getOrNull() ?: return null
+                if (relativeUri.isAbsolute || relativeUri.rawAuthority != null ||
+                    relativeUri.path.orEmpty().split('/').any { it == "." || it == ".." }
+                ) return null
+                "https://anipub.org/$relative"
+            }
         }
         val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
         if (!uri.scheme.equals("https", ignoreCase = true) ||
