@@ -164,4 +164,24 @@ class ReiAnixKitsuCatalogProviderTest {
         assertTrue(malformed is ReiAnixCatalogResult.Failure)
         assertTrue((malformed as ReiAnixCatalogResult.Failure).error is ReiAnixCatalogError.InvalidResponse)
     }
+    @Test
+    fun invalidImageUrlsAreOmittedWithoutRejectingKitsuMetadata() = runBlocking {
+        val transport = FakeTransport(
+            ReiAnixCatalogHttpResponse(
+                200,
+                """{"data":[{"id":"kitsu-77","type":"anime","attributes":{"canonicalTitle":"Valid metadata","posterImage":{"original":"javascript:alert(1)","large":"https://media.kitsu.io/poster.jpg"},"coverImage":{"original":"https://user:pass@media.kitsu.io/banner.jpg"}}}]}""",
+                emptyMap(),
+            ),
+        )
+
+        val result = ReiAnixKitsuCatalogProvider(transport).searchAnime("Valid metadata", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val anime = (result as ReiAnixCatalogResult.Success).value.single()
+        assertEquals("Valid metadata", anime.title)
+        assertEquals("https://media.kitsu.io/poster.jpg", anime.coverUrl)
+        assertNull(anime.bannerUrl)
+        assertNull(anime.backdropUrl)
+    }
+
 }
