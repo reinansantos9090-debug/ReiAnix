@@ -43,13 +43,24 @@ class ReiAnixAniPubCatalogProvider(
             ReiAnixCatalogError.InvalidResponse("AniPub search response is not a documented result array."),
         )
 
+        val detailLimit = minOf(limit, MAX_DETAIL_LOOKUPS_PER_SEARCH)
+        if (entries.length() > detailLimit) {
+            return ReiAnixCatalogResult.Failure(
+                ReiAnixCatalogError.InvalidResponse(
+                    "AniPub search returned more entries than this adapter can fully verify in one bounded lookup.",
+                ),
+            )
+        }
         val candidates = buildList {
             for (index in 0 until entries.length()) {
-                val item = entries.optJSONObject(index) ?: continue
-                val id = item.optCatalogText("Id") ?: item.optCatalogText("id") ?: continue
-                if (id.toLongOrNull()?.let { it > 0L } != true) continue
+                val item = entries.optJSONObject(index)
+                    ?: throw JSONException("AniPub search contains an invalid result entry.")
+                val id = item.optCatalogText("Id") ?: item.optCatalogText("id")
+                    ?: throw JSONException("AniPub search result is missing its external ID.")
+                if (id.toLongOrNull()?.let { it > 0L } != true) {
+                    throw JSONException("AniPub search result contains an invalid external ID.")
+                }
                 add(id)
-                if (size >= minOf(limit, MAX_DETAIL_LOOKUPS_PER_SEARCH)) break
             }
         }.distinct()
 
@@ -68,9 +79,8 @@ class ReiAnixAniPubCatalogProvider(
             }
         }
         return when {
-            details.isNotEmpty() -> ReiAnixCatalogResult.Success(details)
             firstFailure != null -> ReiAnixCatalogResult.Failure(firstFailure)
-            else -> ReiAnixCatalogResult.Success(emptyList())
+            else -> ReiAnixCatalogResult.Success(details)
         }
     }
 
