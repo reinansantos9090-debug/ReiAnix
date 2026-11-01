@@ -189,7 +189,13 @@ data class ReiAnixAnimeMetadataPatch(
     val descriptionOriginal: String? = null,
     val coverUrl: String? = null,
     val coverCache: String? = null,
+    /** Legacy anime.banner_url field; its established runtime meaning is Backdrop. */
     val bannerUrl: String? = null,
+    /** Independent Banner URL; it must be persisted to artwork.artwork_type='banner'. */
+    val bannerArtworkUrl: String? = null,
+    val bannerArtworkSourceRef: String? = null,
+    val bannerArtworkVariant: String = "original",
+    val bannerArtworkPriority: Int = 400,
     val genresJson: String? = null,
     val year: Int? = null,
     val season: String? = null,
@@ -206,11 +212,14 @@ data class ReiAnixAnimeMetadataPatch(
         require(metadataFetchedAt == null || (metadataFetchedAt.isFinite() && metadataFetchedAt >= 0.0)) {
             "metadataFetchedAt must be finite and non-negative."
         }
+        require(bannerArtworkSourceRef == null || bannerArtworkSourceRef.isNotBlank())
+        require(bannerArtworkVariant.isNotBlank())
+        require(bannerArtworkPriority >= 0)
         require(
             title != null || romaji != null || english != null ||
                 nativeTitle != null || aliasesJson != null || description != null ||
                 descriptionOriginal != null || coverUrl != null || coverCache != null || bannerUrl != null ||
-                genresJson != null || year != null || season != null || status != null ||
+                bannerArtworkUrl != null || genresJson != null || year != null || season != null || status != null ||
                 episodesCount != null || duration != null || score != null || format != null ||
                 studio != null || metadataFetchedAt != null,
         ) { "The metadata patch must supply at least one field." }
