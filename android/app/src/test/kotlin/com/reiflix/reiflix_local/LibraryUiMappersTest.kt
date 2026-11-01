@@ -81,6 +81,28 @@ class LibraryUiMappersTest {
     }
 
     @Test
+    fun bannerArtworkIsProjectedIndependentlyFromPosterAndBackdrop() {
+        val source = animeSource(id = 68L).toMutableMap().apply {
+            this["artwork_local_path"] = "/cache/poster-68.jpg"
+            this["artwork_backdrop_local_path"] = "/cache/backdrop-68.jpg"
+            this["artwork_backdrop_revision"] = "sha256:backdrop-68"
+            this["artwork_banner_local_path"] = "/cache/banner-68.jpg"
+            this["banner_external_url"] = "https://cdn.example/banner-68.jpg"
+            this["artwork_banner_revision"] = "sha256:banner-68"
+        }
+
+        val artwork = requireNotNull(LibraryUiMappers.anime(source).artwork)
+
+        assertEquals("/cache/poster-68.jpg", artwork.localPath)
+        assertEquals("/cache/backdrop-68.jpg", artwork.backdropLocalPath)
+        assertEquals("/cache/banner-68.jpg", artwork.bannerLocalPath)
+        assertEquals("https://cdn.example/banner-68.jpg", artwork.bannerExternalUrl)
+        assertEquals("sha256:backdrop-68", artwork.backdropRevision)
+        assertEquals("sha256:banner-68", artwork.bannerRevision)
+        assertTrue(artwork.hasBannerLocalArtwork)
+    }
+
+    @Test
     fun presentationStateDistinguishesPendingAndFailedArtwork() {
         val pending = animeSource(
             id = 18L,
