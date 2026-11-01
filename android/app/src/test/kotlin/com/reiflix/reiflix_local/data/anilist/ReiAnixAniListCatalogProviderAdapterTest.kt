@@ -147,4 +147,24 @@ class ReiAnixAniListCatalogProviderAdapterTest {
         assertNull(anime.backdropUrl)
     }
 
+    @Test
+    fun invalidExtraLargePosterFallsBackToValidLargeVariant() = runBlocking {
+        val client = ReiAnixAniListClient(
+            transport = AniListTransport { _, _ ->
+                AniListHttpResponse(
+                    statusCode = 200,
+                    body = """{"data":{"Page":{"media":[{"id":790,"title":{"english":"Poster fallback"},"coverImage":{"extraLarge":"javascript:alert(1)","large":"https://cdn.example/large-valid.jpg"}}]}}}""",
+                )
+            },
+            minimumRequestIntervalMs = 0L,
+        )
+
+        val result = ReiAnixAniListCatalogProviderAdapter(client).searchAnime("Poster fallback", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val anime = (result as ReiAnixCatalogResult.Success).value.single()
+        assertEquals("https://cdn.example/large-valid.jpg", anime.coverUrl)
+        assertEquals("large", anime.coverVariant)
+    }
+
 }
