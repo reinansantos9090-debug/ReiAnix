@@ -131,4 +131,64 @@ class ReiAnixAniMapCatalogIdResolverTest {
         assertTrue(conflicting is ReiAnixCatalogResult.Failure)
         assertTrue((conflicting as ReiAnixCatalogResult.Failure).error is ReiAnixCatalogError.InvalidResponse)
     }
+
+    @Test
+    fun rejectsMappingsThatDoNotEchoTheExactLookupIdOrContainMultipleRecords() = runBlocking {
+        val wrongLookupId = ReiAnixAniMapCatalogIdResolver(
+            FakeTransport(
+                listOf(
+                    ReiAnixCatalogHttpResponse(
+                        200,
+                        """
+                        {
+                          "sources": [
+                            "https://anilist.co/anime/2",
+                            "https://myanimelist.net/anime/1"
+                          ],
+                          "title": "Cowboy Bebop",
+                          "type": "TV",
+                          "animeSeason": {"year": 1998}
+                        }
+                        """.trimIndent(),
+                        emptyMap(),
+                    ),
+                ),
+            ),
+        ).resolveIds(ReiAnixExternalCatalogIds(aniListId = 1L))
+        assertTrue(wrongLookupId is ReiAnixCatalogResult.Failure)
+        assertTrue((wrongLookupId as ReiAnixCatalogResult.Failure).error is ReiAnixCatalogError.InvalidResponse)
+
+        val ambiguousPayload = ReiAnixAniMapCatalogIdResolver(
+            FakeTransport(
+                listOf(
+                    ReiAnixCatalogHttpResponse(
+                        200,
+                        """
+                        {
+                          "data": [
+                            {
+                              "sources": ["https://anilist.co/anime/1"],
+                              "title": "Cowboy Bebop",
+                              "type": "TV",
+                              "animeSeason": {"year": 1998}
+                            },
+                            {
+                              "sources": ["https://anilist.co/anime/1"],
+                              "title": "Cowboy Bebop: The Movie",
+                              "type": "MOVIE",
+                              "animeSeason": {"year": 2001}
+                            }
+                          ]
+                        }
+                        """.trimIndent(),
+                        emptyMap(),
+                    ),
+                ),
+            ),
+        ).resolveIds(ReiAnixExternalCatalogIds(aniListId = 1L))
+        assertTrue(ambiguousPayload is ReiAnixCatalogResult.Failure)
+        assertTrue((ambiguousPayload as ReiAnixCatalogResult.Failure).error is ReiAnixCatalogError.InvalidResponse)
+    }
+
+
 }

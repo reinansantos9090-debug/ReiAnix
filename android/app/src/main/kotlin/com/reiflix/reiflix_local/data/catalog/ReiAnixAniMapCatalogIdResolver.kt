@@ -40,6 +40,13 @@ class ReiAnixAniMapCatalogIdResolver(
                 }
 
                 val parsed = parseMapping(response.body)
+                if (!parsed.ids.containsLookupCandidate(candidate)) {
+                    return ReiAnixCatalogResult.Failure(
+                        ReiAnixCatalogError.InvalidResponse(
+                            "AniMap response does not contain the exact identifier used for this lookup.",
+                        ),
+                    )
+                }
                 val mergedIds = try {
                     ids.mergeVerified(parsed.ids)
                 } catch (conflict: IllegalArgumentException) {
@@ -80,9 +87,18 @@ class ReiAnixAniMapCatalogIdResolver(
 
     private fun parseMapping(raw: String): ReiAnixCatalogIdentifierMapping {
         val root = JSONObject(raw)
-        val entry = root.optJSONObject("data")
-            ?: root.optJSONArray("data")?.optJSONObject(0)
-            ?: root
+        val data = root.opt("data")
+        val entry = when (data) {
+            is JSONObject -> data
+            is JSONArray -> {
+                if (data.length() != 1) {
+                    throw JSONException("AniMap response is ambiguous: expected exactly one data record.")
+                }
+                data.optJSONObject(0)
+                    ?: throw JSONException("AniMap data record is not a JSON object.")
+            }
+            else -> root
+        }
         val title = entry.optCatalogText("title")
             ?: throw JSONException("AniMap response is missing its title.")
         val sources = entry.optJSONArray("sources")
@@ -161,6 +177,16 @@ class ReiAnixAniMapCatalogIdResolver(
     }
 
     private data class LookupCandidate(val service: String, val id: String)
+
+    private fun ReiAnixExternalCatalogIds.containsLookupCandidate(candidate: LookupCandidate): Boolean =
+        when (candidate.service) {
+            "anilist" -> aniListId?.toString() == candidate.id
+            "mal" -> myAnimeListId?.toString() == candidate.id
+            "anidb" -> aniDbId?.toString() == candidate.id
+            "kitsu" -> kitsuId == candidate.id
+            "ann" -> additionalIds["ann"] == candidate.id
+            else -> false
+        }
 
     companion object {
         const val BASE_URL = "https://animap.id"

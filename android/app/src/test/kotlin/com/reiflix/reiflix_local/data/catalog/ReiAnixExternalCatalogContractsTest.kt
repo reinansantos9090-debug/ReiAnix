@@ -61,7 +61,7 @@ class ReiAnixExternalCatalogContractsTest {
     }
 
     @Test
-    fun matchingRequiresExactTitleYearFormatKindAndConsistentSeason() {
+    fun matchingRequiresExactTitleAndRejectsContradictoryMetadata() {
         val local = ReiAnixCatalogIdentity(
             titles = setOf("Kōtetsujou no Kabaneri", "Kabaneri of the Iron Fortress"),
             releaseYear = 2016, format = "TV", mediaKind = ReiAnixCatalogMediaKind.SERIES,
@@ -70,7 +70,7 @@ class ReiAnixExternalCatalogContractsTest {
         val remote = ReiAnixCatalogAnime(
             source = ReiAnixCatalogSource.KITSU,
             ids = ReiAnixExternalCatalogIds(kitsuId = "123"),
-            title = "Kabaneri of the Iron Fortress",
+            title = "Kabaneri: of the Iron Fortress!",
             releaseYear = 2016, format = "TV", mediaKind = ReiAnixCatalogMediaKind.SERIES,
             seasonNumber = 1,
         )
@@ -86,7 +86,137 @@ class ReiAnixExternalCatalogContractsTest {
     }
 
     @Test
-    fun aniMapCrosswalkRequiresExactTitleYearFormatKindAndCompatibleEpisodeCount() {
+    fun titleNormalizationPreservesJapaneseVoicingAndKeepsSeasonNumbers() {
+        assertEquals(
+            "kotetsujo no kabaneri",
+            ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle("Kōtetsujō no Kabaneri"),
+        )
+        assertEquals(
+            "kabaneri of the iron fortress",
+            ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle("ＫＡＢＡＮＥＲＩ： of the Iron Fortress!"),
+        )
+        assertEquals(
+            ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle("Kabaneri"),
+            ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle("KABANERI"),
+        )
+        assertFalse(
+            ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle("がっこう") ==
+                ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle("かっこう"),
+        )
+        assertFalse(
+            ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle("Work Season 1") ==
+                ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle("Work Season 2"),
+        )
+    }
+
+    @Test
+    fun missingRemoteMetadataIsNeutralButInsufficientSearchEvidenceStaysProbable() {
+        val local = ReiAnixCatalogIdentity(
+            titles = setOf("Known Work", "Known Work Original"),
+            releaseYear = 2021,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            episodes = 12,
+            seasonNumber = 1,
+        )
+        val remote = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(kitsuId = "known-kitsu-id"),
+            title = "Known Work",
+        )
+
+        val titleOnly = ReiAnixCatalogIdentityMatcher.evaluate(7L, local, remote)
+        assertEquals(ReiAnixCatalogIdentityDecision.PROBABLE, titleOnly.decision)
+        assertNull(titleOnly.value)
+
+        val anchored = ReiAnixCatalogIdentityMatcher.evaluate(
+            7L,
+            local,
+            remote,
+            knownIds = ReiAnixExternalCatalogIds(kitsuId = "known-kitsu-id"),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, anchored.decision)
+
+        val twoDimensions = ReiAnixCatalogIdentityMatcher.evaluate(
+            7L,
+            local,
+            remote.copy(releaseYear = 2021, format = "TV", mediaKind = ReiAnixCatalogMediaKind.UNKNOWN),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, twoDimensions.decision)
+
+        val yearMissing = ReiAnixCatalogIdentityMatcher.evaluate(
+            7L,
+            local,
+            remote.copy(format = "TV", mediaKind = ReiAnixCatalogMediaKind.SERIES, episodes = 12),
+        )
+        assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, yearMissing.decision)
+
+        assertEquals(
+            ReiAnixCatalogIdentityDecision.REJECTED,
+            ReiAnixCatalogIdentityMatcher.evaluate(7L, local, remote.copy(releaseYear = 2020)).decision,
+        )
+        assertEquals(
+            ReiAnixCatalogIdentityDecision.REJECTED,
+            ReiAnixCatalogIdentityMatcher.evaluate(7L, local, remote.copy(format = "MOVIE")).decision,
+        )
+        assertEquals(
+            ReiAnixCatalogIdentityDecision.REJECTED,
+            ReiAnixCatalogIdentityMatcher.evaluate(7L, local, remote.copy(mediaKind = ReiAnixCatalogMediaKind.MOVIE)).decision,
+        )
+        assertEquals(
+            ReiAnixCatalogIdentityDecision.REJECTED,
+            ReiAnixCatalogIdentityMatcher.evaluate(7L, local, remote.copy(seasonNumber = 2)).decision,
+        )
+        assertEquals(
+            ReiAnixCatalogIdentityDecision.REJECTED,
+            ReiAnixCatalogIdentityMatcher.evaluate(7L, local, remote.copy(episodes = 24)).decision,
+        )
+        val genericTitleLocal = local.copy(titles = setOf("Special"))
+        assertEquals(
+            ReiAnixCatalogIdentityDecision.REJECTED,
+            ReiAnixCatalogIdentityMatcher.evaluate(
+                7L,
+                genericTitleLocal,
+                remote.copy(title = "Special", alternativeTitles = emptySet()),
+            ).decision,
+        )
+    }
+
+    @Test
+    fun providerSuppliedLocalizedAndRomanizedAliasesCanConfirmWithoutFuzzyMatching() {
+        val local = ReiAnixCatalogIdentity(
+            titles = setOf(
+                "Shingeki no Kyojin",
+                "Attack on Titan",
+                "Ataque dos Titãs",
+                "進撃の巨人",
+                "AOT",
+            ),
+            releaseYear = 2013,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+        )
+        val remote = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.JIKAN,
+            ids = ReiAnixExternalCatalogIds(myAnimeListId = 16498L),
+            title = "進撃の巨人",
+            alternativeTitles = setOf("Attack on Titan", "Ataque dos Titãs", "AOT"),
+            releaseYear = 2013,
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+        )
+        assertNotNull(ReiAnixCatalogIdentityMatcher.verify(8L, local, remote))
+        assertNull(
+            ReiAnixCatalogIdentityMatcher.verify(
+                8L,
+                local.copy(titles = setOf("Shingeki no Kyojin")),
+                remote.copy(title = "Attack on Titan: Lost Girls", alternativeTitles = emptySet()),
+            ),
+        )
+    }
+
+    @Test
+    fun aniMapCrosswalkRequiresExactTitleAnExistingIdAnchorAndCompatibleKnownMetadata() {
         val local = ReiAnixCatalogIdentity(
             titles = setOf("Cowboy Bebop", "カウボーイビバップ"),
             releaseYear = 1998,
@@ -107,35 +237,40 @@ class ReiAnixExternalCatalogContractsTest {
             mediaKind = ReiAnixCatalogMediaKind.SERIES,
             episodes = 26,
         )
+        val knownIds = ReiAnixExternalCatalogIds(aniListId = 1L)
 
-        val verified = ReiAnixCatalogIdentityMatcher.verifyMapping(44L, local, mapping)
+        val verified = ReiAnixCatalogIdentityMatcher.verifyMapping(44L, local, mapping, knownIds)
         assertNotNull(verified)
         assertEquals(44L, verified?.localAnimeId)
         assertEquals(23L, verified?.externalIds?.aniDbId)
         assertEquals("cowboy bebop", verified?.matchedTitle)
 
         assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
-            44L, local, mapping.copy(releaseYear = 1999),
+            44L, local, mapping, ReiAnixExternalCatalogIds(aniListId = 999L),
         ))
         assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
-            44L, local, mapping.copy(format = "MOVIE"),
+            44L, local, mapping.copy(releaseYear = 1999), knownIds,
         ))
         assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
-            44L, local, mapping.copy(mediaKind = ReiAnixCatalogMediaKind.MOVIE),
+            44L, local, mapping.copy(format = "MOVIE"), knownIds,
         ))
         assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
-            44L, local, mapping.copy(episodes = 24),
+            44L, local, mapping.copy(mediaKind = ReiAnixCatalogMediaKind.MOVIE), knownIds,
         ))
         assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
-            44L, local, mapping.copy(title = "Cowboy Bebop: The Movie", alternativeTitles = emptySet()),
+            44L, local, mapping.copy(episodes = 24), knownIds,
         ))
         assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
-            44L, local.copy(releaseYear = null), mapping,
+            44L, local, mapping.copy(title = "Cowboy Bebop: The Movie", alternativeTitles = emptySet()), knownIds,
+        ))
+        assertNotNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
+            44L, local.copy(releaseYear = null), mapping, knownIds,
         ))
         assertNull(ReiAnixCatalogIdentityMatcher.verifyMapping(
             44L,
             local.copy(season = "FALL"),
             mapping.copy(season = "SPRING"),
+            knownIds,
         ))
     }
 

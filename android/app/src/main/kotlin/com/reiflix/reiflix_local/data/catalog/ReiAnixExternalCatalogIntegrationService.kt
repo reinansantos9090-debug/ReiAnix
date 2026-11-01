@@ -119,11 +119,17 @@ class ReiAnixExternalCatalogIntegrationService(
                 is ReiAnixCatalogResult.Success -> {
                     val mapping = mappingResult.value
                     if (mapping != null) {
-                        val mappingMatch = ReiAnixCatalogIdentityMatcher.verifyMapping(
-                            anime.id, identity, mapping,
+                        val mappingEvaluation = ReiAnixCatalogIdentityMatcher.evaluateMapping(
+                            anime.id, identity, mapping, ids,
                         )
+                        val mappingMatch = mappingEvaluation.value
                         if (mappingMatch == null) {
-                            record(ReiAnixCatalogSource.ANIMAP, "IDENTITY_MISMATCH_REJECTED", anime.id)
+                            val result = if (mappingEvaluation.decision == ReiAnixCatalogIdentityDecision.PROBABLE) {
+                                "PROBABLE_CROSSWALK_REQUIRES_CONFIRMATION"
+                            } else {
+                                "IDENTITY_MISMATCH_REJECTED"
+                            }
+                            record(ReiAnixCatalogSource.ANIMAP, result, anime.id)
                         } else {
                             try {
                                 ids = library.saveExternalCatalogIds(mappingMatch)
@@ -244,17 +250,25 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
                 is ReiAnixCatalogResult.Success -> {
                     val remote = result.value ?: return Resolution.None
-                    val match = ReiAnixCatalogIdentityMatcher.verify(anime.id, identity, remote, ids)
-                        ?: return run {
+                    val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
+                    when (evaluation.decision) {
+                        ReiAnixCatalogIdentityDecision.CONFIRMED ->
+                            Resolution.Verified(VerifiedRemote(remote, requireNotNull(evaluation.value)))
+                        ReiAnixCatalogIdentityDecision.PROBABLE -> {
+                            record(provider.source, "PROBABLE_ID_MATCH_REQUIRES_CONFIRMATION", anime.id)
+                            Resolution.Ambiguous
+                        }
+                        else -> {
                             record(provider.source, "PERSISTED_IDENTITY_CONFLICT", anime.id)
                             Resolution.None
                         }
-                    Resolution.Verified(VerifiedRemote(remote, match))
+                    }
                 }
             }
         }
 
         val verified = linkedMapOf<String, VerifiedRemote>()
+        var probableCandidates = 0
         for (query in identity.titles.asSequence().map(String::trim).filter(String::isNotEmpty)
             .distinct().take(MAX_SEARCH_TERMS)
         ) {
@@ -263,18 +277,27 @@ class ReiAnixExternalCatalogIntegrationService(
                 is ReiAnixCatalogResult.Failure -> record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
                 is ReiAnixCatalogResult.Success -> {
                     result.value.forEach { remote ->
-                        val match = ReiAnixCatalogIdentityMatcher.verify(anime.id, identity, remote, ids)
-                            ?: return@forEach
-                        val remoteId = remote.ids.idFor(remote.source) ?: return@forEach
-                        verified.putIfAbsent(remoteId, VerifiedRemote(remote, match))
+                        val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
+                        when (evaluation.decision) {
+                            ReiAnixCatalogIdentityDecision.CONFIRMED -> {
+                                val match = requireNotNull(evaluation.value)
+                                val remoteId = remote.ids.idFor(remote.source) ?: return@forEach
+                                verified.putIfAbsent(remoteId, VerifiedRemote(remote, match))
+                            }
+                            ReiAnixCatalogIdentityDecision.PROBABLE -> probableCandidates++
+                            else -> Unit
+                        }
                     }
                 }
             }
         }
-        return when (verified.size) {
-            0 -> Resolution.None
-            1 -> Resolution.Verified(verified.values.first())
-            else -> Resolution.Ambiguous
+        // An exact-title candidate with insufficient corroboration can still be a competing work.
+        // Do not auto-select a confirmed result while such a competitor remains in the result set.
+        return when {
+            verified.size > 1 || (verified.isNotEmpty() && probableCandidates > 0) -> Resolution.Ambiguous
+            verified.size == 1 -> Resolution.Verified(verified.values.first())
+            probableCandidates > 0 -> Resolution.Ambiguous
+            else -> Resolution.None
         }
     }
 
