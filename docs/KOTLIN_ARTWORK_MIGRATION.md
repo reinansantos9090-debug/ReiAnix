@@ -1,10 +1,10 @@
-# Migração do subsistema de artwork para Kotlin — Prompt 07/29
+# Contrato nativo de artwork para Android/Kotlin — Prompt 2/10 e 2.1/10
 
 ## Arquitetura implementada
 
 `ReiAnixArtworkService` é o produtor persistente do caminho Compose. A instância é criada de forma lazy por `ReiAnixAppDependencies` e recebe a mesma `ReiAnixSqliteDatabase` usada pela biblioteca. A implementação utiliza a tabela existente `artwork` e os campos de `anime`; não cria outra base, repositório de cache ou tabela, nem altera o schema v29.
 
-O serviço cobre materialização de poster e backdrop a partir de URLs já persistidas, consulta dos registros locais, gravação de resultados, tentativas de recuperação e publicação de eventos. O backfill é iniciado no host Compose quando o catálogo SQLite está saudável e também após a conclusão de uma varredura; portanto, reabrir o app não depende de um novo scan para recuperar posters pendentes. O backfill só processa URLs persistidas e não inicia matching de títulos nem consultas AniList adicionais. Os downloads têm concorrência limitada. A varredura e o player não aguardam pela conclusão do pipeline.
+O serviço cobre materialização de Poster, Backdrop e Banner a partir de URLs já persistidas, consulta dos registros locais, gravação de resultados, tentativas de recuperação e publicação de eventos. O backfill é iniciado no host Compose quando o catálogo SQLite está saudável e também após a conclusão de uma varredura; portanto, reabrir o app não depende de um novo scan para recuperar posters pendentes. O backfill só processa URLs persistidas e não inicia matching de títulos nem consultas AniList adicionais. Os downloads têm concorrência limitada. A varredura e o player não aguardam pela conclusão do pipeline.
 
 ## Download e cache de imagens
 
@@ -14,39 +14,57 @@ A escrita persistente acontece depois da promoção e em transação na tabela `
 
 As chaves de cache nativas preservam o formato SHA-256 previamente utilizado pelo ArtworkEngine: provedor, identidade do item/URL, tipo e variante. Arquivos válidos já associados são mantidos sem download; arquivos completos com nome baseado no checksum, promovidos antes de uma interrupção e ainda sem associação SQLite, são recuperados e associados sem nova requisição HTTP. Falhas transitórias usam backoff exponencial de 60 segundos até 6 horas; HTTP 429 e respostas que enviam `Retry-After` respeitam o maior entre o backoff local e o intervalo informado pelo servidor. Respostas permanentes recebem cooldown de 24 horas e são reavaliadas indefinidamente enquanto a URL continuar necessária; não existe limite finito de tentativas. O horário `next_retry_at` é a fonte de verdade: depois do backfill no bootstrap do processo, o serviço restaura o agendamento em memória a partir do timestamp persistido; uma reinicialização seguinte reconstrói novamente os agendamentos. O backfill também remove arquivos `.tmp` abandonados sem tocar nos temporários pertencentes a downloads ativos. O cache continua limitado a 128 MiB e não remove arquivos referenciados por `artwork.local_path` ou `anime.cover_cache`.
 
-## Contrato canônico de imagens (Prompt 2/10)
+## Contrato canônico de imagens
 
-A classificação interna usa exclusivamente os tipos **poster**, **backdrop** e **banner**, persistidos no campo `artwork.artwork_type`. Cada candidato conserva provedor, ID externo, campo original da resposta, URL, variante/resolução e prioridade; dimensões conhecidas podem gerar um aviso sem rejeitar nem reclassificar a imagem. A chave de identidade inclui o tipo, e as consultas/atualizações do escritor continuam limitadas a `entity_type + entity_id + artwork_type`.
+O contrato interno usa três tipos independentes: **Poster**, **Backdrop** e **Banner**, identificados por `ReiAnixCatalogArtworkType` e persistidos em `artwork.artwork_type`. A semântica vem do campo declarado pelo provider, nunca de proporção, resolução, dimensões ou aparência. Dimensões podem emitir diagnóstico de proporção, mas não rejeitam nem reclassificam um candidato.
 
-Mapeamento explícito dos adapters atuais:
+Cada `ReiAnixCatalogArtworkCandidate` preserva provider, ID externo, tipo, URL, nome do campo original, variante/resolução, prioridade e tipo de entidade. O vínculo com o ID local do anime só é aplicado depois da verificação da identidade externa. Campos cuja semântica não seja comprovada permanecem em `unclassifiedArtworkFields` e não chegam à persistência tipada.
 
-- **AniList:** `coverImage` → Poster; `bannerImage` → Banner. A API descreve `bannerImage` como banner, portanto ele não é encaminhado como Backdrop. O candidato Banner é gravado na tabela `artwork`.
-- **Kitsu:** `posterImage` → Poster. `coverImage` é mantido no DTO como campo original não classificado: a documentação pública consultada enumera a propriedade, mas não define com precisão que ela seja Backdrop ou Banner. Não se infere seu tipo pela proporção.
-- **AniPub:** `ImagePath` → Poster; `Cover` → Banner, conforme a referência do cliente/API mantido pelo projeto AniPub. Nenhum dos dois é promovido a Backdrop.
-- **Jikan:** as variantes WebP/JPG em `images` fornecem Poster. O adapter não cria Backdrop ou Banner.
-- **AniMap:** permanece exclusivamente um resolvedor de identificadores e não produz candidatos de imagem.
+### Mapeamento dos providers
 
-Compatibilidade legada: `anime.cover_url` continua sendo a URL de Poster; `anime.banner_url` continua sendo o ponteiro legado de Backdrop. O nome histórico não é reinterpretado como Banner. Novos Banner são registros independentes na tabela `artwork`; nenhuma migração, limpeza ou reprocessamento de imagens é necessária para este contrato.
+- **AniList:** `coverImage` → Poster; `bannerImage` → Banner. Nenhum dos campos é tratado como Backdrop.
+- **Kitsu:** `posterImage` → Poster; `coverImage` → Banner. A especificação REST oficial descreve `coverImage` como o banner exibido no topo da página da mídia; o contrato GraphQL oficial expõe o mesmo atributo como `banner_image`, resolvido por `cover_image`, com a descrição “A large banner image for this media”. O adapter preserva os nomes originais dos dois campos. `coverImage` não é Backdrop.
+- **AniPub:** `ImagePath` → Poster; `Cover` → Banner, conforme a referência da API/cliente mantida pelo projeto AniPub.
+- **Jikan:** as variantes escolhidas em `images.webp`/`images.jpg` → Poster. O adapter não emite Backdrop nem Banner.
+- **AniMap:** resolvedor de identificadores somente; não produz artwork.
 
-Referências de API consultadas: [AniList Media](https://docs.anilist.co/reference/object/media), [Kitsu API](https://kitsu.docs.apiary.io/reference/posts), [AniPub API/client reference](https://github.com/AnimePub/AniPub-API).
-## Integração com AniList e Compose
+**Backdrop:** permanece um tipo válido e independente no contrato, mas os adapters listados acima não promovem campos a Backdrop sem semântica explícita documentada. O fato de um recurso se chamar “cover” não é suficiente para classificá-lo como Backdrop.
 
-Depois que os metadados são persistidos, o graph nativo pode agendar `requestAnimeArtwork`. O evento `anilist_metadata_committed` agora informa que o artwork não deve ser solicitado pelo Python; seu consumidor em `main.py` atualiza apenas a projeção. A persistência de capas é responsabilidade de `ReiAnixArtworkService`, e não há delegação para `library.artwork.sync_anime_metadata` ou `library.artwork.request` nesse fluxo.
+Referências oficiais/técnicas consultadas para o mapeamento Kitsu:
+- [Kitsu OpenAPI — schema de Media](https://github.com/hummingbird-me/api-docs/blob/c95e259bec851f4bddf13c7bce3dd2f08eba7d19/api/schemas/resources/media.yml): descreve `coverImage` como “Banner displayed at the top of the media page” e documenta `posterImage` separadamente.
+- [Kitsu GraphQL — interface Media](https://github.com/hummingbird-me/kitsu-server/blob/e6575ed9fd73ba8cccb920fe2e3f1ef873a71333/app/graphql/types/interface/media.rb): define `poster_image` como poster e `banner_image` como banner grande, com `method: :cover_image`.
+- [Kitsu REST — MediaResource](https://github.com/hummingbird-me/kitsu-server/blob/e6575ed9fd73ba8cccb920fe2e3f1ef873a71333/app/resources/media_resource.rb): expõe `poster_image` e `cover_image` como atributos distintos do mesmo recurso de mídia.
 
-Depois de persistir um resultado válido, o serviço envia `artwork_published` com `event=ARTWORK_PUBLISHED`, tipo/ID da entidade, tipo de imagem, caminho local, chave e referência. O handler atualiza os consumidores incrementais Flet que estiverem ativos e pede a renovação da projeção Compose por `artwork_ready`. A interface usa o banco canônico como fonte dos caminhos; Coil é renderer e pode atuar como fallback visual remoto enquanto o arquivo local é materializado.
+## Persistência e compatibilidade SQLite v29
 
-## Thumbnails de vídeo
+A integração externa percorre `artworkCandidates()` somente depois de validar a correspondência entre o registro remoto e a entidade local. Cada candidato é persistido pelo `ReiAnixArtworkService` com escopo por `entity_type + entity_id + artwork_type`; origem, ID externo/campo original e variante permanecem na referência/chave do candidato. A chave de identidade inclui também tipo e variante, impedindo colisões entre Poster, Backdrop e Banner.
 
-`VideoThumbnailExtractor` já realiza extração em background por `MediaMetadataRetriever`, valida os resultados do seu cache e dá suporte aos caminhos URI tratados pela implementação Android existente. Agora, tanto os resultados recém-extraídos quanto os cache hits tentam registrar o arquivo no mesmo catálogo `artwork`, com `entity_type=episode`, `artwork_type=episode_thumbnail`, `source=generated` e variante `small`. A identidade da origem inclui identidade de mídia, tamanho e data de modificação. A duração extraída só preenche `episodes.duration` quando o valor canônico ainda não é positivo.
+Os ponteiros legados mantêm a semântica histórica:
+- `anime.cover_url` e `anime.cover_cache` representam Poster.
+- `anime.banner_url` representa Backdrop, apesar do nome legado da coluna.
+- Banner é armazenado como registro independente em `artwork.artwork_type='banner'`; nunca é copiado para `anime.banner_url`.
 
-O evento `thumbnail_ready` transporta `canonicalArtworkRegistered`. No modo Compose, Python não tenta registrar novamente o thumbnail já persistido em Kotlin. O escritor Python continua apenas como fallback do runtime Flet legado, quando Compose não está ativo. O extrator mantém uma chave de solicitação recente por URI para evitar registrar um resultado atrasado se uma revisão mais nova da mesma mídia já foi solicitada.
+As proteções de propriedade manual e arte local válida continuam ativas. Atualizar um tipo não substitui registros de outro tipo. O contrato utiliza a tabela `artwork` já existente e mantém `PRAGMA user_version = 29`; esta etapa não adiciona tabela, migração, banco paralelo nem rotina de limpeza. Registros, URLs legadas e arquivos de cache existentes são preservados.
 
-## Limite deliberado da migração Python
+## Integração Android/Kotlin
 
-`core/artwork.py` e seus consumidores permanecem no repositório porque o runtime Flet ainda possui caminhos legítimos que chamam diretamente o ArtworkEngine. Eles não são removidos globalmente nesta etapa. Para o caminho de metadados e projeção Compose, porém, o Python deixou de executar download, sincronização de cache ou gravação canônica de thumbnails. A remoção total do ArtworkEngine será segura depois de migrados os consumidores Flet restantes e seus contratos de interface/testes.
+O launcher declarado no Manifest é `MainActivity : ComponentActivity`. O runtime Android usa Kotlin, Jetpack Compose, os serviços/repositórios nativos e a mesma instância de `ReiAnixSqliteDatabase` compartilhada pela biblioteca. `ReiAnixArtworkService` é o escritor canônico dos candidatos externos; Coil atua como renderer, não como persistência alternativa.
 
-## Testes e validação
+A integração AniList encaminha Poster e Banner por campos distintos do patch SQLite. `coverImage` do AniList permanece Poster e `bannerImage` permanece Banner. O patch não usa o campo legado `anime.banner_url` para gravar Banner e respeita os campos protegidos por edição manual.
 
-Foi adicionado `tests/test_kotlin_artwork_migration_contract.py` com verificações de integração e contratos de fonte para a base SQLite compartilhada, download/validação, publicação de eventos e remoção da delegação Python no caminho Compose. Os testes Python existentes de metadados, artwork e thumbnails foram ajustados para refletir a nova fronteira de execução. Nenhum teste de emulador/instrumentado foi adicionado e testes Kotlin/JVM não são executados manualmente por este prompt.
+## Limites deste contrato
 
-A validação definitiva da compilação, testes de regressão e artefatos APK/ZIP pertence ao workflow do último commit desta etapa. O status do workflow e os artefatos devem ser verificados na execução do GitHub Actions; não podem ser inferidos a partir da presença dos arquivos neste documento.
+Thumbnails de episódios são um recurso separado (`entity_type=episode`, `artwork_type=episode_thumbnail`) e não são Poster, Backdrop ou Banner. O Prompt 2.1 não altera extrator, miniaturas, player, scanner, downloader, política de tentativas, matcher ou interface.
+
+## Histórico da migração — referência histórica, não runtime atual
+
+Versões anteriores desta documentação descreviam uma etapa híbrida em que eventos Compose eram encaminhados por NativeMailbox para `main.py`, havia consumidores Flet e o caminho Python podia atuar como compatibilidade. Esses registros são mantidos aqui para explicar a transição histórica e **não descrevem a arquitetura Android atual**. Não devem ser reintroduzidos como dependências do aplicativo.
+
+No estado atual desta branch, `main.py` e `requirements.txt` não existem na raiz; o Manifest inicia `MainActivity`, cuja classe estende `ComponentActivity`; o módulo Android aplica os plugins nativos de Android e Kotlin e não depende de Flutter/Flet/Python para iniciar ou executar o app. O workflow Kotlin/JVM também valida explicitamente a ausência de `main.py`. A existência de documentos históricos com esses termos não implica runtime híbrido.
+
+## Testes e workflow Kotlin/JVM
+
+O workflow `.github/workflows/kotlin_jvm_tests.yml` é disparado exclusivamente por `workflow_dispatch`; esta documentação não o transforma em execução automática por push ou pull request. A suíte executa testes host-side com Robolectric/JVM, prepara uma fixture temporária do contrato canônico SQLite v29 e remove essa fixture ao final. Não executa testes de emulador nem instrumentados.
+
+A suíte seleciona os testes de adapters AniList/Kitsu/AniPub/Jikan, contratos, coordenador/resolvedor e regressões SQLite de integração/persistência. A presença de seletores no YAML não é prova de execução: o resultado só pode ser informado após uma execução real do workflow chegar a estado terminal, com os relatórios JUnit correspondentes.
+
