@@ -116,6 +116,8 @@ data class ReiAnixCatalogArtworkCandidate(
     val entityType: String = "anime",
     val width: Int? = null,
     val height: Int? = null,
+    /** Local SQLite owner, set only after the external identity has passed verification. */
+    val localAnimeId: Long? = null,
 ) {
     init {
         require(source.providesArtwork && !source.resolvesIdentifiers) {
@@ -128,6 +130,7 @@ data class ReiAnixCatalogArtworkCandidate(
         require(priority >= 0)
         require(width == null || width > 0)
         require(height == null || height > 0)
+        require(localAnimeId == null || localAnimeId > 0L)
         requireValidArtworkUrl(url)
     }
 
