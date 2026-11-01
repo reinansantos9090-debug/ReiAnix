@@ -87,7 +87,9 @@ class ReiAnixKitsuCatalogProvider(
     }
 
     private fun parseAnime(resource: JSONObject): ReiAnixCatalogAnime? {
-        val id = resource.catalogText("id") ?: return null
+        val id = resource.catalogText("id")
+            ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,128}")) }
+            ?: return null
         val attributes = resource.optJSONObject("attributes") ?: return null
         val titles = attributes.optJSONObject("titles")
         val canonical = attributes.catalogText("canonicalTitle")
