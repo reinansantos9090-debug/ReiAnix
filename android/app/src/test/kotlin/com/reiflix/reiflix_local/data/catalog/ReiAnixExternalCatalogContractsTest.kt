@@ -12,7 +12,8 @@ class ReiAnixExternalCatalogContractsTest {
     fun sourceRolesKeepAniMapAsIdentifierResolverOnly() {
         assertTrue(ReiAnixCatalogSource.ANILIST.providesMetadata)
         assertTrue(ReiAnixCatalogSource.KITSU.providesArtwork)
-        assertTrue(ReiAnixCatalogSource.JIKAN.providesMetadata)
+        assertTrue(ReiAnixCatalogSource.TENRAI.providesMetadata)
+        assertFalse(ReiAnixCatalogSource.JIKAN.providesMetadata)
         assertTrue(ReiAnixCatalogSource.ANIPUB.providesArtwork)
         assertTrue(ReiAnixCatalogSource.ANIMAP.resolvesIdentifiers)
         assertFalse(ReiAnixCatalogSource.ANIMAP.providesMetadata)
@@ -26,6 +27,8 @@ class ReiAnixExternalCatalogContractsTest {
         val first = ReiAnixExternalCatalogIds(myAnimeListId = 42L, kitsuId = "kitsu-uuid")
         val merged = first.mergeVerified(ReiAnixExternalCatalogIds(aniDbId = 72L))
         assertEquals(42L, merged.myAnimeListId)
+        assertEquals("42", merged.idFor(ReiAnixCatalogSource.TENRAI))
+        assertEquals("42", merged.idFor(ReiAnixCatalogSource.JIKAN))
         assertEquals(72L, merged.aniDbId)
         try {
             first.mergeVerified(ReiAnixExternalCatalogIds(kitsuId = "different-id"))
@@ -290,7 +293,7 @@ class ReiAnixExternalCatalogContractsTest {
             mediaKind = ReiAnixCatalogMediaKind.SERIES,
         )
         val remote = ReiAnixCatalogAnime(
-            source = ReiAnixCatalogSource.JIKAN,
+            source = ReiAnixCatalogSource.TENRAI,
             ids = ReiAnixExternalCatalogIds(myAnimeListId = 16498L),
             title = "進撃の巨人",
             alternativeTitles = setOf("Attack on Titan", "Ataque dos Titãs", "AOT"),
