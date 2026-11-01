@@ -92,7 +92,7 @@ Todos os adapters continuam produzindo `ReiAnixCatalogAnime` e `ReiAnixCatalogRe
 - URL original, nome do campo de origem e variante/resolução;
 - tipo canônico Poster/Backdrop/Banner apenas quando semanticamente documentado.
 
-Os adapters públicos usam o transporte GET HTTPS bounded já existente, resultados tipados para falhas HTTP/rede/timeout/JSON, limites de resposta, timeout e coordenador compartilhado. Falha de um provider permanece um resultado local daquela fonte e não cancela as outras fontes. AniPub não depende de Jikan. Respostas incompletas ou sem dados suficientes permanecem ausentes/erro; não se fabricam IDs, URLs ou imagens.
+Os adapters públicos usam o transporte GET HTTPS bounded já existente, resultados tipados para falhas HTTP/rede/timeout/JSON, limites de resposta, timeout e coordenador compartilhado. Redirecionamentos HTTP são seguidos manualmente, com no máximo três saltos; cada destino precisa ser HTTPS, possuir host e não conter user info. Downgrade HTTPS→HTTP e destinos malformados são rejeitados. Falha de um provider permanece um resultado local daquela fonte e não cancela as outras fontes. AniPub não depende de Jikan. Respostas incompletas ou sem dados suficientes permanecem ausentes/erro; não se fabricam IDs, URLs ou imagens.
 
 ## Integridade e limites desta etapa
 
