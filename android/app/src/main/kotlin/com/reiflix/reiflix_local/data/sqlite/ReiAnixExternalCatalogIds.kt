@@ -254,7 +254,7 @@ suspend fun ReiAnixSqliteLibraryRepository.listAnimeAfterExternalCatalogCursor(
 
 private fun externalCatalogAttemptPreferenceKey(animeId: Long, source: String): String {
     require(animeId > 0L)
-    require(source == "kitsu" || source == "jikan" || source == "anipub")
+    require(source == "kitsu" || source == "jikan" || source == "tenrai" || source == "anipub")
     return "__reianix.external_catalog_attempt.v1.$animeId.$source"
 }
 
