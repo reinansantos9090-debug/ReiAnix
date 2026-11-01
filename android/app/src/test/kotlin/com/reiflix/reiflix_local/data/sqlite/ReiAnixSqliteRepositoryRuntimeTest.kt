@@ -2946,7 +2946,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val responseBytes = responseImage.readBytes()
         val preservedPoster = createValidPng("real-loopback-preserved-poster.png")
         val posterBytes = preservedPoster.readBytes()
-        val server = LocalArtworkHttpServer(statusCode = 200, responseBytes = responseBytes)
+        val server = LocalArtworkHttpServer(
+            statusCode = 200,
+            responseBytes = responseBytes,
+            cacheControl = "public, max-age=300",
+        )
         try {
             SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
                 // Seed the loopback URL directly in this isolated fixture. The production
@@ -2982,6 +2986,23 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertEquals("ready", row.status)
             assertEquals(200, row.httpStatus)
             assertEquals(responseBytes.toList(), savedFile.readBytes().toList())
+            val artworkCacheExpiry = SQLiteDatabase.openDatabase(
+                databaseFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            ).use { db ->
+                db.rawQuery(
+                    "SELECT next_retry_at FROM artwork WHERE entity_type='anime' AND entity_id='1' " +
+                        "AND artwork_type='backdrop' LIMIT 1",
+                    null,
+                ).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getDouble(0)
+                }
+            }
+            val nowSeconds = System.currentTimeMillis() / 1_000.0
+            assertTrue("Cache-Control max-age must be persisted as an expiry.", artworkCacheExpiry > nowSeconds + 250.0)
+            assertTrue("Artwork expiry must remain bounded by max-age.", artworkCacheExpiry <= nowSeconds + 300.0)
             assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
             assertNotNull(artwork.publishedArtworks.value["anime|1|backdrop"])
 
@@ -3176,6 +3197,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     private class LocalArtworkHttpServer(
         statusCode: Int,
         private val responseBytes: ByteArray,
+        private val cacheControl: String? = null,
     ) : AutoCloseable {
         private val serverSocket = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
         private val requestServed = CountDownLatch(1)
@@ -3203,9 +3225,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                         503 -> "Service Unavailable"
                         else -> "Fixture Response"
                     }
+                    val cacheHeader = cacheControl
+                        ?.takeIf(String::isNotBlank)
+                        ?.let { "Cache-Control: $it\\r\\n" }
+                        .orEmpty()
                     val responseHead = (
                         "HTTP/1.1 $statusCode $reason\r\n" +
                             "Content-Type: image/png\r\n" +
+                            cacheHeader +
                             "Content-Length: ${responseBytes.size}\r\n" +
                             "Connection: close\r\n\r\n"
                         ).toByteArray(Charsets.US_ASCII)
