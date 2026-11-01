@@ -115,4 +115,25 @@ class ReiAnixAniListCatalogProviderAdapterTest {
         )
     }
 
+    @Test
+    fun invalidAniListArtworkUrlsAreOmittedWithoutLosingMediaMetadata() = runBlocking {
+        val client = ReiAnixAniListClient(
+            transport = AniListTransport { _, _ ->
+                AniListHttpResponse(
+                    statusCode = 200,
+                    body = """{"data":{"Page":{"media":[{"id":789,"title":{"english":"Valid metadata"},"format":"TV","coverImage":{"large":"javascript:alert(1)"},"bannerImage":"https://user:pass@cdn.example/banner.jpg"}]}}}""",
+                )
+            },
+            minimumRequestIntervalMs = 0L,
+        )
+        val result = ReiAnixAniListCatalogProviderAdapter(client).searchAnime("Valid metadata", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val anime = (result as ReiAnixCatalogResult.Success).value.single()
+        assertEquals("Valid metadata", anime.title)
+        assertNull(anime.coverUrl)
+        assertNull(anime.bannerUrl)
+        assertNull(anime.backdropUrl)
+    }
+
 }
