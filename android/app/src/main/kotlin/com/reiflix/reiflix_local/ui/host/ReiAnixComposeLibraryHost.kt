@@ -20,7 +20,6 @@ import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
-import com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus
 import com.reiflix.reiflix_local.R
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
@@ -36,9 +35,6 @@ import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -107,9 +103,9 @@ class ReiAnixComposeLibraryHost(
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
 
-            // A route mount must not cause remote reconciliation. Observe scan-state
-            // transitions only; drop the first snapshot so a stored/idle state on process
-            // startup never triggers AniList or artwork work.
+            // The process-owned bootstrap coordinator is the single owner of catalog
+            // enrichment. Compose only signals a completed scan; it does not launch
+            // parallel AniList, external-catalog or artwork passes of its own.
             LaunchedEffect(libraryViewModel) {
                 libraryViewModel.uiState
                     .map { it.scanInProgress }
@@ -117,81 +113,9 @@ class ReiAnixComposeLibraryHost(
                     .drop(1)
                     .filter { scanning -> !scanning }
                     .collectLatest {
-                        if (libraryViewModel.uiState.value.animes.isEmpty()) return@collectLatest
-                        val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                        try {
-                            withContext(Dispatchers.IO) {
-                                dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
-                            }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (error: Exception) {
-                            android.util.Log.w(
-                                TAG,
-                                "Native AniList reconciliation after scan failed. errorType=" +
-                                    error::class.java.simpleName,
-                            )
-                        }
-                        try {
-                            withContext(Dispatchers.IO) {
-                                dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
-                            }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (error: Exception) {
-                            android.util.Log.w(
-                                TAG,
-                                "Native missing-artwork discovery after scan failed. errorType=" +
-                                    error::class.java.simpleName,
-                            )
-                        }
-                        runCatching { dependencies.artworkService.requestPendingArtwork() }
-                            .onFailure { error ->
-                                android.util.Log.w(
-                                    TAG,
-                                    "Native artwork backfill after scan failed. errorType=" +
-                                        error::class.java.simpleName,
-                                )
-                            }
-                    }
-            }
-
-            // Recover persisted poster/backdrop URLs on ordinary app opens too.
-            // This path deliberately does not run title matching or issue AniList
-            // metadata lookups; it only replays the canonical artwork queue.
-            LaunchedEffect(
-                libraryViewModel,
-                bootstrapState.phase,
-                bootstrapState.persistenceStatus,
-                libraryState.animes.size,
-            ) {
-                if (
-                    bootstrapState.phase != ReiAnixBootstrapPhase.READY ||
-                    bootstrapState.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY ||
-                    libraryState.animes.isEmpty()
-                ) return@LaunchedEffect
-
-                val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                try {
-                    withContext(Dispatchers.IO) {
-                        dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        TAG,
-                        "Native missing-artwork metadata discovery failed. errorType=" +
-                            error::class.java.simpleName,
-                    )
-                }
-                runCatching { dependencies.artworkService.requestPendingArtwork() }
-                    .onFailure { error ->
-                        android.util.Log.w(
-                            TAG,
-                            "Native artwork startup backfill failed. errorType=" +
-                                error::class.java.simpleName,
-                        )
+                        ReiAnixAppDependencies.from(activity.applicationContext)
+                            .bootstrap
+                            .onLibraryScanCompleted()
                     }
             }
 
