@@ -2318,19 +2318,23 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val repository = ReiAnixSqliteLibraryRepository(database)
         val firstMetadataPage = repository.loadLibraryCatalogPageAfterAnimeId(afterAnimeId = 0L, limit = 12)
         assertEquals(12L, firstMetadataPage.lastScannedAnimeId)
-        assertEquals(listOf(1L), firstMetadataPage.rows.map { it.anime.id })
+        assertEquals((1L..12L).toList(), firstMetadataPage.rows.map { it.anime.id })
+        assertTrue("Anime without episodes must remain eligible for metadata/artwork recovery.",
+            firstMetadataPage.rows.drop(1).all { it.episodes.isEmpty() })
         val secondMetadataPage = repository.loadLibraryCatalogPageAfterAnimeId(
             afterAnimeId = requireNotNull(firstMetadataPage.lastScannedAnimeId),
             limit = 12,
         )
         assertEquals(24L, secondMetadataPage.lastScannedAnimeId)
-        assertTrue("Rows without surviving episodes still advance the raw SQLite keyset.", secondMetadataPage.rows.isEmpty())
+        assertEquals((13L..24L).toList(), secondMetadataPage.rows.map { it.anime.id })
+        assertTrue(secondMetadataPage.rows.all { it.episodes.isEmpty() })
         val thirdMetadataPage = repository.loadLibraryCatalogPageAfterAnimeId(
             afterAnimeId = requireNotNull(secondMetadataPage.lastScannedAnimeId),
             limit = 12,
         )
         assertEquals(26L, thirdMetadataPage.lastScannedAnimeId)
-        assertTrue(thirdMetadataPage.rows.isEmpty())
+        assertEquals(listOf(25L, 26L), thirdMetadataPage.rows.map { it.anime.id })
+        assertTrue(thirdMetadataPage.rows.all { it.episodes.isEmpty() })
 
         val searchCalls = AtomicInteger()
         val provider = object : ReiAnixAnimeCatalogProvider {
