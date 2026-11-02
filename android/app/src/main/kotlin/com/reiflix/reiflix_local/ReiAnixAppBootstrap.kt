@@ -87,6 +87,7 @@ class ReiAnixAppBootstrap internal constructor(
     private val catalogEnrichmentRunning = AtomicBoolean(false)
     private val catalogEnrichmentRequested = AtomicBoolean(false)
     private val catalogEnrichmentRestartRequested = AtomicBoolean(false)
+    private val catalogEnrichmentRetryPending = AtomicBoolean(false)
     @Volatile
     private var nativeServicesStarted = false
     private val mutableState = MutableStateFlow(ReiAnixBootstrapState())
@@ -497,7 +498,8 @@ class ReiAnixAppBootstrap internal constructor(
         if (
             !nativeServicesStarted ||
             state.value.recoveryRequired ||
-            state.value.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY
+            state.value.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY ||
+            !catalogEnrichmentRetryPending.compareAndSet(true, false)
         ) return
         scheduleCatalogEnrichment(restartFromLibraryHead = false)
     }
@@ -546,11 +548,13 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     private suspend fun runCatalogEnrichmentPass() {
+        var passFailed = false
         try {
             dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            passFailed = true
             Log.w(TAG, "AniList catalog reconciliation failed. errorType=" + error::class.java.simpleName, error)
         }
 
@@ -559,6 +563,7 @@ class ReiAnixAppBootstrap internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            passFailed = true
             Log.w(TAG, "AniList artwork metadata recovery failed. errorType=" + error::class.java.simpleName, error)
         }
 
@@ -567,6 +572,7 @@ class ReiAnixAppBootstrap internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            passFailed = true
             // The service persists each completed anime ID; a later foreground/scan
             // signal resumes at the first row that was not committed.
             Log.w(TAG, "External catalog enrichment failed. errorType=" + error::class.java.simpleName, error)
@@ -577,8 +583,10 @@ class ReiAnixAppBootstrap internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            passFailed = true
             Log.w(TAG, "Native artwork backfill failed. errorType=" + error::class.java.simpleName, error)
         }
+        catalogEnrichmentRetryPending.set(passFailed)
     }
 
     private fun inspectCanonicalDatabase(): CanonicalDatabaseCheck {
