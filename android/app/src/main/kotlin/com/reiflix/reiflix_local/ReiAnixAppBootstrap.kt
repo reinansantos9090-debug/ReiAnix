@@ -529,7 +529,11 @@ class ReiAnixAppBootstrap internal constructor(
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (error: Exception) {
-                            Log.w(TAG, "Could not rewind external catalog cursor after library scan.", error)
+                            // Preserve the rewind request and wait for a foreground retry;
+                            // continuing with the old cursor could permanently miss scan updates.
+                            catalogEnrichmentRestartRequested.set(true)
+                            catalogEnrichmentRetryPending.set(true)
+                            throw error
                         }
                     }
                     runCatalogEnrichmentPass()
