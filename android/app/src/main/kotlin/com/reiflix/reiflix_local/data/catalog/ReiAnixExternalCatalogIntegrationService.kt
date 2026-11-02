@@ -38,29 +38,39 @@ class ReiAnixExternalCatalogIntegrationService(
     )
 
     /**
-     * Enriches a small round-robin slice. This method never performs a full-catalog network scan.
-     * Every network and image operation is suspendable and uses the existing IO-backed services.
+     * Traverses every eligible anime with bounded SQLite keyset pages. Provider calls and
+     * artwork materialization remain sequential per anime and use the existing shared services.
      */
     suspend fun enrichLibraryGaps(batchSize: Int = DEFAULT_BATCH_SIZE): Int =
         enrichmentPassMutex.withLock {
             runEnrichmentPass(batchSize)
         }
 
+    /**
+     * Drain the eligible catalog through keyset-paginated SQLite pages. The persisted
+     * anime ID cursor advances only after a row finishes, so cancellation resumes at
+     * the first unfinished row and inserts made during a pass are visible to later pages.
+     * A completed cursor is deliberately not wrapped: foreground resumes do not rescan
+     * completed records. A confirmed library scan explicitly rewinds the same cursor.
+     */
     private suspend fun runEnrichmentPass(batchSize: Int): Int {
         require(batchSize in 1..MAX_BATCH_SIZE)
         var cursor = library.externalCatalogCursor()
-        var rows = library.listAnimeAfterExternalCatalogCursor(cursor, batchSize)
-        if (rows.isEmpty() && cursor > 0L) {
-            cursor = 0L
-            rows = library.listAnimeAfterExternalCatalogCursor(0L, batchSize)
-        }
-        if (rows.isEmpty()) return 0
-
         var enriched = 0
-        for (row in rows) {
+
+        while (true) {
             currentCoroutineContext().ensureActive()
-            if (isEligible(row) && enrichOne(row)) enriched++
-            library.setExternalCatalogCursor(row.id)
+            val rows = library.listAnimeAfterExternalCatalogCursor(cursor, batchSize)
+            if (rows.isEmpty()) break
+
+            for (row in rows) {
+                currentCoroutineContext().ensureActive()
+                if (isEligible(row) && enrichOne(row)) enriched++
+                // Commit progress per row. If an exception/cancellation happens before
+                // this write, the same row is retried; later rows are never skipped.
+                library.setExternalCatalogCursor(row.id)
+                cursor = row.id
+            }
         }
         return enriched
     }
