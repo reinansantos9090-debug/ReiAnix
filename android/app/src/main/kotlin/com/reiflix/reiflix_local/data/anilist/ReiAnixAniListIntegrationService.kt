@@ -1115,232 +1115,232 @@ class ReiAnixAniListIntegrationService(
                 }
 
                 for (row in orderedRows) {
-                currentCoroutineContext().ensureActive()
-                val local = row.anime
-                if (local.id <= 0L) continue
-                if (local.anilistId == null && !autoMatchEnabled) continue
-                val cachedPath = local.coverCache?.trim().orEmpty()
-                val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
-                    val file = File(cachedPath)
-                    if (!file.isFile || file.length() <= 0L) {
-                        false
-                    } else {
-                        val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
-                        options.outWidth > 0 && options.outHeight > 0
-                    }
-                }.getOrDefault(false)
-                if (!shouldDiscoverMissingArtwork(
-                        coverUrl = local.coverUrl,
-                        hasUsableLocalCover = usableLocalCover,
-                        hasAniListId = local.anilistId != null,
-                        hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
-                        manualMetadata = local.anilistMatchManual == true ||
-                            local.metadataSource == "manual" || local.metadataStatus == "manual",
-                        matchStatus = local.anilistMatchStatus,
-                        metadataFetchedAtSeconds = local.metadataFetchedAt,
-                        nowSeconds = nowSeconds,
-                    )
-                ) continue
-
-                val titleEvidence = if (local.anilistId == null) episodeTitleCandidates(row) else emptyList()
-                val currentTerms = if (local.anilistId == null) {
-                    localAniListSearchTerms(local, titleEvidence)
-                } else {
-                    emptyList()
-                }
-                val localRawTitles = buildList {
-                    add(local.title)
-                    add(local.lookupTitle)
-                    add(local.nativeTitle.orEmpty())
-                    add(local.romaji.orEmpty())
-                    add(local.english.orEmpty())
-                    addAll(titleEvidence)
-                }
-                val seasonEvidence = if (local.anilistId == null) {
-                    episodeSeasonEvidence(row) ?: local.season?.toIntOrNull() ?: inferTitleSeason(localRawTitles)
-                } else null
-                val yearEvidence = if (local.anilistId == null) {
-                    local.year ?: episodeYearEvidence(row) ?: inferTitleYear(localRawTitles)
-                } else null
-                val currentSignature = aniListSearchTermsSignature(currentTerms, seasonEvidence, yearEvidence, local.mediaKind)
-                val previousSignature = persistedSearchSignatures[local.id]
-                val signatureChanged = local.anilistId == null && (
-                    previousSignature?.signature != currentSignature ||
-                        (previousSignature != null &&
-                            nowSeconds - previousSignature.attemptedAtSeconds >= ANILIST_STABLE_MATCH_RETRY_TTL_SECONDS)
-                    )
-                if (local.anilistId == null && shouldSkipStableAniListRetry(
-                        local.anilistMatchStatus,
-                        previousSignature,
-                        currentSignature,
-                        nowSeconds,
-                    )
-                ) continue
-                if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds) &&
-                    !signatureChanged
-                ) continue
-
-                val attemptAt = nowSeconds.toLong()
-                val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
-                if (previousAttempt != null) {
-                    if (!signatureChanged &&
-                        nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
+                    currentCoroutineContext().ensureActive()
+                    val local = row.anime
+                    if (local.id <= 0L) continue
+                    if (local.anilistId == null && !autoMatchEnabled) continue
+                    val cachedPath = local.coverCache?.trim().orEmpty()
+                    val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
+                        val file = File(cachedPath)
+                        if (!file.isFile || file.length() <= 0L) {
+                            false
+                        } else {
+                            val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+                            options.outWidth > 0 && options.outHeight > 0
+                        }
+                    }.getOrDefault(false)
+                    if (!shouldDiscoverMissingArtwork(
+                            coverUrl = local.coverUrl,
+                            hasUsableLocalCover = usableLocalCover,
+                            hasAniListId = local.anilistId != null,
+                            hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
+                            manualMetadata = local.anilistMatchManual == true ||
+                                local.metadataSource == "manual" || local.metadataStatus == "manual",
+                            matchStatus = local.anilistMatchStatus,
+                            metadataFetchedAtSeconds = local.metadataFetchedAt,
+                            nowSeconds = nowSeconds,
+                        )
                     ) continue
-                    if (!missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)) continue
-                }
-                completedDiscoveryIds.remove(local.id)
-                selectedRows += local
-            }
 
-            var recovered = 0
-            suspend fun finishAttempt(local: ReiAnixAnimeRecord, persistCooldown: Boolean) {
-                if (persistCooldown) {
-                    val completedAtSeconds = System.currentTimeMillis() / 1000.0
-                    writeArtworkDiscoveryAttemptAt(local.id, completedAtSeconds)
-                    persistedAttemptTimes[local.id] = completedAtSeconds
-                } else {
-                    missingArtworkLookupAttempts.remove(local.id)
-                    try {
-                        clearPersistedArtworkDiscoveryAttemptAt(library.database, local.id)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
-                        Log.w(TAG, "Could not clear transient AniList artwork lookup cooldown animeId=" + local.id, error)
+                    val titleEvidence = if (local.anilistId == null) episodeTitleCandidates(row) else emptyList()
+                    val currentTerms = if (local.anilistId == null) {
+                        localAniListSearchTerms(local, titleEvidence)
+                    } else {
+                        emptyList()
                     }
-                    persistedAttemptTimes.remove(local.id)
+                    val localRawTitles = buildList {
+                        add(local.title)
+                        add(local.lookupTitle)
+                        add(local.nativeTitle.orEmpty())
+                        add(local.romaji.orEmpty())
+                        add(local.english.orEmpty())
+                        addAll(titleEvidence)
+                    }
+                    val seasonEvidence = if (local.anilistId == null) {
+                        episodeSeasonEvidence(row) ?: local.season?.toIntOrNull() ?: inferTitleSeason(localRawTitles)
+                    } else null
+                    val yearEvidence = if (local.anilistId == null) {
+                        local.year ?: episodeYearEvidence(row) ?: inferTitleYear(localRawTitles)
+                    } else null
+                    val currentSignature = aniListSearchTermsSignature(currentTerms, seasonEvidence, yearEvidence, local.mediaKind)
+                    val previousSignature = persistedSearchSignatures[local.id]
+                    val signatureChanged = local.anilistId == null && (
+                        previousSignature?.signature != currentSignature ||
+                            (previousSignature != null &&
+                                nowSeconds - previousSignature.attemptedAtSeconds >= ANILIST_STABLE_MATCH_RETRY_TTL_SECONDS)
+                        )
+                    if (local.anilistId == null && shouldSkipStableAniListRetry(
+                            local.anilistMatchStatus,
+                            previousSignature,
+                            currentSignature,
+                            nowSeconds,
+                        )
+                    ) continue
+                    if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds) &&
+                        !signatureChanged
+                    ) continue
+
+                    val attemptAt = nowSeconds.toLong()
+                    val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
+                    if (previousAttempt != null) {
+                        if (!signatureChanged &&
+                            nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
+                        ) continue
+                        if (!missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)) continue
+                    }
+                    completedDiscoveryIds.remove(local.id)
+                    selectedRows += local
                 }
-                completedAttemptIds += local.id
-                completedDiscoveryIds += local.id
+
+                var recovered = 0
+                suspend fun finishAttempt(local: ReiAnixAnimeRecord, persistCooldown: Boolean) {
+                    if (persistCooldown) {
+                        val completedAtSeconds = System.currentTimeMillis() / 1000.0
+                        writeArtworkDiscoveryAttemptAt(local.id, completedAtSeconds)
+                        persistedAttemptTimes[local.id] = completedAtSeconds
+                    } else {
+                        missingArtworkLookupAttempts.remove(local.id)
+                        try {
+                            clearPersistedArtworkDiscoveryAttemptAt(library.database, local.id)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Log.w(TAG, "Could not clear transient AniList artwork lookup cooldown animeId=" + local.id, error)
+                        }
+                        persistedAttemptTimes.remove(local.id)
+                    }
+                    completedAttemptIds += local.id
+                    completedDiscoveryIds += local.id
+                    persistCompletedDiscoveryPrefix()
+                }
+
+                // Persist any leading rows that were safely skipped before the first selected row.
                 persistCompletedDiscoveryPrefix()
-            }
 
-            // Persist any leading rows that were safely skipped before the first selected row.
-            persistCompletedDiscoveryPrefix()
-
-            // Every ID chunk is fetched, decoded and persisted before the next chunk starts.
-            val rowsByRemoteId = selectedRows.mapNotNull { local ->
-                local.anilistId
-                    ?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
-                    ?.toInt()
-                    ?.let { it to local }
-            }.groupBy({ it.first }, { it.second })
-            for (idBatch in rowsByRemoteId.keys.toList().chunked(ReiAnixAniListClient.MAX_BATCH_SIZE)) {
-                currentCoroutineContext().ensureActive()
-                val batchById: Map<Int, AniListResult<AniListAnime?>> = when (val batch = client.getAnimeBatch(idBatch)) {
-                    is AniListResult.Failure -> idBatch.associateWith { AniListResult.Failure(batch.error) }
-                    is AniListResult.Success -> {
-                        val returned = batch.value.items.associateBy { it.id }
-                        idBatch.associateWith { id ->
-                            when {
-                                returned[id] != null -> AniListResult.Success(returned[id])
-                                batch.value.isComplete -> AniListResult.Success(null)
-                                else -> AniListResult.Failure(
-                                    AniListError.InvalidResponse("AniList returned a partial ID batch without this ID."),
-                                )
+                // Every ID chunk is fetched, decoded and persisted before the next chunk starts.
+                val rowsByRemoteId = selectedRows.mapNotNull { local ->
+                    local.anilistId
+                        ?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+                        ?.toInt()
+                        ?.let { it to local }
+                }.groupBy({ it.first }, { it.second })
+                for (idBatch in rowsByRemoteId.keys.toList().chunked(ReiAnixAniListClient.MAX_BATCH_SIZE)) {
+                    currentCoroutineContext().ensureActive()
+                    val batchById: Map<Int, AniListResult<AniListAnime?>> = when (val batch = client.getAnimeBatch(idBatch)) {
+                        is AniListResult.Failure -> idBatch.associateWith { AniListResult.Failure(batch.error) }
+                        is AniListResult.Success -> {
+                            val returned = batch.value.items.associateBy { it.id }
+                            idBatch.associateWith { id ->
+                                when {
+                                    returned[id] != null -> AniListResult.Success(returned[id])
+                                    batch.value.isComplete -> AniListResult.Success(null)
+                                    else -> AniListResult.Failure(
+                                        AniListError.InvalidResponse("AniList returned a partial ID batch without this ID."),
+                                    )
+                                }
                             }
                         }
                     }
-                }
-                for (remoteId in idBatch) {
-                    for (local in rowsByRemoteId[remoteId].orEmpty()) {
-                        currentCoroutineContext().ensureActive()
-                        var persistCooldown = true
-                        when (val lookup = batchById.getValue(remoteId)) {
-                            is AniListResult.Success -> {
-                                val remote = lookup.value
-                                if (remote == null) {
-                                    Log.w(TAG, "Missing-artwork AniList batch returned no media for animeId=" + local.id)
-                                } else {
-                                    val posterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
-                                    when (val applied = applyRemote(
-                                        local = local,
-                                        remote = remote,
-                                        manual = local.anilistMatchManual == true ||
-                                            local.metadataSource == "manual" || local.metadataStatus == "manual",
-                                        score = local.anilistMatchScore,
-                                        margin = local.anilistMatchMargin,
-                                    )) {
-                                        is AniListResult.Success -> {
-                                            if (!posterUrl.isNullOrBlank() && applied.value.coverUrl == posterUrl) {
-                                                recovered++
+                    for (remoteId in idBatch) {
+                        for (local in rowsByRemoteId[remoteId].orEmpty()) {
+                            currentCoroutineContext().ensureActive()
+                            var persistCooldown = true
+                            when (val lookup = batchById.getValue(remoteId)) {
+                                is AniListResult.Success -> {
+                                    val remote = lookup.value
+                                    if (remote == null) {
+                                        Log.w(TAG, "Missing-artwork AniList batch returned no media for animeId=" + local.id)
+                                    } else {
+                                        val posterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
+                                        when (val applied = applyRemote(
+                                            local = local,
+                                            remote = remote,
+                                            manual = local.anilistMatchManual == true ||
+                                                local.metadataSource == "manual" || local.metadataStatus == "manual",
+                                            score = local.anilistMatchScore,
+                                            margin = local.anilistMatchMargin,
+                                        )) {
+                                            is AniListResult.Success -> {
+                                                if (!posterUrl.isNullOrBlank() && applied.value.coverUrl == posterUrl) {
+                                                    recovered++
+                                                }
                                             }
-                                        }
-                                        is AniListResult.Failure -> {
-                                            persistCooldown = !applied.error.isTransientForAniListRetry()
-                                            Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
+                                            is AniListResult.Failure -> {
+                                                persistCooldown = !applied.error.isTransientForAniListRetry()
+                                                Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
+                                            }
                                         }
                                     }
                                 }
+                                is AniListResult.Failure -> {
+                                    persistCooldown = !lookup.error.isTransientForAniListRetry()
+                                    Log.w(TAG, "Missing-artwork AniList batch failed for animeId=" + local.id + ": " + lookup.error)
+                                }
+                            }
+                            finishAttempt(local, persistCooldown)
+                        }
+                    }
+                }
+
+                // Invalid persisted IDs are not silently converted into title searches.
+                val invalidIdRows = selectedRows.filter {
+                    it.anilistId != null && it.anilistId !in 1L..Int.MAX_VALUE.toLong()
+                }
+                for (local in invalidIdRows) {
+                    Log.w(TAG, "Skipping invalid persisted AniList ID for local animeId=" + local.id)
+                    finishAttempt(local, persistCooldown = true)
+                }
+
+                // Unknown IDs are searched by aliases in groups of 15; metadata for each
+                // primary-title match is persisted before the next title batch is submitted.
+                val titleRows = if (autoMatchEnabled) {
+                    selectedRows.filter { it.anilistId == null }
+                } else {
+                    emptyList()
+                }
+                for (titleBatch in titleRows.chunked(100)) {
+                    currentCoroutineContext().ensureActive()
+                    val titleEvidenceByAnimeId = titleBatch.associate { local ->
+                        local.id to rowsById[local.id]?.let(::episodeTitleCandidates).orEmpty()
+                    }
+                    val titleSeasonEvidenceByAnimeId = titleBatch.mapNotNull { local ->
+                        rowsById[local.id]?.let(::episodeSeasonEvidence)?.let { local.id to it }
+                    }.toMap()
+                    val titleYearEvidenceByAnimeId = titleBatch.mapNotNull { local ->
+                        rowsById[local.id]?.let(::episodeYearEvidence)?.let { local.id to it }
+                    }.toMap()
+                    val titleResults = autoMatchBatch(
+                        titleBatch,
+                        titleEvidenceByAnimeId,
+                        titleSeasonEvidenceByAnimeId,
+                        titleYearEvidenceByAnimeId,
+                    )
+                    for (local in titleBatch) {
+                        currentCoroutineContext().ensureActive()
+                        var persistCooldown = true
+                        when (val result = titleResults[local.id]) {
+                            is AniListResult.Success -> when (val outcome = result.value) {
+                                is AniListAutoMatchResult.Matched -> {
+                                    val posterUrl = outcome.remote.coverExtraLargeUrl ?: outcome.remote.coverLargeUrl
+                                    if (!posterUrl.isNullOrBlank() && outcome.anime.coverUrl == posterUrl) recovered++
+                                }
+                                AniListAutoMatchResult.RecentlyAttempted,
+                                AniListAutoMatchResult.Disabled,
+                                is AniListAutoMatchResult.AlreadyMatched,
+                                is AniListAutoMatchResult.AlreadyManuallyMatched -> persistCooldown = false
+                                AniListAutoMatchResult.NoMatch,
+                                is AniListAutoMatchResult.Ambiguous -> Unit
                             }
                             is AniListResult.Failure -> {
-                                persistCooldown = !lookup.error.isTransientForAniListRetry()
-                                Log.w(TAG, "Missing-artwork AniList batch failed for animeId=" + local.id + ": " + lookup.error)
+                                persistCooldown = !result.error.isTransientForAniListRetry()
+                                Log.w(TAG, "Missing-artwork title batch failed for animeId=" + local.id + ": " + result.error)
                             }
+                            null -> persistCooldown = false
                         }
                         finishAttempt(local, persistCooldown)
                     }
                 }
-            }
-
-            // Invalid persisted IDs are not silently converted into title searches.
-            val invalidIdRows = selectedRows.filter {
-                it.anilistId != null && it.anilistId !in 1L..Int.MAX_VALUE.toLong()
-            }
-            for (local in invalidIdRows) {
-                Log.w(TAG, "Skipping invalid persisted AniList ID for local animeId=" + local.id)
-                finishAttempt(local, persistCooldown = true)
-            }
-
-            // Unknown IDs are searched by aliases in groups of 15; metadata for each
-            // primary-title match is persisted before the next title batch is submitted.
-            val titleRows = if (autoMatchEnabled) {
-                selectedRows.filter { it.anilistId == null }
-            } else {
-                emptyList()
-            }
-            for (titleBatch in titleRows.chunked(100)) {
-                currentCoroutineContext().ensureActive()
-                val titleEvidenceByAnimeId = titleBatch.associate { local ->
-                    local.id to rowsById[local.id]?.let(::episodeTitleCandidates).orEmpty()
-                }
-                val titleSeasonEvidenceByAnimeId = titleBatch.mapNotNull { local ->
-                    rowsById[local.id]?.let(::episodeSeasonEvidence)?.let { local.id to it }
-                }.toMap()
-                val titleYearEvidenceByAnimeId = titleBatch.mapNotNull { local ->
-                    rowsById[local.id]?.let(::episodeYearEvidence)?.let { local.id to it }
-                }.toMap()
-                val titleResults = autoMatchBatch(
-                    titleBatch,
-                    titleEvidenceByAnimeId,
-                    titleSeasonEvidenceByAnimeId,
-                    titleYearEvidenceByAnimeId,
-                )
-                for (local in titleBatch) {
-                    currentCoroutineContext().ensureActive()
-                var persistCooldown = true
-                when (val result = titleResults[local.id]) {
-                    is AniListResult.Success -> when (val outcome = result.value) {
-                        is AniListAutoMatchResult.Matched -> {
-                            val posterUrl = outcome.remote.coverExtraLargeUrl ?: outcome.remote.coverLargeUrl
-                            if (!posterUrl.isNullOrBlank() && outcome.anime.coverUrl == posterUrl) recovered++
-                        }
-                        AniListAutoMatchResult.RecentlyAttempted,
-                        AniListAutoMatchResult.Disabled,
-                        is AniListAutoMatchResult.AlreadyMatched,
-                        is AniListAutoMatchResult.AlreadyManuallyMatched -> persistCooldown = false
-                        AniListAutoMatchResult.NoMatch,
-                        is AniListAutoMatchResult.Ambiguous -> Unit
-                    }
-                    is AniListResult.Failure -> {
-                        persistCooldown = !result.error.isTransientForAniListRetry()
-                        Log.w(TAG, "Missing-artwork title batch failed for animeId=" + local.id + ": " + result.error)
-                    }
-                    null -> persistCooldown = false
-                }
-                    finishAttempt(local, persistCooldown)
-                }
-            }
 
                 persistCompletedDiscoveryPrefix()
                 // Advance across rows without surviving episode records as well.
