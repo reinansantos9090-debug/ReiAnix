@@ -521,6 +521,14 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun artworkDownloadRequiresAnInternetCapableValidatedNetwork() {
+        assertFalse(isArtworkConnectivityAvailable(hasInternetCapability = false, isValidated = false))
+        assertFalse(isArtworkConnectivityAvailable(hasInternetCapability = false, isValidated = true))
+        assertFalse(isArtworkConnectivityAvailable(hasInternetCapability = true, isValidated = false))
+        assertTrue(isArtworkConnectivityAvailable(hasInternetCapability = true, isValidated = true))
+    }
+
+    @Test
     fun failedRefreshKeepsAUsableLocalImageAvailableUntilTheNextRetry() {
         assertEquals("retry_wait", artworkFailureStatus(retryable = false, hasUsableLocalImage = true))
         assertEquals("retry_wait", artworkFailureStatus(retryable = true, hasUsableLocalImage = false))

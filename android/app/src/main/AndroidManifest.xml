@@ -8,6 +8,7 @@
   </queries>
 
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
   
   <!-- Runtime media access; selected-only access is not equivalent to a SAF tree grant. -->

@@ -2,6 +2,8 @@ package com.reiflix.reiflix_local.data.artwork
 
 import android.content.ContentValues
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
@@ -314,6 +316,12 @@ internal fun artworkFailureStatus(
     hasUsableLocalImage: Boolean,
 ): String = if (retryable || hasUsableLocalImage) "retry_wait" else "failed"
 
+/** A network is usable for artwork only when it has Internet access and is validated. */
+internal fun isArtworkConnectivityAvailable(
+    hasInternetCapability: Boolean,
+    isValidated: Boolean,
+): Boolean = hasInternetCapability && isValidated
+
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
@@ -325,11 +333,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val retryJobs = ConcurrentHashMap<Long, Job>()
     private val activeTemporaryFiles = ConcurrentHashMap.newKeySet<String>()
     private val activeConnections = ConcurrentHashMap<Long, HttpURLConnection>()
-    @Volatile
-    internal var httpConnectionFactory: (URL) -> HttpURLConnection = { source ->
+    private val defaultHttpConnectionFactory: (URL) -> HttpURLConnection = { source ->
         source.openConnection() as? HttpURLConnection
             ?: throw IOException("Artwork source did not provide an HTTP connection.")
     }
+    @Volatile
+    internal var httpConnectionFactory: (URL) -> HttpURLConnection = defaultHttpConnectionFactory
     private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
     private val permits = Semaphore(2)
     private val backfillRunning = AtomicBoolean(false)
@@ -1399,7 +1408,24 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         else -> "UNKNOWN_TRANSIENT_REEVALUATE"
     }
 
+    private fun hasValidatedArtworkConnectivity(): Boolean {
+        // Tests supply a deterministic HTTP factory and must not depend on the CI runner's
+        // network state. Production always checks Android's validated active network.
+        if (httpConnectionFactory !== defaultHttpConnectionFactory) return true
+        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return false
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        return isArtworkConnectivityAvailable(
+            hasInternetCapability = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+            isValidated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+        )
+    }
+
     private suspend fun download(animeId: Long, key: String, rawUrl: String): Downloaded {
+        if (!hasValidatedArtworkConnectivity()) {
+            throw IOException("No validated Internet connection; artwork download deferred by persisted retry policy.")
+        }
         if (!ensureArtworkCacheDirectory(cacheDirectory)) throw IOException("Artwork cache directory unavailable.")
         val url = URL(rawUrl)
         val conn = httpConnectionFactory(url)
