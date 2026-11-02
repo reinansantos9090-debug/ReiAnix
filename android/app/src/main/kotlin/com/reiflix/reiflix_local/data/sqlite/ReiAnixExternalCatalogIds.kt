@@ -235,7 +235,7 @@ internal fun ReiAnixAnimeRecord.toExternalCatalogIdentity(): ReiAnixCatalogIdent
     )
 }
 
-/** Read one bounded v29 anime row without loading the entire library for enrichment. */
+/** Read one bounded v29 anime page using a stable ID keyset, without OFFSET pagination. */
 suspend fun ReiAnixSqliteLibraryRepository.listAnimeAfterExternalCatalogCursor(
     afterAnimeId: Long,
     limit: Int = 12,
@@ -292,7 +292,7 @@ suspend fun ReiAnixSqliteLibraryRepository.markExternalCatalogAttempt(
     }
 }
 
-/** Persistent round-robin cursor prevents startup from faning out over the complete library. */
+/** Persistent keyset cursor checkpoints the last completed anime ID in SQLite v29 preferences. */
 suspend fun ReiAnixSqliteLibraryRepository.externalCatalogCursor(): Long = withContext(Dispatchers.IO) {
     database.read { db ->
         db.rawQuery(
