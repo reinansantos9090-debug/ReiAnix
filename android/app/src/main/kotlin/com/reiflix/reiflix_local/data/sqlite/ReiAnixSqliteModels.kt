@@ -311,3 +311,9 @@ data class ReiAnixLibraryCatalogRow(
     val episodeArtwork: Map<Long, ReiAnixArtworkRecord>,
     val genres: List<ReiAnixLibraryCatalogGenre>,
 )
+
+/** One stable SQLite keyset page plus the last anime ID examined (including rows without episodes). */
+data class ReiAnixLibraryCatalogPage(
+    val rows: List<ReiAnixLibraryCatalogRow>,
+    val lastScannedAnimeId: Long?,
+)
