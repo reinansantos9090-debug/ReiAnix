@@ -3494,8 +3494,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val artwork = ReiAnixArtworkService(context, database)
             val cases = listOf(
                 Triple(404, null, "https://cdn.kitsu.io/backdrop-404.png"),
+                Triple(408, "300", "https://cdn.kitsu.io/backdrop-408.png"),
+                Triple(425, "360", "https://cdn.kitsu.io/backdrop-425.png"),
                 Triple(429, "3600", "https://cdn.kitsu.io/backdrop-429.png"),
+                Triple(500, "600", "https://cdn.kitsu.io/backdrop-500.png"),
+                Triple(502, "900", "https://cdn.kitsu.io/backdrop-502.png"),
                 Triple(503, "1800", "https://cdn.kitsu.io/backdrop-503.png"),
+                Triple(504, "1200", "https://cdn.kitsu.io/backdrop-504.png"),
             )
             for ((status, retryAfter, url) in cases) {
                 artwork.httpConnectionFactory = { requested ->
@@ -3517,8 +3522,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 val retryAt = requireNotNull(row.nextRetryAt)
                 val expectedDelay = when (status) {
                     404 -> 86_400.0
+                    408 -> 300.0
+                    425 -> 360.0
                     429 -> 3_600.0
-                    else -> 1_800.0
+                    500 -> 600.0
+                    502 -> 900.0
+                    503 -> 1_800.0
+                    504 -> 1_200.0
+                    else -> error("Unexpected HTTP validation case: " + status)
                 }
                 assertTrue(
                     "HTTP $status must persist its bounded retry deadline.",
@@ -3526,6 +3537,40 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 )
                 assertFalse(artwork.hasValidAnimeArtwork(1L, "backdrop"))
             }
+
+            // An expired local cache must remain usable when its remote refresh fails.
+            val localBackdrop = createValidPng("preserved-local-backdrop.png")
+            val preservedUrl = "https://cdn.kitsu.io/backdrop-preserve-on-refresh.png"
+            assertTrue(artwork.replaceExternalArtworkCandidate(1L, "backdrop", preservedUrl))
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                assertEquals(
+                    1,
+                    db.update(
+                        "artwork",
+                        android.content.ContentValues().apply {
+                            put("source", "cache")
+                            put("status", "ready")
+                            put("local_path", localBackdrop.absolutePath)
+                            put("next_retry_at", 0.0)
+                        },
+                        "entity_type='anime' AND entity_id='1' AND artwork_type='backdrop' AND external_url=?",
+                        arrayOf(preservedUrl),
+                    ),
+                )
+            }
+            artwork.httpConnectionFactory = { requested ->
+                FakeArtworkHttpURLConnection(requested, 503, validImageBytes, "1800")
+            }
+            assertTrue(artwork.requestAnimeArtwork(1L, force = true))
+            withTimeout(5_000L) { artwork.awaitAnimeArtwork(1L) }
+            val preserved = repository.artworkForAnime(1L)
+                .single { it.artworkType == "backdrop" && it.externalUrl == preservedUrl }
+            assertEquals("retry_wait", preserved.status)
+            assertEquals(localBackdrop.absolutePath, preserved.localPath)
+            assertTrue(File(requireNotNull(preserved.localPath)).isFile)
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "backdrop"))
+            localBackdrop.delete()
+
             assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
         } finally {
             responseFile.delete()
