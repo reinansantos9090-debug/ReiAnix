@@ -1413,12 +1413,10 @@ class ReiAnixSqliteLibraryRepository(
                 buildList { while (cursor.moveToNext()) add(cursor.toEpisodeRecord()) }
             }
             val episodesByAnime = episodes.groupBy { it.animeId }
-            val rows = animes.mapNotNull { anime ->
-                val animeEpisodes = episodesByAnime[anime.id].orEmpty()
-                if (animeEpisodes.isEmpty()) return@mapNotNull null
+            val rows = animes.map { anime ->
                 ReiAnixLibraryCatalogRow(
                     anime = anime,
-                    episodes = animeEpisodes,
+                    episodes = episodesByAnime[anime.id].orEmpty(),
                     animeArtwork = emptyList(),
                     episodeArtwork = emptyMap(),
                     genres = emptyList(),
