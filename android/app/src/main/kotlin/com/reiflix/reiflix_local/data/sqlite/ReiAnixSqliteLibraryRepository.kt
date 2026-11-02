@@ -1354,6 +1354,84 @@ class ReiAnixSqliteLibraryRepository(
     }
 
     /**
+     * Loads only one bounded anime ID range and its surviving episode evidence for metadata
+     * matching. The cursor reflects the final anime row examined, even when that row has no
+     * surviving episode rows, so repeated empty projections cannot pin a keyset page.
+     */
+    suspend fun loadLibraryCatalogPageAfterAnimeId(
+        afterAnimeId: Long,
+        limit: Int = 100,
+        beforeAnimeId: Long? = null,
+    ): ReiAnixLibraryCatalogPage = withContext(Dispatchers.IO) {
+        require(afterAnimeId >= 0L)
+        require(limit in 1..100)
+        require(beforeAnimeId == null || beforeAnimeId > afterAnimeId)
+        database.readConsistentSnapshot { connection ->
+            val animeSql = if (beforeAnimeId == null) {
+                "SELECT * FROM anime WHERE id>? ORDER BY id ASC LIMIT ?"
+            } else {
+                "SELECT * FROM anime WHERE id>? AND id<=? ORDER BY id ASC LIMIT ?"
+            }
+            val animeArgs = if (beforeAnimeId == null) {
+                arrayOf(afterAnimeId.toString(), limit.toString())
+            } else {
+                arrayOf(afterAnimeId.toString(), beforeAnimeId.toString(), limit.toString())
+            }
+            val animes = connection.rawQuery(animeSql, animeArgs).use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.toAnimeRecord()) }
+            }
+            val lastScannedAnimeId = animes.lastOrNull()?.id
+            if (animes.isEmpty()) {
+                return@readConsistentSnapshot ReiAnixLibraryCatalogPage(
+                    rows = emptyList(),
+                    lastScannedAnimeId = null,
+                )
+            }
+
+            val animeIds = animes.map { it.id.toString() }
+            val placeholders = List(animeIds.size) { "?" }.joinToString(",")
+            val episodes = connection.rawQuery(
+                """
+                SELECT e.* FROM episodes e
+                WHERE e.anime_id IN ($placeholders) AND (
+                    NOT EXISTS (
+                      SELECT 1 FROM episode_observations o WHERE o.episode_id=e.id
+                    )
+                    OR EXISTS (
+                      SELECT 1 FROM episode_observations o
+                      WHERE o.episode_id=e.id AND o.state != 'scope_removed'
+                    )
+                    OR (
+                      SELECT COUNT(DISTINCT o.source_kind || '|' || COALESCE(o.scope_ref, ''))
+                      FROM episode_observations o WHERE o.episode_id=e.id
+                    ) < 2
+                )
+                ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name
+                """.trimIndent(),
+                animeIds.toTypedArray(),
+            ).use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.toEpisodeRecord()) }
+            }
+            val episodesByAnime = episodes.groupBy { it.animeId }
+            val rows = animes.mapNotNull { anime ->
+                val animeEpisodes = episodesByAnime[anime.id].orEmpty()
+                if (animeEpisodes.isEmpty()) return@mapNotNull null
+                ReiAnixLibraryCatalogRow(
+                    anime = anime,
+                    episodes = animeEpisodes,
+                    animeArtwork = emptyList(),
+                    episodeArtwork = emptyMap(),
+                    genres = emptyList(),
+                )
+            }
+            ReiAnixLibraryCatalogPage(
+                rows = rows,
+                lastScannedAnimeId = lastScannedAnimeId,
+            )
+        }
+    }
+
+    /**
      * Reads a coherent bounded domain of catalog records from the existing SQLite source.
      * The UI already requires anime and episode relationships in memory; grouping is performed
      * after set-based SQL queries, rather than issuing one query per anime or per artwork item.
