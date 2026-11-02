@@ -2294,6 +2294,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 "UPDATE anime SET cover_url=NULL,cover_cache=NULL,banner_url=NULL,metadata_manual_fields='[]'," +
                     "metadata_source=NULL,metadata_status=NULL WHERE id=1",
             )
+            // The fixture includes a legacy cover record; remove it so anime 1 is artwork-eligible too.
+            db.execSQL("DELETE FROM artwork WHERE entity_type='anime' AND entity_id='1'")
             // Clone canonical local rows with unique titles to create more than two default pages.
             // The provider returns no candidates, isolating traversal and checkpoint coverage.
             for (animeId in 2L..26L) {
