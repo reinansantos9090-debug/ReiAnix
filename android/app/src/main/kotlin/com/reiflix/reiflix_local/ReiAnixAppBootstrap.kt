@@ -5,6 +5,7 @@ import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reiflix.reiflix_local.data.sqlite.setExternalCatalogCursor
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.scanner.NativeScanRunner
 import com.reiflix.reiflix_local.storage.NativeIndex
@@ -68,10 +69,10 @@ data class ReiAnixBootstrapState(
  * durable evidence of an interrupted promotion keeps normal work gated until Recovery
  * Mode succeeds; an absent database without such evidence remains a fresh install.
  *
- * It also schedules one process-scoped catalog enrichment pass after database and
- * native-service readiness. The pass reuses the existing AniList integration and
- * artwork service; Activity/Compose recreation is not its owner. It does not start a
- * scanner, create a player session, or start a second Python/Flet runtime.
+ * It also schedules one process-scoped, resumable catalog enrichment queue after database
+ * and native-service readiness. Bootstrap, scanner completion and foreground return share
+ * the same worker and existing AniList/catalog/artwork services; Activity/Compose recreation
+ * is not the queue owner. It does not start a scanner, player session or second runtime.
  */
 class ReiAnixAppBootstrap internal constructor(
     context: Context,
@@ -83,7 +84,9 @@ class ReiAnixAppBootstrap internal constructor(
     private val startupLock = Any()
     private val databaseValidationMutex = Mutex()
     private val nativeServicesMutex = Mutex()
-    private val initialCatalogEnrichmentScheduled = AtomicBoolean(false)
+    private val catalogEnrichmentRunning = AtomicBoolean(false)
+    private val catalogEnrichmentRequested = AtomicBoolean(false)
+    private val catalogEnrichmentRestartRequested = AtomicBoolean(false)
     @Volatile
     private var nativeServicesStarted = false
     private val mutableState = MutableStateFlow(ReiAnixBootstrapState())
@@ -471,51 +474,110 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     /**
-     * One startup pass is process-owned, runs only after canonical SQLite validation,
-     * and is intentionally independent of a particular Compose route or Activity.
-     * Scan completion may still trigger the same catalog reconciliation for media
-     * discovered after this snapshot; persisted signatures/cursors prevent redundant
-     * AniList queries.
+     * Resume the process-owned enrichment queue after canonical database readiness.
+     * A completed cursor is left in place so ordinary foreground transitions only
+     * pick up new IDs or interrupted work instead of repeatedly scanning the catalog.
      */
     private fun scheduleInitialCatalogEnrichment() {
-        if (!initialCatalogEnrichmentScheduled.compareAndSet(false, true)) return
+        scheduleCatalogEnrichment(restartFromLibraryHead = false)
+    }
+
+    /**
+     * Scanner completion can update metadata on existing IDs as well as insert new
+     * rows. Rewind the existing keyset cursor and request one coalesced pass so those
+     * updates are revisited without creating a second worker.
+     */
+    fun onLibraryScanCompleted() {
+        if (!nativeServicesStarted || state.value.recoveryRequired) return
+        scheduleCatalogEnrichment(restartFromLibraryHead = true)
+    }
+
+    /** Resume an interrupted/incremental pass when the app returns to the foreground. */
+    fun onApplicationForegrounded() {
+        if (
+            !nativeServicesStarted ||
+            state.value.recoveryRequired ||
+            state.value.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY
+        ) return
+        scheduleCatalogEnrichment(restartFromLibraryHead = false)
+    }
+
+    private fun scheduleCatalogEnrichment(restartFromLibraryHead: Boolean) {
+        if (restartFromLibraryHead) {
+            catalogEnrichmentRestartRequested.set(true)
+            catalogEnrichmentRequested.set(true)
+        } else {
+            // A foreground signal must not queue a duplicate run behind active work.
+            if (catalogEnrichmentRunning.get()) return
+            catalogEnrichmentRequested.set(true)
+        }
+        startCatalogEnrichmentWorkerIfNeeded()
+    }
+
+    private fun startCatalogEnrichmentWorkerIfNeeded() {
+        if (!catalogEnrichmentRunning.compareAndSet(false, true)) return
         processScope.launch {
             try {
-                dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+                while (catalogEnrichmentRequested.getAndSet(false)) {
+                    if (catalogEnrichmentRestartRequested.getAndSet(false)) {
+                        try {
+                            // Reuse the existing v29 preference-backed cursor. No schema
+                            // change or second work queue is introduced.
+                            dependencies.sqliteLibraryRepository.setExternalCatalogCursor(0L)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Log.w(TAG, "Could not rewind external catalog cursor after library scan.", error)
+                        }
+                    }
+                    runCatalogEnrichmentPass()
+                }
             } catch (cancelled: CancellationException) {
-                initialCatalogEnrichmentScheduled.set(false)
                 throw cancelled
             } catch (error: Exception) {
-                Log.w(TAG, "Startup AniList catalog reconciliation failed. errorType=" + error::class.java.simpleName)
+                Log.w(TAG, "Process catalog enrichment worker stopped; persisted cursors remain available.", error)
+            } finally {
+                catalogEnrichmentRunning.set(false)
+                // Close the small race where a scan requests a follow-up between the
+                // loop condition and releasing the worker ownership flag.
+                if (catalogEnrichmentRequested.get()) startCatalogEnrichmentWorkerIfNeeded()
             }
+        }
+    }
 
-            try {
-                dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
-            } catch (cancelled: CancellationException) {
-                initialCatalogEnrichmentScheduled.set(false)
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TAG, "Startup AniList artwork metadata recovery failed. errorType=" + error::class.java.simpleName)
-            }
+    private suspend fun runCatalogEnrichmentPass() {
+        try {
+            dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "AniList catalog reconciliation failed. errorType=" + error::class.java.simpleName, error)
+        }
 
-            try {
-                dependencies.externalCatalogIntegrationService.enrichLibraryGaps()
-            } catch (cancelled: CancellationException) {
-                initialCatalogEnrichmentScheduled.set(false)
-                throw cancelled
-            } catch (error: Exception) {
-                // Supplemental providers are isolated from AniList and the canonical artwork backfill.
-                Log.w(TAG, "Startup external catalog enrichment failed. errorType=" + error::class.java.simpleName)
-            }
+        try {
+            dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "AniList artwork metadata recovery failed. errorType=" + error::class.java.simpleName, error)
+        }
 
-            try {
-                dependencies.artworkService.requestPendingArtwork()
-            } catch (cancelled: CancellationException) {
-                initialCatalogEnrichmentScheduled.set(false)
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TAG, "Startup native artwork backfill failed. errorType=" + error::class.java.simpleName)
-            }
+        try {
+            dependencies.externalCatalogIntegrationService.enrichLibraryGaps()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // The service persists each completed anime ID; a later foreground/scan
+            // signal resumes at the first row that was not committed.
+            Log.w(TAG, "External catalog enrichment failed. errorType=" + error::class.java.simpleName, error)
+        }
+
+        try {
+            dependencies.artworkService.requestPendingArtwork()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Native artwork backfill failed. errorType=" + error::class.java.simpleName, error)
         }
     }
 
