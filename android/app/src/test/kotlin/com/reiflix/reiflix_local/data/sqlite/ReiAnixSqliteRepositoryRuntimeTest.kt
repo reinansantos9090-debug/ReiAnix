@@ -2287,6 +2287,117 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
 
     @Test
+    fun externalCatalogEnrichmentDrainsEveryKeysetPageAndDoesNotRepeatCompletedRows() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "UPDATE anime SET cover_url=NULL,cover_cache=NULL,banner_url=NULL,metadata_manual_fields='[]'," +
+                    "metadata_source=NULL,metadata_status=NULL WHERE id=1",
+            )
+            // Clone canonical local rows with unique titles to create more than two default pages.
+            // The provider returns no candidates, isolating traversal and checkpoint coverage.
+            for (animeId in 2L..26L) {
+                db.execSQL(
+                    """
+                    INSERT INTO anime (
+                        id, lookup_title, title, added_at, metadata_manual_fields,
+                        favorite, user_tags, is_pinned, personal_note, cover_url,
+                        english, metadata_source, metadata_status, cover_cache, banner_url
+                    )
+                    SELECT ?, lookup_title || '-' || ?, title || ' ' || ?, added_at, '[]',
+                           favorite, user_tags, is_pinned, personal_note, NULL,
+                           english || ' ' || ?, NULL, NULL, NULL, NULL
+                    FROM anime WHERE id=1
+                    """.trimIndent(),
+                    arrayOf(animeId, animeId.toString(), animeId.toString(), animeId.toString()),
+                )
+            }
+        }
+
+        val database = ReiAnixSqliteDatabase(context)
+        val repository = ReiAnixSqliteLibraryRepository(database)
+        val firstMetadataPage = repository.loadLibraryCatalogPageAfterAnimeId(afterAnimeId = 0L, limit = 12)
+        assertEquals(12L, firstMetadataPage.lastScannedAnimeId)
+        assertEquals(listOf(1L), firstMetadataPage.rows.map { it.anime.id })
+        val secondMetadataPage = repository.loadLibraryCatalogPageAfterAnimeId(
+            afterAnimeId = requireNotNull(firstMetadataPage.lastScannedAnimeId),
+            limit = 12,
+        )
+        assertEquals(24L, secondMetadataPage.lastScannedAnimeId)
+        assertTrue("Rows without surviving episodes still advance the raw SQLite keyset.", secondMetadataPage.rows.isEmpty())
+        val thirdMetadataPage = repository.loadLibraryCatalogPageAfterAnimeId(
+            afterAnimeId = requireNotNull(secondMetadataPage.lastScannedAnimeId),
+            limit = 12,
+        )
+        assertEquals(26L, thirdMetadataPage.lastScannedAnimeId)
+        assertTrue(thirdMetadataPage.rows.isEmpty())
+
+        val searchCalls = AtomicInteger()
+        val provider = object : ReiAnixAnimeCatalogProvider {
+            override val source = ReiAnixCatalogSource.KITSU
+            override suspend fun searchAnime(
+                query: String,
+                limit: Int,
+            ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                searchCalls.incrementAndGet()
+                return ReiAnixCatalogResult.Success(emptyList())
+            }
+
+            override suspend fun getAnime(externalId: String) =
+                ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+        }
+        val service = ReiAnixExternalCatalogIntegrationService(
+            library = repository,
+            providers = ReiAnixCatalogProviderRegistry(
+                listOf(provider),
+                ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
+            ),
+            artwork = ReiAnixArtworkService(context, database),
+        )
+
+        assertEquals(0, service.enrichLibraryGaps())
+        assertTrue("The multi-page pass must issue provider lookups.", searchCalls.get() > 0)
+        for (animeId in 1L..26L) {
+            assertNotNull(
+                "The persisted Kitsu attempt proves anime $animeId was reached across paged traversal.",
+                repository.externalCatalogAttemptAt(animeId, "kitsu"),
+            )
+        }
+        assertEquals("The keyset cursor must reach the final row.", 26L, repository.externalCatalogCursor())
+
+        val completedSearchCalls = searchCalls.get()
+        assertEquals(0, service.enrichLibraryGaps())
+        assertEquals(
+            "A completed cursor must not wrap to the first page and repeat provider queries.",
+            completedSearchCalls,
+            searchCalls.get(),
+        )
+
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO anime (
+                    id, lookup_title, title, added_at, metadata_manual_fields,
+                    favorite, user_tags, is_pinned, personal_note, cover_url,
+                    english, metadata_source, metadata_status, cover_cache, banner_url
+                )
+                SELECT 27, lookup_title || '-27', title || ' 27', added_at, '[]',
+                       favorite, user_tags, is_pinned, personal_note, NULL,
+                       english || ' 27', NULL, NULL, NULL, NULL
+                FROM anime WHERE id=1
+                """.trimIndent(),
+            )
+        }
+        assertEquals(0, service.enrichLibraryGaps())
+        assertNotNull(
+            "A new high-ID anime must be included after the saved cursor.",
+            repository.externalCatalogAttemptAt(27L, "kitsu"),
+        )
+        assertEquals(27L, repository.externalCatalogCursor())
+        assertEquals(29, repository.inspectSchema().schemaVersion)
+    }
+
+    @Test
     fun supplementalKitsuMetadataFillsOnlyGapsAndPersistsItsIdInV29Preferences() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
