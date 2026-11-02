@@ -541,6 +541,7 @@ class ReiAnixAppBootstrap internal constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                catalogEnrichmentRetryPending.set(true)
                 Log.w(TAG, "Process catalog enrichment worker stopped; persisted cursors remain available.", error)
             } finally {
                 catalogEnrichmentRunning.set(false)
