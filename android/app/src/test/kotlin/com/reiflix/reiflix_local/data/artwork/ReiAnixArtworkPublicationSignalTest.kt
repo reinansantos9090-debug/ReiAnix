@@ -472,20 +472,11 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun automaticArtworkRetriesStopAtTheConfiguredLimitButForcedRetryRemainsAvailable() {
+    fun automaticArtworkRetriesContinueAfterFiveFailuresWhenPersistedDeadlineIsDue() {
         assertTrue(
             shouldRetryArtworkRequest(
                 status = "retry_wait",
                 retryAtSeconds = 10_000.0,
-                failureCount = 4,
-                nowSeconds = 10_000.0,
-                force = false,
-            ),
-        )
-        assertFalse(
-            shouldRetryArtworkRequest(
-                status = "failed",
-                retryAtSeconds = null,
                 failureCount = 5,
                 nowSeconds = 10_000.0,
                 force = false,
@@ -494,8 +485,26 @@ class ReiAnixArtworkPublicationSignalTest {
         assertFalse(
             shouldRetryArtworkRequest(
                 status = "failed",
+                retryAtSeconds = 10_001.0,
+                failureCount = 99,
+                nowSeconds = 10_000.0,
+                force = false,
+            ),
+        )
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "failed",
                 retryAtSeconds = 10_000.0,
                 failureCount = 99,
+                nowSeconds = 10_000.0,
+                force = false,
+            ),
+        )
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "retry_wait",
+                retryAtSeconds = null,
+                failureCount = 500,
                 nowSeconds = 10_000.0,
                 force = false,
             ),
@@ -512,6 +521,40 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun retryJitterIsStablePerArtworkRowAndKeepsRetryAfterAsTheMinimum() {
+        val firstRow = artworkRetryDelaySeconds(
+            failureCount = 3,
+            retryable = true,
+            jitterSeed = 101L,
+        )
+        val secondRow = artworkRetryDelaySeconds(
+            failureCount = 3,
+            retryable = true,
+            jitterSeed = 202L,
+        )
+        assertTrue(firstRow in 240L..288L)
+        assertTrue(secondRow in 240L..288L)
+        assertFalse("Different rows should not share every retry boundary.", firstRow == secondRow)
+        assertEquals(
+            3_600L,
+            artworkRetryDelaySeconds(
+                failureCount = 1,
+                retryable = true,
+                retryAfterSeconds = 3_600L,
+                jitterSeed = 101L,
+            ),
+        )
+        assertEquals(
+            MAX_ARTWORK_RETRY_BACKOFF_SECONDS,
+            artworkRetryDelaySeconds(failureCount = 99, retryable = true, jitterSeed = 101L),
+        )
+        assertTrue(
+            artworkRetryDelaySeconds(failureCount = 1, retryable = false, jitterSeed = 101L) >=
+                PERMANENT_ARTWORK_RETRY_DELAY_SECONDS,
+        )
+    }
+
+    @Test
     fun backoffIsExponentialCappedAndHonorsRetryAfter() {
         assertEquals(60L, artworkRetryDelaySeconds(failureCount = 1, retryable = true))
         assertEquals(120L, artworkRetryDelaySeconds(failureCount = 2, retryable = true))
@@ -522,12 +565,24 @@ class ReiAnixArtworkPublicationSignalTest {
 
     @Test
     fun imageServerStatusClassificationDistinguishesTransientAndPermanentResponses() {
-        for (status in listOf(408, 425, 429, 500, 502, 503, 599)) {
+        for (status in listOf(408, 425, 429, 500, 502, 503, 504, 599)) {
             assertTrue("Expected transient HTTP $status", isRetryableArtworkHttpStatus(status))
         }
         for (status in listOf(400, 401, 403, 404, 410)) {
             assertFalse("Expected cooldown HTTP $status", isRetryableArtworkHttpStatus(status))
         }
+        assertFalse(
+            "A confirmed missing resource is permanent.",
+            isRetryableArtworkFailure(404, false, false),
+        )
+        assertFalse(
+            "Content proven not to be an image is permanent.",
+            isRetryableArtworkFailure(200, false, false, permanentContentFailure = true),
+        )
+        assertTrue(
+            "An unclassified HTTP response must remain eligible for conservative re-evaluation.",
+            isRetryableArtworkFailure(499, false, false),
+        )
     }
 
     @Test
@@ -547,6 +602,10 @@ class ReiAnixArtworkPublicationSignalTest {
         assertFalse(isRetryableArtworkFailure(httpStatus = null, transportOrFileIoFailure = false, sqlitePersistenceFailure = false))
         assertTrue(isRetryableArtworkFailure(httpStatus = 429, transportOrFileIoFailure = false, sqlitePersistenceFailure = false))
         assertFalse(isRetryableArtworkFailure(httpStatus = 404, transportOrFileIoFailure = true, sqlitePersistenceFailure = true))
+        assertTrue(
+            "Unknown failures must be re-evaluated rather than considered permanent by default.",
+            isRetryableArtworkFailure(httpStatus = null, transportOrFileIoFailure = false, sqlitePersistenceFailure = false),
+        )
     }
 
     @Test

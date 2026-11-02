@@ -114,19 +114,27 @@ internal fun invalidGeneratedThumbnailPaths(
 internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val BASE_ARTWORK_RETRY_BACKOFF_SECONDS = 60L
 internal const val MAX_ARTWORK_RETRY_BACKOFF_SECONDS = 6L * 60L * 60L
+/** Diagnostic escalation threshold only; it never blocks an automatic retry. */
 internal const val MAX_AUTOMATIC_ARTWORK_FAILURES = 5
 
-/** HTTP and local persistence failures that should keep an automatic recovery path. */
+/** HTTP responses known to be transient and worth an automatic retry. */
 internal fun isRetryableArtworkHttpStatus(statusCode: Int): Boolean =
     statusCode == 408 || statusCode == 425 || statusCode == 429 || statusCode in 500..599
 
+/**
+ * Only confirmed missing resources and image payloads proven incompatible are permanent.
+ * Unclassified transport, storage, SQLite and HTTP outcomes remain eligible for later
+ * re-evaluation because repeating after a bounded cooldown may resolve them.
+ */
 internal fun isRetryableArtworkFailure(
     httpStatus: Int?,
     transportOrFileIoFailure: Boolean,
     sqlitePersistenceFailure: Boolean,
+    permanentContentFailure: Boolean = false,
 ): Boolean {
-    if (httpStatus != null) return isRetryableArtworkHttpStatus(httpStatus)
-    return transportOrFileIoFailure || sqlitePersistenceFailure
+    if (permanentContentFailure || httpStatus == 404 || httpStatus == 410) return false
+    if (httpStatus != null) return true
+    return transportOrFileIoFailure || sqlitePersistenceFailure || httpStatus == null
 }
 
 /**
@@ -154,9 +162,10 @@ internal fun artworkRetryDelaySeconds(
     failureCount: Int,
     retryable: Boolean,
     retryAfterSeconds: Long? = null,
+    jitterSeed: Long = 0L,
 ): Long {
     val attempt = failureCount.coerceAtLeast(1)
-    val exponential = if (retryable) {
+    val baseDelay = if (retryable) {
         val exponent = (attempt - 1).coerceIn(0, 10)
         minOf(
             MAX_ARTWORK_RETRY_BACKOFF_SECONDS,
@@ -165,11 +174,25 @@ internal fun artworkRetryDelaySeconds(
     } else {
         PERMANENT_ARTWORK_RETRY_DELAY_SECONDS
     }
+    // Stable per-row jitter spreads requests without randomness or persisted extra state.
+    // Retry-After is always a lower bound and is never shortened by the local cap.
+    val jitterWindow = baseDelay / 5L
+    val jitter = if (jitterSeed == 0L || jitterWindow <= 0L) {
+        0L
+    } else {
+        Math.floorMod(jitterSeed + attempt.toLong() * 104_729L, jitterWindow + 1L)
+    }
+    val jitteredDelay = baseDelay + jitter
+    val boundedDelay = if (retryable) {
+        minOf(MAX_ARTWORK_RETRY_BACKOFF_SECONDS, jitteredDelay)
+    } else {
+        jitteredDelay
+    }
     val serverDelay = retryAfterSeconds
         ?.coerceAtLeast(0L)
         ?.coerceAtMost(Long.MAX_VALUE / 1_000L)
         ?: 0L
-    return max(exponential, serverDelay)
+    return max(boundedDelay, serverDelay)
 }
 
 /** The declared length is advisory when absent, but must match when supplied. */
@@ -265,8 +288,9 @@ internal fun parseArtworkCacheExpirySeconds(
 }
 
 /**
- * A persisted retry timestamp is authoritative. No attempt counter may turn a needed
- * artwork row into a terminal state; failed rows are re-evaluated when their cooldown ends.
+ * Persisted deadlines govern automatic eligibility. The historical failure counter is
+ * diagnostic only; reaching five never makes an otherwise recoverable row terminal.
+ * Legacy failed rows without a deadline receive one conservative re-evaluation pass.
  */
 @Suppress("UNUSED_PARAMETER")
 internal fun shouldRetryArtworkRequest(
@@ -277,9 +301,9 @@ internal fun shouldRetryArtworkRequest(
     force: Boolean,
 ): Boolean {
     if (force) return true
-    if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES) return false
     val normalizedStatus = status?.trim()?.lowercase(Locale.ROOT)
     if (normalizedStatus != "failed" && normalizedStatus != "retry_wait") return true
+    if (!nowSeconds.isFinite()) return false
     val retryAt = retryAtSeconds?.takeIf { it.isFinite() } ?: return true
     return retryAt <= nowSeconds
 }
@@ -874,13 +898,27 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         requestId: String,
     ) {
         if (!safeUrl(url)) {
+            persistRejectedArtworkSource(
+                id = id,
+                entity = entity,
+                type = type,
+                url = url,
+                requestId = requestId,
+                reason = if (isKnownArtworkPlaceholderUrl(url)) "KNOWN_PLACEHOLDER" else "INVALID_URL",
+                force = force,
+            )
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_ARTWORK_SOURCE_REJECTED",
                 severity = "WARN",
                 source = "ReiAnixArtworkService",
                 result = "INVALID_SOURCE",
                 requestId = requestId,
-                context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
+                context = mapOf(
+                    "entity_type" to entity,
+                    "entity_id" to id,
+                    "artwork_type" to type,
+                    "failure_class" to "PERMANENT_INVALID_SOURCE",
+                ),
             )
             return
         }
@@ -982,6 +1020,105 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 image?.let { removeIfUnreferenced(it.file) }
                 Log.w(TAG, "ARTWORK_DOWNLOAD_FAILED entity=" + entity + ":" + id + " type=" + type, error)
             }
+        }
+    }
+
+    /**
+     * Persist an invalid/placeholder source in the existing v29 artwork row. This prevents
+     * repeated backfills from hammering the same invalid URL while preserving local/manual
+     * ownership and all physical metadata of an already usable image.
+     */
+    private fun persistRejectedArtworkSource(
+        id: Long,
+        entity: String,
+        type: String,
+        url: String,
+        requestId: String,
+        reason: String,
+        force: Boolean,
+    ) {
+        val outcome = runCatching {
+            database.transaction { db ->
+                if (!urlCurrent(db, id, type, url)) return@transaction null
+                val rows = queryCandidates(db, entity, id.toString(), type, url)
+                if (rows.any { it.manual || it.source.equals("manual", true) }) return@transaction null
+                if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return@transaction null
+
+                val existing = rows.firstOrNull { it.url == url || it.sourceRef == url }
+                val now = nowSeconds()
+                if (existing != null && !shouldRetryArtworkRequest(
+                        existing.status,
+                        existing.retryAt,
+                        existing.failureCount,
+                        now,
+                        force,
+                    )
+                ) return@transaction null
+
+                val previousCount = existing?.failureCount?.coerceAtLeast(0) ?: 0
+                val count = if (previousCount == Int.MAX_VALUE) Int.MAX_VALUE else previousCount + 1
+                val retryDelay = artworkRetryDelaySeconds(
+                    failureCount = count,
+                    retryable = false,
+                    jitterSeed = existing?.id ?: id,
+                )
+                val nextRetryAt = now + retryDelay
+                val values = ContentValues().apply {
+                    put("entity_type", entity)
+                    put("entity_id", id.toString())
+                    put("artwork_type", type)
+                    put("source", "cache")
+                    put("source_ref", existing?.sourceRef ?: url)
+                    put("external_url", url)
+                    put("manual", 0)
+                    put("priority", existing?.priority ?: 350)
+                    put("status", STATUS_FAILED)
+                    put("updated_at", now)
+                    put("last_attempt_at", now)
+                    put("failure_count", count)
+                    put("next_retry_at", nextRetryAt)
+                    putNull("http_status")
+                    put("artwork_key", existing?.key ?: remoteKey(null, url, type))
+                    put("variant", existing?.variant ?: "large")
+                    if (existing == null) put("discovered_at", now)
+                }
+                val saved = if (existing == null) {
+                    db.insertOrThrow("artwork", null, values) > 0L
+                } else {
+                    db.update("artwork", values, "id=?", arrayOf(existing.id.toString())) > 0
+                }
+                if (saved) Triple(count, nextRetryAt, existing == null) else null
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Could not persist rejected artwork source for animeId=$id type=$type", error)
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_FAILURE_STATE_PERSIST_FAILED",
+                severity = "ERROR",
+                source = "ReiAnixArtworkService",
+                result = "INVALID_SOURCE_STATE_NOT_SAVED",
+                requestId = requestId,
+                error = error,
+                context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
+            )
+        }.getOrNull()
+        outcome?.let { (count, nextRetryAt, inserted) ->
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_PERMANENT_FAILURE_RECORDED",
+                severity = "WARN",
+                source = "ReiAnixArtworkService",
+                result = if (inserted) "INVALID_SOURCE_ROW_CREATED" else "INVALID_SOURCE_ROW_UPDATED",
+                requestId = requestId,
+                context = mapOf(
+                    "entity_type" to entity,
+                    "entity_id" to id,
+                    "artwork_type" to type,
+                    "failure_count" to count,
+                    "failure_reason" to reason,
+                    "failure_class" to "PERMANENT",
+                    "next_retry_at" to nextRetryAt,
+                    "retry_scheduled" to true,
+                ),
+            )
         }
     }
 
@@ -1091,16 +1228,32 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 skipped("RETRY_COOLDOWN_ACTIVE")
                 return@transaction null
             }
+            if (exact.status.equals(STATUS_FAILED, true) || exact.status.equals(STATUS_RETRY_WAIT, true)) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_ARTWORK_ROW_REACTIVATED",
+                    source = "ReiAnixArtworkService",
+                    result = "PERSISTED_RETRY_DEADLINE_REACHED",
+                    requestId = requestId,
+                    context = mapOf(
+                        "entity_type" to entity,
+                        "entity_id" to id,
+                        "artwork_type" to type,
+                        "failure_count" to exact.failureCount,
+                        "previous_status" to exact.status,
+                        "forced" to force,
+                    ),
+                )
+            }
             val values = ContentValues().apply {
                 // Keep the established materialized-row marker. Provider/field provenance
-                // remains in source_ref and artwork_key.
+                // remains in source_ref and artwork_key. Forced requests never erase history.
                 put("source", "cache")
                 put("source_ref", exact.sourceRef ?: url)
                 put("external_url", url)
                 put("status", "downloading")
                 put("priority", exact.priority)
                 put("updated_at", now); put("last_attempt_at", now)
-                put("failure_count", if (force) 0 else exact.failureCount)
+                put("failure_count", exact.failureCount)
                 putNull("next_retry_at"); putNull("http_status")
                 put("artwork_key", exact.key ?: key)
                 put("variant", exact.variant ?: "large")
@@ -1184,16 +1337,20 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun artworkFailureKind(error: Exception): String = when (error) {
         is HttpFailure -> when {
             error.code == 429 -> "HTTP_429_RATE_LIMITED"
-            error.code == 404 -> "HTTP_404_NOT_FOUND"
-            error.code in 500..599 -> "HTTP_5XX_SERVER"
+            error.code == 404 || error.code == 410 -> "HTTP_CONFIRMED_MISSING"
             error.code == 408 -> "HTTP_408_TIMEOUT"
-            else -> "HTTP_CLIENT_OR_PROTOCOL"
+            error.code == 425 -> "HTTP_425_TOO_EARLY"
+            error.code == 502 -> "HTTP_502_BAD_GATEWAY"
+            error.code == 503 -> "HTTP_503_UNAVAILABLE"
+            error.code == 504 -> "HTTP_504_GATEWAY_TIMEOUT"
+            error.code in 500..599 -> "HTTP_5XX_SERVER"
+            else -> "HTTP_UNCLASSIFIED_REEVALUATE"
         }
         is java.net.SocketTimeoutException -> "TRANSPORT_TIMEOUT"
-        is InvalidImage -> "INVALID_IMAGE_CONTENT"
+        is InvalidImage -> "PERMANENT_INVALID_IMAGE_CONTENT"
         is SQLiteException -> "SQLITE_PERSISTENCE"
         is IOException -> "NETWORK_OR_STORAGE_IO"
-        else -> "PERSISTENCE_OR_UNEXPECTED"
+        else -> "UNKNOWN_TRANSIENT_REEVALUATE"
     }
 
     private suspend fun download(animeId: Long, key: String, rawUrl: String): Downloaded {
@@ -1352,27 +1509,65 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             httpStatus = (error as? HttpFailure)?.let { httpStatus ?: it.code },
             transportOrFileIoFailure = error is IOException && error !is HttpFailure,
             sqlitePersistenceFailure = error is SQLiteException,
+            permanentContentFailure = error is InvalidImage,
         )
         return database.transaction { db ->
-            if (artworkById(db, rowId) == null) return@transaction null
-            val previousCount = db.rawQuery(
-                "SELECT failure_count FROM artwork WHERE id=?",
-                arrayOf(rowId.toString()),
-            ).use { if (it.moveToFirst()) it.getInt(0).coerceAtLeast(0) else 0 }
+            val row = artworkById(db, rowId) ?: return@transaction null
+            if (row.manual || row.source.equals("manual", true) || row.source.equals("local", true)) {
+                return@transaction null
+            }
+            val previousCount = row.failureCount.coerceAtLeast(0)
             val count = if (previousCount == Int.MAX_VALUE) Int.MAX_VALUE else previousCount + 1
-            val retryDelay = artworkRetryDelaySeconds(count, retryable, retryAfterSeconds)
+            val retryDelay = artworkRetryDelaySeconds(
+                failureCount = count,
+                retryable = retryable,
+                retryAfterSeconds = retryAfterSeconds,
+                jitterSeed = rowId,
+            )
             val now = nowSeconds()
+            val nextRetryAt = now + retryDelay
+            val failureClass = if (retryable) "TRANSIENT_OR_UNKNOWN" else "PERMANENT"
+            val failureKind = artworkFailureKind(error)
             val values = ContentValues().apply {
-                // Permanent responses retain a retry timestamp so the required source
-                // is re-evaluated after cooldown instead of becoming terminal forever.
-                put("status", if (retryable) "retry_wait" else "failed")
+                // Retain local_path, checksum and physical metadata: a failed remote refresh
+                // must not turn an already materialized local file into a missing image.
+                put("status", if (retryable) STATUS_RETRY_WAIT else STATUS_FAILED)
                 put("updated_at", now)
                 put("last_attempt_at", now)
                 put("failure_count", count)
-                put("next_retry_at", now + retryDelay)
+                put("next_retry_at", nextRetryAt)
                 if (httpStatus == null) putNull("http_status") else put("http_status", httpStatus)
             }
             db.update("artwork", values, "id=?", arrayOf(rowId.toString()))
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_RETRY_SCHEDULED",
+                severity = if (retryable) "WARN" else "ERROR",
+                source = "ReiAnixArtworkService",
+                result = if (retryable) "RETRY_WAIT" else "FAILED_REEVALUATION",
+                context = mapOf(
+                    "row_id" to rowId,
+                    "failure_count" to count,
+                    "failure_kind" to failureKind,
+                    "failure_class" to failureClass,
+                    "retry_delay_seconds" to retryDelay,
+                    "next_retry_at" to nextRetryAt,
+                    "http_status" to (httpStatus ?: -1),
+                ),
+            )
+            if (count == MAX_AUTOMATIC_ARTWORK_FAILURES || (count > MAX_AUTOMATIC_ARTWORK_FAILURES && count % 10 == 0)) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_ARTWORK_FAILURE_THRESHOLD_REACHED",
+                    severity = "WARN",
+                    source = "ReiAnixArtworkService",
+                    result = "CONTROLLED_RETRIES_CONTINUE",
+                    context = mapOf(
+                        "row_id" to rowId,
+                        "failure_count" to count,
+                        "failure_class" to failureClass,
+                        "next_retry_at" to nextRetryAt,
+                    ),
+                )
+            }
             retryDelay
         }
     }
@@ -1389,14 +1584,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "SELECT MIN(a.next_retry_at) FROM artwork a " +
                         "WHERE a.entity_id=? AND a.entity_type IN ('anime','movie') " +
                         "AND a.artwork_type IN ('poster','backdrop','banner') " +
-                        "AND a.status='retry_wait' AND a.failure_count < ? AND a.next_retry_at IS NOT NULL " +
+                        "AND a.status IN ('retry_wait','failed') AND a.next_retry_at IS NOT NULL " +
+                        "AND a.manual=0 AND LOWER(COALESCE(a.source,'')) NOT IN ('manual','local') " +
                         "AND EXISTS (SELECT 1 FROM anime n WHERE n.id=? AND (" +
                         "(a.artwork_type='poster' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.cover_url,''))) " +
                         "OR (a.artwork_type='backdrop' AND TRIM(COALESCE(a.external_url,''))=TRIM(COALESCE(n.banner_url,''))) " +
-                        "OR (a.artwork_type='banner' AND a.manual=0 " +
-                        "AND LOWER(COALESCE(a.source,'')) NOT IN ('manual','local') " +
-                        "AND TRIM(COALESCE(a.external_url,''))!='')))",
-                    arrayOf(animeId.toString(), MAX_AUTOMATIC_ARTWORK_FAILURES.toString(), animeId.toString()),
+                        "OR (a.artwork_type='banner' AND TRIM(COALESCE(a.external_url,''))!='')))",
+                    arrayOf(animeId.toString(), animeId.toString()),
                 ).use { cursor ->
                     if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getDouble(0) else null
                 }
