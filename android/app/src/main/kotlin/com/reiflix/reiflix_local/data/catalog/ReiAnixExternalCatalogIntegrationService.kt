@@ -65,12 +65,15 @@ class ReiAnixExternalCatalogIntegrationService(
         return enriched
     }
 
-    private suspend fun isEligible(anime: ReiAnixAnimeRecord): Boolean {
-        if (anime.id <= 0L || anime.anilistMatchManual == true ||
+    private fun hasManualCatalogOwnership(anime: ReiAnixAnimeRecord): Boolean =
+        anime.anilistMatchManual == true ||
             anime.metadataSource.equals("manual", ignoreCase = true) ||
             anime.metadataStatus.equals("manual", ignoreCase = true)
-        ) return false
-        val metadataMissing = hasMetadataGap(anime)
+
+    private suspend fun isEligible(anime: ReiAnixAnimeRecord): Boolean {
+        if (anime.id <= 0L) return false
+        val manuallyOwned = hasManualCatalogOwnership(anime)
+        val metadataMissing = !manuallyOwned && hasMetadataGap(anime)
         val posterMissing = !artwork.hasValidAnimeArtwork(anime.id, "poster")
         val backdropMissing = !artwork.hasValidAnimeArtwork(anime.id, "backdrop")
         val bannerMissing = !artwork.hasValidAnimeArtwork(anime.id, "banner")
@@ -153,7 +156,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
         for (source in SUPPLEMENTAL_SOURCES) {
             currentCoroutineContext().ensureActive()
-            val needsMetadata = hasMetadataGap(anime)
+            val needsMetadata = !hasManualCatalogOwnership(anime) && hasMetadataGap(anime)
             val needsPoster = !artwork.hasValidAnimeArtwork(anime.id, "poster")
             val needsBackdrop = !artwork.hasValidAnimeArtwork(anime.id, "backdrop")
             val needsBanner = !artwork.hasValidAnimeArtwork(anime.id, "banner")
@@ -195,9 +198,13 @@ class ReiAnixExternalCatalogIntegrationService(
                     val verified = resolution.value
                     try {
                         ids = library.saveExternalCatalogIds(verified.match)
-                        anime = library.mergeExternalCatalogMetadata(verified.match, verified.remote)
+                        if (hasManualCatalogOwnership(anime)) {
+                            record(source, "VERIFIED_ARTWORK_ONLY_MANUAL_METADATA_PRESERVED", anime.id)
+                        } else {
+                            anime = library.mergeExternalCatalogMetadata(verified.match, verified.remote)
+                            record(source, "VERIFIED_METADATA_MERGED", anime.id)
+                        }
                         changed = true
-                        record(source, "VERIFIED_METADATA_MERGED", anime.id)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {

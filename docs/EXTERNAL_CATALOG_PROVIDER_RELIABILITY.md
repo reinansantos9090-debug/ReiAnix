@@ -44,6 +44,10 @@ O adapter limita a busca a uma página bounded, usa as propriedades JSON:API e m
 
 Falhas HTTP, JSON inválido e HTTP 429 são convertidos em resultados do contrato. O coordenador compartilhado preserva isolamento, cache de sucessos e `Retry-After`.
 
+### Contrato para recursos malformados — Prompt 4.1
+
+Uma página vazia (`data: []`) é uma busca válida sem resultados. Em uma página não vazia, cada recurso é validado individualmente: somente objetos do tipo `anime`, com ID dentro da allowlist e título canônico decodificável entram no resultado. Recursos inválidos são descartados sem invalidar os demais. Se a página não vazia não contiver nenhum recurso aproveitável, a resposta é `Failure(InvalidResponse)`, nunca um sucesso vazio que esconda uma resposta inteiramente inválida. IDs descartados não são associados ao catálogo local.
+
 ## AniPub — REST
 
 Base: `https://anipub.org`.
@@ -93,6 +97,14 @@ Todos os adapters continuam produzindo `ReiAnixCatalogAnime` e `ReiAnixCatalogRe
 - tipo canônico Poster/Backdrop/Banner apenas quando semanticamente documentado.
 
 Os adapters públicos usam o transporte GET HTTPS bounded já existente, resultados tipados para falhas HTTP/rede/timeout/JSON, limites de resposta, timeout e coordenador compartilhado. Redirecionamentos HTTP são seguidos manualmente, com no máximo três saltos; cada destino precisa ser HTTPS, possuir host e não conter user info. Downgrade HTTPS→HTTP e destinos malformados são rejeitados. Falha de um provider permanece um resultado local daquela fonte e não cancela as outras fontes. AniPub não depende de Jikan. Respostas incompletas ou sem dados suficientes permanecem ausentes/erro; não se fabricam IDs, URLs ou imagens.
+
+## Revisão de identidade e propriedade manual do artwork — Prompt 4.1
+
+A persistência de candidatos de artwork descobertos por providers continua dentro de `Resolution.Verified`. Os estados `PROBABLE`, `AMBIGUOUS`, `REJECTED` e `None` encerram o processamento daquele resultado e não persistem suas imagens; isso é intencional para evitar associar imagens a outra obra. O fluxo independente de URLs AniList já presentes no registro local (Poster em `cover_url`, Backdrop no campo legado `banner_url`) continua sendo tentado antes dos providers. Candidatos externos previamente persistidos na tabela `artwork` v29 também continuam podendo ser materializados pelo serviço de artwork sem nova resolução de identidade.
+
+A triagem agora permite que um registro manual sem artwork válido seja elegível para recuperação de imagem. A propriedade dos metadados permanece manual: a busca suplementar não mescla título, descrição, aliases, ano, episódios ou demais metadados externos nesses registros. A imagem externa só é persistida depois de uma resolução `Verified` e continua sujeita aos bloqueios específicos de campo e tipo do serviço de artwork. Uma capa/candidato com propriedade manual, uma imagem local válida ou um campo de capa explicitamente protegido em `metadata_manual_fields` continua sendo recusado para substituição. O mesmo vale para Poster, Backdrop e Banner de maneira independente.
+
+**Pendências para o Prompt 11:** maximizar a cobertura de imagens em resultados de identidade `PROBABLE`/ambíguos sem relaxar a associação de IDs nem permitir cruzamento entre animes; investigar uma etapa dedicada de pontuação/proveniência de candidatos de artwork que seja independente da promoção de metadados; avaliar recuperação por provedores para candidatos ainda não persistidos, com validação de tipo, URL HTTPS, conteúdo baixado e vínculo conservador ao anime. O Prompt 4.1 não promove candidatos provenientes de resultados não verificados.
 
 ## Integridade e limites desta etapa
 

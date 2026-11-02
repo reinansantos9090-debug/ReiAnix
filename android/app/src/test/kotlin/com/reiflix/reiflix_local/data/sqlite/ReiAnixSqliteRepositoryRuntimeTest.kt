@@ -2577,6 +2577,99 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
 
     @Test
+    fun manualRecordWithoutCoverAcceptsVerifiedArtworkWithoutMergingMetadata() = runBlocking {
+        createCanonicalFixture()
+        val download = createValidPng("manual-record-external-poster.png")
+        try {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.execSQL(
+                    """
+                    UPDATE anime SET year=2016,format='TV',media_kind='series',
+                        description='Manually authored synopsis that must remain unchanged.',
+                        episodes_count=12,duration=24,status='Finished Airing',score=91,
+                        cover_url=NULL,cover_cache=NULL,banner_url=NULL,
+                        metadata_manual_fields='["title","description","english"]',
+                        metadata_source='manual',metadata_status='manual',
+                        metadata_confidence='high'
+                    WHERE id=1
+                    """.trimIndent(),
+                )
+            }
+
+            val posterUrl = "https://media.kitsu.io/manual-record-poster.jpg"
+            val remote = ReiAnixCatalogAnime(
+                source = ReiAnixCatalogSource.KITSU,
+                ids = ReiAnixExternalCatalogIds(kitsuId = "manual-kitsu-artwork"),
+                title = "Original Title",
+                alternativeTitles = setOf("Old English Title"),
+                synopsis = "Remote synopsis must not replace manually owned metadata.",
+                releaseYear = 2016,
+                format = "TV",
+                mediaKind = ReiAnixCatalogMediaKind.SERIES,
+                episodes = 12,
+                coverUrl = posterUrl,
+                coverImageField = "posterImage",
+                coverVariant = "original",
+            )
+            val providerCalls = AtomicInteger()
+            val kitsu = object : ReiAnixAnimeCatalogProvider {
+                override val source = ReiAnixCatalogSource.KITSU
+                override suspend fun searchAnime(
+                    query: String,
+                    limit: Int,
+                ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                    providerCalls.incrementAndGet()
+                    return ReiAnixCatalogResult.Success(listOf(remote))
+                }
+                override suspend fun getAnime(externalId: String) =
+                    ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+            }
+
+            val database = ReiAnixSqliteDatabase(context)
+            val repository = ReiAnixSqliteLibraryRepository(database)
+            val artwork = ReiAnixArtworkService(context, database)
+            val imageBytes = download.readBytes()
+            artwork.httpConnectionFactory = { url ->
+                FakeArtworkHttpURLConnection(url, 200, imageBytes)
+            }
+            val service = ReiAnixExternalCatalogIntegrationService(
+                library = repository,
+                providers = ReiAnixCatalogProviderRegistry(
+                    listOf(kitsu),
+                    ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1),
+                ),
+                artwork = artwork,
+            )
+
+            assertEquals(1, service.enrichLibraryGaps())
+            assertTrue("The manual record must remain eligible for missing artwork.", providerCalls.get() > 0)
+            val updated = requireNotNull(repository.getAnime(1L))
+            assertEquals("Original Title", updated.title)
+            assertEquals(
+                "Manually authored synopsis that must remain unchanged.",
+                updated.description,
+            )
+            assertEquals("Old English Title", updated.english)
+            assertEquals("manual", updated.metadataSource)
+            assertEquals("manual", updated.metadataStatus)
+            assertEquals(
+                setOf("title", "description", "english"),
+                org.json.JSONArray(updated.metadataManualFieldsJson).let { json ->
+                    (0 until json.length()).map { json.getString(it) }.toSet()
+                },
+            )
+            assertEquals("manual-kitsu-artwork", repository.getExternalCatalogIds(1L)?.kitsuId)
+            assertEquals(posterUrl, updated.coverUrl)
+            assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
+            val poster = repository.artworkForAnime(1L).single { it.artworkType == "poster" }
+            assertEquals("kitsu", poster.source)
+            assertEquals("ready", poster.status)
+        } finally {
+            download.delete()
+        }
+    }
+
+    @Test
     fun completeMetadataValidPosterAndMissingBackdropStillTriggerSupplementalLookup() = runBlocking {
         createCanonicalFixture()
         val poster = createValidPng("backdrop-only-poster.png")

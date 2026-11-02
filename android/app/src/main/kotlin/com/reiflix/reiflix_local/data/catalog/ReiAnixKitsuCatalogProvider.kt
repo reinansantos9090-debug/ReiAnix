@@ -31,20 +31,20 @@ class ReiAnixKitsuCatalogProvider(
         return execute(url, SEARCH_CACHE_TTL_MILLIS) { root ->
             val data = root.optJSONArray("data")
                 ?: throw JSONException("Kitsu search response is missing the JSON:API data array.")
-            buildList {
+            val validResources = buildList {
                 for (index in 0 until data.length()) {
-                    val item = data.optJSONObject(index)
-                        ?: throw JSONException("Kitsu search contains an invalid JSON:API resource.")
+                    val item = data.optJSONObject(index) ?: continue
                     val resourceId = item.catalogText("id")
                     if (resourceId == null || !resourceId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
                         continue
                     }
-                    add(
-                        parseAnime(item)
-                            ?: throw JSONException("Kitsu search resource is missing its canonical title."),
-                    )
+                    parseAnime(item)?.let(::add)
                 }
             }
+            if (data.length() > 0 && validResources.isEmpty()) {
+                throw JSONException("Kitsu search response contains no valid anime resources.")
+            }
+            validResources
         }
     }
 
@@ -92,6 +92,7 @@ class ReiAnixKitsuCatalogProvider(
     }
 
     private fun parseAnime(resource: JSONObject): ReiAnixCatalogAnime? {
+        if (resource.catalogText("type")?.equals("anime", ignoreCase = true) != true) return null
         val id = resource.catalogText("id")
             ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,128}")) }
             ?: return null
