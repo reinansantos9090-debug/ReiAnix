@@ -1055,33 +1055,9 @@ class ReiAnixAniListIntegrationService(
         try {
             if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
             val autoMatchEnabled = settingEnabled("metadata.auto_match", defaultValue = true)
-            val rows = library.loadLibraryCatalogRows()
-            if (rows.isEmpty()) return 0
-            val rowsById = rows.associateBy { it.anime.id }
             val discoveryCursor = readArtworkDiscoveryCursor()
             val persistedAttemptTimes = readArtworkDiscoveryAttemptTimes().toMutableMap()
             val persistedSearchSignatures = readPersistedAniListSearchSignatures(library.database)
-            val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
-                .mapNotNull(rowsById::get)
-            val orderedIds = orderedRows.map { it.anime.id }
-            val completedDiscoveryIds = orderedIds.toMutableSet()
-            var completedPrefixSize = 0
-            var persistedProgressCursor = discoveryCursor
-            var persistedCursorValue = discoveryCursor
-
-            suspend fun persistCompletedDiscoveryPrefix() {
-                while (
-                    completedPrefixSize < orderedIds.size &&
-                    orderedIds[completedPrefixSize] in completedDiscoveryIds
-                ) {
-                    persistedProgressCursor = orderedIds[completedPrefixSize]
-                    completedPrefixSize++
-                }
-                if (persistedProgressCursor != persistedCursorValue) {
-                    writeArtworkDiscoveryCursor(persistedProgressCursor)
-                    persistedCursorValue = persistedProgressCursor
-                }
-            }
             val exhaustedPosterIds = library.database.read { connection ->
                 connection.rawQuery(
                     "SELECT DISTINCT entity_id FROM artwork WHERE entity_type IN ('anime','movie') " +
@@ -1090,8 +1066,55 @@ class ReiAnixAniListIntegrationService(
                 ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             }
             val nowSeconds = System.currentTimeMillis() / 1000.0
+            var cursor = discoveryCursor
+            var wrapped = false
+            var totalRecovered = 0
 
-            for (row in orderedRows) {
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val page = library.loadLibraryCatalogPageAfterAnimeId(
+                    afterAnimeId = cursor,
+                    limit = 100,
+                    beforeAnimeId = if (wrapped) discoveryCursor.takeIf { it > 0L } else null,
+                )
+                val pageCursor = page.lastScannedAnimeId
+                if (pageCursor == null) {
+                    if (!wrapped && discoveryCursor > 0L) {
+                        cursor = 0L
+                        wrapped = true
+                        continue
+                    }
+                    if (wrapped && discoveryCursor > 0L) {
+                        writeArtworkDiscoveryCursor(discoveryCursor)
+                    }
+                    break
+                }
+
+                selectedRows.clear()
+                completedAttemptIds.clear()
+                val orderedRows = page.rows.sortedBy { it.anime.id }
+                val rowsById = orderedRows.associateBy { it.anime.id }
+                val orderedIds = orderedRows.map { it.anime.id }
+                val completedDiscoveryIds = orderedIds.toMutableSet()
+                var completedPrefixSize = 0
+                var persistedProgressCursor = cursor
+                var persistedCursorValue = cursor
+
+                suspend fun persistCompletedDiscoveryPrefix() {
+                    while (
+                        completedPrefixSize < orderedIds.size &&
+                        orderedIds[completedPrefixSize] in completedDiscoveryIds
+                    ) {
+                        persistedProgressCursor = orderedIds[completedPrefixSize]
+                        completedPrefixSize++
+                    }
+                    if (persistedProgressCursor != persistedCursorValue) {
+                        writeArtworkDiscoveryCursor(persistedProgressCursor)
+                        persistedCursorValue = persistedProgressCursor
+                    }
+                }
+
+                for (row in orderedRows) {
                 currentCoroutineContext().ensureActive()
                 val local = row.anime
                 if (local.id <= 0L) continue
@@ -1319,8 +1342,17 @@ class ReiAnixAniListIntegrationService(
                 }
             }
 
-            persistCompletedDiscoveryPrefix()
-            return recovered
+                persistCompletedDiscoveryPrefix()
+                // Advance across rows without surviving episode records as well.
+                if (pageCursor != persistedCursorValue) {
+                    writeArtworkDiscoveryCursor(pageCursor)
+                    persistedCursorValue = pageCursor
+                }
+                totalRecovered += recovered
+                cursor = pageCursor
+                if (wrapped && cursor >= discoveryCursor) break
+            }
+            return totalRecovered
         } finally {
             // Never leave an in-memory cooldown behind for an unfinished/cancelled row.
             selectedRows.asSequence()
@@ -1339,33 +1371,41 @@ class ReiAnixAniListIntegrationService(
      */
     suspend fun reconcileUnmatchedLibraryMetadata(): Int {
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
-        val rows = library.loadLibraryCatalogRows()
-        val eligibleRows = rows.filter { row ->
-            val local = row.anime
-            local.id > 0L &&
-                local.anilistId == null &&
-                local.anilistMatchManual != true &&
-                local.metadataSource != "manual" &&
-                local.metadataStatus != "manual"
-        }
+        var cursor = 0L
         var processed = 0
-        for (catalogBatch in eligibleRows.chunked(100)) {
+        while (true) {
             currentCoroutineContext().ensureActive()
-            val titleEvidence = catalogBatch.associate { row ->
-                row.anime.id to episodeTitleCandidates(row)
+            val page = library.loadLibraryCatalogPageAfterAnimeId(
+                afterAnimeId = cursor,
+                limit = 100,
+            )
+            val nextCursor = page.lastScannedAnimeId ?: break
+            val eligibleRows = page.rows.filter { row ->
+                val local = row.anime
+                local.id > 0L &&
+                    local.anilistId == null &&
+                    local.anilistMatchManual != true &&
+                    local.metadataSource != "manual" &&
+                    local.metadataStatus != "manual"
             }
-            val seasonEvidence = catalogBatch.mapNotNull { row ->
-                episodeSeasonEvidence(row)?.let { row.anime.id to it }
-            }.toMap()
-            val yearEvidence = catalogBatch.mapNotNull { row ->
-                episodeYearEvidence(row)?.let { row.anime.id to it }
-            }.toMap()
-            processed += autoMatchBatch(
-                catalogBatch.map { it.anime },
-                titleEvidence,
-                seasonEvidence,
-                yearEvidence,
-            ).size
+            if (eligibleRows.isNotEmpty()) {
+                val titleEvidence = eligibleRows.associate { row ->
+                    row.anime.id to episodeTitleCandidates(row)
+                }
+                val seasonEvidence = eligibleRows.mapNotNull { row ->
+                    episodeSeasonEvidence(row)?.let { row.anime.id to it }
+                }.toMap()
+                val yearEvidence = eligibleRows.mapNotNull { row ->
+                    episodeYearEvidence(row)?.let { row.anime.id to it }
+                }.toMap()
+                processed += autoMatchBatch(
+                    eligibleRows.map { it.anime },
+                    titleEvidence,
+                    seasonEvidence,
+                    yearEvidence,
+                ).size
+            }
+            cursor = nextCursor
         }
         return processed
     }
