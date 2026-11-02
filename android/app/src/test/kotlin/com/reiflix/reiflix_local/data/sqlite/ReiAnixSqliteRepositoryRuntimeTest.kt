@@ -2291,8 +2291,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL(
-                "UPDATE anime SET cover_url=NULL,cover_cache=NULL,banner_url=NULL,metadata_manual_fields='[]'," +
-                    "metadata_source=NULL,metadata_status=NULL WHERE id=1",
+                "UPDATE anime SET cover_url=NULL,cover_cache=NULL,banner_url=NULL,metadata_manual_fields='[]' WHERE id=1",
             )
             // The fixture includes a legacy cover record; remove it so anime 1 is artwork-eligible too.
             db.execSQL("DELETE FROM artwork WHERE entity_type='anime' AND entity_id='1'")
@@ -2308,7 +2307,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                     )
                     SELECT ?, lookup_title || '-' || ?, title || ' ' || ?, added_at, '[]',
                            favorite, user_tags, is_pinned, personal_note, NULL,
-                           english || ' ' || ?, NULL, NULL, NULL, NULL
+                           english || ' ' || ?, metadata_source, metadata_status, NULL, NULL
                     FROM anime WHERE id=1
                     """.trimIndent(),
                     arrayOf(animeId, animeId.toString(), animeId.toString(), animeId.toString()),
@@ -2389,7 +2388,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 )
                 SELECT 27, lookup_title || '-27', title || ' 27', added_at, '[]',
                        favorite, user_tags, is_pinned, personal_note, NULL,
-                       english || ' 27', NULL, NULL, NULL, NULL
+                       english || ' 27', metadata_source, metadata_status, NULL, NULL
                 FROM anime WHERE id=1
                 """.trimIndent(),
             )
@@ -2779,8 +2778,36 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertEquals(posterUrl, updated.coverUrl)
             assertTrue(artwork.hasValidAnimeArtwork(1L, "poster"))
             val poster = repository.artworkForAnime(1L).single { it.artworkType == "poster" }
-            assertEquals("kitsu", poster.source)
+            // "source=cache" is the materialized lifecycle marker. The provider identity
+            // and source field remain immutable in source_ref and the deterministic key.
+            assertEquals("cache", poster.source)
+            assertEquals("kitsu:manual-kitsu-artwork:posterImage", poster.sourceRef)
+            assertEquals(posterUrl, poster.externalUrl)
+            val expectedArtworkKey = MessageDigest.getInstance("SHA-256")
+                .digest(
+                    listOf(
+                        "anime",
+                        "1",
+                        "kitsu",
+                        "kitsu:manual-kitsu-artwork:posterImage",
+                        "poster",
+                        "original",
+                        posterUrl,
+                    ).joinToString("|").toByteArray(Charsets.UTF_8),
+                )
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            assertEquals(expectedArtworkKey, poster.artworkKey)
+            assertEquals(false, poster.manual)
             assertEquals("ready", poster.status)
+            val localPosterPath = requireNotNull(poster.localPath)
+            assertTrue("Materialized poster file must exist and be non-empty.",
+                File(localPosterPath).isFile && File(localPosterPath).length() > 0L)
+            assertTrue("Poster must pass the artwork service's image validation.",
+                artwork.hasValidAnimeArtwork(1L, "poster"))
+            assertTrue((poster.width ?: 0) > 0 && (poster.height ?: 0) > 0)
+            assertTrue((poster.byteSize ?: 0L) > 0L)
+            assertNotNull(poster.checksum)
+            assertEquals("image/png", poster.contentType)
         } finally {
             download.delete()
         }
