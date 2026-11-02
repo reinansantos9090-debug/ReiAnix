@@ -308,6 +308,12 @@ internal fun shouldRetryArtworkRequest(
     return retryAt <= nowSeconds
 }
 
+/** Keep a verified previous image visible while the remote source waits for recovery. */
+internal fun artworkFailureStatus(
+    retryable: Boolean,
+    hasUsableLocalImage: Boolean,
+): String = if (retryable || hasUsableLocalImage) "retry_wait" else "failed"
+
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
@@ -460,13 +466,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         ),
                     )
                     posterUrl?.let {
-                        materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
+                        materializeSafely(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
                     }
                     backdropUrl?.let {
-                        materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
+                        materializeSafely(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
                     }
                     bannerUrls.forEach { url ->
-                        materialize(animeId, entityType, "banner", url, anime.anilistId, force, requestId)
+                        materializeSafely(animeId, entityType, "banner", url, anime.anilistId, force, requestId)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -1057,6 +1063,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
                 val previousCount = existing?.failureCount?.coerceAtLeast(0) ?: 0
                 val count = if (previousCount == Int.MAX_VALUE) Int.MAX_VALUE else previousCount + 1
+                val hasUsableLocalImage = existing?.path?.let(::validImage) == true
                 val retryDelay = artworkRetryDelaySeconds(
                     failureCount = count,
                     retryable = false,
@@ -1072,7 +1079,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     put("external_url", url)
                     put("manual", 0)
                     put("priority", existing?.priority ?: 350)
-                    put("status", STATUS_FAILED)
+                    put("status", artworkFailureStatus(
+                        retryable = false,
+                        hasUsableLocalImage = hasUsableLocalImage,
+                    ))
                     put("updated_at", now)
                     put("last_attempt_at", now)
                     put("failure_count", count)
@@ -1117,6 +1127,42 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "failure_class" to "PERMANENT",
                     "next_retry_at" to nextRetryAt,
                     "retry_scheduled" to true,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Isolate an unexpected database/source exception to one artwork type. The existing
+     * request owner continues with the remaining Poster/Backdrop/Banner candidates.
+     */
+    private suspend fun materializeSafely(
+        id: Long,
+        entity: String,
+        type: String,
+        url: String,
+        aniId: Long?,
+        force: Boolean,
+        requestId: String,
+    ) {
+        try {
+            materialize(id, entity, type, url, aniId, force, requestId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.e(TAG, "Artwork item failed entity=" + entity + ":" + id + " type=" + type, error)
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_ITEM_FAILED",
+                severity = "ERROR",
+                source = "ReiAnixArtworkService",
+                result = error.javaClass.simpleName,
+                requestId = requestId,
+                error = error,
+                context = mapOf(
+                    "entity_type" to entity,
+                    "entity_id" to id,
+                    "artwork_type" to type,
+                    "remaining_artwork_items_continue" to true,
                 ),
             )
         }
@@ -1511,11 +1557,17 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             sqlitePersistenceFailure = error is SQLiteException,
             permanentContentFailure = error is InvalidImage,
         )
+        // Decode/check outside the transaction. The path and bytes remain untouched.
+        val previousRow = runCatching {
+            database.read { db -> artworkById(db, rowId) }
+        }.getOrNull() ?: return null
+        val verifiedPreviousPath = previousRow.path?.takeIf(::validImage)
         return database.transaction { db ->
             val row = artworkById(db, rowId) ?: return@transaction null
             if (row.manual || row.source.equals("manual", true) || row.source.equals("local", true)) {
                 return@transaction null
             }
+            val hasUsableLocalImage = verifiedPreviousPath != null && row.path == verifiedPreviousPath
             val previousCount = row.failureCount.coerceAtLeast(0)
             val count = if (previousCount == Int.MAX_VALUE) Int.MAX_VALUE else previousCount + 1
             val retryDelay = artworkRetryDelaySeconds(
@@ -1531,7 +1583,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val values = ContentValues().apply {
                 // Retain local_path, checksum and physical metadata: a failed remote refresh
                 // must not turn an already materialized local file into a missing image.
-                put("status", if (retryable) STATUS_RETRY_WAIT else STATUS_FAILED)
+                put("status", artworkFailureStatus(
+                    retryable = retryable,
+                    hasUsableLocalImage = hasUsableLocalImage,
+                ))
                 put("updated_at", now)
                 put("last_attempt_at", now)
                 put("failure_count", count)

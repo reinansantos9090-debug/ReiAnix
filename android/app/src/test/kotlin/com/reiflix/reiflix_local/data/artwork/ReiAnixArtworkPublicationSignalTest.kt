@@ -521,6 +521,13 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun failedRefreshKeepsAUsableLocalImageAvailableUntilTheNextRetry() {
+        assertEquals("retry_wait", artworkFailureStatus(retryable = false, hasUsableLocalImage = true))
+        assertEquals("retry_wait", artworkFailureStatus(retryable = true, hasUsableLocalImage = false))
+        assertEquals("failed", artworkFailureStatus(retryable = false, hasUsableLocalImage = false))
+    }
+
+    @Test
     fun retryJitterIsStablePerArtworkRowAndKeepsRetryAfterAsTheMinimum() {
         val firstRow = artworkRetryDelaySeconds(
             failureCount = 3,
