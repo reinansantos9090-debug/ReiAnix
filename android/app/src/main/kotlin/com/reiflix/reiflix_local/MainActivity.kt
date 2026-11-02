@@ -2406,6 +2406,11 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // Resume the existing process-owned metadata/artwork queue. The coordinator
+        // coalesces this signal with bootstrap and scanner work instead of starting
+        // another set of provider requests.
+        appDependencies.bootstrap.onApplicationForegrounded()
+
         // Settings may revoke access while this activity is paused. Always
         // republish the actual Android state after a real Settings return.
         if (broadStoragePermissionPending) {
