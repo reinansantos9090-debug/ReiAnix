@@ -259,10 +259,10 @@ object LibraryUiMappers {
     ): String =
         stringOrNull(key)?.takeIf { it.isNotBlank() }
             ?: fallback?.let { stringOrNull(it)?.takeIf(String::isNotBlank) }
-            ?: error("Missing required library field: $key")
+            ?: throw IllegalArgumentException("Missing required library field: $key")
 
     private fun Map<String, Any?>.requiredLong(key: String): Long {
-        val value = longOrNull(key) ?: error("Missing required library field: $key")
+        val value = longOrNull(key) ?: throw IllegalArgumentException("Missing required library field: $key")
         require(value > 0L) { "Invalid library identifier '$key': IDs must be positive." }
         return value
     }
@@ -271,14 +271,14 @@ object LibraryUiMappers {
         when (val value = this[key]) {
             null -> emptyMap()
             is Map<*, *> -> value.entries.associate { (k, v) -> k.toString() to v }
-            else -> error("Invalid library field '$key': expected an object.")
+            else -> throw IllegalArgumentException("Invalid library field '$key': expected an object.")
         }
 
     private fun Map<String, Any?>.stringOrNull(key: String): String? =
         when (val value = this[key]) {
             null -> null
             is String -> value.trim().takeIf { it.isNotEmpty() }
-            else -> error("Invalid library field '$key': expected text.")
+            else -> throw IllegalArgumentException("Invalid library field '$key': expected text.")
         }
 
     private fun Map<String, Any?>.longOrNull(key: String): Long? =
@@ -298,7 +298,7 @@ object LibraryUiMappers {
             is Iterable<*> ->
                 value.mapIndexed { index, item ->
                     val text = item as? String
-                        ?: error("Invalid library field '$key[$index]': expected text.")
+                        ?: throw IllegalArgumentException("Invalid library field '$key[$index]': expected text.")
                     text.trim().also {
                         require(it.isNotEmpty()) { "Invalid library field '$key[$index]': text must not be blank." }
                     }
@@ -306,7 +306,7 @@ object LibraryUiMappers {
             is Array<*> ->
                 value.mapIndexed { index, item ->
                     val text = item as? String
-                        ?: error("Invalid library field '$key[$index]': expected text.")
+                        ?: throw IllegalArgumentException("Invalid library field '$key[$index]': expected text.")
                     text.trim().also {
                         require(it.isNotEmpty()) { "Invalid library field '$key[$index]': text must not be blank." }
                     }
@@ -332,7 +332,7 @@ object LibraryUiMappers {
                         (0 until array.length()).map { index ->
                             val item = array.opt(index)
                             val text = item as? String
-                                ?: error("Invalid library field '$key[$index]': expected text.")
+                                ?: throw IllegalArgumentException("Invalid library field '$key[$index]': expected text.")
                             text.trim().also {
                                 require(it.isNotEmpty()) {
                                     "Invalid library field '$key[$index]': text must not be blank."
@@ -343,14 +343,14 @@ object LibraryUiMappers {
                 }
             }
             null -> emptyList()
-            else -> error("Invalid library field '$key': expected a list or legacy string.")
+            else -> throw IllegalArgumentException("Invalid library field '$key': expected a list or legacy string.")
         }
 
     private fun Map<String, Any?>.listOfMaps(key: String): List<Map<String, Any?>> {
         fun convert(items: Iterable<*>): List<Map<String, Any?>> =
             items.mapIndexed { index, item ->
                 val map = item as? Map<*, *>
-                    ?: error("Invalid library field '$key[$index]': expected an object.")
+                    ?: throw IllegalArgumentException("Invalid library field '$key[$index]': expected an object.")
                 map.entries.associate { (k, v) -> k.toString() to v }
             }
 
@@ -358,7 +358,7 @@ object LibraryUiMappers {
             null -> emptyList()
             is Iterable<*> -> convert(value)
             is Array<*> -> convert(value.asIterable())
-            else -> error("Invalid library field '$key': expected an array.")
+            else -> throw IllegalArgumentException("Invalid library field '$key': expected an array.")
         }
     }
 }

@@ -344,7 +344,14 @@ class ReiAnixAniListDescriptionLocalizer(
                     val temporary = File.createTempFile(".anilist-ptbr-", ".tmp", parent)
                     try {
                         temporary.writeText(root.toString(), Charsets.UTF_8)
-                        Os.rename(temporary.absolutePath, file.absolutePath)
+                        try {
+                            Os.rename(temporary.absolutePath, file.absolutePath)
+                        } catch (renameError: Exception) {
+                            // Robolectric and some filesystem providers do not expose
+                            // android.system.Os.rename; retain same-directory rename as
+                            // a safe fallback without deleting the existing cache first.
+                            if (!temporary.renameTo(file)) throw renameError
+                        }
                     } finally {
                         if (temporary.exists()) temporary.delete()
                     }

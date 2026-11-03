@@ -72,11 +72,11 @@ internal object ReiAnixSettingsSnapshotCodec {
             for (key in settingsObject.keys()) {
                 val value = settingsObject.opt(key)
                 val serialized = when (value) {
-                    null, JSONObject.NULL -> error(
+                    null, JSONObject.NULL -> throw IllegalArgumentException(
                         "Settings snapshot value '$key' cannot be null; omit an absent setting instead.",
                     )
                     is String, is Boolean, is Number, is JSONObject, is JSONArray -> value.toString()
-                    else -> error("Unsupported JSON value for settings key '$key'.")
+                    else -> throw IllegalArgumentException("Unsupported JSON value for settings key '$key'.")
                 }
                 put(key, serialized)
             }

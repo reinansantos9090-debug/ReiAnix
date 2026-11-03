@@ -744,7 +744,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         database.transaction { connection ->
             connection.execSQL(
                 """
-                CREATE TRIGGER fail_player_resume_insert
+                CREATE TEMP TRIGGER fail_player_resume_insert
                 BEFORE INSERT ON preferences
                 WHEN NEW.key = 'player.resume'
                 BEGIN
@@ -856,7 +856,9 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val afterManualSelection = repository.recordAniListAutoMatchOutcome(1L, "ambiguous")
         assertEquals(42L, afterManualSelection.anilistId)
         assertEquals("manual", afterManualSelection.anilistMatchStatus)
-        assertEquals("Manually selected title", afterManualSelection.title)
+        // The fixture explicitly protects the local title in metadata_manual_fields.
+        // Manually associating an AniList ID must not overwrite that protected title.
+        assertEquals("Original Title", afterManualSelection.title)
     }
 
     @Test

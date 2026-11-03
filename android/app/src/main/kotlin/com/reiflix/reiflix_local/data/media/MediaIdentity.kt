@@ -232,7 +232,7 @@ object MediaTitleNormalizer {
         technicalPatterns.forEach { pattern -> tail = pattern.replace(tail, " ") }
         // Removing dotted/underscored release tokens must not leave their separators
         // as fake text in the episode title (for example: "Title.1080p.WEB-DL").
-        tail = tail.replace(Regex("[._]+"), " ")
+        tail = tail.replace(Regex("[._\\s]+"), " ")
         tail = tail.replace(Regex("\\s+"), " ").trim(' ', '-', '_')
         if (tail.isBlank() || Regex("(?i)v?\\d+").matches(tail)) return null
         return tail

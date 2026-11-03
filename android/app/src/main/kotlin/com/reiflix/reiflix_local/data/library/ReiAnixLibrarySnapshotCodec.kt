@@ -58,7 +58,7 @@ internal object ReiAnixLibrarySnapshotCodec {
         val animes = buildList(rawAnimes.length()) {
             for (index in 0 until rawAnimes.length()) {
                 val item = rawAnimes.optJSONObject(index)
-                    ?: error("Malformed anime at snapshot index=$index")
+                    ?: throw IllegalArgumentException("Malformed anime at snapshot index=$index")
                 @Suppress("UNCHECKED_CAST")
                 add(LibraryUiMappers.anime(item.toMap()))
             }
@@ -78,7 +78,7 @@ internal object ReiAnixLibrarySnapshotCodec {
         val continueWatching = buildList(rawContinueWatching.length()) {
             for (index in 0 until rawContinueWatching.length()) {
                 val item = rawContinueWatching.optJSONObject(index)
-                    ?: error("Malformed continue-watching item at snapshot index=$index")
+                    ?: throw IllegalArgumentException("Malformed continue-watching item at snapshot index=$index")
                 @Suppress("UNCHECKED_CAST")
                 val model = LibraryUiMappers.continueWatching(item.toMap())
                 // Continue Watching belongs to the same canonical snapshot.
@@ -117,7 +117,7 @@ internal object ReiAnixLibrarySnapshotCodec {
         val sources = buildList(configured.length()) {
             for (index in 0 until configured.length()) {
                 val item = configured.optJSONObject(index)
-                    ?: error("Malformed configured storage source at snapshot index=$index")
+                    ?: throw IllegalArgumentException("Malformed configured storage source at snapshot index=$index")
                 add(
                     ReiAnixStorageSourceUiModel(
                         reference = item.stringOrDefault("reference", "").trim(),
@@ -178,7 +178,7 @@ internal object ReiAnixLibrarySnapshotCodec {
         val items = buildList(rawItems.length()) {
             for (index in 0 until rawItems.length()) {
                 val item = rawItems.optJSONObject(index)
-                    ?: error("Malformed library page item at index=$index")
+                    ?: throw IllegalArgumentException("Malformed library page item at index=$index")
                 @Suppress("UNCHECKED_CAST")
                 add(LibraryUiMappers.anime(item.toMap()))
             }
