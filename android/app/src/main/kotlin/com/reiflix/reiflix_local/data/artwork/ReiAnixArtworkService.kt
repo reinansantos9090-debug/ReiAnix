@@ -338,8 +338,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     val forceFollowUp = forceFollowUpIds.remove(animeId)
                     if (!cacheClearInProgress.get()) {
                         when {
-                            candidateFollowUp != null ->
+                            candidateFollowUp != null -> {
+                                // Preserve a forced canonical refresh alongside candidate-only lookup.
+                                if (forceFollowUp) requestAnimeArtwork(animeId, force = true)
                                 requestAnimeArtworkCandidates(animeId, candidateFollowUp, forceFollowUp)
+                            }
                             forceFollowUp -> requestAnimeArtwork(animeId, force = true)
                             else -> schedulePersistedArtworkRetry(animeId)
                         }
@@ -848,11 +851,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "WHERE a.id=? AND art.entity_type IN ('anime','movie') " +
                     "AND art.artwork_type IN ('poster','backdrop') " +
                     "AND art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL " +
-                    "AND TRIM(COALESCE(art.external_url,''))!='' " +
+                    "AND art.next_retry_at<=? AND TRIM(COALESCE(art.external_url,''))!='' " +
                     "AND ((art.artwork_type='poster' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.cover_url,''))) " +
                     "OR (art.artwork_type='backdrop' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.banner_url,'')))) " +
                     "ORDER BY art.priority DESC,art.updated_at DESC,art.id DESC LIMIT ?",
-                arrayOf(animeId.toString(), MAX_CANDIDATE_ARTWORKS.toString()),
+                arrayOf(animeId.toString(), nowSeconds().toString(), MAX_CANDIDATE_ARTWORKS.toString()),
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) {
