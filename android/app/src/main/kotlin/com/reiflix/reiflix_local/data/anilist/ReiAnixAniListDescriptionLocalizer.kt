@@ -350,14 +350,17 @@ class ReiAnixAniListDescriptionLocalizer(
                             // Robolectric and some filesystem providers do not expose
                             // android.system.Os.rename; retain same-directory rename as
                             // a safe fallback without deleting the existing cache first.
+                            if (file.exists()) throw renameError
+                        }
+                        // A few host filesystem shims report Os.rename success without
+                        // materializing the destination. Verify the result before treating
+                        // the cache write as complete.
+                        if (!file.isFile) {
                             if (!temporary.renameTo(file)) {
-                                if (file.exists()) throw renameError
-                                try {
-                                    temporary.copyTo(file, overwrite = false)
-                                } catch (copyError: Exception) {
-                                    file.delete()
-                                    throw copyError
+                                if (file.exists()) {
+                                    throw IOException("Unable to publish AniList description cache without replacing existing data.")
                                 }
+                                temporary.copyTo(file, overwrite = false)
                             }
                         }
                     } finally {

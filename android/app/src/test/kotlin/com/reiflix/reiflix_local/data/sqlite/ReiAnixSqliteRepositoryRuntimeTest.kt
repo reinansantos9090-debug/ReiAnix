@@ -744,7 +744,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         database.transaction { connection ->
             connection.execSQL(
                 """
-                CREATE TEMP TRIGGER fail_player_resume_insert
+                CREATE TRIGGER fail_player_resume_insert
                 BEFORE INSERT ON preferences
                 WHEN NEW.key = 'player.resume'
                 BEGIN
