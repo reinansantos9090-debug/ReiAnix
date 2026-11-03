@@ -72,7 +72,7 @@ class LibraryUiMappersTest {
         val pending = animeSource(
             id = 18L,
             meta = mapOf(
-                "anilist_id" to 16498,
+                "anilist_id" to "16498",
                 "metadata_status" to "available",
                 "cover_url" to "https://example/cover.jpg",
                 "cover_cache" to null,
