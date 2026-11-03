@@ -1,4 +1,6 @@
 package com.reiflix.reiflix_local.data.anilist
+import android.app.Application
+import org.robolectric.annotation.Config
 
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -10,6 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [36])
 class ReiAnixAniListClientTest {
     @Test
     fun parsesTypedAnimeMetadataAndAliases() = runBlocking {

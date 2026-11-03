@@ -1,10 +1,16 @@
 package com.reiflix.reiflix_local
+import android.app.Application
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [36])
 class ReiAnixStorageComposeTest {
     @Test
     fun snapshot_decodes_storage_capabilities_and_sources_without_parallel_state() {

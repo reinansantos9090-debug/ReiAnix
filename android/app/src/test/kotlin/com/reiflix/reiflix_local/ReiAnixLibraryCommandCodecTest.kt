@@ -1,4 +1,8 @@
 package com.reiflix.reiflix_local
+import android.app.Application
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryCommandCodec
 import org.json.JSONObject
@@ -7,6 +11,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [36])
 class ReiAnixLibraryCommandCodecTest {
 
     @Test

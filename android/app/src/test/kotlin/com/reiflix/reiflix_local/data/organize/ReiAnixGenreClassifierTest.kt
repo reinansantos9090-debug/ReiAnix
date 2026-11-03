@@ -1,9 +1,15 @@
 package com.reiflix.reiflix_local.data.organize
+import android.app.Application
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [36])
 class ReiAnixGenreClassifierTest {
     @Test
     fun legacyRuleFamiliesArePortedInStableOrder() {

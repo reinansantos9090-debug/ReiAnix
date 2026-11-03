@@ -1,4 +1,8 @@
 package com.reiflix.reiflix_local
+import android.app.Application
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
 import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
@@ -9,6 +13,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [36])
 class ReiAnixLibrarySnapshotCodecTest {
 
     @Test

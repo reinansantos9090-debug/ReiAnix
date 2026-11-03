@@ -1,4 +1,8 @@
 package com.reiflix.reiflix_local
+import android.app.Application
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import com.reiflix.reiflix_local.scanner.ScanLifecycleState
@@ -12,6 +16,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.UUID
 
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [36])
 class NativeScanControllerTest {
     private fun id(): String = "scan-test-${UUID.randomUUID()}"
 

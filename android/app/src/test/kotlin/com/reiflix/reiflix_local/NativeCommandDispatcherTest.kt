@@ -1,4 +1,8 @@
 package com.reiflix.reiflix_local
+import android.app.Application
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
 import org.junit.Assert.assertEquals
@@ -6,6 +10,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [36])
 class NativeCommandDispatcherTest {
     @Test
     fun parseAcceptsCompleteAtomicCommandEnvelope() {

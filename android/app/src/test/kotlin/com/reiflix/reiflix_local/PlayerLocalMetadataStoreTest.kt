@@ -1,4 +1,6 @@
 package com.reiflix.reiflix_local
+import android.app.Application
+import org.robolectric.annotation.Config
 
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import org.junit.Assert.assertEquals
@@ -13,6 +15,7 @@ import org.robolectric.RuntimeEnvironment
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [36])
 class PlayerLocalMetadataStoreTest {
     private val context get() = RuntimeEnvironment.getApplication()
     private val metadataFile get() = File(context.filesDir, "player_metadata.json")
