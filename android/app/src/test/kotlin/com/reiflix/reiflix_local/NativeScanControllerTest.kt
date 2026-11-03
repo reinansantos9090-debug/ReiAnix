@@ -17,7 +17,7 @@ import org.junit.Test
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class NativeScanControllerTest {
     private fun id(): String = "scan-test-${UUID.randomUUID()}"
 

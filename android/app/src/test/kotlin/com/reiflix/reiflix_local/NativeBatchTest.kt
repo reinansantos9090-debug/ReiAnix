@@ -11,7 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class NativeBatchTest {
     @Test fun defaultSizeIs250AndAccumulatorStaysBounded() {
         val sizes = mutableListOf<Int>()

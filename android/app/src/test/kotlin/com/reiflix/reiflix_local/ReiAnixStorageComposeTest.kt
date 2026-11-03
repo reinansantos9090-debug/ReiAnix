@@ -10,7 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class ReiAnixStorageComposeTest {
     @Test
     fun snapshot_decodes_storage_capabilities_and_sources_without_parallel_state() {

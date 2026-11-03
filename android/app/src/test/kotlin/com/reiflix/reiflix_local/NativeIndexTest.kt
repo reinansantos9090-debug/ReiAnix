@@ -11,7 +11,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class NativeIndexTest {
     @Test
     fun stableIdentity_convergesMediaStoreAndBroadOnSamePhysicalFile() {

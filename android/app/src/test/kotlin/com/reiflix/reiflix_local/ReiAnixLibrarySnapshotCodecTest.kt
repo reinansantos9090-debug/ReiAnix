@@ -14,7 +14,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class ReiAnixLibrarySnapshotCodecTest {
 
     @Test

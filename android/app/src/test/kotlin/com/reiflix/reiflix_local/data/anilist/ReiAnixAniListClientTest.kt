@@ -12,7 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class ReiAnixAniListClientTest {
     @Test
     fun parsesTypedAnimeMetadataAndAliases() = runBlocking {

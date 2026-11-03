@@ -15,7 +15,7 @@ import org.robolectric.RuntimeEnvironment
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class PlayerLocalMetadataStoreTest {
     private val context get() = RuntimeEnvironment.getApplication()
     private val metadataFile get() = File(context.filesDir, "player_metadata.json")

@@ -11,7 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class ReiAnixLibraryViewModelContractTest {
     @Test
     fun homeProjectionExcludesEpisodeProgressButDetailsProjectionRetainsIt() {

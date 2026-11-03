@@ -15,7 +15,7 @@ import org.junit.Test
 import java.io.IOException
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [36])
+@Config(application = Application::class, sdk = [35])
 class DiscoveredMediaMetadataTest {
     @Test
     fun attachesParserResultWithoutReplacingContentUri() {
