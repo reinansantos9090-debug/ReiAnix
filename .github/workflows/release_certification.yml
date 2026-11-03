@@ -212,32 +212,11 @@ jobs:
           gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"
           jq '. + {statements: ((.table_sql | to_entries | sort_by(.key) | map(.value)) + ([.indexes | sort_by(.name)[] | select(.sql != null) | .sql]))}' "$contract" > "$fixture"
           jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$fixture" >/dev/null
+          # Execute every local Kotlin/JVM test; no emulator or instrumented tests are used here.
           ./android/gradlew -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
-            --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest.missingPersistedSettingsUseContractDefaultsWithoutRewritingThem \
-            --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest.canonicalPreferencesDoNotInheritMissingKeysFromStaleProjection \
-            --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest.persistedPreferencesOverrideDefaultsAndLegacyKeysAreRetained \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.compatibleLegacyColumnsAndIndexesRemainReadableWithoutRebuildingUserTables \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.migrationRepairsStaleCanonicalIndexDefinitionWithoutRebuildingCatalogTables \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.readsPreexistingCatalogAndReportsVersionWithoutChangingSchema \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.applicationRepositoryRejectsAnIncompatibleSchemaBeforeServingRows \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationCreatesFreshCanonicalDatabaseOnlyAfterExplicitAuthorization \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationIsIdempotentAndPreservesExistingCanonicalCatalogData \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationRejectsMissingCoreTablesWithoutRecreatingThemOrReplacingTheCatalog \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationRejectsCorruptExistingDatabaseWithoutReplacingItsBytes \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationRejectsEmptyExistingDatabaseWithoutReplacingIt \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.initializationDoesNotOverwriteAnUnexpectedSqliteUserVersion \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.bootstrapKeepsNativeServicesGatedWhenCanonicalCoreTablesAreMissing \
-            --tests com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.artworkDiscoveryAttemptTimestampsPersistInCanonicalPreferencesAcrossDatabaseInstances \
-            --tests com.reiflix.reiflix_local.VideoThumbnailExtractorTest \
-            --tests com.reiflix.reiflix_local.storage.VideoThumbnailFileValidationTest \
-            --tests com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtworkTest \
-            --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
-            --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListMatcherTest \
-            --tests com.reiflix.reiflix_local.LibraryUiMappersTest.realDurationAndEpisodeArtworkReachUiModelUnchanged \
-            --tests com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjectionTest \
             2>&1 | tee "$RUNNER_TEMP/reianix-jvm-certification.log"
 
       - name: Compile release Kotlin and assemble release APK
