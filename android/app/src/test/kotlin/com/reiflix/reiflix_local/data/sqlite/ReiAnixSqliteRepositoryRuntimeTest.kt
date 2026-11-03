@@ -754,7 +754,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             )
         }
 
-        val settings = ReiAnixSqliteSettingsRepository(context)
+        // Reuse the SQLiteOpenHelper connection that owns the TEMP trigger.
+        val settings = ReiAnixSqliteSettingsRepository(database)
         try {
             settings.setPreferencesAtomically(
                 mapOf("appearance.theme" to "light", "player.resume" to "false"),

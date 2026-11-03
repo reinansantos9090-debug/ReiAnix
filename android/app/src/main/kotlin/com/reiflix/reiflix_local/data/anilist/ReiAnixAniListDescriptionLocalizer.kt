@@ -350,7 +350,15 @@ class ReiAnixAniListDescriptionLocalizer(
                             // Robolectric and some filesystem providers do not expose
                             // android.system.Os.rename; retain same-directory rename as
                             // a safe fallback without deleting the existing cache first.
-                            if (!temporary.renameTo(file)) throw renameError
+                            if (!temporary.renameTo(file)) {
+                                if (file.exists()) throw renameError
+                                try {
+                                    temporary.copyTo(file, overwrite = false)
+                                } catch (copyError: Exception) {
+                                    file.delete()
+                                    throw copyError
+                                }
+                            }
                         }
                     } finally {
                         if (temporary.exists()) temporary.delete()

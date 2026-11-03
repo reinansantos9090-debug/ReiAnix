@@ -29,11 +29,15 @@ object LibraryUiMappers {
             ?: metadata.stringOrNull("title")
             ?: source.stringOrNull("title")
             ?: source.requiredString("lookup_title")
+        // Validate both wire representations even when metadata has precedence.
+        // A malformed fallback value must not be silently hidden by a valid override.
+        val metadataYear = metadata.intOrNull("year")
+        val sourceYear = source.intOrNull("year")
 
         return ReiAnixAnimeUiModel(
             id = id,
             title = title,
-            year = metadata.intOrNull("year") ?: source.intOrNull("year"),
+            year = metadataYear ?: sourceYear,
             genres = genres(source),
             favorite = source.booleanOrNull("favorite") ?: metadata.booleanOrNull("favorite") ?: false,
             mediaKind = mediaKind(
