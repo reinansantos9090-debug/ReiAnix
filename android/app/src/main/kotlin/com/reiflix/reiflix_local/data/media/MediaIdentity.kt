@@ -178,10 +178,13 @@ object MediaTitleNormalizer {
             .trim()
         val prefixless = stripOrganizationalPrefix(episodeCleaned)
         return buildList {
+            // Query the exact local spelling first, then the most useful canonical
+            // form, so technical metadata and organizer folders do not crowd out
+            // native/romaji/English aliases in the bounded provider query budget.
             add(original)
-            add(cleaned)
-            add(episodeCleaned)
             add(prefixless)
+            add(episodeCleaned)
+            add(cleaned)
             add(foldDiacritics(prefixless))
         }.asSequence()
             .map { it.trim().replace(SEARCH_WHITESPACE, " ") }
@@ -227,6 +230,9 @@ object MediaTitleNormalizer {
             .replace(Regex("^[ ._\\-–—]+"), "")
             .replace(Regex("\\[[^]]*]"), " ")
         technicalPatterns.forEach { pattern -> tail = pattern.replace(tail, " ") }
+        // Removing dotted/underscored release tokens must not leave their separators
+        // as fake text in the episode title (for example: "Title.1080p.WEB-DL").
+        tail = tail.replace(Regex("[._]+"), " ")
         tail = tail.replace(Regex("\\s+"), " ").trim(' ', '-', '_')
         if (tail.isBlank() || Regex("(?i)v?\\d+").matches(tail)) return null
         return tail

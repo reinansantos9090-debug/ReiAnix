@@ -16,6 +16,8 @@ class ReiAnixAniListSearchTermsTest {
             limit = 8,
         )
 
+        assertEquals("Home Animes Ninja vs gokudo", terms.first())
+        assertEquals("Ninja vs gokudo", terms[1])
         assertTrue(terms.any { MediaTitleNormalizer.normalizeTitle(it) == "ninja vs gokudo" })
         assertTrue(terms.any { MediaTitleNormalizer.normalizeTitle(it) == "nyaight of the living cat" })
         assertEquals(terms.size, terms.distinctBy { MediaTitleNormalizer.normalizeTitle(it) }.size)
