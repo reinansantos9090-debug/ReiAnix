@@ -65,7 +65,10 @@ object MediaFilenameParser {
     private val movie = Regex("\\b(?:MOVIE|FILM)\\b", RegexOption.IGNORE_CASE)
     private val year = Regex("^(?:19\\d{2}|20\\d{2})$")
     private val filenameNumber = Regex("(?<!\\d)(\\d{1,4})(?:v\\d+)?\\b")
-    private val genericFolders = setOf("anime", "videos", "video", "media", "downloads", "download", "complete", "finished", "batch", "dub", "sub")
+    private val genericFolders = setOf(
+        "anime", "home animes", "videos", "video", "media", "downloads", "download",
+        "complete", "finished", "batch", "dub", "sub",
+    )
     private val numericTechnicalFolder = setOf("264", "265", "4320", "2160", "1080", "720", "480", "8", "10", "12")
     private val seasonLabel = Regex("(?i)^(?:s|season|temporada|temp)[ ._-]*\\d{1,3}$")
     private val volumeOrDisc = Regex("\\b(?:vol(?:ume)?|disc|disk)[ ._-]*\\d{1,3}\\b", RegexOption.IGNORE_CASE)

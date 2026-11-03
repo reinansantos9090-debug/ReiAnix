@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.data.anilist
 
+import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import java.text.Normalizer
 import java.util.ArrayDeque
 import java.util.Locale
@@ -45,7 +46,11 @@ internal object ReiAnixAniListMatcher {
         candidate: AniListAnime,
         context: Context,
     ): Pair<Double, String> {
-        val local = baseNormalize(localTitle)
+        val localTitles = MediaTitleNormalizer.searchTitleVariants(localTitle)
+            .ifEmpty { listOf(localTitle) }
+            .map(::baseNormalize)
+            .filter(String::isNotEmpty)
+            .distinct()
         val titleValues = buildList {
             candidate.titleEnglish?.takeIf(String::isNotBlank)?.let { add("english" to it) }
             candidate.titleRomaji?.takeIf(String::isNotBlank)?.let { add("romaji" to it) }
@@ -55,7 +60,7 @@ internal object ReiAnixAniListMatcher {
         var best = 0.0
         var bestKind = ""
         titleValues.forEach { (kind, value) ->
-            val score = tokenScore(local, baseNormalize(value))
+            val score = localTitles.maxOfOrNull { local -> tokenScore(local, baseNormalize(value)) } ?: 0.0
             if (score > best) {
                 best = score
                 bestKind = kind

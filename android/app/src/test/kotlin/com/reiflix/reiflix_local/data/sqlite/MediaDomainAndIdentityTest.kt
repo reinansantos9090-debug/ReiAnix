@@ -88,6 +88,20 @@ class MediaDomainAndIdentityTest {
     }
 
     @Test
+    fun searchTitleVariantsRemoveOnlyKnownOrganizationPrefixAndReleaseNoise() {
+        val ninja = MediaTitleNormalizer.searchTitleVariants("Home Animes Ninja_vs.gokudo")
+        val cat = MediaTitleNormalizer.searchTitleVariants(
+            "Home Animes [SubsPlease] Nyaight.of.the.Living_Cat.S01E01.1080p.WEB-DL.x265",
+        )
+
+        assertTrue(ninja.contains("Home Animes Ninja_vs.gokudo"))
+        assertTrue(ninja.contains("Ninja vs gokudo"))
+        assertTrue(cat.contains("Nyaight of the Living Cat"))
+        assertTrue(MediaTitleNormalizer.searchTitleVariants("Café des Étoiles").contains("Cafe des Etoiles"))
+        assertEquals("Home Animes Ninja_vs.gokudo", ninja.first())
+    }
+
+    @Test
     fun explicitSeasonAndEpisodeMarkerTakesPriorityOverReleaseNumbers() {
         val parsed = MediaFilenameParser.parseVideoPath(
             "/library/Naruto/Season 2/Naruto.S02E03.Title.1080p.WEB-DL.mkv",

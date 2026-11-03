@@ -163,6 +163,58 @@ object MediaTitleNormalizer {
     fun normalizeMediaTitle(value: String?): String = normalizeTitle(cleanMediaTitle(value))
 
     /**
+     * Search-only representations of a local title. The original spelling is always
+     * retained as the first query; cleaned forms are additional candidates only and
+     * must never be written back to the user's library.
+     */
+    fun searchTitleVariants(value: String?): List<String> {
+        val original = value?.trim()?.replace(SEARCH_WHITESPACE, " ")?.takeIf(String::isNotBlank)
+            ?: return emptyList()
+        val cleaned = cleanMediaTitle(original)
+        val episodeCleaned = cleaned
+            .replace(SEARCH_EPISODE_MARKERS, " ")
+            .replace(SEARCH_SEASON_MARKERS, " ")
+            .replace(SEARCH_WHITESPACE, " ")
+            .trim()
+        val prefixless = stripOrganizationalPrefix(episodeCleaned)
+        return buildList {
+            add(original)
+            add(cleaned)
+            add(episodeCleaned)
+            add(prefixless)
+            add(foldDiacritics(prefixless))
+        }.asSequence()
+            .map { it.trim().replace(SEARCH_WHITESPACE, " ") }
+            .filter { it.length in 2..120 }
+            .distinctBy(::normalizeTitle)
+            .toList()
+    }
+
+    private fun stripOrganizationalPrefix(value: String): String {
+        val match = HOME_ANIMES_PREFIX.find(value) ?: return value
+        return match.groupValues.getOrNull(1)?.trim()?.takeIf(String::isNotBlank) ?: value
+    }
+
+    private fun foldDiacritics(value: String): String =
+        Normalizer.normalize(value, Normalizer.Form.NFKD).filterNot {
+            val type = Character.getType(it)
+            type == Character.NON_SPACING_MARK.toInt() ||
+                type == Character.COMBINING_SPACING_MARK.toInt() ||
+                type == Character.ENCLOSING_MARK.toInt()
+        }
+
+    private val SEARCH_WHITESPACE = Regex("\\s+")
+    private val HOME_ANIMES_PREFIX = Regex(
+        """(?i)^\s*home[\s._-]+animes[\s._:|—–-]+(.+?)\s*$""",
+    )
+    private val SEARCH_EPISODE_MARKERS = Regex(
+        """(?i)\b(?:s\d{1,3}[ ._-]*e(?:p(?:isode)?)?[ ._-]*\d{1,4}|(?:e(?:p(?:isode)?)?|episode|epis[oó]dio)[ ._-]*\d{1,4})\b""",
+    )
+    private val SEARCH_SEASON_MARKERS = Regex(
+        """(?i)\b(?:season|temporada|temp)[ ._-]*\d{1,3}\b|\b\d{1,2}(?:st|nd|rd|th)[ ._-]*season\b""",
+    )
+
+    /**
      * Mirrors core.library_parser._episode_title_after exactly.
      *
      * This is deliberately narrower than cleanMediaTitle: the legacy parser keeps

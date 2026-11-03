@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.anilist
 
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidate
+import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 
 import android.content.Context
 import android.content.ContentValues
@@ -151,9 +152,10 @@ internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6)
     require(limit in 1..8) { "AniList title search limit must be between 1 and 8." }
     val seen = HashSet<String>()
     return candidates.asSequence()
+        .flatMap { MediaTitleNormalizer.searchTitleVariants(it).asSequence() }
         .map { it.trim().replace(Regex("\\s+"), " ") }
         .filter { it.length in 2..120 }
-        .filter { seen.add(it.lowercase(Locale.ROOT)) }
+        .filter { seen.add(MediaTitleNormalizer.normalizeTitle(it)) }
         .take(limit)
         .toList()
 }

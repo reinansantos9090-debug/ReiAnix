@@ -63,6 +63,22 @@ class MediaFilenameParserTest {
     }
 
     @Test
+    fun organizationFolderIsNotMistakenForAnimeTitle() {
+        val folderOnly = MediaFilenameParser.parseVideoPath(
+            "/library/Home Animes/Episode 01.mkv",
+            "/library",
+        )
+        val nestedAnime = MediaFilenameParser.parseVideoPath(
+            "/library/Home Animes/Nyaight of the Living Cat/Episode 01.mkv",
+            "/library",
+        )
+
+        assertEquals("Arquivo não identificado", folderOnly.animeTitle)
+        assertEquals("Nyaight of the Living Cat", nestedAnime.animeTitle)
+        assertEquals("Episode 01.mkv", folderOnly.originalFileName)
+    }
+
+    @Test
     fun everyLegacyVideoExtensionIsRecognizedCaseInsensitively() {
         val expected = setOf(".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".ts", ".m2ts", ".flv", ".wmv")
 

@@ -24,6 +24,35 @@ class ReiAnixAniListMatcherTest {
     }
 
     @Test
+    fun organizationalPrefixAndReleaseMetadataDoNotHideExactAniListTitle() {
+        val candidate = anime(
+            id = 202600,
+            english = "Nyaight of the Living Cat",
+            romaji = "Nyaight of the Living Cat",
+        )
+
+        val ranked = ReiAnixAniListMatcher.rank(
+            localTitle = "Home Animes [SubsPlease] Nyaight.of.the.Living_Cat.S01E01.1080p.WEB-DL.x265",
+            candidates = listOf(candidate),
+        )
+
+        assertEquals(1.0, ranked.single().score, 0.0)
+        assertEquals("english", ranked.single().titleKind)
+    }
+
+    @Test
+    fun oneCharacterTitleVariationRemainsAHighConfidenceCandidateWithoutChangingIdentity() {
+        val candidate = anime(id = 202601, english = "Night of the Living Cat")
+        val ranked = ReiAnixAniListMatcher.rank(
+            localTitle = "Home Animes Nyaight of the Living Cat",
+            candidates = listOf(candidate),
+        )
+
+        assertTrue(ranked.single().score >= ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE)
+        assertEquals(202601, ranked.single().anime.id)
+    }
+
+    @Test
     fun shortContainmentDoesNotAutomaticallyConfirmFranchiseSequels() {
         val candidate = anime(id = 20, english = "Naruto")
         val ranked = ReiAnixAniListMatcher.rank("Naruto Shippuden", listOf(candidate))
