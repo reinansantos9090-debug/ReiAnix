@@ -6,6 +6,7 @@ import com.reiflix.reiflix_local.data.anilist.rotateArtworkDiscoveryIds
 import com.reiflix.reiflix_local.data.anilist.MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
 import com.reiflix.reiflix_local.data.anilist.artworkDiscoveryAttemptPreferenceKey
 import com.reiflix.reiflix_local.data.anilist.shouldDeferArtworkDiscoveryAttempt
+import com.reiflix.reiflix_local.data.sqlite.shouldIncludeArtworkRecord
 
 import java.io.File
 import java.util.UUID
@@ -106,25 +107,124 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun automaticRetriesAreBoundedButExplicitForceCanRecoverExhaustedRows() {
-        assertFalse(
-            shouldRetryArtworkRequest(
-                status = "failed",
-                retryAtSeconds = null,
-                failureCount = MAX_AUTOMATIC_ARTWORK_FAILURES,
-                nowSeconds = 10_000.0,
-                force = false,
-            ),
+    fun automaticRetriesRemainEligibleAfterManyFailuresOncePersistedBackoffExpires() {
+        assertTrue(shouldRetryArtworkRequest("failed", null, 99, 10_000.0, false))
+        assertFalse(shouldRetryArtworkRequest("retry_wait", 10_001.0, 99, 10_000.0, false))
+        assertTrue(shouldRetryArtworkRequest("failed", 10_000.0, 99, 10_000.0, false))
+        assertTrue(shouldRetryArtworkRequest("failed", null, 99, 10_000.0, true))
+    }
+
+    @Test
+    fun rankedArtworkCandidatesContinueAfterRejectedImageSources() = runBlocking {
+        val candidates = listOf(
+            ReiAnixArtworkCandidate(11L, "https://img.example/rejected.jpg", null),
+            ReiAnixArtworkCandidate(12L, "https://img.example/probable.jpg", null),
+            ReiAnixArtworkCandidate(13L, "https://img.example/next.jpg", null),
         )
-        assertTrue(
-            shouldRetryArtworkRequest(
-                status = "failed",
-                retryAtSeconds = null,
-                failureCount = MAX_AUTOMATIC_ARTWORK_FAILURES,
-                nowSeconds = 10_000.0,
-                force = true,
-            ),
+        val attempted = mutableListOf<Long>()
+        val recovered = firstSuccessfulArtworkCandidate(candidates, { listOf(it.posterUrl, it.posterFallbackUrl) }) { candidate, url ->
+            attempted += candidate.anilistId
+            url == "https://img.example/probable.jpg"
+        }
+        assertTrue(recovered)
+        assertEquals(listOf(11L, 12L), attempted)
+    }
+
+    @Test
+    fun failedLargePosterVariantFallsBackWithoutBlockingTheCandidate() = runBlocking {
+        val candidate = ReiAnixArtworkCandidate(
+            anilistId = 41L,
+            posterUrl = "https://img.example/poster-extra-large.jpg",
+            bannerUrl = null,
+            posterFallbackUrl = "https://img.example/poster-large.jpg",
         )
+        val attempted = mutableListOf<String>()
+        val recovered = firstSuccessfulArtworkCandidate(listOf(candidate), { listOf(it.posterUrl, it.posterFallbackUrl) }) { _, url ->
+            attempted += url
+            url.endsWith("poster-large.jpg")
+        }
+        assertTrue(recovered)
+        assertEquals(listOf("https://img.example/poster-extra-large.jpg", "https://img.example/poster-large.jpg"), attempted)
+    }
+
+    @Test
+    fun posterAndBannerCandidateVariantsAreRecoveredIndependently() = runBlocking {
+        val candidates = listOf(
+            ReiAnixArtworkCandidate(21L, "https://img.example/poster.jpg", null),
+            ReiAnixArtworkCandidate(22L, null, "https://img.example/banner.jpg"),
+        )
+        val posters = mutableListOf<Long>()
+        val banners = mutableListOf<Long>()
+        assertTrue(firstSuccessfulArtworkCandidate(candidates, { listOf(it.posterUrl, it.posterFallbackUrl) }) { candidate, _ ->
+            posters += candidate.anilistId
+            true
+        })
+        assertTrue(firstSuccessfulArtworkCandidate(candidates, { listOf(it.bannerUrl) }) { candidate, _ ->
+            banners += candidate.anilistId
+            true
+        })
+        assertEquals(listOf(21L), posters)
+        assertEquals(listOf(22L), banners)
+    }
+
+    @Test
+    fun blankCandidateVariantsDoNotBlockLaterUsableSources() = runBlocking {
+        val candidates = listOf(
+            ReiAnixArtworkCandidate(31L, " ", " "),
+            ReiAnixArtworkCandidate(32L, null, "https://img.example/banner.jpg"),
+        )
+        val attempted = mutableListOf<Long>()
+        assertTrue(firstSuccessfulArtworkCandidate(candidates, { listOf(it.bannerUrl) }) { candidate, url ->
+            attempted += candidate.anilistId
+            url.endsWith("banner.jpg")
+        })
+        assertEquals(listOf(32L), attempted)
+    }
+
+    @Test
+    fun retryPolicyClassifiesHttpTransportAndPersistenceFailuresSeparately() {
+        for (status in listOf(408, 425, 429, 500, 502, 503, 599)) {
+            assertTrue("Expected HTTP $status to be retryable", isRetryableArtworkHttpStatus(status))
+        }
+        for (status in listOf(400, 401, 403, 404, 410)) {
+            assertFalse("Expected HTTP $status to use permanent cooldown", isRetryableArtworkHttpStatus(status))
+        }
+        assertTrue(isRetryableArtworkFailure(null, transportOrFileIoFailure = true, sqlitePersistenceFailure = false))
+        assertTrue(isRetryableArtworkFailure(null, transportOrFileIoFailure = false, sqlitePersistenceFailure = true))
+        assertFalse(isRetryableArtworkFailure(null, transportOrFileIoFailure = false, sqlitePersistenceFailure = false))
+        assertTrue(isRetryableArtworkFailure(429, transportOrFileIoFailure = false, sqlitePersistenceFailure = false))
+        assertFalse(isRetryableArtworkFailure(404, transportOrFileIoFailure = true, sqlitePersistenceFailure = true))
+    }
+
+    @Test
+    fun retryBackoffIsExponentialCappedAndHonorsRetryAfter() {
+        assertEquals(60L, artworkRetryDelaySeconds(1, true))
+        assertEquals(120L, artworkRetryDelaySeconds(2, true))
+        assertEquals(21_600L, artworkRetryDelaySeconds(99, true))
+        assertEquals(900L, artworkRetryDelaySeconds(1, true, retryAfterSeconds = 900L))
+        assertEquals(86_400L, artworkRetryDelaySeconds(1, false))
+    }
+
+    @Test
+    fun retryAfterParsesDeltaSecondsHttpDatesAndInvalidValues() {
+        assertEquals(120L, parseArtworkRetryAfterSeconds("120", 1_767_225_600_000L))
+        assertEquals(120L, parseArtworkRetryAfterSeconds("Thu, 01 Jan 2026 00:02:00 GMT", 1_767_225_600_000L))
+        assertEquals(null, parseArtworkRetryAfterSeconds("not-a-date", 1_767_225_600_000L))
+    }
+
+    @Test
+    fun failedArtworkRowsWithValidFilesRemainInTheComposeProjection() {
+        val file = File.createTempFile("reianix-projection-artwork", ".jpg")
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            assertTrue(shouldIncludeArtworkRecord("failed", file.absolutePath))
+            assertTrue(shouldIncludeArtworkRecord("ready", null))
+            assertFalse(shouldIncludeArtworkRecord("failed", null))
+            assertFalse(shouldIncludeArtworkRecord("failed", "   "))
+            assertFalse(shouldIncludeArtworkRecord("failed", "/missing/artwork.jpg"))
+        } finally {
+            file.delete()
+        }
     }
 
     @Test
@@ -263,10 +363,15 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun unresolvedAndManualRowsDoNotReceiveGuessedArtwork() {
-        assertFalse(shouldDiscoverMissingArtwork(null, false, false, false, "ambiguous", null, 100_000.0))
-        assertFalse(shouldDiscoverMissingArtwork(null, false, false, true, null, null, 100_000.0))
-        assertTrue(shouldDiscoverMissingArtwork(null, false, true, true, null, null, 100_000.0))
+    fun everyIdentityResolutionStateAndManualMetadataRemainEligibleForArtworkOnlyLookup() {
+        for (status in listOf("confirmed", "probable", "ambiguous", "rejected", "unresolved", "not_found")) {
+            assertTrue(
+                "Identity status $status must not block artwork-only discovery.",
+                shouldDiscoverMissingArtwork(null, false, false, false, status, null, 100_000.0),
+            )
+        }
+        assertTrue(shouldDiscoverMissingArtwork(null, false, false, true, "ambiguous", 99_999.0, 100_000.0))
+        assertFalse(shouldDiscoverMissingArtwork(null, true, false, false, "unresolved", null, 100_000.0))
     }
 
     @Test

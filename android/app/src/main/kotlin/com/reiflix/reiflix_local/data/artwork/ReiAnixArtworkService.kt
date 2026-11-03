@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import android.graphics.BitmapFactory
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -38,10 +39,13 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.ceil
 import kotlin.math.max
 
 /**
@@ -55,6 +59,29 @@ internal data class ReiAnixArtworkPublication(
     val artworkType: String,
     val sourceKind: String,
 )
+
+/** Candidate artwork URLs remain separate from the local identity association. */
+data class ReiAnixArtworkCandidate(
+    val anilistId: Long,
+    val posterUrl: String?,
+    val bannerUrl: String?,
+    val posterFallbackUrl: String? = null,
+)
+
+/** Attempts ranked candidates and their variants without letting one failed URL stop the next. */
+internal suspend fun firstSuccessfulArtworkCandidate(
+    candidates: List<ReiAnixArtworkCandidate>,
+    artworkUrls: (ReiAnixArtworkCandidate) -> List<String?>,
+    attempt: suspend (ReiAnixArtworkCandidate, String) -> Boolean,
+): Boolean {
+    for (candidate in candidates) {
+        for (rawUrl in artworkUrls(candidate)) {
+            val url = rawUrl?.trim()?.takeIf(String::isNotEmpty) ?: continue
+            if (attempt(candidate, url)) return true
+        }
+    }
+    return false
+}
 
 /**
  * Bounded publication signal for the existing Compose projection.
@@ -96,13 +123,53 @@ internal fun invalidGeneratedThumbnailPaths(
     .distinct()
     .filterNot(isUsable)
 
-internal const val MAX_AUTOMATIC_ARTWORK_FAILURES = 5
 internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
+internal const val BASE_ARTWORK_RETRY_BACKOFF_SECONDS = 60L
+internal const val MAX_ARTWORK_RETRY_BACKOFF_SECONDS = 6L * 60L * 60L
 
-/**
- * A legacy "failed" row without next_retry_at is eligible for one recovery attempt.
- * Automatic retries are bounded; an explicit force request can always recover it.
- */
+internal fun isRetryableArtworkHttpStatus(statusCode: Int): Boolean =
+    statusCode == 408 || statusCode == 425 || statusCode == 429 || statusCode in 500..599
+
+internal fun isRetryableArtworkFailure(
+    httpStatus: Int?,
+    transportOrFileIoFailure: Boolean,
+    sqlitePersistenceFailure: Boolean,
+): Boolean {
+    if (httpStatus != null) return isRetryableArtworkHttpStatus(httpStatus)
+    return transportOrFileIoFailure || sqlitePersistenceFailure
+}
+
+internal fun parseArtworkRetryAfterSeconds(value: String?, nowMillis: Long): Long? {
+    val raw = value?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    raw.toLongOrNull()?.takeIf { it >= 0L }?.let {
+        return it.coerceAtMost(Long.MAX_VALUE / 1_000L)
+    }
+    val formatter = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).apply {
+        isLenient = false
+        timeZone = TimeZone.getTimeZone("GMT")
+    }
+    val retryAtMillis = runCatching { formatter.parse(raw)?.time }.getOrNull() ?: return null
+    val seconds = ceil(((retryAtMillis.toDouble() - nowMillis.toDouble()) / 1_000.0).coerceAtLeast(0.0))
+    return seconds.toLong().coerceAtMost(Long.MAX_VALUE / 1_000L)
+}
+
+internal fun artworkRetryDelaySeconds(
+    failureCount: Int,
+    retryable: Boolean,
+    retryAfterSeconds: Long? = null,
+): Long {
+    val attempt = failureCount.coerceAtLeast(1)
+    val exponential = if (retryable) {
+        val exponent = (attempt - 1).coerceIn(0, 10)
+        minOf(MAX_ARTWORK_RETRY_BACKOFF_SECONDS, BASE_ARTWORK_RETRY_BACKOFF_SECONDS * (1L shl exponent))
+    } else {
+        PERMANENT_ARTWORK_RETRY_DELAY_SECONDS
+    }
+    return max(exponential, retryAfterSeconds?.coerceAtLeast(0L) ?: 0L)
+}
+
+/** Persisted cooldown, not an ever-growing failure count, controls automatic retries. */
+@Suppress("UNUSED_PARAMETER")
 internal fun shouldRetryArtworkRequest(
     status: String?,
     retryAtSeconds: Double?,
@@ -113,10 +180,7 @@ internal fun shouldRetryArtworkRequest(
     if (force) return true
     val normalizedStatus = status?.trim()?.lowercase(Locale.ROOT)
     if (normalizedStatus != "failed" && normalizedStatus != "retry_wait") return true
-    if (failureCount >= MAX_AUTOMATIC_ARTWORK_FAILURES) return false
-    return retryAtSeconds == null ||
-        !retryAtSeconds.isFinite() ||
-        retryAtSeconds <= nowSeconds
+    return retryAtSeconds == null || !retryAtSeconds.isFinite() || retryAtSeconds <= nowSeconds
 }
 
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
@@ -129,6 +193,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val jobs = ConcurrentHashMap<Long, Job>()
     private val retryJobs = ConcurrentHashMap<Long, Job>()
     private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
+    private val candidateFollowUpRequests = ConcurrentHashMap<Long, List<ReiAnixArtworkCandidate>>()
     private val permits = Semaphore(2)
     private val backfillRunning = AtomicBoolean(false)
     private val cacheClearInProgress = AtomicBoolean(false)
@@ -145,10 +210,39 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val checksum: String, val mime: String, val status: Int,
     )
     private data class SaveResult(val saved: Boolean, val current: Boolean)
-    private class HttpFailure(val code: Int) : IOException("Artwork HTTP " + code)
+    private class HttpFailure(val code: Int, val retryAfterSeconds: Long?) : IOException("Artwork HTTP " + code)
     private class InvalidImage(message: String) : Exception(message)
 
-    fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean {
+    fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean =
+        requestAnimeArtworkInternal(animeId, force, candidateCandidates = null)
+
+    /**
+     * Runs ranked candidate URLs through the existing cache, SQLite and publication
+     * pipeline without assigning a guessed AniList ID or replacing metadata URLs.
+     */
+    fun requestAnimeArtworkCandidates(
+        animeId: Long,
+        candidates: List<ReiAnixArtworkCandidate>,
+        force: Boolean = false,
+    ): Boolean {
+        val usable = candidates.asSequence()
+            .filter {
+                it.anilistId >= 0L &&
+                    (!it.posterUrl.isNullOrBlank() || !it.posterFallbackUrl.isNullOrBlank() ||
+                        !it.bannerUrl.isNullOrBlank())
+            }
+            .distinct()
+            .take(MAX_CANDIDATE_ARTWORKS)
+            .toList()
+        if (usable.isEmpty()) return false
+        return requestAnimeArtworkInternal(animeId, force, usable)
+    }
+
+    private fun requestAnimeArtworkInternal(
+        animeId: Long,
+        force: Boolean,
+        candidateCandidates: List<ReiAnixArtworkCandidate>?,
+    ): Boolean {
         val requestId = UUID.randomUUID().toString()
         if (animeId <= 0L || cacheClearInProgress.get()) {
             ReiAnixDiagnosticTimeline.record(
@@ -162,80 +256,68 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             return false
         }
         synchronized(jobs) {
-            if (cacheClearInProgress.get()) {
-                ReiAnixDiagnosticTimeline.record(
-                    name = "NATIVE_ARTWORK_REQUEST_SKIPPED",
-                    source = "ReiAnixArtworkService",
-                    result = "CACHE_CLEAR_IN_PROGRESS",
-                    requestId = requestId,
-                    context = mapOf("entity_id" to animeId, "force" to force),
-                )
-                return false
-            }
+            if (cacheClearInProgress.get()) return false
             if (jobs[animeId]?.isActive == true) {
-                if (force) {
-                    forceFollowUpIds.add(animeId)
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "NATIVE_ARTWORK_FORCE_FOLLOW_UP_QUEUED",
-                        source = "ReiAnixArtworkService",
-                        result = "AFTER_ACTIVE_REQUEST",
-                        requestId = requestId,
-                        context = mapOf("entity_id" to animeId),
-                    )
+                if (candidateCandidates != null) {
+                    candidateFollowUpRequests.compute(animeId) { _, pending ->
+                        (pending.orEmpty() + candidateCandidates).distinct().take(MAX_CANDIDATE_ARTWORKS)
+                    }
+                    if (force) forceFollowUpIds.add(animeId)
                     return true
                 }
-                ReiAnixDiagnosticTimeline.record(
-                    name = "NATIVE_ARTWORK_REQUEST_SKIPPED",
-                    source = "ReiAnixArtworkService",
-                    result = "ALREADY_RUNNING",
-                    requestId = requestId,
-                    context = mapOf("entity_id" to animeId, "force" to false),
-                )
+                if (force) {
+                    forceFollowUpIds.add(animeId)
+                    return true
+                }
                 return false
             }
             retryJobs.remove(animeId)?.cancel()
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_REQUESTED",
-                source = "ReiAnixArtworkService",
-                result = "QUEUED",
-                requestId = requestId,
-                context = mapOf("entity_id" to animeId, "force" to force),
-            )
             val task = scope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val anime = loadAnime(animeId)
-                    if (anime == null) {
-                        ReiAnixDiagnosticTimeline.record(
-                            name = "NATIVE_ARTWORK_ASSOCIATION_MISSING",
-                            severity = "WARN",
-                            source = "ReiAnixArtworkService",
-                            result = "LOCAL_ANIME_NOT_FOUND",
-                            requestId = requestId,
-                            context = mapOf("entity_id" to animeId),
-                        )
-                        return@launch
-                    }
+                    val anime = loadAnime(animeId) ?: return@launch
                     val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
-                    val posterUrl = anime.coverUrl?.trim()?.takeIf { it.isNotEmpty() }
-                    val backdropUrl = anime.bannerUrl?.trim()?.takeIf { it.isNotEmpty() }
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "NATIVE_ARTWORK_SOURCES_RESOLVED",
-                        source = "ReiAnixArtworkService",
-                        result = if (posterUrl != null || backdropUrl != null) "SOURCE_CONFIGURED" else "NO_SOURCE_CONFIGURED",
-                        requestId = requestId,
-                        context = mapOf(
-                            "entity_type" to entityType,
-                            "entity_id" to animeId,
-                            "poster_source_configured" to (posterUrl != null),
-                            "backdrop_source_configured" to (backdropUrl != null),
-                            "anilist_id_present" to (anime.anilistId != null),
-                        ),
-                    )
-                    posterUrl?.let {
-                        materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
-                    }
-                    backdropUrl?.let {
-                        materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
+                    if (candidateCandidates == null) {
+                        val posterUrl = anime.coverUrl?.trim()?.takeIf(String::isNotEmpty)
+                        val backdropUrl = anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
+                        posterUrl?.let {
+                            materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
+                        }
+                        backdropUrl?.let {
+                            materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
+                        }
+                    } else {
+                        val posterRecovered = firstSuccessfulArtworkCandidate(
+                            candidates = candidateCandidates,
+                            artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
+                        ) { candidate, url ->
+                            materialize(
+                                animeId, entityType, "poster", url, candidate.anilistId.takeIf { it > 0L },
+                                force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
+                            )
+                        }
+                        val backdropRecovered = firstSuccessfulArtworkCandidate(
+                            candidates = candidateCandidates,
+                            artworkUrls = { listOf(it.bannerUrl) },
+                        ) { candidate, url ->
+                            materialize(
+                                animeId, entityType, "backdrop", url, candidate.anilistId.takeIf { it > 0L },
+                                force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
+                            )
+                        }
+                        ReiAnixDiagnosticTimeline.record(
+                            name = "NATIVE_ARTWORK_CANDIDATE_FALLBACK_FINISHED",
+                            source = "ReiAnixArtworkService",
+                            result = if (posterRecovered || backdropRecovered) "ARTWORK_RECOVERED" else "NO_CANDIDATE_ARTWORK_RECOVERED",
+                            requestId = requestId,
+                            context = mapOf(
+                                "entity_type" to entityType,
+                                "entity_id" to animeId,
+                                "candidate_count" to candidateCandidates.size,
+                                "poster_recovered" to posterRecovered,
+                                "banner_recovered" to backdropRecovered,
+                                "identity_associated" to false,
+                            ),
+                        )
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -252,8 +334,15 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     Log.e(TAG, "Native artwork request failed for " + animeId, error)
                 } finally {
                     currentCoroutineContext()[Job]?.let { jobs.remove(animeId, it) }
-                    if (forceFollowUpIds.remove(animeId) && !cacheClearInProgress.get()) {
-                        requestAnimeArtwork(animeId, force = true)
+                    val candidateFollowUp = candidateFollowUpRequests.remove(animeId)
+                    val forceFollowUp = forceFollowUpIds.remove(animeId)
+                    if (!cacheClearInProgress.get()) {
+                        when {
+                            candidateFollowUp != null ->
+                                requestAnimeArtworkCandidates(animeId, candidateFollowUp, forceFollowUp)
+                            forceFollowUp -> requestAnimeArtwork(animeId, force = true)
+                            else -> schedulePersistedArtworkRetry(animeId)
+                        }
                     }
                 }
             }
@@ -273,8 +362,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
                     val ids = database.read { db ->
                         db.rawQuery(
-                            "SELECT id FROM anime WHERE id>? AND (TRIM(COALESCE(cover_url,''))!='' " +
-                                "OR TRIM(COALESCE(banner_url,''))!='') ORDER BY id LIMIT 16",
+                            "SELECT id FROM anime a WHERE id>? AND (" +
+                                "TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='' OR " +
+                                "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
+                                "AND art.entity_type IN ('anime','movie') AND art.artwork_type IN ('poster','backdrop') " +
+                                "AND art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL " +
+                                "AND TRIM(COALESCE(art.external_url,''))!='')) ORDER BY id LIMIT 16",
                             arrayOf(afterId.toString()),
                         ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
                     }
@@ -407,7 +500,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         aniId: Long?,
         force: Boolean,
         requestId: String,
-    ) {
+        requireCurrentUrl: Boolean = true,
+        retryCandidates: List<ReiAnixArtworkCandidate>? = null,
+    ): Boolean {
         if (!safeUrl(url)) {
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_ARTWORK_SOURCE_REJECTED",
@@ -417,9 +512,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 requestId = requestId,
                 context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
             )
-            return
+            return false
         }
-        if (!isUrlCurrent(id, type, url)) {
+        if (requireCurrentUrl && !isUrlCurrent(id, type, url)) {
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_ARTWORK_SOURCE_REJECTED",
                 severity = "WARN",
@@ -428,13 +523,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 requestId = requestId,
                 context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
             )
-            return
+            return false
         }
-        permits.withPermit {
+        return permits.withPermit {
             currentCoroutineContext().ensureActive()
-            if (reuseLocal(id, entity, type, url, aniId, requestId)) return@withPermit
+            if (reuseLocal(id, entity, type, url, aniId, requestId, requireCurrentUrl)) return@withPermit true
             val key = remoteKey(aniId, url, type)
-            val rowId = prepareRow(id, entity, type, url, key, force) ?: return@withPermit
+            val rowId = prepareRow(id, entity, type, url, key, force, requireCurrentUrl) ?: return@withPermit false
             var image: Downloaded? = null
             try {
                 val completedImage = download(key, url)
@@ -443,20 +538,30 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 val saved = persistDownloaded(rowId, id, type, url, key, completedImage)
                 if (!saved.saved) {
                     removeIfUnreferenced(completedImage.file)
-                    return@withPermit
+                    return@withPermit false
                 }
-                if (saved.current) publish(
+                if (saved.current || !requireCurrentUrl) publish(
                     "artwork_published", entity, id.toString(), type,
                     completedImage.file.absolutePath, url, key, url, completedImage.mime, requestId,
                 )
                 trimCache()
+                saved.current || !requireCurrentUrl
             } catch (cancelled: CancellationException) {
                 setCancelled(rowId)
                 image?.let { removeIfUnreferenced(it.file) }
                 throw cancelled
             } catch (error: Exception) {
-                val retryDelaySeconds = setFailure(rowId, error, (error as? HttpFailure)?.code)
-                if (retryDelaySeconds != null) scheduleArtworkRetry(id, retryDelaySeconds)
+                val retryDelaySeconds = runCatching {
+                    setFailure(
+                        rowId,
+                        error,
+                        (error as? HttpFailure)?.code,
+                        (error as? HttpFailure)?.retryAfterSeconds,
+                    )
+                }.onFailure { persistenceError ->
+                    Log.w(TAG, "Could not persist artwork retry state for animeId=$id", persistenceError)
+                }.getOrNull()
+                if (retryDelaySeconds != null) scheduleArtworkRetry(id, retryDelaySeconds, retryCandidates)
                 ReiAnixDiagnosticTimeline.record(
                     name = "NATIVE_ARTWORK_DOWNLOAD_FAILED",
                     severity = "ERROR",
@@ -469,30 +574,41 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         "entity_id" to id,
                         "artwork_type" to type,
                         "source_kind" to "anilist",
-                        "association_status" to "CHECKED_BEFORE_DOWNLOAD",
+                        "association_status" to if (requireCurrentUrl) "CHECKED_BEFORE_DOWNLOAD" else "CANDIDATE_ONLY",
                         "http_status" to ((error as? HttpFailure)?.code ?: -1),
                     ),
                 )
                 image?.let { removeIfUnreferenced(it.file) }
                 Log.w(TAG, "ARTWORK_DOWNLOAD_FAILED entity=" + entity + ":" + id + " type=" + type, error)
+                false
             }
         }
     }
 
-    private fun reuseLocal(id: Long, entity: String, type: String, url: String, aniId: Long?, requestId: String): Boolean {
+    private fun reuseLocal(
+        id: Long,
+        entity: String,
+        type: String,
+        url: String,
+        aniId: Long?,
+        requestId: String,
+        requireCurrentUrl: Boolean,
+    ): Boolean {
         val rows = candidates(entity, id.toString(), type, url)
         if (rows.any { it.manual || it.source.equals("manual", true) }) return true
         if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return true
         val existing = rows.firstOrNull { it.url == url && validImage(it.path) }
         if (existing != null) {
             val path = existing.path ?: return false
-            if (markReady(existing.id, id, type, url, path)) {
+            if (markReady(existing.id, id, type, url, path, requireCurrentUrl)) {
                 publish("artwork_published", entity, id.toString(), type, path, url,
                     existing.key ?: remoteKey(aniId, url, type), url, existing.mime ?: mime(path), requestId)
             }
             return true
         }
-        if (type != "poster") return false
+        // The legacy cover pointer belongs to the canonical URL, never to a speculative
+        // candidate. Candidate images are registered as independent artwork rows.
+        if (type != "poster" || !requireCurrentUrl) return false
         val oldPath = loadAnime(id)?.coverCache?.trim().orEmpty()
         if (oldPath.isEmpty() || !validImage(oldPath)) return false
         val pathRows = rowsForPath(entity, id.toString(), type, oldPath)
@@ -526,9 +642,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return inserted
     }
 
-    private fun prepareRow(id: Long, entity: String, type: String, url: String, key: String, force: Boolean): Long? =
-        database.transaction { db ->
-            if (!urlCurrent(db, id, type, url)) return@transaction null
+    private fun prepareRow(
+        id: Long,
+        entity: String,
+        type: String,
+        url: String,
+        key: String,
+        force: Boolean,
+        requireCurrentUrl: Boolean,
+    ): Long? = database.transaction { db ->
+            if (requireCurrentUrl && !urlCurrent(db, id, type, url)) return@transaction null
             val rows = queryCandidates(db, entity, id.toString(), type, url)
             if (rows.any { it.manual || it.source.equals("manual", true) }) return@transaction null
             if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return@transaction null
@@ -540,23 +663,27 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 }
                 val values = ContentValues().apply {
                     put("source", "anilist"); put("source_ref", url); put("external_url", url)
-                    put("status", "downloading"); put("priority", 400); put("updated_at", now); put("last_attempt_at", now)
+                    put("status", "downloading"); put("priority", if (requireCurrentUrl) 400 else minOf(exact.priority, 350))
+                    put("updated_at", now); put("last_attempt_at", now)
                     put("failure_count", if (force) 0 else exact.failureCount)
                     putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key); put("variant", "large")
                 }
                 return@transaction if (db.update("artwork", values, "id=?", arrayOf(exact.id.toString())) > 0) exact.id else null
             }
-            db.execSQL(
-                "UPDATE artwork SET priority=MIN(COALESCE(priority,350),350),updated_at=? WHERE entity_type=? AND entity_id=? " +
-                    "AND artwork_type=? AND external_url IS NOT NULL AND external_url!=? AND manual=0 " +
-                    "AND LOWER(COALESCE(source,'')) NOT IN ('manual','local')",
-                arrayOf(now, entity, id.toString(), type, url),
-            )
+            if (requireCurrentUrl) {
+                db.execSQL(
+                    "UPDATE artwork SET priority=MIN(COALESCE(priority,350),350),updated_at=? WHERE entity_type=? AND entity_id=? " +
+                        "AND artwork_type=? AND external_url IS NOT NULL AND external_url!=? AND manual=0 " +
+                        "AND LOWER(COALESCE(source,'')) NOT IN ('manual','local')",
+                    arrayOf(now, entity, id.toString(), type, url),
+                )
+            }
             val values = ContentValues().apply {
                 put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", type)
                 put("source", "anilist"); put("source_ref", url); put("external_url", url); put("manual", 0)
-                put("priority", 400); put("status", "downloading"); put("discovered_at", now); put("updated_at", now)
-                put("last_attempt_at", now); put("failure_count", 0); put("artwork_key", key); put("variant", "large")
+                put("priority", if (requireCurrentUrl) 400 else 350); put("status", "downloading")
+                put("discovered_at", now); put("updated_at", now); put("last_attempt_at", now)
+                put("failure_count", 0); put("artwork_key", key); put("variant", "large")
             }
             runCatching { db.insertOrThrow("artwork", null, values) }.getOrNull()
         }
@@ -573,7 +700,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             conn.setRequestProperty("Accept", "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8")
             conn.connect()
             val code = conn.responseCode
-            if (code !in 200..299) { runCatching { conn.errorStream?.close() }; throw HttpFailure(code) }
+            if (code !in 200..299) {
+                runCatching { conn.errorStream?.close() }
+                throw HttpFailure(code, parseArtworkRetryAfterSeconds(conn.getHeaderField("Retry-After"), System.currentTimeMillis()))
+            }
             if (url.protocol.equals("https", true) && !conn.url.protocol.equals("https", true)) {
                 throw InvalidImage("HTTPS artwork redirected to HTTP.")
             }
@@ -659,9 +789,15 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             SaveResult(true, current)
         }
 
-    private fun markReady(rowId: Long, id: Long, type: String, url: String, path: String): Boolean =
-        database.transaction { db ->
-            if (!urlCurrent(db, id, type, url)) return@transaction false
+    private fun markReady(
+        rowId: Long,
+        id: Long,
+        type: String,
+        url: String,
+        path: String,
+        requireCurrentUrl: Boolean,
+    ): Boolean = database.transaction { db ->
+            if (requireCurrentUrl && !urlCurrent(db, id, type, url)) return@transaction false
             val row = artworkById(db, rowId) ?: return@transaction false
             if (row.manual || row.source.equals("manual", true) || row.source.equals("local", true)) return@transaction false
             val now = nowSeconds()
@@ -671,47 +807,103 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 if (row.status != "ready" || row.path != path) put("updated_at", now)
             }
             db.update("artwork", values, "id=?", arrayOf(rowId.toString()))
-            if (type == "poster") updateCoverPointer(db, id, url, path)
+            if (requireCurrentUrl && type == "poster") updateCoverPointer(db, id, url, path)
             true
         }
 
-    private fun setFailure(rowId: Long, error: Exception, httpStatus: Int?): Long? {
-        val retryable = when (error) {
-            is HttpFailure -> httpStatus == 429 || (httpStatus != null && httpStatus in 500..599)
-            is IOException -> true
-            else -> false
-        }
+    private fun setFailure(
+        rowId: Long,
+        error: Exception,
+        httpStatus: Int?,
+        retryAfterSeconds: Long?,
+    ): Long? {
+        val retryable = isRetryableArtworkFailure(
+            httpStatus = (error as? HttpFailure)?.let { httpStatus ?: it.code },
+            transportOrFileIoFailure = error is IOException && error !is HttpFailure,
+            sqlitePersistenceFailure = error is SQLiteException,
+        )
         return database.transaction { db ->
             if (artworkById(db, rowId) == null) return@transaction null
-            val count = db.rawQuery("SELECT failure_count FROM artwork WHERE id=?", arrayOf(rowId.toString()))
-                .use { if (it.moveToFirst()) it.getInt(0) + 1 else 1 }
-            val automaticRetryDelay = when {
-                retryable && count < MAX_AUTOMATIC_ARTWORK_FAILURES ->
-                    minOf(21600L, 60L * (1L shl (count - 1).coerceIn(0, 10)))
-                !retryable && count < MAX_AUTOMATIC_ARTWORK_FAILURES ->
-                    PERMANENT_ARTWORK_RETRY_DELAY_SECONDS
-                else -> null
-            }
-            val retryWillBeScheduled = retryable && automaticRetryDelay != null
+            val previousCount = db.rawQuery("SELECT failure_count FROM artwork WHERE id=?", arrayOf(rowId.toString()))
+                .use { if (it.moveToFirst()) it.getInt(0).coerceAtLeast(0) else 0 }
+            val count = if (previousCount == Int.MAX_VALUE) Int.MAX_VALUE else previousCount + 1
+            val retryDelay = artworkRetryDelaySeconds(count, retryable, retryAfterSeconds)
             val now = nowSeconds()
             val values = ContentValues().apply {
-                put("status", if (retryWillBeScheduled) "retry_wait" else "failed")
+                put("status", if (retryable) "retry_wait" else "failed")
                 put("updated_at", now); put("last_attempt_at", now); put("failure_count", count)
-                if (automaticRetryDelay != null) put("next_retry_at", now + automaticRetryDelay)
-                else putNull("next_retry_at")
+                put("next_retry_at", now + retryDelay)
                 if (httpStatus == null) putNull("http_status") else put("http_status", httpStatus)
             }
             db.update("artwork", values, "id=?", arrayOf(rowId.toString()))
-            automaticRetryDelay.takeIf { retryWillBeScheduled }
+            retryDelay
         }
     }
 
-    private fun scheduleArtworkRetry(animeId: Long, delaySeconds: Long) {
+    private fun loadPersistedRetryCandidates(animeId: Long): List<ReiAnixArtworkCandidate> =
+        database.read { db ->
+            db.rawQuery(
+                "SELECT art.artwork_type,art.external_url FROM artwork art " +
+                    "JOIN anime a ON CAST(a.id AS TEXT)=art.entity_id " +
+                    "WHERE a.id=? AND art.entity_type IN ('anime','movie') " +
+                    "AND art.artwork_type IN ('poster','backdrop') " +
+                    "AND art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL " +
+                    "AND TRIM(COALESCE(art.external_url,''))!='' " +
+                    "AND ((art.artwork_type='poster' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.cover_url,''))) " +
+                    "OR (art.artwork_type='backdrop' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.banner_url,'')))) " +
+                    "ORDER BY art.priority DESC,art.updated_at DESC,art.id DESC LIMIT ?",
+                arrayOf(animeId.toString(), MAX_CANDIDATE_ARTWORKS.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val type = cursor.getString(0)
+                        val url = cursor.getString(1)?.trim()?.takeIf(String::isNotEmpty) ?: continue
+                        add(
+                            ReiAnixArtworkCandidate(
+                                anilistId = 0L,
+                                posterUrl = url.takeIf { type == "poster" },
+                                bannerUrl = url.takeIf { type == "backdrop" },
+                            ),
+                        )
+                    }
+                }.distinct()
+            }
+        }
+
+    /** Restores canonical URL and candidate-only retries using persisted v29 timestamps. */
+    private fun schedulePersistedArtworkRetry(animeId: Long) {
+        if (animeId <= 0L || cacheClearInProgress.get() || retryJobs[animeId]?.isActive == true) return
+        val nextRetryAt = runCatching {
+            database.read { db ->
+                db.rawQuery(
+                    "SELECT MIN(next_retry_at) FROM artwork WHERE entity_id=? " +
+                        "AND entity_type IN ('anime','movie') AND artwork_type IN ('poster','backdrop') " +
+                        "AND status IN ('failed','retry_wait') AND next_retry_at IS NOT NULL",
+                    arrayOf(animeId.toString()),
+                ).use { cursor ->
+                    if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getDouble(0) else null
+                }
+            }
+        }.onFailure { Log.w(TAG, "Could not restore persisted artwork retry for animeId=$animeId", it) }
+            .getOrNull() ?: return
+        if (!nextRetryAt.isFinite()) return
+        val delaySeconds = ceil(nextRetryAt - nowSeconds()).toLong().coerceAtLeast(1L)
+        scheduleArtworkRetry(animeId, delaySeconds, loadPersistedRetryCandidates(animeId))
+    }
+
+    private fun scheduleArtworkRetry(
+        animeId: Long,
+        delaySeconds: Long,
+        candidates: List<ReiAnixArtworkCandidate>? = null,
+    ) {
         if (animeId <= 0L || delaySeconds <= 0L || cacheClearInProgress.get()) return
         val task = scope.launch(start = CoroutineStart.LAZY) {
             delay(delaySeconds * 1000L)
             currentCoroutineContext()[Job]?.let { retryJobs.remove(animeId, it) }
-            if (!cacheClearInProgress.get()) requestAnimeArtwork(animeId)
+            if (!cacheClearInProgress.get()) {
+                requestAnimeArtwork(animeId)
+                if (!candidates.isNullOrEmpty()) requestAnimeArtworkCandidates(animeId, candidates)
+            }
         }
         val previous = retryJobs.put(animeId, task)
         previous?.cancel()
@@ -1188,6 +1380,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val STATUS_RETRY_WAIT = "retry_wait"
         const val STATUS_NOT_REQUESTED = "not_requested"
         const val MAX_DOWNLOAD_BYTES = 32L * 1024L * 1024L
+        const val MAX_CANDIDATE_ARTWORKS = 5
         const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
         const val IO_BUFFER_BYTES = 64 * 1024

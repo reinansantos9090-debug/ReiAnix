@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.data.sqlite
 
+import java.io.File
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
@@ -1396,7 +1397,7 @@ class ReiAnixSqliteLibraryRepository(
             val artwork = connection.rawQuery(
                 """
                 SELECT art.* FROM artwork art
-                WHERE art.status != 'failed' AND (
+                WHERE (
                     (
                         art.entity_type IN ('anime','movie')
                         AND EXISTS (
@@ -1415,7 +1416,12 @@ class ReiAnixSqliteLibraryRepository(
                 null,
             ).use { cursor ->
                 buildList {
-                    while (cursor.moveToNext()) add(cursor.toArtworkRecord())
+                    while (cursor.moveToNext()) {
+                        val artworkRecord = cursor.toArtworkRecord()
+                        if (shouldIncludeArtworkRecord(artworkRecord.status, artworkRecord.localPath)) {
+                            add(artworkRecord)
+                        }
+                    }
                 }
             }
 
@@ -1878,6 +1884,14 @@ private fun Cursor.toFolderRecord() = ReiAnixFolderRecord(
     safVolumeId = optionalString("saf_volume_id"),
     safIdentity = optionalString("saf_identity"),
 )
+
+/** Failed rows remain projectable only while they still point to a non-empty local image. */
+internal fun shouldIncludeArtworkRecord(status: String?, localPath: String?): Boolean {
+    if (!status.equals("failed", ignoreCase = true)) return true
+    val path = localPath?.trim()?.takeIf(String::isNotEmpty) ?: return false
+    val file = File(path)
+    return file.isFile && file.length() > 0L
+}
 
 private fun Cursor.toArtworkRecord() = ReiAnixArtworkRecord(
     id = requiredLong("id"),

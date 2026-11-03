@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.anilist
 
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
+import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidate
 
 import android.content.Context
 import android.content.ContentValues
@@ -31,8 +32,11 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+private const val MAX_ARTWORK_CANDIDATES = 5
+
 
 /** Pure policy for bounded discovery of missing posters from the canonical catalogue. */
+@Suppress("UNUSED_PARAMETER")
 internal fun shouldDiscoverMissingArtwork(
     coverUrl: String?,
     hasUsableLocalCover: Boolean,
@@ -45,10 +49,8 @@ internal fun shouldDiscoverMissingArtwork(
 ): Boolean {
     if (hasUsableLocalCover) return false
     if (!coverUrl.isNullOrBlank()) {
-        // Keep this eligibility policy deterministic in both Android runtime and plain
-        // JVM unit tests. android.net.Uri methods can be unimplemented in the mockable
-        // android.jar used by local unit tests; swallowing that exception misclassifies
-        // every valid HTTP(S) URL as missing artwork.
+        // A valid canonical URL is already handled by the downloader; an exhausted
+        // failure is eligible for a fresh catalogue lookup after its persisted backoff.
         val parsed = runCatching { URI(coverUrl.trim()) }.getOrNull()
         val scheme = parsed?.scheme?.lowercase(Locale.ROOT)
         val hasUsableHttpUrl = scheme != null &&
@@ -57,13 +59,12 @@ internal fun shouldDiscoverMissingArtwork(
             parsed?.rawUserInfo == null
         if (hasUsableHttpUrl && !hasExhaustedArtworkFailure) return false
     }
-    if (manualMetadata && !hasAniListId) return false
-    val status = matchStatus?.trim()?.lowercase(Locale.ROOT)
-    if (!hasAniListId && status in setOf("not_found", "ambiguous")) return false
+    // Identity and metadata provenance describe association confidence, not whether an
+    // image may be displayed. Manual metadata remains untouched by artwork-only lookup.
     val fetchedAt = metadataFetchedAtSeconds
-    if (fetchedAt != null && fetchedAt.isFinite() && nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS) {
-        return false
-    }
+    if (!manualMetadata && fetchedAt != null && fetchedAt.isFinite() &&
+        nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
+    ) return false
     return true
 }
 
@@ -172,6 +173,7 @@ class ReiAnixAniListIntegrationService(
     private val descriptionLocalizer: ReiAnixAniListDescriptionLocalizer? = null,
     private val metadataCommitPublisher: ((Long, Boolean) -> Boolean)? = null,
     private val genreRegistry: ReiAnixGenreRegistry? = null,
+    private val artworkCandidatePublisher: ((Long, List<ReiAnixArtworkCandidate>) -> Boolean)? = null,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -199,6 +201,10 @@ class ReiAnixAniListIntegrationService(
                     .put("requestId", UUID.randomUUID().toString())
                     .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", false)),
             )
+        },
+        artworkCandidatePublisher = { animeId, candidates ->
+            ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.artworkService?.requestAnimeArtworkCandidates(animeId, candidates) ?: false
         },
     )
 
@@ -490,6 +496,92 @@ class ReiAnixAniListIntegrationService(
     }
 
 
+    private fun publishArtworkCandidates(animeId: Long, candidates: List<AniListAnime>): Boolean {
+        val publisher = artworkCandidatePublisher ?: return false
+        val artworkCandidates = candidates.asSequence()
+            .filter { remote ->
+                remote.id > 0 &&
+                    (!remote.coverExtraLargeUrl.isNullOrBlank() ||
+                        !remote.coverLargeUrl.isNullOrBlank() || !remote.bannerUrl.isNullOrBlank())
+            }
+            .distinctBy { it.id }
+            .take(MAX_ARTWORK_CANDIDATES)
+            .map { remote ->
+                ReiAnixArtworkCandidate(
+                    anilistId = remote.id.toLong(),
+                    posterUrl = remote.coverExtraLargeUrl,
+                    bannerUrl = remote.bannerUrl,
+                    posterFallbackUrl = remote.coverLargeUrl,
+                )
+            }
+            .toList()
+        if (artworkCandidates.isEmpty()) return false
+        return runCatching { publisher(animeId, artworkCandidates) }
+            .onFailure { error ->
+                Log.w(TAG, "Could not enqueue AniList artwork candidates for animeId=" + animeId, error)
+            }
+            .getOrDefault(false)
+    }
+
+    /**
+     * Read-only candidate search for artwork. Matcher confidence orders the candidates,
+     * but no candidate is allowed to create or replace the local AniList identity.
+     * A failed alias request does not discard results already obtained from other aliases.
+     */
+    private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): List<AniListAnime> {
+        val titleCandidates = buildList {
+            add(local.title)
+            add(local.lookupTitle)
+            add(local.nativeTitle.orEmpty())
+            add(local.romaji.orEmpty())
+            add(local.english.orEmpty())
+            local.aliasesJson?.let { raw ->
+                runCatching { JSONArray(raw) }.getOrNull()?.let { aliases ->
+                    for (index in 0 until aliases.length()) {
+                        (aliases.opt(index) as? String)?.let(::add)
+                    }
+                }
+            }
+        }
+        val terms = boundedAniListSearchTerms(titleCandidates, limit = 6)
+        if (terms.isEmpty()) return emptyList()
+        val candidatesById = linkedMapOf<Int, AniListAnime>()
+        for (term in terms) {
+            currentCoroutineContext().ensureActive()
+            when (val result = try {
+                client.searchAnime(term, 10)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "AniList artwork search failed for animeId=" + local.id + " title=" + term, error)
+                continue
+            }) {
+                is AniListResult.Success -> result.value.forEach { remote ->
+                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
+                }
+                is AniListResult.Failure -> Log.w(
+                    TAG,
+                    "AniList artwork search failed for animeId=" + local.id + " title=" + term + ": " + result.error,
+                )
+            }
+        }
+        if (candidatesById.isEmpty()) return emptyList()
+        val context = ReiAnixAniListMatcher.Context(
+            year = local.year,
+            mediaKind = local.mediaKind,
+        )
+        return candidatesById.values.map { remote ->
+            val score = terms.maxOfOrNull { title ->
+                ReiAnixAniListMatcher.rank(title, listOf(remote), context).firstOrNull()?.score ?: 0.0
+            } ?: 0.0
+            remote to score
+        }.sortedWith(
+            compareByDescending<Pair<AniListAnime, Double>> { it.second }
+                .thenBy { (it.first.titleEnglish ?: it.first.titleRomaji ?: "").lowercase(Locale.ROOT) }
+                .thenBy { it.first.id },
+        ).take(MAX_ARTWORK_CANDIDATES).map { it.first }
+    }
+
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
         library.database.read { connection ->
             connection.rawQuery(
@@ -603,12 +695,12 @@ class ReiAnixAniListIntegrationService(
                     val remote = when (val result = client.getAnime(remoteId.toInt())) {
                         is AniListResult.Success -> result.value
                         is AniListResult.Failure -> {
-                            Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=${local.id}: ${result.error}")
+                            Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=" + local.id + ": " + result.error)
                             null
                         }
                     }
                     if (remote == null) {
-                        Log.w(TAG, "Missing-artwork AniList lookup returned no usable media record for animeId=${local.id}")
+                        if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                         continue
                     }
                     val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
@@ -623,28 +715,20 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Success -> {
                             if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                 recovered++
-                            } else {
-                                Log.w(TAG, "AniList media record has no newly persisted poster URL for animeId=${local.id}")
+                            } else if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) {
+                                recovered++
                             }
                         }
-                        is AniListResult.Failure -> Log.w(TAG, "Missing-artwork metadata update failed for animeId=${local.id}: ${applied.error}")
+                        is AniListResult.Failure -> {
+                            Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
+                            if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                        }
                     }
                 } else {
-                    if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") continue
-                    when (val result = autoMatch(local.id)) {
-                        is AniListResult.Success -> {
-                            val matched = result.value as? AniListAutoMatchResult.Matched
-                            if (matched != null) {
-                                val remotePosterUrl = matched.remote.coverExtraLargeUrl ?: matched.remote.coverLargeUrl
-                                if (!remotePosterUrl.isNullOrBlank() && matched.anime.coverUrl == remotePosterUrl) {
-                                    recovered++
-                                } else {
-                                    Log.w(TAG, "AniList title match has no newly persisted poster URL for animeId=${local.id}")
-                                }
-                            }
-                        }
-                        is AniListResult.Failure -> Log.w(TAG, "Missing-artwork title discovery failed for animeId=${local.id}: ${result.error}")
-                    }
+                    // Artwork recovery is read-only with respect to identity:
+                    // PROBABLE/AMBIGUOUS/REJECTED/UNRESOLVED titles can provide ranked image
+                    // candidates without assigning their AniList ID to the local anime.
+                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                 }
             }
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
