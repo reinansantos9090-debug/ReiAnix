@@ -66,7 +66,13 @@ data class ReiAnixArtworkCandidate(
     val posterUrl: String?,
     val bannerUrl: String?,
     val posterFallbackUrl: String? = null,
-)
+    /** Origin of a candidate-only URL; normal AniList requests keep the default. */
+    val source: String = "anilist",
+) {
+    init {
+        require(source in setOf("anilist", "kitsu", "anipub"))
+    }
+}
 
 /** Attempts ranked candidates and their variants without letting one failed URL stop the next. */
 internal suspend fun firstSuccessfulArtworkCandidate(
@@ -293,6 +299,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             materialize(
                                 animeId, entityType, "poster", url, candidate.anilistId.takeIf { it > 0L },
                                 force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
+                                sourceKind = candidate.source,
                             )
                         }
                         val backdropRecovered = firstSuccessfulArtworkCandidate(
@@ -302,6 +309,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             materialize(
                                 animeId, entityType, "backdrop", url, candidate.anilistId.takeIf { it > 0L },
                                 force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
+                                sourceKind = candidate.source,
                             )
                         }
                         ReiAnixDiagnosticTimeline.record(
@@ -505,6 +513,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         requestId: String,
         requireCurrentUrl: Boolean = true,
         retryCandidates: List<ReiAnixArtworkCandidate>? = null,
+        sourceKind: String = "anilist",
     ): Boolean {
         if (!safeUrl(url)) {
             ReiAnixDiagnosticTimeline.record(
@@ -532,7 +541,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             currentCoroutineContext().ensureActive()
             if (reuseLocal(id, entity, type, url, aniId, requestId, requireCurrentUrl)) return@withPermit true
             val key = remoteKey(aniId, url, type)
-            val rowId = prepareRow(id, entity, type, url, key, force, requireCurrentUrl) ?: return@withPermit false
+            val rowId = prepareRow(id, entity, type, url, key, force, requireCurrentUrl, sourceKind) ?: return@withPermit false
             var image: Downloaded? = null
             try {
                 val completedImage = download(key, url)
@@ -576,7 +585,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         "entity_type" to entity,
                         "entity_id" to id,
                         "artwork_type" to type,
-                        "source_kind" to "anilist",
+                        "source_kind" to sourceKind,
                         "association_status" to if (requireCurrentUrl) "CHECKED_BEFORE_DOWNLOAD" else "CANDIDATE_ONLY",
                         "http_status" to ((error as? HttpFailure)?.code ?: -1),
                     ),
@@ -653,6 +662,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         key: String,
         force: Boolean,
         requireCurrentUrl: Boolean,
+        sourceKind: String = "anilist",
     ): Long? = database.transaction { db ->
             if (requireCurrentUrl && !urlCurrent(db, id, type, url)) return@transaction null
             val rows = queryCandidates(db, entity, id.toString(), type, url)
@@ -665,7 +675,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     return@transaction null
                 }
                 val values = ContentValues().apply {
-                    put("source", "anilist"); put("source_ref", url); put("external_url", url)
+                    put("source", sourceKind); put("source_ref", url); put("external_url", url)
                     put("status", "downloading"); put("priority", if (requireCurrentUrl) 400 else minOf(exact.priority, 350))
                     put("updated_at", now); put("last_attempt_at", now)
                     put("failure_count", if (force) 0 else exact.failureCount)
@@ -683,7 +693,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             }
             val values = ContentValues().apply {
                 put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", type)
-                put("source", "anilist"); put("source_ref", url); put("external_url", url); put("manual", 0)
+                put("source", sourceKind); put("source_ref", url); put("external_url", url); put("manual", 0)
                 put("priority", if (requireCurrentUrl) 400 else 350); put("status", "downloading")
                 put("discovered_at", now); put("updated_at", now); put("last_attempt_at", now)
                 put("failure_count", 0); put("artwork_key", key); put("variant", "large")

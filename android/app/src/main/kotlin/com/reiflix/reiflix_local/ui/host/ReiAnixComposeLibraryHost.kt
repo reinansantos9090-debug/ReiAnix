@@ -153,6 +153,22 @@ class ReiAnixComposeLibraryHost(
                                         error::class.java.simpleName,
                                 )
                             }
+
+                        try {
+                            withContext(Dispatchers.IO) {
+                                dependencies.externalCatalogIntegrationService.enrichLibraryGaps(
+                                    restartFromLibraryScan = true,
+                                )
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w(
+                                TAG,
+                                "Supplemental catalog enrichment after scan failed. errorType=" +
+                                    error::class.java.simpleName,
+                            )
+                        }
                     }
             }
 
@@ -193,6 +209,20 @@ class ReiAnixComposeLibraryHost(
                                 error::class.java.simpleName,
                         )
                     }
+
+                try {
+                    withContext(Dispatchers.IO) {
+                        dependencies.externalCatalogIntegrationService.enrichLibraryGaps()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w(
+                        TAG,
+                        "Supplemental catalog startup enrichment failed. errorType=" +
+                            error::class.java.simpleName,
+                    )
+                }
             }
 
             ReiAnixComposeRoot(

@@ -6,6 +6,12 @@ import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
+import com.reiflix.reiflix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
+import com.reiflix.reiflix_local.data.catalog.ReiAnixAniPubCatalogProvider
+import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogProviderRegistry
+import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
+import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
+import com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProvider
 import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
@@ -110,6 +116,46 @@ class ReiAnixAppDependencies(context: Context) {
 
     val artworkService: ReiAnixArtworkService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixArtworkService(appContext, sqliteDatabase)
+    }
+
+    /** Shared executor/cache for supplemental public catalog lookups. */
+    val externalCatalogRequestCoordinator: ReiAnixExternalRequestCoordinator by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 2)
+    }
+
+    /**
+     * AniPub's read-only adapter is available, but automatic requests stay disabled:
+     * the original integration required prior written permission for automated access.
+     */
+    val aniPubCatalogProvider: ReiAnixAniPubCatalogProvider by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixAniPubCatalogProvider()
+    }
+
+    val externalCatalogProviderRegistry: ReiAnixCatalogProviderRegistry by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixCatalogProviderRegistry(
+            providers = listOf(ReiAnixKitsuCatalogProvider()),
+            requestCoordinator = externalCatalogRequestCoordinator,
+        )
+    }
+
+    /** AniMap is a read-only crosswalk for IDs already linked to a local anime. */
+    val externalCatalogIntegrationService: ReiAnixExternalCatalogIntegrationService by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        ReiAnixExternalCatalogIntegrationService(
+            library = sqliteLibraryRepository,
+            providers = externalCatalogProviderRegistry,
+            artwork = artworkService,
+            identifierResolver = externalCatalogProviderRegistry.coordinate(
+                ReiAnixAniMapCatalogIdResolver(),
+            ),
+        )
     }
 
     val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
