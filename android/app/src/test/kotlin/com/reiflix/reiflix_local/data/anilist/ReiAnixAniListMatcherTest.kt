@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.data.anilist
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
