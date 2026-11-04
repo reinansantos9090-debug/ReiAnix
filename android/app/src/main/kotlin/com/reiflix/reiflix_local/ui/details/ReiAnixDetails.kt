@@ -188,9 +188,14 @@ fun ReiAnixDetailsRoute(
         }
     }
 
+    var hasRequestedThumbnailQueue by remember(canonicalId) { mutableStateOf(false) }
     LaunchedEffect(canonicalId, state.status, thumbnailRequestRevision) {
         if (state.status == ReiAnixDetailsLoadStatus.READY) {
-            viewModel.requestMissingEpisodeThumbnails(canonicalId)
+            viewModel.requestMissingEpisodeThumbnails(
+                canonicalId,
+                retryCompleted = !hasRequestedThumbnailQueue,
+            )
+            hasRequestedThumbnailQueue = true
         }
     }
 

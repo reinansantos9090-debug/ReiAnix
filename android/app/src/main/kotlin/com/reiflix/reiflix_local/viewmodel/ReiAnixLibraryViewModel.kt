@@ -1379,16 +1379,18 @@ class ReiAnixLibraryViewModel(
      * is loaded. Details/Player only update scheduling priority; they do not own the
      * lifetime of the generation work.
      */
-    fun requestMissingEpisodeThumbnails(animeId: Long) {
+    fun requestMissingEpisodeThumbnails(animeId: Long, retryCompleted: Boolean = false) {
         if (animeId <= 0L) return
         val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
-        // Opening Details is an explicit retry opportunity for an episode whose previous
-        // extraction could not produce a valid frame. Completed work is deduplicated by cache.
-        anime.contentEpisodes.forEach {
-            episodeThumbnailAttemptedRevisions.remove(it.id)
-            episodeThumbnailRetryStates.remove(it.id)
+        // The first Details entry can retry previously completed identity checks. Subsequent
+        // projection revisions only add newly eligible work and do not requeue cached frames.
+        if (retryCompleted) {
+            anime.contentEpisodes.forEach {
+                episodeThumbnailAttemptedRevisions.remove(it.id)
+                episodeThumbnailRetryStates.remove(it.id)
+            }
+            episodeThumbnailRetrySignal.trySend(Unit)
         }
-        episodeThumbnailRetrySignal.trySend(Unit)
         viewModelScope.launch { enqueueEpisodeThumbnailTasks(listOf(anime)) }
     }
 
