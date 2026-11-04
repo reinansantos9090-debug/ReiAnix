@@ -176,9 +176,9 @@ data class TraceMoeIdentityConsensus(
 )
 
 /**
- * Conservative majority vote: two distinct episode files must independently return
- * the same AniList ID with high similarity. A single screenshot can never auto-link
- * a local anime, even when Trace.moe reports a strong match.
+ * Conservative multi-frame majority vote: two distinct episode files must independently
+ * return the same AniList ID with high similarity. The incremental caller may instead
+ * accept one frame only through the stricter single-frame confidence policy below.
  */
 internal fun evaluateTraceMoeIdentityConsensus(
     resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
