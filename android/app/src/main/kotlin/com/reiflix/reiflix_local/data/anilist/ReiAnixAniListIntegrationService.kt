@@ -6,6 +6,11 @@ import com.reiflix.reiflix_local.data.artwork.ReiAnixAniListCoverCandidate
 import com.reiflix.reiflix_local.data.artwork.aniListArtworkCandidateKey
 import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
+import com.reiflix.reiflix_local.data.tracemoe.evaluateTraceMoeIdentityConsensus
+import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 
 import android.content.Context
 import android.content.ContentValues
@@ -176,6 +181,7 @@ class ReiAnixAniListIntegrationService(
     private val metadataCommitPublisher: ((Long, Boolean) -> Boolean)? = null,
     private val genreRegistry: ReiAnixGenreRegistry? = null,
     private val artworkCandidatePublisher: ((Long, List<ReiAnixArtworkCandidate>) -> Boolean)? = null,
+    private val traceMoeClient: ReiAnixTraceMoeClient = ReiAnixTraceMoeClient(),
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -331,6 +337,144 @@ class ReiAnixAniListIntegrationService(
         }
         return AniListResult.Success(patched)
     }
+
+    /**
+     * Uses independent thumbnails from local episode files as a fallback when title
+     * matching has not identified the local anime. Only a confirmed multi-episode
+     * Trace.moe consensus is allowed to associate AniList metadata.
+     */
+    suspend fun identifyFromEpisodeThumbnails(
+        animeId: Long,
+        samples: List<TraceMoeEpisodeSample>,
+    ): Boolean {
+        if (animeId <= 0L || !isAniListEnabled() ||
+            !settingEnabled("metadata.auto_match", defaultValue = true)
+        ) return false
+
+        var local = library.getAnime(animeId) ?: return false
+        if (local.anilistId != null ||
+            local.anilistMatchManual == true ||
+            local.metadataSource == "manual" ||
+            local.metadataStatus == "manual"
+        ) return false
+
+        // One image per distinct local episode. Keep this small because Trace.moe's
+        // public endpoint is quota-limited and the guest service serializes requests.
+        val usableSamples = withContext(Dispatchers.IO) {
+            samples.asSequence()
+                .filter { it.episodeId > 0L }
+                .distinctBy(TraceMoeEpisodeSample::episodeId)
+                .filter { sample ->
+                    sample.imageFile.isFile &&
+                        sample.imageFile.length() in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES &&
+                        VideoThumbnailExtractor.isUsableThumbnailFile(sample.imageFile.absolutePath)
+                }
+                .take(MAX_TRACE_MOE_EPISODE_SAMPLES)
+                .toList()
+        }
+        if (usableSamples.size < MINIMUM_TRACE_MOE_EPISODE_SAMPLES) return false
+
+        val nowSeconds = System.currentTimeMillis() / 1000.0
+        val previousAttempt = readTraceMoeAttemptAt(animeId)
+        if (previousAttempt != null &&
+            nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
+        ) return false
+
+        // Persist before the first request so navigation/recreation cannot spend the
+        // public quota repeatedly after a timeout or an unsuccessful image match.
+        writeTraceMoeAttemptAt(animeId, nowSeconds)
+
+        val matchesByEpisode = linkedMapOf<Long, List<TraceMoeSearchMatch>>()
+        for (sample in usableSamples) {
+            currentCoroutineContext().ensureActive()
+            try {
+                matchesByEpisode[sample.episodeId] = traceMoeClient.search(sample.imageFile)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(
+                    TAG,
+                    "Trace.moe episode-frame search failed animeId=$animeId episodeId=${sample.episodeId}",
+                    error,
+                )
+            }
+        }
+
+        val consensus = evaluateTraceMoeIdentityConsensus(matchesByEpisode) ?: run {
+            Log.i(
+                TAG,
+                "Trace.moe did not reach multi-episode identity consensus animeId=$animeId " +
+                    "queried=${usableSamples.size} successful=${matchesByEpisode.size}",
+            )
+            return false
+        }
+
+        // Re-read the canonical row immediately before committing. A manual selection
+        // or another identity provider may have won while the visual requests ran.
+        local = library.getAnime(animeId) ?: return false
+        if (local.anilistId != null ||
+            local.anilistMatchManual == true ||
+            local.metadataSource == "manual" ||
+            local.metadataStatus == "manual"
+        ) return false
+
+        val remote = when (val result = client.getAnime(consensus.anilistId)) {
+            is AniListResult.Success -> result.value
+            is AniListResult.Failure -> {
+                Log.w(TAG, "AniList detail lookup failed for Trace.moe ID=${consensus.anilistId}: ${result.error}")
+                return false
+            }
+        } ?: return false
+        if (remote.id != consensus.anilistId) return false
+
+        return when (
+            val applied = applyRemote(
+                local = local,
+                remote = remote,
+                manual = false,
+                score = consensus.averageSimilarity,
+                margin = consensus.margin,
+            )
+        ) {
+            is AniListResult.Success -> applied.value.anilistId == consensus.anilistId.toLong()
+            is AniListResult.Failure -> {
+                Log.w(TAG, "Trace.moe identity could not be committed for animeId=$animeId: ${applied.error}")
+                false
+            }
+        }
+    }
+
+    private suspend fun readTraceMoeAttemptAt(animeId: Long): Double? = withContext(Dispatchers.IO) {
+        library.database.read { connection ->
+            connection.rawQuery(
+                "SELECT value FROM preferences WHERE key=? LIMIT 1",
+                arrayOf(TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX + animeId),
+            ).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getString(0)?.toDoubleOrNull()?.takeIf { it.isFinite() }
+                } else {
+                    null
+                }
+            }
+        }
+    }
+
+    private suspend fun writeTraceMoeAttemptAt(animeId: Long, attemptAtSeconds: Double) =
+        withContext(Dispatchers.IO) {
+            library.database.transaction { connection ->
+                val values = ContentValues().apply {
+                    put("key", TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX + animeId)
+                    put("value", attemptAtSeconds.toString())
+                    put("updated_at", attemptAtSeconds)
+                }
+                connection.insertWithOnConflict(
+                    "preferences",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+            }
+        }
 
     /**
      * Conservative auto-match: only a unique exact normalized title/alias match
@@ -1124,6 +1268,10 @@ class ReiAnixAniListIntegrationService(
 
     companion object {
         private const val TAG = "ReiAnixAniList"
+        private const val TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.trace_moe_attempt_v1."
+        private const val TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS = 24L * 60L * 60L
+        private const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
+        private const val MINIMUM_TRACE_MOE_EPISODE_SAMPLES = 2
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
