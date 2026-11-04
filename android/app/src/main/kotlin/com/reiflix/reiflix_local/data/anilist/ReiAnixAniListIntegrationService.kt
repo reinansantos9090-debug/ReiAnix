@@ -345,9 +345,10 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Uses independent thumbnails from local episode files as a fallback when title
-     * matching has not identified the local anime. Only a confirmed multi-episode
-     * Trace.moe consensus is allowed to associate AniList metadata.
+     * Uses independent local episode thumbnails to verify or correct an automatic
+     * AniList association. A clear first-frame result is accepted immediately;
+     * otherwise two matching results from up to three episodes are required.
+     * Manual associations and manually sourced metadata are never replaced.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -1350,7 +1351,6 @@ class ReiAnixAniListIntegrationService(
         private const val TRACE_MOE_LOCAL_DAILY_REQUEST_BUDGET = 30
         private const val TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS = 24L * 60L * 60L
         private const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
-        private const val MINIMUM_TRACE_MOE_EPISODE_SAMPLES = 2
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
