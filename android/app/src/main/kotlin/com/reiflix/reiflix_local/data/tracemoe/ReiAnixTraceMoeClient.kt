@@ -235,6 +235,83 @@ internal fun evaluateTraceMoeIdentityConsensus(
     )
 }
 
+
+/**
+ * Progressive identity policy used while episode thumbnails arrive.
+ *
+ * A clear single-frame result can be accepted immediately. When one frame is not
+ * decisive, two different episode files agreeing on the same AniList ID are enough;
+ * with three frames this is a two-of-three vote. This avoids waiting for a full
+ * season while remaining tolerant of one misleading episode frame.
+ */
+internal fun evaluateTraceMoeProgressiveIdentity(
+    resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
+    singleFrameMinimumSimilarity: Double = MINIMUM_TRACE_MOE_SIMILARITY,
+    supportingFrameMinimumSimilarity: Double = 0.86,
+    minimumSingleFrameMargin: Double = MINIMUM_TRACE_MOE_FRAME_MARGIN,
+): TraceMoeIdentityConsensus? {
+    require(singleFrameMinimumSimilarity in 0.0..1.0)
+    require(supportingFrameMinimumSimilarity in 0.0..1.0)
+    require(minimumSingleFrameMargin in 0.0..1.0)
+
+    val episodeWinners = mutableListOf<TraceMoeSearchMatch>()
+    for ((episodeId, matches) in resultsByEpisode) {
+        if (episodeId <= 0L) continue
+        val rankedAnime = matches.asSequence()
+            .filter { it.anilistId > 0 && it.similarity.isFinite() && it.similarity in 0.0..1.0 }
+            .groupBy(TraceMoeSearchMatch::anilistId)
+            .values
+            .mapNotNull { sameAnimeMatches ->
+                sameAnimeMatches.maxByOrNull(TraceMoeSearchMatch::similarity)
+            }
+            .sortedByDescending(TraceMoeSearchMatch::similarity)
+        val best = rankedAnime.firstOrNull() ?: continue
+        val secondSimilarity = rankedAnime.getOrNull(1)?.similarity ?: 0.0
+
+        if (best.similarity >= singleFrameMinimumSimilarity &&
+            best.similarity - secondSimilarity >= minimumSingleFrameMargin
+        ) {
+            return TraceMoeIdentityConsensus(
+                anilistId = best.anilistId,
+                averageSimilarity = best.similarity,
+                margin = (best.similarity - secondSimilarity).coerceAtLeast(0.0),
+                supportingEpisodes = 1,
+            )
+        }
+
+        if (best.similarity >= supportingFrameMinimumSimilarity) {
+            episodeWinners += best
+        }
+    }
+
+    if (episodeWinners.size < 2) return null
+    val counts = episodeWinners.groupBy(TraceMoeSearchMatch::anilistId)
+    val winner = counts.entries
+        .sortedWith(
+            compareByDescending<Map.Entry<Int, List<TraceMoeSearchMatch>>> { it.value.size }
+                .thenByDescending { entry -> entry.value.map(TraceMoeSearchMatch::similarity).average() },
+        )
+        .firstOrNull()
+        ?: return null
+    val strongestCompetitorCount = counts.entries
+        .filter { it.key != winner.key }
+        .maxOfOrNull { it.value.size }
+        ?: 0
+    if (winner.value.size < 2 || winner.value.size <= strongestCompetitorCount) return null
+
+    val average = winner.value.map(TraceMoeSearchMatch::similarity).average()
+    val strongestCompetitorSimilarity = episodeWinners
+        .filter { it.anilistId != winner.key }
+        .maxOfOrNull(TraceMoeSearchMatch::similarity)
+        ?: 0.0
+    return TraceMoeIdentityConsensus(
+        anilistId = winner.key,
+        averageSimilarity = average,
+        margin = (average - strongestCompetitorSimilarity).coerceAtLeast(0.0),
+        supportingEpisodes = winner.value.size,
+    )
+}
+
 const val MINIMUM_TRACE_MOE_SIMILARITY = 0.90
 const val MINIMUM_TRACE_MOE_FRAME_MARGIN = 0.02
 const val MINIMUM_TRACE_MOE_SUPPORTING_EPISODES = 2
