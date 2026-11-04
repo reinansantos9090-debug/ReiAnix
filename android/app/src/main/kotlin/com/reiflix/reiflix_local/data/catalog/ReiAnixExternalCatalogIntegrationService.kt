@@ -378,19 +378,25 @@ class ReiAnixExternalCatalogIntegrationService(
         // its process-wide request limit, while the result channel lets the first response
         // publish its poster without waiting for slower aliases.
         coroutineScope {
-            val results = Channel<ReiAnixCatalogResult<List<ReiAnixCatalogAnime>>>(Channel.BUFFERED)
-            val jobs = queries.map { query ->
+            val queryQueue = Channel<String>(Channel.UNLIMITED)
+            val results = Channel<ReiAnixCatalogResult<List<ReiAnixCatalogAnime>>>(Channel.UNLIMITED)
+            val workers = List(TITLE_SEARCH_CONCURRENCY) {
                 launch {
-                    val result = try {
-                        provider.searchAnime(query, SEARCH_LIMIT)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
-                        ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
+                    for (query in queryQueue) {
+                        currentCoroutineContext().ensureActive()
+                        val result = try {
+                            provider.searchAnime(query, SEARCH_LIMIT)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
+                        }
+                        results.send(result)
                     }
-                    results.send(result)
                 }
             }
+            queries.forEach(queryQueue::send)
+            queryQueue.close()
 
             repeat(queries.size) {
                 currentCoroutineContext().ensureActive()
@@ -431,7 +437,7 @@ class ReiAnixExternalCatalogIntegrationService(
                     }
                 }
             }
-            jobs.joinAll()
+            workers.joinAll()
             results.close()
         }
 
@@ -516,6 +522,7 @@ class ReiAnixExternalCatalogIntegrationService(
         const val SEARCH_LIMIT = 10
         const val MAX_SEARCH_TERMS = 128
         const val MAX_SEARCH_ARTWORK_CANDIDATES = 10
+        const val TITLE_SEARCH_CONCURRENCY = 2
         const val SOURCE_RETRY_COOLDOWN_SECONDS = 6L * 60L * 60L
     }
 }
