@@ -518,10 +518,10 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun differentPosterUrlsAndTwoRecordsFromOneProviderDoNotCreateProviderConsensus() {
+    fun twoRecordsFromOneProviderCannotConfirmTheSamePosterImage() {
         val tracker = ReiAnixArtworkConsensusTracker()
-        val first = consensusCandidate("kitsu", "kitsu:201", "https://cdn.example/poster-a.jpg", "original title")
-        val second = consensusCandidate("kitsu", "kitsu:202", "https://cdn.example/poster-b.jpg", "english title")
+        val first = consensusCandidate("kitsu", "kitsu:201", "https://cdn.example/shared.jpg", "original title")
+        val second = consensusCandidate("kitsu", "kitsu:202", "https://cdn.example/shared.jpg", "english title")
         assertFalse(tracker.collect(94L, listOf(first)).any { it.identityVerified })
         assertFalse(tracker.collect(94L, listOf(second)).any { it.identityVerified })
     }
