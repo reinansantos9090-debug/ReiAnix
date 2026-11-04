@@ -329,10 +329,13 @@ class ReiAnixAniListClient(
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
         """
+        // Keep search DTO parity with the existing single-title lookup because
+        // auto-match may persist the returned AniList metadata after strict evaluation.
         private const val SEARCH_MEDIA_FIELDS = """
             id title { romaji english native } synonyms
-            format episodes status season seasonYear
-            coverImage { large extraLarge } bannerImage
+            description(asHtml: false) format episodes duration status averageScore season seasonYear
+            genres coverImage { large extraLarge } bannerImage
+            studios(isMain: true) { nodes { name } }
         """
     }
 }
