@@ -402,8 +402,16 @@ class ReiAnixAniListIntegrationService(
         }
         val candidatesById = linkedMapOf<Int, AniListAnime>()
         when (batchResult) {
-            is AniListResult.Success -> batchResult.value.values.flatten().forEach { candidate ->
-                candidatesById.putIfAbsent(candidate.id, candidate)
+            is AniListResult.Success -> {
+                if (!batchResult.value.keys.containsAll(searchTerms)) {
+                    recordAutoMatchOutcome(animeId, "invalid_response")
+                    return AniListResult.Failure(
+                        AniListError.InvalidResponse("AniList alias batch was incomplete; metadata auto-match was withheld."),
+                    )
+                }
+                batchResult.value.values.flatten().forEach { candidate ->
+                    candidatesById.putIfAbsent(candidate.id, candidate)
+                }
             }
             is AniListResult.Failure -> {
                 val outcome = when (val error = batchResult.error) {
@@ -531,7 +539,7 @@ class ReiAnixAniListIntegrationService(
         currentCoroutineContext().ensureActive()
         val candidatesById = linkedMapOf<Int, AniListAnime>()
         when (val result = try {
-            client.searchAnimeBatch(terms, 10)
+            client.searchAnimeBatch(terms, 10, includeFullMetadata = false)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
