@@ -1,4 +1,6 @@
 package com.reiflix.reiflix_local.data.anilist
+
+import com.reiflix.reiflix_local.data.artwork.ReiAnixAniListCoverCandidate
 import android.app.Application
 import org.robolectric.annotation.Config
 
