@@ -930,7 +930,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val database = ReiAnixSqliteDatabase(context)
         database.transaction { connection ->
             connection.execSQL(
-                "UPDATE anime SET anilist_id = 99, anilist_match_manual = 0, anilist_match_status = 'matched' WHERE id = 1",
+                "UPDATE anime SET anilist_id = 99, anilist_match_manual = 0, anilist_match_status = 'matched', " +
+                    "metadata_manual_fields = '[\"title\"]' WHERE id = 1",
             )
         }
 
