@@ -452,7 +452,7 @@ class ReiAnixExternalCatalogIntegrationService(
                                 val queryAliasKeys = aliasAttribution[
                                     ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle(completedQuery)
                                 ].orEmpty()
-                                val eligibleKeys = withPosters.mapNotNull { remote ->
+                                val eligibleAliasKeysByRecord = withPosters.mapNotNull { remote ->
                                     val recordKey = artworkEvidenceRecordKey(remote)
                                     val exactAliases = ReiAnixCatalogIdentityMatcher.matchingDiscriminativeTitleAliases(
                                         identity.titles, remote.alternativeTitles + remote.title,
@@ -460,13 +460,15 @@ class ReiAnixExternalCatalogIntegrationService(
                                     val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(
                                         anime.id, identity, remote, ids,
                                     )
+                                    val aliasesConfirmedByThisQuery = queryAliasKeys intersect exactAliases
                                     recordKey?.takeIf {
-                                        exactAliases.isNotEmpty() &&
+                                        aliasesConfirmedByThisQuery.isNotEmpty() &&
                                             evaluation.decision != ReiAnixCatalogIdentityDecision.REJECTED &&
                                             evaluation.decision != ReiAnixCatalogIdentityDecision.UNRESOLVED
-                                    }
-                                }.toSet()
-                                val aliasKeysByRecord = eligibleKeys.associateWith { queryAliasKeys }
+                                    }?.let { it to aliasesConfirmedByThisQuery }
+                                }.toMap()
+                                val eligibleKeys = eligibleAliasKeysByRecord.keys
+                                val aliasKeysByRecord = eligibleAliasKeysByRecord
                                 if (queueArtworkCandidates(
                                         animeId = anime.id,
                                         remoteCandidates = withPosters,

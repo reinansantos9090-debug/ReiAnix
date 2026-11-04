@@ -607,9 +607,16 @@ class ReiAnixAniListIntegrationService(
                     found.forEach { remote ->
                         if (remote.id > 0) {
                             candidatesById.putIfAbsent(remote.id, remote)
-                            if (aliasKeys.isNotEmpty()) {
+                            val exactAliases = com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
+                                .matchingDiscriminativeTitleAliases(
+                                    titleCandidates,
+                                    listOfNotNull(remote.titleEnglish, remote.titleRomaji, remote.titleNative) +
+                                        remote.synonyms,
+                                )
+                            val aliasesConfirmedByThisQuery = aliasKeys intersect exactAliases
+                            if (aliasesConfirmedByThisQuery.isNotEmpty()) {
                                 matchedTitleAliasesById.getOrPut(remote.id) { linkedSetOf() }
-                                    .addAll(aliasKeys)
+                                    .addAll(aliasesConfirmedByThisQuery)
                             }
                         }
                     }
