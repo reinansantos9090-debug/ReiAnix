@@ -38,4 +38,18 @@ class ReiAnixAniListSearchTermsTest {
         assertTrue(terms.any { it.equals("The Night of the Cat", ignoreCase = true) })
         assertTrue(terms.size <= 6)
     }
+
+    @Test
+    fun defaultSearchTermCollectionNoLongerStopsAfterSixAliases() {
+        val aliases = (1..12).map { "Alternate Work Title $it" }
+        val terms = boundedAniListSearchTerms(aliases)
+
+        aliases.forEach { alias ->
+            assertTrue(
+                "Missing alias query: $alias",
+                terms.any { MediaTitleNormalizer.normalizeTitle(it) == MediaTitleNormalizer.normalizeTitle(alias) },
+            )
+        }
+        assertTrue(terms.size >= aliases.size)
+    }
 }
