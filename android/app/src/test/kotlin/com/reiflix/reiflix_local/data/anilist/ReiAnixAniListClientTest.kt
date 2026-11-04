@@ -251,6 +251,35 @@ class ReiAnixAniListClientTest {
         assertEquals("Second Work", variables.getString("term1"))
     }
 
+
+    @Test
+    fun batchArtworkSearchKeepsSuccessfulAliasesWhenAnotherAliasReturnsGraphQlError() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"errors":[{"message":"One alias failed"}],"data":{
+                    "search0":{"media":[{"id":101,"title":{"romaji":"First Work"},"coverImage":{"large":"https://img.example/first.jpg"}}]},
+                    "search1":null
+                }}""".trimIndent(),
+            ),
+        )
+
+        val result = ReiAnixAniListClient(transport, 0).searchAnimeBatch(
+            listOf("First Work", "Second Work"),
+            includeFullMetadata = false,
+        )
+
+        assertTrue(result is AniListResult.Success)
+        val byTitle = (result as AniListResult.Success).value
+        assertEquals(setOf("First Work"), byTitle.keys)
+        assertEquals("https://img.example/first.jpg", byTitle.getValue("First Work").single().coverLargeUrl)
+
+        val query = requireNotNull(transport.requestBody).getString("query")
+        assertTrue(query.contains("coverImage"))
+        assertFalse(query.contains("description(asHtml"))
+        assertFalse(query.contains("studios(isMain"))
+    }
+
     private class FakeTransport(
         private val response: AniListHttpResponse,
     ) : AniListTransport {
