@@ -247,12 +247,13 @@ internal fun evaluateTraceMoeSingleFrameIdentity(
     require(minimumSimilarity in 0.0..1.0)
     require(minimumFrameMargin in 0.0..1.0)
     val ranked = matches.asSequence()
-        .filter { it.anilistId > 0 && it.similarity.isFinite() && it.similarity in minimumSimilarity..1.0 }
+        .filter { it.anilistId > 0 && it.similarity.isFinite() && it.similarity in 0.0..1.0 }
         .groupBy(TraceMoeSearchMatch::anilistId)
         .values
         .mapNotNull { candidates -> candidates.maxByOrNull(TraceMoeSearchMatch::similarity) }
         .sortedByDescending(TraceMoeSearchMatch::similarity)
     val best = ranked.firstOrNull() ?: return null
+    if (best.similarity < minimumSimilarity) return null
     val margin = best.similarity - (ranked.getOrNull(1)?.similarity ?: 0.0)
     if (margin < minimumFrameMargin) return null
     return TraceMoeIdentityConsensus(
