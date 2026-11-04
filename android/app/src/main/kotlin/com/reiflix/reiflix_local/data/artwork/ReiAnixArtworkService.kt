@@ -1,8 +1,11 @@
 package com.reiflix.reiflix_local.data.artwork
 
 import android.content.ContentValues
+import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
@@ -11,6 +14,8 @@ import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reiflix.reiflix_local.scanner.MediaStoreScanner
+import com.reiflix.reiflix_local.scanner.SafScanner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +41,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -223,6 +229,28 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val checksum: String, val mime: String, val status: Int,
     )
     private data class SaveResult(val saved: Boolean, val current: Boolean)
+    private data class LegacyCoverCacheReconstruction(
+        val key: String,
+        val manual: Boolean,
+        val contentType: String,
+    )
+    private data class LocalSidecarCandidate(
+        val uri: Uri,
+        val name: String,
+        val size: Long?,
+        val modifiedAt: Long?,
+        val parentIdentity: String,
+    )
+    private data class ExistingLocalSidecar(
+        val id: Long,
+        val source: String,
+        val sourceRef: String?,
+        val localPath: String?,
+        val key: String?,
+        val manual: Boolean,
+    )
+    private data class SavedLocalSidecar(val key: String, val oldPath: String?)
+
     private class HttpFailure(val code: Int, val retryAfterSeconds: Long?) : IOException("Artwork HTTP " + code)
     private class InvalidImage(message: String) : Exception(message)
 
@@ -292,13 +320,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     if (candidateCandidates == null) {
                         val posterUrl = anime.coverUrl?.trim()?.takeIf(String::isNotEmpty)
                         val backdropUrl = anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
-                        val primaryPosterMaterialized = posterUrl?.let {
+                        var posterMaterialized = posterUrl?.let {
                             materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
                         } ?: false
 
                         // Keep the fast path unchanged: secondary AniList URLs are only read and
                         // attempted after the primary URL is absent or could not be materialized.
-                        if (!primaryPosterMaterialized) {
+                        if (!posterMaterialized) {
                             val alternatives = loadAlternativePosterCandidates(
                                 animeId = animeId,
                                 anime = anime,
@@ -306,7 +334,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                 force = force,
                             )
                             if (alternatives.isNotEmpty()) {
-                                val alternateMaterialized = firstSuccessfulArtworkCandidate(
+                                posterMaterialized = firstSuccessfulArtworkCandidate(
                                     candidates = alternatives,
                                     artworkUrls = { listOf(it.posterUrl) },
                                 ) { candidate, url ->
@@ -323,7 +351,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                         sourceKind = candidate.source,
                                     )
                                 }
-                                if (alternateMaterialized) {
+                                if (posterMaterialized) {
                                     ReiAnixDiagnosticTimeline.record(
                                         name = "NATIVE_ARTWORK_ALTERNATIVE_SOURCE_SELECTED",
                                         source = "ReiAnixArtworkService",
@@ -338,6 +366,33 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                         ),
                                     )
                                 }
+                            }
+                        }
+
+                        // The old build also recovered pre-migration cover_cache paths and
+                        // same-folder poster/cover/folder images next to persisted episodes.
+                        // Run this only after all remote candidates fail and only when no valid
+                        // poster is already available, so current AniList posters keep their
+                        // existing fast, two-permit download path.
+                        if (!posterMaterialized && !hasUsablePersistedPoster(animeId, entityType)) {
+                            if (!anime.coverCache.isNullOrBlank()) {
+                                restoreLegacyCoverCachePointer(
+                                    animeId = animeId,
+                                    entity = entityType,
+                                    coverCache = anime.coverCache,
+                                    requestId = requestId,
+                                )
+                            }
+                            if (!hasUsablePersistedPoster(animeId, entityType) &&
+                                !ownsManualField(anime.metadataManualFields, "cover_url") &&
+                                !ownsManualField(anime.metadataManualFields, "cover_cache")
+                            ) {
+                                discoverAndPersistLocalSidecars(
+                                    animeId = animeId,
+                                    entity = entityType,
+                                    requestId = requestId,
+                                    artworkTypes = listOf(POSTER),
+                                )
                             }
                         }
                         backdropUrl?.let {
@@ -427,6 +482,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         db.rawQuery(
                             "SELECT id FROM anime a WHERE id>? AND (" +
                                 "TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='' OR " +
+                                "EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 " +
+                                "AND TRIM(COALESCE(e.path,''))!='') OR " +
                                 "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
                                 "AND art.entity_type IN ('anime','movie') AND art.artwork_type IN ('poster','backdrop') " +
                                 "AND art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL " +
@@ -1018,6 +1075,655 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return db.rawQuery("SELECT $column FROM anime WHERE id=? LIMIT 1", arrayOf(id.toString()))
             .use { it.moveToFirst() && it.getString(0)?.trim() == url }
     }
+    private fun discoverAndPersistLocalSidecars(
+        animeId: Long,
+        entity: String,
+        requestId: String,
+        artworkTypes: List<String> = listOf(POSTER, BACKDROP),
+    ) {
+        val episodePaths = runCatching {
+            database.read { db ->
+                db.rawQuery(
+                    "SELECT path FROM episodes WHERE anime_id=? AND COALESCE(missing,0)=0 " +
+                        "AND TRIM(COALESCE(path,''))!='' ORDER BY id LIMIT ?",
+                    arrayOf(animeId.toString(), MAX_LOCAL_SIDECAR_EPISODES.toString()),
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            cursor.getString(0)?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
+                        }
+                    }
+                }
+            }
+        }.getOrElse { error ->
+            Log.w(TAG, "Could not read persisted episode paths for local artwork animeId=$animeId", error)
+            return
+        }
+        if (episodePaths.isEmpty()) return
+
+        val visitedDirectories = mutableSetOf<String>()
+        var examined = 0
+        var persisted = 0
+        for (episodePath in episodePaths) {
+            for (type in artworkTypes) {
+                if (examined >= MAX_LOCAL_SIDECAR_CANDIDATES) break
+                val candidates = resolveLocalSidecarCandidates(episodePath, type)
+                val directoryIdentity = candidates.firstOrNull()?.parentIdentity ?: continue
+                if (!visitedDirectories.add("$type:$directoryIdentity")) continue
+                for (candidate in candidates.take(MAX_LOCAL_SIDECARS_PER_DIRECTORY)) {
+                    if (examined >= MAX_LOCAL_SIDECAR_CANDIDATES) break
+                    examined++
+                    if (persistLocalSidecar(animeId, entity, type, candidate, requestId)) persisted++
+                }
+            }
+            if (examined >= MAX_LOCAL_SIDECAR_CANDIDATES) break
+        }
+        if (persisted > 0 || examined > 0) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "NATIVE_ARTWORK_LOCAL_SIDECAR_DISCOVERY",
+                source = "ReiAnixArtworkService",
+                result = if (persisted > 0) "CANDIDATES_PERSISTED" else "NO_NEW_CANDIDATES",
+                requestId = requestId,
+                context = mapOf(
+                    "entity_type" to entity,
+                    "entity_id" to animeId,
+                    "episode_paths_checked" to episodePaths.size,
+                    "sidecars_examined" to examined,
+                    "sidecars_persisted" to persisted,
+                    "source" to "existing_file_mediastore_or_authorized_saf",
+                ),
+            )
+        }
+    }
+
+    private fun resolveLocalSidecarCandidates(
+        episodeReference: String,
+        artworkType: String,
+    ): List<LocalSidecarCandidate> {
+        val raw = episodeReference.trim()
+        if (raw.isEmpty()) return emptyList()
+        if (raw.startsWith("/") && !raw.startsWith("//")) {
+            return resolveFileSidecars(File(raw), artworkType)
+        }
+        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return emptyList()
+        return when (uri.scheme?.lowercase(Locale.ROOT)) {
+            "file" -> uri.path?.takeIf(String::isNotBlank)?.let { resolveFileSidecars(File(it), artworkType) }
+                ?: emptyList()
+            "content" -> when {
+                uri.authority == MediaStore.AUTHORITY -> resolveMediaStoreSidecars(uri, artworkType)
+                uri.authority == "com.android.externalstorage.documents" ->
+                    resolveSafSidecars(uri, artworkType)
+                else -> emptyList()
+            }
+            else -> emptyList()
+        }
+    }
+
+    private fun resolveFileSidecars(
+        videoFile: File,
+        artworkType: String,
+    ): List<LocalSidecarCandidate> {
+        val video = runCatching { videoFile.canonicalFile }.getOrNull()
+            ?.takeIf { it.isFile && it.canRead() } ?: return emptyList()
+        val parent = video.parentFile ?: return emptyList()
+        val parentIdentity = runCatching { parent.canonicalPath }.getOrNull() ?: return emptyList()
+        return runCatching { parent.listFiles()?.asSequence().orEmpty() }
+            .getOrNull()
+            ?.filter { file ->
+                file.isFile && file.canRead() && file.length() in 1L..MAX_DOWNLOAD_BYTES &&
+                    isLegacyArtworkSidecarCandidate(file.name, artworkType)
+            }
+            ?.sortedBy { it.name.lowercase(Locale.ROOT) }
+            ?.take(MAX_LOCAL_SIDECARS_PER_DIRECTORY)
+            ?.map { file ->
+                LocalSidecarCandidate(
+                    uri = Uri.fromFile(file.canonicalFile),
+                    name = file.name,
+                    size = file.length(),
+                    modifiedAt = file.lastModified().takeIf { it > 0L },
+                    parentIdentity = "file:$parentIdentity",
+                )
+            }
+            ?.toList()
+            .orEmpty()
+    }
+
+    private fun resolveMediaStoreSidecars(
+        videoUri: Uri,
+        artworkType: String,
+    ): List<LocalSidecarCandidate> {
+        if (android.os.Build.VERSION.SDK_INT < 29 || !MediaStoreScanner.hasReadPermission(appContext)) {
+            return emptyList()
+        }
+        val metadata = runCatching {
+            appContext.contentResolver.query(
+                videoUri,
+                arrayOf(
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    MediaStore.MediaColumns.VOLUME_NAME,
+                ),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+                val pathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+                val volumeIndex = cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+                if (nameIndex < 0 || pathIndex < 0 || volumeIndex < 0) return@use null
+                val relativePath = cursor.getString(pathIndex)?.takeIf(String::isNotBlank) ?: return@use null
+                val volume = cursor.getString(volumeIndex)?.takeIf(String::isNotBlank)
+                    ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
+                Triple(cursor.getString(nameIndex).orEmpty(), relativePath, volume)
+            }
+        }.getOrNull() ?: return emptyList()
+        val (_, relativePath, volumeName) = metadata
+        val collection = runCatching { MediaStore.Files.getContentUri(volumeName) }.getOrNull()
+            ?: return emptyList()
+        return runCatching {
+            val selection = MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " +
+                MediaStore.Files.FileColumns.MEDIA_TYPE + "=?"
+            appContext.contentResolver.query(
+                collection,
+                arrayOf(
+                    MediaStore.MediaColumns._ID,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.SIZE,
+                    MediaStore.MediaColumns.DATE_MODIFIED,
+                ),
+                selection,
+                arrayOf(relativePath, MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString()),
+                MediaStore.MediaColumns.DISPLAY_NAME + " COLLATE NOCASE ASC",
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(MediaStore.MediaColumns._ID)
+                val nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeIndex = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+                val modifiedIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                if (idIndex < 0 || nameIndex < 0) return@use emptyList<LocalSidecarCandidate>()
+                buildList {
+                    var inspected = 0
+                    while (cursor.moveToNext() && inspected < MAX_LOCAL_SIDECAR_DIRECTORY_ENTRIES) {
+                        inspected++
+                        val name = cursor.getString(nameIndex)?.takeIf(String::isNotBlank) ?: continue
+                        if (!isLegacyArtworkSidecarCandidate(name, artworkType)) continue
+                        val id = cursor.getLong(idIndex)
+                        val itemUri = ContentUris.withAppendedId(collection, id)
+                        val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex).takeIf { it >= 0L } else null
+                        val modified = if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) cursor.getLong(modifiedIndex).takeIf { it > 0L } else null
+                        add(
+                            LocalSidecarCandidate(
+                                uri = itemUri,
+                                name = name,
+                                size = size,
+                                modifiedAt = modified,
+                                parentIdentity = "mediastore:$volumeName:$relativePath",
+                            ),
+                        )
+                    }
+                }
+            } ?: emptyList()
+        }.getOrElse { error ->
+            Log.w(TAG, "Could not list MediaStore artwork sidecars", error)
+            emptyList()
+        }
+    }
+
+    private fun resolveSafSidecars(
+        videoUri: Uri,
+        artworkType: String,
+    ): List<LocalSidecarCandidate> {
+        if (!DocumentsContract.isDocumentUri(appContext, videoUri)) return emptyList()
+        val documentId = runCatching { DocumentsContract.getDocumentId(videoUri) }.getOrNull()
+            ?.takeIf(String::isNotBlank) ?: return emptyList()
+        // Only the ExternalStorageProvider has a documented path-shaped ID. For other providers
+        // parentage cannot safely be guessed; those trees are skipped rather than traversed blindly.
+        val parentId = documentId.substringBeforeLast('/', missingDelimiterValue = "")
+        if (parentId.isBlank()) return emptyList()
+        val tree = appContext.contentResolver.persistedUriPermissions.firstOrNull { permission ->
+            permission.isReadPermission &&
+                permission.uri.authority.equals(videoUri.authority, ignoreCase = true) &&
+                runCatching {
+                    SafScanner.isAuthorizedDocumentForTree(appContext, permission.uri, videoUri)
+                }.getOrDefault(false)
+        }?.uri ?: return emptyList()
+        val childrenUri = runCatching {
+            DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        }.getOrNull() ?: return emptyList()
+        return runCatching {
+            appContext.contentResolver.query(
+                childrenUri,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_SIZE,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                ),
+                null,
+                null,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC",
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                val sizeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                val modifiedIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                if (idIndex < 0 || nameIndex < 0 || mimeIndex < 0) return@use emptyList<LocalSidecarCandidate>()
+                buildList {
+                    var inspected = 0
+                    while (cursor.moveToNext() && inspected < MAX_LOCAL_SIDECAR_DIRECTORY_ENTRIES) {
+                        inspected++
+                        val name = cursor.getString(nameIndex)?.takeIf(String::isNotBlank) ?: continue
+                        if (cursor.getString(mimeIndex) == DocumentsContract.Document.MIME_TYPE_DIR ||
+                            !isLegacyArtworkSidecarCandidate(name, artworkType)
+                        ) continue
+                        val id = cursor.getString(idIndex)?.takeIf(String::isNotBlank) ?: continue
+                        val itemUri = runCatching { DocumentsContract.buildDocumentUriUsingTree(tree, id) }
+                            .getOrNull() ?: continue
+                        val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex).takeIf { it >= 0L } else null
+                        val modified = if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) cursor.getLong(modifiedIndex).takeIf { it > 0L } else null
+                        add(
+                            LocalSidecarCandidate(
+                                uri = itemUri,
+                                name = name,
+                                size = size,
+                                modifiedAt = modified,
+                                parentIdentity = "saf:$tree:$parentId",
+                            ),
+                        )
+                    }
+                }
+            } ?: emptyList()
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            Log.w(TAG, "Could not list authorized SAF artwork sidecars", error)
+            emptyList()
+        }
+    }
+
+    private fun persistLocalSidecar(
+        animeId: Long,
+        entity: String,
+        artworkType: String,
+        candidate: LocalSidecarCandidate,
+        requestId: String,
+    ): Boolean {
+        val sourceRef = candidate.uri.toString()
+        val key = sha256(
+            "reianix|local-sidecar|$entity:$animeId|$artworkType|$sourceRef|" +
+                "${candidate.size ?: -1L}|${candidate.modifiedAt ?: -1L}",
+        )
+        val existingBeforeCopy = findLocalSidecar(entity, animeId, artworkType, sourceRef, key)
+        if (existingBeforeCopy?.manual == true || existingBeforeCopy?.source.equals("manual", true)) return false
+        if (existingBeforeCopy?.key == key && validImage(existingBeforeCopy.localPath)) return false
+
+        if (!ensureArtworkCacheDirectory(cacheDirectory)) return false
+        val temporary = File(cacheDirectory, ".sidecar-${UUID.randomUUID()}.tmp")
+        var copiedBytes = 0L
+        try {
+            val stream = openSidecarInputStream(candidate.uri)
+                ?: throw IOException("Local artwork sidecar is no longer readable.")
+            stream.buffered().use { input ->
+                FileOutputStream(temporary).use { output ->
+                    val buffer = ByteArray(IO_BUFFER_BYTES)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        copiedBytes += read
+                        if (copiedBytes > MAX_DOWNLOAD_BYTES) throw IOException("Local artwork sidecar exceeds 32 MiB.")
+                        output.write(buffer, 0, read)
+                    }
+                    output.flush()
+                    output.fd.sync()
+                }
+            }
+        } catch (error: Exception) {
+            runCatching { temporary.delete() }
+            if (error is CancellationException) throw error
+            Log.w(TAG, "Could not copy an authorized local artwork sidecar", error)
+            return false
+        }
+        if (copiedBytes <= 0L || !validImage(temporary)) {
+            runCatching { temporary.delete() }
+            return false
+        }
+        val imageExt = header(temporary)?.let(::imageExtension) ?: run {
+            runCatching { temporary.delete() }
+            return false
+        }
+        val digest = checksum(temporary) ?: run {
+            runCatching { temporary.delete() }
+            return false
+        }
+        val dimensions = dimensions(temporary.absolutePath, imageExt)?.takeIf {
+            it.first > 0 && it.second > 0
+        } ?: run {
+            runCatching { temporary.delete() }
+            return false
+        }
+        var target = File(cacheDirectory, "sidecar-${key.take(20)}-${digest.take(16)}$imageExt")
+        if (target.exists() && !validImage(target, imageExt)) {
+            target = File(cacheDirectory, "sidecar-${key.take(20)}-${digest.take(16)}-${UUID.randomUUID()}$imageExt")
+        }
+        if (target.exists() && validImage(target, imageExt)) {
+            runCatching { temporary.delete() }
+        } else if (!temporary.renameTo(target)) {
+            runCatching { temporary.delete() }
+            return false
+        }
+        if (!validImage(target, imageExt)) {
+            removeIfUnreferenced(target)
+            return false
+        }
+
+        val result = runCatching {
+            database.transaction { db ->
+                val existing = findLocalSidecar(db, entity, animeId, artworkType, sourceRef, key)
+                if (existing?.manual == true || existing?.source.equals("manual", true)) {
+                    return@transaction null
+                }
+                if (existing != null && existing.sourceRef != sourceRef) {
+                    // A key hit cannot authorize replacing a row bound to a different origin URI.
+                    return@transaction null
+                }
+                val targetId = existing?.id
+                val oldPath = existing?.localPath
+                val now = nowSeconds()
+                val values = ContentValues().apply {
+                    put("entity_type", entity)
+                    put("entity_id", animeId.toString())
+                    put("artwork_type", artworkType)
+                    put("source", "local")
+                    put("source_ref", sourceRef)
+                    put("local_path", target.absolutePath)
+                    putNull("external_url")
+                    put("manual", 0)
+                    put("priority", 300)
+                    put("status", "ready")
+                    put("updated_at", now)
+                    putNull("last_attempt_at")
+                    put("failure_count", 0)
+                    put("artwork_key", key)
+                    put("variant", "large")
+                    put("byte_size", copiedBytes)
+                    put("width", dimensions.first.takeIf { it > 0 })
+                    put("height", dimensions.second.takeIf { it > 0 })
+                    put("checksum", digest)
+                    put("content_type", mimeFromExtension(imageExt))
+                    put("last_access", now)
+                    putNull("next_retry_at")
+                    putNull("http_status")
+                    if (targetId == null) put("discovered_at", now)
+                }
+                val saved = if (targetId != null) {
+                    db.update("artwork", values, "id=?", arrayOf(targetId.toString())) == 1
+                } else {
+                    db.insertOrThrow("artwork", null, values) > 0L
+                }
+                if (!saved) return@transaction null
+                SavedLocalSidecar(key = key, oldPath = oldPath)
+            }
+        }.getOrElse { error ->
+            Log.w(TAG, "Could not persist local artwork sidecar animeId=$animeId", error)
+            null
+        }
+        if (result == null) {
+            removeIfUnreferenced(target)
+            return false
+        }
+        publish(
+            "artwork_published",
+            entity,
+            animeId.toString(),
+            artworkType,
+            target.absolutePath,
+            url = null,
+            key = result.key,
+            ref = sourceRef,
+            contentType = mimeFromExtension(imageExt),
+            requestId = requestId,
+        )
+        result.oldPath?.takeIf { it != target.absolutePath }?.let { removeIfUnreferenced(File(it)) }
+        return true
+    }
+
+    private fun findLocalSidecar(
+        entity: String,
+        animeId: Long,
+        artworkType: String,
+        sourceRef: String,
+        key: String,
+    ): ExistingLocalSidecar? = database.read { db ->
+        findLocalSidecar(db, entity, animeId, artworkType, sourceRef, key)
+    }
+
+    private fun findLocalSidecar(
+        db: SQLiteDatabase,
+        entity: String,
+        animeId: Long,
+        artworkType: String,
+        sourceRef: String,
+        key: String,
+    ): ExistingLocalSidecar? {
+        val row = db.rawQuery(
+            "SELECT id, source, source_ref, local_path, artwork_key, manual FROM artwork WHERE entity_type IN ('anime','movie') " +
+                "AND entity_id=? AND artwork_type=? AND (source_ref=? OR artwork_key=?) " +
+                "ORDER BY manual DESC, priority DESC, updated_at DESC, id DESC LIMIT 1",
+            arrayOf(animeId.toString(), artworkType, sourceRef, key),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null
+            else ExistingLocalSidecar(
+                id = cursor.getLong(0),
+                source = cursor.getString(1).orEmpty(),
+                sourceRef = cursor.getString(2),
+                localPath = cursor.getString(3),
+                key = cursor.getString(4),
+                manual = !cursor.isNull(5) && cursor.getInt(5) != 0,
+            )
+        }
+        if (row != null && (row.source.equals("manual", true) || row.manual)) return row
+        // Existing non-manual rows can be refreshed only when their identity query matched
+        // this exact source URI. The transactional writer rechecks this before updating.
+        return row?.takeIf { it.sourceRef == sourceRef }
+    }
+
+    private fun openSidecarInputStream(uri: Uri): InputStream? = when (uri.scheme?.lowercase(Locale.ROOT)) {
+        "file" -> uri.path?.takeIf(String::isNotBlank)?.let { path ->
+            runCatching { File(path).inputStream() }.getOrNull()
+        }
+        "content" -> runCatching { appContext.contentResolver.openInputStream(uri) }.getOrNull()
+        else -> null
+    }
+
+    /**
+     * Restore a valid pre-migration cover_cache path into the existing artwork table when its
+     * auxiliary artwork row was lost. The path is bound to the local anime only: without a URL
+     * revision, it must not be labelled as a materialization of the current remote URL.
+     */
+    private fun restoreLegacyCoverCachePointer(
+        animeId: Long,
+        entity: String,
+        coverCache: String?,
+        requestId: String,
+    ) {
+        val path = coverCache?.trim()?.takeIf(String::isNotEmpty) ?: return
+        val file = File(path)
+        if (!validImage(file)) return
+        val dims = dimensions(path) ?: return
+        // On APIs without an AVIF decoder, the existing cache policy may accept a signature
+        // without decoding; recovery must be stricter because it is rebuilding trusted identity.
+        if (dims.first <= 0 || dims.second <= 0) return
+        val digest = checksum(file) ?: return
+        val imageExtension = header(file)?.let(::imageExtension) ?: return
+        val contentType = mimeFromExtension(imageExtension)
+        val now = nowSeconds()
+
+        val restored = runCatching {
+            database.transaction { db ->
+                val current = db.rawQuery(
+                    "SELECT cover_cache, cover_url, metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
+                    arrayOf(animeId.toString()),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null
+                    else Triple(cursor.getString(0)?.trim(), cursor.getString(1)?.trim(), cursor.getString(2))
+                } ?: return@transaction null
+                val pointerStillMatchesAnime = current.first == path
+
+                val pathRows = db.rawQuery(
+                    "SELECT * FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
+                        "AND artwork_type='poster' AND local_path=? ORDER BY manual DESC, priority DESC, updated_at DESC, id DESC",
+                    arrayOf(animeId.toString(), path),
+                ).use { cursor ->
+                    buildList { while (cursor.moveToNext()) add(cursor.toArtwork()) }
+                }
+
+                // Manual/local rows are already authoritative. Never reclassify or replace them.
+                if (pathRows.any {
+                        it.manual || it.source.equals("manual", true) || it.source.equals("local", true)
+                    }
+                ) return@transaction null
+
+                // Preserve a row that already proves this exact local path belongs to the current
+                // URL. Normal reuseLocal() will revalidate and repair its status if necessary.
+                val currentCoverUrl = validReiAnixArtworkHttpUrl(current.second)
+                if (currentCoverUrl != null && pathRows.any { it.url == currentCoverUrl }) {
+                    return@transaction null
+                }
+
+                val ownerConflict = db.rawQuery(
+                    "SELECT 1 FROM anime WHERE id<>? AND TRIM(COALESCE(cover_cache,''))=? LIMIT 1",
+                    arrayOf(animeId.toString(), path),
+                ).use { it.moveToFirst() } || db.rawQuery(
+                    "SELECT 1 FROM artwork WHERE local_path=? " +
+                        "AND NOT (entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster') LIMIT 1",
+                    arrayOf(path, animeId.toString()),
+                ).use { it.moveToFirst() }
+
+                if (!shouldReconstructLegacyCoverCache(
+                        pointerStillMatchesAnime = pointerStillMatchesAnime,
+                        imageIsValid = true,
+                        hasConflictingOwner = ownerConflict,
+                    )
+                ) return@transaction null
+
+                // Only migrate rows whose prior role was an automatic remote/cache candidate.
+                val prior = pathRows.firstOrNull {
+                    !it.manual && (
+                        it.source.equals("cache", true) || it.source.equals("anilist", true)
+                    )
+                }
+                if (pathRows.isNotEmpty() && prior == null) return@transaction null
+
+                val manualCacheOwned = ownsManualField(current.third, "cover_cache")
+                // A manually selected remote URL must not make an unrelated legacy cache path
+                // look like a manual cover; let that URL materialize on its own.
+                if (ownsManualField(current.third, "cover_url") && !manualCacheOwned) {
+                    return@transaction null
+                }
+                val manualOwned = manualCacheOwned
+                val key = sha256("reianix|$entity:$animeId|legacy-cover-cache|$path|poster")
+                val alreadyRestored = db.rawQuery(
+                    "SELECT 1 FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='poster' " +
+                        "AND source=? AND local_path=? AND external_url IS NULL AND manual=? " +
+                        "AND status='ready' AND variant='legacy_cache_pointer' AND checksum=? " +
+                        "AND artwork_key=? LIMIT 1",
+                    arrayOf(
+                        entity,
+                        animeId.toString(),
+                        if (manualOwned) "manual" else "cache",
+                        path,
+                        if (manualOwned) "1" else "0",
+                        digest,
+                        key,
+                    ),
+                ).use { it.moveToFirst() }
+                if (alreadyRestored) return@transaction null
+                // Reuse an existing row for this path where possible, so migration never
+                // manufactures duplicate artwork rows for one legacy pointer.
+                val existingKeyRow = db.rawQuery(
+                    "SELECT id, local_path FROM artwork WHERE entity_type=? AND entity_id=? " +
+                        "AND artwork_type='poster' AND artwork_key=? LIMIT 1",
+                    arrayOf(entity, animeId.toString(), key),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getLong(0) to cursor.getString(1) else null
+                }
+                if (existingKeyRow != null && existingKeyRow.second?.trim() != path) {
+                    return@transaction null
+                }
+                val targetId = prior?.takeIf { it.url.isNullOrBlank() }?.id ?: existingKeyRow?.first
+                val values = ContentValues().apply {
+                    put("entity_type", entity)
+                    put("entity_id", animeId.toString())
+                    put("artwork_type", "poster")
+                    put("source", if (manualOwned) "manual" else "cache")
+                    putNull("source_ref")
+                    put("local_path", path)
+                    putNull("external_url")
+                    put("manual", if (manualOwned) 1 else 0)
+                    put("priority", if (manualOwned) 1000 else 350)
+                    put("status", "ready")
+                    put("updated_at", now)
+                    putNull("last_attempt_at")
+                    put("failure_count", 0)
+                    putNull("next_retry_at")
+                    putNull("http_status")
+                    put("artwork_key", key)
+                    put("variant", "legacy_cache_pointer")
+                    put("byte_size", file.length())
+                    put("width", dims.first.takeIf { it > 0 })
+                    put("height", dims.second.takeIf { it > 0 })
+                    put("checksum", digest)
+                    put("content_type", contentType)
+                    put("last_access", now)
+                    if (targetId == null) put("discovered_at", now)
+                }
+
+                val saved = if (targetId != null) {
+                    db.update("artwork", values, "id=?", arrayOf(targetId.toString())) == 1
+                } else {
+                    db.insertOrThrow("artwork", null, values) > 0L
+                }
+                if (!saved) return@transaction null
+                LegacyCoverCacheReconstruction(
+                    key = key,
+                    manual = manualOwned,
+                    contentType = contentType,
+                )
+            }
+        }.getOrElse { error ->
+            Log.w(TAG, "Could not restore legacy artwork cache association animeId=$animeId", error)
+            null
+        } ?: return
+
+        publish(
+            "artwork_published",
+            entity,
+            animeId.toString(),
+            "poster",
+            path,
+            url = null,
+            key = restored.key,
+            ref = null,
+            contentType = restored.contentType,
+            requestId = requestId,
+        )
+        ReiAnixDiagnosticTimeline.record(
+            name = "NATIVE_ARTWORK_LEGACY_CACHE_RECONSTRUCTED",
+            source = "ReiAnixArtworkService",
+            result = if (restored.manual) "MANUAL_POINTER_RESTORED" else "UNBOUND_LOCAL_POINTER_RESTORED",
+            requestId = requestId,
+            context = mapOf(
+                "entity_type" to entity,
+                "entity_id" to animeId,
+                "artwork_type" to "poster",
+                "source_kind" to "legacy_cover_cache",
+                "association_status" to "COMMITTED",
+            ),
+        )
+    }
+
     private fun loadAnime(id: Long): Anime? = database.read { db ->
         db.rawQuery(
             "SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url,metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
@@ -1111,6 +1817,24 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 }.distinct()
             }
         }
+    }
+
+    private fun hasUsablePersistedPoster(animeId: Long, entityType: String): Boolean {
+        val paths = database.read { db ->
+            db.rawQuery(
+                "SELECT local_path FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
+                    "AND artwork_type='poster' AND status='ready' AND local_path IS NOT NULL " +
+                    "AND TRIM(local_path)!='' ORDER BY manual DESC,priority DESC,updated_at DESC,id DESC",
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        cursor.getString(0)?.trim()?.takeIf(String::isNotEmpty)?.let(::add)
+                    }
+                }
+            }
+        }
+        return paths.any(::validImage)
     }
 
     private fun candidates(entity: String, id: String, type: String, url: String): List<Artwork> =
