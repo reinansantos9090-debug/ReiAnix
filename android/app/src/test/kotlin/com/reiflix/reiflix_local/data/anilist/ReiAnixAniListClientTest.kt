@@ -54,6 +54,52 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
+    fun cleartextExtraLargeCoverDoesNotHideSecureLargeVariant() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Media":{
+              "id":16498,
+              "title":{"romaji":"Shingeki no Kyojin"},
+              "coverImage":{
+                "large":"https://img.example/secure-large.jpg",
+                "extraLarge":"http://img.example/cleartext-extra-large.jpg"
+              }
+            }}}
+        """.trimIndent()))
+
+        val result = ReiAnixAniListClient(transport, 0).getAnime(16498)
+        assertTrue(result is AniListResult.Success)
+        val anime = (result as AniListResult.Success).value!!
+
+        assertEquals(null, anime.coverExtraLargeUrl)
+        assertEquals("https://img.example/secure-large.jpg", anime.coverLargeUrl)
+        assertEquals(
+            listOf(ReiAnixAniListCoverCandidate("large", "https://img.example/secure-large.jpg")),
+            anime.coverCandidates,
+        )
+    }
+
+    @Test
+    fun cleartextOnlyCoverVariantsAreDiscarded() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Media":{
+              "id":16498,
+              "title":{"romaji":"Shingeki no Kyojin"},
+              "coverImage":{
+                "large":"http://img.example/cleartext-large.jpg",
+                "extraLarge":"http://img.example/cleartext-extra-large.jpg"
+              }
+            }}}
+        """.trimIndent()))
+
+        val result = ReiAnixAniListClient(transport, 0).getAnime(16498)
+        assertTrue(result is AniListResult.Success)
+        val anime = (result as AniListResult.Success).value!!
+        assertEquals(null, anime.coverLargeUrl)
+        assertEquals(null, anime.coverExtraLargeUrl)
+        assertTrue(anime.coverCandidates.isEmpty())
+    }
+
+    @Test
     fun searchSendsLiteralGraphQlVariablesAndExpectedJsonValues() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""))
         val result = ReiAnixAniListClient(transport, 0).searchAnime("Dorohedoro", limit = 7)

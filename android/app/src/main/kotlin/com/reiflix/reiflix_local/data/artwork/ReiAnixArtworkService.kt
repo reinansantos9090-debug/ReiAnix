@@ -205,7 +205,14 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
 
-    private data class Anime(val anilistId: Long?, val kind: String?, val coverUrl: String?, val coverCache: String?, val bannerUrl: String?)
+    private data class Anime(
+        val anilistId: Long?,
+        val kind: String?,
+        val coverUrl: String?,
+        val coverCache: String?,
+        val bannerUrl: String?,
+        val metadataManualFields: String?,
+    )
     private data class Artwork(
         val id: Long, val source: String, val sourceRef: String?, val path: String?, val url: String?,
         val manual: Boolean, val priority: Int, val status: String, val key: String?,
@@ -285,8 +292,53 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     if (candidateCandidates == null) {
                         val posterUrl = anime.coverUrl?.trim()?.takeIf(String::isNotEmpty)
                         val backdropUrl = anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
-                        posterUrl?.let {
+                        val primaryPosterMaterialized = posterUrl?.let {
                             materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
+                        } ?: false
+
+                        // Keep the fast path unchanged: secondary AniList URLs are only read and
+                        // attempted after the primary URL is absent or could not be materialized.
+                        if (!primaryPosterMaterialized) {
+                            val alternatives = loadAlternativePosterCandidates(
+                                animeId = animeId,
+                                anime = anime,
+                                primaryUrl = posterUrl,
+                                force = force,
+                            )
+                            if (alternatives.isNotEmpty()) {
+                                val alternateMaterialized = firstSuccessfulArtworkCandidate(
+                                    candidates = alternatives,
+                                    artworkUrls = { listOf(it.posterUrl) },
+                                ) { candidate, url ->
+                                    materialize(
+                                        animeId,
+                                        entityType,
+                                        "poster",
+                                        url,
+                                        candidate.anilistId.takeIf { it > 0L },
+                                        force,
+                                        requestId,
+                                        requireCurrentUrl = false,
+                                        retryCandidates = alternatives,
+                                        sourceKind = candidate.source,
+                                    )
+                                }
+                                if (alternateMaterialized) {
+                                    ReiAnixDiagnosticTimeline.record(
+                                        name = "NATIVE_ARTWORK_ALTERNATIVE_SOURCE_SELECTED",
+                                        source = "ReiAnixArtworkService",
+                                        result = "ALTERNATE_ANILIST_VARIANT_MATERIALIZED",
+                                        requestId = requestId,
+                                        context = mapOf(
+                                            "entity_type" to entityType,
+                                            "entity_id" to animeId,
+                                            "artwork_type" to "poster",
+                                            "candidate_count" to alternatives.size,
+                                            "source_kind" to "anilist_alternative",
+                                        ),
+                                    )
+                                }
+                            }
                         }
                         backdropUrl?.let {
                             materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
@@ -967,11 +1019,97 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             .use { it.moveToFirst() && it.getString(0)?.trim() == url }
     }
     private fun loadAnime(id: Long): Anime? = database.read { db ->
-        db.rawQuery("SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url FROM anime WHERE id=? LIMIT 1",
-            arrayOf(id.toString())).use { c ->
+        db.rawQuery(
+            "SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url,metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
+            arrayOf(id.toString()),
+        ).use { c ->
             if (!c.moveToFirst()) return@use null
             val index = c.getColumnIndexOrThrow("anilist_id")
-            Anime(if (c.isNull(index)) null else c.getLong(index), c.getString(1), c.getString(2), c.getString(3), c.getString(4))
+            Anime(
+                anilistId = if (c.isNull(index)) null else c.getLong(index),
+                kind = c.getString(1),
+                coverUrl = c.getString(2),
+                coverCache = c.getString(3),
+                bannerUrl = c.getString(4),
+                metadataManualFields = c.getString(5),
+            )
+        }
+    }
+
+    /**
+     * Read persisted secondary AniList poster variants. The caller reaches this helper only
+     * after the primary URL failed or was absent, so successful primary downloads retain the
+     * existing single-request fast path.
+     */
+    private suspend fun loadAlternativePosterCandidates(
+        animeId: Long,
+        anime: Anime,
+        primaryUrl: String?,
+        force: Boolean,
+    ): List<ReiAnixArtworkCandidate> {
+        val aniListId = anime.anilistId?.takeIf { it > 0L } ?: return emptyList()
+        if (ownsManualField(anime.metadataManualFields, "cover_url") ||
+            ownsManualField(anime.metadataManualFields, "cover_cache")
+        ) return emptyList()
+
+        val now = nowSeconds()
+        return database.read { db ->
+            val currentPrimary = validReiAnixArtworkHttpUrl(primaryUrl)
+            val primaryStatus = currentPrimary?.let { url ->
+                db.rawQuery(
+                    "SELECT status FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
+                        "AND artwork_type='poster' AND external_url=? ORDER BY priority DESC,updated_at DESC,id DESC LIMIT 1",
+                    arrayOf(animeId.toString(), url),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            }
+            db.rawQuery(
+                "SELECT external_url,status,next_retry_at,failure_count,variant,manual,source,artwork_key FROM artwork " +
+                    "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster' " +
+                    "AND LOWER(COALESCE(source,'')) IN ('anilist','cache') AND COALESCE(manual,0)=0 " +
+                    "AND external_url IS NOT NULL AND TRIM(external_url)!='' " +
+                    "AND external_url!=COALESCE(?, '') AND LOWER(COALESCE(variant,''))!='obsolete' " +
+                    "AND LOWER(COALESCE(status,'')) IN ('source_candidate','not_requested','pending','ready','failed','retry_wait') " +
+                    "ORDER BY CASE LOWER(COALESCE(status,'')) WHEN 'source_candidate' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END, " +
+                    "priority DESC,CASE LOWER(COALESCE(variant,'')) WHEN 'large' THEN 0 WHEN 'extralarge' THEN 1 ELSE 2 END," +
+                    "updated_at DESC,id DESC",
+                arrayOf(animeId.toString(), primaryUrl.orEmpty()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val url = validReiAnixArtworkHttpUrl(cursor.getString(0)) ?: continue
+                        val status = cursor.getString(1)
+                        val retryAt = if (cursor.isNull(2)) null else cursor.getDouble(2)
+                        val failures = cursor.getInt(3)
+                        val variant = cursor.getString(4)
+                        val manual = cursor.getInt(5) != 0
+                        val source = cursor.getString(6)
+                        val key = cursor.getString(7)
+                        if (variant.equals("obsolete", ignoreCase = true)) continue
+                        if (key != aniListArtworkCandidateKey(animeId, aniListId, url)) continue
+                        if (!canMaterializeAniListFallbackCandidate(
+                                primaryUrl = primaryUrl,
+                                primaryStatus = primaryStatus,
+                                candidateUrl = url,
+                                candidateStatus = status,
+                                artworkIsUserOwned = manual ||
+                                    source.equals("manual", true) || source.equals("local", true),
+                            )
+                        ) continue
+                        val normalizedStatus = status?.lowercase(Locale.ROOT)
+                        if (!force && normalizedStatus in setOf("failed", "retry_wait") &&
+                            !shouldRetryArtworkRequest(status, retryAt, failures, now, force = false)
+                        ) continue
+                        add(
+                            ReiAnixArtworkCandidate(
+                                anilistId = aniListId,
+                                posterUrl = url,
+                                bannerUrl = null,
+                                source = "anilist",
+                            ),
+                        )
+                    }
+                }.distinct()
+            }
         }
     }
 
