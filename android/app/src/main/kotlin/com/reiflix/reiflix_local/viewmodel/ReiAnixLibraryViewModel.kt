@@ -66,6 +66,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
@@ -248,6 +249,14 @@ class ReiAnixLibraryViewModel(
         val sequence: Long,
     )
 
+    private data class EpisodeThumbnailRetryState(
+        val animeId: Long,
+        val episodeId: Long,
+        val revision: String,
+        val retryAtMillis: Long,
+        val attempt: Int,
+    )
+
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
     private val episodeThumbnailRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
@@ -256,6 +265,8 @@ class ReiAnixLibraryViewModel(
     private val episodeThumbnailRerunRequested = ConcurrentHashMap.newKeySet<Long>()
     private val episodeThumbnailWorkQueue = EpisodeThumbnailWorkQueue()
     private val episodeThumbnailWorkSignal = Channel<Unit>(Channel.CONFLATED)
+    private val episodeThumbnailRetrySignal = Channel<Unit>(Channel.CONFLATED)
+    private val episodeThumbnailRetryStates = ConcurrentHashMap<Long, EpisodeThumbnailRetryState>()
     private val episodeThumbnailWorkersStarted = AtomicLong(0L)
     private val episodeThumbnailPrioritySequence = AtomicLong(0L)
     private val episodeThumbnailPriorityOwners = ConcurrentHashMap<String, EpisodeThumbnailPriority>()
@@ -1373,7 +1384,11 @@ class ReiAnixLibraryViewModel(
         val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
         // Opening Details is an explicit retry opportunity for an episode whose previous
         // extraction could not produce a valid frame. Completed work is deduplicated by cache.
-        anime.contentEpisodes.forEach { episodeThumbnailAttemptedRevisions.remove(it.id) }
+        anime.contentEpisodes.forEach {
+            episodeThumbnailAttemptedRevisions.remove(it.id)
+            episodeThumbnailRetryStates.remove(it.id)
+        }
+        episodeThumbnailRetrySignal.trySend(Unit)
         viewModelScope.launch { enqueueEpisodeThumbnailTasks(listOf(anime)) }
     }
 
@@ -1402,6 +1417,35 @@ class ReiAnixLibraryViewModel(
         repeat(EPISODE_THUMBNAIL_WORKER_COUNT) {
             viewModelScope.launch { episodeThumbnailWorkerLoop() }
         }
+        viewModelScope.launch { episodeThumbnailRetrySchedulerLoop() }
+    }
+
+    private suspend fun episodeThumbnailRetrySchedulerLoop() {
+        while (true) {
+            val nextRetryAt = episodeThumbnailRetryStates.values.minOfOrNull(EpisodeThumbnailRetryState::retryAtMillis)
+            if (nextRetryAt == null) {
+                episodeThumbnailRetrySignal.receive()
+                continue
+            }
+
+            val waitMillis = (nextRetryAt - System.currentTimeMillis()).coerceAtLeast(0L)
+            if (waitMillis > 0L) {
+                withTimeoutOrNull(waitMillis) { episodeThumbnailRetrySignal.receive() }
+            }
+
+            val now = System.currentTimeMillis()
+            val due = episodeThumbnailRetryStates.values.filter { it.retryAtMillis <= now }
+            due.forEach { retry ->
+                if (!episodeThumbnailRetryStates.remove(retry.episodeId, retry)) return@forEach
+                val anime = nativeCatalogState.value.animes.firstOrNull { it.id == retry.animeId }
+                    ?: return@forEach
+                val episode = anime.contentEpisodes.firstOrNull { it.id == retry.episodeId }
+                    ?: return@forEach
+                if (episodeThumbnailRevision(episode) == retry.revision) {
+                    enqueueEpisodeThumbnailTasks(listOf(anime), setOf(retry.episodeId))
+                }
+            }
+        }
     }
 
     private suspend fun episodeThumbnailWorkerLoop() {
@@ -1419,10 +1463,13 @@ class ReiAnixLibraryViewModel(
             }
 
             episodeThumbnailProcessingRevisions[item.episodeId] = item.revision
+            var processingSucceeded = false
+            var cancelled = false
             try {
-                processEpisodeThumbnailWorkItem(item)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
+                processingSucceeded = processEpisodeThumbnailWorkItem(item)
+            } catch (cancelledError: CancellationException) {
+                cancelled = true
+                throw cancelledError
             } catch (error: Exception) {
                 Log.w(
                     TAG,
@@ -1430,18 +1477,52 @@ class ReiAnixLibraryViewModel(
                     error,
                 )
             } finally {
-                episodeThumbnailAttemptedRevisions[item.episodeId] = item.revision
                 episodeThumbnailProcessingRevisions.remove(item.episodeId)
                 episodeThumbnailRequestsInFlight.remove(item.episodeId)
 
-                val rerun = episodeThumbnailRerunRequested.remove(item.episodeId)
-                val latestAnime = nativeCatalogState.value.animes.firstOrNull { it.id == item.animeId }
-                val latestEpisode = latestAnime?.contentEpisodes?.firstOrNull { it.id == item.episodeId }
-                if (rerun && latestAnime != null && latestEpisode != null) {
-                    enqueueEpisodeThumbnailTasks(listOf(latestAnime), setOf(item.episodeId))
-                } else if (latestAnime != null && latestEpisode != null) {
-                    if (episodeThumbnailRevision(latestEpisode) != item.revision) {
-                        enqueueEpisodeThumbnailTasks(listOf(latestAnime), setOf(item.episodeId))
+                if (!cancelled) {
+                    val latestAnime = nativeCatalogState.value.animes.firstOrNull { it.id == item.animeId }
+                    val latestEpisode = latestAnime?.contentEpisodes?.firstOrNull { it.id == item.episodeId }
+                    val latestRevision = latestEpisode?.let(::episodeThumbnailRevision)
+                    val rerun = episodeThumbnailRerunRequested.remove(item.episodeId)
+
+                    when {
+                        latestAnime == null || latestEpisode == null -> {
+                            episodeThumbnailAttemptedRevisions.remove(item.episodeId)
+                            episodeThumbnailRetryStates.remove(item.episodeId)
+                        }
+                        latestRevision != item.revision || rerun -> {
+                            episodeThumbnailAttemptedRevisions.remove(item.episodeId)
+                            episodeThumbnailRetryStates.remove(item.episodeId)
+                            enqueueEpisodeThumbnailTasks(listOf(latestAnime), setOf(item.episodeId))
+                        }
+                        processingSucceeded -> {
+                            episodeThumbnailAttemptedRevisions[item.episodeId] = item.revision
+                            episodeThumbnailRetryStates.remove(item.episodeId)
+                        }
+                        else -> {
+                            // Failures remain retryable, but exponential backoff avoids
+                            // repeatedly decoding an unavailable/broken source on refresh.
+                            episodeThumbnailAttemptedRevisions.remove(item.episodeId)
+                            val previousAttempt = episodeThumbnailRetryStates[item.episodeId]
+                                ?.takeIf { it.revision == item.revision }
+                                ?.attempt ?: 0
+                            val nextAttempt = previousAttempt + 1
+                            val backoffMillis = when (nextAttempt.coerceAtMost(4)) {
+                                1 -> 30_000L
+                                2 -> 120_000L
+                                3 -> 600_000L
+                                else -> 1_800_000L
+                            }
+                            episodeThumbnailRetryStates[item.episodeId] = EpisodeThumbnailRetryState(
+                                animeId = item.animeId,
+                                episodeId = item.episodeId,
+                                revision = item.revision,
+                                retryAtMillis = System.currentTimeMillis() + backoffMillis,
+                                attempt = nextAttempt,
+                            )
+                            episodeThumbnailRetrySignal.trySend(Unit)
+                        }
                     }
                 }
                 if (episodeThumbnailWorkQueue.size() > 0) episodeThumbnailWorkSignal.trySend(Unit)
@@ -1470,6 +1551,16 @@ class ReiAnixLibraryViewModel(
                             }
                             return@episodeLoop
                         }
+                        val retry = episodeThumbnailRetryStates[episode.id]
+                        if (retry != null) {
+                            if (retry.revision != revision) {
+                                episodeThumbnailRetryStates.remove(episode.id, retry)
+                            } else if (System.currentTimeMillis() < retry.retryAtMillis) {
+                                return@episodeLoop
+                            } else {
+                                episodeThumbnailRetryStates.remove(episode.id, retry)
+                            }
+                        }
                         if (episodeThumbnailAttemptedRevisions[episode.id] == revision) return@episodeLoop
                         add(EpisodeThumbnailWorkItem(anime.id, episode.id, revision))
                     }
@@ -1490,13 +1581,13 @@ class ReiAnixLibraryViewModel(
         episode.modifiedAt?.toString().orEmpty(),
     ).joinToString(separator = "\u001f")
 
-    private suspend fun processEpisodeThumbnailWorkItem(item: EpisodeThumbnailWorkItem) {
-        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == item.animeId } ?: return
-        val episode = anime.contentEpisodes.firstOrNull { it.id == item.episodeId } ?: return
-        val rawSource = episodeThumbnailSource(episode) ?: return
+    private suspend fun processEpisodeThumbnailWorkItem(item: EpisodeThumbnailWorkItem): Boolean {
+        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == item.animeId } ?: return false
+        val episode = anime.contentEpisodes.firstOrNull { it.id == item.episodeId } ?: return false
+        val rawSource = episodeThumbnailSource(episode) ?: return false
         if (episode.media.availability.name != "AVAILABLE" || episodeThumbnailRevision(episode) != item.revision) {
             enqueueEpisodeThumbnailTasks(listOf(anime), setOf(item.episodeId))
-            return
+            return false
         }
 
         val existingPath = episode.artwork?.localPath
@@ -1517,7 +1608,7 @@ class ReiAnixLibraryViewModel(
                 result = "VISUALLY_VALID",
                 context = mapOf("episode_id" to item.episodeId, "anime_id" to item.animeId),
             )
-            return
+            return true
         }
 
         if (!existingPath.isNullOrBlank() && !existingIsUsable) {
@@ -1554,7 +1645,7 @@ class ReiAnixLibraryViewModel(
                 result = "UNSUPPORTED_LOCAL_URI",
                 context = mapOf("episode_id" to item.episodeId, "anime_id" to item.animeId),
             )
-            return
+            return false
         }
         val result = withContext(Dispatchers.IO) {
             VideoThumbnailExtractor.extract(
@@ -1573,7 +1664,7 @@ class ReiAnixLibraryViewModel(
                 result = "NO_USABLE_FRAME",
                 context = mapOf("episode_id" to item.episodeId, "anime_id" to item.animeId),
             )
-            return
+            return false
         }
 
         val outputIsUsable = withContext(Dispatchers.IO) {
@@ -1592,6 +1683,7 @@ class ReiAnixLibraryViewModel(
             ),
         )
         if (outputIsUsable) requestTraceMoeIdentification(item.animeId, item.episodeId, File(result.path))
+        return outputIsUsable
     }
 
     private fun requestTraceMoeIdentification(animeId: Long, episodeId: Long, imageFile: File) {
