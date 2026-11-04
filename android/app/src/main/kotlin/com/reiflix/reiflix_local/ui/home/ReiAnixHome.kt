@@ -1191,6 +1191,7 @@ private fun buildHomeGenreSections(
         val key: String,
         val title: String,
         val items: MutableList<ReiAnixHomeAnimeUiModel>,
+        val animeIds: MutableSet<Long>,
     )
 
     val sections = linkedMapOf<String, MutableSection>()
@@ -1205,9 +1206,10 @@ private fun buildHomeGenreSections(
                         key = key,
                         title = title,
                         items = mutableListOf(),
+                        animeIds = mutableSetOf(),
                     )
                 }
-                if (section.items.none { it.id == anime.id }) {
+                if (section.animeIds.add(anime.id)) {
                     section.items += anime
                 }
             }
