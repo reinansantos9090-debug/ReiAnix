@@ -143,6 +143,8 @@ internal class ReiAnixArtworkConsensusTracker(
         var candidate: ReiAnixArtworkCandidate? = null,
     )
     private data class ImageEvidence(
+        /** The actual URL whose canonical key received the consensus votes. */
+        val matchedUrl: String,
         val records: LinkedHashMap<String, RecordEvidence> = linkedMapOf(),
     )
     private val byAnime = object : LinkedHashMap<Long, LinkedHashMap<String, ImageEvidence>>(16, 0.75f, true) {}
@@ -157,17 +159,17 @@ internal class ReiAnixArtworkConsensusTracker(
         if (animeId <= 0L || candidates.isEmpty()) return candidates
         val images = byAnime.getOrPut(animeId) { linkedMapOf() }
         candidates.forEach { candidate ->
-            val imageKeys = candidateImageEvidenceKeys(candidate)
-            if (imageKeys.isEmpty()) return@forEach
+            val imageUrls = candidateImageEvidenceUrls(candidate)
+            if (imageUrls.isEmpty()) return@forEach
             val evidenceKey = candidate.identityEvidenceKey
                 ?: if (candidate.identityVerified) {
-                    "verified:" + candidate.source + ":" + imageKeys.first()
+                    "verified:" + candidate.source + ":" + imageUrls.first().first
                 } else {
                     return@forEach
                 }
             if (!candidate.identityVerified && !candidate.identityEvidenceEligible) return@forEach
-            imageKeys.forEach imageLoop@{ imageKey ->
-                val image = images.getOrPut(imageKey) { ImageEvidence() }
+            imageUrls.forEach imageLoop@{ (imageKey, matchedUrl) ->
+                val image = images.getOrPut(imageKey) { ImageEvidence(matchedUrl = matchedUrl) }
                 val record = image.records.getOrPut(evidenceKey) { RecordEvidence(provider = candidate.source) }
                 if (record.provider != candidate.source) return@imageLoop
                 record.eligible = record.eligible || candidate.identityEvidenceEligible
@@ -178,6 +180,9 @@ internal class ReiAnixArtworkConsensusTracker(
                 if (record.candidate == null || candidate.identityVerified ||
                     candidate.matchedTitleAliases.size > record.candidate!!.matchedTitleAliases.size
                 ) record.candidate = candidate
+                while (image.records.size > MAX_RECORDS_PER_IMAGE) {
+                    image.records.remove(image.records.keys.first())
+                }
             }
         }
         while (images.size > maxImagesPerAnime) images.remove(images.keys.first())
@@ -185,7 +190,7 @@ internal class ReiAnixArtworkConsensusTracker(
 
         val result = linkedMapOf<String, ReiAnixArtworkCandidate>()
         candidates.forEach { incoming ->
-            val matchingImages = candidateImageEvidenceKeys(incoming).mapNotNull(images::get)
+            val matchingImages = candidateImageEvidenceUrls(incoming).mapNotNull { (key, _) -> images[key] }
             val promotedImages = matchingImages.filter { image ->
                 val providerVotes = image.records.values
                     .filter { it.eligible || it.strictlyVerified }
@@ -197,12 +202,22 @@ internal class ReiAnixArtworkConsensusTracker(
                     image.records.values.any { it.strictlyVerified }
             }
             if (promotedImages.isNotEmpty()) {
-                promotedImages.flatMap { it.records.values }
-                    .mapNotNull { it.candidate }
-                    .forEach { stored ->
-                        result[consensusCandidateKey(stored)] = stored.copy(identityVerified = true)
+                promotedImages.forEach { image ->
+                    image.records.values.mapNotNull { it.candidate }.forEach { stored ->
+                        val promoted = stored.copy(
+                            identityVerified = true,
+                            posterUrl = image.matchedUrl,
+                            posterFallbackUrl = null,
+                        )
+                        result[consensusCandidateKey(promoted)] = promoted
                     }
-                result[consensusCandidateKey(incoming)] = incoming.copy(identityVerified = true)
+                    val promotedIncoming = incoming.copy(
+                        identityVerified = true,
+                        posterUrl = image.matchedUrl,
+                        posterFallbackUrl = null,
+                    )
+                    result[consensusCandidateKey(promotedIncoming)] = promotedIncoming
+                }
             } else {
                 result[consensusCandidateKey(incoming)] = incoming
             }
@@ -210,10 +225,10 @@ internal class ReiAnixArtworkConsensusTracker(
         return result.values.toList()
     }
 
-    private fun candidateImageEvidenceKeys(candidate: ReiAnixArtworkCandidate): List<String> =
+    private fun candidateImageEvidenceUrls(candidate: ReiAnixArtworkCandidate): List<Pair<String, String>> =
         listOfNotNull(candidate.posterUrl, candidate.posterFallbackUrl)
-            .mapNotNull(::artworkConsensusUrlKey)
-            .distinct()
+            .mapNotNull { rawUrl -> artworkConsensusUrlKey(rawUrl)?.let { it to rawUrl } }
+            .distinctBy { it.first }
 
     private fun consensusCandidateKey(candidate: ReiAnixArtworkCandidate): String =
         listOf(candidate.source, candidate.identityEvidenceKey.orEmpty(), candidate.posterUrl.orEmpty(),
@@ -222,6 +237,7 @@ internal class ReiAnixArtworkConsensusTracker(
     companion object {
         const val MINIMUM_TITLE_ALIAS_VOTES = 2
         const val MINIMUM_PROVIDER_VOTES = 2
+        const val MAX_RECORDS_PER_IMAGE = 24
     }
 }
 

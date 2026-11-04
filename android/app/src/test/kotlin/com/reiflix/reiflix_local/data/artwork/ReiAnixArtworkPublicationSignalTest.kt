@@ -551,4 +551,17 @@ class ReiAnixArtworkPublicationSignalTest {
         assertEquals(setOf("beta title"), aliases[matcher.normalizeCatalogTitle("Beta Title")])
     }
 
+    @Test
+    fun providerConsensusPromotesOnlyThePosterUrlThatActuallyMatched() {
+        val tracker = ReiAnixArtworkConsensusTracker()
+        val first = consensusCandidate("anilist", "anilist:401", "https://cdn.example/primary.jpg", "original title")
+            .copy(posterFallbackUrl = "https://shared.example/confirmed.jpg")
+        val second = consensusCandidate("kitsu", "kitsu:402", "https://shared.example/confirmed.jpg", "english title")
+        assertFalse(tracker.collect(96L, listOf(first)).any { it.identityVerified })
+        val promoted = tracker.collect(96L, listOf(second))
+        val verified = promoted.first { it.identityVerified }
+        assertEquals("https://shared.example/confirmed.jpg", verified.posterUrl)
+        assertEquals(null, verified.posterFallbackUrl)
+    }
+
 }
