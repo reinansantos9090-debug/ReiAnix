@@ -1416,8 +1416,10 @@ class ReiAnixLibraryViewModel(
 
     private fun startEpisodeThumbnailWorkers() {
         if (appDependencies == null || !episodeThumbnailWorkersStarted.compareAndSet(0L, 1L)) return
-        repeat(EPISODE_THUMBNAIL_WORKER_COUNT) {
-            viewModelScope.launch { episodeThumbnailWorkerLoop() }
+        repeat(EPISODE_THUMBNAIL_WORKER_COUNT) { workerIndex ->
+            viewModelScope.launch {
+                episodeThumbnailWorkerLoop(prioritizeActiveAnime = workerIndex == 0)
+            }
         }
         viewModelScope.launch { episodeThumbnailRetrySchedulerLoop() }
     }
@@ -1450,9 +1452,14 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    private suspend fun episodeThumbnailWorkerLoop() {
+    private suspend fun episodeThumbnailWorkerLoop(prioritizeActiveAnime: Boolean) {
         while (true) {
-            val item = episodeThumbnailWorkQueue.poll(currentEpisodeThumbnailPriorityAnimeId())
+            val priorityAnimeId = currentEpisodeThumbnailPriorityAnimeId()
+            val item = if (prioritizeActiveAnime) {
+                episodeThumbnailWorkQueue.poll(priorityAnimeId = priorityAnimeId)
+            } else {
+                episodeThumbnailWorkQueue.poll(excludeAnimeId = priorityAnimeId)
+            }
             if (item == null) {
                 episodeThumbnailWorkSignal.receive()
                 continue

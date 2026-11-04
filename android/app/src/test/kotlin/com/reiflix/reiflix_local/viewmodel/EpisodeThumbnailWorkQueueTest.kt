@@ -47,6 +47,24 @@ class EpisodeThumbnailWorkQueueTest {
     }
 
     @Test
+    fun normalWorkerSkipsAnimeOwnedByPriorityWorker() {
+        val queue = EpisodeThumbnailWorkQueue()
+        queue.offer(
+            listOf(
+                EpisodeThumbnailWorkItem(1L, 11L, "a1"),
+                EpisodeThumbnailWorkItem(1L, 12L, "a2"),
+                EpisodeThumbnailWorkItem(2L, 21L, "b1"),
+                EpisodeThumbnailWorkItem(3L, 31L, "c1"),
+                EpisodeThumbnailWorkItem(3L, 32L, "c2"),
+            ),
+        )
+
+        assertEquals(31L, queue.poll(priorityAnimeId = 3L)?.episodeId)
+        assertEquals(11L, queue.poll(excludeAnimeId = 3L)?.episodeId)
+        assertEquals(32L, queue.poll(priorityAnimeId = 3L)?.episodeId)
+    }
+
+    @Test
     fun newerQueuedRevisionReplacesOldEpisodeWork() {
         val queue = EpisodeThumbnailWorkQueue()
         queue.offer(listOf(EpisodeThumbnailWorkItem(1L, 11L, "old")))

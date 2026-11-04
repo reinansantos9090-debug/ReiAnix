@@ -30,7 +30,10 @@ internal class EpisodeThumbnailWorkQueue {
     }
 
     @Synchronized
-    fun poll(priorityAnimeId: Long? = null): EpisodeThumbnailWorkItem? {
+    fun poll(
+        priorityAnimeId: Long? = null,
+        excludeAnimeId: Long? = null,
+    ): EpisodeThumbnailWorkItem? {
         if (priorityAnimeId != null && priorityAnimeId > 0L) {
             val priorityQueue = pendingByAnime[priorityAnimeId]
             if (priorityQueue != null && priorityQueue.isNotEmpty()) {
@@ -40,8 +43,16 @@ internal class EpisodeThumbnailWorkQueue {
                 return first.value
             }
         }
-        while (roundRobinAnimeIds.isNotEmpty()) {
+
+        // A normal worker skips the active anime so it can keep serving the rest
+        // of the library while the priority worker drains that anime's pending rows.
+        var remainingCandidates = roundRobinAnimeIds.size
+        while (remainingCandidates-- > 0 && roundRobinAnimeIds.isNotEmpty()) {
             val animeId = roundRobinAnimeIds.removeFirst()
+            if (animeId == excludeAnimeId) {
+                roundRobinAnimeIds.addLast(animeId)
+                continue
+            }
             scheduledAnimeIds.remove(animeId)
             val animeQueue = pendingByAnime[animeId] ?: continue
             if (animeQueue.isEmpty()) {
