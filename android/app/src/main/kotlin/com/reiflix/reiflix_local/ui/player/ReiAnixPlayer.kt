@@ -76,7 +76,9 @@ fun ReiAnixPlayerRoute(
     val currentLaunchRequestId by rememberUpdatedState(launchRequestId)
     val currentLaunchFailed by rememberUpdatedState(launchFailed)
 
-    DisposableEffect(lifecycleOwner, args.episodeId, args.animeId) {
+    val thumbnailPriorityOwner = "player:${args.animeId}:${args.episodeId}"
+    DisposableEffect(lifecycleOwner, viewModel, thumbnailPriorityOwner, canonicalAnimeId) {
+        canonicalAnimeId?.let { viewModel.setEpisodeThumbnailPriority(thumbnailPriorityOwner, it) }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
@@ -98,6 +100,7 @@ fun ReiAnixPlayerRoute(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.clearEpisodeThumbnailPriority(thumbnailPriorityOwner)
         }
     }
 

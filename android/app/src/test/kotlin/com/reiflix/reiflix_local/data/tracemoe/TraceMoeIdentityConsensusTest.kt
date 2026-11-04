@@ -7,6 +7,35 @@ import org.junit.Test
 
 class TraceMoeIdentityConsensusTest {
     @Test
+    fun oneVeryStrongFrameCanIdentifyAnAnime() {
+        val consensus = evaluateTraceMoeSingleFrameIdentity(
+            listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.995)),
+        )
+        assertNotNull(consensus)
+        assertEquals(16498, consensus?.anilistId)
+        assertEquals(1, consensus?.supportingEpisodes)
+    }
+
+    @Test
+    fun oneFrameBelowStrictSimilarityThresholdIsRejected() {
+        val consensus = evaluateTraceMoeSingleFrameIdentity(
+            listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.97)),
+        )
+        assertNull(consensus)
+    }
+
+    @Test
+    fun oneFrameWithCloseAlternativeIsRejected() {
+        val consensus = evaluateTraceMoeSingleFrameIdentity(
+            listOf(
+                TraceMoeSearchMatch(aniListId = 16498, similarity = 0.995),
+                TraceMoeSearchMatch(aniListId = 21, similarity = 0.96),
+            ),
+        )
+        assertNull(consensus)
+    }
+
+    @Test
     fun twoDistinctEpisodesAgreeingOnSameAniListIdAreAccepted() {
         val consensus = evaluateTraceMoeIdentityConsensus(mapOf(
             11L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.97)),

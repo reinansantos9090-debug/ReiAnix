@@ -235,6 +235,36 @@ internal fun evaluateTraceMoeIdentityConsensus(
     )
 }
 
+/**
+ * A single frame may finish identification only at a deliberately higher threshold.
+ * Ordinary/ambiguous matches continue through the distinct-episode consensus path.
+ */
+internal fun evaluateTraceMoeSingleFrameIdentity(
+    matches: List<TraceMoeSearchMatch>,
+    minimumSimilarity: Double = MINIMUM_TRACE_MOE_SINGLE_FRAME_SIMILARITY,
+    minimumFrameMargin: Double = MINIMUM_TRACE_MOE_SINGLE_FRAME_MARGIN,
+): TraceMoeIdentityConsensus? {
+    require(minimumSimilarity in 0.0..1.0)
+    require(minimumFrameMargin in 0.0..1.0)
+    val ranked = matches.asSequence()
+        .filter { it.anilistId > 0 && it.similarity.isFinite() && it.similarity in minimumSimilarity..1.0 }
+        .groupBy(TraceMoeSearchMatch::anilistId)
+        .values
+        .mapNotNull { candidates -> candidates.maxByOrNull(TraceMoeSearchMatch::similarity) }
+        .sortedByDescending(TraceMoeSearchMatch::similarity)
+    val best = ranked.firstOrNull() ?: return null
+    val margin = best.similarity - (ranked.getOrNull(1)?.similarity ?: 0.0)
+    if (margin < minimumFrameMargin) return null
+    return TraceMoeIdentityConsensus(
+        anilistId = best.anilistId,
+        averageSimilarity = best.similarity,
+        margin = margin,
+        supportingEpisodes = 1,
+    )
+}
+
 const val MINIMUM_TRACE_MOE_SIMILARITY = 0.90
 const val MINIMUM_TRACE_MOE_FRAME_MARGIN = 0.02
 const val MINIMUM_TRACE_MOE_SUPPORTING_EPISODES = 2
+const val MINIMUM_TRACE_MOE_SINGLE_FRAME_SIMILARITY = 0.98
+const val MINIMUM_TRACE_MOE_SINGLE_FRAME_MARGIN = 0.05

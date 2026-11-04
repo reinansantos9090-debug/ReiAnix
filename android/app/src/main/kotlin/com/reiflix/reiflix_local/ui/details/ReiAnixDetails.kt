@@ -211,15 +211,19 @@ fun ReiAnixDetailsRoute(
     var detailsWasPaused by remember(canonicalId) {
         mutableStateOf(false)
     }
-    DisposableEffect(lifecycleOwner) {
+    val thumbnailPriorityOwner = remember(canonicalId) { "details:$canonicalId" }
+    DisposableEffect(lifecycleOwner, viewModel, canonicalId, thumbnailPriorityOwner) {
+        viewModel.setEpisodeThumbnailPriority(thumbnailPriorityOwner, canonicalId)
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE,
                 Lifecycle.Event.ON_STOP -> {
+                    viewModel.clearEpisodeThumbnailPriority(thumbnailPriorityOwner)
                     detailsWasPaused = true
                 }
 
                 Lifecycle.Event.ON_RESUME -> {
+                    viewModel.setEpisodeThumbnailPriority(thumbnailPriorityOwner, canonicalId)
                     if (detailsWasPaused) {
                         playerLaunchInFlight = false
                         detailsWasPaused = false
@@ -232,6 +236,7 @@ fun ReiAnixDetailsRoute(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.clearEpisodeThumbnailPriority(thumbnailPriorityOwner)
         }
     }
 

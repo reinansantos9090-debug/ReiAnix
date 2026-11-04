@@ -18,10 +18,12 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         manual: Boolean,
         score: Double?,
         margin: Double?,
+        episodeConsensusSupport: Int? = null,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
         require(margin == null || (margin.isFinite() && margin in 0.0..1.0))
+        require(episodeConsensusSupport == null || episodeConsensusSupport >= 1)
         database.transaction { connection ->
             val currentAndManualFields = connection.rawQuery(
                 "SELECT * FROM anime WHERE id = ? LIMIT 1",
@@ -48,7 +50,14 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             val protectedFields = currentAndManualFields.second
             if (!manual && current.anilistMatchManual == true) return@transaction current
             if (!manual && current.anilistId != null && current.anilistId != anilistId) return@transaction current
-            if (!manual && (score == null || score < 0.86 || margin == null || margin < 0.05)) {
+            val legacyConfidenceAccepted =
+                score != null && score >= 0.86 && margin != null && margin >= 0.05
+            val distinctEpisodeConsensusAccepted =
+                episodeConsensusSupport != null &&
+                    episodeConsensusSupport >= 2 &&
+                    score != null &&
+                    score >= 0.90
+            if (!manual && !legacyConfidenceAccepted && !distinctEpisodeConsensusAccepted) {
                 return@transaction current
             }
 
