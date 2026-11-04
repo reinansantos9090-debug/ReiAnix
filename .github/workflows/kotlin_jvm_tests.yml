@@ -1,6 +1,11 @@
 name: ReiAnix Kotlin/JVM Source Validation
 
 on:
+  pull_request:
+    paths:
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - ".github/workflows/kotlin_jvm_tests.yml"
   workflow_dispatch:
 
 concurrency:
