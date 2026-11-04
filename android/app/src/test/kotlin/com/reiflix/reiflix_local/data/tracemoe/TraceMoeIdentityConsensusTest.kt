@@ -46,6 +46,23 @@ class TraceMoeIdentityConsensusTest {
     }
 
     @Test
+    fun framesWithNearTiedAnimeCandidatesAreIgnored() {
+        val closeCandidates = listOf(
+            TraceMoeSearchMatch(aniListId = 16498, similarity = 0.97),
+            TraceMoeSearchMatch(aniListId = 21, similarity = 0.96),
+        )
+        val consensus = evaluateTraceMoeIdentityConsensus(
+            mapOf(
+                11L to closeCandidates,
+                12L to closeCandidates,
+                13L to closeCandidates,
+            ),
+        )
+
+        assertNull(consensus)
+    }
+
+    @Test
     fun twoEpisodeMajoritySurvivesOneConflictingThirdFrame() {
         val consensus = evaluateTraceMoeIdentityConsensus(mapOf(
             11L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.97)),
