@@ -395,7 +395,7 @@ class ReiAnixExternalCatalogIntegrationService(
                     }
                 }
             }
-            queries.forEach(queryQueue::send)
+            for (query in queries) queryQueue.send(query)
             queryQueue.close()
 
             repeat(queries.size) {
