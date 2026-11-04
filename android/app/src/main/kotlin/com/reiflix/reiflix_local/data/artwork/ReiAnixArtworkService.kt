@@ -2259,7 +2259,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val STATUS_RETRY_WAIT = "retry_wait"
         const val STATUS_NOT_REQUESTED = "not_requested"
         const val MAX_DOWNLOAD_BYTES = 32L * 1024L * 1024L
-        const val MAX_CANDIDATE_ARTWORKS = 10
+        const val MAX_CANDIDATE_ARTWORKS = 256
         const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
         const val IO_BUFFER_BYTES = 64 * 1024
