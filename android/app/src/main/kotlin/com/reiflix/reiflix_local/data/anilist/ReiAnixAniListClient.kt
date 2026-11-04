@@ -182,17 +182,18 @@ class ReiAnixAniListClient(
                 lastRequestAtMs = System.currentTimeMillis()
                 // Keep the lock through the HTTP call so concurrent callers cannot
                 // start together after sharing the same rate-limit delay.
-                withContext(Dispatchers.IO) {
+                val httpResponse = withContext(Dispatchers.IO) {
                     transport.post(ENDPOINT, JSONObject()
                         .put("query", query)
                         .put("variables", variables))
                 }
-                response.rateLimitLimit?.takeIf { it > 0 }?.let { serverLimit ->
+                httpResponse.rateLimitLimit?.takeIf { it > 0 }?.let { serverLimit ->
                     // AniList may temporarily lower the documented per-minute budget.
                     // Adapt to the response header while retaining the configured floor.
                     val serverInterval = kotlin.math.ceil(60_000.0 / serverLimit * 1.05).toLong()
                     effectiveMinimumRequestIntervalMs = maxOf(minimumRequestIntervalMs, serverInterval)
                 }
+                httpResponse
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
