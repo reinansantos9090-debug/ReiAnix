@@ -3,6 +3,7 @@ package com.reiflix.reiflix_local.viewmodel
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.os.SystemClock
 import com.reiflix.reiflix_local.MainActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import com.reiflix.reiflix_local.resolveNativePlaybackStartPosition
@@ -1745,9 +1746,22 @@ class ReiAnixLibraryViewModel(
     private suspend fun refreshNativeCatalog() {
         nativeCatalogReloadMutex.withLock {
             try {
+                val databaseReadStartedAtNs = SystemClock.elapsedRealtimeNanos()
                 val rows = nativeLibraryRepository.loadLibraryCatalogRows()
-                val projected = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
-                    .project(rows)
+                val databaseReadElapsedMs =
+                    (SystemClock.elapsedRealtimeNanos() - databaseReadStartedAtNs) / 1_000_000.0
+
+                // SQLite reads already run on IO, but the caller resumes on its original
+                // dispatcher. Keep the CPU-heavy catalog-to-Compose projection off Main
+                // so large libraries and artwork invalidations do not block frame rendering.
+                val projectionStartedAtNs = SystemClock.elapsedRealtimeNanos()
+                val projected = withContext(Dispatchers.Default) {
+                    com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
+                        .project(rows)
+                }
+                val projectionElapsedMs =
+                    (SystemClock.elapsedRealtimeNanos() - projectionStartedAtNs) / 1_000_000.0
+
                 nativeCatalogState.value = NativeCatalogState(
                     status = if (projected.animes.isEmpty()) {
                         com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
@@ -1756,6 +1770,17 @@ class ReiAnixLibraryViewModel(
                     },
                     animes = projected.animes,
                     continueWatching = projected.continueWatching,
+                )
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_CATALOG_PROJECTED",
+                    source = "ReiAnixLibraryViewModel",
+                    result = "COMPLETED",
+                    context = mapOf(
+                        "anime_count" to projected.animes.size,
+                        "database_read_ms" to databaseReadElapsedMs,
+                        "projection_ms" to projectionElapsedMs,
+                        "projection_dispatcher" to "Default",
+                    ),
                 )
                 val filters = libraryFilters.value
                 loadNativeLibraryPage(
