@@ -40,6 +40,7 @@ class ReiAnixAniListClient(
 
     private val requestMutex = Mutex()
     private var lastRequestAtMs = 0L
+    @Volatile private var effectiveMinimumRequestIntervalMs = minimumRequestIntervalMs
 
     suspend fun searchAnime(term: String, limit: Int = 10): AniListResult<List<AniListAnime>> {
         val query = term.trim()
@@ -80,6 +81,68 @@ class ReiAnixAniListClient(
         }
     }
 
+
+    /**
+     * Searches every supplied title in one GraphQL operation. Each title owns an aliased
+     * Page field, so the service does not serialize one HTTP round-trip per alias. The
+     * returned map preserves the original normalized query for candidate attribution.
+     */
+    suspend fun searchAnimeBatch(
+        terms: List<String>,
+        limit: Int = 10,
+    ): AniListResult<Map<String, List<AniListAnime>>> {
+        require(limit in 1..50) { "AniList result limit must be between 1 and 50." }
+        val queries = terms.asSequence()
+            .map(String::trim)
+            .filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .toList()
+        if (queries.isEmpty()) return AniListResult.Success(emptyMap())
+
+        val variableDefinitions = (listOf("\$perPage: Int!") +
+            queries.indices.map { "\$term$it: String!" }).joinToString(", ")
+        val searchFields = queries.indices.joinToString("\n") { index ->
+            "search$index: Page(page: 1, perPage: \$perPage) { " +
+                "media(search: \$term$index, type: ANIME, sort: SEARCH_MATCH) { " +
+                SEARCH_MEDIA_FIELDS + " } }"
+        }
+        val gql = """
+            query SearchAnimeAliases($variableDefinitions) {
+              $searchFields
+            }
+        """.trimIndent()
+        val variables = JSONObject().put("perPage", limit)
+        queries.forEachIndexed { index, term -> variables.put("term$index", term) }
+
+        return execute(gql, variables) { data ->
+            val byQuery = linkedMapOf<String, List<AniListAnime>>()
+            for (index in queries.indices) {
+                val page = data.objectOrNull("search$index")
+                    ?: return@execute AniListResult.Failure(
+                        AniListError.InvalidResponse("Missing AniList search result for alias $index"),
+                    )
+                val media = page.arrayOrNull("media")
+                    ?: return@execute AniListResult.Failure(
+                        AniListError.InvalidResponse("Missing media array for AniList alias $index"),
+                    )
+                val results = ArrayList<AniListAnime>(media.length())
+                for (itemIndex in 0 until media.length()) {
+                    val item = media.optJSONObject(itemIndex)
+                        ?: return@execute AniListResult.Failure(
+                            AniListError.InvalidResponse("Invalid anime item in AniList alias $index"),
+                        )
+                    val anime = parseAnime(item)
+                        ?: return@execute AniListResult.Failure(
+                            AniListError.InvalidResponse("Anime item is missing a valid AniList ID"),
+                        )
+                    results += anime
+                }
+                byQuery[queries[index]] = results
+            }
+            AniListResult.Success(byQuery)
+        }
+    }
+
     suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
         if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
         val gql = """
@@ -114,7 +177,7 @@ class ReiAnixAniListClient(
         val response = try {
             requestMutex.withLock {
                 val now = System.currentTimeMillis()
-                val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
+                val wait = (lastRequestAtMs + effectiveMinimumRequestIntervalMs - now).coerceAtLeast(0L)
                 if (wait > 0L) delay(wait)
                 lastRequestAtMs = System.currentTimeMillis()
                 // Keep the lock through the HTTP call so concurrent callers cannot
@@ -123,6 +186,12 @@ class ReiAnixAniListClient(
                     transport.post(ENDPOINT, JSONObject()
                         .put("query", query)
                         .put("variables", variables))
+                }
+                response.rateLimitLimit?.takeIf { it > 0 }?.let { serverLimit ->
+                    // AniList may temporarily lower the documented per-minute budget.
+                    // Adapt to the response header while retaining the configured floor.
+                    val serverInterval = kotlin.math.ceil(60_000.0 / serverLimit * 1.05).toLong()
+                    effectiveMinimumRequestIntervalMs = maxOf(minimumRequestIntervalMs, serverInterval)
                 }
             }
         } catch (cancelled: CancellationException) {
@@ -259,6 +328,11 @@ class ReiAnixAniListClient(
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
         """
+        private const val SEARCH_MEDIA_FIELDS = """
+            id title { romaji english native } synonyms
+            format episodes status season seasonYear
+            coverImage { large extraLarge } bannerImage
+        """
     }
 }
 
@@ -308,6 +382,8 @@ data class AniListHttpResponse(
     val statusCode: Int,
     val body: String,
     val retryAfterSeconds: Long? = null,
+    val rateLimitLimit: Int? = null,
+    val rateLimitRemaining: Int? = null,
 )
 
 fun interface AniListTransport {
@@ -345,7 +421,9 @@ class HttpUrlConnectionAniListTransport(
                 val stream = if (code in 200..299) activeConnection.inputStream else activeConnection.errorStream
                 val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 val retryAfter = activeConnection.getHeaderField("Retry-After")?.toLongOrNull()
-                AniListHttpResponse(code, responseBody, retryAfter)
+                val rateLimitLimit = activeConnection.getHeaderField("X-RateLimit-Limit")?.toIntOrNull()
+                val rateLimitRemaining = activeConnection.getHeaderField("X-RateLimit-Remaining")?.toIntOrNull()
+                AniListHttpResponse(code, responseBody, retryAfter, rateLimitLimit, rateLimitRemaining)
             } finally {
                 connection?.disconnect()
             }
