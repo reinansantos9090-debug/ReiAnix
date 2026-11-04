@@ -380,13 +380,20 @@ class ReiAnixAniListIntegrationService(
             nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
         ) return false
 
-        // Persist before the first request so navigation/recreation cannot spend the
-        // public quota repeatedly after a timeout or an unsuccessful image match.
-        writeTraceMoeAttemptAt(animeId, nowSeconds)
-
+        // A local rolling budget stays well below the public guest quota even if
+        // the user opens many unrelated unidentified anime in the same day.
         val matchesByEpisode = linkedMapOf<Long, List<TraceMoeSearchMatch>>()
+        var attemptTimestampWritten = false
         for (sample in usableSamples) {
             currentCoroutineContext().ensureActive()
+            if (!reserveTraceMoeRequest(nowSeconds)) {
+                Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
+                break
+            }
+            if (!attemptTimestampWritten) {
+                writeTraceMoeAttemptAt(animeId, nowSeconds)
+                attemptTimestampWritten = true
+            }
             try {
                 matchesByEpisode[sample.episodeId] = traceMoeClient.search(sample.imageFile)
             } catch (cancelled: CancellationException) {
@@ -473,6 +480,48 @@ class ReiAnixAniListIntegrationService(
                     values,
                     SQLiteDatabase.CONFLICT_REPLACE,
                 )
+            }
+        }
+
+    /** Atomically reserves one Trace.moe request from the local rolling 24-hour budget. */
+    private suspend fun reserveTraceMoeRequest(nowSeconds: Double): Boolean =
+        withContext(Dispatchers.IO) {
+            library.database.transaction { connection ->
+                val rawHistory = connection.rawQuery(
+                    "SELECT value FROM preferences WHERE key=? LIMIT 1",
+                    arrayOf(TRACE_MOE_GLOBAL_HISTORY_PREFERENCE_KEY),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
+                }
+                val cutoff = nowSeconds - TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
+                val recent = buildList {
+                    val stored = runCatching { JSONArray(rawHistory) }.getOrNull()
+                    if (stored != null) {
+                        for (index in 0 until stored.length()) {
+                            val timestamp = stored.optDouble(index, Double.NaN)
+                            if (timestamp.isFinite() && timestamp > cutoff) add(timestamp)
+                        }
+                    }
+                }
+                if (recent.size >= TRACE_MOE_LOCAL_DAILY_REQUEST_BUDGET) {
+                    return@transaction false
+                }
+
+                val history = JSONArray()
+                recent.forEach(history::put)
+                history.put(nowSeconds)
+                val values = ContentValues().apply {
+                    put("key", TRACE_MOE_GLOBAL_HISTORY_PREFERENCE_KEY)
+                    put("value", history.toString())
+                    put("updated_at", nowSeconds)
+                }
+                connection.insertWithOnConflict(
+                    "preferences",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+                true
             }
         }
 
@@ -1269,6 +1318,8 @@ class ReiAnixAniListIntegrationService(
     companion object {
         private const val TAG = "ReiAnixAniList"
         private const val TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.trace_moe_attempt_v1."
+        private const val TRACE_MOE_GLOBAL_HISTORY_PREFERENCE_KEY = "__reianix.internal.trace_moe_request_history_v1"
+        private const val TRACE_MOE_LOCAL_DAILY_REQUEST_BUDGET = 30
         private const val TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS = 24L * 60L * 60L
         private const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
         private const val MINIMUM_TRACE_MOE_EPISODE_SAMPLES = 2
