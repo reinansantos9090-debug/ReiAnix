@@ -564,4 +564,16 @@ class ReiAnixArtworkPublicationSignalTest {
         assertEquals(null, verified.posterFallbackUrl)
     }
 
+    @Test
+    fun artworkConsensusUrlNormalizationIgnoresHostCaseDefaultPortAndFragment() {
+        assertEquals(
+            "https://cdn.example/poster.jpg?quality=80",
+            artworkConsensusUrlKey("HTTPS://CDN.EXAMPLE:443/poster.jpg?quality=80#preview"),
+        )
+        assertTrue(
+            artworkConsensusUrlKey("https://cdn.example/poster.jpg?quality=80") !=
+                artworkConsensusUrlKey("https://cdn.example/poster.jpg?quality=90"),
+        )
+    }
+
 }

@@ -370,7 +370,7 @@ class ReiAnixExternalCatalogIntegrationService(
                             animeId = anime.id,
                             remoteCandidates = listOf(remote),
                             identityVerified = verified != null,
-                            identityEligibleRecordKeys = evidenceKey?.takeIf { evidenceEligible }?.let(::setOf).orEmpty(),
+                            identityEligibleRecordKeys = if (evidenceEligible && evidenceKey != null) setOf(evidenceKey) else emptySet(),
                         )
                     Resolution(
                         evaluation.decision,
