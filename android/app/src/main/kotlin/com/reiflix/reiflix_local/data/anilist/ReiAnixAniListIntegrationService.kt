@@ -417,6 +417,9 @@ class ReiAnixAniListIntegrationService(
                     "Trace.moe episode-frame search failed animeId=$animeId episodeId=${sample.episodeId}",
                     error,
                 )
+                // HTTP errors, timeouts and transport failures affect the shared
+                // endpoint; do not burn the remaining requests on the same outage.
+                break
             }
         }
 
