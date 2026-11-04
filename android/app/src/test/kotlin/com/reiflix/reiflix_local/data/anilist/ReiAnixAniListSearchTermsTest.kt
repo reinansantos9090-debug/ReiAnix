@@ -52,4 +52,37 @@ class ReiAnixAniListSearchTermsTest {
         }
         assertTrue(terms.size >= aliases.size)
     }
+
+    @Test
+    fun allFifteenPreviouslyMissingCoverTitlesRemainSearchable() {
+        val missingCoverTitles = listOf(
+            "Hanazakari no Kimitachi e",
+            "Maou Gakuin no Futekigousha",
+            "Sakamoto Days Part 2",
+            "Futsutsuka na Akujo de Gozaimasu ga, Suuguu Chou...",
+            "Otome Kaijuu Carameliser",
+            "Omae Gotoki ga Maou ni Kateru to Omou na",
+            "Saigo ni Hitotsu dake Onegai shitemo Yoroshii deshou ka",
+            "Sakamoto Days",
+            "Prism Rondo",
+            "Rising Impact",
+            "Hanagiri-san wa Tensei shitemo Kenka ga Shitai",
+            "Tensai Ouji no Akaji Kokka Saisei Jutsu",
+            "BULLET/BULLET",
+            "Akuyaku Reijou to Kyouketsu Koushaku",
+            "Pluto",
+        )
+
+        val terms = boundedAniListSearchTerms(missingCoverTitles, limit = 128)
+
+        missingCoverTitles.forEach { title ->
+            assertTrue(
+                "A known missing-cover title was discarded: $title",
+                terms.any {
+                    MediaTitleNormalizer.normalizeTitle(it) ==
+                        MediaTitleNormalizer.normalizeTitle(title)
+                },
+            )
+        }
+    }
 }
