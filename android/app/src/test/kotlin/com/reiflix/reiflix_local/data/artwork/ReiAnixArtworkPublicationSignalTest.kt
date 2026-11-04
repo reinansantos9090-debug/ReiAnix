@@ -543,4 +543,12 @@ class ReiAnixArtworkPublicationSignalTest {
         )
 
 
+    @Test
+    fun aliasSearchAttributionCountsOnlyUnambiguousOriginalAliases() {
+        val matcher = com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
+        val aliases = matcher.searchAliasAttribution(listOf("Alpha Title", "Beta Title", "ALPHA   TITLE"))
+        assertEquals(setOf("alpha title"), aliases[matcher.normalizeCatalogTitle("Alpha Title")])
+        assertEquals(setOf("beta title"), aliases[matcher.normalizeCatalogTitle("Beta Title")])
+    }
+
 }

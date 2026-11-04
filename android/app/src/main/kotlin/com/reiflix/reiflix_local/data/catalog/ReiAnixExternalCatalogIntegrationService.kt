@@ -370,7 +370,7 @@ class ReiAnixExternalCatalogIntegrationService(
                             animeId = anime.id,
                             remoteCandidates = listOf(remote),
                             identityVerified = verified != null,
-                            identityEligibleRecordKeys = setOfNotNull(evidenceKey.takeIf { evidenceEligible }),
+                            identityEligibleRecordKeys = evidenceKey?.takeIf { evidenceEligible }?.let(::setOf).orEmpty(),
                         )
                     Resolution(
                         evaluation.decision,
@@ -544,8 +544,8 @@ class ReiAnixExternalCatalogIntegrationService(
             .distinctBy { it.first.url }
             .sortedWith(
                 compareByDescending<Pair<ReiAnixCatalogArtworkCandidate, String?>> {
-                    it.second in identityEligibleRecordKeys
-                }.thenByDescending { matchedTitleAliasesByRecord[it.second]?.size ?: 0 },
+                    it.second?.let { key -> key in identityEligibleRecordKeys } == true
+                }.thenByDescending { it.second?.let { key -> matchedTitleAliasesByRecord[key]?.size } ?: 0 },
             )
             .take(MAX_SEARCH_ARTWORK_CANDIDATES)
             .map { (candidate, recordKey) ->
@@ -556,8 +556,8 @@ class ReiAnixExternalCatalogIntegrationService(
                     source = candidate.source.key,
                     identityVerified = identityVerified,
                     identityEvidenceKey = recordKey,
-                    matchedTitleAliases = matchedTitleAliasesByRecord[recordKey].orEmpty(),
-                    identityEvidenceEligible = recordKey in identityEligibleRecordKeys,
+                    matchedTitleAliases = recordKey?.let { matchedTitleAliasesByRecord[it] }.orEmpty(),
+                    identityEvidenceEligible = recordKey?.let { it in identityEligibleRecordKeys } == true,
                 )
             }
             .toList()
