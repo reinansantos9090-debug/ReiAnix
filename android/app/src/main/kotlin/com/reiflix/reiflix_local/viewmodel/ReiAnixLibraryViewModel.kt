@@ -1759,19 +1759,8 @@ class ReiAnixLibraryViewModel(
                         .project(rows)
                 }
                 val projectionDurationMs = (System.nanoTime() - projectionStartedAtNs) / 1_000_000.0
-                ReiAnixDiagnosticTimeline.record(
-                    name = "NATIVE_CATALOG_REFRESH_PERFORMANCE",
-                    source = "ReiAnixLibraryViewModel",
-                    result = "COMPLETED",
-                    context = mapOf(
-                        "sql_read_ms" to sqlReadDurationMs,
-                        "projection_ms" to projectionDurationMs,
-                        "read_and_projection_ms" to
-                            ((System.nanoTime() - refreshStartedAtNs) / 1_000_000.0),
-                        "anime_count" to rows.size,
-                        "continue_watching_count" to projected.continueWatching.size,
-                    ),
-                )
+                val readAndProjectionDurationMs =
+                    (System.nanoTime() - refreshStartedAtNs) / 1_000_000.0
                 nativeCatalogState.value = NativeCatalogState(
                     status = if (projected.animes.isEmpty()) {
                         com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
@@ -1793,6 +1782,22 @@ class ReiAnixLibraryViewModel(
                     completedOnly = filters.completedOnly,
                     reset = true,
                 )
+                // Diagnostics are observational; record them away from the main thread
+                // and after publishing the new catalog so they never delay image display.
+                viewModelScope.launch(Dispatchers.Default) {
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "NATIVE_CATALOG_REFRESH_PERFORMANCE",
+                        source = "ReiAnixLibraryViewModel",
+                        result = "COMPLETED",
+                        context = mapOf(
+                            "sql_read_ms" to sqlReadDurationMs,
+                            "projection_ms" to projectionDurationMs,
+                            "read_and_projection_ms" to readAndProjectionDurationMs,
+                            "anime_count" to rows.size,
+                            "continue_watching_count" to projected.continueWatching.size,
+                        ),
+                    )
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
