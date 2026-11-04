@@ -524,7 +524,7 @@ class ReiAnixAniListIntegrationService(
                 }
 
                 val history = JSONArray()
-                recent.forEach(history::put)
+                recent.forEach { timestamp -> history.put(timestamp) }
                 history.put(nowSeconds)
                 val values = ContentValues().apply {
                     put("key", TRACE_MOE_GLOBAL_HISTORY_PREFERENCE_KEY)
