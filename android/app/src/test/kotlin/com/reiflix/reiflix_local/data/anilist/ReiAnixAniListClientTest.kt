@@ -1,4 +1,6 @@
 package com.reiflix.reiflix_local.data.anilist
+
+import com.reiflix.reiflix_local.data.artwork.ReiAnixAniListCoverCandidate
 import android.app.Application
 import org.robolectric.annotation.Config
 
@@ -51,6 +53,52 @@ class ReiAnixAniListClientTest {
         assertEquals(listOf("Wit Studio"), anime.studios)
         assertEquals(ReiAnixAniListClient.ENDPOINT, transport.endpoint)
         assertFalse(transport.requestBody?.optString("query").isNullOrBlank())
+    }
+
+    @Test
+    fun cleartextExtraLargeCoverDoesNotHideSecureLargeVariant() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Media":{
+              "id":16498,
+              "title":{"romaji":"Shingeki no Kyojin"},
+              "coverImage":{
+                "large":"https://img.example/secure-large.jpg",
+                "extraLarge":"http://img.example/cleartext-extra-large.jpg"
+              }
+            }}}
+        """.trimIndent()))
+
+        val result = ReiAnixAniListClient(transport, 0).getAnime(16498)
+        assertTrue(result is AniListResult.Success)
+        val anime = (result as AniListResult.Success).value!!
+
+        assertEquals(null, anime.coverExtraLargeUrl)
+        assertEquals("https://img.example/secure-large.jpg", anime.coverLargeUrl)
+        assertEquals(
+            listOf(ReiAnixAniListCoverCandidate("large", "https://img.example/secure-large.jpg")),
+            anime.coverCandidates,
+        )
+    }
+
+    @Test
+    fun cleartextOnlyCoverVariantsAreDiscarded() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Media":{
+              "id":16498,
+              "title":{"romaji":"Shingeki no Kyojin"},
+              "coverImage":{
+                "large":"http://img.example/cleartext-large.jpg",
+                "extraLarge":"http://img.example/cleartext-extra-large.jpg"
+              }
+            }}}
+        """.trimIndent()))
+
+        val result = ReiAnixAniListClient(transport, 0).getAnime(16498)
+        assertTrue(result is AniListResult.Success)
+        val anime = (result as AniListResult.Success).value!!
+        assertEquals(null, anime.coverLargeUrl)
+        assertEquals(null, anime.coverExtraLargeUrl)
+        assertTrue(anime.coverCandidates.isEmpty())
     }
 
     @Test

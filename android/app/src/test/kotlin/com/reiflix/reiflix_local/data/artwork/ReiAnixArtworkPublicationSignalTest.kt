@@ -316,14 +316,13 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun validHttpArtworkUrlsAreNotRediscoveredByTheJvmPolicy() {
+    fun onlySecureHttpsArtworkUrlsAreNotRediscoveredByTheJvmPolicy() {
         for (url in listOf(
                 "https://example.test/poster.jpg",
-                "http://example.test/poster.jpg",
                 "HTTPS://example.test/poster.jpg",
         )) {
             assertFalse(
-                "A usable remote artwork URL must not be rediscovered: $url",
+                "A usable HTTPS artwork URL must not be rediscovered: $url",
                 shouldDiscoverMissingArtwork(
                     coverUrl = url,
                     hasUsableLocalCover = false,
@@ -341,6 +340,7 @@ class ReiAnixArtworkPublicationSignalTest {
     fun malformedNonHttpAndCredentialBearingArtworkUrlsRemainEligibleForRecovery() {
         for (url in listOf(
                 "not-a-url",
+                "http://example.test/poster.jpg",
                 "ftp://example.test/poster.jpg",
                 "file:///cache/poster.jpg",
                 "https:///missing-host.jpg",

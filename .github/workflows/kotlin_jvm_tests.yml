@@ -1,6 +1,11 @@
 name: ReiAnix Kotlin/JVM Source Validation
 
 on:
+  pull_request:
+    paths:
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - ".github/workflows/kotlin_jvm_tests.yml"
   workflow_dispatch:
 
 concurrency:
@@ -50,7 +55,7 @@ jobs:
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Compile JVM test sources and release Kotlin sources
+      - name: Run focused artwork JVM tests and compile release Kotlin sources
         shell: bash
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
@@ -59,5 +64,9 @@ jobs:
           gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
-            :app:compileDebugUnitTestKotlin \
+            :app:testDebugUnitTest \
+              --tests com.reiflix.reiflix_local.data.artwork.ReiAnixLocalArtworkSidecarPolicyTest \
+              --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
+              --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
+              --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
             :app:compileReleaseKotlin

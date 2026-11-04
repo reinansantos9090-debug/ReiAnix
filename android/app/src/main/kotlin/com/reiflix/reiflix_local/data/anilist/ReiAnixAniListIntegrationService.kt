@@ -2,6 +2,9 @@ package com.reiflix.reiflix_local.data.anilist
 
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidate
+import com.reiflix.reiflix_local.data.artwork.ReiAnixAniListCoverCandidate
+import com.reiflix.reiflix_local.data.artwork.aniListArtworkCandidateKey
+import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 
 import android.content.Context
@@ -52,12 +55,9 @@ internal fun shouldDiscoverMissingArtwork(
     if (!coverUrl.isNullOrBlank()) {
         // A valid canonical URL is already handled by the downloader; an exhausted
         // failure is eligible for a fresh catalogue lookup after its persisted backoff.
-        val parsed = runCatching { URI(coverUrl.trim()) }.getOrNull()
-        val scheme = parsed?.scheme?.lowercase(Locale.ROOT)
-        val hasUsableHttpUrl = scheme != null &&
-            scheme in setOf("http", "https") &&
-            !parsed?.host.isNullOrBlank() &&
-            parsed?.rawUserInfo == null
+        // Use the same HTTPS-only rule as the AniList parser and artwork downloader.
+        // A persisted cleartext HTTP URL is unusable on Android and must not block recovery.
+        val hasUsableHttpUrl = validReiAnixArtworkHttpUrl(coverUrl) != null
         if (hasUsableHttpUrl && !hasExhaustedArtworkFailure) return false
     }
     // Identity and metadata provenance describe association confidence, not whether an
@@ -857,6 +857,17 @@ class ReiAnixAniListIntegrationService(
                 )
             }
             // The metadata patch above is already committed to the canonical database.
+            // Persist the lower-quality HTTPS variant before projection so it can be
+            // tried only if the primary cover cannot be materialized.
+            if (artworkEnabled) {
+                try {
+                    persistAniListCoverFallbackCandidates(updated.id, updated.mediaKind, remote)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Could not persist AniList fallback cover candidates for animeId=" + updated.id, error)
+                }
+            }
             // Keep genre identity associations aligned when AniList supplied real labels;
             // empty remote arrays intentionally do not erase previously persisted genres.
             if (remote.genres.isNotEmpty() && !manualFieldOwnsGenres(updated.metadataManualFieldsJson)) {
@@ -884,6 +895,147 @@ class ReiAnixAniListIntegrationService(
             AniListResult.Failure(AniListError.InvalidResponse(error.message ?: "Could not persist AniList metadata."))
         }
     }
+
+    private suspend fun persistAniListCoverFallbackCandidates(
+        animeId: Long,
+        mediaKind: String?,
+        remote: AniListAnime,
+    ) {
+        if (animeId <= 0L) return
+        val candidates = remote.coverCandidates.drop(1)
+        val currentUrls = remote.coverCandidates.mapNotNull { validReiAnixArtworkHttpUrl(it.url) }.distinct()
+        val entityType = if (mediaKind.equals("movie", ignoreCase = true)) "movie" else "anime"
+        val now = System.currentTimeMillis() / 1000.0
+        library.database.transaction { db ->
+            // Keep old successful files for diagnosis/reuse, but make URLs absent from the
+            // latest AniList response ineligible for automatic fallback selection.
+            val placeholders = currentUrls.joinToString(",") { "?" }
+            val excludeCurrentUrls = if (currentUrls.isEmpty()) "" else " AND external_url NOT IN ($placeholders)"
+            db.execSQL(
+                """
+                UPDATE artwork
+                SET variant='obsolete', priority=MIN(COALESCE(priority,350),350), updated_at=?
+                WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster'
+                  AND LOWER(COALESCE(source,'')) IN ('anilist','cache') AND manual=0
+                  AND external_url IS NOT NULL
+                  AND LOWER(COALESCE(status,'')) IN ('source_candidate','ready','failed','retry_wait','downloading')
+                  $excludeCurrentUrls
+                """.trimIndent(),
+                arrayOf<Any?>(now, animeId.toString(), *currentUrls.toTypedArray()),
+            )
+            // Remove stale unmaterialized candidate rows, not successful or referenced local files.
+            db.delete(
+                "artwork",
+                "entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster' " +
+                    "AND source='anilist' AND manual=0 AND status='source_candidate' " +
+                    "AND local_path IS NULL AND variant='obsolete'",
+                arrayOf(animeId.toString()),
+            )
+            for (candidate in candidates) {
+                val url = validReiAnixArtworkHttpUrl(candidate.url) ?: continue
+                val key = aniListArtworkCandidateKey(animeId, remote.id.toLong(), url)
+                val existing = db.rawQuery(
+                    "SELECT id, source, local_path, manual, status, artwork_key, variant FROM artwork " +
+                        "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster' " +
+                        "AND (external_url=? OR source_ref=? OR artwork_key=?) " +
+                        "ORDER BY priority DESC, updated_at DESC, id DESC LIMIT 1",
+                    arrayOf(animeId.toString(), url, url, key),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else ExistingCoverCandidateRow(
+                        id = cursor.getLong(0),
+                        source = cursor.getString(1),
+                        localPath = cursor.getString(2),
+                        manual = cursor.getInt(3) != 0,
+                        status = cursor.getString(4),
+                        key = cursor.getString(5),
+                        variant = cursor.getString(6),
+                    )
+                }
+
+                if (existing != null) {
+                    // Preserve user-owned/local art. Keep a downloaded AniList variant associated
+                    // with this URL so the downloader can reuse it if the primary source later fails.
+                    if (existing.manual || existing.source.equals("manual", true) ||
+                        existing.source.equals("local", true)
+                    ) continue
+                    if (!existing.localPath.isNullOrBlank()) {
+                        if (existing.source.equals("cache", true) || existing.source.equals("anilist", true)) {
+                            val values = ContentValues().apply {
+                                put("source_ref", url)
+                                put("external_url", url)
+                                put("priority", 350)
+                                put("updated_at", now)
+                                put("artwork_key", key)
+                                put("variant", candidate.variant)
+                            }
+                            db.update("artwork", values, "id=? AND manual=0", arrayOf(existing.id.toString()))
+                        }
+                        continue
+                    }
+                    val candidateIdentityIsCurrent = existing.key == key &&
+                        !existing.variant.equals("obsolete", true)
+                    if (existing.status != null && !existing.status.equals("failed", true) &&
+                        candidateIdentityIsCurrent
+                    ) continue
+
+                    // A URL which used to be primary but is now an alternate can be tried as fallback.
+                    val values = ContentValues().apply {
+                        put("source", "anilist")
+                        put("source_ref", url)
+                        put("external_url", url)
+                        put("status", "source_candidate")
+                        put("priority", 350)
+                        put("updated_at", now)
+                        put("failure_count", 0)
+                        put("artwork_key", key)
+                        put("variant", candidate.variant)
+                        putNull("next_retry_at")
+                        putNull("http_status")
+                    }
+                    db.update("artwork", values, "id=? AND manual=0", arrayOf(existing.id.toString()))
+                    continue
+                }
+
+                val values = ContentValues().apply {
+                    put("entity_type", entityType)
+                    put("entity_id", animeId.toString())
+                    put("artwork_type", "poster")
+                    put("source", "anilist")
+                    put("source_ref", url)
+                    putNull("local_path")
+                    put("external_url", url)
+                    put("manual", 0)
+                    put("priority", 350)
+                    put("status", "source_candidate")
+                    put("discovered_at", now)
+                    put("updated_at", now)
+                    putNull("last_attempt_at")
+                    put("failure_count", 0)
+                    put("artwork_key", key)
+                    put("variant", candidate.variant)
+                    putNull("byte_size")
+                    putNull("width")
+                    putNull("height")
+                    putNull("checksum")
+                    putNull("content_type")
+                    putNull("last_access")
+                    putNull("next_retry_at")
+                    putNull("http_status")
+                }
+                db.insertOrThrow("artwork", null, values)
+            }
+        }
+    }
+
+    private data class ExistingCoverCandidateRow(
+        val id: Long,
+        val source: String?,
+        val localPath: String?,
+        val manual: Boolean,
+        val status: String?,
+        val key: String?,
+        val variant: String?,
+    )
 
     /**
      * Notifies projection consumers after the canonical metadata transaction commits.
