@@ -1745,14 +1745,33 @@ class ReiAnixLibraryViewModel(
     private suspend fun refreshNativeCatalog() {
         nativeCatalogReloadMutex.withLock {
             try {
+                val refreshStartedAtNs = System.nanoTime()
+                val sqlReadStartedAtNs = System.nanoTime()
                 val rows = nativeLibraryRepository.loadLibraryCatalogRows()
+                val sqlReadDurationMs = (System.nanoTime() - sqlReadStartedAtNs) / 1_000_000.0
+
                 // The SQLite snapshot is already loaded on IO. Projecting thousands of
                 // anime/episode records is CPU work, so keep it off the main thread too.
                 // StateFlow publication below remains on the ViewModel's main dispatcher.
+                val projectionStartedAtNs = System.nanoTime()
                 val projected = withContext(Dispatchers.Default) {
                     com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
                         .project(rows)
                 }
+                val projectionDurationMs = (System.nanoTime() - projectionStartedAtNs) / 1_000_000.0
+                ReiAnixDiagnosticTimeline.record(
+                    name = "NATIVE_CATALOG_REFRESH_PERFORMANCE",
+                    source = "ReiAnixLibraryViewModel",
+                    result = "COMPLETED",
+                    context = mapOf(
+                        "sql_read_ms" to sqlReadDurationMs,
+                        "projection_ms" to projectionDurationMs,
+                        "read_and_projection_ms" to
+                            ((System.nanoTime() - refreshStartedAtNs) / 1_000_000.0),
+                        "anime_count" to rows.size,
+                        "continue_watching_count" to projected.continueWatching.size,
+                    ),
+                )
                 nativeCatalogState.value = NativeCatalogState(
                     status = if (projected.animes.isEmpty()) {
                         com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
