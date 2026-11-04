@@ -28,6 +28,25 @@ import java.io.File
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 
 /**
+ * Collect every normalized title variant used by the supplemental providers.
+ * The limit is a defensive bound on corrupt/hostile local alias payloads, not
+ * the former three-title search preference.
+ */
+internal fun boundedExternalCatalogSearchTerms(
+    titles: Collection<String>,
+    limit: Int = 128,
+): List<String> {
+    require(limit in 1..128)
+    return titles.asSequence()
+        .flatMap { MediaTitleNormalizer.searchTitleVariants(it).asSequence() }
+        .map(String::trim)
+        .filter { it.length in 2..120 }
+        .distinctBy(ReiAnixCatalogIdentityMatcher::normalizeCatalogTitle)
+        .take(limit)
+        .toList()
+}
+
+/**
  * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Tenrai/AniPub are
  * consulted only for metadata gaps or missing usable artwork, and every association is reverified.
  */
@@ -240,6 +259,7 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
             }
 
+            if (resolved.artworkQueued) changed = true
             val remoteArtwork = resolved.artworkCandidate ?: verified?.remote
             if (remoteArtwork == null) {
                 val outcome = when (resolved.decision) {
@@ -285,8 +305,13 @@ class ReiAnixExternalCatalogIntegrationService(
                     )
                 }
             }
-            if (!resolved.artworkQueued && pendingArtwork.isNotEmpty() &&
-                artwork.requestAnimeArtworkCandidates(anime.id, pendingArtwork, force = true)
+            val additionalArtwork = if (resolved.artworkQueued) {
+                pendingArtwork.filter { it.posterUrl.isNullOrBlank() }
+            } else {
+                pendingArtwork
+            }
+            if (additionalArtwork.isNotEmpty() &&
+                artwork.requestAnimeArtworkCandidates(anime.id, additionalArtwork, force = true)
             ) {
                 record(source, "ARTWORK_CANDIDATES_QUEUED", anime.id)
                 changed = true
@@ -341,13 +366,7 @@ class ReiAnixExternalCatalogIntegrationService(
             }
         }
 
-        val queries = identity.titles.asSequence()
-            .flatMap { MediaTitleNormalizer.searchTitleVariants(it).asSequence() }
-            .map(String::trim)
-            .filter { it.length in 2..120 }
-            .distinctBy(ReiAnixCatalogIdentityMatcher::normalizeCatalogTitle)
-            .take(MAX_SEARCH_TERMS)
-            .toList()
+        val queries = boundedExternalCatalogSearchTerms(identity.titles, MAX_SEARCH_TERMS)
         if (queries.isEmpty()) return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
 
         val candidates = linkedMapOf<String, ReiAnixCatalogAnime>()
