@@ -524,7 +524,7 @@ class ReiAnixExternalCatalogIntegrationService(
         const val MAX_BATCH_SIZE = 50
         const val SEARCH_LIMIT = 10
         const val MAX_SEARCH_TERMS = 128
-        const val MAX_SEARCH_ARTWORK_CANDIDATES = 10
+        const val MAX_SEARCH_ARTWORK_CANDIDATES = 2
         const val TITLE_SEARCH_CONCURRENCY = 2
         const val SOURCE_RETRY_COOLDOWN_SECONDS = 6L * 60L * 60L
     }
