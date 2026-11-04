@@ -387,7 +387,14 @@ class ReiAnixAniListIntegrationService(
             local.metadataStatus == "manual"
         ) return false
 
-        val previousAttempt = readTraceMoeAttemptAt(animeId)
+        // Existing automatic associations need a fresh verification window.
+        // Do not let an attempt saved by the older implementation (which could not
+        // correct an existing ID) suppress the first correction attempt after upgrade.
+        val verifyingExistingAutomaticAssociation = local.anilistId != null
+        val previousAttempt = readTraceMoeAttemptAt(
+            animeId = animeId,
+            correction = verifyingExistingAutomaticAssociation,
+        )
         val now = System.currentTimeMillis() / 1000.0
         if (previousAttempt != null &&
             now - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
@@ -421,7 +428,11 @@ class ReiAnixAniListIntegrationService(
                     return@firstOrNull true
                 }
                 if (!attemptTimestampWritten) {
-                    writeTraceMoeAttemptAt(animeId, requestAt)
+                    writeTraceMoeAttemptAt(
+                        animeId = animeId,
+                        attemptAtSeconds = requestAt,
+                        correction = verifyingExistingAutomaticAssociation,
+                    )
                     attemptTimestampWritten = true
                 }
 
@@ -480,11 +491,19 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
-    private suspend fun readTraceMoeAttemptAt(animeId: Long): Double? = withContext(Dispatchers.IO) {
+    private suspend fun readTraceMoeAttemptAt(
+        animeId: Long,
+        correction: Boolean = false,
+    ): Double? = withContext(Dispatchers.IO) {
+        val prefix = if (correction) {
+            TRACE_MOE_CORRECTION_ATTEMPT_PREFERENCE_PREFIX
+        } else {
+            TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX
+        }
         library.database.read { connection ->
             connection.rawQuery(
                 "SELECT value FROM preferences WHERE key=? LIMIT 1",
-                arrayOf(TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX + animeId),
+                arrayOf(prefix + animeId),
             ).use { cursor ->
                 if (cursor.moveToFirst()) {
                     cursor.getString(0)?.toDoubleOrNull()?.takeIf { it.isFinite() }
@@ -495,22 +514,30 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
-    private suspend fun writeTraceMoeAttemptAt(animeId: Long, attemptAtSeconds: Double) =
-        withContext(Dispatchers.IO) {
-            library.database.transaction { connection ->
-                val values = ContentValues().apply {
-                    put("key", TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX + animeId)
-                    put("value", attemptAtSeconds.toString())
-                    put("updated_at", attemptAtSeconds)
-                }
-                connection.insertWithOnConflict(
-                    "preferences",
-                    null,
-                    values,
-                    SQLiteDatabase.CONFLICT_REPLACE,
-                )
-            }
+    private suspend fun writeTraceMoeAttemptAt(
+        animeId: Long,
+        attemptAtSeconds: Double,
+        correction: Boolean = false,
+    ) = withContext(Dispatchers.IO) {
+        val prefix = if (correction) {
+            TRACE_MOE_CORRECTION_ATTEMPT_PREFERENCE_PREFIX
+        } else {
+            TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX
         }
+        library.database.transaction { connection ->
+            val values = ContentValues().apply {
+                put("key", prefix + animeId)
+                put("value", attemptAtSeconds.toString())
+                put("updated_at", attemptAtSeconds)
+            }
+            connection.insertWithOnConflict(
+                "preferences",
+                null,
+                values,
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+        }
+    }
 
     /** Atomically reserves one Trace.moe request from the local rolling 24-hour budget. */
     private suspend fun reserveTraceMoeRequest(nowSeconds: Double): Boolean =
@@ -1349,6 +1376,7 @@ class ReiAnixAniListIntegrationService(
     companion object {
         private const val TAG = "ReiAnixAniList"
         private const val TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.trace_moe_attempt_v1."
+        private const val TRACE_MOE_CORRECTION_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.trace_moe_correction_attempt_v1."
         private const val TRACE_MOE_GLOBAL_HISTORY_PREFERENCE_KEY = "__reianix.internal.trace_moe_request_history_v1"
         private const val TRACE_MOE_LOCAL_DAILY_REQUEST_BUDGET = 30
         private const val TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS = 24L * 60L * 60L
