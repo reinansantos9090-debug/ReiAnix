@@ -482,12 +482,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         db.rawQuery(
                             "SELECT id FROM anime a WHERE id>? AND (" +
                                 "TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='' OR " +
-                                "(EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 " +
-                                "AND TRIM(COALESCE(e.path,''))!='') AND NOT EXISTS (" +
-                                "SELECT 1 FROM artwork localPoster WHERE localPoster.entity_id=CAST(a.id AS TEXT) " +
-                                "AND localPoster.entity_type IN ('anime','movie') AND localPoster.artwork_type='poster' " +
-                                "AND localPoster.status='ready' AND localPoster.local_path IS NOT NULL " +
-                                "AND TRIM(COALESCE(localPoster.local_path,''))!='')) OR " +
+                                "EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 " +
+                                "AND TRIM(COALESCE(e.path,''))!='') OR " +
                                 "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
                                 "AND art.entity_type IN ('anime','movie') AND art.artwork_type IN ('poster','backdrop') " +
                                 "AND art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL " +
