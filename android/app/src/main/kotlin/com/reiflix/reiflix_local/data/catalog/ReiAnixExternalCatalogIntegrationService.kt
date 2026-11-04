@@ -15,6 +15,7 @@ import com.reiflix.reiflix_local.data.sqlite.saveExternalCatalogIds
 import com.reiflix.reiflix_local.data.sqlite.setExternalCatalogCursor
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -386,6 +387,8 @@ class ReiAnixExternalCatalogIntegrationService(
                         currentCoroutineContext().ensureActive()
                         val result = try {
                             provider.searchAnime(query, SEARCH_LIMIT)
+                        } catch (timeout: TimeoutCancellationException) {
+                            ReiAnixCatalogResult.Failure(ReiAnixCatalogError.TimedOut)
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (error: Exception) {
