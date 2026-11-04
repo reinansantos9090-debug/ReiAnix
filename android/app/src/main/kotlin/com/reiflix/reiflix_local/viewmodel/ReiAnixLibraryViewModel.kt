@@ -1371,7 +1371,10 @@ class ReiAnixLibraryViewModel(
     fun requestMissingEpisodeThumbnails(animeId: Long) {
         if (animeId <= 0L) return
         val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
-        enqueueEpisodeThumbnailTasks(listOf(anime))
+        // Opening Details is an explicit retry opportunity for an episode whose previous
+        // extraction could not produce a valid frame. Completed work is deduplicated by cache.
+        anime.contentEpisodes.forEach { episodeThumbnailAttemptedRevisions.remove(it.id) }
+        viewModelScope.launch { enqueueEpisodeThumbnailTasks(listOf(anime)) }
     }
 
     /** Register the anime currently shown in Details or used by the native Player. */
@@ -1446,26 +1449,30 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    private fun enqueueEpisodeThumbnailTasks(
+    private suspend fun enqueueEpisodeThumbnailTasks(
         animes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
         onlyEpisodeIds: Set<Long>? = null,
     ) {
         if (appDependencies == null || animes.isEmpty()) return
-        val work = buildList {
-            animes.forEach { anime ->
-                anime.contentEpisodes.forEach episodeLoop@{ episode ->
-                    if (onlyEpisodeIds != null && episode.id !in onlyEpisodeIds) return@episodeLoop
-                    if (episode.media.availability.name != "AVAILABLE") return@episodeLoop
-                    if (episodeThumbnailSource(episode) == null) return@episodeLoop
-                    val revision = episodeThumbnailRevision(episode)
-                    if (episode.id in episodeThumbnailRequestsInFlight) {
-                        if (episodeThumbnailProcessingRevisions[episode.id] != revision) {
-                            episodeThumbnailRerunRequested.add(episode.id)
+        // A large library can contain thousands of episodes. Build the queue off the
+        // main thread so the catalog projection and Compose UI stay responsive.
+        val work = withContext(Dispatchers.Default) {
+            buildList {
+                animes.forEach { anime ->
+                    anime.contentEpisodes.forEach episodeLoop@{ episode ->
+                        if (onlyEpisodeIds != null && episode.id !in onlyEpisodeIds) return@episodeLoop
+                        if (episode.media.availability.name != "AVAILABLE") return@episodeLoop
+                        if (episodeThumbnailSource(episode) == null) return@episodeLoop
+                        val revision = episodeThumbnailRevision(episode)
+                        if (episode.id in episodeThumbnailRequestsInFlight) {
+                            if (episodeThumbnailProcessingRevisions[episode.id] != revision) {
+                                episodeThumbnailRerunRequested.add(episode.id)
+                            }
+                            return@episodeLoop
                         }
-                        return@episodeLoop
+                        if (episodeThumbnailAttemptedRevisions[episode.id] == revision) return@episodeLoop
+                        add(EpisodeThumbnailWorkItem(anime.id, episode.id, revision))
                     }
-                    if (episodeThumbnailAttemptedRevisions[episode.id] == revision) return@episodeLoop
-                    add(EpisodeThumbnailWorkItem(anime.id, episode.id, revision))
                 }
             }
         }
