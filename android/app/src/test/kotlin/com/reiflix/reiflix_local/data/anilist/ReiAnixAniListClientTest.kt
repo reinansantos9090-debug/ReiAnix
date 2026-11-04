@@ -215,6 +215,42 @@ class ReiAnixAniListClientTest {
         assertTrue(anime.genres.isEmpty())
     }
 
+
+    @Test
+    fun batchSearchQueriesEveryTitleAliasInOneGraphQlRequest() = runBlocking {
+        val transport = FakeTransport(
+            AniListHttpResponse(
+                200,
+                """{"data":{
+                    "search0":{"media":[{"id":101,"title":{"romaji":"First Work"},"coverImage":{"extraLarge":"https://img.example/first.jpg"}}]},
+                    "search1":{"media":[{"id":202,"title":{"english":"Second Work"},"coverImage":{"large":"https://img.example/second.jpg"}}]}
+                }}""".trimIndent(),
+                rateLimitLimit = 30,
+                rateLimitRemaining = 29,
+            ),
+        )
+
+        val result = ReiAnixAniListClient(transport, 0).searchAnimeBatch(
+            listOf("First Work", "Second Work", " first work "),
+        )
+
+        assertTrue(result is AniListResult.Success)
+        val byTitle = (result as AniListResult.Success).value
+        assertEquals(setOf("First Work", "Second Work"), byTitle.keys)
+        assertEquals(101, byTitle.getValue("First Work").single().id)
+        assertEquals(202, byTitle.getValue("Second Work").single().id)
+        assertEquals(1, transport.calls)
+
+        val request = requireNotNull(transport.requestBody)
+        val query = request.getString("query")
+        val variables = request.getJSONObject("variables")
+        assertTrue(query.contains("search0: Page"))
+        assertTrue(query.contains("search1: Page"))
+        assertFalse(query.contains("search2: Page"))
+        assertEquals("First Work", variables.getString("term0"))
+        assertEquals("Second Work", variables.getString("term1"))
+    }
+
     private class FakeTransport(
         private val response: AniListHttpResponse,
     ) : AniListTransport {
