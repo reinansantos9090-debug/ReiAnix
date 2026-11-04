@@ -166,10 +166,10 @@ internal class ReiAnixArtworkConsensusTracker(
                     return@forEach
                 }
             if (!candidate.identityVerified && !candidate.identityEvidenceEligible) return@forEach
-            imageKeys.forEach { imageKey ->
+            imageKeys.forEach imageLoop@{ imageKey ->
                 val image = images.getOrPut(imageKey) { ImageEvidence() }
                 val record = image.records.getOrPut(evidenceKey) { RecordEvidence(provider = candidate.source) }
-                if (record.provider != candidate.source) return@forEach
+                if (record.provider != candidate.source) return@imageLoop
                 record.eligible = record.eligible || candidate.identityEvidenceEligible
                 record.strictlyVerified = record.strictlyVerified || candidate.identityVerified
                 if (candidate.identityEvidenceEligible) {
@@ -231,7 +231,12 @@ internal fun artworkConsensusUrlKey(rawUrl: String): String? = runCatching {
     val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
     val host = uri.host?.lowercase(Locale.ROOT) ?: return null
     if (scheme !in setOf("http", "https") || uri.rawUserInfo != null) return null
-    java.net.URI(scheme, null, host, uri.port, uri.rawPath?.ifEmpty { "/" } ?: "/", uri.rawQuery, null)
+    val port = when {
+        scheme == "https" && uri.port == 443 -> -1
+        scheme == "http" && uri.port == 80 -> -1
+        else -> uri.port
+    }
+    java.net.URI(scheme, null, host, port, uri.rawPath?.ifEmpty { "/" } ?: "/", uri.rawQuery, null)
         .normalize().toASCIIString()
 }.getOrNull()
 /** Attempts ranked candidates and their variants without letting one failed URL stop the next. */
