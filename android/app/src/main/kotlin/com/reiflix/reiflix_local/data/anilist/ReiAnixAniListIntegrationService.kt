@@ -187,6 +187,7 @@ class ReiAnixAniListIntegrationService(
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
+    private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
     private val missingArtworkRecoveryRunning = AtomicBoolean(false)
 
@@ -344,6 +345,18 @@ class ReiAnixAniListIntegrationService(
      * Trace.moe consensus is allowed to associate AniList metadata.
      */
     suspend fun identifyFromEpisodeThumbnails(
+        animeId: Long,
+        samples: List<TraceMoeEpisodeSample>,
+    ): Boolean {
+        if (animeId <= 0L || !traceMoeIdentificationInFlight.add(animeId)) return false
+        return try {
+            identifyFromEpisodeThumbnailsInternal(animeId, samples)
+        } finally {
+            traceMoeIdentificationInFlight.remove(animeId)
+        }
+    }
+
+    private suspend fun identifyFromEpisodeThumbnailsInternal(
         animeId: Long,
         samples: List<TraceMoeEpisodeSample>,
     ): Boolean {
