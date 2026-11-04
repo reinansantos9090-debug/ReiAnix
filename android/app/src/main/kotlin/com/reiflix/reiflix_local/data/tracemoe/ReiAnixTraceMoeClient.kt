@@ -183,15 +183,25 @@ data class TraceMoeIdentityConsensus(
 internal fun evaluateTraceMoeIdentityConsensus(
     resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
     minimumSimilarity: Double = MINIMUM_TRACE_MOE_SIMILARITY,
+    minimumFrameMargin: Double = MINIMUM_TRACE_MOE_FRAME_MARGIN,
 ): TraceMoeIdentityConsensus? {
     require(minimumSimilarity in 0.0..1.0)
+    require(minimumFrameMargin in 0.0..1.0)
     val confidentWinners = resultsByEpisode.entries
         .asSequence()
         .filter { it.key > 0L }
         .mapNotNull { (_, matches) ->
-            matches.asSequence()
+            val rankedAnime = matches.asSequence()
                 .filter { it.anilistId > 0 && it.similarity.isFinite() && it.similarity >= minimumSimilarity }
-                .maxByOrNull(TraceMoeSearchMatch::similarity)
+                .groupBy(TraceMoeSearchMatch::anilistId)
+                .values
+                .mapNotNull { sameAnimeMatches ->
+                    sameAnimeMatches.maxByOrNull(TraceMoeSearchMatch::similarity)
+                }
+                .sortedByDescending(TraceMoeSearchMatch::similarity)
+            val best = rankedAnime.firstOrNull() ?: return@mapNotNull null
+            val secondSimilarity = rankedAnime.getOrNull(1)?.similarity ?: 0.0
+            best.takeIf { best.similarity - secondSimilarity >= minimumFrameMargin }
         }
         .toList()
     if (confidentWinners.size < MINIMUM_TRACE_MOE_SUPPORTING_EPISODES) return null
@@ -226,4 +236,5 @@ internal fun evaluateTraceMoeIdentityConsensus(
 }
 
 const val MINIMUM_TRACE_MOE_SIMILARITY = 0.90
+const val MINIMUM_TRACE_MOE_FRAME_MARGIN = 0.02
 const val MINIMUM_TRACE_MOE_SUPPORTING_EPISODES = 2
