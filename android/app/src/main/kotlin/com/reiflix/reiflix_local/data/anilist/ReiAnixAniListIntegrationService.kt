@@ -370,7 +370,10 @@ class ReiAnixAniListIntegrationService(
                 }
             }
         }
-        val searchTerms = boundedAniListSearchTerms(localTitleCandidates, limit = 128)
+        // Keep metadata association on its existing conservative fast path.
+        // Prompt 13 expands the cover-discovery pipeline; metadata identity must not
+        // become ambiguous merely because secondary aliases also returned candidates.
+        val searchTerms = boundedAniListSearchTerms(localTitleCandidates, limit = 6)
         if (searchTerms.isEmpty()) {
             autoMatchAttempts.remove(animeId)
             return AniListResult.Failure(
@@ -394,50 +397,59 @@ class ReiAnixAniListIntegrationService(
                 .thenBy { it.anime.id },
         )
 
-        val batchResult = try {
-            client.searchAnimeBatch(searchTerms, 10)
-        } catch (cancelled: CancellationException) {
-            autoMatchAttempts.remove(animeId)
-            throw cancelled
-        }
         val candidatesById = linkedMapOf<Int, AniListAnime>()
-        when (batchResult) {
-            is AniListResult.Success -> {
-                if (!batchResult.value.keys.containsAll(searchTerms)) {
-                    recordAutoMatchOutcome(animeId, "invalid_response")
-                    return AniListResult.Failure(
-                        AniListError.InvalidResponse("AniList alias batch was incomplete; metadata auto-match was withheld."),
-                    )
-                }
-                batchResult.value.values.flatten().forEach { candidate ->
-                    candidatesById.putIfAbsent(candidate.id, candidate)
+        var ranked: List<ReiAnixAniListMatcher.RankedCandidate> = emptyList()
+        var searchedTerms: List<String> = emptyList()
+        for ((termIndex, searchTerm) in searchTerms.withIndex()) {
+            searchedTerms = searchTerms.take(termIndex + 1)
+            val searchResult = try {
+                client.searchAnime(searchTerm, 10)
+            } catch (cancelled: CancellationException) {
+                autoMatchAttempts.remove(animeId)
+                throw cancelled
+            }
+            val found = when (searchResult) {
+                is AniListResult.Success -> searchResult.value
+                is AniListResult.Failure -> {
+                    val outcome = when (val error = searchResult.error) {
+                        is AniListError.RateLimited -> "rate_limited"
+                        is AniListError.Network -> "network_error"
+                        is AniListError.Http -> when {
+                            error.statusCode == 429 -> "rate_limited"
+                            error.statusCode >= 500 -> "network_error"
+                            else -> "invalid_response"
+                        }
+                        is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
+                        is AniListError.InvalidRequest -> {
+                            autoMatchAttempts.remove(animeId)
+                            return searchResult
+                        }
+                    }
+                    // Preserve the existing metadata identity rule: a failed title
+                    // lookup cannot authorize association from only part of the set.
+                    recordAutoMatchOutcome(animeId, outcome)
+                    return searchResult
                 }
             }
-            is AniListResult.Failure -> {
-                val outcome = when (val error = batchResult.error) {
-                    is AniListError.RateLimited -> "rate_limited"
-                    is AniListError.Network -> "network_error"
-                    is AniListError.Http -> when {
-                        error.statusCode == 429 -> "rate_limited"
-                        error.statusCode >= 500 -> "network_error"
-                        else -> "invalid_response"
-                    }
-                    is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
-                    is AniListError.InvalidRequest -> {
-                        autoMatchAttempts.remove(animeId)
-                        return batchResult
-                    }
-                }
-                // Metadata association remains strict: no partial/failed batch can authorize it.
-                recordAutoMatchOutcome(animeId, outcome)
-                return batchResult
+            found.forEach { candidate -> candidatesById.putIfAbsent(candidate.id, candidate) }
+            ranked = rankCandidates(candidatesById.values, searchTerms.take(termIndex + 1))
+
+            // Preserve the existing fast path for an unambiguous primary-title result.
+            if (termIndex == 0) {
+                val best = ranked.firstOrNull()
+                val margin = best?.let { it.score - (ranked.getOrNull(1)?.score ?: 0.0) } ?: 0.0
+                if (
+                    best != null &&
+                    best.score >= AUTO_MATCH_MIN_SCORE &&
+                    margin >= AUTO_MATCH_MIN_MARGIN
+                ) break
             }
         }
         if (candidatesById.isEmpty()) {
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
-        val ranked = rankCandidates(candidatesById.values, searchTerms)
+        ranked = rankCandidates(candidatesById.values, searchedTerms)
         if (ranked.isEmpty()) {
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
