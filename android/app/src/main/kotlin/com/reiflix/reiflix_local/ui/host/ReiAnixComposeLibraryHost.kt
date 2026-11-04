@@ -189,9 +189,9 @@ class ReiAnixComposeLibraryHost(
                     }
             }
 
-            // Recover persisted poster/backdrop URLs on ordinary app opens too.
-            // This path deliberately does not run title matching or issue AniList
-            // metadata lookups; it only replays the canonical artwork queue.
+            // On ordinary app opens, replay persisted artwork and discover missing
+            // covers from the already stored aliases and the active catalog providers.
+            // AniList and supplemental discovery run together through the shared ArtworkService.
             LaunchedEffect(
                 libraryViewModel,
                 bootstrapState.phase,
