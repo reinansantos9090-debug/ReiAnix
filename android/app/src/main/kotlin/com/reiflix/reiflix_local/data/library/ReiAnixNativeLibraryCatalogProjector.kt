@@ -21,9 +21,6 @@ internal object ReiAnixNativeLibraryCatalogProjector {
 
     fun project(rows: List<ReiAnixLibraryCatalogRow>): ReiAnixNativeLibraryCatalogSnapshot {
         val animes = rows.map(::projectAnime)
-        val lastPlayedByEpisodeId = rows.asSequence()
-            .flatMap { it.episodes.asSequence() }
-            .associate { it.id to (it.lastPlayedAt ?: 0.0) }
         val continueWatching = buildList {
             for (anime in animes) {
                 val playable = if (anime.mediaKind == ReiAnixMediaKind.MOVIE) {
@@ -36,7 +33,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                         episode.media.availability != ReiAnixMediaAvailability.AVAILABLE
                     ) continue
                     add(
-                        ReiAnixContinueWatchingUiModel(
+                        (episode.lastPlayedAt ?: 0.0) to ReiAnixContinueWatchingUiModel(
                             episodeId = episode.id,
                             animeId = anime.id,
                             animeTitle = anime.title,
@@ -52,9 +49,9 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 }
             }
         }.sortedWith(
-            compareByDescending<ReiAnixContinueWatchingUiModel> { lastPlayedByEpisodeId[it.episodeId] ?: 0.0 }
-                .thenByDescending { it.episodeId },
-        ).take(CONTINUE_WATCHING_LIMIT)
+            compareByDescending<Pair<Double, ReiAnixContinueWatchingUiModel>> { it.first }
+                .thenByDescending { it.second.episodeId },
+        ).take(CONTINUE_WATCHING_LIMIT).map { it.second }
 
         return ReiAnixNativeLibraryCatalogSnapshot(
             animes = animes,
