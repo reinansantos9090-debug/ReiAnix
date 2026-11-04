@@ -1667,7 +1667,7 @@ class ReiAnixLibraryViewModel(
                             "playerGeneration=${change.playerGeneration} " +
                             "transitionGeneration=${change.transitionGeneration}",
                     )
-                    refreshNativeCatalog()
+                    refreshCatalogProjection()
                 }
         }
 
@@ -1685,7 +1685,7 @@ class ReiAnixLibraryViewModel(
                     // This collector emits only after a new terminal native-scan snapshot;
                     // its first saved value is dropped, so process startup alone does not
                     // trigger network metadata matching or artwork backfill.
-                    refreshNativeCatalog()
+                    refreshCatalogProjection()
                 }
         }
         // Legacy commands can still mutate unrelated fields; their revision is only an
@@ -1695,7 +1695,7 @@ class ReiAnixLibraryViewModel(
                 .map { it.revision }
                 .distinctUntilChanged()
                 .drop(1)
-                .collectLatest { refreshNativeCatalog() }
+                .collectLatest { refreshCatalogProjection() }
         }
 
         libraryFilterJob?.cancel()
@@ -1746,8 +1746,13 @@ class ReiAnixLibraryViewModel(
         nativeCatalogReloadMutex.withLock {
             try {
                 val rows = nativeLibraryRepository.loadLibraryCatalogRows()
-                val projected = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
-                    .project(rows)
+                // The SQLite snapshot is already loaded on IO. Projecting thousands of
+                // anime/episode records is CPU work, so keep it off the main thread too.
+                // StateFlow publication below remains on the ViewModel's main dispatcher.
+                val projected = withContext(Dispatchers.Default) {
+                    com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
+                        .project(rows)
+                }
                 nativeCatalogState.value = NativeCatalogState(
                     status = if (projected.animes.isEmpty()) {
                         com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
