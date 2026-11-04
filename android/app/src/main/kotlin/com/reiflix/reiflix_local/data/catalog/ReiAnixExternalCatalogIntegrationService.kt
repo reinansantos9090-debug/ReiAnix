@@ -468,7 +468,7 @@ class ReiAnixExternalCatalogIntegrationService(
                 )
             }
             .toList()
-        return pending.isNotEmpty() && artwork.requestAnimeArtworkCandidates(animeId, pending, force = true)
+        return pending.isNotEmpty() && artwork.requestAnimeArtworkCandidates(animeId, pending, force = false)
     }
 
     private fun record(
