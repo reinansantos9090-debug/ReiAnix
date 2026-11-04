@@ -1053,6 +1053,255 @@ class ReiAnixArtworkService(
         }
     }
 
+    private val shikimoriAttemptPrefix = "__reianix.internal.shikimori_html_cover_attempt_v1."
+    private val shikimoriMaxRedirects = 3
+
+    private suspend fun hasUsablePersistedPoster(animeId: Long, entityType: String): Boolean {
+        val paths = database.read { db ->
+            db.rawQuery(
+                "SELECT local_path FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='poster' AND status='ready'",
+                arrayOf(entityType, animeId.toString()),
+            ).use { cursor -> buildList { while (cursor.moveToNext()) cursor.getString(0)?.let(::add) } }
+        }
+        return paths.any(::validImage)
+    }
+
+    private fun hasProtectedPoster(animeId: Long, entityType: String): Boolean =
+        database.read { db ->
+            db.rawQuery(
+                "SELECT 1 FROM artwork WHERE entity_type=? AND entity_id=? AND artwork_type='poster' " +
+                    "AND (manual=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')) LIMIT 1",
+                arrayOf(entityType, animeId.toString()),
+            ).use { it.moveToFirst() }
+        }
+
+    private suspend fun discoverShikimoriCoverIfNeeded(
+        animeId: Long,
+        anime: Anime,
+        requestId: String,
+    ): String? {
+        val titles = listOf(anime.title, anime.lookupTitle, anime.english, anime.romaji, anime.nativeTitle)
+            .filterNotNull().map(String::trim).filter(String::isNotBlank).distinct()
+        val primaryTitle = titles.firstOrNull().orEmpty()
+        if (primaryTitle.isBlank()) {
+            recordShikimoriResult("SHIKIMORI_COVER_DISCOVERY_COMPLETED", "NO_LOCAL_TITLE", animeId, requestId)
+            return null
+        }
+
+        val aliases = runCatching {
+            JSONArray(anime.aliasesJson ?: "[]").let { values ->
+                (0 until values.length()).mapNotNull { index ->
+                    values.optString(index).trim().takeIf { it.isNotBlank() && it != "null" }
+                }
+            }
+        }.getOrDefault(emptyList())
+        val identity = ReiAnixShikimoriAnimeIdentity(
+            title = primaryTitle,
+            aliases = (titles + aliases).distinct(),
+            year = anime.year,
+            season = anime.season,
+            mediaKind = anime.kind,
+        )
+        val fingerprint = shikimoriIdentityFingerprint(identity)
+        val attemptKey = shikimoriAttemptPrefix + animeId
+        val previous = database.read { db ->
+            db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1", arrayOf(attemptKey)).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }?.let(::parseShikimoriAttemptRecord)
+
+        if (shouldDeferShikimoriDiscoveryAttempt(
+                storedIdentityFingerprint = previous?.identityFingerprint,
+                storedAttemptAtSeconds = previous?.attemptedAtSeconds,
+                storedOutcome = previous?.outcome,
+                currentIdentityFingerprint = fingerprint,
+                nowSeconds = nowSeconds(),
+            )
+        ) {
+            recordShikimoriResult("SHIKIMORI_COVER_DISCOVERY_SKIPPED", "IDENTITY_COOLDOWN_ACTIVE", animeId, requestId)
+            return null
+        }
+
+        writeShikimoriAttemptRecord(attemptKey, fingerprint, nowSeconds(), "pending")
+        ReiAnixDiagnosticTimeline.record(
+            name = "SHIKIMORI_COVER_DISCOVERY_STARTED",
+            source = "ReiAnixArtworkService",
+            result = "PUBLIC_HTML_SITEMAP",
+            requestId = requestId,
+            context = mapOf("entity_id" to animeId),
+        )
+        val result = shikimoriCoverDiscovery(identity)
+        val outcome = when (result) {
+            is ReiAnixShikimoriDiscoveryResult.NetworkFailure -> "transient"
+            is ReiAnixShikimoriDiscoveryResult.HttpFailure ->
+                if (result.statusCode == 408 || result.statusCode == 429 || result.statusCode >= 500) "transient" else "completed"
+            else -> "completed"
+        }
+        writeShikimoriAttemptRecord(attemptKey, fingerprint, nowSeconds(), outcome)
+
+        return when (result) {
+            is ReiAnixShikimoriDiscoveryResult.Found -> {
+                if (!validShikimoriCoverImageUrl(result.imageUrl, result.shikimoriAnimeId)) {
+                    recordShikimoriResult(
+                        "SHIKIMORI_COVER_URL_REJECTED",
+                        "INVALID_HOST_OR_PATH",
+                        animeId,
+                        requestId,
+                        result.pageUrl,
+                    )
+                    null
+                } else {
+                    recordShikimoriResult(
+                        "SHIKIMORI_COVER_URL_ACCEPTED",
+                        "VERIFIED_TITLE_AND_PUBLIC_POSTER",
+                        animeId,
+                        requestId,
+                        result.pageUrl,
+                    )
+                    result.imageUrl
+                }
+            }
+            is ReiAnixShikimoriDiscoveryResult.Ambiguous ->
+                recordShikimoriResult("SHIKIMORI_COVER_DISCOVERY_AMBIGUOUS", "AMBIGUOUS", animeId, requestId).let { null }
+            is ReiAnixShikimoriDiscoveryResult.PageNotFound ->
+                recordShikimoriResult("SHIKIMORI_PUBLIC_PAGE_NOT_FOUND", "HTTP_404", animeId, requestId, result.pageUrl).let { null }
+            is ReiAnixShikimoriDiscoveryResult.InvalidHtml ->
+                recordShikimoriResult("SHIKIMORI_HTML_INVALID", "STRUCTURE_NOT_RECOGNIZED", animeId, requestId, result.pageUrl).let { null }
+            is ReiAnixShikimoriDiscoveryResult.NoCover ->
+                recordShikimoriResult("SHIKIMORI_COVER_NOT_FOUND", "NO_MAIN_POSTER", animeId, requestId, result.pageUrl).let { null }
+            is ReiAnixShikimoriDiscoveryResult.RejectedImageUrl ->
+                recordShikimoriResult("SHIKIMORI_COVER_URL_REJECTED", "URL_ORIGIN_OR_PATH_NOT_ALLOWED", animeId, requestId, result.pageUrl).let { null }
+            is ReiAnixShikimoriDiscoveryResult.TitleMismatch ->
+                recordShikimoriResult("SHIKIMORI_COVER_TITLE_REJECTED", "PAGE_TITLE_MISMATCH", animeId, requestId, result.pageUrl).let { null }
+            is ReiAnixShikimoriDiscoveryResult.NotFound ->
+                recordShikimoriResult("SHIKIMORI_COVER_DISCOVERY_COMPLETED", result.reason, animeId, requestId).let { null }
+            is ReiAnixShikimoriDiscoveryResult.HttpFailure ->
+                recordShikimoriResult("SHIKIMORI_PUBLIC_HTTP_FAILED", "HTTP_" + result.statusCode, animeId, requestId, result.url).let { null }
+            is ReiAnixShikimoriDiscoveryResult.Blocked ->
+                recordShikimoriResult("SHIKIMORI_PUBLIC_ACCESS_BLOCKED", result.reason, animeId, requestId, result.url).let { null }
+            is ReiAnixShikimoriDiscoveryResult.NetworkFailure ->
+                recordShikimoriResult("SHIKIMORI_PUBLIC_NETWORK_FAILED", result.reason, animeId, requestId).let { null }
+        }
+    }
+
+    private fun shikimoriIdentityFingerprint(identity: ReiAnixShikimoriAnimeIdentity): String {
+        val canonical = buildString {
+            append(identity.title.trim())
+            append(31.toChar())
+            append(identity.aliases.map(String::trim).filter(String::isNotBlank).distinct().sorted().joinToString(30.toChar().toString()))
+            append(31.toChar()).append(identity.year?.toString().orEmpty())
+            append(31.toChar()).append(identity.season?.trim()?.lowercase(Locale.ROOT).orEmpty())
+            append(31.toChar()).append(identity.mediaKind?.trim()?.lowercase(Locale.ROOT).orEmpty())
+        }
+        return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    private fun parseShikimoriAttemptRecord(raw: String): ShikimoriAttemptRecord {
+        val json = runCatching { JSONObject(raw) }.getOrNull()
+            ?: return ShikimoriAttemptRecord(null, raw.toDoubleOrNull(), "completed")
+        return ShikimoriAttemptRecord(
+            identityFingerprint = json.optString("identity_fingerprint").takeIf(String::isNotBlank),
+            attemptedAtSeconds = json.optDouble("attempted_at_seconds", Double.NaN).takeIf { it.isFinite() },
+            outcome = json.optString("outcome").takeIf(String::isNotBlank),
+        )
+    }
+
+    private fun writeShikimoriAttemptRecord(
+        key: String,
+        identityFingerprint: String,
+        attemptedAtSeconds: Double,
+        outcome: String,
+    ) {
+        val value = JSONObject()
+            .put("identity_fingerprint", identityFingerprint)
+            .put("attempted_at_seconds", attemptedAtSeconds)
+            .put("outcome", outcome)
+            .toString()
+        database.transaction { db ->
+            db.insertWithOnConflict(
+                "preferences",
+                null,
+                ContentValues().apply {
+                    put("key", key)
+                    put("value", value)
+                    put("updated_at", attemptedAtSeconds)
+                },
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+        }
+    }
+
+    private fun recordShikimoriResult(
+        name: String,
+        result: String,
+        animeId: Long,
+        requestId: String,
+        pageUrl: String? = null,
+    ) {
+        val context = buildMap<String, Any> {
+            put("entity_id", animeId)
+            if (pageUrl != null) put("page_url", pageUrl)
+        }
+        ReiAnixDiagnosticTimeline.record(
+            name = name,
+            severity = if (name.endsWith("COMPLETED") || name.endsWith("ACCEPTED")) "INFO" else "WARN",
+            source = "ReiAnixArtworkService",
+            result = result,
+            requestId = requestId,
+            context = context,
+        )
+    }
+
+    private fun openArtworkConnection(rawUrl: String, sourceKind: String): HttpURLConnection {
+        if (sourceKind != "shikimori") {
+            val conn = URL(rawUrl).openConnection() as? HttpURLConnection
+                ?: throw InvalidImage("Not an HTTP connection.")
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty("User-Agent", "ReiAnix/ArtworkEngine-Kotlin")
+            conn.setRequestProperty("Accept", "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8")
+            conn.connect()
+            return conn
+        }
+
+        val expectedId = runCatching { URI(rawUrl).path }.getOrNull()?.let { path ->
+            (Regex("^/system/animes/original/(\\d+)\\.(?:jpe?g|png|webp|gif)$", RegexOption.IGNORE_CASE).matchEntire(path)
+                ?: Regex("^/uploads/poster/animes/(\\d+)/[^/]+$").matchEntire(path))
+                ?.groupValues?.get(1)?.toLongOrNull()
+        } ?: throw InvalidImage("Invalid Shikimori poster path.")
+        var current = rawUrl
+        for (attempt in 0..shikimoriMaxRedirects) {
+            if (!validShikimoriCoverImageUrl(current, expectedId)) {
+                throw InvalidImage("Untrusted Shikimori poster redirect.")
+            }
+            val conn = URL(current).openConnection() as? HttpURLConnection
+                ?: throw InvalidImage("Not an HTTP connection.")
+            conn.instanceFollowRedirects = false
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
+            conn.setRequestProperty("User-Agent", "ReiAnix/ArtworkEngine-Kotlin")
+            conn.setRequestProperty("Accept", "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8")
+            conn.connect()
+            val status = conn.responseCode
+            if (status !in 300..399) return conn
+            val location = conn.getHeaderField("Location")
+            conn.disconnect()
+            if (location.isNullOrBlank() || attempt == shikimoriMaxRedirects) {
+                throw InvalidImage("Shikimori poster redirect rejected.")
+            }
+            current = runCatching { URI(current).resolve(location).normalize().toASCIIString() }
+                .getOrNull() ?: throw InvalidImage("Invalid Shikimori redirect.")
+            if (!validShikimoriCoverImageUrl(current, expectedId)) {
+                throw InvalidImage("Shikimori poster redirect left the allowed origin.")
+            }
+        }
+        throw InvalidImage("Shikimori poster redirect limit exceeded.")
+    }
+
     private fun candidates(entity: String, id: String, type: String, url: String): List<Artwork> =
         database.read { queryCandidates(it, entity, id, type, url) }
     private fun queryCandidates(db: SQLiteDatabase, entity: String, id: String, type: String, url: String): List<Artwork> =
