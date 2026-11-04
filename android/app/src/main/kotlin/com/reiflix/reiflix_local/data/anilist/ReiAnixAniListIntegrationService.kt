@@ -25,7 +25,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.distinctBy
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.take
 import org.json.JSONArray
@@ -400,8 +400,10 @@ class ReiAnixAniListIntegrationService(
         // The flow is consumed incrementally. A strong first image or a two-of-three
         // episode agreement ends collection immediately; no remaining thumbnails are
         // awaited and no video file is ever uploaded.
-        samples.distinctBy(TraceMoeEpisodeSample::episodeId)
-            .take(MAX_TRACE_MOE_EPISODE_SAMPLES)
+        val seenEpisodeIds = HashSet<Long>()
+        samples.transform { sample ->
+            if (seenEpisodeIds.add(sample.episodeId)) emit(sample)
+        }.take(MAX_TRACE_MOE_EPISODE_SAMPLES)
             .firstOrNull { sample ->
                 currentCoroutineContext().ensureActive()
                 if (sample.episodeId <= 0L) return@firstOrNull false
