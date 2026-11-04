@@ -142,10 +142,10 @@ class ReiAnixTraceMoeClient(
 
     private fun isJpeg(bytes: ByteArray): Boolean =
         bytes.size >= 4 &&
-            bytes[0].toInt() and 0xff == 0xff &&
-            bytes[1].toInt() and 0xff == 0xd8 &&
-            bytes[bytes.lastIndex - 1].toInt() and 0xff == 0xff &&
-            bytes[bytes.lastIndex].toInt() and 0xff == 0xd9
+            bytes[0] == 0xff.toByte() &&
+            bytes[1] == 0xd8.toByte() &&
+            bytes[bytes.lastIndex - 1] == 0xff.toByte() &&
+            bytes[bytes.lastIndex] == 0xd9.toByte()
 
     companion object {
         const val SEARCH_ENDPOINT = "https://api.trace.moe/search?anilistInfo=true&cutBorders=1"
