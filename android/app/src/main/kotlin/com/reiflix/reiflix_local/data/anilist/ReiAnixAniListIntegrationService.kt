@@ -194,7 +194,6 @@ class ReiAnixAniListIntegrationService(
     private data class TraceMoeIdentificationSession(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>> = linkedMapOf(),
         val queriedEpisodeIds: MutableSet<Long> = linkedSetOf(),
-        var attemptTimestampWritten: Boolean = false,
     )
     private val traceMoeIdentificationLocks = ConcurrentHashMap<Long, Mutex>()
     private val traceMoeIdentificationSessions = ConcurrentHashMap<Long, TraceMoeIdentificationSession>()
@@ -417,11 +416,6 @@ class ReiAnixAniListIntegrationService(
                 traceMoeIdentificationSessions.remove(animeId)
                 return false
             }
-            if (!session.attemptTimestampWritten) {
-                writeTraceMoeAttemptAt(animeId, nowSeconds)
-                session.attemptTimestampWritten = true
-            }
-
             val matches = try {
                 traceMoeClient.search(sample.imageFile)
             } catch (cancelled: CancellationException) {
@@ -432,6 +426,7 @@ class ReiAnixAniListIntegrationService(
                     "Trace.moe episode-frame search failed animeId=$animeId episodeId=${sample.episodeId}",
                     error,
                 )
+                writeTraceMoeAttemptAt(animeId, System.currentTimeMillis() / 1000.0)
                 traceMoeIdentificationSessions.remove(animeId)
                 return false
             }
@@ -494,6 +489,7 @@ class ReiAnixAniListIntegrationService(
             }
 
             if (session.queriedEpisodeIds.size >= MAX_TRACE_MOE_EPISODE_SAMPLES) {
+                writeTraceMoeAttemptAt(animeId, System.currentTimeMillis() / 1000.0)
                 traceMoeIdentificationSessions.remove(animeId)
                 return false
             }
