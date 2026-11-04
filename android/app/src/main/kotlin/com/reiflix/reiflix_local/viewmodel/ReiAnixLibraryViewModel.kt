@@ -29,6 +29,7 @@ import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
 import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import com.reiflix.reiflix_local.scanner.ScanLifecycleState
@@ -1379,6 +1380,9 @@ class ReiAnixLibraryViewModel(
         if (pending.isEmpty()) return
 
         viewModelScope.launch {
+            // Identity samples are keyed by canonical episode ID. Existing valid
+            // thumbnails are reused; newly extracted frames join this same set.
+            val identitySamples = linkedMapOf<Long, File>()
             try {
                 // Validate the complete batch first and hide only unusable generated
                 // associations before spending time attempting frame extraction.
@@ -1387,6 +1391,9 @@ class ReiAnixLibraryViewModel(
                         val rawSource = episodeThumbnailSource(episode) ?: return@mapNotNull null
                         val existingPath = episode.artwork?.localPath
                         val existingIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(existingPath)
+                        if (existingIsUsable && !existingPath.isNullOrBlank()) {
+                            identitySamples[episode.id] = File(existingPath)
+                        }
                         if (!VideoThumbnailExtractor.thumbnailNeedsRegeneration(existingPath, existingIsUsable)) {
                             ReiAnixDiagnosticTimeline.record(
                                 name = "EPISODE_THUMBNAIL_CACHE_REUSED",
@@ -1464,6 +1471,9 @@ class ReiAnixLibraryViewModel(
                                 )
                             } else {
                                 val outputIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
+                                if (outputIsUsable) {
+                                    identitySamples[episode.id] = File(result.path)
+                                }
                                 ReiAnixDiagnosticTimeline.record(
                                     name = "EPISODE_THUMBNAIL_OUTPUT_VALIDATED",
                                     source = "ReiAnixLibraryViewModel",
@@ -1482,6 +1492,24 @@ class ReiAnixLibraryViewModel(
                         throw cancelled
                     } catch (error: Exception) {
                         Log.w(TAG, "Episode thumbnail generation failed for episodeId=${episode.id}", error)
+                    }
+                }
+
+                // Only local frames from different episode rows can authorize a visual
+                // identity attempt. The service enforces its own persisted cooldown and
+                // sends still images only; no video file is uploaded.
+                if (identitySamples.size >= 2) {
+                    try {
+                        appDependencies?.aniListIntegrationService?.identifyFromEpisodeThumbnails(
+                            animeId = animeId,
+                            samples = identitySamples.entries.take(3).map { (episodeId, file) ->
+                                TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file)
+                            },
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Trace.moe visual identification failed for animeId=$animeId", error)
                     }
                 }
             } finally {
