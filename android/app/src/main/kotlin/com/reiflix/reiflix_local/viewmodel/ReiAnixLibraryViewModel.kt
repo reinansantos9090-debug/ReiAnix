@@ -264,7 +264,10 @@ class ReiAnixLibraryViewModel(
     // the current episode releases its lock instead of dropping the update.
     private val episodeThumbnailRerunRequested = ConcurrentHashMap.newKeySet<Long>()
     private val episodeThumbnailWorkQueue = EpisodeThumbnailWorkQueue()
-    private val episodeThumbnailWorkSignal = Channel<Unit>(Channel.CONFLATED)
+    // Separate wake-up channels prevent a background worker that intentionally skips
+    // the active anime from consuming the only signal while the priority worker sleeps.
+    private val episodeThumbnailPriorityWorkSignal = Channel<Unit>(Channel.CONFLATED)
+    private val episodeThumbnailBackgroundWorkSignal = Channel<Unit>(Channel.CONFLATED)
     private val episodeThumbnailRetrySignal = Channel<Unit>(Channel.CONFLATED)
     private val episodeThumbnailRetryStates = ConcurrentHashMap<Long, EpisodeThumbnailRetryState>()
     private val episodeThumbnailRetryCounts = ConcurrentHashMap<Long, Int>()
@@ -1404,13 +1407,18 @@ class ReiAnixLibraryViewModel(
             animeId = animeId,
             sequence = episodeThumbnailPrioritySequence.incrementAndGet(),
         )
-        episodeThumbnailWorkSignal.trySend(Unit)
+        signalEpisodeThumbnailWorkers()
     }
 
     /** Remove only this screen's priority token; another visible screen may own priority. */
     fun clearEpisodeThumbnailPriority(ownerKey: String) {
         episodeThumbnailPriorityOwners.remove(ownerKey.trim())
-        episodeThumbnailWorkSignal.trySend(Unit)
+        signalEpisodeThumbnailWorkers()
+    }
+
+    private fun signalEpisodeThumbnailWorkers() {
+        episodeThumbnailPriorityWorkSignal.trySend(Unit)
+        episodeThumbnailBackgroundWorkSignal.trySend(Unit)
     }
 
     private fun currentEpisodeThumbnailPriorityAnimeId(): Long? =
@@ -1466,10 +1474,14 @@ class ReiAnixLibraryViewModel(
                 episodeThumbnailWorkQueue.poll(excludeAnimeId = priorityAnimeId)
             }
             if (item == null) {
-                episodeThumbnailWorkSignal.receive()
+                if (prioritizeActiveAnime) {
+                    episodeThumbnailPriorityWorkSignal.receive()
+                } else {
+                    episodeThumbnailBackgroundWorkSignal.receive()
+                }
                 continue
             }
-            if (episodeThumbnailWorkQueue.size() > 0) episodeThumbnailWorkSignal.trySend(Unit)
+            if (episodeThumbnailWorkQueue.size() > 0) signalEpisodeThumbnailWorkers()
             if (!episodeThumbnailRequestsInFlight.add(item.episodeId)) {
                 val runningRevision = episodeThumbnailProcessingRevisions[item.episodeId]
                 if (runningRevision != item.revision) episodeThumbnailRerunRequested.add(item.episodeId)
@@ -1540,7 +1552,7 @@ class ReiAnixLibraryViewModel(
                         }
                     }
                 }
-                if (episodeThumbnailWorkQueue.size() > 0) episodeThumbnailWorkSignal.trySend(Unit)
+                if (episodeThumbnailWorkQueue.size() > 0) signalEpisodeThumbnailWorkers()
             }
         }
     }
@@ -1583,7 +1595,7 @@ class ReiAnixLibraryViewModel(
                 }
             }
         }
-        if (episodeThumbnailWorkQueue.offer(work) > 0) episodeThumbnailWorkSignal.trySend(Unit)
+        if (episodeThumbnailWorkQueue.offer(work) > 0) signalEpisodeThumbnailWorkers()
     }
 
     private fun episodeThumbnailRevision(
