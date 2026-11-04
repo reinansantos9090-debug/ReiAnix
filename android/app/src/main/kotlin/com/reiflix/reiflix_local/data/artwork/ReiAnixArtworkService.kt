@@ -1104,11 +1104,26 @@ class ReiAnixArtworkService(
         )
         val fingerprint = shikimoriIdentityFingerprint(identity)
         val attemptKey = shikimoriAttemptPrefix + animeId
-        val previous = database.read { db ->
+        var previous = database.read { db ->
             db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1", arrayOf(attemptKey)).use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) else null
             }
         }?.let(::parseShikimoriAttemptRecord)
+        if (
+            previous != null &&
+            previous.identityFingerprint.isNullOrBlank() &&
+            previous.attemptedAtSeconds?.isFinite() == true
+        ) {
+            // Older builds stored only a timestamp. Bind the remaining cooldown to the
+            // current title identity once so an upgrade does not trigger a catalogue-wide burst.
+            writeShikimoriAttemptRecord(
+                attemptKey,
+                fingerprint,
+                previous.attemptedAtSeconds,
+                "completed",
+            )
+            previous = previous.copy(identityFingerprint = fingerprint, outcome = "completed")
+        }
 
         if (shouldDeferShikimoriDiscoveryAttempt(
                 storedIdentityFingerprint = previous?.identityFingerprint,
