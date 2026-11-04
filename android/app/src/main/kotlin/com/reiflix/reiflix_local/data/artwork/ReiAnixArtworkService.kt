@@ -399,7 +399,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
                         }
                     } else {
-                        val posterRecovered = firstSuccessfulArtworkCandidate(
+                        // Candidate searches may finish at different times and append fallbacks.
+                        // Once a usable poster has been committed, later alias results must not
+                        // replace it or trigger another download for the same anime.
+                        val posterAlreadyAvailable = hasUsablePersistedPoster(animeId, entityType)
+                        val posterRecovered = posterAlreadyAvailable || firstSuccessfulArtworkCandidate(
                             candidates = candidateCandidates,
                             artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
                         ) { candidate, url ->
