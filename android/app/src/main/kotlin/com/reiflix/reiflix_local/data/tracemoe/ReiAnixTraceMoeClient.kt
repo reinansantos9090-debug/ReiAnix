@@ -148,7 +148,7 @@ class ReiAnixTraceMoeClient(
             bytes[bytes.lastIndex] == 0xd9.toByte()
 
     companion object {
-        const val SEARCH_ENDPOINT = "https://api.trace.moe/search?anilistInfo=true&cutBorders=1"
+        const val SEARCH_ENDPOINT = "https://api.trace.moe/search?anilistInfo&cutBorders=1"
         const val DEFAULT_TIMEOUT_MILLIS = 15_000
         const val DEFAULT_REQUEST_INTERVAL_MILLIS = 1_200L
         const val MAX_IMAGE_BYTES = 4L * 1024L * 1024L
