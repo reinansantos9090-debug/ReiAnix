@@ -34,6 +34,7 @@ import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
 import android.net.Uri
@@ -1380,9 +1381,36 @@ class ReiAnixLibraryViewModel(
         if (pending.isEmpty()) return
 
         viewModelScope.launch {
-            // Identity samples are keyed by canonical episode ID. Existing valid
-            // thumbnails are reused; newly extracted frames join this same set.
-            val identitySamples = linkedMapOf<Long, File>()
+            // Feed the existing valid/generated JPEGs to Trace.moe as soon as each
+            // becomes available. This channel is separate from thumbnail extraction:
+            // the extractor and its scheduling/quality/concurrency are unchanged.
+            val traceMoeSampleChannel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
+            val traceMoeEpisodesQueued = mutableSetOf<Long>()
+            val traceMoeIdentificationJob = appDependencies?.aniListIntegrationService?.let { integration ->
+                launch {
+                    try {
+                        integration.identifyFromEpisodeThumbnails(
+                            animeId = animeId,
+                            samples = traceMoeSampleChannel.receiveAsFlow(),
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Trace.moe visual identification failed for animeId=$animeId", error)
+                    }
+                }
+            }
+
+            suspend fun submitTraceMoeSample(episodeId: Long, file: File) {
+                if (traceMoeIdentificationJob?.isActive != true ||
+                    traceMoeEpisodesQueued.size >= 3 ||
+                    !traceMoeEpisodesQueued.add(episodeId)
+                ) return
+                traceMoeSampleChannel.send(
+                    TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file),
+                )
+            }
+
             try {
                 // Validate the complete batch first and hide only unusable generated
                 // associations before spending time attempting frame extraction.
@@ -1392,7 +1420,7 @@ class ReiAnixLibraryViewModel(
                         val existingPath = episode.artwork?.localPath
                         val existingIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(existingPath)
                         if (existingIsUsable && !existingPath.isNullOrBlank()) {
-                            identitySamples[episode.id] = File(existingPath)
+                            submitTraceMoeSample(episode.id, File(existingPath))
                         }
                         if (!VideoThumbnailExtractor.thumbnailNeedsRegeneration(existingPath, existingIsUsable)) {
                             ReiAnixDiagnosticTimeline.record(
@@ -1472,7 +1500,7 @@ class ReiAnixLibraryViewModel(
                             } else {
                                 val outputIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
                                 if (outputIsUsable) {
-                                    identitySamples[episode.id] = File(result.path)
+                                    submitTraceMoeSample(episode.id, File(result.path))
                                 }
                                 ReiAnixDiagnosticTimeline.record(
                                     name = "EPISODE_THUMBNAIL_OUTPUT_VALIDATED",
@@ -1495,24 +1523,10 @@ class ReiAnixLibraryViewModel(
                     }
                 }
 
-                // Only local frames from different episode rows can authorize a visual
-                // identity attempt. The service enforces its own persisted cooldown and
-                // sends still images only; no video file is uploaded.
-                if (identitySamples.size >= 2) {
-                    try {
-                        appDependencies?.aniListIntegrationService?.identifyFromEpisodeThumbnails(
-                            animeId = animeId,
-                            samples = identitySamples.entries.take(3).map { (episodeId, file) ->
-                                TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file)
-                            },
-                        )
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
-                        Log.w(TAG, "Trace.moe visual identification failed for animeId=$animeId", error)
-                    }
-                }
             } finally {
+                // Closing the stream releases a Trace.moe attempt that did not reach
+                // a result with the first three distinct local episodes.
+                traceMoeSampleChannel.close()
                 var rerunRequested = false
                 pending.forEach { episode ->
                     episodeThumbnailRequestsInFlight.remove(episode.id)

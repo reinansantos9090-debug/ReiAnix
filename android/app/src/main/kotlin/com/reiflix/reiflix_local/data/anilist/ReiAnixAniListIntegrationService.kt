@@ -9,7 +9,7 @@ import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
-import com.reiflix.reiflix_local.data.tracemoe.evaluateTraceMoeIdentityConsensus
+import com.reiflix.reiflix_local.data.tracemoe.evaluateTraceMoeProgressiveIdentity
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 
 import android.content.Context
@@ -23,6 +23,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.take
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeMetadataPatch
@@ -340,13 +345,25 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Uses independent thumbnails from local episode files as a fallback when title
-     * matching has not identified the local anime. Only a confirmed multi-episode
-     * Trace.moe consensus is allowed to associate AniList metadata.
+     * Uses independent local episode thumbnails to verify or correct an automatic
+     * AniList association. A clear first-frame result is accepted immediately;
+     * otherwise two matching results from up to three episodes are required.
+     * Manual associations and manually sourced metadata are never replaced.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
         samples: List<TraceMoeEpisodeSample>,
+    ): Boolean = identifyFromEpisodeThumbnails(animeId, samples.asFlow())
+
+    /**
+     * Consume episode thumbnails as soon as they become available. Trace.moe can
+     * confirm a clear first-frame result immediately; otherwise two matching
+     * episode results out of at most three are enough to correct an automatic
+     * association. The upstream flow is cancelled as soon as a decision is made.
+     */
+    suspend fun identifyFromEpisodeThumbnails(
+        animeId: Long,
+        samples: Flow<TraceMoeEpisodeSample>,
     ): Boolean {
         if (animeId <= 0L || !traceMoeIdentificationInFlight.add(animeId)) return false
         return try {
@@ -358,85 +375,91 @@ class ReiAnixAniListIntegrationService(
 
     private suspend fun identifyFromEpisodeThumbnailsInternal(
         animeId: Long,
-        samples: List<TraceMoeEpisodeSample>,
+        samples: Flow<TraceMoeEpisodeSample>,
     ): Boolean {
         if (animeId <= 0L || !isAniListEnabled() ||
             !settingEnabled("metadata.auto_match", defaultValue = true)
         ) return false
 
         var local = library.getAnime(animeId) ?: return false
-        if (local.anilistId != null ||
-            local.anilistMatchManual == true ||
+        if (local.anilistMatchManual == true ||
             local.metadataSource == "manual" ||
             local.metadataStatus == "manual"
         ) return false
 
-        // One image per distinct local episode. Keep this small because Trace.moe's
-        // public endpoint is quota-limited and the guest service serializes requests.
-        val usableSamples = withContext(Dispatchers.IO) {
-            samples.asSequence()
-                .filter { it.episodeId > 0L }
-                .distinctBy(TraceMoeEpisodeSample::episodeId)
-                .filter { sample ->
+        // Existing automatic associations need a fresh verification window.
+        // Do not let an attempt saved by the older implementation (which could not
+        // correct an existing ID) suppress the first correction attempt after upgrade.
+        val verifyingExistingAutomaticAssociation = local.anilistId != null
+        val previousAttempt = readTraceMoeAttemptAt(
+            animeId = animeId,
+            correction = verifyingExistingAutomaticAssociation,
+        )
+        val now = System.currentTimeMillis() / 1000.0
+        if (previousAttempt != null &&
+            now - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
+        ) return false
+
+        val matchesByEpisode = linkedMapOf<Long, List<TraceMoeSearchMatch>>()
+        var confirmedIdentity: com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentityConsensus? = null
+        var attemptTimestampWritten = false
+
+        // The flow is consumed incrementally. A strong first image or a two-of-three
+        // episode agreement ends collection immediately; no remaining thumbnails are
+        // awaited and no video file is ever uploaded.
+        val seenEpisodeIds = HashSet<Long>()
+        samples.transform { sample ->
+            if (seenEpisodeIds.add(sample.episodeId)) emit(sample)
+        }.take(MAX_TRACE_MOE_EPISODE_SAMPLES)
+            .firstOrNull { sample ->
+                currentCoroutineContext().ensureActive()
+                if (sample.episodeId <= 0L) return@firstOrNull false
+
+                val usable = withContext(Dispatchers.IO) {
                     sample.imageFile.isFile &&
                         sample.imageFile.length() in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES &&
                         VideoThumbnailExtractor.isUsableThumbnailFile(sample.imageFile.absolutePath)
                 }
-                .take(MAX_TRACE_MOE_EPISODE_SAMPLES)
-                .toList()
-        }
-        if (usableSamples.size < MINIMUM_TRACE_MOE_EPISODE_SAMPLES) return false
+                if (!usable) return@firstOrNull false
 
-        val nowSeconds = System.currentTimeMillis() / 1000.0
-        val previousAttempt = readTraceMoeAttemptAt(animeId)
-        if (previousAttempt != null &&
-            nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
-        ) return false
+                val requestAt = System.currentTimeMillis() / 1000.0
+                if (!reserveTraceMoeRequest(requestAt)) {
+                    Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
+                    return@firstOrNull true
+                }
+                if (!attemptTimestampWritten) {
+                    writeTraceMoeAttemptAt(
+                        animeId = animeId,
+                        attemptAtSeconds = requestAt,
+                        correction = verifyingExistingAutomaticAssociation,
+                    )
+                    attemptTimestampWritten = true
+                }
 
-        // A local rolling budget stays well below the public guest quota even if
-        // the user opens many unrelated unidentified anime in the same day.
-        val matchesByEpisode = linkedMapOf<Long, List<TraceMoeSearchMatch>>()
-        var attemptTimestampWritten = false
-        for (sample in usableSamples) {
-            currentCoroutineContext().ensureActive()
-            if (!reserveTraceMoeRequest(nowSeconds)) {
-                Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
-                break
+                val matches = try {
+                    traceMoeClient.search(sample.imageFile)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(
+                        TAG,
+                        "Trace.moe episode-frame search failed animeId=$animeId episodeId=${sample.episodeId}",
+                        error,
+                    )
+                    // A transport or endpoint failure is shared by the remaining frames.
+                    return@firstOrNull true
+                }
+                matchesByEpisode[sample.episodeId] = matches
+                confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
+                confirmedIdentity != null
             }
-            if (!attemptTimestampWritten) {
-                writeTraceMoeAttemptAt(animeId, nowSeconds)
-                attemptTimestampWritten = true
-            }
-            try {
-                matchesByEpisode[sample.episodeId] = traceMoeClient.search(sample.imageFile)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(
-                    TAG,
-                    "Trace.moe episode-frame search failed animeId=$animeId episodeId=${sample.episodeId}",
-                    error,
-                )
-                // HTTP errors, timeouts and transport failures affect the shared
-                // endpoint; do not burn the remaining requests on the same outage.
-                break
-            }
-        }
 
-        val consensus = evaluateTraceMoeIdentityConsensus(matchesByEpisode) ?: run {
-            Log.i(
-                TAG,
-                "Trace.moe did not reach multi-episode identity consensus animeId=$animeId " +
-                    "queried=${usableSamples.size} successful=${matchesByEpisode.size}",
-            )
-            return false
-        }
+        val consensus = confirmedIdentity ?: return false
 
         // Re-read the canonical row immediately before committing. A manual selection
-        // or another identity provider may have won while the visual requests ran.
+        // or manual metadata edit always wins over an automatic visual correction.
         local = library.getAnime(animeId) ?: return false
-        if (local.anilistId != null ||
-            local.anilistMatchManual == true ||
+        if (local.anilistMatchManual == true ||
             local.metadataSource == "manual" ||
             local.metadataStatus == "manual"
         ) return false
@@ -457,6 +480,7 @@ class ReiAnixAniListIntegrationService(
                 manual = false,
                 score = consensus.averageSimilarity,
                 margin = consensus.margin,
+                traceMoeConfirmed = true,
             )
         ) {
             is AniListResult.Success -> applied.value.anilistId == consensus.anilistId.toLong()
@@ -467,11 +491,19 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
-    private suspend fun readTraceMoeAttemptAt(animeId: Long): Double? = withContext(Dispatchers.IO) {
+    private suspend fun readTraceMoeAttemptAt(
+        animeId: Long,
+        correction: Boolean = false,
+    ): Double? = withContext(Dispatchers.IO) {
+        val prefix = if (correction) {
+            TRACE_MOE_CORRECTION_ATTEMPT_PREFERENCE_PREFIX
+        } else {
+            TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX
+        }
         library.database.read { connection ->
             connection.rawQuery(
                 "SELECT value FROM preferences WHERE key=? LIMIT 1",
-                arrayOf(TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX + animeId),
+                arrayOf(prefix + animeId),
             ).use { cursor ->
                 if (cursor.moveToFirst()) {
                     cursor.getString(0)?.toDoubleOrNull()?.takeIf { it.isFinite() }
@@ -482,22 +514,30 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
-    private suspend fun writeTraceMoeAttemptAt(animeId: Long, attemptAtSeconds: Double) =
-        withContext(Dispatchers.IO) {
-            library.database.transaction { connection ->
-                val values = ContentValues().apply {
-                    put("key", TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX + animeId)
-                    put("value", attemptAtSeconds.toString())
-                    put("updated_at", attemptAtSeconds)
-                }
-                connection.insertWithOnConflict(
-                    "preferences",
-                    null,
-                    values,
-                    SQLiteDatabase.CONFLICT_REPLACE,
-                )
-            }
+    private suspend fun writeTraceMoeAttemptAt(
+        animeId: Long,
+        attemptAtSeconds: Double,
+        correction: Boolean = false,
+    ) = withContext(Dispatchers.IO) {
+        val prefix = if (correction) {
+            TRACE_MOE_CORRECTION_ATTEMPT_PREFERENCE_PREFIX
+        } else {
+            TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX
         }
+        library.database.transaction { connection ->
+            val values = ContentValues().apply {
+                put("key", prefix + animeId)
+                put("value", attemptAtSeconds.toString())
+                put("updated_at", attemptAtSeconds)
+            }
+            connection.insertWithOnConflict(
+                "preferences",
+                null,
+                values,
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+        }
+    }
 
     /** Atomically reserves one Trace.moe request from the local rolling 24-hour budget. */
     private suspend fun reserveTraceMoeRequest(nowSeconds: Double): Boolean =
@@ -1041,6 +1081,7 @@ class ReiAnixAniListIntegrationService(
         manual: Boolean,
         score: Double?,
         margin: Double?,
+        traceMoeConfirmed: Boolean = false,
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
             // Artwork preference controls whether the remote URL becomes eligible
@@ -1103,6 +1144,7 @@ class ReiAnixAniListIntegrationService(
                 manual = manual,
                 score = score,
                 margin = margin,
+                traceMoeConfirmed = traceMoeConfirmed,
             )
             if (!manual && updated.anilistId != remote.id.toLong()) {
                 return AniListResult.Failure(
@@ -1334,11 +1376,11 @@ class ReiAnixAniListIntegrationService(
     companion object {
         private const val TAG = "ReiAnixAniList"
         private const val TRACE_MOE_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.trace_moe_attempt_v1."
+        private const val TRACE_MOE_CORRECTION_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.trace_moe_correction_attempt_v1."
         private const val TRACE_MOE_GLOBAL_HISTORY_PREFERENCE_KEY = "__reianix.internal.trace_moe_request_history_v1"
         private const val TRACE_MOE_LOCAL_DAILY_REQUEST_BUDGET = 30
         private const val TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS = 24L * 60L * 60L
         private const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
-        private const val MINIMUM_TRACE_MOE_EPISODE_SAMPLES = 2
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
