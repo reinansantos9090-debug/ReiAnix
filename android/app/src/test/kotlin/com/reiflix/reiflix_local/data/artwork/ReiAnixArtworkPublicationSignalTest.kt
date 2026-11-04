@@ -489,4 +489,58 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
 
+    @Test
+    fun twoDistinctTitleAliasesPromoteTheSameProviderRecordAndPoster() {
+        val tracker = ReiAnixArtworkConsensusTracker()
+        val first = consensusCandidate("anilist", "anilist:101", "https://img.example/saigo-cover.jpg", "saigo original title")
+        val second = first.copy(matchedTitleAliases = setOf("saigo english title"))
+        assertFalse(tracker.collect(91L, listOf(first)).any { it.identityVerified })
+        assertTrue(tracker.collect(91L, listOf(second)).any { it.identityVerified })
+    }
+
+    @Test
+    fun repeatedVariantsForOneAliasDoNotCountAsTwoTitleVotes() {
+        val tracker = ReiAnixArtworkConsensusTracker()
+        val candidate = consensusCandidate("anilist", "anilist:101", "https://img.example/saigo-cover.jpg", "same original alias")
+        assertFalse(tracker.collect(92L, listOf(candidate)).any { it.identityVerified })
+        assertFalse(tracker.collect(92L, listOf(candidate.copy())).any { it.identityVerified })
+    }
+
+    @Test
+    fun twoIndependentProvidersPromoteOnlyTheSamePosterImage() {
+        val tracker = ReiAnixArtworkConsensusTracker()
+        val anilist = consensusCandidate("anilist", "anilist:101", "https://cdn.example/shared-poster.jpg", "original title")
+        val kitsu = consensusCandidate("kitsu", "kitsu:202", "https://cdn.example/shared-poster.jpg", "english title")
+        assertFalse(tracker.collect(93L, listOf(anilist)).any { it.identityVerified })
+        val promoted = tracker.collect(93L, listOf(kitsu))
+        assertTrue(promoted.size >= 2)
+        assertTrue(promoted.all { it.identityVerified })
+    }
+
+    @Test
+    fun differentPosterUrlsAndTwoRecordsFromOneProviderDoNotCreateProviderConsensus() {
+        val tracker = ReiAnixArtworkConsensusTracker()
+        val first = consensusCandidate("kitsu", "kitsu:201", "https://cdn.example/poster-a.jpg", "original title")
+        val second = consensusCandidate("kitsu", "kitsu:202", "https://cdn.example/poster-b.jpg", "english title")
+        assertFalse(tracker.collect(94L, listOf(first)).any { it.identityVerified })
+        assertFalse(tracker.collect(94L, listOf(second)).any { it.identityVerified })
+    }
+
+    @Test
+    fun incompatibleCandidatesCannotContributeConsensusVotes() {
+        val tracker = ReiAnixArtworkConsensusTracker()
+        val incompatible = consensusCandidate("anilist", "anilist:301", "https://img.example/wrong.jpg", "first alias")
+            .copy(identityEvidenceEligible = false)
+        val otherProvider = consensusCandidate("kitsu", "kitsu:302", "https://img.example/wrong.jpg", "second alias")
+        assertFalse(tracker.collect(95L, listOf(incompatible)).any { it.identityVerified })
+        assertFalse(tracker.collect(95L, listOf(otherProvider)).any { it.identityVerified })
+    }
+
+    private fun consensusCandidate(source: String, record: String, url: String, alias: String) =
+        ReiAnixArtworkCandidate(
+            anilistId = 0L, posterUrl = url, bannerUrl = null, source = source,
+            identityEvidenceKey = record, matchedTitleAliases = setOf(alias), identityEvidenceEligible = true,
+        )
+
+
 }

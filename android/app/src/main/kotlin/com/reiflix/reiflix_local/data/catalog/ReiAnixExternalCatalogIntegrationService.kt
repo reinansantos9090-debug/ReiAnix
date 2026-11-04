@@ -358,8 +358,20 @@ class ReiAnixExternalCatalogIntegrationService(
                     val hasPoster = remote.artworkCandidates().any {
                         it.type == ReiAnixCatalogArtworkType.POSTER
                     }
+                    val exactAliases = ReiAnixCatalogIdentityMatcher.matchingDiscriminativeTitleAliases(
+                        identity.titles, remote.alternativeTitles + remote.title,
+                    )
+                    val evidenceEligible = exactAliases.isNotEmpty() &&
+                        evaluation.decision != ReiAnixCatalogIdentityDecision.REJECTED &&
+                        evaluation.decision != ReiAnixCatalogIdentityDecision.UNRESOLVED
+                    val evidenceKey = artworkEvidenceRecordKey(remote)
                     val queued = allowArtwork && hasPoster &&
-                        queueArtworkCandidates(anime.id, listOf(remote), identityVerified = verified != null)
+                        queueArtworkCandidates(
+                            animeId = anime.id,
+                            remoteCandidates = listOf(remote),
+                            identityVerified = verified != null,
+                            identityEligibleRecordKeys = setOfNotNull(evidenceKey.takeIf { evidenceEligible }),
+                        )
                     Resolution(
                         evaluation.decision,
                         verified,
@@ -383,7 +395,8 @@ class ReiAnixExternalCatalogIntegrationService(
         // publish its poster without waiting for slower aliases.
         coroutineScope {
             val queryQueue = Channel<String>(Channel.UNLIMITED)
-            val results = Channel<ReiAnixCatalogResult<List<ReiAnixCatalogAnime>>>(Channel.UNLIMITED)
+            val results = Channel<Pair<String, ReiAnixCatalogResult<List<ReiAnixCatalogAnime>>>>(Channel.UNLIMITED)
+            val aliasAttribution = ReiAnixCatalogIdentityMatcher.searchAliasAttribution(identity.titles)
             val workers = List(TITLE_SEARCH_CONCURRENCY) {
                 launch {
                     for (query in queryQueue) {
@@ -397,7 +410,7 @@ class ReiAnixExternalCatalogIntegrationService(
                         } catch (error: Exception) {
                             ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
                         }
-                        results.send(result)
+                        results.send(query to result)
                     }
                 }
             }
@@ -406,7 +419,8 @@ class ReiAnixExternalCatalogIntegrationService(
 
             repeat(queries.size) {
                 currentCoroutineContext().ensureActive()
-                when (val result = results.receive()) {
+                val (completedQuery, result) = results.receive()
+                when (result) {
                     is ReiAnixCatalogResult.Failure -> {
                         incompleteSearch = true
                         record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
@@ -435,7 +449,31 @@ class ReiAnixExternalCatalogIntegrationService(
                                 if (firstArtworkCandidate == null) {
                                     firstArtworkCandidate = withPosters.first()
                                 }
-                                if (queueArtworkCandidates(anime.id, withPosters)) {
+                                val queryAliasKeys = aliasAttribution[
+                                    ReiAnixCatalogIdentityMatcher.normalizeCatalogTitle(completedQuery)
+                                ].orEmpty()
+                                val eligibleKeys = withPosters.mapNotNull { remote ->
+                                    val recordKey = artworkEvidenceRecordKey(remote)
+                                    val exactAliases = ReiAnixCatalogIdentityMatcher.matchingDiscriminativeTitleAliases(
+                                        identity.titles, remote.alternativeTitles + remote.title,
+                                    )
+                                    val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(
+                                        anime.id, identity, remote, ids,
+                                    )
+                                    recordKey?.takeIf {
+                                        exactAliases.isNotEmpty() &&
+                                            evaluation.decision != ReiAnixCatalogIdentityDecision.REJECTED &&
+                                            evaluation.decision != ReiAnixCatalogIdentityDecision.UNRESOLVED
+                                    }
+                                }.toSet()
+                                val aliasKeysByRecord = eligibleKeys.associateWith { queryAliasKeys }
+                                if (queueArtworkCandidates(
+                                        animeId = anime.id,
+                                        remoteCandidates = withPosters,
+                                        matchedTitleAliasesByRecord = aliasKeysByRecord,
+                                        identityEligibleRecordKeys = eligibleKeys,
+                                    )
+                                ) {
                                     artworkQueued = true
                                 }
                             }
@@ -493,24 +531,42 @@ class ReiAnixExternalCatalogIntegrationService(
         animeId: Long,
         remoteCandidates: List<ReiAnixCatalogAnime>,
         identityVerified: Boolean = false,
+        matchedTitleAliasesByRecord: Map<String, Set<String>> = emptyMap(),
+        identityEligibleRecordKeys: Set<String> = emptySet(),
     ): Boolean {
         val pending = remoteCandidates.asSequence()
-            .flatMap { it.artworkCandidates().asSequence() }
-            .filter { it.type == ReiAnixCatalogArtworkType.POSTER }
-            .distinctBy { it.url }
+            .flatMap { remote ->
+                val recordKey = artworkEvidenceRecordKey(remote)
+                remote.artworkCandidates().asSequence()
+                    .filter { it.type == ReiAnixCatalogArtworkType.POSTER }
+                    .map { candidate -> candidate to recordKey }
+            }
+            .distinctBy { it.first.url }
+            .sortedWith(
+                compareByDescending<Pair<ReiAnixCatalogArtworkCandidate, String?>> {
+                    it.second in identityEligibleRecordKeys
+                }.thenByDescending { matchedTitleAliasesByRecord[it.second]?.size ?: 0 },
+            )
             .take(MAX_SEARCH_ARTWORK_CANDIDATES)
-            .map { candidate ->
+            .map { (candidate, recordKey) ->
                 ReiAnixArtworkCandidate(
                     anilistId = 0L,
                     posterUrl = candidate.url,
                     bannerUrl = null,
                     source = candidate.source.key,
                     identityVerified = identityVerified,
+                    identityEvidenceKey = recordKey,
+                    matchedTitleAliases = matchedTitleAliasesByRecord[recordKey].orEmpty(),
+                    identityEvidenceEligible = recordKey in identityEligibleRecordKeys,
                 )
             }
             .toList()
         return pending.isNotEmpty() && artwork.requestAnimeArtworkCandidates(animeId, pending, force = false)
     }
+
+    private fun artworkEvidenceRecordKey(remote: ReiAnixCatalogAnime): String? =
+        remote.ids.idFor(remote.source)?.takeIf(String::isNotBlank)
+            ?.let { remote.source.key + ":" + it }
 
     private fun record(
         source: ReiAnixCatalogSource,

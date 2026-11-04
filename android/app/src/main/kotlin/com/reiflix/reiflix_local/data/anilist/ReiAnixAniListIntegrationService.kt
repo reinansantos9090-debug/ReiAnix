@@ -188,6 +188,8 @@ class ReiAnixAniListIntegrationService(
         val candidates: List<AniListAnime>,
         val verifiedCandidate: AniListAnime?,
         val complete: Boolean,
+        val matchedTitleAliasesById: Map<Int, Set<String>> = emptyMap(),
+        val identityEvidenceEligibleIds: Set<Int> = emptySet(),
     )
 
     constructor(context: Context) : this(
@@ -509,6 +511,8 @@ class ReiAnixAniListIntegrationService(
         animeId: Long,
         candidates: List<AniListAnime>,
         verifiedCandidate: AniListAnime? = null,
+        matchedTitleAliasesById: Map<Int, Set<String>> = emptyMap(),
+        identityEvidenceEligibleIds: Set<Int> = emptySet(),
     ): Boolean {
         val publisher = artworkCandidatePublisher ?: return false
         val artworkCandidates = candidates.asSequence()
@@ -525,6 +529,12 @@ class ReiAnixAniListIntegrationService(
                     posterUrl = remote.coverExtraLargeUrl,
                     bannerUrl = remote.bannerUrl,
                     posterFallbackUrl = remote.coverLargeUrl,
+                    identityVerified = remote.id in identityEvidenceEligibleIds &&
+                        matchedTitleAliasesById[remote.id].orEmpty().size >=
+                            com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkConsensusTracker.MINIMUM_TITLE_ALIAS_VOTES,
+                    identityEvidenceKey = "anilist:" + remote.id,
+                    matchedTitleAliases = matchedTitleAliasesById[remote.id].orEmpty(),
+                    identityEvidenceEligible = remote.id in identityEvidenceEligibleIds,
                 )
             }
             .toMutableList()
@@ -538,6 +548,9 @@ class ReiAnixAniListIntegrationService(
                 bannerUrl = null,
                 posterFallbackUrl = remote.coverLargeUrl,
                 identityVerified = true,
+                identityEvidenceKey = "anilist:" + remote.id,
+                matchedTitleAliases = matchedTitleAliasesById[remote.id].orEmpty(),
+                identityEvidenceEligible = remote.id in identityEvidenceEligibleIds,
             )
         }
         if (artworkCandidates.isEmpty()) return false
@@ -572,6 +585,9 @@ class ReiAnixAniListIntegrationService(
         if (terms.isEmpty()) return ArtworkDiscoveryResult(emptyList(), null, false)
         currentCoroutineContext().ensureActive()
         val candidatesById = linkedMapOf<Int, AniListAnime>()
+        val matchedTitleAliasesById = linkedMapOf<Int, MutableSet<String>>()
+        val aliasAttribution = com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
+            .searchAliasAttribution(titleCandidates)
         var completeSearch = false
         when (val result = try {
             client.searchAnimeBatch(terms, 10, includeFullMetadata = false)
@@ -583,8 +599,20 @@ class ReiAnixAniListIntegrationService(
         }) {
             is AniListResult.Success -> {
                 completeSearch = result.value.size == terms.size
-                result.value.values.flatten().forEach { remote ->
-                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
+                result.value.forEach { (query, found) ->
+                    val aliasKeys = aliasAttribution[
+                        com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
+                            .normalizeCatalogTitle(query)
+                    ].orEmpty()
+                    found.forEach { remote ->
+                        if (remote.id > 0) {
+                            candidatesById.putIfAbsent(remote.id, remote)
+                            if (aliasKeys.isNotEmpty()) {
+                                matchedTitleAliasesById.getOrPut(remote.id) { linkedSetOf() }
+                                    .addAll(aliasKeys)
+                            }
+                        }
+                    }
                 }
             }
             is AniListResult.Failure -> Log.w(
@@ -597,20 +625,23 @@ class ReiAnixAniListIntegrationService(
             year = local.year,
             mediaKind = local.mediaKind,
         )
+        val identityEvidenceEligibleIds = candidatesById.values.filter { remote ->
+            ReiAnixAniListMatcher.hasVerifiedArtworkIdentity(titleCandidates, remote, context)
+        }.map { it.id }.toSet()
         val ranked = candidatesById.values.map { remote ->
             val score = terms.maxOfOrNull { title ->
                 ReiAnixAniListMatcher.rank(title, listOf(remote), context).firstOrNull()?.score ?: 0.0
             } ?: 0.0
             remote to score
         }.sortedWith(
-            compareByDescending<Pair<AniListAnime, Double>> { it.second }
+            compareByDescending<Pair<AniListAnime, Double>> {
+                matchedTitleAliasesById[it.first.id]?.size ?: 0
+            }.thenByDescending { it.second }
                 .thenBy { (it.first.titleEnglish ?: it.first.titleRomaji ?: "").lowercase(Locale.ROOT) }
                 .thenBy { it.first.id },
         )
         val verifiedCandidates = if (completeSearch) {
-            candidatesById.values.filter { remote ->
-                ReiAnixAniListMatcher.hasVerifiedArtworkIdentity(titleCandidates, remote, context)
-            }
+            candidatesById.values.filter { it.id in identityEvidenceEligibleIds }
         } else {
             emptyList()
         }
@@ -619,6 +650,8 @@ class ReiAnixAniListIntegrationService(
             candidates = ranked.take(MAX_ARTWORK_CANDIDATES).map { it.first },
             verifiedCandidate = verifiedCandidate,
             complete = completeSearch,
+            matchedTitleAliasesById = matchedTitleAliasesById.mapValues { it.value.toSet() },
+            identityEvidenceEligibleIds = identityEvidenceEligibleIds,
         )
     }
 
@@ -741,7 +774,13 @@ class ReiAnixAniListIntegrationService(
                     }
                     if (remote == null) {
                         if (discoverArtworkCandidates(local).let { discovery ->
-                            publishArtworkCandidates(local.id, discovery.candidates, discovery.verifiedCandidate)
+                            publishArtworkCandidates(
+                                local.id,
+                                discovery.candidates,
+                                discovery.verifiedCandidate,
+                                discovery.matchedTitleAliasesById,
+                                discovery.identityEvidenceEligibleIds,
+                            )
                         }) recovered++
                         continue
                     }
@@ -758,7 +797,13 @@ class ReiAnixAniListIntegrationService(
                             if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                 recovered++
                             } else if (discoverArtworkCandidates(local).let { discovery ->
-                            publishArtworkCandidates(local.id, discovery.candidates, discovery.verifiedCandidate)
+                            publishArtworkCandidates(
+                                local.id,
+                                discovery.candidates,
+                                discovery.verifiedCandidate,
+                                discovery.matchedTitleAliasesById,
+                                discovery.identityEvidenceEligibleIds,
+                            )
                         }) {
                                 recovered++
                             }
@@ -766,7 +811,13 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Failure -> {
                             Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
                             if (discoverArtworkCandidates(local).let { discovery ->
-                            publishArtworkCandidates(local.id, discovery.candidates, discovery.verifiedCandidate)
+                            publishArtworkCandidates(
+                                local.id,
+                                discovery.candidates,
+                                discovery.verifiedCandidate,
+                                discovery.matchedTitleAliasesById,
+                                discovery.identityEvidenceEligibleIds,
+                            )
                         }) recovered++
                         }
                     }
@@ -775,7 +826,13 @@ class ReiAnixAniListIntegrationService(
                     // PROBABLE/AMBIGUOUS/REJECTED/UNRESOLVED titles can provide ranked image
                     // candidates without assigning their AniList ID to the local anime.
                     if (discoverArtworkCandidates(local).let { discovery ->
-                            publishArtworkCandidates(local.id, discovery.candidates, discovery.verifiedCandidate)
+                            publishArtworkCandidates(
+                                local.id,
+                                discovery.candidates,
+                                discovery.verifiedCandidate,
+                                discovery.matchedTitleAliasesById,
+                                discovery.identityEvidenceEligibleIds,
+                            )
                         }) recovered++
                 }
             }

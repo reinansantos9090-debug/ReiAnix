@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.data.catalog
 
+import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+
 import java.text.Normalizer
 import java.util.Locale
 
@@ -119,6 +121,39 @@ object ReiAnixCatalogIdentityMatcher {
             if (sourceIdIsAnchored) "confirmed_by_existing_provider_id_and_exact_title"
             else "confirmed_by_exact_title_and_" + evidence.matchedDimensions + "_independent_dimensions",
         )
+    }
+
+    /** Maps a generated search variant to its one unambiguous original local title alias. */
+    fun searchAliasAttribution(titles: Collection<String>): Map<String, Set<String>> {
+        val queriesByAlias = linkedMapOf<String, MutableSet<String>>()
+        titles.forEach { rawTitle ->
+            val aliasKey = normalizeCatalogTitle(rawTitle)
+            if (!isDiscriminativeTitle(aliasKey)) return@forEach
+            (MediaTitleNormalizer.searchTitleVariants(rawTitle) + rawTitle).forEach { rawQuery ->
+                val queryKey = normalizeCatalogTitle(rawQuery)
+                if (isDiscriminativeTitle(queryKey)) {
+                    queriesByAlias.getOrPut(aliasKey) { linkedSetOf() }.add(queryKey)
+                }
+            }
+        }
+        val aliasesByQuery = linkedMapOf<String, MutableSet<String>>()
+        queriesByAlias.forEach { (aliasKey, queries) ->
+            queries.forEach { query -> aliasesByQuery.getOrPut(query) { linkedSetOf() }.add(aliasKey) }
+        }
+        return aliasesByQuery.mapNotNull { (query, aliases) ->
+            if (aliases.size == 1) query to aliases.toSet() else null
+        }.toMap()
+    }
+
+    /** Exact, meaningful local title aliases shared with a provider record. */
+    fun matchingDiscriminativeTitleAliases(
+        localTitles: Collection<String>,
+        remoteTitles: Collection<String>,
+    ): Set<String> {
+        val remote = remoteTitles.asSequence().map(::normalizeCatalogTitle)
+            .filter(::isDiscriminativeTitle).toSet()
+        return localTitles.asSequence().map(::normalizeCatalogTitle)
+            .filter(::isDiscriminativeTitle).filter { it in remote }.toSet()
     }
 
     /**

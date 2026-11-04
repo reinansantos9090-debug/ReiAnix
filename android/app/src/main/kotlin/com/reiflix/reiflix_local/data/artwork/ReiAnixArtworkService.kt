@@ -76,6 +76,12 @@ data class ReiAnixArtworkCandidate(
     val source: String = "anilist",
     /** True only after a background title/identity check selected this record unambiguously. */
     val identityVerified: Boolean = false,
+    /** Stable provider record key (for example "kitsu:123") used only for artwork consensus. */
+    val identityEvidenceKey: String? = null,
+    /** Original local title aliases whose independent searches returned this exact image record. */
+    val matchedTitleAliases: Set<String> = emptySet(),
+    /** True only when a discriminative exact title match exists and known metadata is compatible. */
+    val identityEvidenceEligible: Boolean = false,
 ) {
     init {
         require(source in setOf("anilist", "kitsu", "anipub"))
@@ -119,6 +125,108 @@ internal fun posterCandidatesForArtworkPass(
     }
 }
 
+/**
+ * Accumulates bounded, image-specific evidence without touching SQLite or blocking first paint.
+ * The same poster URL is promoted by two distinct original title aliases for one provider record,
+ * or by two independent artwork providers returning that same image for compatible identities.
+ * Multiple records from one provider never count as multiple provider votes.
+ */
+internal class ReiAnixArtworkConsensusTracker(
+    private val maxTrackedAnime: Int = 256,
+    private val maxImagesPerAnime: Int = 48,
+) {
+    private data class RecordEvidence(
+        val provider: String,
+        val aliases: MutableSet<String> = linkedSetOf(),
+        var eligible: Boolean = false,
+        var strictlyVerified: Boolean = false,
+        var candidate: ReiAnixArtworkCandidate? = null,
+    )
+    private data class ImageEvidence(
+        val records: LinkedHashMap<String, RecordEvidence> = linkedMapOf(),
+    )
+    private val byAnime = object : LinkedHashMap<Long, LinkedHashMap<String, ImageEvidence>>(16, 0.75f, true) {}
+
+    init {
+        require(maxTrackedAnime > 0)
+        require(maxImagesPerAnime > 0)
+    }
+
+    @Synchronized
+    fun collect(animeId: Long, candidates: List<ReiAnixArtworkCandidate>): List<ReiAnixArtworkCandidate> {
+        if (animeId <= 0L || candidates.isEmpty()) return candidates
+        val images = byAnime.getOrPut(animeId) { linkedMapOf() }
+        candidates.forEach { candidate ->
+            val rawUrl = candidate.posterUrl?.takeIf(String::isNotBlank)
+                ?: candidate.posterFallbackUrl?.takeIf(String::isNotBlank)
+                ?: return@forEach
+            val imageKey = artworkConsensusUrlKey(rawUrl) ?: return@forEach
+            val evidenceKey = candidate.identityEvidenceKey
+                ?: if (candidate.identityVerified) "verified:" + candidate.source + ":" + imageKey else return@forEach
+            if (!candidate.identityVerified && !candidate.identityEvidenceEligible) return@forEach
+            val image = images.getOrPut(imageKey) { ImageEvidence() }
+            val record = image.records.getOrPut(evidenceKey) { RecordEvidence(provider = candidate.source) }
+            if (record.provider != candidate.source) return@forEach
+            record.eligible = record.eligible || candidate.identityEvidenceEligible
+            record.strictlyVerified = record.strictlyVerified || candidate.identityVerified
+            if (candidate.identityEvidenceEligible) {
+                record.aliases.addAll(candidate.matchedTitleAliases.filter(String::isNotBlank))
+            }
+            if (record.candidate == null || candidate.identityVerified ||
+                candidate.matchedTitleAliases.size > record.candidate!!.matchedTitleAliases.size
+            ) record.candidate = candidate
+        }
+        while (images.size > maxImagesPerAnime) images.remove(images.keys.first())
+        while (byAnime.size > maxTrackedAnime) byAnime.remove(byAnime.keys.first())
+
+        val result = linkedMapOf<String, ReiAnixArtworkCandidate>()
+        candidates.forEach { incoming ->
+            val rawUrl = incoming.posterUrl?.takeIf(String::isNotBlank)
+                ?: incoming.posterFallbackUrl?.takeIf(String::isNotBlank)
+            val imageKey = rawUrl?.let(::artworkConsensusUrlKey)
+            val image = imageKey?.let(images::get)
+            if (image == null) {
+                result[consensusCandidateKey(incoming)] = incoming
+                return@forEach
+            }
+            val providerVotes = image.records.values.filter { it.eligible || it.strictlyVerified }
+                .map { it.provider }.distinct().size
+            val aliasConfirmed = image.records.values.any {
+                it.eligible && it.aliases.size >= MINIMUM_TITLE_ALIAS_VOTES
+            }
+            val promoted = aliasConfirmed || providerVotes >= MINIMUM_PROVIDER_VOTES ||
+                image.records.values.any { it.strictlyVerified }
+            if (promoted) {
+                image.records.values.mapNotNull { it.candidate }.forEach { stored ->
+                    result[consensusCandidateKey(stored)] = stored.copy(identityVerified = true)
+                }
+                result[consensusCandidateKey(incoming)] = incoming.copy(identityVerified = true)
+            } else {
+                result[consensusCandidateKey(incoming)] = incoming
+            }
+        }
+        return result.values.toList()
+    }
+
+    private fun consensusCandidateKey(candidate: ReiAnixArtworkCandidate): String =
+        listOf(candidate.source, candidate.identityEvidenceKey.orEmpty(), candidate.posterUrl.orEmpty(),
+            candidate.posterFallbackUrl.orEmpty()).joinToString("|")
+
+    companion object {
+        const val MINIMUM_TITLE_ALIAS_VOTES = 2
+        const val MINIMUM_PROVIDER_VOTES = 2
+    }
+}
+
+/** Canonicalize URL syntax only; query strings remain significant to avoid false image matches. */
+internal fun artworkConsensusUrlKey(rawUrl: String): String? = runCatching {
+    val uri = java.net.URI(rawUrl.trim())
+    val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
+    val host = uri.host?.lowercase(Locale.ROOT) ?: return null
+    if (scheme !in setOf("http", "https") || uri.rawUserInfo != null) return null
+    java.net.URI(scheme, null, host, uri.port, uri.rawPath?.ifEmpty { "/" } ?: "/", uri.rawQuery, null)
+        .normalize().toASCIIString()
+}.getOrNull()
 /** Attempts ranked candidates and their variants without letting one failed URL stop the next. */
 internal suspend fun firstSuccessfulArtworkCandidate(
     candidates: List<ReiAnixArtworkCandidate>,
@@ -245,6 +353,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val retryJobs = ConcurrentHashMap<Long, Job>()
     private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
     private val candidateFollowUpRequests = ConcurrentHashMap<Long, List<ReiAnixArtworkCandidate>>()
+    private val consensusTracker = ReiAnixArtworkConsensusTracker()
     private val permits = Semaphore(2)
     private val backfillRunning = AtomicBoolean(false)
     private val cacheClearInProgress = AtomicBoolean(false)
@@ -305,7 +414,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         candidates: List<ReiAnixArtworkCandidate>,
         force: Boolean = false,
     ): Boolean {
-        val usable = boundedArtworkCandidates(candidates, MAX_CANDIDATE_ARTWORKS)
+        val consensusCandidates = consensusTracker.collect(animeId, candidates)
+        val usable = boundedArtworkCandidates(consensusCandidates, MAX_CANDIDATE_ARTWORKS)
         if (usable.isEmpty()) return false
         return requestAnimeArtworkInternal(animeId, force, usable)
     }
