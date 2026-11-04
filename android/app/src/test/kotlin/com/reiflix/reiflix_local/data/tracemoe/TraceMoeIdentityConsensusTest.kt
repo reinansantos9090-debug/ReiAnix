@@ -73,4 +73,66 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(16498, consensus?.anilistId)
         assertEquals(2, consensus?.supportingEpisodes)
     }
+
+    @Test
+    fun aClearFirstEpisodeCanIdentifyImmediately() {
+        val result = evaluateTraceMoeProgressiveIdentity(
+            mapOf(11L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.96))),
+        )
+
+        assertNotNull(result)
+        assertEquals(16498, result?.anilistId)
+        assertEquals(1, result?.supportingEpisodes)
+    }
+
+    @Test
+    fun oneWeakEpisodeWaitsForAnotherEpisodeToAgree() {
+        val result = evaluateTraceMoeProgressiveIdentity(
+            mapOf(11L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.89))),
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun twoEpisodesAgreeingAtModerateSimilarityAreEnough() {
+        val result = evaluateTraceMoeProgressiveIdentity(
+            mapOf(
+                11L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.88)),
+                12L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.87)),
+            ),
+        )
+
+        assertNotNull(result)
+        assertEquals(16498, result?.anilistId)
+        assertEquals(2, result?.supportingEpisodes)
+    }
+
+    @Test
+    fun twoOfThreeEpisodesCanCorrectOneConflictingResult() {
+        val result = evaluateTraceMoeProgressiveIdentity(
+            mapOf(
+                11L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.88)),
+                12L to listOf(TraceMoeSearchMatch(aniListId = 21, similarity = 0.87)),
+                13L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.86)),
+            ),
+        )
+
+        assertNotNull(result)
+        assertEquals(16498, result?.anilistId)
+        assertEquals(2, result?.supportingEpisodes)
+    }
+
+    @Test
+    fun twoDifferentWeakEpisodesNeedAThirdMatchingResult() {
+        val result = evaluateTraceMoeProgressiveIdentity(
+            mapOf(
+                11L to listOf(TraceMoeSearchMatch(aniListId = 16498, similarity = 0.88)),
+                12L to listOf(TraceMoeSearchMatch(aniListId = 21, similarity = 0.87)),
+            ),
+        )
+
+        assertNull(result)
+    }
+
 }
