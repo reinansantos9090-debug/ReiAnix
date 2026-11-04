@@ -267,6 +267,7 @@ class ReiAnixLibraryViewModel(
     private val episodeThumbnailWorkSignal = Channel<Unit>(Channel.CONFLATED)
     private val episodeThumbnailRetrySignal = Channel<Unit>(Channel.CONFLATED)
     private val episodeThumbnailRetryStates = ConcurrentHashMap<Long, EpisodeThumbnailRetryState>()
+    private val episodeThumbnailRetryCounts = ConcurrentHashMap<Long, Int>()
     private val episodeThumbnailWorkersStarted = AtomicLong(0L)
     private val episodeThumbnailPrioritySequence = AtomicLong(0L)
     private val episodeThumbnailPriorityOwners = ConcurrentHashMap<String, EpisodeThumbnailPriority>()
@@ -1388,6 +1389,7 @@ class ReiAnixLibraryViewModel(
             anime.contentEpisodes.forEach {
                 episodeThumbnailAttemptedRevisions.remove(it.id)
                 episodeThumbnailRetryStates.remove(it.id)
+                episodeThumbnailRetryCounts.remove(it.id)
             }
             episodeThumbnailRetrySignal.trySend(Unit)
         }
@@ -1442,10 +1444,13 @@ class ReiAnixLibraryViewModel(
             due.forEach { retry ->
                 if (!episodeThumbnailRetryStates.remove(retry.episodeId, retry)) return@forEach
                 val anime = nativeCatalogState.value.animes.firstOrNull { it.id == retry.animeId }
-                    ?: return@forEach
-                val episode = anime.contentEpisodes.firstOrNull { it.id == retry.episodeId }
-                    ?: return@forEach
-                if (episodeThumbnailRevision(episode) == retry.revision) {
+                val episode = anime?.contentEpisodes?.firstOrNull { it.id == retry.episodeId }
+                if (anime == null || episode == null) {
+                    episodeThumbnailRetryCounts.remove(retry.episodeId)
+                } else if (episodeThumbnailRevision(episode) == retry.revision) {
+                    enqueueEpisodeThumbnailTasks(listOf(anime), setOf(retry.episodeId))
+                } else {
+                    episodeThumbnailRetryCounts.remove(retry.episodeId)
                     enqueueEpisodeThumbnailTasks(listOf(anime), setOf(retry.episodeId))
                 }
             }
@@ -1499,24 +1504,25 @@ class ReiAnixLibraryViewModel(
                         latestAnime == null || latestEpisode == null -> {
                             episodeThumbnailAttemptedRevisions.remove(item.episodeId)
                             episodeThumbnailRetryStates.remove(item.episodeId)
+                            episodeThumbnailRetryCounts.remove(item.episodeId)
                         }
                         latestRevision != item.revision || rerun -> {
                             episodeThumbnailAttemptedRevisions.remove(item.episodeId)
                             episodeThumbnailRetryStates.remove(item.episodeId)
+                            episodeThumbnailRetryCounts.remove(item.episodeId)
                             enqueueEpisodeThumbnailTasks(listOf(latestAnime), setOf(item.episodeId))
                         }
                         processingSucceeded -> {
                             episodeThumbnailAttemptedRevisions[item.episodeId] = item.revision
                             episodeThumbnailRetryStates.remove(item.episodeId)
+                            episodeThumbnailRetryCounts.remove(item.episodeId)
                         }
                         else -> {
                             // Failures remain retryable, but exponential backoff avoids
                             // repeatedly decoding an unavailable/broken source on refresh.
                             episodeThumbnailAttemptedRevisions.remove(item.episodeId)
-                            val previousAttempt = episodeThumbnailRetryStates[item.episodeId]
-                                ?.takeIf { it.revision == item.revision }
-                                ?.attempt ?: 0
-                            val nextAttempt = previousAttempt + 1
+                            val nextAttempt = (episodeThumbnailRetryCounts[item.episodeId] ?: 0) + 1
+                            episodeThumbnailRetryCounts[item.episodeId] = nextAttempt
                             val backoffMillis = when (nextAttempt.coerceAtMost(4)) {
                                 1 -> 30_000L
                                 2 -> 120_000L
@@ -1564,6 +1570,7 @@ class ReiAnixLibraryViewModel(
                         if (retry != null) {
                             if (retry.revision != revision) {
                                 episodeThumbnailRetryStates.remove(episode.id, retry)
+                                episodeThumbnailRetryCounts.remove(episode.id)
                             } else if (System.currentTimeMillis() < retry.retryAtMillis) {
                                 return@episodeLoop
                             } else {
