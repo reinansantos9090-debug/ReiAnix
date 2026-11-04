@@ -246,14 +246,18 @@ internal fun artworkConsensusUrlKey(rawUrl: String): String? = runCatching {
     val uri = java.net.URI(rawUrl.trim())
     val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
     val host = uri.host?.lowercase(Locale.ROOT) ?: return null
-    if (scheme !in setOf("http", "https") || uri.rawUserInfo != null) return null
+    if (scheme !in setOf("http", "https") || uri.rawUserInfo != null || uri.isOpaque) return null
     val port = when {
         scheme == "https" && uri.port == 443 -> -1
         scheme == "http" && uri.port == 80 -> -1
         else -> uri.port
     }
-    java.net.URI(scheme, null, host, port, uri.rawPath?.ifEmpty { "/" } ?: "/", uri.rawQuery, null)
-        .normalize().toASCIIString()
+    val normalized = uri.normalize()
+    val formattedHost = if (':' in host && !host.startsWith("[")) "[$host]" else host
+    val authority = if (port < 0) formattedHost else "$formattedHost:$port"
+    val path = normalized.rawPath?.ifEmpty { "/" } ?: "/"
+    val query = normalized.rawQuery?.let { "?$it" }.orEmpty()
+    "$scheme://$authority$path$query"
 }.getOrNull()
 /** Attempts ranked candidates and their variants without letting one failed URL stop the next. */
 internal suspend fun firstSuccessfulArtworkCandidate(

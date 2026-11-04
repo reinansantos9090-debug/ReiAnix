@@ -574,6 +574,10 @@ class ReiAnixArtworkPublicationSignalTest {
             artworkConsensusUrlKey("https://cdn.example/poster.jpg?quality=80") !=
                 artworkConsensusUrlKey("https://cdn.example/poster.jpg?quality=90"),
         )
+        assertEquals(
+            "https://cdn.example/folder%20name/poster.jpg",
+            artworkConsensusUrlKey("https://cdn.example/folder%20name/poster.jpg#preview"),
+        )
     }
 
 }
