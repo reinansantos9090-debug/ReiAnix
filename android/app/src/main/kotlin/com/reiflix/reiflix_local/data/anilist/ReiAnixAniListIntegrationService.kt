@@ -36,7 +36,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-private const val MAX_ARTWORK_CANDIDATES = 5
+private const val MAX_ARTWORK_CANDIDATES = 10
 
 
 /** Pure policy for bounded discovery of missing posters from the canonical catalogue. */
@@ -148,8 +148,8 @@ internal fun shouldDeferArtworkDiscoveryAttempt(
 }
 
 
-internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6): List<String> {
-    require(limit in 1..8) { "AniList title search limit must be between 1 and 8." }
+internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 64): List<String> {
+    require(limit in 1..128) { "AniList title search limit must be between 1 and 128." }
     val seen = HashSet<String>()
     return candidates.asSequence()
         .flatMap { MediaTitleNormalizer.searchTitleVariants(it).asSequence() }
@@ -370,7 +370,7 @@ class ReiAnixAniListIntegrationService(
                 }
             }
         }
-        val searchTerms = boundedAniListSearchTerms(localTitleCandidates, limit = 6)
+        val searchTerms = boundedAniListSearchTerms(localTitleCandidates, limit = 128)
         if (searchTerms.isEmpty()) {
             autoMatchAttempts.remove(animeId)
             return AniListResult.Failure(
@@ -394,61 +394,42 @@ class ReiAnixAniListIntegrationService(
                 .thenBy { it.anime.id },
         )
 
+        val batchResult = try {
+            client.searchAnimeBatch(searchTerms, 10)
+        } catch (cancelled: CancellationException) {
+            autoMatchAttempts.remove(animeId)
+            throw cancelled
+        }
         val candidatesById = linkedMapOf<Int, AniListAnime>()
-        var ranked: List<ReiAnixAniListMatcher.RankedCandidate> = emptyList()
-        var searchedTerms: List<String> = emptyList()
-        for ((termIndex, searchTerm) in searchTerms.withIndex()) {
-            searchedTerms = searchTerms.take(termIndex + 1)
-            val searchResult = try {
-                client.searchAnime(searchTerm, 10)
-            } catch (cancelled: CancellationException) {
-                autoMatchAttempts.remove(animeId)
-                throw cancelled
+        when (batchResult) {
+            is AniListResult.Success -> batchResult.value.values.flatten().forEach { candidate ->
+                candidatesById.putIfAbsent(candidate.id, candidate)
             }
-            val found = when (searchResult) {
-                is AniListResult.Success -> searchResult.value
-                is AniListResult.Failure -> {
-                    val outcome = when (val error = searchResult.error) {
-                        is AniListError.RateLimited -> "rate_limited"
-                        is AniListError.Network -> "network_error"
-                        is AniListError.Http -> when {
-                            error.statusCode == 429 -> "rate_limited"
-                            error.statusCode >= 500 -> "network_error"
-                            else -> "invalid_response"
-                        }
-                        is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
-                        is AniListError.InvalidRequest -> {
-                            autoMatchAttempts.remove(animeId)
-                            return searchResult
-                        }
+            is AniListResult.Failure -> {
+                val outcome = when (val error = batchResult.error) {
+                    is AniListError.RateLimited -> "rate_limited"
+                    is AniListError.Network -> "network_error"
+                    is AniListError.Http -> when {
+                        error.statusCode == 429 -> "rate_limited"
+                        error.statusCode >= 500 -> "network_error"
+                        else -> "invalid_response"
                     }
-                    // Never auto-associate from a partial candidate set after a transient
-                    // failure on one of the alternate title queries.
-                    recordAutoMatchOutcome(animeId, outcome)
-                    return searchResult
+                    is AniListError.GraphQl, is AniListError.InvalidResponse -> "invalid_response"
+                    is AniListError.InvalidRequest -> {
+                        autoMatchAttempts.remove(animeId)
+                        return batchResult
+                    }
                 }
-            }
-            found.forEach { candidate -> candidatesById.putIfAbsent(candidate.id, candidate) }
-            ranked = rankCandidates(candidatesById.values, searchTerms.take(termIndex + 1))
-
-            // Preserve the fast path for an already-unambiguous primary-title result.
-            // Alternative titles are queried only when the primary result is absent,
-            // low-confidence or ambiguous, avoiding extra requests for common cases.
-            if (termIndex == 0) {
-                val best = ranked.firstOrNull()
-                val margin = best?.let { it.score - (ranked.getOrNull(1)?.score ?: 0.0) } ?: 0.0
-                if (
-                    best != null &&
-                    best.score >= AUTO_MATCH_MIN_SCORE &&
-                    margin >= AUTO_MATCH_MIN_MARGIN
-                ) break
+                // Metadata association remains strict: no partial/failed batch can authorize it.
+                recordAutoMatchOutcome(animeId, outcome)
+                return batchResult
             }
         }
         if (candidatesById.isEmpty()) {
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
-        ranked = rankCandidates(candidatesById.values, searchedTerms)
+        val ranked = rankCandidates(candidatesById.values, searchTerms)
         if (ranked.isEmpty()) {
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
@@ -545,27 +526,25 @@ class ReiAnixAniListIntegrationService(
                 }
             }
         }
-        val terms = boundedAniListSearchTerms(titleCandidates, limit = 6)
+        val terms = boundedAniListSearchTerms(titleCandidates, limit = 128)
         if (terms.isEmpty()) return emptyList()
+        currentCoroutineContext().ensureActive()
         val candidatesById = linkedMapOf<Int, AniListAnime>()
-        for (term in terms) {
-            currentCoroutineContext().ensureActive()
-            when (val result = try {
-                client.searchAnime(term, 10)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TAG, "AniList artwork search failed for animeId=" + local.id + " title=" + term, error)
-                continue
-            }) {
-                is AniListResult.Success -> result.value.forEach { remote ->
-                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
-                }
-                is AniListResult.Failure -> Log.w(
-                    TAG,
-                    "AniList artwork search failed for animeId=" + local.id + " title=" + term + ": " + result.error,
-                )
+        when (val result = try {
+            client.searchAnimeBatch(terms, 10)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "AniList artwork batch search failed for animeId=" + local.id, error)
+            return emptyList()
+        }) {
+            is AniListResult.Success -> result.value.values.flatten().forEach { remote ->
+                if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
             }
+            is AniListResult.Failure -> Log.w(
+                TAG,
+                "AniList artwork batch search failed for animeId=" + local.id + ": " + result.error,
+            )
         }
         if (candidatesById.isEmpty()) return emptyList()
         val context = ReiAnixAniListMatcher.Context(
