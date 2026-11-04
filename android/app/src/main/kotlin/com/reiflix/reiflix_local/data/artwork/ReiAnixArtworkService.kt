@@ -11,6 +11,10 @@ import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reiflix.reiflix_local.data.shikimori.ReiAnixShikimoriAnimeIdentity
+import com.reiflix.reiflix_local.data.shikimori.ReiAnixShikimoriDiscoveryResult
+import com.reiflix.reiflix_local.data.shikimori.ReiAnixShikimoriHtmlClient
+import com.reiflix.reiflix_local.data.shikimori.validShikimoriCoverImageUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +41,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -70,7 +75,7 @@ data class ReiAnixArtworkCandidate(
     val source: String = "anilist",
 ) {
     init {
-        require(source in setOf("anilist", "kitsu", "anipub"))
+        require(source in setOf("anilist", "kitsu", "anipub", "shikimori"))
     }
 }
 
@@ -190,7 +195,13 @@ internal fun shouldRetryArtworkRequest(
 }
 
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
-class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
+class ReiAnixArtworkService(
+    context: Context,
+    private val database: ReiAnixSqliteDatabase,
+    private val shikimoriHtmlClient: ReiAnixShikimoriHtmlClient = ReiAnixShikimoriHtmlClient(),
+    private val shikimoriCoverDiscovery: suspend (ReiAnixShikimoriAnimeIdentity) -> ReiAnixShikimoriDiscoveryResult =
+        { identity -> shikimoriHtmlClient.discoverCover(identity) },
+) {
     private val appContext = context.applicationContext
     private val cacheDirectory = File(File(appContext.filesDir, "data/covers"), "artwork")
     private val publicationSignal = ReiAnixArtworkPublicationSignal()
@@ -205,7 +216,27 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
 
-    private data class Anime(val anilistId: Long?, val kind: String?, val coverUrl: String?, val coverCache: String?, val bannerUrl: String?)
+    private data class Anime(
+        val anilistId: Long?,
+        val kind: String?,
+        val coverUrl: String?,
+        val coverCache: String?,
+        val bannerUrl: String?,
+        val title: String?,
+        val lookupTitle: String?,
+        val romaji: String?,
+        val english: String?,
+        val nativeTitle: String?,
+        val aliasesJson: String?,
+        val year: Int?,
+        val season: String?,
+        val metadataManualFields: String?,
+    )
+    private data class ShikimoriAttemptRecord(
+        val identityFingerprint: String?,
+        val attemptedAtSeconds: Double?,
+        val outcome: String?,
+    )
     private data class Artwork(
         val id: Long, val source: String, val sourceRef: String?, val path: String?, val url: String?,
         val manual: Boolean, val priority: Int, val status: String, val key: String?,
@@ -285,8 +316,34 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     if (candidateCandidates == null) {
                         val posterUrl = anime.coverUrl?.trim()?.takeIf(String::isNotEmpty)
                         val backdropUrl = anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
-                        posterUrl?.let {
+                        val canonicalPosterReady = posterUrl?.let {
                             materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
+                        } ?: false
+
+                        // Shikimori is a supplemental poster fallback only. AniList metadata and
+                        // cover_url remain untouched; the verified page image enters the current
+                        // candidate-only artwork materializer as its own source.
+                        if (!canonicalPosterReady &&
+                            !hasUsablePersistedPoster(animeId, entityType) &&
+                            !hasProtectedPoster(animeId, entityType) &&
+                            !ownsManualField(anime.metadataManualFields, "cover_url") &&
+                            !ownsManualField(anime.metadataManualFields, "cover_cache")
+                        ) {
+                            val discovered = discoverShikimoriCoverIfNeeded(animeId, anime, requestId)
+                            if (discovered != null) {
+                                val retryCandidate = ReiAnixArtworkCandidate(
+                                    anilistId = 0L,
+                                    posterUrl = discovered,
+                                    bannerUrl = null,
+                                    source = "shikimori",
+                                )
+                                materialize(
+                                    animeId, entityType, "poster", discovered, 0L, force, requestId,
+                                    requireCurrentUrl = false,
+                                    retryCandidates = listOf(retryCandidate),
+                                    sourceKind = "shikimori",
+                                )
+                            }
                         }
                         backdropUrl?.let {
                             materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
@@ -375,6 +432,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         db.rawQuery(
                             "SELECT id FROM anime a WHERE id>? AND (" +
                                 "TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='' OR " +
+                                "NOT EXISTS (SELECT 1 FROM artwork poster WHERE poster.entity_id=CAST(a.id AS TEXT) " +
+                                "AND poster.entity_type IN ('anime','movie') AND poster.artwork_type='poster' " +
+                                "AND poster.status='ready' AND poster.local_path IS NOT NULL) OR " +
                                 "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
                                 "AND art.entity_type IN ('anime','movie') AND art.artwork_type IN ('poster','backdrop') " +
                                 "AND art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL " +
@@ -544,7 +604,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val rowId = prepareRow(id, entity, type, url, key, force, requireCurrentUrl, sourceKind) ?: return@withPermit false
             var image: Downloaded? = null
             try {
-                val completedImage = download(key, url)
+                val completedImage = download(key, url, sourceKind)
                 image = completedImage
                 currentCoroutineContext().ensureActive()
                 val saved = persistDownloaded(rowId, id, type, url, key, completedImage)
@@ -701,17 +761,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             runCatching { db.insertOrThrow("artwork", null, values) }.getOrNull()
         }
 
-    private suspend fun download(key: String, rawUrl: String): Downloaded {
+    private suspend fun download(key: String, rawUrl: String, sourceKind: String = "anilist"): Downloaded {
         check(ensureArtworkCacheDirectory(cacheDirectory)) { "Artwork cache directory unavailable." }
         val url = URL(rawUrl)
-        val conn = url.openConnection() as? HttpURLConnection ?: throw InvalidImage("Not an HTTP connection.")
+        val conn = openArtworkConnection(rawUrl, sourceKind)
         val tmp = File(cacheDirectory, "." + key + "-" + UUID.randomUUID() + ".tmp")
         try {
-            conn.requestMethod = "GET"; conn.connectTimeout = 15000; conn.readTimeout = 15000
-            conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "ReiAnix/ArtworkEngine-Kotlin")
-            conn.setRequestProperty("Accept", "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8")
-            conn.connect()
+            // openArtworkConnection has already configured and connected the request.
             val code = conn.responseCode
             if (code !in 200..299) {
                 runCatching { conn.errorStream?.close() }
@@ -856,7 +912,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun loadPersistedRetryCandidates(animeId: Long): List<ReiAnixArtworkCandidate> =
         database.read { db ->
             db.rawQuery(
-                "SELECT art.artwork_type,art.external_url FROM artwork art " +
+                "SELECT art.artwork_type,art.external_url,art.source FROM artwork art " +
                     "JOIN anime a ON CAST(a.id AS TEXT)=art.entity_id " +
                     "WHERE a.id=? AND art.entity_type IN ('anime','movie') " +
                     "AND art.artwork_type IN ('poster','backdrop') " +
@@ -871,11 +927,15 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     while (cursor.moveToNext()) {
                         val type = cursor.getString(0)
                         val url = cursor.getString(1)?.trim()?.takeIf(String::isNotEmpty) ?: continue
+                        val source = cursor.getString(2)?.trim()?.lowercase(Locale.ROOT)
+                            ?.takeIf { it in setOf("anilist", "kitsu", "anipub", "shikimori") }
+                            ?: "anilist"
                         add(
                             ReiAnixArtworkCandidate(
                                 anilistId = 0L,
                                 posterUrl = url.takeIf { type == "poster" },
                                 bannerUrl = url.takeIf { type == "backdrop" },
+                                source = source,
                             ),
                         )
                     }
@@ -967,11 +1027,29 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             .use { it.moveToFirst() && it.getString(0)?.trim() == url }
     }
     private fun loadAnime(id: Long): Anime? = database.read { db ->
-        db.rawQuery("SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url FROM anime WHERE id=? LIMIT 1",
-            arrayOf(id.toString())).use { c ->
+        db.rawQuery(
+            "SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url,title,lookup_title,romaji,english," +
+                "native,aliases,year,season,metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
+            arrayOf(id.toString()),
+        ).use { c ->
             if (!c.moveToFirst()) return@use null
             val index = c.getColumnIndexOrThrow("anilist_id")
-            Anime(if (c.isNull(index)) null else c.getLong(index), c.getString(1), c.getString(2), c.getString(3), c.getString(4))
+            Anime(
+                anilistId = if (c.isNull(index)) null else c.getLong(index),
+                kind = c.getString(1),
+                coverUrl = c.getString(2),
+                coverCache = c.getString(3),
+                bannerUrl = c.getString(4),
+                title = c.getString(5),
+                lookupTitle = c.getString(6),
+                romaji = c.getString(7),
+                english = c.getString(8),
+                nativeTitle = c.getString(9),
+                aliasesJson = c.getString(10),
+                year = if (c.isNull(11)) null else c.getInt(11),
+                season = c.getString(12),
+                metadataManualFields = c.getString(13),
+            )
         }
     }
 
