@@ -1369,7 +1369,7 @@ class ReiAnixAniListIntegrationService(
         private const val TRACE_MOE_GLOBAL_HISTORY_PREFERENCE_KEY = "__reianix.internal.trace_moe_request_history_v1"
         private const val TRACE_MOE_LOCAL_DAILY_REQUEST_BUDGET = 30
         private const val TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS = 24L * 60L * 60L
-        private const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
+        private const val MAX_TRACE_MOE_EPISODE_SAMPLES = 10
         private const val MINIMUM_TRACE_MOE_EPISODE_SAMPLES = 2
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
