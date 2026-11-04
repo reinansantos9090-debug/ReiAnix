@@ -740,7 +740,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 val completedImage = download(key, url)
                 image = completedImage
                 currentCoroutineContext().ensureActive()
-                val saved = persistDownloaded(rowId, id, type, url, key, completedImage, identityVerified)
+                val saved = persistDownloaded(
+                    rowId, id, type, url, key, completedImage, identityVerified, requireCurrentUrl,
+                )
                 if (!saved.saved) {
                     removeIfUnreferenced(completedImage.file)
                     return@withPermit false
@@ -1004,10 +1006,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         key: String,
         image: Downloaded,
         identityVerified: Boolean,
+        requireCurrentUrl: Boolean,
     ): SaveResult =
         database.transaction { db ->
             val row = artworkById(db, rowId) ?: return@transaction SaveResult(false, false)
-            if (row.manual || row.source.equals("manual", true) || row.source.equals("local", true)) return@transaction SaveResult(false, false)
+            if (row.manual || row.source.equals("manual", true) || row.source.equals("local", true)) {
+                return@transaction SaveResult(false, false)
+            }
+            if (type == "poster" && !requireCurrentUrl && hasManualPosterMetadataOwnership(db, id)) {
+                return@transaction SaveResult(false, false)
+            }
             val current = urlCurrent(db, id, type, url)
             val now = nowSeconds()
             val values = ContentValues().apply {
@@ -1043,6 +1051,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (requireCurrentUrl && !urlCurrent(db, id, type, url)) return@transaction false
             val row = artworkById(db, rowId) ?: return@transaction false
             if (row.manual || row.source.equals("manual", true) || row.source.equals("local", true)) return@transaction false
+            if (type == "poster" && !requireCurrentUrl && hasManualPosterMetadataOwnership(db, id)) {
+                return@transaction false
+            }
             val now = nowSeconds()
             val values = ContentValues().apply {
                 put("source", "cache"); put("local_path", path); put("external_url", url); put("status", "ready")
