@@ -55,7 +55,7 @@ internal object ReiAnixAniListMatcher {
             candidate.titleEnglish?.takeIf(String::isNotBlank)?.let(::add)
             candidate.titleRomaji?.takeIf(String::isNotBlank)?.let(::add)
             candidate.titleNative?.takeIf(String::isNotBlank)?.let(::add)
-            candidate.synonyms.filter(String::isNotBlank).forEach(::add)
+            candidate.synonyms.filter(String::isNotBlank).forEach { add(it) }
         }
         if (!com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
                 .hasDiscriminativeExactTitleMatch(localTitles, remoteTitles)
