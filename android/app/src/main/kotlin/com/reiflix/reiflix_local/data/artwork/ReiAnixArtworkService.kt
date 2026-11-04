@@ -978,7 +978,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "AND ((art.artwork_type='poster' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.cover_url,''))) " +
                     "OR (art.artwork_type='backdrop' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.banner_url,'')))) " +
                     "ORDER BY art.priority DESC,art.updated_at DESC,art.id DESC LIMIT ?",
-                arrayOf(animeId.toString(), nowSeconds().toString(), MAX_CANDIDATE_ARTWORKS.toString()),
+                arrayOf(animeId.toString(), nowSeconds().toString(), MAX_PERSISTED_RETRY_CANDIDATES.toString()),
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) {
@@ -2260,6 +2260,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val STATUS_NOT_REQUESTED = "not_requested"
         const val MAX_DOWNLOAD_BYTES = 32L * 1024L * 1024L
         const val MAX_CANDIDATE_ARTWORKS = 256
+        const val MAX_PERSISTED_RETRY_CANDIDATES = 10
         const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
         const val IO_BUFFER_BYTES = 64 * 1024
