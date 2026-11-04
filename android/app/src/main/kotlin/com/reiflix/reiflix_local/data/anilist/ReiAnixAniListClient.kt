@@ -90,6 +90,7 @@ class ReiAnixAniListClient(
     suspend fun searchAnimeBatch(
         terms: List<String>,
         limit: Int = 10,
+        includeFullMetadata: Boolean = true,
     ): AniListResult<Map<String, List<AniListAnime>>> {
         require(limit in 1..50) { "AniList result limit must be between 1 and 50." }
         val queries = terms.asSequence()
@@ -101,10 +102,11 @@ class ReiAnixAniListClient(
 
         val variableDefinitions = (listOf("\$perPage: Int!") +
             queries.indices.map { "\$term$it: String!" }).joinToString(", ")
+        val mediaFields = if (includeFullMetadata) SEARCH_MEDIA_FIELDS else SEARCH_ARTWORK_MEDIA_FIELDS
         val searchFields = queries.indices.joinToString("\n") { index ->
             "search$index: Page(page: 1, perPage: \$perPage) { " +
                 "media(search: \$term$index, type: ANIME, sort: SEARCH_MATCH) { " +
-                SEARCH_MEDIA_FIELDS + " } }"
+                mediaFields + " } }"
         }
         val gql = """
             query SearchAnimeAliases($variableDefinitions) {
@@ -114,32 +116,31 @@ class ReiAnixAniListClient(
         val variables = JSONObject().put("perPage", limit)
         queries.forEachIndexed { index, term -> variables.put("term$index", term) }
 
-        return execute(gql, variables) { data ->
+        return execute(gql, variables, allowPartialGraphQlData = true) { data ->
             val byQuery = linkedMapOf<String, List<AniListAnime>>()
             for (index in queries.indices) {
-                val page = data.objectOrNull("search$index")
-                    ?: return@execute AniListResult.Failure(
-                        AniListError.InvalidResponse("Missing AniList search result for alias $index"),
-                    )
-                val media = page.arrayOrNull("media")
-                    ?: return@execute AniListResult.Failure(
-                        AniListError.InvalidResponse("Missing media array for AniList alias $index"),
-                    )
+                val page = data.objectOrNull("search$index") ?: continue
+                val media = page.arrayOrNull("media") ?: continue
                 val results = ArrayList<AniListAnime>(media.length())
+                var malformedItem = false
                 for (itemIndex in 0 until media.length()) {
                     val item = media.optJSONObject(itemIndex)
-                        ?: return@execute AniListResult.Failure(
-                            AniListError.InvalidResponse("Invalid anime item in AniList alias $index"),
-                        )
-                    val anime = parseAnime(item)
-                        ?: return@execute AniListResult.Failure(
-                            AniListError.InvalidResponse("Anime item is missing a valid AniList ID"),
-                        )
+                    val anime = item?.let(::parseAnime)
+                    if (anime == null) {
+                        malformedItem = true
+                        break
+                    }
                     results += anime
                 }
-                byQuery[queries[index]] = results
+                // Omit only the damaged alias. Other completed alias pages remain usable
+                // for artwork. Auto-match separately verifies that every key was returned.
+                if (!malformedItem) byQuery[queries[index]] = results
             }
-            AniListResult.Success(byQuery)
+            if (byQuery.isEmpty()) {
+                AniListResult.Failure(AniListError.InvalidResponse("AniList batch returned no usable alias result."))
+            } else {
+                AniListResult.Success(byQuery)
+            }
         }
     }
 
@@ -172,6 +173,7 @@ class ReiAnixAniListClient(
     private suspend fun <T> execute(
         query: String,
         variables: JSONObject,
+        allowPartialGraphQlData: Boolean = false,
         decode: (JSONObject) -> AniListResult<T>,
     ): AniListResult<T> {
         val response = try {
@@ -232,7 +234,9 @@ class ReiAnixAniListClient(
             } catch (_: Exception) {
                 return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
             }
-            return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
+            if (!allowPartialGraphQlData) {
+                return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
+            }
         }
         val data = try {
             root.objectOrNull("data")
@@ -336,6 +340,10 @@ class ReiAnixAniListClient(
             description(asHtml: false) format episodes duration status averageScore season seasonYear
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
+        """
+        private const val SEARCH_ARTWORK_MEDIA_FIELDS = """
+            id title { romaji english native } synonyms
+            format episodes status season seasonYear coverImage { large extraLarge } bannerImage
         """
     }
 }
