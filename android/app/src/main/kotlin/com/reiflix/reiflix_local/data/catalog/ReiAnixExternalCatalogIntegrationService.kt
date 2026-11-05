@@ -17,8 +17,10 @@ import com.reiflix.reiflix_local.data.sqlite.saveExternalCatalogIds
 import com.reiflix.reiflix_local.data.sqlite.setExternalCatalogCursor
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Locale
@@ -279,28 +281,48 @@ class ReiAnixExternalCatalogIntegrationService(
         anime: ReiAnixAnimeRecord,
         identity: ReiAnixCatalogIdentity,
         ids: ReiAnixExternalCatalogIds,
-    ): Resolution {
-        var directDetail: ReiAnixCatalogAnime? = null
-        val knownId = ids.idFor(provider.source)
-        if (!knownId.isNullOrBlank()) {
-            when (val result = provider.getAnime(knownId)) {
-                is ReiAnixCatalogResult.Failure -> {
-                    record(provider.source, "DETAIL_REQUEST_FAILED", anime.id)
-                }
-                is ReiAnixCatalogResult.Success -> {
-                    directDetail = result.value
-                }
-            }
-        }
-
+    ): Resolution = coroutineScope {
         val candidates = linkedMapOf<String, ReiAnixCatalogAnime>()
         var incompleteSearch = false
         var artworkQueued = false
         val seenArtworkCandidates = HashSet<ReiAnixArtworkCandidate>()
+        val resultMutex = Mutex()
 
-        directDetail?.let { remote ->
-            remote.ids.idFor(remote.source)?.takeIf(String::isNotBlank)?.let { candidates.putIfAbsent(it, remote) }
-            artworkQueued = queueArtworkCandidates(anime.id, listOf(remote), seenArtworkCandidates) || artworkQueued
+        // Start the preferred stored-ID detail request alongside the title searches. A slow
+        // detail endpoint must not delay queries by the original/Romaji/English/native/aliases.
+        val knownId = ids.idFor(provider.source)
+        val detailJob = knownId?.takeIf(String::isNotBlank)?.let { externalId ->
+            launch {
+                val detail = try {
+                    provider.getAnime(externalId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    record(provider.source, "DETAIL_REQUEST_FAILED", anime.id, error)
+                    null
+                }
+                resultMutex.withLock {
+                    when (detail) {
+                        is ReiAnixCatalogResult.Failure -> {
+                            incompleteSearch = true
+                            record(provider.source, "DETAIL_REQUEST_FAILED", anime.id)
+                        }
+                        is ReiAnixCatalogResult.Success -> {
+                            detail.value?.let { remote ->
+                                remote.ids.idFor(remote.source)?.takeIf(String::isNotBlank)?.let {
+                                    candidates.putIfAbsent(it, remote)
+                                }
+                                artworkQueued = queueArtworkCandidates(
+                                    anime.id,
+                                    listOf(remote),
+                                    seenArtworkCandidates,
+                                ) || artworkQueued
+                            }
+                        }
+                        null -> incompleteSearch = true
+                    }
+                }
+            }
         }
 
         val searchTerms = allDistinctArtworkSearchTitles(identity.titles)
@@ -312,33 +334,35 @@ class ReiAnixExternalCatalogIntegrationService(
                 onCompleted = { query, outcome ->
                     outcome.fold(
                         onSuccess = { result ->
-                            when (result) {
-                                is ReiAnixCatalogResult.Failure -> {
-                                    incompleteSearch = true
-                                    record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
-                                }
-                                is ReiAnixCatalogResult.Success -> {
-                                    if (!result.isComplete) incompleteSearch = true
-                                    result.value.forEach { remote ->
-                                        val remoteId = remote.ids.idFor(remote.source)
-                                        if (remoteId.isNullOrBlank()) {
-                                            incompleteSearch = true
-                                        } else {
-                                            candidates.putIfAbsent(remoteId, remote)
-                                        }
+                            resultMutex.withLock {
+                                when (result) {
+                                    is ReiAnixCatalogResult.Failure -> {
+                                        incompleteSearch = true
+                                        record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
                                     }
-                                    // Do not wait for the other aliases. A valid image from this
-                                    // response immediately enters the normal cache/SQLite/Compose path.
-                                    artworkQueued = queueArtworkCandidates(
-                                        anime.id,
-                                        result.value,
-                                        seenArtworkCandidates,
-                                    ) || artworkQueued
+                                    is ReiAnixCatalogResult.Success -> {
+                                        if (!result.isComplete) incompleteSearch = true
+                                        result.value.forEach { remote ->
+                                            val remoteId = remote.ids.idFor(remote.source)
+                                            if (remoteId.isNullOrBlank()) {
+                                                incompleteSearch = true
+                                            } else {
+                                                candidates.putIfAbsent(remoteId, remote)
+                                            }
+                                        }
+                                        // Publish this query's artwork now; other aliases continue
+                                        // running and can enqueue additional independent candidates.
+                                        artworkQueued = queueArtworkCandidates(
+                                            anime.id,
+                                            result.value,
+                                            seenArtworkCandidates,
+                                        ) || artworkQueued
+                                    }
                                 }
                             }
                         },
                         onFailure = { error ->
-                            incompleteSearch = true
+                            resultMutex.withLock { incompleteSearch = true }
                             record(provider.source, "SEARCH_REQUEST_FAILED", anime.id, error)
                         },
                     )
@@ -346,9 +370,10 @@ class ReiAnixExternalCatalogIntegrationService(
             )
         }
 
+        detailJob?.join()
         if (incompleteSearch) {
             record(provider.source, "INCOMPLETE_SEARCH_METADATA_REMAINS_UNRESOLVED", anime.id)
-            return Resolution(
+            return@coroutineScope Resolution(
                 decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
                 artworkQueued = artworkQueued,
             )
@@ -358,7 +383,7 @@ class ReiAnixExternalCatalogIntegrationService(
             anime.id, identity, candidates.values, ids,
         )
         val verified = evaluation.value?.let { VerifiedRemote(it.remote, it.match) }
-        return Resolution(
+        Resolution(
             decision = evaluation.decision,
             verified = verified,
             artworkQueued = artworkQueued,
