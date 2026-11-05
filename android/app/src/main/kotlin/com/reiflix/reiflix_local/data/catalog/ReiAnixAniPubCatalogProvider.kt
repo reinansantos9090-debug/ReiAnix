@@ -68,14 +68,20 @@ class ReiAnixAniPubCatalogProvider(
         if (candidates.isEmpty()) return ReiAnixCatalogResult.Success(emptyList())
         val details = mutableListOf<ReiAnixCatalogAnime>()
         var firstFailure: ReiAnixCatalogError? = null
+        var retryAfterMillis: Long? = null
         for (id in candidates) {
             when (val detail = getAnime(id)) {
                 is ReiAnixCatalogResult.Success -> detail.value?.let(details::add)
                 is ReiAnixCatalogResult.Failure -> {
-                    // Keep successful detail records usable for artwork even when another
-                    // candidate endpoint fails. The completeness bit prevents partial results
-                    // from authorizing metadata/identifier association downstream.
+                    // Preserve successful records so their images remain usable; mark the
+                    // response incomplete so it cannot authorize metadata or identifier writes.
                     if (firstFailure == null) firstFailure = detail.error
+                    val rateLimit = detail.error as? ReiAnixCatalogError.RateLimited
+                    if (rateLimit != null) {
+                        retryAfterMillis = rateLimit.retryAfterMillis ?: 2_000L
+                        // Do not issue more detail requests after the source asked us to pause.
+                        break
+                    }
                 }
             }
         }
@@ -83,6 +89,7 @@ class ReiAnixAniPubCatalogProvider(
             details.isNotEmpty() -> ReiAnixCatalogResult.Success(
                 value = details,
                 isComplete = firstFailure == null,
+                retryAfterMillis = retryAfterMillis,
             )
             firstFailure != null -> ReiAnixCatalogResult.Failure(firstFailure)
             else -> ReiAnixCatalogResult.Success(emptyList())
