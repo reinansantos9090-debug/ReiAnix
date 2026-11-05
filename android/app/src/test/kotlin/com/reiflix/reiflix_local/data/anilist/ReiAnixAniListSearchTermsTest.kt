@@ -38,4 +38,55 @@ class ReiAnixAniListSearchTermsTest {
         assertTrue(terms.any { it.equals("The Night of the Cat", ignoreCase = true) })
         assertTrue(terms.size <= 6)
     }
+
+    @Test
+    fun artworkCandidatesKeepProviderOrderWithoutIdentityScoring() {
+        fun anime(
+            id: Int,
+            title: String,
+            poster: String?,
+            banner: String? = null,
+            year: Int? = null,
+            format: String? = null,
+        ) = AniListAnime(
+            id = id,
+            titleRomaji = title,
+            titleEnglish = null,
+            titleNative = null,
+            synonyms = emptyList(),
+            description = null,
+            format = format,
+            episodes = null,
+            status = null,
+            averageScore = null,
+            durationMinutes = null,
+            season = null,
+            seasonYear = year,
+            genres = emptyList(),
+            coverLargeUrl = null,
+            coverExtraLargeUrl = poster,
+            bannerUrl = banner,
+            studios = emptyList(),
+        )
+
+        val unrelatedFirst = anime(
+            id = 31,
+            title = "Completely Different Title",
+            poster = "https://cdn.example/first.jpg",
+            year = 1990,
+            format = "MOVIE",
+        )
+        val noArtwork = anime(id = 32, title = "No Cover", poster = null)
+        val matchingLater = anime(
+            id = 33,
+            title = "Expected Anime",
+            poster = "https://cdn.example/later.jpg",
+            year = 2026,
+            format = "TV",
+        )
+
+        val selected = usableAniListArtworkCandidates(listOf(unrelatedFirst, noArtwork, matchingLater))
+        assertEquals(listOf(31, 33), selected.map { it.id })
+    }
+
 }
