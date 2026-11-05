@@ -403,16 +403,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         // immediately. A separate verified pass may replace it only after that
                         // image is committed; late unverified aliases are never allowed to swap it.
                         val posterAlreadyAvailable = hasUsablePersistedPoster(animeId, entityType)
-                        val posterPass = posterCandidatesForArtworkPass(
-                            candidateCandidates,
-                            posterAlreadyAvailable,
-                        )
-                        val provisionalPosterCandidates = posterPass.filterNot { it.identityVerified }
-                        val verifiedPosterCandidates = posterPass.filter { it.identityVerified }
-
-                        val provisionalPosterRecovered = !posterAlreadyAvailable &&
-                            firstSuccessfulArtworkCandidate(
-                                candidates = provisionalPosterCandidates,
+                        val posterRecovered = posterAlreadyAvailable || firstSuccessfulArtworkCandidate(
+                                candidates = candidateCandidates,
                                 artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
                             ) { candidate, url ->
                                 materialize(
@@ -423,26 +415,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                     sourceKind = candidate.source,
                                 )
                             }
-
-                        // A verified candidate is permitted to promote a provisional poster.
-                        // materialize()/prepareRow() still reject user-owned manual/local covers.
-                        val verifiedPosterRecovered = verifiedPosterCandidates.isNotEmpty() &&
-                            firstSuccessfulArtworkCandidate(
-                                candidates = verifiedPosterCandidates,
-                                artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
-                            ) { candidate, url ->
-                                materialize(
-                                    animeId, entityType, "poster", url,
-                                    candidate.anilistId.takeIf { it > 0L },
-                                    force, requestId, requireCurrentUrl = false,
-                                    retryCandidates = candidateCandidates,
-                                    sourceKind = candidate.source,
-                                    identityVerified = true,
-                                )
-                            }
-                        val posterRecovered = posterAlreadyAvailable ||
-                            provisionalPosterRecovered || verifiedPosterRecovered ||
-                            hasUsablePersistedPoster(animeId, entityType)
 
                         val backdropRecovered = firstSuccessfulArtworkCandidate(
                             candidates = candidateCandidates,
@@ -452,7 +424,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                 animeId, entityType, "backdrop", url, candidate.anilistId.takeIf { it > 0L },
                                 force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
                                 sourceKind = candidate.source,
-                                identityVerified = candidate.identityVerified,
                             )
                         }
                         ReiAnixDiagnosticTimeline.record(
