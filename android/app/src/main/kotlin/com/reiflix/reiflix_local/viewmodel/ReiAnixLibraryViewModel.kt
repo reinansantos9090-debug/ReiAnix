@@ -1549,6 +1549,22 @@ class ReiAnixLibraryViewModel(
                 }
 
             } finally {
+                // If episode 1 had no usable local thumbnail, do not lose Trace.moe
+                // entirely: fall back to the earliest valid buffered episode frames.
+                // This fallback runs only after the episode-1 attempt was impossible.
+                if (firstTraceMoeEpisodeId !in traceMoeEpisodesQueued &&
+                    traceMoeIdentificationJob?.isActive == true
+                ) {
+                    for ((bufferedId, bufferedFile) in traceMoeBufferedSamples) {
+                        if (traceMoeEpisodesQueued.size >= 3) break
+                        if (traceMoeEpisodesQueued.add(bufferedId)) {
+                            traceMoeSampleChannel.send(
+                                TraceMoeEpisodeSample(episodeId = bufferedId, imageFile = bufferedFile),
+                            )
+                        }
+                    }
+                    traceMoeBufferedSamples.clear()
+                }
                 // Closing the stream releases a Trace.moe attempt that did not reach
                 // a result with the first three distinct local episodes.
                 traceMoeSampleChannel.close()
