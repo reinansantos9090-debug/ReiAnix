@@ -251,10 +251,13 @@ sealed interface ReiAnixCatalogResult<out T> {
         val expiresAtMillis: Long? = null,
         /** False when usable partial records were returned but one or more details failed. */
         val isComplete: Boolean = true,
+        /** Source cooldown returned by a rate-limited detail in a partial search response. */
+        val retryAfterMillis: Long? = null,
     ) : ReiAnixCatalogResult<T> {
         init {
             require(fetchedAtMillis >= 0L)
             require(expiresAtMillis == null || expiresAtMillis >= fetchedAtMillis)
+            require(retryAfterMillis == null || retryAfterMillis >= 0L)
         }
     }
     data class Failure(val error: ReiAnixCatalogError) : ReiAnixCatalogResult<Nothing>
