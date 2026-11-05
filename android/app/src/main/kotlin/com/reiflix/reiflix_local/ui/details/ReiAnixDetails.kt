@@ -1863,7 +1863,7 @@ private fun AniListAssociationDialog(
                     modifier = Modifier.fillMaxWidth().height(280.dp),
                     verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                 ) {
-                    items(state.results, key = { it.id }) { anime ->
+                    items(state.results, key = { it.id }, contentType = { "anilist-candidate-row" }) { anime ->
                         AniListCandidateRow(anime = anime, onSelect = { onAssociate(anime.id) })
                     }
                 }
