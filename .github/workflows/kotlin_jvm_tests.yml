@@ -5,6 +5,14 @@ on:
     paths:
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/ReiAnixSettingsContractTest.kt"
       - ".github/workflows/kotlin_jvm_tests.yml"
   workflow_dispatch:
 
@@ -69,4 +77,5 @@ jobs:
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
               --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
+              --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
             :app:compileReleaseKotlin

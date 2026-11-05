@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -90,6 +91,7 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import java.util.Locale
@@ -652,6 +654,8 @@ private fun ColumnScope.HomeReadyContent(
 ) {
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val responsive = LocalReiAnixResponsiveMetrics.current
+    val posterSize = LocalReiAnixPosterSize.current
+    val posterCardWidth = responsive.posterCardWidth(posterSize)
     val recentlyAdded = remember(animes) { buildRecentlyAddedItems(animes) }
     val recentlyWatched = remember(animes) { buildRecentlyWatchedItems(animes) }
     val favorites = remember(animes) { animes.filter { it.favorite }.distinctBy { it.id } }
@@ -711,7 +715,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Adicionados recentemente",
                     items = recentlyAdded,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Adicionados recentemente",
                     onSeeAll = onOpenLibrary,
@@ -723,7 +727,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Conteúdo disponível",
                     items = available,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Conteúdo disponível",
                     onSeeAll = onOpenLibrary,
@@ -736,7 +740,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Recentemente assistidos",
                     items = recentlyWatched,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Recentemente assistidos",
                     onSeeAll = onOpenLibrary,
@@ -748,7 +752,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Minha lista",
                     items = favorites,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
                     onSeeAll = onOpenMyList,
@@ -760,7 +764,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = section.title,
                     items = section.items,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home " + section.title,
                 )
@@ -771,7 +775,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Filmes",
                     items = movies,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Filmes",
                 )
@@ -1070,10 +1074,14 @@ private fun HomeMediaSection(
     contentDescription: String,
     onSeeAll: (() -> Unit)? = null,
 ) {
+    val responsive = LocalReiAnixResponsiveMetrics.current
+    val posterSize = LocalReiAnixPosterSize.current
+    val railPadding = responsive.posterRailPadding(posterSize)
+    val railSpacing = responsive.posterRailSpacing(posterSize)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+            .padding(horizontal = railPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         HomeSectionHeader(title = title, onSeeAll = onSeeAll)
@@ -1082,10 +1090,8 @@ private fun HomeMediaSection(
             modifier = Modifier.semantics {
                 this.contentDescription = contentDescription
             },
-            contentPadding = PaddingValues(
-                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            contentPadding = PaddingValues(end = railPadding),
+            horizontalArrangement = Arrangement.spacedBy(railSpacing),
         ) {
             items(
                 items = items,
@@ -1135,13 +1141,17 @@ private fun HomeMediaCard(
     cardWidth: androidx.compose.ui.unit.Dp = ReiAnixTokens.Dimensions.homeCardWidth,
     onClick: () -> Unit,
 ) {
+    // Match Coil's poster decode bound to the displayed poster size.
+    val requestedPosterDimensionPx = with(LocalDensity.current) {
+        (cardWidth / ReiAnixTokens.Dimensions.posterAspectRatio).roundToPx().coerceAtLeast(1)
+    }
     // Home, Biblioteca, Search and Minha Lista deliberately share the same
     // canonical anime card so artwork, state badges and progress never drift.
     ReiAnixAnimeCard(
         anime = anime,
         modifier = Modifier.width(cardWidth),
         onClick = onClick,
-        maxDimensionPx = 512,
+        maxDimensionPx = requestedPosterDimensionPx,
         bottomBadgeText = presentationStateLabel(anime.presentationState),
     )
 }

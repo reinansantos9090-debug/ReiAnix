@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
 import com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus
 import com.reiflix.reiflix_local.R
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
@@ -82,6 +84,7 @@ class ReiAnixComposeLibraryHost(
             view.setContent {
             val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
             val appearanceCardSize by settingsViewModel.appearanceCardSize.collectAsStateWithLifecycle()
+            val appearancePosterSize by settingsViewModel.appearancePosterSize.collectAsStateWithLifecycle()
             val appearanceShowThumbnails by settingsViewModel.appearanceShowThumbnails.collectAsStateWithLifecycle()
             val libraryGridDensity by settingsViewModel.libraryGridDensity.collectAsStateWithLifecycle()
             val libraryPageSize by settingsViewModel.libraryPageSize.collectAsStateWithLifecycle()
@@ -252,6 +255,7 @@ class ReiAnixComposeLibraryHost(
                         )
 
                     Box(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalReiAnixPosterSize provides appearancePosterSize) {
                     ReiAnixNavigationHost(
                         navController = navController,
                         homeViewModel = libraryViewModel,
@@ -370,6 +374,7 @@ class ReiAnixComposeLibraryHost(
                                 activity.requestNativeStorageAction("select_tree")
                             },
                         )
+                    }
                     }
                 }
                 }

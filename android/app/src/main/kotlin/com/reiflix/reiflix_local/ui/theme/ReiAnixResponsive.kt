@@ -10,6 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
  * ReiAnix responsive window policy.
@@ -80,6 +81,67 @@ data class ReiAnixResponsiveMetrics(
         }.coerceAtMost(ReiAnixTokens.Dimensions.gridMaxItemWidth)
     }
 
+    /** Shared poster scale for Home and Library, from compact to expanded. */
+    fun posterCardWidth(size: Int): Dp {
+        val fraction = size.coerceIn(0, 16) / 16f
+        val minimum = when (widthClass) {
+            ReiAnixWindowWidthClass.COMPACT -> 54.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 68.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 84.dp
+        }
+        val maximum = when (widthClass) {
+            ReiAnixWindowWidthClass.COMPACT -> 172.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 184.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 184.dp
+        }
+        return minimum + (maximum - minimum) * fraction
+    }
+
+    fun posterRailPadding(size: Int): Dp {
+        val fraction = size.coerceIn(0, 16) / 16f
+        val minimum = when (widthClass) {
+            ReiAnixWindowWidthClass.COMPACT -> 4.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 12.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 16.dp
+        }
+        val maximum = when (widthClass) {
+            ReiAnixWindowWidthClass.COMPACT -> 16.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 24.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 32.dp
+        }
+        return minimum + (maximum - minimum) * fraction
+    }
+
+    fun posterRailSpacing(size: Int): Dp {
+        val fraction = size.coerceIn(0, 16) / 16f
+        val minimum = when (widthClass) {
+            ReiAnixWindowWidthClass.COMPACT -> 3.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 6.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 8.dp
+        }
+        val maximum = when (widthClass) {
+            ReiAnixWindowWidthClass.COMPACT -> 12.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 14.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 16.dp
+        }
+        return minimum + (maximum - minimum) * fraction
+    }
+
+    fun posterGridSpacing(size: Int): Dp {
+        val fraction = size.coerceIn(0, 16) / 16f
+        val minimum = when (widthClass) {
+            ReiAnixWindowWidthClass.COMPACT -> 3.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 6.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 8.dp
+        }
+        val maximum = when (widthClass) {
+            ReiAnixWindowWidthClass.COMPACT -> 10.dp
+            ReiAnixWindowWidthClass.MEDIUM -> 12.dp
+            ReiAnixWindowWidthClass.EXPANDED -> 14.dp
+        }
+        return minimum + (maximum - minimum) * fraction
+    }
+
     val homeContinueCardWidth: Dp
         get() = when (widthClass) {
             ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Responsive.compactContinueCardWidth
@@ -148,6 +210,9 @@ data class ReiAnixResponsiveMetrics(
 val LocalReiAnixResponsiveMetrics = staticCompositionLocalOf {
     ReiAnixResponsiveMetrics.compactDefaults()
 }
+
+/** User-selected poster size (0..16), supplied from canonical SQLite settings. */
+val LocalReiAnixPosterSize = staticCompositionLocalOf { 5 }
 
 @Composable
 fun ReiAnixResponsiveRoot(

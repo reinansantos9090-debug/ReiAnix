@@ -73,6 +73,7 @@ object ReiAnixSettingsContract {
         bool("app.confirm_destructive", true),
         enum("appearance.theme", "dark", "system", "light", "dark"),
         enum("appearance.card_size", "medium", "small", "medium", "large"),
+        int("appearance.poster_size", 5, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16),
         bool("appearance.show_thumbnails", true),
         enum("library.sort_default", "added_desc", "added_desc", "title_asc", "title_desc", "recently_watched"),
         enum("library.grid_density", "medium", "small", "medium", "large"),
