@@ -148,8 +148,8 @@ internal fun shouldDeferArtworkDiscoveryAttempt(
 }
 
 
-internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6): List<String> {
-    require(limit in 1..8) { "AniList title search limit must be between 1 and 8." }
+internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 64): List<String> {
+    require(limit in 1..128) { "AniList title search limit must be between 1 and 128." }
     val seen = HashSet<String>()
     return candidates.asSequence()
         .flatMap { MediaTitleNormalizer.searchTitleVariants(it).asSequence() }
@@ -545,43 +545,35 @@ class ReiAnixAniListIntegrationService(
                 }
             }
         }
-        val terms = boundedAniListSearchTerms(titleCandidates, limit = 6)
+        val terms = boundedAniListSearchTerms(titleCandidates, limit = 128)
         if (terms.isEmpty()) return emptyList()
         val candidatesById = linkedMapOf<Int, AniListAnime>()
-        for (term in terms) {
-            currentCoroutineContext().ensureActive()
-            when (val result = try {
-                client.searchAnime(term, 10)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TAG, "AniList artwork search failed for animeId=" + local.id + " title=" + term, error)
-                continue
-            }) {
-                is AniListResult.Success -> result.value.forEach { remote ->
-                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
-                }
-                is AniListResult.Failure -> Log.w(
-                    TAG,
-                    "AniList artwork search failed for animeId=" + local.id + " title=" + term + ": " + result.error,
-                )
+        when (val result = try {
+            client.searchAnimeBatch(terms, 10, includeFullMetadata = false)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "AniList artwork batch search failed for animeId=" + local.id, error)
+            return emptyList()
+        }) {
+            is AniListResult.Success -> result.value.values.flatten().forEach { remote ->
+                if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
             }
+            is AniListResult.Failure -> Log.w(
+                TAG,
+                "AniList artwork batch search failed for animeId=" + local.id + ": " + result.error,
+            )
         }
         if (candidatesById.isEmpty()) return emptyList()
         val context = ReiAnixAniListMatcher.Context(
             year = local.year,
             mediaKind = local.mediaKind,
         )
-        return candidatesById.values.map { remote ->
-            val score = terms.maxOfOrNull { title ->
-                ReiAnixAniListMatcher.rank(title, listOf(remote), context).firstOrNull()?.score ?: 0.0
-            } ?: 0.0
-            remote to score
-        }.sortedWith(
-            compareByDescending<Pair<AniListAnime, Double>> { it.second }
-                .thenBy { (it.first.titleEnglish ?: it.first.titleRomaji ?: "").lowercase(Locale.ROOT) }
-                .thenBy { it.first.id },
-        ).take(MAX_ARTWORK_CANDIDATES).map { it.first }
+        return ReiAnixAniListMatcher.rankAcrossTitles(
+            localTitles = terms,
+            candidates = candidatesById.values.toList(),
+            context = context,
+        ).take(MAX_ARTWORK_CANDIDATES).map { it.anime }
     }
 
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {

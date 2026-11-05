@@ -41,6 +41,98 @@ internal object ReiAnixAniListMatcher {
             .thenBy { it.anime.id },
     )
 
+    /**
+     * Ranks a remote candidate set against every local title term while caching the
+     * normalized forms on both sides. The score for each candidate is exactly the
+     * maximum of the existing single-title rank() scores; this only avoids repeating
+     * normalization and rebuilding singleton ranking lists for every alias.
+     */
+    fun rankAcrossTitles(
+        localTitles: Collection<String>,
+        candidates: List<AniListAnime>,
+        context: Context = Context(),
+    ): List<RankedCandidate> {
+        data class PreparedLocalTitle(
+            val normalizedVariants: List<PreparedMatchText>,
+            val season: Int?,
+            val year: Int?,
+        )
+
+        val preparedLocalTitles = localTitles.map { title ->
+            PreparedLocalTitle(
+                normalizedVariants = MediaTitleNormalizer.searchTitleVariants(title)
+                    .ifEmpty { listOf(title) }
+                    .map(::baseNormalize)
+                    .filter(String::isNotEmpty)
+                    .distinct()
+                    .map(::prepareMatchText),
+                season = extractSeason(title),
+                year = context.year ?: extractYear(title),
+            )
+        }
+        val expectedFormat = expectedFormat(context)
+
+        return candidates.map { candidate ->
+            val titleValues = buildList {
+                candidate.titleEnglish?.takeIf(String::isNotBlank)?.let { add("english" to it) }
+                candidate.titleRomaji?.takeIf(String::isNotBlank)?.let { add("romaji" to it) }
+                candidate.titleNative?.takeIf(String::isNotBlank)?.let { add("native" to it) }
+                candidate.synonyms.filter(String::isNotBlank).forEach { add("synonym" to it) }
+            }
+            val normalizedTitleValues = titleValues.map { (kind, value) ->
+                kind to prepareMatchText(baseNormalize(value))
+            }
+            val candidateFormat = normalizeFormat(candidate.format)
+            val candidateSeason = titleValues.firstNotNullOfOrNull { (_, value) -> extractSeason(value) }
+            val remoteYear = candidate.seasonYear
+
+            var bestScore = 0.0
+            var bestKind = ""
+            var hasBestTerm = false
+            for (local in preparedLocalTitles) {
+                var titleScore = 0.0
+                var titleKind = ""
+                normalizedTitleValues.forEach { (kind, value) ->
+                    val score = local.normalizedVariants.maxOfOrNull { normalized ->
+                        tokenScore(normalized, value)
+                    } ?: 0.0
+                    if (score > titleScore) {
+                        titleScore = score
+                        titleKind = kind
+                    }
+                }
+
+                if (!expectedFormat.isNullOrBlank() && candidateFormat.isNotBlank()) {
+                    titleScore += when {
+                        expectedFormat == candidateFormat -> 0.08
+                        expectedFormat in SERIES_FORMATS && candidateFormat in SERIES_FORMATS -> -0.02
+                        else -> -0.18
+                    }
+                }
+                if (local.season != null && candidateSeason != null) {
+                    titleScore += if (local.season == candidateSeason) 0.07 else -0.12
+                }
+                if (local.year != null && remoteYear != null) {
+                    titleScore += if (remoteYear == local.year) 0.04 else -0.03
+                }
+
+                val score = titleScore.coerceIn(0.0, 1.0).roundToScore()
+                if (!hasBestTerm || score > bestScore) {
+                    bestScore = score
+                    bestKind = titleKind
+                    hasBestTerm = true
+                }
+                // A score of 1.0 is the maximum possible result for any other alias.
+                if (bestScore >= 1.0) break
+            }
+            RankedCandidate(candidate, bestScore, bestKind)
+        }.sortedWith(
+            compareByDescending<RankedCandidate> { it.score }
+                .thenBy { (it.anime.titleEnglish ?: it.anime.titleRomaji ?: "").lowercase(Locale.ROOT) }
+                .thenBy { it.anime.id },
+        )
+    }
+
     private fun candidateScore(
         localTitle: String,
         candidate: AniListAnime,
@@ -90,6 +182,94 @@ internal object ReiAnixAniListMatcher {
         }
 
         return best.coerceIn(0.0, 1.0).roundToScore() to bestKind
+    }
+
+    private data class PreparedMatchText(
+        val value: String,
+        val tokens: Set<String>,
+    )
+
+    private fun prepareMatchText(value: String): PreparedMatchText =
+        PreparedMatchText(
+            value = value,
+            tokens = value.split(WHITESPACE).filter(String::isNotBlank).toSet(),
+        )
+
+    /**
+     * Allocation-reduced equivalent of tokenScore for the batched artwork ranking path.
+     * Token sets are prepared once per normalized title; intersection cardinality gives
+     * the same Jaccard overlap as allocating union/intersection sets for every pair.
+     */
+    private fun tokenScore(local: PreparedMatchText, remote: PreparedMatchText): Double {
+        val left = local.value
+        val right = remote.value
+        if (left.isEmpty() || right.isEmpty()) return 0.0
+        if (left == right) return 1.0
+        if (left.contains(right) || right.contains(left)) {
+            val containment = minOf(left.length, right.length).toDouble() / maxOf(left.length, right.length)
+            return 0.78 + 0.18 * containment
+        }
+        val intersectionSize = local.tokens.count { it in remote.tokens }
+        val unionSize = local.tokens.size + remote.tokens.size - intersectionSize
+        val overlap = if (unionSize == 0) 0.0 else intersectionSize.toDouble() / unionSize
+        return maxOf(sequenceMatcherRatioReusingRows(left, right), overlap)
+    }
+
+    /**
+     * Same longest-common-block dynamic program as sequenceMatcherRatio(), reusing its
+     * two DP rows instead of allocating a fresh IntArray for every character row.
+     */
+    private fun sequenceMatcherRatioReusingRows(left: String, right: String): Double {
+        if (left.isEmpty() || right.isEmpty()) return 0.0
+        data class Window(val leftStart: Int, val leftEnd: Int, val rightStart: Int, val rightEnd: Int)
+        val pending = ArrayDeque<Window>()
+        pending.addLast(Window(0, left.length, 0, right.length))
+        var matches = 0
+        while (pending.isNotEmpty()) {
+            val window = pending.removeLast()
+            if (window.leftStart >= window.leftEnd || window.rightStart >= window.rightEnd) continue
+            val width = window.rightEnd - window.rightStart
+            var previous = IntArray(width + 1)
+            var current = IntArray(width + 1)
+            var bestLength = 0
+            var bestLeft = window.leftStart
+            var bestRight = window.rightStart
+            for (i in window.leftStart until window.leftEnd) {
+                current.fill(0)
+                for (offset in 1..width) {
+                    if (left[i] == right[window.rightStart + offset - 1]) {
+                        current[offset] = previous[offset - 1] + 1
+                        if (current[offset] > bestLength) {
+                            bestLength = current[offset]
+                            bestLeft = i - bestLength + 1
+                            bestRight = window.rightStart + offset - bestLength
+                        }
+                    }
+                }
+                val reusable = previous
+                previous = current
+                current = reusable
+            }
+            if (bestLength == 0) continue
+            matches += bestLength
+            pending.addLast(
+                Window(
+                    bestLeft + bestLength,
+                    window.leftEnd,
+                    bestRight + bestLength,
+                    window.rightEnd,
+                ),
+            )
+            pending.addLast(
+                Window(
+                    window.leftStart,
+                    bestLeft,
+                    window.rightStart,
+                    bestRight,
+                ),
+            )
+        }
+        return 2.0 * matches / (left.length + right.length)
     }
 
     private fun tokenScore(local: String, remote: String): Double {
