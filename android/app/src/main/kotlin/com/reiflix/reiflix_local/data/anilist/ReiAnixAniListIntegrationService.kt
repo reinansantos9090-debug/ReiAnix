@@ -716,7 +716,7 @@ class ReiAnixAniListIntegrationService(
                         }
                     }
                     if (remote == null) {
-                        if (discoverArtworkCandidates(local, remoteTitleAliases)) recovered++
+                        if (discoverArtworkCandidates(local)) recovered++
                         continue
                     }
                     val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
@@ -737,7 +737,7 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Success -> {
                             if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                 recovered++
-                            } else if (discoverArtworkCandidates(local)) {
+                            } else if (discoverArtworkCandidates(local, remoteTitleAliases)) {
                                 recovered++
                             }
                         }
