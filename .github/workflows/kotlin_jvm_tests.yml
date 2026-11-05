@@ -61,6 +61,19 @@ jobs:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
+          contract="android/app/src/main/assets/native-sqlite-contract-v29.json.gz"
+          fixture="android/app/src/test/resources/native-sqlite-schema-v29.json"
+          fixture_dir="$(dirname "$fixture")"
+          mkdir -p "$fixture_dir"
+          trap 'rm -f "$fixture"; rmdir "$fixture_dir" 2>/dev/null || true' EXIT
+
+          # Runtime SQLite tests consume the DDL fixture generated from the exact same
+          # canonical v29 asset used by the app. Keep it temporary and never commit it.
+          gzip -dc "$contract" > "$RUNNER_TEMP/native-sqlite-contract-v29.json"
+          jq '. + {statements: ((.table_sql | to_entries | sort_by(.key) | map(.value)) + ([.indexes | sort_by(.name)[] | select(.sql != null) | .sql]))}' \
+            "$RUNNER_TEMP/native-sqlite-contract-v29.json" > "$fixture"
+          jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$fixture" >/dev/null
+
           gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
