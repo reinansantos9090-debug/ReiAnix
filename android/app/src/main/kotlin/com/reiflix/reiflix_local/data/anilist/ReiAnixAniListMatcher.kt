@@ -41,6 +41,49 @@ internal object ReiAnixAniListMatcher {
             .thenBy { it.anime.id },
     )
 
+    /**
+     * Image-only confirmation is stricter than discovery ranking: at least one discriminative
+     * local title/alias must exactly match a provider title, and known year/season/media format
+     * cannot contradict the local record. This never authorizes metadata or ID association.
+     */
+    fun hasVerifiedArtworkIdentity(
+        localTitles: Collection<String>,
+        candidate: AniListAnime,
+        context: Context = Context(),
+    ): Boolean {
+        val remoteTitles = buildList {
+            candidate.titleEnglish?.takeIf(String::isNotBlank)?.let(::add)
+            candidate.titleRomaji?.takeIf(String::isNotBlank)?.let(::add)
+            candidate.titleNative?.takeIf(String::isNotBlank)?.let(::add)
+            candidate.synonyms.filter(String::isNotBlank).forEach { add(it) }
+        }
+        if (!com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
+                .hasDiscriminativeExactTitleMatch(localTitles, remoteTitles)
+        ) return false
+
+        val localYear = context.year ?: localTitles.mapNotNull(::extractYear).distinct().singleOrNull()
+        if (localYear != null && candidate.seasonYear != null && localYear != candidate.seasonYear) {
+            return false
+        }
+
+        val localSeasons = localTitles.mapNotNull(::extractSeason).toSet()
+        val remoteSeasons = remoteTitles.mapNotNull(::extractSeason).toSet()
+        if (localSeasons.isNotEmpty() && remoteSeasons.isNotEmpty() &&
+            localSeasons.intersect(remoteSeasons).isEmpty()
+        ) return false
+
+        val remoteFormat = normalizeFormat(candidate.format)
+        val requiredFormat = expectedFormat(context)
+        if (requiredFormat != null && remoteFormat.isNotBlank() && remoteFormat != requiredFormat) {
+            return false
+        }
+        val mediaKind = context.mediaKind.orEmpty().lowercase(Locale.ROOT).replace('-', '_').trim()
+        if (mediaKind in setOf("series", "tv", "tv_series", "anime") && remoteFormat == "MOVIE") {
+            return false
+        }
+        return true
+    }
+
     private fun candidateScore(
         localTitle: String,
         candidate: AniListAnime,

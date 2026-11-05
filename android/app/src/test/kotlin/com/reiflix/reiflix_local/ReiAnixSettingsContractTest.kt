@@ -10,8 +10,8 @@ import org.junit.Test
 class ReiAnixSettingsContractTest {
     @Test fun knownDefaultsAndTypesMatchLegacyContract() {
         assertEquals("dark", ReiAnixSettingsContract.defaultFor("appearance.theme"))
-        assertEquals("5", ReiAnixSettingsContract.defaultFor("appearance.poster_size"))
         assertEquals("true", ReiAnixSettingsContract.defaultFor("player.autoplay_next"))
+        assertEquals("0", ReiAnixSettingsContract.defaultFor("appearance.poster_size"))
         assertEquals("true", ReiAnixSettingsContract.defaultFor("gestures.double_tap"))
         assertEquals("false", ReiAnixSettingsContract.defaultFor("gestures.horizontal_seek"))
         assertEquals(ReiAnixSettingKind.LANGUAGE, ReiAnixSettingsContract.definitions["audio.preferred_language"]?.kind)
@@ -21,7 +21,7 @@ class ReiAnixSettingsContractTest {
     @Test fun missingPersistedSettingsUseContractDefaultsWithoutRewritingThem() {
         val effective = ReiAnixSettingsContract.withDefaults(emptyMap())
 
-        assertEquals("5", effective["appearance.poster_size"])
+        assertEquals("0", effective["appearance.poster_size"])
         assertEquals("true", effective["appearance.show_thumbnails"])
         assertEquals("dark", effective["appearance.theme"])
         assertEquals("36", effective["library.page_size"])
@@ -69,6 +69,11 @@ class ReiAnixSettingsContractTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             ReiAnixSettingsContract.normalize("player.autoplay_next", "sometimes")
+        }
+        assertEquals("0", ReiAnixSettingsContract.normalize("appearance.poster_size", "0"))
+        assertEquals("16", ReiAnixSettingsContract.normalize("appearance.poster_size", "16"))
+        assertThrows(IllegalArgumentException::class.java) {
+            ReiAnixSettingsContract.normalize("appearance.poster_size", "17")
         }
     }
 

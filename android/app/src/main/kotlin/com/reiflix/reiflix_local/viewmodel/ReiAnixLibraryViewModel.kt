@@ -1386,6 +1386,14 @@ class ReiAnixLibraryViewModel(
             // the extractor and its scheduling/quality/concurrency are unchanged.
             val traceMoeSampleChannel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
             val traceMoeEpisodesQueued = mutableSetOf<Long>()
+            val traceMoeBufferedSamples = linkedMapOf<Long, File>()
+            val firstTraceMoeEpisodeId = pending.firstOrNull {
+                it.seasonNumber == 1 && it.number == 1.0
+            }?.id ?: pending.minWithOrNull(
+                compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel> {
+                    it.seasonNumber ?: Int.MAX_VALUE
+                }.thenBy { it.number ?: Double.MAX_VALUE }.thenBy { it.id },
+            )?.id
             val traceMoeIdentificationJob = appDependencies?.aniListIntegrationService?.let { integration ->
                 launch {
                     try {
@@ -1403,12 +1411,29 @@ class ReiAnixLibraryViewModel(
 
             suspend fun submitTraceMoeSample(episodeId: Long, file: File) {
                 if (traceMoeIdentificationJob?.isActive != true ||
-                    traceMoeEpisodesQueued.size >= 3 ||
-                    !traceMoeEpisodesQueued.add(episodeId)
+                    episodeId in traceMoeEpisodesQueued ||
+                    traceMoeBufferedSamples.containsKey(episodeId)
                 ) return
-                traceMoeSampleChannel.send(
-                    TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file),
-                )
+
+                // Keep other episode frames buffered until episode 1 is available.
+                // This changes only Trace.moe sample order; thumbnail extraction order,
+                // scheduling, dimensions and publication remain untouched.
+                if (episodeId != firstTraceMoeEpisodeId) {
+                    traceMoeBufferedSamples[episodeId] = file
+                    return
+                }
+
+                suspend fun sendSample(id: Long, image: File) {
+                    if (traceMoeEpisodesQueued.size >= 3 || !traceMoeEpisodesQueued.add(id)) return
+                    traceMoeSampleChannel.send(TraceMoeEpisodeSample(episodeId = id, imageFile = image))
+                }
+
+                sendSample(episodeId, file)
+                for ((bufferedId, bufferedFile) in traceMoeBufferedSamples) {
+                    if (traceMoeEpisodesQueued.size >= 3) break
+                    sendSample(bufferedId, bufferedFile)
+                }
+                traceMoeBufferedSamples.clear()
             }
 
             try {

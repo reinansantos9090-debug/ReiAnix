@@ -54,6 +54,48 @@ class ReiAnixAniListMatcherTest {
     }
 
     @Test
+    fun backgroundArtworkVerificationRequiresExactAliasAndCompatibleKnownMetadata() {
+        val localTitles = listOf("Attack on Titan", "Shingeki no Kyojin", "Ataque dos Titãs")
+        val context = ReiAnixAniListMatcher.Context(year = 2013, mediaKind = "series")
+
+        assertTrue(
+            ReiAnixAniListMatcher.hasVerifiedArtworkIdentity(
+                localTitles,
+                anime(id = 16498, english = "Attack on Titan", romaji = "Shingeki no Kyojin", year = 2013),
+                context,
+            ),
+        )
+        assertFalse(
+            ReiAnixAniListMatcher.hasVerifiedArtworkIdentity(
+                localTitles,
+                anime(id = 16499, english = "Attack on Titan: Lost Girls", year = 2014),
+                context,
+            ),
+        )
+        assertFalse(
+            ReiAnixAniListMatcher.hasVerifiedArtworkIdentity(
+                localTitles,
+                anime(id = 16500, english = "Attack on Titan", year = 2014),
+                context,
+            ),
+        )
+        assertFalse(
+            ReiAnixAniListMatcher.hasVerifiedArtworkIdentity(
+                localTitles,
+                anime(id = 16501, english = "Attack on Titan", format = "MOVIE", year = 2013),
+                context,
+            ),
+        )
+        assertFalse(
+            ReiAnixAniListMatcher.hasVerifiedArtworkIdentity(
+                listOf("Special"),
+                anime(id = 16502, english = "Special", year = 2013),
+                context,
+            ),
+        )
+    }
+
+    @Test
     fun shortContainmentDoesNotAutomaticallyConfirmFranchiseSequels() {
         val candidate = anime(id = 20, english = "Naruto")
         val ranked = ReiAnixAniListMatcher.rank("Naruto Shippuden", listOf(candidate))
