@@ -97,6 +97,17 @@ internal suspend fun firstSuccessfulArtworkCandidate(
     return false
 }
 
+/** Returns only URLs belonging to the requested semantic artwork type. */
+internal fun artworkCandidateUrlsForType(
+    candidate: ReiAnixArtworkCandidate,
+    artworkType: String,
+): List<String?> = when (artworkType) {
+    "poster" -> listOf(candidate.posterUrl, candidate.posterFallbackUrl)
+    "backdrop" -> listOf(candidate.backdropUrl)
+    "banner" -> listOf(candidate.bannerUrl)
+    else -> emptyList()
+}
+
 /**
  * Bounded publication signal for the existing Compose projection.
  * Only a committed association with an existing image file can be published.
@@ -403,7 +414,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     } else {
                         val posterRecovered = firstSuccessfulArtworkCandidate(
                             candidates = candidateCandidates,
-                            artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
+                            artworkUrls = { artworkCandidateUrlsForType(it, POSTER) },
                         ) { candidate, url ->
                             materialize(
                                 animeId, entityType, "poster", url, candidate.anilistId.takeIf { it > 0L },
@@ -413,7 +424,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         }
                         val backdropRecovered = firstSuccessfulArtworkCandidate(
                             candidates = candidateCandidates,
-                            artworkUrls = { listOf(it.backdropUrl) },
+                            artworkUrls = { artworkCandidateUrlsForType(it, BACKDROP) },
                         ) { candidate, url ->
                             materialize(
                                 animeId, entityType, BACKDROP, url, candidate.anilistId.takeIf { it > 0L },
@@ -423,7 +434,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         }
                         val bannerRecovered = firstSuccessfulArtworkCandidate(
                             candidates = candidateCandidates,
-                            artworkUrls = { listOf(it.bannerUrl) },
+                            artworkUrls = { artworkCandidateUrlsForType(it, BANNER) },
                         ) { candidate, url ->
                             materialize(
                                 animeId, entityType, BANNER, url, candidate.anilistId.takeIf { it > 0L },
@@ -728,7 +739,15 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         requestId: String,
         requireCurrentUrl: Boolean,
     ): Boolean {
-        val rows = candidates(entity, id.toString(), type, url)
+        val exactRows = candidates(entity, id.toString(), type, url)
+        // Releases before typed Banner support persisted anime.banner_url images as Backdrop.
+        // Reuse that exact canonical URL instead of downloading it again after the type split.
+        val legacyBannerRows = if (type == BANNER) {
+            candidates(entity, id.toString(), BACKDROP, url)
+        } else {
+            emptyList()
+        }
+        val rows = exactRows + legacyBannerRows
         if (rows.any { it.manual || it.source.equals("manual", true) }) return true
         if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return true
         val existing = rows.firstOrNull { it.url == url && validImage(it.path) }
