@@ -40,6 +40,7 @@ class ReiAnixAniListClient(
 
     private val requestMutex = Mutex()
     private var lastRequestAtMs = 0L
+    @Volatile private var effectiveMinimumRequestIntervalMs = minimumRequestIntervalMs
 
     suspend fun searchAnime(term: String, limit: Int = 10): AniListResult<List<AniListAnime>> {
         val query = term.trim()
@@ -80,6 +81,69 @@ class ReiAnixAniListClient(
         }
     }
 
+
+    /**
+     * Searches every supplied title in one GraphQL operation. Each title owns an aliased
+     * Page field, so the service does not serialize one HTTP round-trip per alias. The
+     * returned map preserves the original normalized query for candidate attribution.
+     */
+    suspend fun searchAnimeBatch(
+        terms: List<String>,
+        limit: Int = 10,
+        includeFullMetadata: Boolean = true,
+    ): AniListResult<Map<String, List<AniListAnime>>> {
+        require(limit in 1..50) { "AniList result limit must be between 1 and 50." }
+        val queries = terms.asSequence()
+            .map(String::trim)
+            .filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .toList()
+        if (queries.isEmpty()) return AniListResult.Success(emptyMap())
+
+        val variableDefinitions = (listOf("\$perPage: Int!") +
+            queries.indices.map { "\$term$it: String!" }).joinToString(", ")
+        val mediaFields = if (includeFullMetadata) SEARCH_MEDIA_FIELDS else SEARCH_ARTWORK_MEDIA_FIELDS
+        val searchFields = queries.indices.joinToString("\n") { index ->
+            "search$index: Page(page: 1, perPage: \$perPage) { " +
+                "media(search: \$term$index, type: ANIME, sort: SEARCH_MATCH) { " +
+                mediaFields + " } }"
+        }
+        val gql = """
+            query SearchAnimeAliases($variableDefinitions) {
+              $searchFields
+            }
+        """.trimIndent()
+        val variables = JSONObject().put("perPage", limit)
+        queries.forEachIndexed { index, term -> variables.put("term$index", term) }
+
+        return execute(gql, variables, allowPartialGraphQlData = true) { data ->
+            val byQuery = linkedMapOf<String, List<AniListAnime>>()
+            for (index in queries.indices) {
+                val page = data.objectOrNull("search$index") ?: continue
+                val media = page.arrayOrNull("media") ?: continue
+                val results = ArrayList<AniListAnime>(media.length())
+                var malformedItem = false
+                for (itemIndex in 0 until media.length()) {
+                    val item = media.optJSONObject(itemIndex)
+                    val anime = item?.let(::parseAnime)
+                    if (anime == null) {
+                        malformedItem = true
+                        break
+                    }
+                    results += anime
+                }
+                // Omit only the damaged alias. Other completed alias pages remain usable
+                // for artwork. Auto-match separately verifies that every key was returned.
+                if (!malformedItem) byQuery[queries[index]] = results
+            }
+            if (byQuery.isEmpty()) {
+                AniListResult.Failure(AniListError.InvalidResponse("AniList batch returned no usable alias result."))
+            } else {
+                AniListResult.Success(byQuery)
+            }
+        }
+    }
+
     suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
         if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
         val gql = """
@@ -109,21 +173,29 @@ class ReiAnixAniListClient(
     private suspend fun <T> execute(
         query: String,
         variables: JSONObject,
+        allowPartialGraphQlData: Boolean = false,
         decode: (JSONObject) -> AniListResult<T>,
     ): AniListResult<T> {
         val response = try {
             requestMutex.withLock {
                 val now = System.currentTimeMillis()
-                val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
+                val wait = (lastRequestAtMs + effectiveMinimumRequestIntervalMs - now).coerceAtLeast(0L)
                 if (wait > 0L) delay(wait)
                 lastRequestAtMs = System.currentTimeMillis()
                 // Keep the lock through the HTTP call so concurrent callers cannot
                 // start together after sharing the same rate-limit delay.
-                withContext(Dispatchers.IO) {
+                val httpResponse = withContext(Dispatchers.IO) {
                     transport.post(ENDPOINT, JSONObject()
                         .put("query", query)
                         .put("variables", variables))
                 }
+                httpResponse.rateLimitLimit?.takeIf { it > 0 }?.let { serverLimit ->
+                    // AniList may temporarily lower the documented per-minute budget.
+                    // Adapt to the response header while retaining the configured floor.
+                    val serverInterval = kotlin.math.ceil(60_000.0 / serverLimit * 1.05).toLong()
+                    effectiveMinimumRequestIntervalMs = maxOf(minimumRequestIntervalMs, serverInterval)
+                }
+                httpResponse
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -162,7 +234,9 @@ class ReiAnixAniListClient(
             } catch (_: Exception) {
                 return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
             }
-            return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
+            if (!allowPartialGraphQlData) {
+                return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
+            }
         }
         val data = try {
             root.objectOrNull("data")
@@ -259,6 +333,18 @@ class ReiAnixAniListClient(
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
         """
+        // Keep search DTO parity with the existing single-title lookup because
+        // auto-match may persist the returned AniList metadata after strict evaluation.
+        private const val SEARCH_MEDIA_FIELDS = """
+            id title { romaji english native } synonyms
+            description(asHtml: false) format episodes duration status averageScore season seasonYear
+            genres coverImage { large extraLarge } bannerImage
+            studios(isMain: true) { nodes { name } }
+        """
+        private const val SEARCH_ARTWORK_MEDIA_FIELDS = """
+            id title { romaji english native } synonyms
+            format episodes status season seasonYear coverImage { large extraLarge } bannerImage
+        """
     }
 }
 
@@ -308,6 +394,8 @@ data class AniListHttpResponse(
     val statusCode: Int,
     val body: String,
     val retryAfterSeconds: Long? = null,
+    val rateLimitLimit: Int? = null,
+    val rateLimitRemaining: Int? = null,
 )
 
 fun interface AniListTransport {
@@ -345,7 +433,9 @@ class HttpUrlConnectionAniListTransport(
                 val stream = if (code in 200..299) activeConnection.inputStream else activeConnection.errorStream
                 val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 val retryAfter = activeConnection.getHeaderField("Retry-After")?.toLongOrNull()
-                AniListHttpResponse(code, responseBody, retryAfter)
+                val rateLimitLimit = activeConnection.getHeaderField("X-RateLimit-Limit")?.toIntOrNull()
+                val rateLimitRemaining = activeConnection.getHeaderField("X-RateLimit-Remaining")?.toIntOrNull()
+                AniListHttpResponse(code, responseBody, retryAfter, rateLimitLimit, rateLimitRemaining)
             } finally {
                 connection?.disconnect()
             }
