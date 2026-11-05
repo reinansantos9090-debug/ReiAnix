@@ -146,7 +146,7 @@ class ReiAnixAniPubCatalogProvider(
 
         val alternatives = linkedSetOf<String>()
         root.optCatalogTextValues("Synonyms", alternatives)
-        alternatives.removeAll { it.equals(title, ignoreCase = true) }
+        alternatives.remove(title)
 
         val ids = ReiAnixExternalCatalogIds(
             additionalIds = mapOf("anipub" to requestedId),
