@@ -420,7 +420,7 @@ class ReiAnixArtworkPublicationSignalTest {
     @Test
     fun artworkDiscoveryAttemptPreferencesUseStablePositiveAnimeIds() {
         assertEquals(
-            "__reianix.internal.artwork_discovery_attempt_v1.812",
+            "__reianix.internal.artwork_discovery_attempt_v2.812",
             artworkDiscoveryAttemptPreferenceKey(812L),
         )
     }
