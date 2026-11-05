@@ -43,6 +43,13 @@ class ReiAnixSettingsViewModel(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), "medium")
 
+    val appearancePosterSize: StateFlow<Int> = uiState
+        .map { state ->
+            state.settings["appearance.poster_size"]?.toIntOrNull()?.coerceIn(0, 16) ?: 0
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), 0)
+
     val appearanceShowThumbnails: StateFlow<Boolean> = uiState
         .map { state ->
             (state.settings["appearance.show_thumbnails"]
