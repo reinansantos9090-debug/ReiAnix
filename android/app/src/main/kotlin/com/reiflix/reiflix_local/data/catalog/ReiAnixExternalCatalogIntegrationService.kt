@@ -318,6 +318,7 @@ class ReiAnixExternalCatalogIntegrationService(
                                     record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
                                 }
                                 is ReiAnixCatalogResult.Success -> {
+                                    if (!result.isComplete) incompleteSearch = true
                                     result.value.forEach { remote ->
                                         val remoteId = remote.ids.idFor(remote.source)
                                         if (remoteId.isNullOrBlank()) {
