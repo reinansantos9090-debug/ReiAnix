@@ -360,7 +360,7 @@ private fun MyListFilters(
         contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
     ) {
         ReiAnixMyListFilter.entries.forEach { option ->
-            item(key = "filter-" + option.name) {
+            item(key = "filter-" + option.name, contentType = "my-list-filter-chip") {
                 ReiAnixChip(
                     text = option.label,
                     selected = option == selected,
