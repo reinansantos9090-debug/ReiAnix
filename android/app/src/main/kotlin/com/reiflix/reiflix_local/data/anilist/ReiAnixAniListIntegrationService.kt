@@ -701,7 +701,7 @@ class ReiAnixAniListIntegrationService(
                         }
                     }
                     if (remote == null) {
-                        if (discoverArtworkCandidates(local)) recovered++
+                        if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                         continue
                     }
                     val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
@@ -716,20 +716,20 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Success -> {
                             if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                 recovered++
-                            } else if (discoverArtworkCandidates(local)) {
+                            } else if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) {
                                 recovered++
                             }
                         }
                         is AniListResult.Failure -> {
                             Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
-                            if (discoverArtworkCandidates(local)) recovered++
+                            if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                         }
                     }
                 } else {
                     // Artwork recovery is read-only with respect to identity:
                     // PROBABLE/AMBIGUOUS/REJECTED/UNRESOLVED titles can provide ranked image
                     // candidates without assigning their AniList ID to the local anime.
-                    if (discoverArtworkCandidates(local)) recovered++
+                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                 }
             }
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
