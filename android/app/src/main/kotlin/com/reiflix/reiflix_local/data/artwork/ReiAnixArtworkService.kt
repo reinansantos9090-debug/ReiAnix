@@ -630,7 +630,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         requireCurrentUrl: Boolean = true,
         retryCandidates: List<ReiAnixArtworkCandidate>? = null,
         sourceKind: String = "anilist",
-        identityVerified: Boolean = false,
     ): Boolean {
         if (!safeUrl(url)) {
             ReiAnixDiagnosticTimeline.record(
@@ -667,10 +666,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
         return permits.withPermit {
             currentCoroutineContext().ensureActive()
-            if (reuseLocal(id, entity, type, url, aniId, requestId, requireCurrentUrl, identityVerified)) return@withPermit true
+            if (reuseLocal(id, entity, type, url, aniId, requestId, requireCurrentUrl)) return@withPermit true
             val key = remoteKey(aniId, url, type)
             val rowId = prepareRow(
-                id, entity, type, url, key, force, requireCurrentUrl, sourceKind, identityVerified,
+                id, entity, type, url, key, force, requireCurrentUrl, sourceKind,
             ) ?: return@withPermit false
             var image: Downloaded? = null
             try {
@@ -678,7 +677,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 image = completedImage
                 currentCoroutineContext().ensureActive()
                 val saved = persistDownloaded(
-                    rowId, id, type, url, key, completedImage, identityVerified, requireCurrentUrl,
+                    rowId, id, type, url, key, completedImage, requireCurrentUrl,
                 )
                 if (!saved.saved) {
                     removeIfUnreferenced(completedImage.file)
@@ -737,7 +736,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         aniId: Long?,
         requestId: String,
         requireCurrentUrl: Boolean,
-        identityVerified: Boolean,
     ): Boolean {
         val rows = candidates(entity, id.toString(), type, url)
         if (rows.any { it.manual || it.source.equals("manual", true) }) return true
@@ -745,7 +743,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val existing = rows.firstOrNull { it.url == url && validImage(it.path) }
         if (existing != null) {
             val path = existing.path ?: return false
-            if (markReady(existing.id, id, type, url, path, requireCurrentUrl, identityVerified)) {
+            if (markReady(existing.id, id, type, url, path, requireCurrentUrl)) {
                 publish("artwork_published", entity, id.toString(), type, path, url,
                     existing.key ?: remoteKey(aniId, url, type), url, existing.mime ?: mime(path), requestId)
             }
@@ -796,7 +794,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         force: Boolean,
         requireCurrentUrl: Boolean,
         sourceKind: String = "anilist",
-        identityVerified: Boolean = false,
     ): Long? = database.transaction { db ->
             if (requireCurrentUrl && !urlCurrent(db, id, type, url)) return@transaction null
             if (type == "poster" && !requireCurrentUrl && hasManualPosterMetadataOwnership(db, id)) {
@@ -813,16 +810,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 }
                 val values = ContentValues().apply {
                     put("source", sourceKind); put("source_ref", url); put("external_url", url)
-                    put(
-                        "status", "downloading",
-                    ); put(
-                        "priority",
-                        when {
-                            requireCurrentUrl -> POSTER_PRIORITY
-                            identityVerified -> VERIFIED_POSTER_PRIORITY
-                            else -> minOf(exact.priority, STALE_PRIORITY)
-                        },
-                    )
+                    put("status", "downloading")
+                    put("priority", if (requireCurrentUrl) POSTER_PRIORITY else minOf(exact.priority, STALE_PRIORITY))
                     put("updated_at", now); put("last_attempt_at", now)
                     put("failure_count", if (force) 0 else exact.failureCount)
                     putNull("next_retry_at"); putNull("http_status"); put("artwork_key", key); put("variant", "large")
@@ -840,14 +829,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val values = ContentValues().apply {
                 put("entity_type", entity); put("entity_id", id.toString()); put("artwork_type", type)
                 put("source", sourceKind); put("source_ref", url); put("external_url", url); put("manual", 0)
-                put(
-                    "priority",
-                    when {
-                        requireCurrentUrl -> POSTER_PRIORITY
-                        identityVerified -> VERIFIED_POSTER_PRIORITY
-                        else -> STALE_PRIORITY
-                    },
-                ); put("status", "downloading")
+                put("priority", if (requireCurrentUrl) POSTER_PRIORITY else STALE_PRIORITY)
+                put("status", "downloading")
                 put("discovered_at", now); put("updated_at", now); put("last_attempt_at", now)
                 put("failure_count", 0); put("artwork_key", key); put("variant", "large")
             }
@@ -942,7 +925,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         url: String,
         key: String,
         image: Downloaded,
-        identityVerified: Boolean,
         requireCurrentUrl: Boolean,
     ): SaveResult =
         database.transaction { db ->
@@ -957,14 +939,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val now = nowSeconds()
             val values = ContentValues().apply {
                 put("source", "cache"); put("local_path", image.file.absolutePath); put("external_url", url)
-                put("status", "ready"); put(
-                    "priority",
-                    when {
-                        current -> POSTER_PRIORITY
-                        identityVerified -> VERIFIED_POSTER_PRIORITY
-                        else -> minOf(row.priority, STALE_PRIORITY)
-                    },
-                )
+                put("status", "ready")
+                put("priority", if (current) POSTER_PRIORITY else minOf(row.priority, STALE_PRIORITY))
                 put("updated_at", now); put("last_attempt_at", now); put("failure_count", 0)
                 put("artwork_key", key); put("variant", "large"); put("byte_size", image.bytes)
                 put("width", image.width.takeIf { it > 0 }); put("height", image.height.takeIf { it > 0 })
@@ -983,7 +959,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         url: String,
         path: String,
         requireCurrentUrl: Boolean,
-        identityVerified: Boolean,
     ): Boolean = database.transaction { db ->
             if (requireCurrentUrl && !urlCurrent(db, id, type, url)) return@transaction false
             val row = artworkById(db, rowId) ?: return@transaction false
@@ -994,9 +969,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val now = nowSeconds()
             val values = ContentValues().apply {
                 put("source", "cache"); put("local_path", path); put("external_url", url); put("status", "ready")
-                if (!requireCurrentUrl && identityVerified) put("priority", VERIFIED_POSTER_PRIORITY)
                 put("last_access", now); putNull("next_retry_at"); putNull("http_status")
-                if (row.status != "ready" || row.path != path || (!requireCurrentUrl && identityVerified)) {
+                if (row.status != "ready" || row.path != path) {
                     put("updated_at", now)
                 }
             }
@@ -1891,20 +1865,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
     }
 
-    /** True while the displayed poster is an automatic provisional alias candidate. */
-    fun hasProvisionalPosterCandidate(animeId: Long): Boolean {
-        if (animeId <= 0L) return false
-        return database.read { db ->
-            db.rawQuery(
-                "SELECT 1 FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
-                    "AND artwork_type='poster' AND status='ready' AND manual=0 " +
-                    "AND priority<=? AND local_path IS NOT NULL AND TRIM(local_path)!='' " +
-                    "AND LOWER(COALESCE(source,'')) NOT IN ('manual','local') LIMIT 1",
-                arrayOf(animeId.toString(), STALE_PRIORITY.toString()),
-            ).use { it.moveToFirst() }
-        }
-    }
-
     private fun hasManualPosterMetadataOwnership(animeId: Long): Boolean =
         database.read { db -> hasManualPosterMetadataOwnership(db, animeId) }
 
@@ -2358,7 +2318,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val BACKFILL_BATCH_SIZE = 16
         const val IO_BUFFER_BYTES = 64 * 1024
         const val POSTER_PRIORITY = 400
-        const val VERIFIED_POSTER_PRIORITY = 450
         const val STALE_PRIORITY = 350
         const val BASE_RETRY_BACKOFF_SECONDS = 60L
         val EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif")
