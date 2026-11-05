@@ -823,16 +823,11 @@ class ReiAnixAniListIntegrationService(
             year = local.year,
             mediaKind = local.mediaKind,
         )
-        return candidatesById.values.map { remote ->
-            val score = terms.maxOfOrNull { title ->
-                ReiAnixAniListMatcher.rank(title, listOf(remote), context).firstOrNull()?.score ?: 0.0
-            } ?: 0.0
-            remote to score
-        }.sortedWith(
-            compareByDescending<Pair<AniListAnime, Double>> { it.second }
-                .thenBy { (it.first.titleEnglish ?: it.first.titleRomaji ?: "").lowercase(Locale.ROOT) }
-                .thenBy { it.first.id },
-        ).take(MAX_ARTWORK_CANDIDATES).map { it.first }
+        return ReiAnixAniListMatcher.rankAcrossTitles(
+            localTitles = terms,
+            candidates = candidatesById.values.toList(),
+            context = context,
+        ).take(MAX_ARTWORK_CANDIDATES).map { it.anime }
     }
 
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {

@@ -41,6 +41,97 @@ internal object ReiAnixAniListMatcher {
             .thenBy { it.anime.id },
     )
 
+    /**
+     * Ranks a remote candidate set against every local title term while caching the
+     * normalized forms on both sides. The score for each candidate is exactly the
+     * maximum of the existing single-title rank() scores; this only avoids repeating
+     * normalization and rebuilding singleton ranking lists for every alias.
+     */
+    fun rankAcrossTitles(
+        localTitles: Collection<String>,
+        candidates: List<AniListAnime>,
+        context: Context = Context(),
+    ): List<RankedCandidate> {
+        data class PreparedLocalTitle(
+            val normalizedVariants: List<String>,
+            val season: Int?,
+            val year: Int?,
+        )
+
+        val preparedLocalTitles = localTitles.map { title ->
+            PreparedLocalTitle(
+                normalizedVariants = MediaTitleNormalizer.searchTitleVariants(title)
+                    .ifEmpty { listOf(title) }
+                    .map(::baseNormalize)
+                    .filter(String::isNotEmpty)
+                    .distinct(),
+                season = extractSeason(title),
+                year = context.year ?: extractYear(title),
+            )
+        }
+        val expectedFormat = expectedFormat(context)
+
+        return candidates.map { candidate ->
+            val titleValues = buildList {
+                candidate.titleEnglish?.takeIf(String::isNotBlank)?.let { add("english" to it) }
+                candidate.titleRomaji?.takeIf(String::isNotBlank)?.let { add("romaji" to it) }
+                candidate.titleNative?.takeIf(String::isNotBlank)?.let { add("native" to it) }
+                candidate.synonyms.filter(String::isNotBlank).forEach { add("synonym" to it) }
+            }
+            val normalizedTitleValues = titleValues.map { (kind, value) ->
+                kind to baseNormalize(value)
+            }
+            val candidateFormat = normalizeFormat(candidate.format)
+            val candidateSeason = titleValues.firstNotNullOfOrNull { (_, value) -> extractSeason(value) }
+            val remoteYear = candidate.seasonYear
+
+            var bestScore = 0.0
+            var bestKind = ""
+            var hasBestTerm = false
+            for (local in preparedLocalTitles) {
+                var titleScore = 0.0
+                var titleKind = ""
+                normalizedTitleValues.forEach { (kind, value) ->
+                    val score = local.normalizedVariants.maxOfOrNull { normalized ->
+                        tokenScore(normalized, value)
+                    } ?: 0.0
+                    if (score > titleScore) {
+                        titleScore = score
+                        titleKind = kind
+                    }
+                }
+
+                if (!expectedFormat.isNullOrBlank() && candidateFormat.isNotBlank()) {
+                    titleScore += when {
+                        expectedFormat == candidateFormat -> 0.08
+                        expectedFormat in SERIES_FORMATS && candidateFormat in SERIES_FORMATS -> -0.02
+                        else -> -0.18
+                    }
+                }
+                if (local.season != null && candidateSeason != null) {
+                    titleScore += if (local.season == candidateSeason) 0.07 else -0.12
+                }
+                if (local.year != null && remoteYear != null) {
+                    titleScore += if (remoteYear == local.year) 0.04 else -0.03
+                }
+
+                val score = titleScore.coerceIn(0.0, 1.0).roundToScore()
+                if (!hasBestTerm || score > bestScore) {
+                    bestScore = score
+                    bestKind = titleKind
+                    hasBestTerm = true
+                }
+                // A score of 1.0 is the maximum possible result for any other alias.
+                if (bestScore >= 1.0) break
+            }
+            RankedCandidate(candidate, bestScore, bestKind)
+        }.sortedWith(
+            compareByDescending<RankedCandidate> { it.score }
+                .thenBy { (it.anime.titleEnglish ?: it.anime.titleRomaji ?: "").lowercase(Locale.ROOT) }
+                .thenBy { it.anime.id },
+        )
+    }
+
     private fun candidateScore(
         localTitle: String,
         candidate: AniListAnime,

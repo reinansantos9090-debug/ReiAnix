@@ -8,8 +8,10 @@ on:
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/tracemoe/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/tracemoe/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListMatcher.kt"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteAniListAssociation.kt"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListMatcherTest.kt"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt"
       - ".github/workflows/kotlin_jvm_tests.yml"
   workflow_dispatch:
@@ -82,6 +84,7 @@ jobs:
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
               --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
+              --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListMatcherTest \
               --tests com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentityConsensusTest \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
