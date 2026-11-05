@@ -262,6 +262,39 @@ class ReiAnixAniPubCatalogProviderTest {
     }
 
     @Test
+    fun rateLimitedPartialDetailsStopFurtherRequestsAndCarryRetryAfter() = runBlocking {
+        val transport = FakeTransport(
+            listOf(
+                ReiAnixCatalogHttpResponse(
+                    200,
+                    """[{"Name":"Candidate One","Id":1},{"Name":"Candidate Two","Id":2},{"Name":"Candidate Three","Id":3}]""",
+                    emptyMap(),
+                ),
+                ReiAnixCatalogHttpResponse(
+                    200,
+                    """{"_id":1,"Name":"Candidate One","ImagePath":"https://cdn.anipub.org/one.jpg"}""",
+                    emptyMap(),
+                ),
+                ReiAnixCatalogHttpResponse(429, "slow down", mapOf("Retry-After" to "4")),
+                ReiAnixCatalogHttpResponse(
+                    200,
+                    """{"_id":3,"Name":"Candidate Three","ImagePath":"https://cdn.anipub.org/three.jpg"}""",
+                    emptyMap(),
+                ),
+            ),
+        )
+
+        val result = ReiAnixAniPubCatalogProvider(transport).searchAnime("Candidate", 5)
+
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val partial = result as ReiAnixCatalogResult.Success
+        assertFalse(partial.isComplete)
+        assertEquals(4_000L, partial.retryAfterMillis)
+        assertEquals(listOf("Candidate One"), partial.value.map { it.title })
+        assertEquals(3, transport.calls)
+    }
+
+    @Test
     fun searchWithMoreRowsThanTheBoundedDetailBudgetIsRejectedAsIncomplete() = runBlocking {
         val entries = (1..6).joinToString(",") { """{"Name":"Candidate $it","Id":$it}""" }
         val transport = FakeTransport(
