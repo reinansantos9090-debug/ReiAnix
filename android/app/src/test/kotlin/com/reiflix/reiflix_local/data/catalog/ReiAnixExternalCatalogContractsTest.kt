@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.data.catalog
 
+import kotlinx.coroutines.runBlocking
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -8,6 +10,38 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReiAnixExternalCatalogContractsTest {
+    @Test
+    fun incompleteProviderSearchResultsAreNotCachedAndCanBeRetried() = runBlocking {
+        val searchCalls = AtomicInteger(0)
+        val provider = object : ReiAnixAnimeCatalogProvider {
+            override val source = ReiAnixCatalogSource.KITSU
+
+            override suspend fun searchAnime(
+                query: String,
+                limit: Int,
+            ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+                return if (searchCalls.incrementAndGet() == 1) {
+                    ReiAnixCatalogResult.Success(
+                        value = emptyList(),
+                        isComplete = false,
+                    )
+                } else {
+                    ReiAnixCatalogResult.Success(emptyList())
+                }
+            }
+
+            override suspend fun getAnime(externalId: String) =
+                ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
+        }
+        val registry = ReiAnixCatalogProviderRegistry(listOf(provider))
+        val coordinated = registry.provider(ReiAnixCatalogSource.KITSU)!!
+
+        coordinated.searchAnime("Same title", 10)
+        coordinated.searchAnime("Same title", 10)
+
+        assertEquals("Incomplete searches must remain retryable.", 2, searchCalls.get())
+    }
+
     @Test
     fun sourceRolesKeepAniMapAsIdentifierResolverOnly() {
         assertTrue(ReiAnixCatalogSource.ANILIST.providesMetadata)
