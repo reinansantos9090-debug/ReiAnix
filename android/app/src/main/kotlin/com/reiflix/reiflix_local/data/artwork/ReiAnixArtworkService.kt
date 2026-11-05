@@ -1104,7 +1104,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     private fun isUrlCurrent(id: Long, type: String, url: String) = database.read { urlCurrent(it, id, type, url) }
     private fun urlCurrent(db: SQLiteDatabase, id: Long, type: String, url: String): Boolean {
-        val column = if (type == BACKDROP || type == BANNER) "banner_url" else "cover_url"
+        val column = when (type) {
+            POSTER -> "cover_url"
+            BANNER -> "banner_url"
+            // Backdrop is a provider-supplied artwork type with no canonical anime URL column.
+            BACKDROP -> return false
+            else -> return false
+        }
         return db.rawQuery("SELECT $column FROM anime WHERE id=? LIMIT 1", arrayOf(id.toString()))
             .use { it.moveToFirst() && it.getString(0)?.trim() == url }
     }
