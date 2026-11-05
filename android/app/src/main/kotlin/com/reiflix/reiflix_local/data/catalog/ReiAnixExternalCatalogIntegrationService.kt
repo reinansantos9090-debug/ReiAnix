@@ -394,8 +394,8 @@ class ReiAnixExternalCatalogIntegrationService(
                     )
                 }
             }
-            .take(MAX_QUEUED_ARTWORK_CANDIDATES)
             .filter(seen::add)
+            .take(MAX_QUEUED_ARTWORK_CANDIDATES)
             .toList()
         return pending.isNotEmpty() &&
             artwork.requestAnimeArtworkCandidates(animeId, pending, force = true)
