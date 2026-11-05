@@ -115,8 +115,7 @@ class ReiAnixExternalCatalogIntegrationService(
         if (anime.id <= 0L) return false
         val manuallyOwned = hasManualCatalogOwnership(anime)
         val metadataMissing = !manuallyOwned && hasMetadataGap(anime)
-        val posterMissing = !hasValidArtwork(anime.id, "poster") ||
-            artwork.hasProvisionalPosterCandidate(anime.id)
+        val posterMissing = !hasValidArtwork(anime.id, "poster")
         val backdropMissing = !hasValidArtwork(anime.id, "backdrop")
         return metadataMissing || posterMissing || backdropMissing
     }
@@ -144,10 +143,9 @@ class ReiAnixExternalCatalogIntegrationService(
         var anime = library.getAnime(initial.id) ?: return false
         val identity = anime.toExternalCatalogIdentity()
         val posterReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "poster")
-        val posterNeedsVerification = artwork.hasProvisionalPosterCandidate(anime.id)
         val backdropReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "backdrop")
         val hasMissingAniListArtworkCandidate =
-            ((!posterReadyBeforeAniListArtwork || posterNeedsVerification) && !anime.coverUrl.isNullOrBlank()) ||
+            (!posterReadyBeforeAniListArtwork && !anime.coverUrl.isNullOrBlank()) ||
                 (!backdropReadyBeforeAniListArtwork && !anime.bannerUrl.isNullOrBlank())
         if (hasMissingAniListArtworkCandidate) {
             // Try the already-persisted AniList candidate first, including a backdrop-only gap.
@@ -210,8 +208,7 @@ class ReiAnixExternalCatalogIntegrationService(
         for (source in SUPPLEMENTAL_SOURCES) {
             currentCoroutineContext().ensureActive()
             val needsMetadata = !hasManualCatalogOwnership(anime) && hasMetadataGap(anime)
-            val needsPoster = !hasValidArtwork(anime.id, "poster") ||
-                artwork.hasProvisionalPosterCandidate(anime.id)
+            val needsPoster = !hasValidArtwork(anime.id, "poster")
             val needsBackdrop = !hasValidArtwork(anime.id, "backdrop")
             if (!needsMetadata && !needsPoster && !needsBackdrop) break
 
@@ -353,13 +350,13 @@ class ReiAnixExternalCatalogIntegrationService(
                     val remote = result.value ?: return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
                     val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
                     val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
-                    // The first image remains provisional and immediate. An already anchored,
-                    // CONFIRMED provider identity is also queued as a separate promotion candidate.
+                    // A provider result obtained by an already stored ID may offer artwork
+                    // immediately; metadata/ID persistence still uses the strict evaluation.
                     val hasPoster = remote.artworkCandidates().any {
                         it.type == ReiAnixCatalogArtworkType.POSTER
                     }
                     val queued = allowArtwork && hasPoster &&
-                        queueArtworkCandidates(anime.id, listOf(remote), identityVerified = verified != null)
+                        queueArtworkCandidates(anime.id, listOf(remote))
                     Resolution(
                         evaluation.decision,
                         verified,
@@ -469,14 +466,6 @@ class ReiAnixExternalCatalogIntegrationService(
             anime.id, identity, candidates.values, ids,
         )
         val verified = evaluation.value?.let { VerifiedRemote(it.remote, it.match) }
-        if (allowArtwork && !incompleteSearch && verified != null &&
-            verified.remote.artworkCandidates().any { it.type == ReiAnixCatalogArtworkType.POSTER }
-        ) {
-            if (queueArtworkCandidates(anime.id, listOf(verified.remote), identityVerified = true)) {
-                artworkQueued = true
-                record(provider.source, "VERIFIED_ARTWORK_CANDIDATE_QUEUED", anime.id)
-            }
-        }
         return Resolution(
             decision = evaluation.decision,
             verified = verified,
@@ -492,7 +481,6 @@ class ReiAnixExternalCatalogIntegrationService(
     private fun queueArtworkCandidates(
         animeId: Long,
         remoteCandidates: List<ReiAnixCatalogAnime>,
-        identityVerified: Boolean = false,
     ): Boolean {
         val pending = remoteCandidates.asSequence()
             .flatMap { it.artworkCandidates().asSequence() }
@@ -505,7 +493,6 @@ class ReiAnixExternalCatalogIntegrationService(
                     posterUrl = candidate.url,
                     bannerUrl = null,
                     source = candidate.source.key,
-                    identityVerified = identityVerified,
                 )
             }
             .toList()
