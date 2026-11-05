@@ -1552,7 +1552,7 @@ class ReiAnixLibraryViewModel(
                 // If episode 1 had no usable local thumbnail, do not lose Trace.moe
                 // entirely: fall back to the earliest valid buffered episode frames.
                 // This fallback runs only after the episode-1 attempt was impossible.
-                if (firstTraceMoeEpisodeId !in traceMoeEpisodesQueued &&
+                if ((firstTraceMoeEpisodeId == null || firstTraceMoeEpisodeId !in traceMoeEpisodesQueued) &&
                     traceMoeIdentificationJob?.isActive == true
                 ) {
                     for ((bufferedId, bufferedFile) in traceMoeBufferedSamples) {
