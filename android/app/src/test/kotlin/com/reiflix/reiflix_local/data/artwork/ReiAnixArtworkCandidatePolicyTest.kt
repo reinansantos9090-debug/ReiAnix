@@ -100,6 +100,43 @@ class ReiAnixArtworkCandidatePolicyTest {
     }
 
     @Test
+    fun laterPosterCandidatesAreDiscardedAfterTheFirstPosterIsPublished() {
+        val firstPoster = ReiAnixArtworkCandidate(
+            anilistId = 0L,
+            posterUrl = "https://img.example/first.jpg",
+            bannerUrl = null,
+            source = "kitsu",
+        )
+        val laterPoster = ReiAnixArtworkCandidate(
+            anilistId = 0L,
+            posterUrl = "https://img.example/later.jpg",
+            bannerUrl = null,
+            source = "anipub",
+        )
+        val backdrop = ReiAnixArtworkCandidate(
+            anilistId = 0L,
+            posterUrl = null,
+            bannerUrl = "https://img.example/backdrop.jpg",
+            source = "kitsu",
+        )
+
+        assertEquals(
+            listOf(backdrop),
+            artworkCandidatesAfterPosterPublication(
+                listOf(firstPoster, laterPoster, backdrop),
+                posterAlreadyAvailable = true,
+            ),
+        )
+        assertEquals(
+            listOf(firstPoster, laterPoster, backdrop),
+            artworkCandidatesAfterPosterPublication(
+                listOf(firstPoster, laterPoster, backdrop),
+                posterAlreadyAvailable = false,
+            ),
+        )
+    }
+
+    @Test
     fun candidateKeysAreStableAndScopedToAnimeAniListAndUrl() {
         val first = aniListArtworkCandidateKey(10L, 16498L, "https://img.example/cover.jpg")
         assertEquals(64, first.length)
