@@ -804,7 +804,7 @@ private fun SearchActiveFilters(
         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
     ) {
         if (filters.favoritesOnly) {
-            item(key = "active-filter-favorites") {
+            item(key = "active-filter-favorites", contentType = "active-filter-chip") {
                 ReiAnixChip(
                     text = "Favoritos",
                     selected = true,
@@ -813,7 +813,7 @@ private fun SearchActiveFilters(
             }
         }
         if (filters.watchingOnly) {
-            item(key = "active-filter-watching") {
+            item(key = "active-filter-watching", contentType = "active-filter-chip") {
                 ReiAnixChip(
                     text = "Assistindo",
                     selected = true,
@@ -822,7 +822,7 @@ private fun SearchActiveFilters(
             }
         }
         if (filters.completedOnly) {
-            item(key = "active-filter-completed") {
+            item(key = "active-filter-completed", contentType = "active-filter-chip") {
                 ReiAnixChip(
                     text = "Completos",
                     selected = true,
@@ -831,7 +831,7 @@ private fun SearchActiveFilters(
             }
         }
         if (filters.selectedGenreKey != null) {
-            item(key = "active-filter-genre") {
+            item(key = "active-filter-genre", contentType = "active-filter-chip") {
                 ReiAnixChip(
                     text = genres.firstOrNull {
                         it.stableKey == filters.selectedGenreKey
@@ -842,7 +842,7 @@ private fun SearchActiveFilters(
             }
         }
         if (!filters.sort.isNullOrBlank()) {
-            item(key = "active-filter-sort") {
+            item(key = "active-filter-sort", contentType = "active-filter-chip") {
                 ReiAnixChip(
                     text = filters.sort.orEmpty(),
                     selected = true,
@@ -908,21 +908,21 @@ private fun ReiAnixSearchFilterSheet(
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                 contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
             ) {
-                item(key = "search-filter-favorites") {
+                item(key = "search-filter-favorites", contentType = "search-filter-chip") {
                     ReiAnixChip(
                         text = "Favoritos",
                         selected = filters.favoritesOnly,
                         onClick = onToggleFavorites,
                     )
                 }
-                item(key = "search-filter-watching") {
+                item(key = "search-filter-watching", contentType = "search-filter-chip") {
                     ReiAnixChip(
                         text = "Assistindo",
                         selected = filters.watchingOnly,
                         onClick = onToggleWatching,
                     )
                 }
-                item(key = "search-filter-completed") {
+                item(key = "search-filter-completed", contentType = "search-filter-chip") {
                     ReiAnixChip(
                         text = "Completos",
                         selected = filters.completedOnly,
@@ -943,7 +943,7 @@ private fun ReiAnixSearchFilterSheet(
                     contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
                 ) {
                     genres.forEach { genre ->
-                        item(key = "search-genre-" + genre.stableKey) {
+                        item(key = "search-genre-" + genre.stableKey, contentType = "search-genre-chip") {
                             ReiAnixChip(
                                 text = genre.name,
                                 selected = filters.selectedGenreKey == genre.stableKey,
