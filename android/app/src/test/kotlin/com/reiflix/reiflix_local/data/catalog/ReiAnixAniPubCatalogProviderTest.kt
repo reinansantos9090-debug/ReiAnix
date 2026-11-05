@@ -43,7 +43,7 @@ class ReiAnixAniPubCatalogProviderTest {
                       "Name": "Sample Anime",
                       "ImagePath": "https://anipub.org/images/sample.jpg",
                       "Cover": "https://anipub.org/covers/sample-banner.jpg",
-                      "Synonyms": "Sample Alias",
+                      "Synonyms": "Sample Alias|sample anime",
                       "Aired": "Oct 3, 2016 to Mar 30, 2017",
                       "DescripTion": "A complete AniPub synopsis for the sample anime.",
                       "Duration": "24m",
@@ -65,6 +65,7 @@ class ReiAnixAniPubCatalogProviderTest {
         assertNull(anime.ids.myAnimeListId)
         assertEquals("Sample Anime", anime.title)
         assertTrue("Sample Alias" in anime.alternativeTitles)
+        assertTrue("sample anime" in anime.alternativeTitles)
         assertEquals(2016, anime.releaseYear)
         assertNull(anime.format)
         assertNull(anime.mediaKind)
