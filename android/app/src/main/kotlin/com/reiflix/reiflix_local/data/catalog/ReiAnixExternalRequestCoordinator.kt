@@ -75,8 +75,14 @@ class ReiAnixExternalRequestCoordinator(
                                 val result = operation()
                                 val rateLimit = (result as? ReiAnixCatalogResult.Failure)
                                     ?.error as? ReiAnixCatalogError.RateLimited
-                                if (rateLimit != null) {
-                                    deferSource(source, rateLimit.retryAfterMillis ?: DEFAULT_RETRY_AFTER_MILLIS)
+                                val partialRetryAfter = (result as? ReiAnixCatalogResult.Success<*>)
+                                    ?.retryAfterMillis
+                                when {
+                                    rateLimit != null -> deferSource(
+                                        source,
+                                        rateLimit.retryAfterMillis ?: DEFAULT_RETRY_AFTER_MILLIS,
+                                    )
+                                    partialRetryAfter != null -> deferSource(source, partialRetryAfter)
                                 }
                                 result
                             }
