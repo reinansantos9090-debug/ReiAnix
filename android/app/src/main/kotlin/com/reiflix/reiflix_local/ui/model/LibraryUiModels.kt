@@ -71,6 +71,9 @@ data class ReiAnixArtworkUiModel(
     val externalUrl: String?,
     val backdropLocalPath: String? = null,
     val backdropExternalUrl: String? = null,
+    /** Revision supplied by the canonical artwork row; avoids filesystem stats during composition. */
+    val sourceRevision: String? = null,
+    val backdropSourceRevision: String? = null,
 ) {
     /** True only when Compose has a materialized local file to decode. */
     val isAvailable: Boolean
