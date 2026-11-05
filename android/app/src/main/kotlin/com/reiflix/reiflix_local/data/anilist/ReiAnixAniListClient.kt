@@ -80,6 +80,80 @@ class ReiAnixAniListClient(
         }
     }
 
+    /**
+     * Searches several title aliases in one GraphQL request. Artwork recovery can
+     * therefore check the complete alias set without starting one HTTP request,
+     * coroutine, or worker per alias.
+     */
+    suspend fun searchAnimeBatch(
+        terms: List<String>,
+        limit: Int = 5,
+        includeFullMetadata: Boolean = false,
+    ): AniListResult<Map<String, List<AniListAnime>>> {
+        require(limit in 1..10) { "AniList batch result limit must be between 1 and 10." }
+        val searches = terms.map(String::trim).filter(String::isNotEmpty).distinct()
+        if (searches.isEmpty()) return AniListResult.Success(emptyMap())
+
+        val variableDefinitions = ArrayList<String>(searches.size * 3)
+        val selections = ArrayList<String>(searches.size)
+        val variables = JSONObject()
+        searches.forEachIndexed { index, term ->
+            val searchVariable = "search$index"
+            val pageVariable = "page$index"
+            val perPageVariable = "perPage$index"
+            variableDefinitions += "\$searchVariable: String"
+            variableDefinitions += "\$pageVariable: Int"
+            variableDefinitions += "\$perPageVariable: Int"
+            variables.put(searchVariable, term)
+                .put(pageVariable, 1)
+                .put(perPageVariable, limit)
+            selections += """
+                result$index: Page(page: \$pageVariable, perPage: \$perPageVariable) {
+                  media(search: \$searchVariable, type: ANIME, sort: SEARCH_MATCH) {
+                    ${if (includeFullMetadata) MEDIA_FIELDS else ARTWORK_SEARCH_FIELDS}
+                  }
+                }
+            """.trimIndent()
+        }
+        val gql = """
+            query SearchAnimeAliases(${variableDefinitions.joinToString(", ")}) {
+              ${selections.joinToString("\n")}
+            }
+        """.trimIndent()
+
+        return execute(gql, variables) { data ->
+            val results = linkedMapOf<String, List<AniListAnime>>()
+            searches.forEachIndexed { index, term ->
+                val page = data.objectOrNull("result$index")
+                    ?: return@execute AniListResult.Failure(
+                        AniListError.InvalidResponse("Missing AniList batch page for search index=$index"),
+                    )
+                val media = page.arrayOrNull("media")
+                    ?: return@execute AniListResult.Failure(
+                        AniListError.InvalidResponse("Missing media array for AniList batch search index=$index"),
+                    )
+                val animeResults = ArrayList<AniListAnime>(media.length())
+                for (mediaIndex in 0 until media.length()) {
+                    val item = media.optJSONObject(mediaIndex)
+                        ?: return@execute AniListResult.Failure(
+                            AniListError.InvalidResponse(
+                                "Invalid anime item in AniList batch search index=$index item=$mediaIndex",
+                            ),
+                        )
+                    val anime = parseAnime(item)
+                        ?: return@execute AniListResult.Failure(
+                            AniListError.InvalidResponse(
+                                "Anime item is missing a valid AniList ID in batch search index=$index",
+                            ),
+                        )
+                    animeResults += anime
+                }
+                results[term] = animeResults
+            }
+            AniListResult.Success(results)
+        }
+    }
+
     suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
         if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
         val gql = """
@@ -253,6 +327,10 @@ class ReiAnixAniListClient(
     companion object {
         const val ENDPOINT = "https://graphql.anilist.co"
         const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
+        private const val ARTWORK_SEARCH_FIELDS = """
+            id title { romaji english native } synonyms
+            format seasonYear coverImage { large extraLarge } bannerImage
+        """
         private const val MEDIA_FIELDS = """
             id title { romaji english native } synonyms
             description(asHtml: false) format episodes duration status averageScore season seasonYear

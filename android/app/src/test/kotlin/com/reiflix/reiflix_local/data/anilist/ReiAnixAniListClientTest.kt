@@ -120,6 +120,40 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
+    fun batchSearchChecksEveryAliasInOneGraphQlRequest() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{
+              "result0":{"media":[{"id":16498,"title":{"romaji":"Shingeki no Kyojin","english":"Attack on Titan"},"synonyms":[],"format":"TV","seasonYear":2013,"coverImage":{"large":"https://img.example/a.jpg","extraLarge":"https://img.example/a-xl.jpg"}}]},
+              "result1":{"media":[{"id":5114,"title":{"romaji":"Hagane no Renkinjutsushi","english":"Fullmetal Alchemist"},"synonyms":[],"format":"TV","seasonYear":2009,"coverImage":{"large":"https://img.example/b.jpg","extraLarge":"https://img.example/b-xl.jpg"}}]}
+            }}
+        """.trimIndent()))
+
+        val result = ReiAnixAniListClient(transport, 0).searchAnimeBatch(
+            listOf("Attack on Titan", "Fullmetal Alchemist"),
+            limit = 5,
+            includeFullMetadata = false,
+        )
+
+        assertTrue(result is AniListResult.Success)
+        val values = (result as AniListResult.Success).value
+        assertEquals(listOf(16498), values["Attack on Titan"]?.map { it.id })
+        assertEquals(listOf(5114), values["Fullmetal Alchemist"]?.map { it.id })
+        assertEquals(1, transport.calls)
+
+        val body = transport.requestBody!!
+        val query = body.getString("query")
+        assertTrue(query.contains("result0: Page"))
+        assertTrue(query.contains("result1: Page"))
+        assertTrue(query.contains("media(search: \$search0"))
+        assertTrue(query.contains("media(search: \$search1"))
+        val variables = body.getJSONObject("variables")
+        assertEquals("Attack on Titan", variables.getString("search0"))
+        assertEquals("Fullmetal Alchemist", variables.getString("search1"))
+        assertEquals(5, variables.getInt("perPage0"))
+        assertEquals(5, variables.getInt("perPage1"))
+    }
+
+    @Test
     fun idLookupSendsLiteralIdVariableAndExpectedJsonValue() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":42,"title":{}}}}"""))
         val result = ReiAnixAniListClient(transport, 0).getAnime(42)

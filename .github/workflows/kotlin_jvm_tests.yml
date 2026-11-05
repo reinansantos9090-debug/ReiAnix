@@ -5,6 +5,8 @@ on:
     paths:
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListIntegrationService.kt"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClient.kt"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClientTest.kt"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListMatcher.kt"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListSearchTermsTest.kt"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListMatcherTest.kt"
