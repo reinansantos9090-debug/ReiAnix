@@ -15,12 +15,37 @@ import com.reiflix.reiflix_local.data.sqlite.saveExternalCatalogIds
 import com.reiflix.reiflix_local.data.sqlite.setExternalCatalogCursor
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 import java.io.File
+import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+
+/**
+ * Collect every normalized title variant used by the supplemental providers.
+ * The limit is a defensive bound on corrupt/hostile local alias payloads, not
+ * the former three-title search preference.
+ */
+internal fun boundedExternalCatalogSearchTerms(
+    titles: Collection<String>,
+    limit: Int = 128,
+): List<String> {
+    require(limit in 1..128)
+    return titles.asSequence()
+        .flatMap { MediaTitleNormalizer.searchTitleVariants(it).asSequence() }
+        .map(String::trim)
+        .filter { it.length in 2..120 }
+        .distinctBy(ReiAnixCatalogIdentityMatcher::normalizeCatalogTitle)
+        .take(limit)
+        .toList()
+}
 
 /**
  * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Tenrai/AniPub are
@@ -195,7 +220,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             val provider = providers.provider(source) ?: continue
             val resolution = try {
-                resolve(provider, anime, identity, ids)
+                resolve(provider, anime, identity, ids, allowArtwork = needsPoster)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -235,6 +260,7 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
             }
 
+            if (resolved.artworkQueued) changed = true
             val remoteArtwork = resolved.artworkCandidate ?: verified?.remote
             if (remoteArtwork == null) {
                 val outcome = when (resolved.decision) {
@@ -280,8 +306,13 @@ class ReiAnixExternalCatalogIntegrationService(
                     )
                 }
             }
-            if (pendingArtwork.isNotEmpty() &&
-                artwork.requestAnimeArtworkCandidates(anime.id, pendingArtwork, force = true)
+            val additionalArtwork = if (resolved.artworkQueued) {
+                pendingArtwork.filter { it.posterUrl.isNullOrBlank() }
+            } else {
+                pendingArtwork
+            }
+            if (additionalArtwork.isNotEmpty() &&
+                artwork.requestAnimeArtworkCandidates(anime.id, additionalArtwork, force = false)
             ) {
                 record(source, "ARTWORK_CANDIDATES_QUEUED", anime.id)
                 changed = true
@@ -298,6 +329,7 @@ class ReiAnixExternalCatalogIntegrationService(
         val decision: ReiAnixCatalogIdentityDecision,
         val verified: VerifiedRemote? = null,
         val artworkCandidate: ReiAnixCatalogAnime? = null,
+        val artworkQueued: Boolean = false,
     )
 
     private suspend fun resolve(
@@ -305,6 +337,7 @@ class ReiAnixExternalCatalogIntegrationService(
         anime: ReiAnixAnimeRecord,
         identity: ReiAnixCatalogIdentity,
         ids: ReiAnixExternalCatalogIds,
+        allowArtwork: Boolean,
     ): Resolution {
         val knownId = ids.idFor(provider.source)
         if (!knownId.isNullOrBlank()) {
@@ -316,44 +349,105 @@ class ReiAnixExternalCatalogIntegrationService(
                 is ReiAnixCatalogResult.Success -> {
                     val remote = result.value ?: return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
                     val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
-                    val artworkCandidate = ReiAnixCatalogIdentityMatcher.selectArtworkCandidate(
-                        anime.id, identity, listOf(remote), ids,
-                    )
                     val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
-                    Resolution(evaluation.decision, verified, artworkCandidate)
+                    // The first image remains provisional and immediate. An already anchored,
+                    // CONFIRMED provider identity is also queued as a separate promotion candidate.
+                    val hasPoster = remote.artworkCandidates().any {
+                        it.type == ReiAnixCatalogArtworkType.POSTER
+                    }
+                    val queued = allowArtwork && hasPoster &&
+                        queueArtworkCandidates(anime.id, listOf(remote))
+                    Resolution(
+                        evaluation.decision,
+                        verified,
+                        remote.takeIf { hasPoster },
+                        queued,
+                    )
                 }
             }
         }
 
+        val queries = boundedExternalCatalogSearchTerms(identity.titles, MAX_SEARCH_TERMS)
+        if (queries.isEmpty()) return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
+
         val candidates = linkedMapOf<String, ReiAnixCatalogAnime>()
         var incompleteSearch = false
-        for (query in identity.titles.asSequence().map(String::trim).filter(String::isNotEmpty)
-            .distinct().take(MAX_SEARCH_TERMS)
-        ) {
-            currentCoroutineContext().ensureActive()
-            when (val result = provider.searchAnime(query, SEARCH_LIMIT)) {
-                is ReiAnixCatalogResult.Failure -> {
-                    incompleteSearch = true
-                    record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
+        var firstArtworkCandidate: ReiAnixCatalogAnime? = null
+        var artworkQueued = false
+
+        // Launch every title query together. The shared provider registry still enforces
+        // its process-wide request limit, while the result channel lets the first response
+        // publish its poster without waiting for slower aliases.
+        coroutineScope {
+            val queryQueue = Channel<String>(Channel.UNLIMITED)
+            val results = Channel<ReiAnixCatalogResult<List<ReiAnixCatalogAnime>>>(Channel.UNLIMITED)
+            val workers = List(TITLE_SEARCH_CONCURRENCY) {
+                launch {
+                    for (query in queryQueue) {
+                        currentCoroutineContext().ensureActive()
+                        val result = try {
+                            provider.searchAnime(query, SEARCH_LIMIT)
+                        } catch (timeout: TimeoutCancellationException) {
+                            ReiAnixCatalogResult.Failure(ReiAnixCatalogError.TimedOut)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
+                        }
+                        results.send(result)
+                    }
                 }
-                is ReiAnixCatalogResult.Success -> {
-                    result.value.forEach { remote ->
-                        val remoteId = remote.ids.idFor(remote.source)
-                        if (remoteId.isNullOrBlank()) {
-                            incompleteSearch = true
-                        } else {
-                            candidates.putIfAbsent(remoteId, remote)
+            }
+            for (query in queries) queryQueue.send(query)
+            queryQueue.close()
+
+            repeat(queries.size) {
+                currentCoroutineContext().ensureActive()
+                when (val result = results.receive()) {
+                    is ReiAnixCatalogResult.Failure -> {
+                        incompleteSearch = true
+                        record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)
+                    }
+                    is ReiAnixCatalogResult.Success -> {
+                        val returned = result.value
+                        returned.forEach { remote ->
+                            val remoteId = remote.ids.idFor(remote.source)
+                            if (remoteId.isNullOrBlank()) {
+                                incompleteSearch = true
+                            } else {
+                                candidates.putIfAbsent(remoteId, remote)
+                            }
+                        }
+
+                        // Artwork is independent from identity confirmation. Queue every
+                        // poster returned by this completed alias search; later results join
+                        // the existing ArtworkService job as fallbacks if earlier downloads fail.
+                        if (allowArtwork) {
+                            val withPosters = returned.filter { remote ->
+                                remote.artworkCandidates().any {
+                                    it.type == ReiAnixCatalogArtworkType.POSTER
+                                }
+                            }
+                            if (withPosters.isNotEmpty()) {
+                                if (firstArtworkCandidate == null) {
+                                    firstArtworkCandidate = withPosters.first()
+                                }
+                                if (queueArtworkCandidates(anime.id, withPosters)) {
+                                    artworkQueued = true
+                                }
+                            }
                         }
                     }
                 }
             }
+            workers.joinAll()
+            results.close()
         }
 
-        // An incomplete search cannot authorize metadata or ID persistence. Candidate images
-        // from successful queries remain usable and do not suppress later providers.
-        val artworkCandidate = ReiAnixCatalogIdentityMatcher.selectArtworkCandidate(
-            anime.id, identity, candidates.values, ids,
-        )
+        // Candidates from successful aliases remain usable even when a different alias
+        // fails. Only the metadata/ID decision is withheld for an incomplete search set.
+        val artworkCandidate = firstArtworkCandidate
+            ?: ReiAnixCatalogIdentityMatcher.selectArtworkCandidate(anime.id, identity, candidates.values, ids)
         if (incompleteSearch) {
             record(
                 provider.source,
@@ -364,6 +458,7 @@ class ReiAnixExternalCatalogIntegrationService(
             return Resolution(
                 decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
                 artworkCandidate = artworkCandidate,
+                artworkQueued = artworkQueued,
             )
         }
 
@@ -374,8 +469,34 @@ class ReiAnixExternalCatalogIntegrationService(
         return Resolution(
             decision = evaluation.decision,
             verified = verified,
-            artworkCandidate = artworkCandidate,
+            artworkCandidate = artworkCandidate ?: verified?.remote,
+            artworkQueued = artworkQueued,
         )
+    }
+
+    /**
+     * Sends image-only candidates through the one existing artwork/cache/SQLite pipeline.
+     * The zero AniList ID prevents guessing or rewriting the local AniList association.
+     */
+    private fun queueArtworkCandidates(
+        animeId: Long,
+        remoteCandidates: List<ReiAnixCatalogAnime>,
+    ): Boolean {
+        val pending = remoteCandidates.asSequence()
+            .flatMap { it.artworkCandidates().asSequence() }
+            .filter { it.type == ReiAnixCatalogArtworkType.POSTER }
+            .distinctBy { it.url }
+            .take(MAX_SEARCH_ARTWORK_CANDIDATES)
+            .map { candidate ->
+                ReiAnixArtworkCandidate(
+                    anilistId = 0L,
+                    posterUrl = candidate.url,
+                    bannerUrl = null,
+                    source = candidate.source.key,
+                )
+            }
+            .toList()
+        return pending.isNotEmpty() && artwork.requestAnimeArtworkCandidates(animeId, pending, force = false)
     }
 
     private fun record(
@@ -402,7 +523,9 @@ class ReiAnixExternalCatalogIntegrationService(
         const val DEFAULT_BATCH_SIZE = 12
         const val MAX_BATCH_SIZE = 50
         const val SEARCH_LIMIT = 10
-        const val MAX_SEARCH_TERMS = 3
+        const val MAX_SEARCH_TERMS = 128
+        const val MAX_SEARCH_ARTWORK_CANDIDATES = 2
+        const val TITLE_SEARCH_CONCURRENCY = 2
         const val SOURCE_RETRY_COOLDOWN_SECONDS = 6L * 60L * 60L
     }
 }
