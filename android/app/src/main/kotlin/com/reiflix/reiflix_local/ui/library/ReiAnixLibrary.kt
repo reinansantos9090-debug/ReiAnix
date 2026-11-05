@@ -613,7 +613,7 @@ private fun ColumnScope.LibraryReadyContent(
                         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                         contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
                     ) {
-                        item(key = "filter-genre") {
+                        item(key = "filter-genre", contentType = "library-genre-filter") {
                             Box {
                                 ReiAnixChip(
                                     text = "Gêneros",
@@ -638,7 +638,7 @@ private fun ColumnScope.LibraryReadyContent(
                                                     max = ReiAnixTokens.Dimensions.libraryGenrePickerMaxHeight,
                                                 ),
                                             ) {
-                                                item(key = "genre-all") {
+                                                item(key = "genre-all", contentType = "library-genre-option") {
                                                     DropdownMenuItem(
                                                         text = { Text("Todos os gêneros") },
                                                         onClick = {
@@ -661,6 +661,7 @@ private fun ColumnScope.LibraryReadyContent(
                                                 items(
                                                     items = genres,
                                                     key = { genre -> genre.stableKey },
+                                                    contentType = { "library-genre-option" },
                                                 ) { genre ->
                                                     DropdownMenuItem(
                                                         text = { Text(genre.name) },
@@ -694,21 +695,21 @@ private fun ColumnScope.LibraryReadyContent(
                                 }
                             }
                         }
-                        item(key = "filter-favorite") {
+                        item(key = "filter-favorite", contentType = "library-filter-chip") {
                             LibraryFilterChip(
                                 text = "Favoritos",
                                 selected = filters.favoritesOnly,
                                 onClick = onToggleFavorites,
                             )
                         }
-                        item(key = "filter-watching") {
+                        item(key = "filter-watching", contentType = "library-filter-chip") {
                             LibraryFilterChip(
                                 text = "Assistindo",
                                 selected = filters.watchingOnly,
                                 onClick = onToggleWatching,
                             )
                         }
-                        item(key = "filter-completed") {
+                        item(key = "filter-completed", contentType = "library-filter-chip") {
                             LibraryFilterChip(
                                 text = "Completos",
                                 selected = filters.completedOnly,
