@@ -139,7 +139,10 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixCatalogProviderRegistry(
-            providers = listOf(ReiAnixKitsuCatalogProvider()),
+            providers = listOf(
+                ReiAnixKitsuCatalogProvider(),
+                ReiAnixAniPubCatalogProvider(),
+            ),
             requestCoordinator = externalCatalogRequestCoordinator,
         )
     }
