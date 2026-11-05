@@ -536,6 +536,7 @@ class ReiAnixAniListIntegrationService(
     private suspend fun discoverArtworkCandidates(
         local: ReiAnixAnimeRecord,
         additionalTitles: Collection<String> = emptyList(),
+        initialCandidates: Collection<AniListAnime> = emptyList(),
     ): Boolean {
         val titleCandidates = buildList {
             add(local.title)
@@ -559,6 +560,14 @@ class ReiAnixAniListIntegrationService(
 
         val seenAniListIds = HashSet<Int>()
         var publishedAnyCandidate = false
+        val initialFreshCandidates = initialCandidates.filter { candidate ->
+            candidate.id > 0 && seenAniListIds.add(candidate.id)
+        }
+        if (initialFreshCandidates.isNotEmpty()) {
+            publishedAnyCandidate = publishArtworkCandidates(local.id, initialFreshCandidates)
+        }
+        // Publish the direct-ID response immediately, but still run every known local/provider
+        // title below; the direct result does not short-circuit alias discovery.
         runParallelArtworkSearches(
             titles = terms,
             maxConcurrent = MAX_PARALLEL_ARTWORK_TITLE_SEARCHES,
@@ -735,15 +744,25 @@ class ReiAnixAniListIntegrationService(
                         margin = local.anilistMatchMargin,
                     )) {
                         is AniListResult.Success -> {
-                            if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
-                                recovered++
-                            } else if (discoverArtworkCandidates(local, remoteTitleAliases)) {
+                            val alternateArtworkQueued = discoverArtworkCandidates(
+                                local = local,
+                                additionalTitles = remoteTitleAliases,
+                                initialCandidates = listOf(remote),
+                            )
+                            if ((!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) ||
+                                alternateArtworkQueued
+                            ) {
                                 recovered++
                             }
                         }
                         is AniListResult.Failure -> {
                             Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
-                            if (discoverArtworkCandidates(local, remoteTitleAliases)) recovered++
+                            if (discoverArtworkCandidates(
+                                    local = local,
+                                    additionalTitles = remoteTitleAliases,
+                                    initialCandidates = listOf(remote),
+                                )
+                            ) recovered++
                         }
                     }
                 } else {
