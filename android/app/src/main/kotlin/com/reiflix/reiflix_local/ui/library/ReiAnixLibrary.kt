@@ -84,6 +84,7 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
@@ -491,6 +492,16 @@ private fun ColumnScope.LibraryReadyContent(
     var genreMenuExpanded by rememberSaveable { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState()
     val availableEpisodeCount = state.availableEpisodeCount
+    val responsive = LocalReiAnixResponsiveMetrics.current
+    val posterSize = LocalReiAnixPosterSize.current
+    val posterGridMinimum = responsive.posterCardWidth(posterSize)
+    val posterGridPadding = responsive.posterRailPadding(posterSize)
+    val posterGridSpacing = responsive.posterGridSpacing(posterSize) +
+        when (gridDensity.trim().lowercase()) {
+            "small" -> 2.dp
+            "large" -> 0.dp
+            else -> 1.dp
+        }
     val gridState = rememberSaveable(
         saver = LazyGridState.Saver,
     ) {
@@ -534,20 +545,18 @@ private fun ColumnScope.LibraryReadyContent(
         },
     ) {
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(
-                minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth(cardSize),
-            ),
+            columns = GridCells.Adaptive(minSize = posterGridMinimum),
             state = gridState,
             modifier = Modifier
                 .fillMaxSize(),
             contentPadding = PaddingValues(
-                start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                start = posterGridPadding,
+                end = posterGridPadding,
                 top = ReiAnixTokens.Spacing.xs,
                 bottom = ReiAnixTokens.Spacing.xxl,
             ),
-            verticalArrangement = Arrangement.spacedBy(libraryGridSpacing(gridDensity)),
-            horizontalArrangement = Arrangement.spacedBy(libraryGridSpacing(gridDensity)),
+            verticalArrangement = Arrangement.spacedBy(posterGridSpacing),
+            horizontalArrangement = Arrangement.spacedBy(posterGridSpacing),
         ) {
             if (!errorMessage.isNullOrBlank()) {
                 item(

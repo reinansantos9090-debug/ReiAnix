@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,6 +55,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
@@ -70,7 +73,6 @@ import com.reiflix.reiflix_local.ui.ReiAnixSectionTitle
 import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.ui.discovery.ReiAnixDurationAnomalyDialog
@@ -90,6 +92,7 @@ import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import java.util.Locale
@@ -652,6 +655,9 @@ private fun ColumnScope.HomeReadyContent(
 ) {
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val responsive = LocalReiAnixResponsiveMetrics.current
+    val posterSize = LocalReiAnixPosterSize.current
+    val posterCardWidth = responsive.posterCardWidth(posterSize)
+    val continueWatchingAnimes = remember(animes) { animes.associateBy { it.id } }
     val recentlyAdded = remember(animes) { buildRecentlyAddedItems(animes) }
     val recentlyWatched = remember(animes) { buildRecentlyWatchedItems(animes) }
     val favorites = remember(animes) { animes.filter { it.favorite }.distinctBy { it.id } }
@@ -700,6 +706,7 @@ private fun ColumnScope.HomeReadyContent(
             item(key = "home-section-continue") {
                 HomeContinueSection(
                     items = continueWatching,
+                    animesById = continueWatchingAnimes,
                     showThumbnails = showThumbnails,
                     onWatch = onWatch,
                     onSeeAll = onOpenLibrary,
@@ -711,7 +718,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Adicionados recentemente",
                     items = recentlyAdded,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Adicionados recentemente",
                     onSeeAll = onOpenLibrary,
@@ -723,7 +730,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Conteúdo disponível",
                     items = available,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Conteúdo disponível",
                     onSeeAll = onOpenLibrary,
@@ -736,7 +743,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Recentemente assistidos",
                     items = recentlyWatched,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Recentemente assistidos",
                     onSeeAll = onOpenLibrary,
@@ -748,7 +755,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Minha lista",
                     items = favorites,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
                     onSeeAll = onOpenMyList,
@@ -760,7 +767,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = section.title,
                     items = section.items,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home " + section.title,
                 )
@@ -771,7 +778,7 @@ private fun ColumnScope.HomeReadyContent(
                 HomeMediaSection(
                     title = "Filmes",
                     items = movies,
-                    cardWidth = homeAnimeCardWidth(cardSize, responsive),
+                    cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Filmes",
                 )
@@ -922,14 +929,20 @@ private fun HomeHero(
 @Composable
 private fun HomeContinueSection(
     items: List<ReiAnixContinueWatchingUiModel>,
+    animesById: Map<Long, ReiAnixHomeAnimeUiModel>,
     showThumbnails: Boolean = true,
     onWatch: (Long, Long) -> Unit,
     onSeeAll: (() -> Unit)? = null,
 ) {
+    val responsive = LocalReiAnixResponsiveMetrics.current
+    val posterSize = LocalReiAnixPosterSize.current
+    val posterWidth = responsive.posterCardWidth(posterSize)
+    val railPadding = responsive.posterRailPadding(posterSize)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+            .padding(horizontal = railPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         HomeSectionHeader(
@@ -940,10 +953,8 @@ private fun HomeContinueSection(
         LazyRow(
             modifier = Modifier,
 
-            contentPadding = PaddingValues(
-                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            contentPadding = PaddingValues(end = railPadding),
+            horizontalArrangement = Arrangement.spacedBy(responsive.posterRailSpacing(posterSize)),
         ) {
             items(
                 items = items,
@@ -952,6 +963,8 @@ private fun HomeContinueSection(
             ) { item ->
                 HomeContinueCard(
                     item = item,
+                    anime = animesById[item.animeId],
+                    cardWidth = posterWidth,
                     showThumbnails = showThumbnails,
                     onWatch = onWatch,
                 )
@@ -963,25 +976,23 @@ private fun HomeContinueSection(
 @Composable
 private fun HomeContinueCard(
     item: ReiAnixContinueWatchingUiModel,
+    anime: ReiAnixHomeAnimeUiModel?,
+    cardWidth: androidx.compose.ui.unit.Dp,
     showThumbnails: Boolean = true,
     onWatch: (Long, Long) -> Unit,
 ) {
     val progress = progressFraction(item.progressSeconds, item.durationSeconds)
     val progressText = progress?.let(::formatProgressPercent)
     val episodeText = episodeLabel(item.seasonNumber, item.number)
-    val durationText = item.durationSeconds
-        ?.takeIf { it.isFinite() && it > 0.0 }
-        ?.let(::formatDuration)
     val detailText = listOfNotNull(
         episodeText.takeIf { it.isNotBlank() },
         item.displayTitle.takeIf { it.isNotBlank() },
-        durationText,
         progressText,
     ).joinToString(" • ")
 
     Card(
         modifier = Modifier
-            .width(LocalReiAnixResponsiveMetrics.current.homeContinueCardWidth)
+            .width(cardWidth)
             .clickable(onClick = { onWatch(item.episodeId, item.animeId) })
             .semantics {
                 role = Role.Button
@@ -990,7 +1001,6 @@ private fun HomeContinueCard(
                         item.animeTitle,
                         episodeText.takeIf { it.isNotBlank() },
                         item.displayTitle.takeIf { it.isNotBlank() },
-                        durationText,
                         progressText,
                     ).joinToString(" — ")
             },
@@ -1004,16 +1014,53 @@ private fun HomeContinueCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(ReiAnixTokens.Dimensions.homeLandscapeArtworkAspectRatio)
+                    .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
                     .clip(ReiAnixTokens.Shapes.artwork),
             ) {
-                ReiAnixEpisodeThumbnail(
-                    localPath = item.artwork?.localPath.takeIf { showThumbnails },
-                    contentDescription = null,
+                ReiAnixPoster(
+                    localPath = anime?.artwork?.localPath.takeIf { showThumbnails },
+                    contentDescription = item.animeTitle,
                     modifier = Modifier.fillMaxSize(),
-                    identity = item.stableKey,
-                    externalUrl = item.artwork?.externalUrl.takeIf { showThumbnails },
+                    identity = anime?.stableKey ?: item.stableKey,
+                    maxDimensionPx = 512,
+                    externalUrl = anime?.artwork?.externalUrl.takeIf { showThumbnails },
                 )
+
+                Surface(
+                    modifier = Modifier.align(Alignment.Center).size(30.dp),
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.64f),
+                    contentColor = Color.White,
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+
+                if (episodeText.isNotBlank()) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(ReiAnixTokens.Spacing.xs),
+                        shape = ReiAnixTokens.Shapes.chip,
+                        color = Color.Black.copy(alpha = 0.72f),
+                        contentColor = Color.White,
+                    ) {
+                        Text(
+                            text = episodeText,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp),
+                        )
+                    }
+                }
 
                 ReiAnixProgressIndicator(
                     progress = progress ?: 0f,
@@ -1021,32 +1068,29 @@ private fun HomeContinueCard(
                     announceProgress = false,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(horizontal = ReiAnixTokens.Spacing.sm),
+                        .padding(horizontal = ReiAnixTokens.Spacing.xs),
                 )
             }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(
-                        horizontal = ReiAnixTokens.Spacing.sm,
-                        vertical = ReiAnixTokens.Spacing.sm,
-                    )
+                    .padding(horizontal = 3.dp, vertical = ReiAnixTokens.Spacing.xs)
                     .clearAndSetSemantics {},
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = item.animeTitle,
-                    style = ReiAnixTokens.TypographyTokens.cardTitle,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
-                    overflow = TextOverflow.Clip,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = detailText,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -1055,11 +1099,6 @@ private fun HomeContinueCard(
 }
 
 private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
-
-private fun homeAnimeCardWidth(
-    preference: String,
-    responsive: com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveMetrics,
-): androidx.compose.ui.unit.Dp = responsive.homeCardWidth(preference)
 
 @Composable
 private fun HomeMediaSection(
@@ -1070,10 +1109,14 @@ private fun HomeMediaSection(
     contentDescription: String,
     onSeeAll: (() -> Unit)? = null,
 ) {
+    val responsive = LocalReiAnixResponsiveMetrics.current
+    val posterSize = LocalReiAnixPosterSize.current
+    val railPadding = responsive.posterRailPadding(posterSize)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+            .padding(horizontal = railPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         HomeSectionHeader(title = title, onSeeAll = onSeeAll)
@@ -1082,10 +1125,8 @@ private fun HomeMediaSection(
             modifier = Modifier.semantics {
                 this.contentDescription = contentDescription
             },
-            contentPadding = PaddingValues(
-                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            contentPadding = PaddingValues(end = railPadding),
+            horizontalArrangement = Arrangement.spacedBy(responsive.posterRailSpacing(posterSize)),
         ) {
             items(
                 items = items,

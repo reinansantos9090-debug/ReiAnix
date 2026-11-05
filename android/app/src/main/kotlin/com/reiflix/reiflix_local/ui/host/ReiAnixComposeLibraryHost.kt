@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
 import com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus
 import com.reiflix.reiflix_local.R
 import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
+import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
@@ -38,12 +40,53 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+
+/**
+ * Start both automatic cover sources together. Each source still uses its own request
+ * coordinator, while the shared ArtworkService arbitrates publication and preserves the
+ * first valid poster that finishes downloading.
+ */
+private suspend fun recoverArtworkSourcesInParallel(
+    dependencies: ReiAnixAppDependencies,
+    restartFromLibraryScan: Boolean,
+    trigger: String,
+) = coroutineScope {
+    launch(Dispatchers.IO) {
+        try {
+            dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w(
+                "ReiAnixComposeHost",
+                "AniList artwork discovery $trigger failed. errorType=" + error::class.java.simpleName,
+            )
+        }
+    }
+    launch(Dispatchers.IO) {
+        try {
+            dependencies.externalCatalogIntegrationService.enrichLibraryGaps(
+                restartFromLibraryScan = restartFromLibraryScan,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w(
+                "ReiAnixComposeHost",
+                "Supplemental catalog artwork discovery $trigger failed. errorType=" +
+                    error::class.java.simpleName,
+            )
+        }
+    }
+}
 
 /**
  * Single native Compose root used during the incremental Flet -> Compose cutover.
@@ -82,6 +125,7 @@ class ReiAnixComposeLibraryHost(
             view.setContent {
             val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
             val appearanceCardSize by settingsViewModel.appearanceCardSize.collectAsStateWithLifecycle()
+            val appearancePosterSize by settingsViewModel.appearancePosterSize.collectAsStateWithLifecycle()
             val appearanceShowThumbnails by settingsViewModel.appearanceShowThumbnails.collectAsStateWithLifecycle()
             val libraryGridDensity by settingsViewModel.libraryGridDensity.collectAsStateWithLifecycle()
             val libraryPageSize by settingsViewModel.libraryPageSize.collectAsStateWithLifecycle()
@@ -132,19 +176,6 @@ class ReiAnixComposeLibraryHost(
                                     error::class.java.simpleName,
                             )
                         }
-                        try {
-                            withContext(Dispatchers.IO) {
-                                dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
-                            }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (error: Exception) {
-                            android.util.Log.w(
-                                TAG,
-                                "Native missing-artwork discovery after scan failed. errorType=" +
-                                    error::class.java.simpleName,
-                            )
-                        }
                         runCatching { dependencies.artworkService.requestPendingArtwork() }
                             .onFailure { error ->
                                 android.util.Log.w(
@@ -153,28 +184,17 @@ class ReiAnixComposeLibraryHost(
                                         error::class.java.simpleName,
                                 )
                             }
-
-                        try {
-                            withContext(Dispatchers.IO) {
-                                dependencies.externalCatalogIntegrationService.enrichLibraryGaps(
-                                    restartFromLibraryScan = true,
-                                )
-                            }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (error: Exception) {
-                            android.util.Log.w(
-                                TAG,
-                                "Supplemental catalog enrichment after scan failed. errorType=" +
-                                    error::class.java.simpleName,
-                            )
-                        }
+                        recoverArtworkSourcesInParallel(
+                            dependencies = dependencies,
+                            restartFromLibraryScan = true,
+                            trigger = "after scan",
+                        )
                     }
             }
 
-            // Recover persisted poster/backdrop URLs on ordinary app opens too.
-            // This path deliberately does not run title matching or issue AniList
-            // metadata lookups; it only replays the canonical artwork queue.
+            // On ordinary app opens, replay persisted artwork and discover missing
+            // covers from the already stored aliases and the active catalog providers.
+            // AniList and supplemental discovery run together through the shared ArtworkService.
             LaunchedEffect(
                 libraryViewModel,
                 bootstrapState.phase,
@@ -188,19 +208,6 @@ class ReiAnixComposeLibraryHost(
                 ) return@LaunchedEffect
 
                 val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                try {
-                    withContext(Dispatchers.IO) {
-                        dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        TAG,
-                        "Native missing-artwork metadata discovery failed. errorType=" +
-                            error::class.java.simpleName,
-                    )
-                }
                 runCatching { dependencies.artworkService.requestPendingArtwork() }
                     .onFailure { error ->
                         android.util.Log.w(
@@ -209,20 +216,11 @@ class ReiAnixComposeLibraryHost(
                                 error::class.java.simpleName,
                         )
                     }
-
-                try {
-                    withContext(Dispatchers.IO) {
-                        dependencies.externalCatalogIntegrationService.enrichLibraryGaps()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        TAG,
-                        "Supplemental catalog startup enrichment failed. errorType=" +
-                            error::class.java.simpleName,
-                    )
-                }
+                recoverArtworkSourcesInParallel(
+                    dependencies = dependencies,
+                    restartFromLibraryScan = false,
+                    trigger = "at startup",
+                )
             }
 
             ReiAnixComposeRoot(
@@ -252,6 +250,9 @@ class ReiAnixComposeLibraryHost(
                         )
 
                     Box(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(
+                        LocalReiAnixPosterSize provides appearancePosterSize,
+                    ) {
                     ReiAnixNavigationHost(
                         navController = navController,
                         homeViewModel = libraryViewModel,
@@ -360,6 +361,7 @@ class ReiAnixComposeLibraryHost(
                             navController.navigateToCollector()
                         },
                     )
+                    }
                     if (onboardingAllowed && nativeOnboarding.isPromptVisible) {
                         ReiAnixLibraryFolderOnboarding(
                             state = nativeOnboarding.phase,
