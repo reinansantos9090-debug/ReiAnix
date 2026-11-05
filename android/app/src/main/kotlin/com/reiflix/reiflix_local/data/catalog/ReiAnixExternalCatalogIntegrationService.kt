@@ -445,6 +445,7 @@ class ReiAnixExternalCatalogIntegrationService(
                                     // Do not aggregate or verify other title aliases afterward.
                                     workers.forEach { it.cancel() }
                                     queryQueue.cancel()
+                                    workers.joinAll()
                                     results.close()
                                     return@coroutineScope
                                 }
