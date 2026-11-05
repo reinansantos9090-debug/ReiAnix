@@ -233,6 +233,17 @@ data class ReiAnixCatalogAnime(
     }
 }
 
+
+/**
+ * Keeps every provider result that carries structurally valid artwork.
+ * This selection deliberately does not inspect titles, metadata, IDs already linked to the
+ * local anime, or any catalog identity decision. Provider order is preserved.
+ */
+internal fun usableCatalogArtworkCandidates(
+    candidates: Collection<ReiAnixCatalogAnime>,
+): List<ReiAnixCatalogAnime> =
+    candidates.filter { it.artworkCandidates().isNotEmpty() }
+
 sealed interface ReiAnixCatalogError {
     data class Http(val statusCode: Int) : ReiAnixCatalogError
     data class RateLimited(val retryAfterMillis: Long?) : ReiAnixCatalogError
