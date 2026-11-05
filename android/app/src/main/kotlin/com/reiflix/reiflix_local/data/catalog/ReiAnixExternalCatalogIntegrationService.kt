@@ -280,7 +280,6 @@ class ReiAnixExternalCatalogIntegrationService(
      * Artwork candidates are the complete set of image-bearing provider results.
      */
     private data class Resolution(
-        val decision: ReiAnixCatalogIdentityDecision,
         val verified: VerifiedRemote? = null,
         val artworkCandidates: List<ReiAnixCatalogAnime> = emptyList(),
     )
@@ -293,16 +292,19 @@ class ReiAnixExternalCatalogIntegrationService(
     ): Resolution {
         val knownId = ids.idFor(provider.source)
         if (!knownId.isNullOrBlank()) {
-            return when (val result = provider.getAnime(knownId)) {
+            when (val result = provider.getAnime(knownId)) {
                 is ReiAnixCatalogResult.Failure -> {
-                    record(provider.source, "DETAIL_REQUEST_FAILED", anime.id)
-                    Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
+                    // A stale/unavailable stored ID must not stop the independent title search.
+                    record(provider.source, "DETAIL_REQUEST_FAILED_TITLE_SEARCH_FALLBACK", anime.id)
                 }
                 is ReiAnixCatalogResult.Success -> {
-                    val remote = result.value ?: return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
-                    val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
-                    val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
-                    Resolution(evaluation.decision, verified, listOf(remote))
+                    val remote = result.value
+                    if (remote != null) {
+                        val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
+                        val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
+                        return Resolution(verified = verified, artworkCandidates = listOf(remote))
+                    }
+                    record(provider.source, "DETAIL_RECORD_MISSING_TITLE_SEARCH_FALLBACK", anime.id)
                 }
             }
         }
@@ -344,7 +346,6 @@ class ReiAnixExternalCatalogIntegrationService(
         if (incompleteSearch) {
             record(provider.source, "INCOMPLETE_SEARCH_ARTWORK_RESULTS_RETAINED", anime.id)
             return Resolution(
-                decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
                 artworkCandidates = artworkCandidates.values.toList(),
             )
         }
@@ -354,7 +355,6 @@ class ReiAnixExternalCatalogIntegrationService(
         )
         val verified = evaluation.value?.let { VerifiedRemote(it.remote, it.match) }
         return Resolution(
-            decision = evaluation.decision,
             verified = verified,
             artworkCandidates = artworkCandidates.values.toList(),
         )
