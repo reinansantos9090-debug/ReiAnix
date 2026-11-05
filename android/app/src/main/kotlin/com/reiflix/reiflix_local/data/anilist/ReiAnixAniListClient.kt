@@ -41,6 +41,19 @@ class ReiAnixAniListClient(
     private val requestMutex = Mutex()
     private var lastRequestAtMs = 0L
 
+    /**
+     * Serializes only request-start reservation, not the network call itself. This preserves
+     * AniList's minimum spacing while allowing a slow response to overlap later title queries.
+     */
+    private suspend fun awaitRequestStartSlot() {
+        requestMutex.withLock {
+            val now = System.currentTimeMillis()
+            val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
+            if (wait > 0L) delay(wait)
+            lastRequestAtMs = System.currentTimeMillis()
+        }
+    }
+
     suspend fun searchAnime(term: String, limit: Int = 10): AniListResult<List<AniListAnime>> {
         val query = term.trim()
         if (query.isEmpty()) return AniListResult.Success(emptyList())
@@ -112,18 +125,14 @@ class ReiAnixAniListClient(
         decode: (JSONObject) -> AniListResult<T>,
     ): AniListResult<T> {
         val response = try {
-            requestMutex.withLock {
-                val now = System.currentTimeMillis()
-                val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
-                if (wait > 0L) delay(wait)
-                lastRequestAtMs = System.currentTimeMillis()
-                // Keep the lock through the HTTP call so concurrent callers cannot
-                // start together after sharing the same rate-limit delay.
-                withContext(Dispatchers.IO) {
-                    transport.post(ENDPOINT, JSONObject()
-                        .put("query", query)
-                        .put("variables", variables))
-                }
+            awaitRequestStartSlot()
+            // The reserved start slot is complete: do not hold the mutex during I/O.
+            // Parallel title queries can now overlap without exceeding the configured
+            // minimum spacing between outgoing AniList requests.
+            withContext(Dispatchers.IO) {
+                transport.post(ENDPOINT, JSONObject()
+                    .put("query", query)
+                    .put("variables", variables))
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

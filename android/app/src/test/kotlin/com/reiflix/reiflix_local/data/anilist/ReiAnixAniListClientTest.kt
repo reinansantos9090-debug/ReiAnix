@@ -5,6 +5,11 @@ import android.app.Application
 import org.robolectric.annotation.Config
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
+import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -213,6 +218,39 @@ class ReiAnixAniListClientTest {
         assertEquals("", anime.preferredTitle)
         assertEquals(null, anime.episodes)
         assertTrue(anime.genres.isEmpty())
+    }
+
+    @Test
+    fun concurrentAliasSearchesCanOverlapTheirNetworkCalls() = runBlocking {
+        val activeCalls = AtomicInteger(0)
+        val maxActiveCalls = AtomicInteger(0)
+        val twoCallsEntered = CompletableDeferred<Unit>()
+        val releaseCalls = CompletableDeferred<Unit>()
+        val transport = object : AniListTransport {
+            override suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse {
+                val active = activeCalls.incrementAndGet()
+                maxActiveCalls.updateAndGet { previous -> maxOf(previous, active) }
+                if (active >= 2) twoCallsEntered.complete(Unit)
+                try {
+                    withTimeout(2_000) { releaseCalls.await() }
+                } finally {
+                    activeCalls.decrementAndGet()
+                }
+                return AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}""")
+            }
+        }
+        val client = ReiAnixAniListClient(transport, minimumRequestIntervalMs = 0)
+
+        val searches = listOf("Original title", "English title").map { title ->
+            async { client.searchAnime(title) }
+        }
+        withTimeout(1_000) { twoCallsEntered.await() }
+        releaseCalls.complete(Unit)
+        val results = searches.awaitAll()
+
+        assertEquals(2, results.size)
+        assertTrue(results.all { it is AniListResult.Success })
+        assertTrue("Both HTTP requests must overlap", maxActiveCalls.get() >= 2)
     }
 
     private class FakeTransport(

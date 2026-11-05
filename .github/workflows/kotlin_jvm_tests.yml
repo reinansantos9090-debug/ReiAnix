@@ -68,5 +68,6 @@ jobs:
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixLocalArtworkSidecarPolicyTest \
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
+              --tests com.reiflix.reiflix_local.data.artwork.ReiAnixParallelArtworkSearchTest \
               --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
             :app:compileReleaseKotlin
