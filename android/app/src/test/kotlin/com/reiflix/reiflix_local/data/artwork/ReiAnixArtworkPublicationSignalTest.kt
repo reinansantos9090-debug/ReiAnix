@@ -168,6 +168,29 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun backdropAndBannerUrlsRemainDistinctThroughArtworkCandidateRouting() {
+        val candidate = ReiAnixArtworkCandidate(
+            anilistId = 23L,
+            posterUrl = "https://img.example/poster.jpg",
+            bannerUrl = "https://img.example/banner.jpg",
+            backdropUrl = "https://img.example/backdrop.jpg",
+        )
+
+        assertEquals(
+            listOf("https://img.example/poster.jpg"),
+            artworkCandidateUrlsForType(candidate, "poster").filterNotNull(),
+        )
+        assertEquals(
+            listOf("https://img.example/backdrop.jpg"),
+            artworkCandidateUrlsForType(candidate, "backdrop").filterNotNull(),
+        )
+        assertEquals(
+            listOf("https://img.example/banner.jpg"),
+            artworkCandidateUrlsForType(candidate, "banner").filterNotNull(),
+        )
+    }
+
+    @Test
     fun blankCandidateVariantsDoNotBlockLaterUsableSources() = runBlocking {
         val candidates = listOf(
             ReiAnixArtworkCandidate(31L, " ", " "),
