@@ -350,8 +350,8 @@ class ReiAnixExternalCatalogIntegrationService(
                     val remote = result.value ?: return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
                     val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
                     val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
-                    // The first image remains provisional and immediate. An already anchored,
-                    // CONFIRMED provider identity is also queued as a separate promotion candidate.
+                    // A provider result obtained by an already stored ID may offer artwork
+                    // immediately; metadata/ID persistence still uses the strict evaluation.
                     val hasPoster = remote.artworkCandidates().any {
                         it.type == ReiAnixCatalogArtworkType.POSTER
                     }
