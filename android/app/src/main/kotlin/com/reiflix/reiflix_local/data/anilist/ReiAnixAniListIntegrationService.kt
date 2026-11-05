@@ -36,7 +36,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-private const val MAX_ARTWORK_CANDIDATES = 5
+private const val MAX_ARTWORK_CANDIDATES = 10
 
 
 /** Pure policy for bounded discovery of missing posters from the canonical catalogue. */
@@ -148,8 +148,8 @@ internal fun shouldDeferArtworkDiscoveryAttempt(
 }
 
 
-internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6): List<String> {
-    require(limit in 1..8) { "AniList title search limit must be between 1 and 8." }
+internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 64): List<String> {
+    require(limit in 1..128) { "AniList title search limit must be between 1 and 128." }
     val seen = HashSet<String>()
     return candidates.asSequence()
         .flatMap { MediaTitleNormalizer.searchTitleVariants(it).asSequence() }
@@ -370,6 +370,9 @@ class ReiAnixAniListIntegrationService(
                 }
             }
         }
+        // Keep metadata association on its existing conservative fast path.
+        // Prompt 13 expands the cover-discovery pipeline; metadata identity must not
+        // become ambiguous merely because secondary aliases also returned candidates.
         val searchTerms = boundedAniListSearchTerms(localTitleCandidates, limit = 6)
         if (searchTerms.isEmpty()) {
             autoMatchAttempts.remove(animeId)
@@ -422,8 +425,8 @@ class ReiAnixAniListIntegrationService(
                             return searchResult
                         }
                     }
-                    // Never auto-associate from a partial candidate set after a transient
-                    // failure on one of the alternate title queries.
+                    // Preserve the existing metadata identity rule: a failed title
+                    // lookup cannot authorize association from only part of the set.
                     recordAutoMatchOutcome(animeId, outcome)
                     return searchResult
                 }
@@ -431,9 +434,7 @@ class ReiAnixAniListIntegrationService(
             found.forEach { candidate -> candidatesById.putIfAbsent(candidate.id, candidate) }
             ranked = rankCandidates(candidatesById.values, searchTerms.take(termIndex + 1))
 
-            // Preserve the fast path for an already-unambiguous primary-title result.
-            // Alternative titles are queried only when the primary result is absent,
-            // low-confidence or ambiguous, avoiding extra requests for common cases.
+            // Preserve the existing fast path for an unambiguous primary-title result.
             if (termIndex == 0) {
                 val best = ranked.firstOrNull()
                 val margin = best?.let { it.score - (ranked.getOrNull(1)?.score ?: 0.0) } ?: 0.0
@@ -545,27 +546,25 @@ class ReiAnixAniListIntegrationService(
                 }
             }
         }
-        val terms = boundedAniListSearchTerms(titleCandidates, limit = 6)
+        val terms = boundedAniListSearchTerms(titleCandidates, limit = 128)
         if (terms.isEmpty()) return emptyList()
+        currentCoroutineContext().ensureActive()
         val candidatesById = linkedMapOf<Int, AniListAnime>()
-        for (term in terms) {
-            currentCoroutineContext().ensureActive()
-            when (val result = try {
-                client.searchAnime(term, 10)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TAG, "AniList artwork search failed for animeId=" + local.id + " title=" + term, error)
-                continue
-            }) {
-                is AniListResult.Success -> result.value.forEach { remote ->
-                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
-                }
-                is AniListResult.Failure -> Log.w(
-                    TAG,
-                    "AniList artwork search failed for animeId=" + local.id + " title=" + term + ": " + result.error,
-                )
+        when (val result = try {
+            client.searchAnimeBatch(terms, 10, includeFullMetadata = false)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "AniList artwork batch search failed for animeId=" + local.id, error)
+            return emptyList()
+        }) {
+            is AniListResult.Success -> result.value.values.flatten().forEach { remote ->
+                if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
             }
+            is AniListResult.Failure -> Log.w(
+                TAG,
+                "AniList artwork batch search failed for animeId=" + local.id + ": " + result.error,
+            )
         }
         if (candidatesById.isEmpty()) return emptyList()
         val context = ReiAnixAniListMatcher.Context(
@@ -702,7 +701,7 @@ class ReiAnixAniListIntegrationService(
                         }
                     }
                     if (remote == null) {
-                        if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                        if (discoverArtworkCandidates(local)) recovered++
                         continue
                     }
                     val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
@@ -717,20 +716,20 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Success -> {
                             if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                 recovered++
-                            } else if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) {
+                            } else if (discoverArtworkCandidates(local)) {
                                 recovered++
                             }
                         }
                         is AniListResult.Failure -> {
                             Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
-                            if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                            if (discoverArtworkCandidates(local)) recovered++
                         }
                     }
                 } else {
                     // Artwork recovery is read-only with respect to identity:
                     // PROBABLE/AMBIGUOUS/REJECTED/UNRESOLVED titles can provide ranked image
                     // candidates without assigning their AniList ID to the local anime.
-                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                    if (discoverArtworkCandidates(local)) recovered++
                 }
             }
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
