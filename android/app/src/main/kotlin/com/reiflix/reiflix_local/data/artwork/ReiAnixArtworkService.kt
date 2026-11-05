@@ -403,17 +403,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         // usable poster and do not run a second identity/promotion pass afterward.
                         val posterAlreadyAvailable = hasUsablePersistedPoster(animeId, entityType)
                         val posterRecovered = posterAlreadyAvailable || firstSuccessfulArtworkCandidate(
-                                candidates = candidateCandidates,
-                                artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
-                            ) { candidate, url ->
-                                materialize(
-                                    animeId, entityType, "poster", url,
-                                    candidate.anilistId.takeIf { it > 0L },
-                                    force, requestId, requireCurrentUrl = false,
-                                    retryCandidates = candidateCandidates,
-                                    sourceKind = candidate.source,
-                                )
-                            }
+                            candidates = candidateCandidates,
+                            artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
+                        ) { candidate, url ->
+                            materialize(
+                                animeId, entityType, "poster", url,
+                                candidate.anilistId.takeIf { it > 0L },
+                                force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
+                                sourceKind = candidate.source,
+                            )
+                        }
 
                         val backdropRecovered = firstSuccessfulArtworkCandidate(
                             candidates = candidateCandidates,
