@@ -418,7 +418,7 @@ class ReiAnixExternalCatalogIntegrationService(
         animeId: Long,
         remotes: Collection<ReiAnixCatalogAnime>,
         seen: MutableSet<ReiAnixArtworkCandidate>,
-    ): Boolean {
+    ): Boolean = try {
         if (remotes.isEmpty()) return false
         val posterAlreadyReady = hasValidArtwork(animeId, "poster")
         val backdropAlreadyReady = hasValidArtwork(animeId, "backdrop")
@@ -452,8 +452,14 @@ class ReiAnixExternalCatalogIntegrationService(
             .filter(seen::add)
             .take(MAX_QUEUED_ARTWORK_CANDIDATES)
             .toList()
-        return pending.isNotEmpty() &&
+        pending.isNotEmpty() &&
             artwork.requestAnimeArtworkCandidates(animeId, pending, force = true)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        record(ReiAnixCatalogSource.fromKey("anilist") ?: ReiAnixCatalogSource.KITSU,
+            "ARTWORK_CANDIDATE_QUEUE_FAILED", animeId, error)
+        false
     }
 
     private fun record(
