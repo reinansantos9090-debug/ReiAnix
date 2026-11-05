@@ -536,8 +536,8 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Read-only candidate search for artwork. Matcher confidence orders the candidates,
-     * but no candidate is allowed to create or replace the local AniList identity.
+     * Read-only artwork search. Results remain in provider/query order; identity matching
+     * is not consulted when deciding which returned images may be published.
      * A failed alias request does not discard results already obtained from other aliases.
      */
     private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): List<AniListAnime> {
