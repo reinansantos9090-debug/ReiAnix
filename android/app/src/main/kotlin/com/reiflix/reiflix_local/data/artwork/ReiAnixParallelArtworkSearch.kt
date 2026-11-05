@@ -32,7 +32,9 @@ internal suspend fun <T> runParallelArtworkSearches(
     if (queries.isEmpty()) return@coroutineScope
 
     val pending = Channel<String>(capacity = maxConcurrent)
-    val completed = Channel<Pair<String, Result<T>>>(Channel.UNLIMITED)
+    // Backpressure is bounded by the worker count; a slow persistence callback cannot
+    // accumulate an unbounded queue of remote result payloads.
+    val completed = Channel<Pair<String, Result<T>>>(capacity = maxConcurrent)
     val producer = launch {
         try {
             queries.forEach { pending.send(it) }
