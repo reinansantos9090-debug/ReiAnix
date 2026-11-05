@@ -44,6 +44,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -707,14 +708,10 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("appearance.theme", it) },
                         )
                     }
-                    item(key = "setting:appearance.card_size") {
-                        ChoiceSettingRow(
-                            keyName = "appearance.card_size",
-                            title = "Tamanho dos cards",
-                            description = "Controla o tamanho visual dos cards da biblioteca/Home.",
-                            selectedValue = state.settings["appearance.card_size"],
-                            choices = cardSizeChoices,
-                            onSelected = { onUpdateSetting("appearance.card_size", it) },
+                    item(key = "setting:appearance.poster_size") {
+                        PosterSizeSettingRow(
+                            selectedValue = state.settings["appearance.poster_size"],
+                            onSelected = { onUpdateSetting("appearance.poster_size", it.toString()) },
                         )
                     }
                     item(key = "setting:appearance.show_thumbnails") {
@@ -749,7 +746,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "library.grid_density",
                             title = "Densidade da grade",
-                            description = "Controla a largura efetiva dos cards.",
+                            description = "Controla o espaçamento entre os pôsteres; o tamanho é ajustado em Aparência.",
                             selectedValue = state.settings["library.grid_density"],
                             choices = listOf(
                                 SettingChoice("small", "Menos cards"),
@@ -2235,6 +2232,76 @@ private fun ChoiceSettingRow(
             }
         }
 
+    }
+}
+
+@Composable
+private fun PosterSizeSettingRow(
+    selectedValue: String?,
+    onSelected: (Int) -> Unit,
+) {
+    val persistedValue = selectedValue?.toIntOrNull()?.coerceIn(0, 16) ?: 0
+    var sliderValue by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableFloatStateOf(persistedValue.toFloat())
+    }
+    androidx.compose.runtime.LaunchedEffect(persistedValue) {
+        sliderValue = persistedValue.toFloat()
+    }
+    val displayedValue = sliderValue.toInt().coerceIn(0, 16)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = ReiAnixTokens.Spacing.xs,
+                vertical = ReiAnixTokens.Spacing.sm,
+            )
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Tamanho dos pôsteres"
+                stateDescription = "$displayedValue de 16"
+            },
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SettingsPreferenceText(
+                title = "Tamanho dos pôsteres",
+                description = "Ajusta as capas da Home e da Biblioteca. 0 é o menor tamanho; 16 é o maior.",
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "$displayedValue / 16",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Slider(
+            value = sliderValue,
+            onValueChange = { sliderValue = it.coerceIn(0f, 16f) },
+            valueRange = 0f..16f,
+            steps = 15,
+            onValueChangeFinished = {
+                onSelected(sliderValue.toInt().coerceIn(0, 16))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = "0 · Menor",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "16 · Maior",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
