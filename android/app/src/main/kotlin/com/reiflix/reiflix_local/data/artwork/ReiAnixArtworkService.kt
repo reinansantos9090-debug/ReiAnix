@@ -416,8 +416,14 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
                         }
                     } else {
+                        // Also protect the race where a different provider commits its first poster
+                        // just before this candidate-only job starts.
+                        val candidatesAllowedForThisPass = artworkCandidatesAfterPosterPublication(
+                            candidateCandidates,
+                            posterAlreadyAvailable = hasUsablePersistedPoster(animeId, entityType),
+                        )
                         val posterRecovered = firstSuccessfulArtworkCandidate(
-                            candidates = candidateCandidates,
+                            candidates = candidatesAllowedForThisPass,
                             artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
                         ) { candidate, url ->
                             materialize(
@@ -427,7 +433,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             )
                         }
                         val backdropRecovered = firstSuccessfulArtworkCandidate(
-                            candidates = candidateCandidates,
+                            candidates = candidatesAllowedForThisPass,
                             artworkUrls = { listOf(it.bannerUrl) },
                         ) { candidate, url ->
                             materialize(
@@ -444,7 +450,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             context = mapOf(
                                 "entity_type" to entityType,
                                 "entity_id" to animeId,
-                                "candidate_count" to candidateCandidates.size,
+                                "candidate_count" to candidatesAllowedForThisPass.size,
                                 "poster_recovered" to posterRecovered,
                                 "banner_recovered" to backdropRecovered,
                                 "identity_associated" to false,
