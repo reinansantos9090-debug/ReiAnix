@@ -29,10 +29,12 @@ import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
 import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
 import android.net.Uri
@@ -1379,6 +1381,36 @@ class ReiAnixLibraryViewModel(
         if (pending.isEmpty()) return
 
         viewModelScope.launch {
+            // Feed the existing valid/generated JPEGs to Trace.moe as soon as each
+            // becomes available. This channel is separate from thumbnail extraction:
+            // the extractor and its scheduling/quality/concurrency are unchanged.
+            val traceMoeSampleChannel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
+            val traceMoeEpisodesQueued = mutableSetOf<Long>()
+            val traceMoeIdentificationJob = appDependencies?.aniListIntegrationService?.let { integration ->
+                launch {
+                    try {
+                        integration.identifyFromEpisodeThumbnails(
+                            animeId = animeId,
+                            samples = traceMoeSampleChannel.receiveAsFlow(),
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Trace.moe visual identification failed for animeId=$animeId", error)
+                    }
+                }
+            }
+
+            suspend fun submitTraceMoeSample(episodeId: Long, file: File) {
+                if (traceMoeIdentificationJob?.isActive != true ||
+                    traceMoeEpisodesQueued.size >= 3 ||
+                    !traceMoeEpisodesQueued.add(episodeId)
+                ) return
+                traceMoeSampleChannel.send(
+                    TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file),
+                )
+            }
+
             try {
                 // Validate the complete batch first and hide only unusable generated
                 // associations before spending time attempting frame extraction.
@@ -1387,6 +1419,9 @@ class ReiAnixLibraryViewModel(
                         val rawSource = episodeThumbnailSource(episode) ?: return@mapNotNull null
                         val existingPath = episode.artwork?.localPath
                         val existingIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(existingPath)
+                        if (existingIsUsable && !existingPath.isNullOrBlank()) {
+                            submitTraceMoeSample(episode.id, File(existingPath))
+                        }
                         if (!VideoThumbnailExtractor.thumbnailNeedsRegeneration(existingPath, existingIsUsable)) {
                             ReiAnixDiagnosticTimeline.record(
                                 name = "EPISODE_THUMBNAIL_CACHE_REUSED",
@@ -1464,6 +1499,9 @@ class ReiAnixLibraryViewModel(
                                 )
                             } else {
                                 val outputIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
+                                if (outputIsUsable) {
+                                    submitTraceMoeSample(episode.id, File(result.path))
+                                }
                                 ReiAnixDiagnosticTimeline.record(
                                     name = "EPISODE_THUMBNAIL_OUTPUT_VALIDATED",
                                     source = "ReiAnixLibraryViewModel",
@@ -1484,7 +1522,11 @@ class ReiAnixLibraryViewModel(
                         Log.w(TAG, "Episode thumbnail generation failed for episodeId=${episode.id}", error)
                     }
                 }
+
             } finally {
+                // Closing the stream releases a Trace.moe attempt that did not reach
+                // a result with the first three distinct local episodes.
+                traceMoeSampleChannel.close()
                 var rerunRequested = false
                 pending.forEach { episode ->
                     episodeThumbnailRequestsInFlight.remove(episode.id)

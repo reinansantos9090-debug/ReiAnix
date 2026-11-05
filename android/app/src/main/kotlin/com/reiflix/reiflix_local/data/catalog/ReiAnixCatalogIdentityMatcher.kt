@@ -337,6 +337,12 @@ object ReiAnixCatalogIdentityMatcher {
         return EvidenceEvaluation(dimensions)
     }
 
+    /** Public exact-title check reused by image-only verification; no fuzzy score can pass it. */
+    fun hasDiscriminativeExactTitleMatch(
+        localTitles: Collection<String>,
+        remoteTitles: Collection<String>,
+    ): Boolean = findExactTitle(localTitles.toSet(), remoteTitles.toSet()) != null
+
     private fun findExactTitle(localTitles: Set<String>, remoteTitles: Set<String>): String? {
         val normalizedLocal = localTitles.map(::normalizeCatalogTitle)
             .filter(::isDiscriminativeTitle).toSet()

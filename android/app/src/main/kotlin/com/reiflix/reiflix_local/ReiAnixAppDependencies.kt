@@ -16,6 +16,7 @@ import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import java.io.File
 import java.util.UUID
 import org.json.JSONObject
@@ -158,6 +159,10 @@ class ReiAnixAppDependencies(context: Context) {
         )
     }
 
+    val traceMoeClient: ReiAnixTraceMoeClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixTraceMoeClient()
+    }
+
     val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAniListClient()
     }
@@ -170,6 +175,7 @@ class ReiAnixAppDependencies(context: Context) {
             library = sqliteLibraryRepository,
             settings = sqliteSettingsRepository,
             genreRegistry = genreRegistry,
+            traceMoeClient = traceMoeClient,
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),
