@@ -80,6 +80,23 @@ data class ReiAnixArtworkCandidate(
     }
 }
 
+/**
+ * Once the first usable poster is committed, later alias/provider candidates are not
+ * allowed to replace it. Backdrop fallbacks remain eligible because they are independent.
+ */
+internal fun artworkCandidatesAfterPosterPublication(
+    candidates: List<ReiAnixArtworkCandidate>,
+    posterAlreadyAvailable: Boolean,
+): List<ReiAnixArtworkCandidate> {
+    if (!posterAlreadyAvailable) return candidates
+    return candidates.mapNotNull { candidate ->
+        candidate.copy(
+            posterUrl = null,
+            posterFallbackUrl = null,
+        ).takeIf { !it.bannerUrl.isNullOrBlank() }
+    }
+}
+
 /** Attempts ranked candidates and their variants without letting one failed URL stop the next. */
 internal suspend fun firstSuccessfulArtworkCandidate(
     candidates: List<ReiAnixArtworkCandidate>,
@@ -451,12 +468,18 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     currentCoroutineContext()[Job]?.let { jobs.remove(animeId, it) }
                     val candidateFollowUp = candidateFollowUpRequests.remove(animeId)
                     val forceFollowUp = forceFollowUpIds.remove(animeId)
+                    val posterAlreadyAvailable =
+                        hasUsablePersistedPoster(animeId, "anime") ||
+                            hasUsablePersistedPoster(animeId, "movie")
+                    val remainingCandidates = candidateFollowUp?.let {
+                        artworkCandidatesAfterPosterPublication(it, posterAlreadyAvailable)
+                    }
                     if (!cacheClearInProgress.get()) {
                         when {
-                            candidateFollowUp != null -> {
-                                // Preserve a forced canonical refresh alongside candidate-only lookup.
+                            !remainingCandidates.isNullOrEmpty() -> {
+                                // Later aliases are fallbacks only until the first usable poster commits.
                                 if (forceFollowUp) requestAnimeArtwork(animeId, force = true)
-                                requestAnimeArtworkCandidates(animeId, candidateFollowUp, forceFollowUp)
+                                requestAnimeArtworkCandidates(animeId, remainingCandidates, forceFollowUp)
                             }
                             forceFollowUp -> requestAnimeArtwork(animeId, force = true)
                             else -> schedulePersistedArtworkRetry(animeId)
