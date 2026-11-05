@@ -210,7 +210,7 @@ class ReiAnixAniListClient(
                 title?.stringOrNull("english"),
                 title?.stringOrNull("native"),
             ).mapNotNull { it.nonBlankOrNull() }.forEach(::add)
-        }.distinctBy { it.lowercase(Locale.ROOT) }
+        }.distinct()
         val genres = genresArray?.stringValues("genres").orEmpty()
 
         val episodes = media.nonNegativeIntOrNull("episodes")
