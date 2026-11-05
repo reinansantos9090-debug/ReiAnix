@@ -96,14 +96,26 @@ class ReiAnixExternalCatalogIntegrationService(
         val metadataMissing = !manuallyOwned && hasMetadataGap(anime)
         val posterMissing = !hasValidArtwork(anime.id, "poster")
         val backdropMissing = !hasValidArtwork(anime.id, "backdrop")
-        return metadataMissing || posterMissing || backdropMissing
+        val bannerMissing = !hasValidArtwork(anime.id, "banner")
+        return metadataMissing || posterMissing || backdropMissing || bannerMissing
     }
 
     /** A ready, materialized row is treated as canonical so a lower-priority source cannot replace it. */
     private suspend fun hasValidArtwork(animeId: Long, requestedType: String): Boolean {
-        val type = if (requestedType == "banner") "backdrop" else requestedType
+        val canonicalBannerUrl = if (requestedType == "banner") {
+            library.getAnime(animeId)?.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
+        } else {
+            null
+        }
         return library.artworkForAnime(animeId).any { row ->
-            row.artworkType.equals(type, ignoreCase = true) &&
+            val exactType = row.artworkType.equals(requestedType, ignoreCase = true)
+            // Older builds stored the canonical anime.banner_url pointer using the backdrop
+            // label. Reuse only that exact URL as a legacy Banner; provider Backdrops remain
+            // distinct and cannot satisfy a missing Banner.
+            val legacyCanonicalBanner = requestedType == "banner" &&
+                row.artworkType.equals("backdrop", ignoreCase = true) &&
+                canonicalBannerUrl != null && row.externalUrl == canonicalBannerUrl
+            (exactType || legacyCanonicalBanner) &&
                 row.status.equals("ready", ignoreCase = true) &&
                 row.localPath?.let { path -> File(path).isFile && File(path).length() > 0L } == true
         }
@@ -123,12 +135,12 @@ class ReiAnixExternalCatalogIntegrationService(
         val identity = anime.toExternalCatalogIdentity()
         val discoveredTitlePool = identity.titles.toMutableSet()
         val posterReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "poster")
-        val backdropReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "backdrop")
+        val bannerReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "banner")
         val hasMissingAniListArtworkCandidate =
             (!posterReadyBeforeAniListArtwork && !anime.coverUrl.isNullOrBlank()) ||
-                (!backdropReadyBeforeAniListArtwork && !anime.bannerUrl.isNullOrBlank())
+                (!bannerReadyBeforeAniListArtwork && !anime.bannerUrl.isNullOrBlank())
         if (hasMissingAniListArtworkCandidate) {
-            // Try the already-persisted AniList candidate first, including a backdrop-only gap.
+            // Try the already-persisted AniList candidate first, including a Banner gap.
             // The canonical artwork service reuses validated poster bytes and does not redownload them.
             // The current artwork pipeline owns asynchronous downloads and publication.
             // Enqueue canonical AniList artwork without blocking catalog enrichment.
@@ -190,7 +202,8 @@ class ReiAnixExternalCatalogIntegrationService(
             val needsMetadata = !hasManualCatalogOwnership(anime) && hasMetadataGap(anime)
             val needsPoster = !hasValidArtwork(anime.id, "poster")
             val needsBackdrop = !hasValidArtwork(anime.id, "backdrop")
-            if (!needsMetadata && !needsPoster && !needsBackdrop) break
+            val needsBanner = !hasValidArtwork(anime.id, "banner")
+            if (!needsMetadata && !needsPoster && !needsBackdrop && !needsBanner) break
 
             val previousAttempt = library.externalCatalogAttemptAt(anime.id, source.key)
             val knownId = ids.idFor(source)
@@ -409,23 +422,29 @@ class ReiAnixExternalCatalogIntegrationService(
         if (remotes.isEmpty()) return false
         val posterAlreadyReady = hasValidArtwork(animeId, "poster")
         val backdropAlreadyReady = hasValidArtwork(animeId, "backdrop")
+        val bannerAlreadyReady = hasValidArtwork(animeId, "banner")
         val pending = remotes.asSequence()
             .flatMap { it.artworkCandidates().asSequence() }
             .mapNotNull { candidate ->
-                val artworkType = when (candidate.type) {
-                    ReiAnixCatalogArtworkType.POSTER -> "poster"
-                    ReiAnixCatalogArtworkType.BACKDROP,
-                    ReiAnixCatalogArtworkType.BANNER -> "backdrop"
+                val artworkType = candidate.type.key
+                val alreadyReady = when (candidate.type) {
+                    ReiAnixCatalogArtworkType.POSTER -> posterAlreadyReady
+                    ReiAnixCatalogArtworkType.BACKDROP -> backdropAlreadyReady
+                    ReiAnixCatalogArtworkType.BANNER -> bannerAlreadyReady
                 }
-                if ((artworkType == "poster" && posterAlreadyReady) ||
-                    (artworkType == "backdrop" && backdropAlreadyReady)
-                ) {
+                if (alreadyReady) {
+                    record(
+                        source = candidate.source,
+                        result = "${artworkType.uppercase(Locale.ROOT)}_SKIPPED_VALID_LOCAL",
+                        animeId = animeId,
+                    )
                     null
                 } else {
                     ReiAnixArtworkCandidate(
                         anilistId = 0L,
-                        posterUrl = candidate.url.takeIf { artworkType == "poster" },
-                        bannerUrl = candidate.url.takeIf { artworkType == "backdrop" },
+                        posterUrl = candidate.url.takeIf { candidate.type == ReiAnixCatalogArtworkType.POSTER },
+                        backdropUrl = candidate.url.takeIf { candidate.type == ReiAnixCatalogArtworkType.BACKDROP },
+                        bannerUrl = candidate.url.takeIf { candidate.type == ReiAnixCatalogArtworkType.BANNER },
                         source = candidate.source.key,
                     )
                 }
