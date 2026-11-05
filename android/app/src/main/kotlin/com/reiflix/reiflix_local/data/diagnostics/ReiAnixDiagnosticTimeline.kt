@@ -2,6 +2,12 @@ package com.reiflix.reiflix_local.data.diagnostics
 
 import android.os.SystemClock
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,11 +43,28 @@ data class ReiAnixDiagnosticEvent(
 
 object ReiAnixDiagnosticTimeline {
     const val RETENTION_LIMIT = 300
+    private const val EVENTS_PUBLISH_INTERVAL_MS = 200L
     private const val TAG = "ReiAnixDiagnostics"
     private val lock = Any()
     private val recent = ArrayDeque<ReiAnixDiagnosticEvent>()
     private var nextSequence = 0L
     private val mutableEvents = MutableStateFlow<List<ReiAnixDiagnosticEvent>>(emptyList())
+    private val publishScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val publishRequests = Channel<Unit>(Channel.CONFLATED)
+
+    init {
+        // Preserve every event in the in-memory timeline, but coalesce UI snapshots.
+        // Artwork callbacks can arrive in bursts while scrolling; cloning and
+        // emitting the full 300-entry list for each callback adds avoidable work.
+        publishScope.launch {
+            for (ignored in publishRequests) {
+                delay(EVENTS_PUBLISH_INTERVAL_MS)
+                synchronized(lock) {
+                    mutableEvents.value = recent.toList().asReversed()
+                }
+            }
+        }
+    }
 
     /** Newest first; the list itself is immutable to consumers. */
     val events: StateFlow<List<ReiAnixDiagnosticEvent>> = mutableEvents.asStateFlow()
@@ -79,8 +102,8 @@ object ReiAnixDiagnosticTimeline {
                 )
                 recent.addLast(event)
                 while (recent.size > RETENTION_LIMIT) recent.removeFirst()
-                mutableEvents.value = recent.toList().asReversed()
             }
+            publishRequests.trySend(Unit)
         } catch (failure: Exception) {
             // A diagnostics failure must never escape into the observed operation.
             Log.w(TAG, "Diagnostic event was dropped (" + failure.javaClass.simpleName + ").")
