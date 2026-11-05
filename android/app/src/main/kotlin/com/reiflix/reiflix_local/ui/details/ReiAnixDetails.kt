@@ -156,9 +156,11 @@ fun ReiAnixDetailsRoute(
     var showAniListDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     // The Details status can remain READY while the asynchronous local-library
-    // projection gains a media URI, corrected availability/duration, or a newly
-    // published thumbnail. Include those source facts in a stable effect key so a
-    // first request made before local media becomes resolvable is not the only one.
+    // projection gains a media URI or corrected availability/duration. Include
+    // those source facts in a stable effect key so a first request made before
+    // local media becomes resolvable is not the only one. Do not include
+    // artwork.localPath: it is an output of thumbnail generation, not an input.
+    // Including it would re-trigger the batch for the thumbnails it just wrote.
     val thumbnailRequestRevision = remember(state.anime) {
         state.anime?.let { anime ->
             (anime.seasons.flatMap { it.episodes } + anime.specials + anime.mediaFiles)
@@ -176,7 +178,6 @@ fun ReiAnixDetailsRoute(
                         episode.fileSizeBytes?.toString().orEmpty(),
                         episode.modifiedAt?.toString().orEmpty(),
                         episode.durationSeconds?.toString().orEmpty(),
-                        episode.artwork?.localPath.orEmpty(),
                     ).joinToString(separator = "\u001f")
                 }
         }.orEmpty()
