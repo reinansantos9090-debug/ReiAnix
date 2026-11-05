@@ -412,40 +412,24 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             materialize(animeId, entityType, BANNER, it, anime.anilistId, force, requestId)
                         }
                     } else {
-                        val posterRecovered = firstSuccessfulArtworkCandidate(
+                        // Candidate URL downloads run in a two-worker pool, matching the
+                        // artwork service's existing global Semaphore(2). Every completed image
+                        // is persisted and published inside materialize(), without waiting for
+                        // slower candidates or the remaining title searches.
+                        val recoveredTypes = materializeCandidateArtworkSet(
+                            animeId = animeId,
+                            entityType = entityType,
+                            requestId = requestId,
                             candidates = candidateCandidates,
-                            artworkUrls = { artworkCandidateUrlsForType(it, POSTER) },
-                        ) { candidate, url ->
-                            materialize(
-                                animeId, entityType, "poster", url, candidate.anilistId.takeIf { it > 0L },
-                                force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
-                                sourceKind = candidate.source,
-                            )
-                        }
-                        val backdropRecovered = firstSuccessfulArtworkCandidate(
-                            candidates = candidateCandidates,
-                            artworkUrls = { artworkCandidateUrlsForType(it, BACKDROP) },
-                        ) { candidate, url ->
-                            materialize(
-                                animeId, entityType, BACKDROP, url, candidate.anilistId.takeIf { it > 0L },
-                                force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
-                                sourceKind = candidate.source,
-                            )
-                        }
-                        val bannerRecovered = firstSuccessfulArtworkCandidate(
-                            candidates = candidateCandidates,
-                            artworkUrls = { artworkCandidateUrlsForType(it, BANNER) },
-                        ) { candidate, url ->
-                            materialize(
-                                animeId, entityType, BANNER, url, candidate.anilistId.takeIf { it > 0L },
-                                force, requestId, requireCurrentUrl = false, retryCandidates = candidateCandidates,
-                                sourceKind = candidate.source,
-                            )
-                        }
+                            force = force,
+                        )
+                        val posterRecovered = POSTER in recoveredTypes
+                        val backdropRecovered = BACKDROP in recoveredTypes
+                        val bannerRecovered = BANNER in recoveredTypes
                         ReiAnixDiagnosticTimeline.record(
                             name = "NATIVE_ARTWORK_CANDIDATE_FALLBACK_FINISHED",
                             source = "ReiAnixArtworkService",
-                            result = if (posterRecovered || backdropRecovered || bannerRecovered) "ARTWORK_RECOVERED" else "NO_CANDIDATE_ARTWORK_RECOVERED",
+                            result = if (recoveredTypes.isNotEmpty()) "ARTWORK_RECOVERED" else "NO_CANDIDATE_ARTWORK_RECOVERED",
                             requestId = requestId,
                             context = mapOf(
                                 "entity_type" to entityType,
@@ -492,6 +476,64 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             task.start()
         }
         return true
+    }
+
+    /**
+     * Materializes every distinct semantic candidate URL concurrently, with no more than
+     * two active workers. Downloads publish independently from their completion callback in
+     * materialize(), so a slow Poster cannot hold back an already-downloaded Banner/Backdrop.
+     */
+    private suspend fun materializeCandidateArtworkSet(
+        animeId: Long,
+        entityType: String,
+        requestId: String,
+        candidates: List<ReiAnixArtworkCandidate>,
+        force: Boolean,
+    ): Set<String> {
+        data class Work(
+            val candidate: ReiAnixArtworkCandidate,
+            val artworkType: String,
+            val url: String,
+        )
+
+        val workItems = buildList {
+            candidates.forEach { candidate ->
+                listOf(POSTER, BACKDROP, BANNER).forEach { type ->
+                    artworkCandidateUrlsForType(candidate, type)
+                        .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+                        .forEach { url -> add(Work(candidate, type, url)) }
+                }
+            }
+        }.distinctBy { it.artworkType + "\u001f" + it.url }
+        if (workItems.isEmpty()) return emptySet()
+
+        val workByKey = workItems.mapIndexed { index, work -> index.toString() to work }.toMap()
+        val recovered = linkedSetOf<String>()
+        runParallelArtworkSearches(
+            titles = workByKey.keys.toList(),
+            maxConcurrent = 2,
+            search = { key ->
+                val work = workByKey.getValue(key)
+                materialize(
+                    animeId = animeId,
+                    entity = entityType,
+                    type = work.artworkType,
+                    url = work.url,
+                    aniId = work.candidate.anilistId.takeIf { it > 0L },
+                    force = force,
+                    requestId = requestId,
+                    requireCurrentUrl = false,
+                    retryCandidates = candidates,
+                    sourceKind = work.candidate.source,
+                )
+            },
+            onCompleted = { key, result ->
+                if (result.getOrNull() == true) {
+                    recovered.add(workByKey.getValue(key).artworkType)
+                }
+            },
+        )
+        return recovered
     }
 
     /** Repair existing persisted image URLs in bounded asynchronous batches. */
