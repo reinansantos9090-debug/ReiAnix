@@ -74,48 +74,9 @@ data class ReiAnixArtworkCandidate(
     val posterFallbackUrl: String? = null,
     /** Origin of a candidate-only URL; normal AniList requests keep the default. */
     val source: String = "anilist",
-    /** True only after a background title/identity check selected this record unambiguously. */
-    val identityVerified: Boolean = false,
 ) {
     init {
         require(source in setOf("anilist", "kitsu", "anipub"))
-    }
-}
-
-/**
- * Keeps verified follow-ups inside the bounded queue even when the provisional alias set is full.
- * Verified entries are retained first; poster phase ordering is handled separately.
- */
-internal fun boundedArtworkCandidates(
-    candidates: List<ReiAnixArtworkCandidate>,
-    limit: Int,
-): List<ReiAnixArtworkCandidate> {
-    require(limit > 0)
-    val usable = candidates.asSequence()
-        .filter {
-            it.anilistId >= 0L &&
-                (!it.posterUrl.isNullOrBlank() || !it.posterFallbackUrl.isNullOrBlank() ||
-                    !it.bannerUrl.isNullOrBlank())
-        }
-        .distinct()
-        .toList()
-    return (usable.filter { it.identityVerified } + usable.filterNot { it.identityVerified })
-        .take(limit)
-}
-
-/** Provisional images publish first; once one exists, only verified posters may replace it. */
-internal fun posterCandidatesForArtworkPass(
-    candidates: List<ReiAnixArtworkCandidate>,
-    posterAlreadyAvailable: Boolean,
-): List<ReiAnixArtworkCandidate> {
-    val posters = candidates.filter {
-        !it.posterUrl.isNullOrBlank() || !it.posterFallbackUrl.isNullOrBlank()
-    }
-    val verified = posters.filter { it.identityVerified }
-    return if (posterAlreadyAvailable) {
-        verified
-    } else {
-        posters.filterNot { it.identityVerified } + verified
     }
 }
 
@@ -305,7 +266,15 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         candidates: List<ReiAnixArtworkCandidate>,
         force: Boolean = false,
     ): Boolean {
-        val usable = boundedArtworkCandidates(candidates, MAX_CANDIDATE_ARTWORKS)
+        val usable = candidates.asSequence()
+            .filter {
+                it.anilistId >= 0L &&
+                    (!it.posterUrl.isNullOrBlank() || !it.posterFallbackUrl.isNullOrBlank() ||
+                        !it.bannerUrl.isNullOrBlank())
+            }
+            .distinct()
+            .take(MAX_CANDIDATE_ARTWORKS)
+            .toList()
         if (usable.isEmpty()) return false
         return requestAnimeArtworkInternal(animeId, force, usable)
     }
@@ -332,10 +301,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (jobs[animeId]?.isActive == true) {
                 if (candidateCandidates != null) {
                     candidateFollowUpRequests.compute(animeId) { _, pending ->
-                        boundedArtworkCandidates(
-                            pending.orEmpty() + candidateCandidates,
-                            MAX_CANDIDATE_ARTWORKS,
-                        )
+                        (pending.orEmpty() + candidateCandidates).distinct().take(MAX_CANDIDATE_ARTWORKS)
                     }
                     if (force) forceFollowUpIds.add(animeId)
                     return true
