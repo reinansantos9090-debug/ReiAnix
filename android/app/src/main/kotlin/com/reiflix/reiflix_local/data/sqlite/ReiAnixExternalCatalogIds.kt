@@ -255,7 +255,7 @@ suspend fun ReiAnixSqliteLibraryRepository.listAnimeAfterExternalCatalogCursor(
 private fun externalCatalogAttemptPreferenceKey(animeId: Long, source: String): String {
     require(animeId > 0L)
     require(source == "kitsu" || source == "jikan" || source == "tenrai" || source == "anipub")
-    return "__reianix.external_catalog_attempt.v1.$animeId.$source"
+    return "__reianix.external_catalog_attempt.v2.$animeId.$source"
 }
 
 /** Existing preferences table is reused; no DDL or schema migration is needed. */
@@ -419,7 +419,7 @@ suspend fun ReiAnixSqliteLibraryRepository.mergeExternalCatalogMetadata(
     }
 }
 
-private const val EXTERNAL_CATALOG_CURSOR_KEY = "__reianix.external_catalog_cursor.v1"
+private const val EXTERNAL_CATALOG_CURSOR_KEY = "__reianix.external_catalog_cursor.v2"
 
 private fun parseLocalMediaKind(rawKind: String?, format: String?): ReiAnixCatalogMediaKind? {
     val normalized = (rawKind ?: format).orEmpty().trim().lowercase(Locale.ROOT)
