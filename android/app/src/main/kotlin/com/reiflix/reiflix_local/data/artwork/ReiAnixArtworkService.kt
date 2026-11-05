@@ -327,48 +327,47 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
                         } ?: false
 
-                        // Keep the fast path unchanged: secondary AniList URLs are only read and
-                        // attempted after the primary URL is absent or could not be materialized.
-                        if (!posterMaterialized) {
-                            val alternatives = loadAlternativePosterCandidates(
-                                animeId = animeId,
-                                anime = anime,
-                                primaryUrl = posterUrl,
-                                force = force,
-                            )
-                            if (alternatives.isNotEmpty()) {
-                                posterMaterialized = attemptAllArtworkCandidates(
-                                    candidates = alternatives,
-                                    artworkUrls = { listOf(it.posterUrl) },
-                                ) { candidate, url ->
-                                    materialize(
-                                        animeId,
-                                        entityType,
-                                        "poster",
-                                        url,
-                                        candidate.anilistId.takeIf { it > 0L },
-                                        force,
-                                        requestId,
-                                        requireCurrentUrl = false,
-                                        retryCandidates = alternatives,
-                                        sourceKind = candidate.source,
-                                    )
-                                }
-                                if (posterMaterialized) {
-                                    ReiAnixDiagnosticTimeline.record(
-                                        name = "NATIVE_ARTWORK_ALTERNATIVE_SOURCE_SELECTED",
-                                        source = "ReiAnixArtworkService",
-                                        result = "ALTERNATE_ANILIST_VARIANT_MATERIALIZED",
-                                        requestId = requestId,
-                                        context = mapOf(
-                                            "entity_type" to entityType,
-                                            "entity_id" to animeId,
-                                            "artwork_type" to "poster",
-                                            "candidate_count" to alternatives.size,
-                                            "source_kind" to "anilist_alternative",
-                                        ),
-                                    )
-                                }
+                        // Process every persisted AniList poster URL, including lower-quality
+                        // variants, even when the primary URL was already materialized.
+                        val alternatives = loadAlternativePosterCandidates(
+                            animeId = animeId,
+                            anime = anime,
+                            primaryUrl = posterUrl,
+                            force = force,
+                        )
+                        if (alternatives.isNotEmpty()) {
+                            val alternativeRecovered = attemptAllArtworkCandidates(
+                                candidates = alternatives,
+                                artworkUrls = { listOf(it.posterUrl) },
+                            ) { candidate, url ->
+                                materialize(
+                                    animeId,
+                                    entityType,
+                                    "poster",
+                                    url,
+                                    candidate.anilistId.takeIf { it > 0L },
+                                    force,
+                                    requestId,
+                                    requireCurrentUrl = false,
+                                    retryCandidates = alternatives,
+                                    sourceKind = candidate.source,
+                                )
+                            }
+                            posterMaterialized = posterMaterialized || alternativeRecovered
+                            if (alternativeRecovered) {
+                                ReiAnixDiagnosticTimeline.record(
+                                    name = "NATIVE_ARTWORK_ALTERNATIVE_SOURCE_SELECTED",
+                                    source = "ReiAnixArtworkService",
+                                    result = "ALTERNATE_ANILIST_VARIANTS_MATERIALIZED",
+                                    requestId = requestId,
+                                    context = mapOf(
+                                        "entity_type" to entityType,
+                                        "entity_id" to animeId,
+                                        "artwork_type" to "poster",
+                                        "candidate_count" to alternatives.size,
+                                        "source_kind" to "anilist_alternative",
+                                    ),
+                                )
                             }
                         }
 
