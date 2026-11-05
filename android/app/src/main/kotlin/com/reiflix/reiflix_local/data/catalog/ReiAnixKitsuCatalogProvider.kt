@@ -114,7 +114,7 @@ class ReiAnixKitsuCatalogProvider(
             }
             attributes.optJSONArray("abbreviatedTitles")?.addStringValues(this)
             add(canonical)
-        }.filterTo(linkedSetOf()) { !it.equals(canonical, ignoreCase = true) }
+        }.filterTo(linkedSetOf()) { it != canonical }
 
         val subtype = attributes.catalogText("subtype")
         val format = normalizeFormat(subtype)
