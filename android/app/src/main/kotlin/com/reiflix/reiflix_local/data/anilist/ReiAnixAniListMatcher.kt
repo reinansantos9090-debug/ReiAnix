@@ -53,7 +53,7 @@ internal object ReiAnixAniListMatcher {
         context: Context = Context(),
     ): List<RankedCandidate> {
         data class PreparedLocalTitle(
-            val normalizedVariants: List<String>,
+            val normalizedVariants: List<PreparedMatchText>,
             val season: Int?,
             val year: Int?,
         )
