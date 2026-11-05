@@ -399,9 +399,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
                         }
                     } else {
-                        // Keep the fast path: the first usable alias poster is materialized
-                        // immediately. A separate verified pass may replace it only after that
-                        // image is committed; late unverified aliases are never allowed to swap it.
+                        // Candidate aliases are ranked during discovery. Materialize the first
+                        // usable poster and do not run a second identity/promotion pass afterward.
                         val posterAlreadyAvailable = hasUsablePersistedPoster(animeId, entityType)
                         val posterRecovered = posterAlreadyAvailable || firstSuccessfulArtworkCandidate(
                                 candidates = candidateCandidates,
