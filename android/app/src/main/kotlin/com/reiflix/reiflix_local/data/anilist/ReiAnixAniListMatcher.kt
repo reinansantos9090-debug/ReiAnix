@@ -64,7 +64,8 @@ internal object ReiAnixAniListMatcher {
                     .ifEmpty { listOf(title) }
                     .map(::baseNormalize)
                     .filter(String::isNotEmpty)
-                    .distinct(),
+                    .distinct()
+                    .map(::prepareMatchText),
                 season = extractSeason(title),
                 year = context.year ?: extractYear(title),
             )
@@ -79,7 +80,7 @@ internal object ReiAnixAniListMatcher {
                 candidate.synonyms.filter(String::isNotBlank).forEach { add("synonym" to it) }
             }
             val normalizedTitleValues = titleValues.map { (kind, value) ->
-                kind to baseNormalize(value)
+                kind to prepareMatchText(baseNormalize(value))
             }
             val candidateFormat = normalizeFormat(candidate.format)
             val candidateSeason = titleValues.firstNotNullOfOrNull { (_, value) -> extractSeason(value) }
@@ -181,6 +182,94 @@ internal object ReiAnixAniListMatcher {
         }
 
         return best.coerceIn(0.0, 1.0).roundToScore() to bestKind
+    }
+
+    private data class PreparedMatchText(
+        val value: String,
+        val tokens: Set<String>,
+    )
+
+    private fun prepareMatchText(value: String): PreparedMatchText =
+        PreparedMatchText(
+            value = value,
+            tokens = value.split(WHITESPACE).filter(String::isNotBlank).toSet(),
+        )
+
+    /**
+     * Allocation-reduced equivalent of tokenScore for the batched artwork ranking path.
+     * Token sets are prepared once per normalized title; intersection cardinality gives
+     * the same Jaccard overlap as allocating union/intersection sets for every pair.
+     */
+    private fun tokenScore(local: PreparedMatchText, remote: PreparedMatchText): Double {
+        val left = local.value
+        val right = remote.value
+        if (left.isEmpty() || right.isEmpty()) return 0.0
+        if (left == right) return 1.0
+        if (left.contains(right) || right.contains(left)) {
+            val containment = minOf(left.length, right.length).toDouble() / maxOf(left.length, right.length)
+            return 0.78 + 0.18 * containment
+        }
+        val intersectionSize = local.tokens.count { it in remote.tokens }
+        val unionSize = local.tokens.size + remote.tokens.size - intersectionSize
+        val overlap = if (unionSize == 0) 0.0 else intersectionSize.toDouble() / unionSize
+        return maxOf(sequenceMatcherRatioReusingRows(left, right), overlap)
+    }
+
+    /**
+     * Same longest-common-block dynamic program as sequenceMatcherRatio(), reusing its
+     * two DP rows instead of allocating a fresh IntArray for every character row.
+     */
+    private fun sequenceMatcherRatioReusingRows(left: String, right: String): Double {
+        if (left.isEmpty() || right.isEmpty()) return 0.0
+        data class Window(val leftStart: Int, val leftEnd: Int, val rightStart: Int, val rightEnd: Int)
+        val pending = ArrayDeque<Window>()
+        pending.addLast(Window(0, left.length, 0, right.length))
+        var matches = 0
+        while (pending.isNotEmpty()) {
+            val window = pending.removeLast()
+            if (window.leftStart >= window.leftEnd || window.rightStart >= window.rightEnd) continue
+            val width = window.rightEnd - window.rightStart
+            var previous = IntArray(width + 1)
+            var current = IntArray(width + 1)
+            var bestLength = 0
+            var bestLeft = window.leftStart
+            var bestRight = window.rightStart
+            for (i in window.leftStart until window.leftEnd) {
+                current.fill(0)
+                for (offset in 1..width) {
+                    if (left[i] == right[window.rightStart + offset - 1]) {
+                        current[offset] = previous[offset - 1] + 1
+                        if (current[offset] > bestLength) {
+                            bestLength = current[offset]
+                            bestLeft = i - bestLength + 1
+                            bestRight = window.rightStart + offset - bestLength
+                        }
+                    }
+                }
+                val reusable = previous
+                previous = current
+                current = reusable
+            }
+            if (bestLength == 0) continue
+            matches += bestLength
+            pending.addLast(
+                Window(
+                    bestLeft + bestLength,
+                    window.leftEnd,
+                    bestRight + bestLength,
+                    window.rightEnd,
+                ),
+            )
+            pending.addLast(
+                Window(
+                    window.leftStart,
+                    bestLeft,
+                    window.rightStart,
+                    bestRight,
+                ),
+            )
+        }
+        return 2.0 * matches / (left.length + right.length)
     }
 
     private fun tokenScore(local: String, remote: String): Double {
