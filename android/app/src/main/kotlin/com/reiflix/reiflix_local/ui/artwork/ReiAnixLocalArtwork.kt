@@ -93,6 +93,8 @@ fun ReiAnixLocalArtwork(
     fallbackLocalPath: String? = null,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    sourceRevision: String? = null,
+    fallbackSourceRevision: String? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -212,11 +214,20 @@ fun ReiAnixLocalArtwork(
         } else {
             // A regenerated local thumbnail can keep the same path; include its file
             // revision so Coil cannot continue serving a previously cached black frame.
-            val sourceRevision = localArtworkSourceRevision(source)
+            // Prefer the persisted SQLite revision when available. The filesystem
+            // fallback remains for legacy/local references that have no database revision.
+            val suppliedSourceRevision = when (source) {
+                localPath?.trim() -> sourceRevision
+                fallbackLocalPath?.trim() -> fallbackSourceRevision
+                else -> null
+            }
+            val resolvedSourceRevision = suppliedSourceRevision
+                ?.takeIf(String::isNotBlank)
+                ?: localArtworkSourceRevision(source)
             val memoryCacheKey = remember(
                 stableIdentity,
                 source,
-                sourceRevision,
+                resolvedSourceRevision,
                 effectiveWidthPx,
                 effectiveHeightPx,
             ) {
@@ -225,11 +236,11 @@ fun ReiAnixLocalArtwork(
                     source = source,
                     widthPx = effectiveWidthPx,
                     heightPx = effectiveHeightPx,
-                    sourceRevision = sourceRevision,
+                    sourceRevision = resolvedSourceRevision,
                 )
             }
-            val diskCacheKey = remember(stableIdentity, source, sourceRevision) {
-                buildArtworkDiskCacheKey(source, sourceRevision)
+            val diskCacheKey = remember(stableIdentity, source, resolvedSourceRevision) {
+                buildArtworkDiskCacheKey(source, resolvedSourceRevision)
             }
             val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
             val placeholderPainter = remember(placeholderColor) {
@@ -488,6 +499,8 @@ fun ReiAnixPoster(
     maxDimensionPx: Int = 512,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    sourceRevision: String? = null,
+    fallbackSourceRevision: String? = null,
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -502,6 +515,8 @@ fun ReiAnixPoster(
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
+        sourceRevision = sourceRevision,
+        fallbackSourceRevision = fallbackSourceRevision,
     )
 }
 
@@ -515,6 +530,8 @@ fun ReiAnixBackdrop(
     maxDimensionPx: Int = 1024,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    sourceRevision: String? = null,
+    fallbackSourceRevision: String? = null,
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -529,6 +546,8 @@ fun ReiAnixBackdrop(
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
+        sourceRevision = sourceRevision,
+        fallbackSourceRevision = fallbackSourceRevision,
     )
 }
 
@@ -541,6 +560,8 @@ fun ReiAnixEpisodeThumbnail(
     fallbackLocalPath: String? = null,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    sourceRevision: String? = null,
+    fallbackSourceRevision: String? = null,
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -555,6 +576,8 @@ fun ReiAnixEpisodeThumbnail(
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
+        sourceRevision = sourceRevision,
+        fallbackSourceRevision = fallbackSourceRevision,
     )
 }
 
