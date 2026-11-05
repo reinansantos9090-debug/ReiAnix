@@ -131,53 +131,6 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun provisionalPosterPublishesFirstAndOnlyVerifiedCandidatesRunAfterItExists() {
-        val provisional = ReiAnixArtworkCandidate(
-            anilistId = 41L,
-            posterUrl = "https://img.example/provisional.jpg",
-            bannerUrl = null,
-        )
-        val verified = ReiAnixArtworkCandidate(
-            anilistId = 42L,
-            posterUrl = "https://img.example/verified.jpg",
-            bannerUrl = null,
-            identityVerified = true,
-        )
-
-        assertEquals(
-            listOf(provisional, verified),
-            posterCandidatesForArtworkPass(listOf(provisional, verified), posterAlreadyAvailable = false),
-        )
-        assertEquals(
-            listOf(verified),
-            posterCandidatesForArtworkPass(listOf(provisional, verified), posterAlreadyAvailable = true),
-        )
-    }
-
-    @Test
-    fun verifiedCandidateSurvivesBoundedQueueAfterFullAliasProvisionalBatch() {
-        val provisional = (1..256).map { id ->
-            ReiAnixArtworkCandidate(
-                anilistId = id.toLong(),
-                posterUrl = "https://img.example/$id.jpg",
-                bannerUrl = null,
-            )
-        }
-        val verified = ReiAnixArtworkCandidate(
-            anilistId = 999L,
-            posterUrl = "https://img.example/verified.jpg",
-            bannerUrl = null,
-            identityVerified = true,
-        )
-
-        val bounded = boundedArtworkCandidates(provisional + verified, 256)
-
-        assertEquals(256, bounded.size)
-        assertEquals(verified, bounded.first())
-        assertFalse(bounded.none { it.identityVerified })
-    }
-
-    @Test
     fun failedLargePosterVariantFallsBackWithoutBlockingTheCandidate() = runBlocking {
         val candidate = ReiAnixArtworkCandidate(
             anilistId = 41L,

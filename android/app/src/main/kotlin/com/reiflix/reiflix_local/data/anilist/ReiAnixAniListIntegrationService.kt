@@ -196,12 +196,6 @@ class ReiAnixAniListIntegrationService(
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
     private val missingArtworkRecoveryRunning = AtomicBoolean(false)
 
-    private data class ArtworkDiscoveryResult(
-        val candidates: List<AniListAnime>,
-        val verifiedCandidate: AniListAnime?,
-        val complete: Boolean,
-    )
-
     constructor(context: Context) : this(
         client = ReiAnixAniListClient(),
         library = ReiAnixSqliteLibraryRepository(context),
@@ -757,7 +751,6 @@ class ReiAnixAniListIntegrationService(
     private fun publishArtworkCandidates(
         animeId: Long,
         candidates: List<AniListAnime>,
-        verifiedCandidate: AniListAnime? = null,
     ): Boolean {
         val publisher = artworkCandidatePublisher ?: return false
         val artworkCandidates = candidates.asSequence()
@@ -776,19 +769,7 @@ class ReiAnixAniListIntegrationService(
                     posterFallbackUrl = remote.coverLargeUrl,
                 )
             }
-            .toMutableList()
-        verifiedCandidate?.takeIf { remote ->
-            remote.id > 0 &&
-                (!remote.coverExtraLargeUrl.isNullOrBlank() || !remote.coverLargeUrl.isNullOrBlank())
-        }?.let { remote ->
-            artworkCandidates += ReiAnixArtworkCandidate(
-                anilistId = remote.id.toLong(),
-                posterUrl = remote.coverExtraLargeUrl,
-                bannerUrl = null,
-                posterFallbackUrl = remote.coverLargeUrl,
-                identityVerified = true,
-            )
-        }
+            .toList()
         if (artworkCandidates.isEmpty()) return false
         return runCatching { publisher(animeId, artworkCandidates) }
             .onFailure { error ->
@@ -802,7 +783,7 @@ class ReiAnixAniListIntegrationService(
      * but no candidate is allowed to create or replace the local AniList identity.
      * A failed alias request does not discard results already obtained from other aliases.
      */
-    private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): ArtworkDiscoveryResult {
+    private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): List<AniListAnime> {
         val titleCandidates = buildList {
             add(local.title)
             add(local.lookupTitle)
@@ -818,35 +799,31 @@ class ReiAnixAniListIntegrationService(
             }
         }
         val terms = boundedAniListSearchTerms(titleCandidates, limit = 128)
-        if (terms.isEmpty()) return ArtworkDiscoveryResult(emptyList(), null, false)
+        if (terms.isEmpty()) return emptyList()
         currentCoroutineContext().ensureActive()
         val candidatesById = linkedMapOf<Int, AniListAnime>()
-        var completeSearch = false
         when (val result = try {
             client.searchAnimeBatch(terms, 10, includeFullMetadata = false)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
             Log.w(TAG, "AniList artwork batch search failed for animeId=" + local.id, error)
-            return ArtworkDiscoveryResult(emptyList(), null, false)
+            return emptyList()
         }) {
-            is AniListResult.Success -> {
-                completeSearch = result.value.size == terms.size
-                result.value.values.flatten().forEach { remote ->
-                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
-                }
+            is AniListResult.Success -> result.value.values.flatten().forEach { remote ->
+                if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
             }
             is AniListResult.Failure -> Log.w(
                 TAG,
                 "AniList artwork batch search failed for animeId=" + local.id + ": " + result.error,
             )
         }
-        if (candidatesById.isEmpty()) return ArtworkDiscoveryResult(emptyList(), null, completeSearch)
+        if (candidatesById.isEmpty()) return emptyList()
         val context = ReiAnixAniListMatcher.Context(
             year = local.year,
             mediaKind = local.mediaKind,
         )
-        val ranked = candidatesById.values.map { remote ->
+        return candidatesById.values.map { remote ->
             val score = terms.maxOfOrNull { title ->
                 ReiAnixAniListMatcher.rank(title, listOf(remote), context).firstOrNull()?.score ?: 0.0
             } ?: 0.0
@@ -855,20 +832,7 @@ class ReiAnixAniListIntegrationService(
             compareByDescending<Pair<AniListAnime, Double>> { it.second }
                 .thenBy { (it.first.titleEnglish ?: it.first.titleRomaji ?: "").lowercase(Locale.ROOT) }
                 .thenBy { it.first.id },
-        )
-        val verifiedCandidates = if (completeSearch) {
-            candidatesById.values.filter { remote ->
-                ReiAnixAniListMatcher.hasVerifiedArtworkIdentity(titleCandidates, remote, context)
-            }
-        } else {
-            emptyList()
-        }
-        val verifiedCandidate = verifiedCandidates.singleOrNull()
-        return ArtworkDiscoveryResult(
-            candidates = ranked.take(MAX_ARTWORK_CANDIDATES).map { it.first },
-            verifiedCandidate = verifiedCandidate,
-            complete = completeSearch,
-        )
+        ).take(MAX_ARTWORK_CANDIDATES).map { it.first }
     }
 
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
@@ -989,9 +953,7 @@ class ReiAnixAniListIntegrationService(
                         }
                     }
                     if (remote == null) {
-                        if (discoverArtworkCandidates(local).let { discovery ->
-                            publishArtworkCandidates(local.id, discovery.candidates, discovery.verifiedCandidate)
-                        }) recovered++
+                        if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                         continue
                     }
                     val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
@@ -1006,26 +968,20 @@ class ReiAnixAniListIntegrationService(
                         is AniListResult.Success -> {
                             if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                 recovered++
-                            } else if (discoverArtworkCandidates(local).let { discovery ->
-                            publishArtworkCandidates(local.id, discovery.candidates, discovery.verifiedCandidate)
-                        }) {
+                            } else if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) {
                                 recovered++
                             }
                         }
                         is AniListResult.Failure -> {
                             Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
-                            if (discoverArtworkCandidates(local).let { discovery ->
-                            publishArtworkCandidates(local.id, discovery.candidates, discovery.verifiedCandidate)
-                        }) recovered++
+                            if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                         }
                     }
                 } else {
                     // Artwork recovery is read-only with respect to identity:
                     // PROBABLE/AMBIGUOUS/REJECTED/UNRESOLVED titles can provide ranked image
                     // candidates without assigning their AniList ID to the local anime.
-                    if (discoverArtworkCandidates(local).let { discovery ->
-                            publishArtworkCandidates(local.id, discovery.candidates, discovery.verifiedCandidate)
-                        }) recovered++
+                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                 }
             }
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
