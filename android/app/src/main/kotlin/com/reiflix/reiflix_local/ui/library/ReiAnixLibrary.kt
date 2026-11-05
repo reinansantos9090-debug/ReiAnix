@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -495,6 +496,9 @@ private fun ColumnScope.LibraryReadyContent(
     val responsive = LocalReiAnixResponsiveMetrics.current
     val posterSize = LocalReiAnixPosterSize.current
     val posterGridMinimum = responsive.posterCardWidth(posterSize)
+    val posterRequestDimensionPx = with(LocalDensity.current) {
+        (posterGridMinimum / ReiAnixTokens.Dimensions.posterAspectRatio).roundToPx().coerceAtLeast(1)
+    }
     val posterGridPadding = responsive.posterRailPadding(posterSize)
     val posterGridSpacing = responsive.posterGridSpacing(posterSize) +
         when (gridDensity.trim().lowercase()) {
@@ -845,6 +849,7 @@ private fun ColumnScope.LibraryReadyContent(
                             anime = anime,
                             onClick = { onOpenDetails(anime.id) },
                             onToggleFavorite = { onToggleFavorite(anime.id) },
+                            maxDimensionPx = posterRequestDimensionPx,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .widthIn(max = ReiAnixTokens.Dimensions.gridMaxItemWidth),
@@ -1038,6 +1043,7 @@ private fun LibraryAnimeCard(
     anime: ReiAnixAnimeUiModel,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    maxDimensionPx: Int,
     modifier: Modifier = Modifier,
 ) {
     val renderData = remember(anime) {
@@ -1096,7 +1102,7 @@ private fun LibraryAnimeCard(
             else -> null
         },
         onFavoriteClick = onToggleFavorite,
-        maxDimensionPx = 512,
+        maxDimensionPx = maxDimensionPx,
     )
 }
 

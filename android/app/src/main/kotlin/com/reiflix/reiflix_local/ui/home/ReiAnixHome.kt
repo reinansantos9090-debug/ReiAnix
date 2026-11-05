@@ -46,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -1176,13 +1177,19 @@ private fun HomeMediaCard(
     cardWidth: androidx.compose.ui.unit.Dp = ReiAnixTokens.Dimensions.homeCardWidth,
     onClick: () -> Unit,
 ) {
+    // Match Coil's requested poster bound to the selected visual size.
+    // Coil receives the same rendered poster height, in physical pixels,
+    // so small poster settings do not decode every cover at the old fixed 512px.
+    val requestedPosterDimensionPx = with(LocalDensity.current) {
+        (cardWidth / ReiAnixTokens.Dimensions.posterAspectRatio).roundToPx().coerceAtLeast(1)
+    }
     // Home, Biblioteca, Search and Minha Lista deliberately share the same
     // canonical anime card so artwork, state badges and progress never drift.
     ReiAnixAnimeCard(
         anime = anime,
         modifier = Modifier.width(cardWidth),
         onClick = onClick,
-        maxDimensionPx = 512,
+        maxDimensionPx = requestedPosterDimensionPx,
         bottomBadgeText = presentationStateLabel(anime.presentationState),
     )
 }
