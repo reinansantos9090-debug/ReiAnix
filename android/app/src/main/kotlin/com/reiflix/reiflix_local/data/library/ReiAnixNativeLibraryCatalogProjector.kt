@@ -153,11 +153,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank()),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
-            "artwork_revision" to (
-                primaryLocalArtworkRecord?.updatedAt
-                    ?: anime.metadataUpdatedAt
-                    ?: anime.metadataFetchedAt
-                )?.toString(),
+            // Only a canonical artwork-row timestamp is authoritative for this local file.
+            // Legacy cover_cache paths without a matching artwork row keep the existing
+            // filesystem revision fallback in ReiAnixLocalArtwork.
+            "artwork_revision" to primaryLocalArtworkRecord?.updatedAt?.toString(),
             "artwork_backdrop_local_path" to backdrop?.localPath,
             "backdrop_external_url" to backdrop?.externalUrl,
             "artwork_backdrop_revision" to backdrop?.updatedAt?.toString(),
