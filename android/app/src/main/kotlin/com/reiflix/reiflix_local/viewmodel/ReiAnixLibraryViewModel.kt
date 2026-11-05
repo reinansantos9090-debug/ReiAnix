@@ -176,6 +176,23 @@ data class ReiAnixNativeFoldersUiState(
  * ViewModel coordinating the real read-only SQLite folder query for Storage.
  * The existing projection still owns SAF commands and permission state.
  */
+internal data class TraceMoeEpisodeOrderKey(
+    val episodeId: Long,
+    val seasonNumber: Int?,
+    val episodeNumber: Double?,
+)
+
+/** Select season 1 episode 1 first; otherwise use the earliest available episode. */
+internal fun selectInitialTraceMoeEpisodeId(
+    episodes: List<TraceMoeEpisodeOrderKey>,
+): Long? = episodes.firstOrNull {
+    it.seasonNumber == 1 && it.episodeNumber == 1.0
+}?.episodeId ?: episodes.minWithOrNull(
+    compareBy<TraceMoeEpisodeOrderKey> { it.seasonNumber ?: Int.MAX_VALUE }
+        .thenBy { it.episodeNumber ?: Double.MAX_VALUE }
+        .thenBy { it.episodeId },
+)?.episodeId
+
 @Keep
 class ReiAnixLibraryViewModel(
     context: Context,
@@ -1387,13 +1404,15 @@ class ReiAnixLibraryViewModel(
             val traceMoeSampleChannel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
             val traceMoeEpisodesQueued = mutableSetOf<Long>()
             val traceMoeBufferedSamples = linkedMapOf<Long, File>()
-            val firstTraceMoeEpisodeId = pending.firstOrNull {
-                it.seasonNumber == 1 && it.number == 1.0
-            }?.id ?: pending.minWithOrNull(
-                compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel> {
-                    it.seasonNumber ?: Int.MAX_VALUE
-                }.thenBy { it.number ?: Double.MAX_VALUE }.thenBy { it.id },
-            )?.id
+            val firstTraceMoeEpisodeId = selectInitialTraceMoeEpisodeId(
+                pending.map { episode ->
+                    TraceMoeEpisodeOrderKey(
+                        episodeId = episode.id,
+                        seasonNumber = episode.seasonNumber,
+                        episodeNumber = episode.number,
+                    )
+                },
+            )
             val traceMoeIdentificationJob = appDependencies?.aniListIntegrationService?.let { integration ->
                 launch {
                     try {
