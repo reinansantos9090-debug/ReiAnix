@@ -68,8 +68,9 @@ data class ReiAnixCatalogVerifiedCandidate(
 
 object ReiAnixCatalogIdentityMatcher {
     /**
-     * Assessment is deliberately exact-title only. Fuzzy similarity is not identity evidence:
-     * it can be useful for discovery/UI ranking, but cannot authorize metadata or artwork.
+     * Assessment is deliberately exact-title only. Fuzzy similarity is not identity evidence
+     * and cannot authorize metadata or external identifier persistence. Artwork publication
+     * does not consult this matcher.
      */
     fun evaluate(
         localAnimeId: Long,
