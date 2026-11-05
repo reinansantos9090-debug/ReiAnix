@@ -515,7 +515,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             search = { key ->
                 val work = workByKey.getValue(key)
                 materialize(
-                    animeId = animeId,
+                    id = animeId,
                     entity = entityType,
                     type = work.artworkType,
                     url = work.url,
