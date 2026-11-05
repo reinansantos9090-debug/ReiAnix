@@ -47,12 +47,11 @@ internal fun aniListArtworkCandidateKey(
 }
 
 /**
- * An alternate AniList cover is tried only after the primary is absent or failed.
- * Manual/local art is never eligible, and obsolete URLs are never retried.
+ * A valid non-primary AniList URL remains eligible even when the primary image works.
+ * Manual/local artwork and obsolete candidate rows remain protected.
  */
-internal fun canMaterializeAniListFallbackCandidate(
+internal fun canMaterializeAniListArtworkVariant(
     primaryUrl: String?,
-    primaryStatus: String?,
     candidateUrl: String?,
     candidateStatus: String?,
     artworkIsUserOwned: Boolean,
@@ -61,10 +60,7 @@ internal fun canMaterializeAniListFallbackCandidate(
     val primary = validReiAnixArtworkHttpUrl(primaryUrl)
     if (candidate == primary || artworkIsUserOwned) return false
     val candidateState = candidateStatus?.trim()?.lowercase(Locale.ROOT) ?: return false
-    if (candidateState !in setOf("source_candidate", "downloading", "not_requested", "pending", "ready", "failed", "retry_wait")) {
-        return false
-    }
-    if (primary == null) return true
-    val primaryState = primaryStatus?.trim()?.lowercase(Locale.ROOT)
-    return primaryState == "failed" || primaryState == "retry_wait"
+    return candidateState in setOf(
+        "source_candidate", "downloading", "not_requested", "pending", "ready", "failed", "retry_wait",
+    )
 }

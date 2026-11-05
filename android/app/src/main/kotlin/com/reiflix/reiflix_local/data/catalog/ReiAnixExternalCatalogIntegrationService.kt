@@ -235,43 +235,25 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
             }
 
-            val remoteArtwork = resolved.artworkCandidate ?: verified?.remote
-            if (remoteArtwork == null) {
-                val outcome = when (resolved.decision) {
-                    ReiAnixCatalogIdentityDecision.PROBABLE -> "PROBABLE_MATCH_HAS_NO_ARTWORK"
-                    ReiAnixCatalogIdentityDecision.AMBIGUOUS -> "AMBIGUOUS_NO_SAFE_ARTWORK_CANDIDATE"
-                    ReiAnixCatalogIdentityDecision.REJECTED -> "IDENTITY_MISMATCH_REJECTED"
-                    ReiAnixCatalogIdentityDecision.UNRESOLVED -> "IDENTITY_UNRESOLVED_NO_ARTWORK"
-                    ReiAnixCatalogIdentityDecision.CONFIRMED -> "CONFIRMED_RESULT_HAS_NO_ARTWORK"
+            // Metadata/ID writes above remain confirmed-only. Artwork consumes every image
+            // returned by successful provider searches/details, without selecting or rejecting
+            // candidates by title, season, year, media kind or matcher decision.
+            val artworkRecords = buildList {
+                addAll(resolved.artworkCandidates)
+                verified?.remote?.let(::add)
+            }.distinctBy { remote ->
+                remote.source.key + "|" + remote.artworkCandidates().joinToString("|") { candidate ->
+                    candidate.type.key + ":" + candidate.url
                 }
-                record(source, outcome, anime.id)
-                continue
-            }
-            if (verified == null) {
-                val outcome = when (resolved.decision) {
-                    ReiAnixCatalogIdentityDecision.PROBABLE -> "PROBABLE_ARTWORK_ONLY"
-                    ReiAnixCatalogIdentityDecision.AMBIGUOUS -> "AMBIGUOUS_ARTWORK_CANDIDATE_SELECTED"
-                    ReiAnixCatalogIdentityDecision.REJECTED -> "IDENTITY_MISMATCH_ARTWORK_REJECTED"
-                    ReiAnixCatalogIdentityDecision.UNRESOLVED -> "PARTIAL_OR_UNRESOLVED_SEARCH_ARTWORK_ONLY"
-                    ReiAnixCatalogIdentityDecision.CONFIRMED -> "CONFIRMED_ARTWORK_WITHOUT_METADATA_WRITE"
-                }
-                record(source, outcome, anime.id)
-            }
+            }.filter { it.artworkCandidates().isNotEmpty() }
 
-            // Queue external candidates through the current artwork publication pipeline.
-            // The zero AniList ID is intentional: supplemental providers must not create or
-            // rewrite the canonical AniList association. The pipeline still protects manual
-            // and local artwork and publishes the existing Compose refresh signal.
-            val pendingArtwork = remoteArtwork.artworkCandidates().mapNotNull { candidate ->
-                val artworkType = when (candidate.type) {
-                    ReiAnixCatalogArtworkType.POSTER -> "poster"
-                    ReiAnixCatalogArtworkType.BACKDROP,
-                    ReiAnixCatalogArtworkType.BANNER -> "backdrop"
-                }
-                if (hasValidArtwork(anime.id, artworkType)) {
-                    record(source, "${artworkType.uppercase(Locale.ROOT)}_SKIPPED_VALID_LOCAL", anime.id)
-                    null
-                } else {
+            val pendingArtwork = artworkRecords.flatMap { remote ->
+                remote.artworkCandidates().map { candidate ->
+                    val artworkType = when (candidate.type) {
+                        ReiAnixCatalogArtworkType.POSTER -> "poster"
+                        ReiAnixCatalogArtworkType.BACKDROP,
+                        ReiAnixCatalogArtworkType.BANNER -> "backdrop"
+                    }
                     ReiAnixArtworkCandidate(
                         anilistId = 0L,
                         posterUrl = candidate.url.takeIf { artworkType == "poster" },
@@ -279,11 +261,14 @@ class ReiAnixExternalCatalogIntegrationService(
                         source = candidate.source.key,
                     )
                 }
+            }.distinctBy { candidate ->
+                "${candidate.source}:${candidate.posterUrl.orEmpty()}:${candidate.bannerUrl.orEmpty()}"
             }
-            if (pendingArtwork.isNotEmpty() &&
-                artwork.requestAnimeArtworkCandidates(anime.id, pendingArtwork, force = true)
-            ) {
-                record(source, "ARTWORK_CANDIDATES_QUEUED", anime.id)
+
+            if (pendingArtwork.isEmpty()) {
+                record(source, "NO_ARTWORK_CANDIDATES_RETURNED", anime.id)
+            } else if (artwork.requestAnimeArtworkCandidates(anime.id, pendingArtwork, force = true)) {
+                record(source, "ARTWORK_CANDIDATES_QUEUED_INDEPENDENT_OF_IDENTITY", anime.id)
                 changed = true
             }
         }
@@ -291,13 +276,13 @@ class ReiAnixExternalCatalogIntegrationService(
     }
 
     /**
-     * Metadata/ID persistence remains confirmed-only. Artwork may use a separately selected
-     * exact-title candidate with no explicit metadata contradictions.
+     * Identity evaluation is retained only for metadata and identifier persistence.
+     * Artwork candidates are the complete set of image-bearing provider results.
      */
     private data class Resolution(
         val decision: ReiAnixCatalogIdentityDecision,
         val verified: VerifiedRemote? = null,
-        val artworkCandidate: ReiAnixCatalogAnime? = null,
+        val artworkCandidates: List<ReiAnixCatalogAnime> = emptyList(),
     )
 
     private suspend fun resolve(
@@ -316,16 +301,14 @@ class ReiAnixExternalCatalogIntegrationService(
                 is ReiAnixCatalogResult.Success -> {
                     val remote = result.value ?: return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
                     val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
-                    val artworkCandidate = ReiAnixCatalogIdentityMatcher.selectArtworkCandidate(
-                        anime.id, identity, listOf(remote), ids,
-                    )
                     val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
-                    Resolution(evaluation.decision, verified, artworkCandidate)
+                    Resolution(evaluation.decision, verified, listOf(remote))
                 }
             }
         }
 
         val candidates = linkedMapOf<String, ReiAnixCatalogAnime>()
+        val artworkCandidates = linkedMapOf<String, ReiAnixCatalogAnime>()
         var incompleteSearch = false
         for (query in identity.titles.asSequence().map(String::trim).filter(String::isNotEmpty)
             .distinct().take(MAX_SEARCH_TERMS)
@@ -338,6 +321,13 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
                 is ReiAnixCatalogResult.Success -> {
                     result.value.forEach { remote ->
+                        val imageCandidates = remote.artworkCandidates()
+                        if (imageCandidates.isNotEmpty()) {
+                            val imageKey = remote.source.key + "|" + imageCandidates.joinToString("|") {
+                                it.type.key + ":" + it.externalRecordId + ":" + it.url
+                            }
+                            artworkCandidates.putIfAbsent(imageKey, remote)
+                        }
                         val remoteId = remote.ids.idFor(remote.source)
                         if (remoteId.isNullOrBlank()) {
                             incompleteSearch = true
@@ -349,21 +339,13 @@ class ReiAnixExternalCatalogIntegrationService(
             }
         }
 
-        // An incomplete search cannot authorize metadata or ID persistence. Candidate images
-        // from successful queries remain usable and do not suppress later providers.
-        val artworkCandidate = ReiAnixCatalogIdentityMatcher.selectArtworkCandidate(
-            anime.id, identity, candidates.values, ids,
-        )
+        // An incomplete search cannot authorize metadata or ID persistence, but images
+        // from every successful query remain eligible for publication.
         if (incompleteSearch) {
-            record(
-                provider.source,
-                if (artworkCandidate != null) "INCOMPLETE_SEARCH_ARTWORK_CANDIDATE_RETAINED"
-                else "INCOMPLETE_SEARCH_CANDIDATE_SET_REJECTED",
-                anime.id,
-            )
+            record(provider.source, "INCOMPLETE_SEARCH_ARTWORK_RESULTS_RETAINED", anime.id)
             return Resolution(
                 decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
-                artworkCandidate = artworkCandidate,
+                artworkCandidates = artworkCandidates.values.toList(),
             )
         }
 
@@ -374,7 +356,7 @@ class ReiAnixExternalCatalogIntegrationService(
         return Resolution(
             decision = evaluation.decision,
             verified = verified,
-            artworkCandidate = artworkCandidate,
+            artworkCandidates = artworkCandidates.values.toList(),
         )
     }
 

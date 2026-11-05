@@ -80,19 +80,23 @@ data class ReiAnixArtworkCandidate(
     }
 }
 
-/** Attempts ranked candidates and their variants without letting one failed URL stop the next. */
-internal suspend fun firstSuccessfulArtworkCandidate(
+/**
+ * Materializes every non-blank candidate URL. A failed or successful image never
+ * prevents a later candidate from being downloaded, stored and published.
+ */
+internal suspend fun attemptAllArtworkCandidates(
     candidates: List<ReiAnixArtworkCandidate>,
     artworkUrls: (ReiAnixArtworkCandidate) -> List<String?>,
     attempt: suspend (ReiAnixArtworkCandidate, String) -> Boolean,
 ): Boolean {
+    var anyRecovered = false
     for (candidate in candidates) {
         for (rawUrl in artworkUrls(candidate)) {
             val url = rawUrl?.trim()?.takeIf(String::isNotEmpty) ?: continue
-            if (attempt(candidate, url)) return true
+            if (attempt(candidate, url)) anyRecovered = true
         }
     }
-    return false
+    return anyRecovered
 }
 
 /**
@@ -273,7 +277,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         !it.bannerUrl.isNullOrBlank())
             }
             .distinct()
-            .take(MAX_CANDIDATE_ARTWORKS)
             .toList()
         if (usable.isEmpty()) return false
         return requestAnimeArtworkInternal(animeId, force, usable)
@@ -301,7 +304,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (jobs[animeId]?.isActive == true) {
                 if (candidateCandidates != null) {
                     candidateFollowUpRequests.compute(animeId) { _, pending ->
-                        (pending.orEmpty() + candidateCandidates).distinct().take(MAX_CANDIDATE_ARTWORKS)
+                        (pending.orEmpty() + candidateCandidates).distinct()
                     }
                     if (force) forceFollowUpIds.add(animeId)
                     return true
@@ -334,7 +337,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                 force = force,
                             )
                             if (alternatives.isNotEmpty()) {
-                                posterMaterialized = firstSuccessfulArtworkCandidate(
+                                posterMaterialized = attemptAllArtworkCandidates(
                                     candidates = alternatives,
                                     artworkUrls = { listOf(it.posterUrl) },
                                 ) { candidate, url ->
@@ -399,7 +402,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                             materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
                         }
                     } else {
-                        val posterRecovered = firstSuccessfulArtworkCandidate(
+                        val posterRecovered = attemptAllArtworkCandidates(
                             candidates = candidateCandidates,
                             artworkUrls = { listOf(it.posterUrl, it.posterFallbackUrl) },
                         ) { candidate, url ->
@@ -409,7 +412,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                 sourceKind = candidate.source,
                             )
                         }
-                        val backdropRecovered = firstSuccessfulArtworkCandidate(
+                        val backdropRecovered = attemptAllArtworkCandidates(
                             candidates = candidateCandidates,
                             artworkUrls = { listOf(it.bannerUrl) },
                         ) { candidate, url ->
@@ -973,8 +976,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "AND art.next_retry_at<=? AND TRIM(COALESCE(art.external_url,''))!='' " +
                     "AND ((art.artwork_type='poster' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.cover_url,''))) " +
                     "OR (art.artwork_type='backdrop' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.banner_url,'')))) " +
-                    "ORDER BY art.priority DESC,art.updated_at DESC,art.id DESC LIMIT ?",
-                arrayOf(animeId.toString(), nowSeconds().toString(), MAX_CANDIDATE_ARTWORKS.toString()),
+                    "ORDER BY art.priority DESC,art.updated_at DESC,art.id DESC",
+                arrayOf(animeId.toString(), nowSeconds().toString()),
             ).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) {
@@ -1761,13 +1764,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val now = nowSeconds()
         return database.read { db ->
             val currentPrimary = validReiAnixArtworkHttpUrl(primaryUrl)
-            val primaryStatus = currentPrimary?.let { url ->
-                db.rawQuery(
-                    "SELECT status FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
-                        "AND artwork_type='poster' AND external_url=? ORDER BY priority DESC,updated_at DESC,id DESC LIMIT 1",
-                    arrayOf(animeId.toString(), url),
-                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-            }
             db.rawQuery(
                 "SELECT external_url,status,next_retry_at,failure_count,variant,manual,source,artwork_key FROM artwork " +
                     "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster' " +
@@ -1792,9 +1788,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         val key = cursor.getString(7)
                         if (variant.equals("obsolete", ignoreCase = true)) continue
                         if (key != aniListArtworkCandidateKey(animeId, aniListId, url)) continue
-                        if (!canMaterializeAniListFallbackCandidate(
+                        if (!canMaterializeAniListArtworkVariant(
                                 primaryUrl = primaryUrl,
-                                primaryStatus = primaryStatus,
                                 candidateUrl = url,
                                 candidateStatus = status,
                                 artworkIsUserOwned = manual ||
@@ -2255,7 +2250,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val STATUS_RETRY_WAIT = "retry_wait"
         const val STATUS_NOT_REQUESTED = "not_requested"
         const val MAX_DOWNLOAD_BYTES = 32L * 1024L * 1024L
-        const val MAX_CANDIDATE_ARTWORKS = 5
         const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
         const val IO_BUFFER_BYTES = 64 * 1024

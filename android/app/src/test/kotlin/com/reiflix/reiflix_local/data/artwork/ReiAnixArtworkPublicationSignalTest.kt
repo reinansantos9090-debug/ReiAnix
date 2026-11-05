@@ -122,12 +122,17 @@ class ReiAnixArtworkPublicationSignalTest {
             ReiAnixArtworkCandidate(13L, "https://img.example/next.jpg", null),
         )
         val attempted = mutableListOf<Long>()
-        val recovered = firstSuccessfulArtworkCandidate(candidates, { listOf(it.posterUrl, it.posterFallbackUrl) }) { candidate, url ->
+        val recovered = mutableListOf<Long>()
+        val anyRecovered = attemptAllArtworkCandidates(candidates, { listOf(it.posterUrl, it.posterFallbackUrl) }) { candidate, url ->
             attempted += candidate.anilistId
-            url == "https://img.example/probable.jpg"
+            val accepted = url == "https://img.example/probable.jpg" ||
+                url == "https://img.example/next.jpg"
+            if (accepted) recovered += candidate.anilistId
+            accepted
         }
-        assertTrue(recovered)
-        assertEquals(listOf(11L, 12L), attempted)
+        assertTrue(anyRecovered)
+        assertEquals(listOf(11L, 12L, 13L), attempted)
+        assertEquals(listOf(12L, 13L), recovered)
     }
 
     @Test
@@ -139,7 +144,7 @@ class ReiAnixArtworkPublicationSignalTest {
             posterFallbackUrl = "https://img.example/poster-large.jpg",
         )
         val attempted = mutableListOf<String>()
-        val recovered = firstSuccessfulArtworkCandidate(listOf(candidate), { listOf(it.posterUrl, it.posterFallbackUrl) }) { _, url ->
+        val recovered = attemptAllArtworkCandidates(listOf(candidate), { listOf(it.posterUrl, it.posterFallbackUrl) }) { _, url ->
             attempted += url
             url.endsWith("poster-large.jpg")
         }
@@ -155,11 +160,11 @@ class ReiAnixArtworkPublicationSignalTest {
         )
         val posters = mutableListOf<Long>()
         val banners = mutableListOf<Long>()
-        assertTrue(firstSuccessfulArtworkCandidate(candidates, { listOf(it.posterUrl, it.posterFallbackUrl) }) { candidate, _ ->
+        assertTrue(attemptAllArtworkCandidates(candidates, { listOf(it.posterUrl, it.posterFallbackUrl) }) { candidate, _ ->
             posters += candidate.anilistId
             true
         })
-        assertTrue(firstSuccessfulArtworkCandidate(candidates, { listOf(it.bannerUrl) }) { candidate, _ ->
+        assertTrue(attemptAllArtworkCandidates(candidates, { listOf(it.bannerUrl) }) { candidate, _ ->
             banners += candidate.anilistId
             true
         })
@@ -174,7 +179,7 @@ class ReiAnixArtworkPublicationSignalTest {
             ReiAnixArtworkCandidate(32L, null, "https://img.example/banner.jpg"),
         )
         val attempted = mutableListOf<Long>()
-        assertTrue(firstSuccessfulArtworkCandidate(candidates, { listOf(it.bannerUrl) }) { candidate, url ->
+        assertTrue(attemptAllArtworkCandidates(candidates, { listOf(it.bannerUrl) }) { candidate, url ->
             attempted += candidate.anilistId
             url.endsWith("banner.jpg")
         })

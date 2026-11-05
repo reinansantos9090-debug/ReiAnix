@@ -51,47 +51,42 @@ class ReiAnixArtworkCandidatePolicyTest {
     }
 
     @Test
-    fun fallbackIsAllowedOnlyAfterPrimaryFailureAndNeverForUserOwnedArtwork() {
+    fun everyValidNonPrimaryVariantCanMaterializeWithoutIdentityOrPrimaryStatusGate() {
         assertTrue(
-            canMaterializeAniListFallbackCandidate(
+            canMaterializeAniListArtworkVariant(
                 "https://img.example/main.jpg",
-                "failed",
                 "https://img.example/alternate.jpg",
                 "source_candidate",
                 false,
             ),
         )
         assertTrue(
-            canMaterializeAniListFallbackCandidate(
-                null,
+            canMaterializeAniListArtworkVariant(
                 null,
                 "https://img.example/alternate.jpg",
                 "source_candidate",
                 false,
             ),
         )
-        assertFalse(
-            canMaterializeAniListFallbackCandidate(
+        assertTrue(
+            canMaterializeAniListArtworkVariant(
                 "https://img.example/main.jpg",
+                "https://img.example/alternate.jpg",
                 "ready",
-                "https://img.example/alternate.jpg",
-                "source_candidate",
                 false,
             ),
         )
         assertFalse(
-            canMaterializeAniListFallbackCandidate(
+            canMaterializeAniListArtworkVariant(
                 "https://img.example/main.jpg",
-                "failed",
                 "https://img.example/alternate.jpg",
                 "source_candidate",
                 true,
             ),
         )
         assertFalse(
-            canMaterializeAniListFallbackCandidate(
+            canMaterializeAniListArtworkVariant(
                 "https://img.example/main.jpg",
-                "failed",
                 "https://img.example/alternate.jpg",
                 "obsolete",
                 false,
