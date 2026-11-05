@@ -113,11 +113,9 @@ class ReiAnixExternalCatalogIntegrationService(
 
     private suspend fun isEligible(anime: ReiAnixAnimeRecord): Boolean {
         if (anime.id <= 0L) return false
-        val manuallyOwned = hasManualCatalogOwnership(anime)
-        val metadataMissing = !manuallyOwned && hasMetadataGap(anime)
-        val posterMissing = !hasValidArtwork(anime.id, "poster")
-        val backdropMissing = !hasValidArtwork(anime.id, "backdrop")
-        return metadataMissing || posterMissing || backdropMissing
+        // Expanded alias discovery exists only to fill a missing poster. Once a valid poster
+        // is present, do not run a later metadata/provider pass against that anime.
+        return !hasValidArtwork(anime.id, "poster")
     }
 
     /** A ready, materialized row is treated as canonical so a lower-priority source cannot replace it. */
@@ -141,6 +139,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
     private suspend fun enrichOne(initial: ReiAnixAnimeRecord): Boolean {
         var anime = library.getAnime(initial.id) ?: return false
+        if (hasValidArtwork(anime.id, "poster")) return false
         val identity = anime.toExternalCatalogIdentity()
         val posterReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "poster")
         val backdropReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "backdrop")
