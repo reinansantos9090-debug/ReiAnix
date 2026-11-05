@@ -249,6 +249,8 @@ sealed interface ReiAnixCatalogResult<out T> {
         val value: T,
         val fetchedAtMillis: Long = System.currentTimeMillis(),
         val expiresAtMillis: Long? = null,
+        /** False when usable partial records were returned but one or more details failed. */
+        val isComplete: Boolean = true,
     ) : ReiAnixCatalogResult<T> {
         init {
             require(fetchedAtMillis >= 0L)
