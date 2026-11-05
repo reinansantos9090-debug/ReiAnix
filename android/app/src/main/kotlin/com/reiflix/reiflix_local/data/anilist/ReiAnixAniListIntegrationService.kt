@@ -549,7 +549,7 @@ class ReiAnixAniListIntegrationService(
         if (terms.isEmpty()) return emptyList()
         val candidatesById = linkedMapOf<Int, AniListAnime>()
         when (val result = try {
-            client.searchAnimeBatch(terms, 10, includeFullMetadata = false)
+            client.searchAnimeBatch(terms, 5, includeFullMetadata = false)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
