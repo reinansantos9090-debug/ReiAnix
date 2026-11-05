@@ -91,6 +91,9 @@ class ReiAnixAniPubCatalogProvider(
                 isComplete = firstFailure == null,
                 retryAfterMillis = retryAfterMillis,
             )
+            retryAfterMillis != null -> ReiAnixCatalogResult.Failure(
+                ReiAnixCatalogError.RateLimited(retryAfterMillis),
+            )
             firstFailure != null -> ReiAnixCatalogResult.Failure(firstFailure)
             else -> ReiAnixCatalogResult.Success(emptyList())
         }
