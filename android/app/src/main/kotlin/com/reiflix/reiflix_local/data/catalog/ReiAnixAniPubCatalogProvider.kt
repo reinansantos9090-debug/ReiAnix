@@ -72,16 +72,20 @@ class ReiAnixAniPubCatalogProvider(
             when (val detail = getAnime(id)) {
                 is ReiAnixCatalogResult.Success -> detail.value?.let(details::add)
                 is ReiAnixCatalogResult.Failure -> {
-                    // A Retry-After from AniPub applies to the source, not just this candidate.
-                    // Propagate it so the shared coordinator defers subsequent requests.
-                    if (detail.error is ReiAnixCatalogError.RateLimited) return detail
+                    // Keep successful detail records usable for artwork even when another
+                    // candidate endpoint fails. The completeness bit prevents partial results
+                    // from authorizing metadata/identifier association downstream.
                     if (firstFailure == null) firstFailure = detail.error
                 }
             }
         }
         return when {
+            details.isNotEmpty() -> ReiAnixCatalogResult.Success(
+                value = details,
+                isComplete = firstFailure == null,
+            )
             firstFailure != null -> ReiAnixCatalogResult.Failure(firstFailure)
-            else -> ReiAnixCatalogResult.Success(details)
+            else -> ReiAnixCatalogResult.Success(emptyList())
         }
     }
 
