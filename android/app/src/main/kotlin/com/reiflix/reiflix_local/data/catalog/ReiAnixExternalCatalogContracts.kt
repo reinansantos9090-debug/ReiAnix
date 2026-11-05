@@ -351,7 +351,9 @@ class ReiAnixCatalogProviderRegistry(
                             result.fetchedAtMillis,
                             fallbackTtlMillis,
                         )
-                        if (expiry > now) cache[key] = CachedSuccess(result, expiry)
+                        // Incomplete provider payloads may contain useful artwork, but must
+                        // not suppress an immediate retry after transient detail failures.
+                        if (result.isComplete && expiry > now) cache[key] = CachedSuccess(result, expiry)
                     }
                     is ReiAnixCatalogResult.Failure -> Unit
                 }
