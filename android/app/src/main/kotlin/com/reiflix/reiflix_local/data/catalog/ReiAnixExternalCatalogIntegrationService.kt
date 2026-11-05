@@ -121,6 +121,7 @@ class ReiAnixExternalCatalogIntegrationService(
     private suspend fun enrichOne(initial: ReiAnixAnimeRecord): Boolean {
         var anime = library.getAnime(initial.id) ?: return false
         val identity = anime.toExternalCatalogIdentity()
+        val discoveredTitlePool = identity.titles.toMutableSet()
         val posterReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "poster")
         val backdropReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "backdrop")
         val hasMissingAniListArtworkCandidate =
@@ -199,7 +200,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             val provider = providers.provider(source) ?: continue
             val resolution = try {
-                resolve(provider, anime, identity, ids)
+                resolve(provider, anime, identity, ids, discoveredTitlePool)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -209,6 +210,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             library.markExternalCatalogAttempt(anime.id, source.key)
             val resolved = resolution ?: continue
+            discoveredTitlePool.addAll(resolved.discoveredTitles.filter(String::isNotBlank))
             val verified = resolved.verified
             if (verified != null) {
                 // Only CONFIRMED identity is allowed to persist supplemental IDs or metadata.
@@ -268,6 +270,7 @@ class ReiAnixExternalCatalogIntegrationService(
         val decision: ReiAnixCatalogIdentityDecision,
         val verified: VerifiedRemote? = null,
         val artworkQueued: Boolean = false,
+        val discoveredTitles: Set<String> = emptySet(),
     )
 
     /**
@@ -281,12 +284,14 @@ class ReiAnixExternalCatalogIntegrationService(
         anime: ReiAnixAnimeRecord,
         identity: ReiAnixCatalogIdentity,
         ids: ReiAnixExternalCatalogIds,
+        searchTitles: Collection<String>,
     ): Resolution = coroutineScope {
         val candidates = linkedMapOf<String, ReiAnixCatalogAnime>()
         var incompleteSearch = false
         var artworkQueued = false
         val seenArtworkCandidates = HashSet<ReiAnixArtworkCandidate>()
         val resultMutex = Mutex()
+        val discoveredTitles = linkedSetOf<String>()
 
         // Start the preferred stored-ID detail request alongside the title searches. A slow
         // detail endpoint must not delay queries by the original/Romaji/English/native/aliases.
@@ -312,6 +317,8 @@ class ReiAnixExternalCatalogIntegrationService(
                                 remote.ids.idFor(remote.source)?.takeIf(String::isNotBlank)?.let {
                                     candidates.putIfAbsent(it, remote)
                                 }
+                                discoveredTitles.add(remote.title)
+                                discoveredTitles.addAll(remote.alternativeTitles)
                                 artworkQueued = queueArtworkCandidates(
                                     anime.id,
                                     listOf(remote),
@@ -325,7 +332,7 @@ class ReiAnixExternalCatalogIntegrationService(
             }
         }
 
-        val searchTerms = allDistinctArtworkSearchTitles(identity.titles)
+        val searchTerms = allDistinctArtworkSearchTitles(searchTitles)
         if (searchTerms.isNotEmpty()) {
             runParallelArtworkSearches(
                 titles = searchTerms,
@@ -343,6 +350,8 @@ class ReiAnixExternalCatalogIntegrationService(
                                     is ReiAnixCatalogResult.Success -> {
                                         if (!result.isComplete) incompleteSearch = true
                                         result.value.forEach { remote ->
+                                            discoveredTitles.add(remote.title)
+                                            discoveredTitles.addAll(remote.alternativeTitles)
                                             val remoteId = remote.ids.idFor(remote.source)
                                             if (remoteId.isNullOrBlank()) {
                                                 incompleteSearch = true
@@ -376,6 +385,7 @@ class ReiAnixExternalCatalogIntegrationService(
             return@coroutineScope Resolution(
                 decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
                 artworkQueued = artworkQueued,
+                discoveredTitles = discoveredTitles,
             )
         }
 
@@ -387,6 +397,7 @@ class ReiAnixExternalCatalogIntegrationService(
             decision = evaluation.decision,
             verified = verified,
             artworkQueued = artworkQueued,
+            discoveredTitles = discoveredTitles,
         )
     }
 
