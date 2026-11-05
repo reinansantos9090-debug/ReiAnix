@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.catalog
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -230,7 +231,7 @@ class ReiAnixAniPubCatalogProviderTest {
     }
 
     @Test
-    fun searchWithOneFailedDetailDoesNotReturnTheSuccessfulSubset() = runBlocking {
+    fun oneFailedDetailKeepsSuccessfulArtworkCandidatesButMarksTheSearchIncomplete() = runBlocking {
         val transport = FakeTransport(
             listOf(
                 ReiAnixCatalogHttpResponse(
@@ -240,7 +241,7 @@ class ReiAnixAniPubCatalogProviderTest {
                 ),
                 ReiAnixCatalogHttpResponse(
                     200,
-                    """{"_id":1,"Name":"Candidate One","ImagePath":"one.jpg"}""",
+                    """{"_id":1,"Name":"Candidate One","ImagePath":"https://cdn.anipub.org/one.jpg"}""",
                     emptyMap(),
                 ),
                 ReiAnixCatalogHttpResponse(404, "not found", emptyMap()),
@@ -249,7 +250,11 @@ class ReiAnixAniPubCatalogProviderTest {
 
         val result = ReiAnixAniPubCatalogProvider(transport).searchAnime("Candidate", 5)
 
-        assertTrue(result is ReiAnixCatalogResult.Failure)
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val partial = result as ReiAnixCatalogResult.Success
+        assertFalse(partial.isComplete)
+        assertEquals(listOf("Candidate One"), partial.value.map { it.title })
+        assertEquals("https://cdn.anipub.org/one.jpg", partial.value.single().coverUrl)
         assertEquals(3, transport.calls)
     }
 
