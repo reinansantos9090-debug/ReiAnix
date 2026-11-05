@@ -319,7 +319,7 @@ fun ReiAnixSettingsScreen(
             ) {
                 when (state.status) {
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
-                        item(key = "settings:loading") {
+                        item(key = "settings:loading", contentType = "settings-loading") {
                             ReiAnixLoadingState(
                                 title = "Carregando configurações",
                                 message = "Lendo as preferências locais…",
@@ -329,7 +329,7 @@ fun ReiAnixSettingsScreen(
                     }
 
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR -> {
-                        item(key = "settings:error") {
+                        item(key = "settings:error", contentType = "settings-error") {
                             ReiAnixRecoverableErrorState(
                                 title = "Não foi possível carregar as configurações",
                                 message = state.error
@@ -341,7 +341,7 @@ fun ReiAnixSettingsScreen(
                     }
 
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
-                        item(key = "settings:top-bar") {
+                        item(key = "settings:top-bar", contentType = "settings-item") {
                             ReiAnixTopBar(
                                 title = "Configurações",
                                 subtitle = "Preferências do ReiAnix",
@@ -354,7 +354,7 @@ fun ReiAnixSettingsScreen(
                                 applyResponsiveHorizontalPadding = false,
                             )
                         }
-                        item(key = "settings:account-profile") {
+                        item(key = "settings:account-profile", contentType = "settings-profile") {
                             SettingsProfileRow(
                                 state = state,
                                 onClick = {
@@ -376,7 +376,7 @@ fun ReiAnixSettingsScreen(
                             )
                         }
 
-                        item(key = "settings:footer") {
+                        item(key = "settings:footer", contentType = "settings-item") {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -624,14 +624,14 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
         ) {
-            item(key = "header:" + category) {
+            item(key = "header:" + category, contentType = "settings-category-header") {
                 SettingsHeader(
                     title = category,
                     subtitle = settingsCategoryDescription(category),
                     onBack = onBack,
                 )
             }
-            item(key = "operation-error") {
+            item(key = "operation-error", contentType = "settings-item") {
                 latestOperationError?.let { operation ->
                     ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                         Column(
@@ -657,7 +657,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
             }
             if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING) {
-                item(key = "category-loading") {
+                item(key = "category-loading", contentType = "settings-item") {
                     ReiAnixLoadingState(
                         title = "Carregando configurações",
                         message = "Lendo as preferências locais…",
@@ -665,7 +665,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     )
                 }
             } else if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR) {
-                item(key = "category-error") {
+                item(key = "category-error", contentType = "settings-item") {
                     ReiAnixRecoverableErrorState(
                         title = "Não foi possível carregar as configurações",
                         message = state.error ?: "As configurações locais retornaram um erro.",
@@ -676,7 +676,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             } else {
                 when (category) {
                 "Conta" -> {
-                    item(key = "account:profile") {
+                    item(key = "account:profile", contentType = "settings-profile") {
                         ReiAnixSettingsAccountContent(
                             state = state.account,
                             onAction = onAccountAction,
@@ -685,8 +685,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Geral" -> {
-                    item(key = "section:general:behavior") { SettingsSectionLabel("Comportamento") }
-                    item(key = "setting:app.confirm_destructive") {
+                    item(key = "section:general:behavior", contentType = "settings-section-label") { SettingsSectionLabel("Comportamento") }
+                    item(key = "setting:app.confirm_destructive", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "app.confirm_destructive",
                             title = "Confirmar ações destrutivas",
@@ -697,8 +697,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "Aparência" -> {
-                    item(key = "section:appearance:visual") { SettingsSectionLabel("Visual") }
-                    item(key = "setting:appearance.theme") {
+                    item(key = "section:appearance:visual", contentType = "settings-section-label") { SettingsSectionLabel("Visual") }
+                    item(key = "setting:appearance.theme", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "appearance.theme",
                             title = "Tema",
@@ -708,7 +708,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("appearance.theme", it) },
                         )
                     }
-                    item(key = "setting:appearance.card_size") {
+                    item(key = "setting:appearance.card_size", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "appearance.card_size",
                             title = "Tamanho dos cards",
@@ -718,7 +718,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("appearance.card_size", it) },
                         )
                     }
-                    item(key = "setting:appearance.show_thumbnails") {
+                    item(key = "setting:appearance.show_thumbnails", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "appearance.show_thumbnails",
                             title = "Mostrar miniaturas",
@@ -730,8 +730,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Biblioteca" -> {
-                    item(key = "section:library:organization") { SettingsSectionLabel("Organização") }
-                    item(key = "setting:library.sort_default") {
+                    item(key = "section:library:organization", contentType = "settings-section-label") { SettingsSectionLabel("Organização") }
+                    item(key = "setting:library.sort_default", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "library.sort_default",
                             title = "Ordenação padrão",
@@ -746,7 +746,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("library.sort_default", it) },
                         )
                     }
-                    item(key = "setting:library.grid_density") {
+                    item(key = "setting:library.grid_density", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "library.grid_density",
                             title = "Densidade da grade",
@@ -760,7 +760,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("library.grid_density", it) },
                         )
                     }
-                    item(key = "setting:library.page_size") {
+                    item(key = "setting:library.page_size", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "library.page_size",
                             title = "Itens por página",
@@ -775,7 +775,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("library.page_size", it) },
                         )
                     }
-                    item(key = "setting:library.continue_watching") {
+                    item(key = "setting:library.continue_watching", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "library.continue_watching",
                             title = "Continue Watching",
@@ -784,7 +784,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("library.continue_watching", it.toString()) },
                         )
                     }
-                    item(key = "setting:library.continue_watching_limit") {
+                    item(key = "setting:library.continue_watching_limit", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "library.continue_watching_limit",
                             title = "Limite de Continue Watching",
@@ -802,8 +802,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Player" -> {
-                    item(key = "section:player:playback") { SettingsSectionLabel("Reprodução") }
-                    item(key = "setting:player.autoplay_next") {
+                    item(key = "section:player:playback", contentType = "settings-section-label") { SettingsSectionLabel("Reprodução") }
+                    item(key = "setting:player.autoplay_next", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "player.autoplay_next",
                             title = "Autoplay do próximo episódio",
@@ -812,7 +812,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.autoplay_next", it.toString()) },
                         )
                     }
-                    item(key = "setting:player.resume") {
+                    item(key = "setting:player.resume", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "player.resume",
                             title = "Continuar reprodução",
@@ -821,8 +821,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.resume", it.toString()) },
                         )
                     }
-                    item(key = "section:player:video") { SettingsSectionLabel("Vídeo") }
-                    item(key = "setting:player.default_speed") {
+                    item(key = "section:player:video", contentType = "settings-section-label") { SettingsSectionLabel("Vídeo") }
+                    item(key = "setting:player.default_speed", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.default_speed",
                             title = "Velocidade padrão",
@@ -832,7 +832,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.default_speed", it) },
                         )
                     }
-                    item(key = "setting:player.aspect_ratio") {
+                    item(key = "setting:player.aspect_ratio", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.aspect_ratio",
                             title = "Modo de vídeo",
@@ -842,8 +842,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.aspect_ratio", it) },
                         )
                     }
-                    item(key = "section:player:controls") { SettingsSectionLabel("Controles") }
-                    item(key = "setting:player.zoom_enabled") {
+                    item(key = "section:player:controls", contentType = "settings-section-label") { SettingsSectionLabel("Controles") }
+                    item(key = "setting:player.zoom_enabled", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "player.zoom_enabled",
                             title = "Zoom por gesto",
@@ -852,7 +852,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.zoom_enabled", it.toString()) },
                         )
                     }
-                    item(key = "setting:player.lock_mode") {
+                    item(key = "setting:player.lock_mode", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "player.lock_mode",
                             title = "Bloqueio dos controles",
@@ -861,7 +861,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.lock_mode", it.toString()) },
                         )
                     }
-                    item(key = "setting:player.double_tap_seek_seconds") {
+                    item(key = "setting:player.double_tap_seek_seconds", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.double_tap_seek_seconds",
                             title = "Salto no double tap",
@@ -871,7 +871,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.double_tap_seek_seconds", it) },
                         )
                     }
-                    item(key = "setting:player.long_press_speed") {
+                    item(key = "setting:player.long_press_speed", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.long_press_speed",
                             title = "Velocidade da pressão longa",
@@ -881,7 +881,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.long_press_speed", it) },
                         )
                     }
-                    item(key = "setting:player.max_video_resolution") {
+                    item(key = "setting:player.max_video_resolution", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.max_video_resolution",
                             title = "Resolução máxima",
@@ -891,7 +891,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.max_video_resolution", it) },
                         )
                     }
-                    item(key = "setting:player.max_video_frame_rate") {
+                    item(key = "setting:player.max_video_frame_rate", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.max_video_frame_rate",
                             title = "FPS máximo",
@@ -901,7 +901,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.max_video_frame_rate", it) },
                         )
                     }
-                    item(key = "setting:player.max_audio_channels") {
+                    item(key = "setting:player.max_audio_channels", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.max_audio_channels",
                             title = "Canais de áudio máximos",
@@ -911,8 +911,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.max_audio_channels", it) },
                         )
                     }
-                    item(key = "section:player:display") { SettingsSectionLabel("Tela") }
-                    item(key = "setting:player.immersive") {
+                    item(key = "section:player:display", contentType = "settings-section-label") { SettingsSectionLabel("Tela") }
+                    item(key = "setting:player.immersive", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.immersive",
                             title = "Modo imersivo",
@@ -922,7 +922,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.immersive", it) },
                         )
                     }
-                    item(key = "setting:player.rotation") {
+                    item(key = "setting:player.rotation", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.rotation",
                             title = "Rotação",
@@ -932,7 +932,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("player.rotation", it) },
                         )
                     }
-                    item(key = "setting:player.pip") {
+                    item(key = "setting:player.pip", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "player.pip",
                             title = "Picture-in-Picture",
@@ -941,7 +941,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.pip", it.toString()) },
                         )
                     }
-                    item(key = "setting:player.auto_hide_seconds") {
+                    item(key = "setting:player.auto_hide_seconds", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "player.auto_hide_seconds",
                             title = "Auto-hide dos controles",
@@ -952,7 +952,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
 
-                    item(key = "setting:player.reset") {
+                    item(key = "setting:player.reset", contentType = "settings-choice-row") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -985,8 +985,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "Gestos" -> {
-                    item(key = "section:gestures:gestures") { SettingsSectionLabel("Gestos") }
-                    item(key = "setting:gestures.volume") {
+                    item(key = "section:gestures:gestures", contentType = "settings-section-label") { SettingsSectionLabel("Gestos") }
+                    item(key = "setting:gestures.volume", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "gestures.volume",
                             title = "Gestos de volume",
@@ -995,7 +995,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("gestures.volume", it.toString()) },
                         )
                     }
-                    item(key = "setting:gestures.brightness") {
+                    item(key = "setting:gestures.brightness", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "gestures.brightness",
                             title = "Gestos de brilho",
@@ -1004,7 +1004,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("gestures.brightness", it.toString()) },
                         )
                     }
-                    item(key = "setting:gestures.horizontal_seek") {
+                    item(key = "setting:gestures.horizontal_seek", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "gestures.horizontal_seek",
                             title = "Gestos horizontais",
@@ -1013,7 +1013,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("gestures.horizontal_seek", it.toString()) },
                         )
                     }
-                    item(key = "setting:gestures.double_tap") {
+                    item(key = "setting:gestures.double_tap", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "gestures.double_tap",
                             title = "Double tap para seek",
@@ -1022,7 +1022,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("gestures.double_tap", it.toString()) },
                         )
                     }
-                    item(key = "setting:gestures.long_press") {
+                    item(key = "setting:gestures.long_press", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "gestures.long_press",
                             title = "Pressão longa",
@@ -1033,8 +1033,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "Metadata" -> {
-                    item(key = "section:metadata:matching") { SettingsSectionLabel("AniList") }
-                    item(key = "setting:metadata.anilist_enabled") {
+                    item(key = "section:metadata:matching", contentType = "settings-section-label") { SettingsSectionLabel("AniList") }
+                    item(key = "setting:metadata.anilist_enabled", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "metadata.anilist_enabled",
                             title = "Usar AniList",
@@ -1043,7 +1043,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("metadata.anilist_enabled", it.toString()) },
                         )
                     }
-                    item(key = "setting:metadata.auto_match") {
+                    item(key = "setting:metadata.auto_match", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "metadata.auto_match",
                             title = "Auto-match AniList",
@@ -1055,7 +1055,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Artwork" -> {
-                    item(key = "setting:artwork.enabled") {
+                    item(key = "setting:artwork.enabled", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "artwork.enabled",
                             title = "Artwork remoto",
@@ -1064,7 +1064,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
                         )
                     }
-                    item(key = "setting:artwork.cache_limit_mb") {
+                    item(key = "setting:artwork.cache_limit_mb", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "artwork.cache_limit_mb",
                             title = "Limite do cache de artwork",
@@ -1083,8 +1083,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
                 "Armazenamento" -> {
                     val storage = state.storage
-                    item(key = "section:storage:access") { SettingsSectionLabel("Acesso") }
-                    item(key = "storage:status") {
+                    item(key = "section:storage:access", contentType = "settings-section-label") { SettingsSectionLabel("Acesso") }
+                    item(key = "storage:status", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1128,7 +1128,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "storage:actions") {
+                    item(key = "storage:actions", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1175,8 +1175,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Dados e Cache" -> {
-                    item(key = "section:data:maintenance") { SettingsSectionLabel("Dados locais") }
-                    item(key = "data-cache:info") {
+                    item(key = "section:data:maintenance", contentType = "settings-section-label") { SettingsSectionLabel("Dados locais") }
+                    item(key = "data-cache:info", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1201,7 +1201,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "data-cache:actions") {
+                    item(key = "data-cache:actions", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1231,10 +1231,10 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "section:data:cache") {
+                    item(key = "section:data:cache", contentType = "settings-section-label") {
                         SettingsSectionLabel("Cache")
                     }
-                    item(key = "data-cache:artwork-cache") {
+                    item(key = "data-cache:artwork-cache", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1264,8 +1264,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Backup e Restauração" -> {
-                    item(key = "section:backup:operations") { SettingsSectionLabel("Backup") }
-                    item(key = "backup:info") {
+                    item(key = "section:backup:operations", contentType = "settings-section-label") { SettingsSectionLabel("Backup") }
+                    item(key = "backup:info", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1286,7 +1286,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "backup:actions") {
+                    item(key = "backup:actions", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1328,8 +1328,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     val latestDiagnosticOperation = state.operations.values
                         .filter { it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" }
                         .maxByOrNull { it.timestampMs }
-                    item(key = "section:diagnostic:technical") { SettingsSectionLabel("Técnico") }
-                    item(key = "diagnostic:info") {
+                    item(key = "section:diagnostic:technical", contentType = "settings-section-label") { SettingsSectionLabel("Técnico") }
+                    item(key = "diagnostic:info", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1364,7 +1364,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "diagnostic:actions") {
+                    item(key = "diagnostic:actions", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1463,11 +1463,11 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "diagnostic:timeline:heading") {
+                    item(key = "diagnostic:timeline:heading", contentType = "settings-surface") {
                         SettingsSectionLabel("Eventos nativos recentes")
                     }
                     if (diagnosticEvents.isEmpty()) {
-                        item(key = "diagnostic:timeline:empty") {
+                        item(key = "diagnostic:timeline:empty", contentType = "settings-surface") {
                             ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     text = "Ainda não há eventos nativos nesta sessão. Os eventos ficam limitados à memória do processo.",
@@ -1540,8 +1540,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Áudio e Legendas" -> {
-                    item(key = "section:audio:subtitles") { SettingsSectionLabel("Legendas") }
-                    item(key = "setting:audio.subtitle_scale") {
+                    item(key = "section:audio:subtitles", contentType = "settings-section-label") { SettingsSectionLabel("Legendas") }
+                    item(key = "setting:audio.subtitle_scale", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "audio.subtitle_scale",
                             title = "Escala da legenda",
@@ -1551,7 +1551,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("audio.subtitle_scale", it) },
                         )
                     }
-                    item(key = "setting:audio.subtitle_bottom_padding") {
+                    item(key = "setting:audio.subtitle_bottom_padding", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "audio.subtitle_bottom_padding",
                             title = "Margem inferior da legenda",
@@ -1561,7 +1561,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("audio.subtitle_bottom_padding", it) },
                         )
                     }
-                    item(key = "setting:audio.subtitle_embedded_style") {
+                    item(key = "setting:audio.subtitle_embedded_style", contentType = "settings-boolean-row") {
                         BooleanSettingRow(
                             keyName = "audio.subtitle_embedded_style",
                             title = "Estilo embutido da legenda",
@@ -1570,8 +1570,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("audio.subtitle_embedded_style", it.toString()) },
                         )
                     }
-                    item(key = "section:audio:languages") { SettingsSectionLabel("Idiomas") }
-                    item(key = "setting:audio.preferred_language") {
+                    item(key = "section:audio:languages", contentType = "settings-section-label") { SettingsSectionLabel("Idiomas") }
+                    item(key = "setting:audio.preferred_language", contentType = "settings-language-row") {
                         LanguageSettingRow(
                             keyName = "audio.preferred_language",
                             title = "Idioma de áudio",
@@ -1580,7 +1580,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSave = { onUpdateSetting("audio.preferred_language", it) },
                         )
                     }
-                    item(key = "setting:audio.preferred_subtitle_language") {
+                    item(key = "setting:audio.preferred_subtitle_language", contentType = "settings-language-row") {
                         LanguageSettingRow(
                             keyName = "audio.preferred_subtitle_language",
                             title = "Idioma da legenda",
@@ -1589,8 +1589,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSave = { onUpdateSetting("audio.preferred_subtitle_language", it) },
                         )
                     }
-                    item(key = "section:audio:behavior") { SettingsSectionLabel("Comportamento") }
-                    item(key = "setting:audio.subtitles") {
+                    item(key = "section:audio:behavior", contentType = "settings-section-label") { SettingsSectionLabel("Comportamento") }
+                    item(key = "setting:audio.subtitles", contentType = "settings-choice-row") {
                         ChoiceSettingRow(
                             keyName = "audio.subtitles",
                             title = "Legendas",
@@ -1603,8 +1603,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Sobre" -> {
-                    item(key = "section:about:identity") { SettingsSectionLabel("ReiAnix") }
-                    item(key = "about:app") {
+                    item(key = "section:about:identity", contentType = "settings-section-label") { SettingsSectionLabel("ReiAnix") }
+                    item(key = "about:app", contentType = "settings-item") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -1671,8 +1671,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         else -> normalizedLastScan
                     }
 
-                    item(key = "section:scan:state") { SettingsSectionLabel("Scanner") }
-                    item(key = "scan:existing") {
+                    item(key = "section:scan:state", contentType = "settings-section-label") { SettingsSectionLabel("Scanner") }
+                    item(key = "scan:existing", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1723,7 +1723,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "scan:refresh") {
+                    item(key = "scan:refresh", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1752,8 +1752,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Privacidade" -> {
-                    item(key = "section:privacy:local") { SettingsSectionLabel("Privacidade") }
-                    item(key = "privacy:local") {
+                    item(key = "section:privacy:local", contentType = "settings-section-label") { SettingsSectionLabel("Privacidade") }
+                    item(key = "privacy:local", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -1777,7 +1777,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "privacy:connectivity") {
+                    item(key = "privacy:connectivity", contentType = "settings-surface") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
