@@ -457,7 +457,7 @@ class ReiAnixExternalCatalogIntegrationService(
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Exception) {
-        record(ReiAnixCatalogSource.fromKey("anilist") ?: ReiAnixCatalogSource.KITSU,
+        record(remotes.firstOrNull()?.source ?: ReiAnixCatalogSource.KITSU,
             "ARTWORK_CANDIDATE_QUEUE_FAILED", animeId, error)
         false
     }
