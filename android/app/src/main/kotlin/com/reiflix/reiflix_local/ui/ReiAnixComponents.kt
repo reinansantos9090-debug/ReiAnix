@@ -651,6 +651,7 @@ fun ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
         artworkExternalUrl = anime.artwork?.externalUrl,
+        artworkRevision = anime.artwork?.sourceRevision,
         metadata = buildList {
             anime.year?.let { add(it.toString()) }
             anime.episodeCountLabel.takeIf { anime.availableContentCount > 0 }?.let(::add)
@@ -684,6 +685,7 @@ fun ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
         artworkExternalUrl = anime.artwork?.externalUrl,
+        artworkRevision = anime.artwork?.sourceRevision,
         metadata = buildList {
             anime.year?.let { add(it.toString()) }
             anime.availableContentCount.takeIf { it > 0 }?.let {
@@ -721,6 +723,7 @@ fun ReiAnixAnimeCard(
     maxDimensionPx: Int = 512,
     artworkIdentity: String? = null,
     bottomBadgeText: String? = null,
+    artworkRevision: String? = null,
 ) {
     val animeAccessibilityLabel = buildList {
         add(title)
@@ -774,6 +777,7 @@ fun ReiAnixAnimeCard(
                     identity = artworkIdentity,
                     maxDimensionPx = maxDimensionPx,
                     externalUrl = artworkExternalUrl,
+                    sourceRevision = artworkRevision,
                 )
                 if (favorite || watching || watched || completed) {
                     Text(
@@ -974,6 +978,7 @@ fun ReiAnixEpisodeCard(
                         modifier = Modifier.fillMaxSize(),
                         identity = episode.stableKey,
                         externalUrl = episode.artwork?.externalUrl,
+                        sourceRevision = episode.artwork?.sourceRevision,
                     )
                 } else {
                     Box(
