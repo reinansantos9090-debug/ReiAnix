@@ -4,7 +4,11 @@ on:
   pull_request:
     paths:
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/catalog/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/catalog/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/**"
@@ -76,6 +80,8 @@ jobs:
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixLocalArtworkSidecarPolicyTest \
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
               --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
+              --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogContractsTest \
+              --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListSearchTermsTest \
               --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
               --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
             :app:compileReleaseKotlin
