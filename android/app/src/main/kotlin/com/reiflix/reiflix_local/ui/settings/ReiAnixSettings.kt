@@ -368,6 +368,7 @@ fun ReiAnixSettingsScreen(
                         items(
                             items = state.categories.filter { it.label != "Conta" },
                             key = { category -> "settings-flat:${category.label}" },
+                            contentType = { "settings-flat-category" },
                         ) { category ->
                             SettingsFlatCategoryRow(
                                 category = category,
@@ -1480,6 +1481,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         items(
                             diagnosticEvents.take(20),
                             key = { event -> "diagnostic:event:" + event.id },
+                            contentType = { "diagnostic-event" },
                         ) { event ->
                             ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                                 Column(
@@ -2137,6 +2139,7 @@ private fun ChoiceSettingRow(
                     items(
                         items = choices,
                         key = { choice -> keyName + ":" + choice.value },
+                        contentType = { "settings-choice-option" },
                     ) { choice ->
                         val selected = choice.value == selectedValue
                         Row(
