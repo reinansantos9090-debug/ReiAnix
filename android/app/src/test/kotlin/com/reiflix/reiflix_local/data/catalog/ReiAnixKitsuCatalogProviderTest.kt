@@ -40,6 +40,7 @@ class ReiAnixKitsuCatalogProviderTest {
                       "canonicalTitle": "Sample Anime",
                       "titles": {
                         "en": "Sample Anime",
+                        "en_us": "sample anime",
                         "en_jp": "Sample Anime Japanese",
                         "ja_jp": "サンプルアニメ"
                       },
@@ -77,6 +78,7 @@ class ReiAnixKitsuCatalogProviderTest {
         assertEquals("Sample Anime", anime.title)
         assertTrue("Sample Anime Japanese" in anime.alternativeTitles)
         assertTrue("サンプルアニメ" in anime.alternativeTitles)
+        assertTrue("sample anime" in anime.alternativeTitles)
         assertTrue("Sample" in anime.alternativeTitles)
         assertEquals("A complete sample synopsis for the catalog.", anime.synopsis)
         assertEquals(2020, anime.releaseYear)
