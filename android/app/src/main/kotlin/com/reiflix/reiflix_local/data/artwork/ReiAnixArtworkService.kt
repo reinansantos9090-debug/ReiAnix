@@ -1745,9 +1745,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     }
 
     /**
-     * Read persisted secondary AniList poster variants. The caller reaches this helper only
-     * after the primary URL failed or was absent, so successful primary downloads retain the
-     * existing single-request fast path.
+     * Read every persisted secondary AniList poster variant independently of the primary
+     * URL's outcome. Existing local files are reused by the materializer when available.
      */
     private suspend fun loadAlternativePosterCandidates(
         animeId: Long,
@@ -1762,7 +1761,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
         val now = nowSeconds()
         return database.read { db ->
-            val currentPrimary = validReiAnixArtworkHttpUrl(primaryUrl)
             db.rawQuery(
                 "SELECT external_url,status,next_retry_at,failure_count,variant,manual,source,artwork_key FROM artwork " +
                     "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type='poster' " +
