@@ -28,7 +28,7 @@ Todas as chaves abaixo são persistidas em `preferences(key, value, updated_at)`
 | Grupo | Chaves | Padrões |
 |---|---|---|
 | Geral | `app.confirm_destructive` | `true` |
-| Aparência | `appearance.theme`, `appearance.card_size`, `appearance.show_thumbnails` | `dark`, `medium`, `true` |
+| Aparência | `appearance.theme`, `appearance.card_size`, `appearance.poster_size`, `appearance.show_thumbnails` | `dark`, `medium`, `5`, `true` |
 | Biblioteca | `library.sort_default`, `library.grid_density`, `library.page_size`, `library.continue_watching`, `library.continue_watching_limit` | `added_desc`, `medium`, `36`, `true`, `10` |
 | Player | `player.autoplay_next`, `player.resume`, `player.default_speed`, `player.aspect_ratio`, `player.zoom_enabled`, `player.immersive`, `player.rotation`, `player.pip`, `player.lock_mode`, `player.auto_hide_seconds`, `player.double_tap_seek_seconds`, `player.long_press_speed`, `player.max_video_resolution`, `player.max_video_frame_rate`, `player.max_audio_channels` | `true`, `true`, `1.0`, `fit`, `false`, `always`, `auto`, `true`, `false`, `5`, `10`, `2.0`, `auto`, `0`, `0` |
 | Gestos | `gestures.volume`, `gestures.brightness`, `gestures.double_tap`, `gestures.long_press` | todos `false` |
