@@ -687,7 +687,7 @@ private fun ColumnScope.HomeReadyContent(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.section),
     ) {
         if (animes.isNotEmpty()) {
-            item(key = "home-hero") {
+            item(key = "home-hero", contentType = "home-hero") {
                 HomeHero(
                     anime = selectFeaturedAnime(animes),
                     onWatch = onWatch,
@@ -697,7 +697,7 @@ private fun ColumnScope.HomeReadyContent(
             }
         }
         if (continueWatching.isNotEmpty()) {
-            item(key = "home-section-continue") {
+            item(key = "home-section-continue", contentType = "home-continue-section") {
                 HomeContinueSection(
                     items = continueWatching,
                     showThumbnails = showThumbnails,
@@ -707,7 +707,7 @@ private fun ColumnScope.HomeReadyContent(
             }
         }
         if (recentlyAdded.isNotEmpty()) {
-            item(key = "home-section-recently-added") {
+            item(key = "home-section-recently-added", contentType = "home-media-section") {
                 HomeMediaSection(
                     title = "Adicionados recentemente",
                     items = recentlyAdded,
@@ -719,7 +719,7 @@ private fun ColumnScope.HomeReadyContent(
             }
         }
         if (available.isNotEmpty()) {
-            item(key = "home-section-available") {
+            item(key = "home-section-available", contentType = "home-media-section") {
                 HomeMediaSection(
                     title = "Conteúdo disponível",
                     items = available,
@@ -732,7 +732,7 @@ private fun ColumnScope.HomeReadyContent(
         }
 
         if (recentlyWatched.isNotEmpty()) {
-            item(key = "home-section-recently-watched") {
+            item(key = "home-section-recently-watched", contentType = "home-media-section") {
                 HomeMediaSection(
                     title = "Recentemente assistidos",
                     items = recentlyWatched,
@@ -744,7 +744,7 @@ private fun ColumnScope.HomeReadyContent(
             }
         }
         if (favorites.isNotEmpty()) {
-            item(key = "home-section-my-list") {
+            item(key = "home-section-my-list", contentType = "home-media-section") {
                 HomeMediaSection(
                     title = "Minha lista",
                     items = favorites,
@@ -756,7 +756,7 @@ private fun ColumnScope.HomeReadyContent(
             }
         }
         genreSections.forEach { section ->
-            item(key = "home-section-genre:" + section.key) {
+            item(key = "home-section-genre:" + section.key, contentType = "home-media-section") {
                 HomeMediaSection(
                     title = section.title,
                     items = section.items,
@@ -767,7 +767,7 @@ private fun ColumnScope.HomeReadyContent(
             }
         }
         if (movies.isNotEmpty()) {
-            item(key = "home-section-movies") {
+            item(key = "home-section-movies", contentType = "home-media-section") {
                 HomeMediaSection(
                     title = "Filmes",
                     items = movies,
