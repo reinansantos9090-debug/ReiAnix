@@ -28,7 +28,7 @@ class ReiAnixAniListClientTest {
               "data": {"Page": {"media": [{
                 "id": 16498,
                 "title": {"romaji":"Shingeki no Kyojin","english":"Attack on Titan","native":"進撃の巨人"},
-                "synonyms": ["Attack on Titan"],
+                "synonyms": ["Attack on Titan", "attack on titan"],
                 "description": "Humanity fights titans",
                 "format": "TV",
                 "episodes": 25,
@@ -50,6 +50,7 @@ class ReiAnixAniListClientTest {
         assertEquals(16498, anime.id)
         assertEquals("Attack on Titan", anime.preferredTitle)
         assertTrue(anime.synonyms.contains("Shingeki no Kyojin"))
+        assertTrue(anime.synonyms.contains("attack on titan"))
         assertEquals(25, anime.episodes)
         assertEquals(84, anime.averageScore)
         assertEquals(24, anime.durationMinutes)
