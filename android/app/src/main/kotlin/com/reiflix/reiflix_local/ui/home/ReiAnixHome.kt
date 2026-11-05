@@ -1074,10 +1074,14 @@ private fun HomeMediaSection(
     contentDescription: String,
     onSeeAll: (() -> Unit)? = null,
 ) {
+    val responsive = LocalReiAnixResponsiveMetrics.current
+    val posterSize = LocalReiAnixPosterSize.current
+    val railPadding = responsive.posterRailPadding(posterSize)
+    val railSpacing = responsive.posterRailSpacing(posterSize)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+            .padding(horizontal = railPadding),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         HomeSectionHeader(title = title, onSeeAll = onSeeAll)
@@ -1086,10 +1090,8 @@ private fun HomeMediaSection(
             modifier = Modifier.semantics {
                 this.contentDescription = contentDescription
             },
-            contentPadding = PaddingValues(
-                end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            contentPadding = PaddingValues(end = railPadding),
+            horizontalArrangement = Arrangement.spacedBy(railSpacing),
         ) {
             items(
                 items = items,
