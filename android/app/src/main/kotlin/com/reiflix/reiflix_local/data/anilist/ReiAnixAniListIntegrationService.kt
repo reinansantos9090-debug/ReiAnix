@@ -361,7 +361,7 @@ class ReiAnixAniListIntegrationService(
     /**
      * Uses independent local episode thumbnails to verify or correct an automatic
      * AniList association. A clear first-frame result is accepted immediately;
-     * otherwise two matching results from results from distinct episodes are required.
+     * otherwise two matching results from distinct episodes are required.
      * Manual associations and manually sourced metadata are never replaced.
      */
     suspend fun identifyFromEpisodeThumbnails(
