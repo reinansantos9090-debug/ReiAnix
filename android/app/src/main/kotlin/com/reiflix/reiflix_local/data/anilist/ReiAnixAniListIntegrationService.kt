@@ -562,7 +562,9 @@ class ReiAnixAniListIntegrationService(
                     result = "THUMBNAIL_UNUSABLE",
                     context = mapOf("anime_id" to animeId, "episode_id" to sample.episodeId),
                 )
-                continue
+                // End this batch so the ViewModel can rehydrate any other saved,
+                // usable images instead of leaving this session waiting indefinitely.
+                break
             }
 
             when (val request = requestTraceMoeSample(animeId, sample)) {
@@ -585,6 +587,9 @@ class ReiAnixAniListIntegrationService(
                         break
                     }
                     failedSamplesThisRun++
+                    // Release the session now; the ViewModel will replay saved,
+                    // still-unprocessed thumbnails after its bounded backoff.
+                    break
                 }
                 TraceMoeSampleRequestResult.BudgetExhausted -> {
                     Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
