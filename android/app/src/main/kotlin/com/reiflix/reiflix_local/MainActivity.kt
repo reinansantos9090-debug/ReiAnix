@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
     private var activePlayerCommandCreatedAtMs: Long = 0L
     private val seenPlayerRequestIds = LinkedHashSet<String>()
     private var startupDiscoveryTriggered = false
+    private var pendingSafForegroundReconciliation = false
     private var nativeBootstrapDecisionComplete = false
     private var automaticSafPickerAttempted = false
     private val pendingNativeIntentsBeforeBootstrap = ArrayList<Intent>()
@@ -276,6 +277,8 @@ class MainActivity : ComponentActivity() {
         private const val STATE_SAF_PICKER_PHASE = "reiflix.safPickerPhase"
         private const val STATE_SEEN_NATIVE_REQUEST_IDS = "reiflix.seenNativeRequestIds"
         private const val STATE_STARTUP_DISCOVERY_TRIGGERED = "reiflix.startupDiscoveryTriggered"
+        private const val NATIVE_SCAN_LIFECYCLE_PREFS = "reianix_native_scan_lifecycle"
+        private const val PENDING_SAF_FOREGROUND_RECONCILIATION = "pending_saf_foreground_reconciliation"
         private const val STATE_AUTO_SAF_PICKER_ATTEMPTED = "reiflix.autoSafPickerAttempted"
         private const val STATE_LAST_OBSERVED_MEDIA_ACCESS = "reiflix.lastObservedMediaAccess"
         private const val STATE_LAST_OBSERVED_BROAD_ACCESS = "reiflix.lastObservedBroadAccess"
@@ -1313,6 +1316,9 @@ class MainActivity : ComponentActivity() {
             runCatching { SafPickerPhase.valueOf(it) }.getOrNull()
         } ?: if (safPickerPending) SafPickerPhase.WAITING_RESULT else SafPickerPhase.IDLE
         startupDiscoveryTriggered = savedInstanceState?.getBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED) ?: false
+        pendingSafForegroundReconciliation = getSharedPreferences(NATIVE_SCAN_LIFECYCLE_PREFS, MODE_PRIVATE)
+            .getBoolean(PENDING_SAF_FOREGROUND_RECONCILIATION, false) ||
+            (savedInstanceState?.getBoolean(PENDING_SAF_FOREGROUND_RECONCILIATION) ?: false)
         automaticSafPickerAttempted = savedInstanceState?.getBoolean(STATE_AUTO_SAF_PICKER_ATTEMPTED) ?: false
         lastObservedMediaAccess = savedInstanceState?.getString(STATE_LAST_OBSERVED_MEDIA_ACCESS)
         if (savedInstanceState?.containsKey(STATE_LAST_OBSERVED_BROAD_ACCESS) == true) {
@@ -2437,6 +2443,7 @@ class MainActivity : ComponentActivity() {
 
         // Only an already-configured, persisted SAF root authorizes startup discovery.
         // With no root, preserve the first-run onboarding and do not enumerate storage.
+        var safDiscoveryAlreadyDispatched = false
         if (shouldDiscover && hasPersistedSafTree) {
             publishScanRequest(
                 "STARTUP",
@@ -2444,6 +2451,7 @@ class MainActivity : ComponentActivity() {
                 full = false,
                 reason = "first_activity_resume",
             )
+            safDiscoveryAlreadyDispatched = true
         } else if (shouldDiscover) {
             Log.i(tag, "STARTUP_SCAN_SKIPPED reason=no_persisted_saf_tree")
             publishNativeDiagnostic(
@@ -2468,6 +2476,40 @@ class MainActivity : ComponentActivity() {
                 full = false,
                 reason = "permission_available_after_resume",
             )
+            // A combined permission transition already requests configured SAF roots.
+            // A single-source MediaStore/BroadStorage refresh does not replace it.
+            safDiscoveryAlreadyDispatched = source == null
+        }
+
+        if (pendingSafForegroundReconciliation) {
+            when {
+                !hasPersistedSafTree -> {
+                    // Explicit folder selection launches its own first scan.
+                    clearSafForegroundReconciliationPending("no_authorized_saf_root")
+                }
+                safDiscoveryAlreadyDispatched -> {
+                    clearSafForegroundReconciliationPending("startup_or_permission_scan_already_requested")
+                }
+                else -> {
+                    val reconciliationRequestId = UUID.randomUUID().toString()
+                    publishNativeDiagnostic(
+                        "SAF_FOREGROUND_RECONCILIATION_REQUESTED",
+                        reconciliationRequestId,
+                        action = "scan",
+                        state = "QUEUED",
+                        result = "app_returned_to_foreground",
+                    )
+                    // Use configured SAF roots only. Existing files flow through the
+                    // same idempotent SQLite indexer; newly discovered files are inserted.
+                    scanConfiguredSafRoots(
+                        reconciliationRequestId,
+                        "BACKGROUND_RECONCILIATION",
+                        "app_returned_to_foreground",
+                        includeAuthorizedDiagnostics = false,
+                    )
+                    clearSafForegroundReconciliationPending("saf_reconciliation_dispatched")
+                }
+            }
         }
     }
 
@@ -2652,6 +2694,43 @@ class MainActivity : ComponentActivity() {
                 }
     }
 
+    /**
+     * A real user departure (Home/task switch) means the selected SAF tree may have
+     * changed while ReiAnix was backgrounded. Persist the hint so it survives process
+     * reclamation; the next foreground entry verifies it through the existing SAF
+     * scanner, never by trusting MediaStore as the library source.
+     */
+    private fun markSafForegroundReconciliationPending(reason: String) {
+        if (pendingSafForegroundReconciliation) return
+        pendingSafForegroundReconciliation = true
+        val persisted = getSharedPreferences(NATIVE_SCAN_LIFECYCLE_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean(PENDING_SAF_FOREGROUND_RECONCILIATION, true)
+            .commit()
+        Log.i(tag, "SAF_FOREGROUND_RECONCILIATION_PENDING reason=" + reason + " persisted=" + persisted)
+    }
+
+    private fun clearSafForegroundReconciliationPending(reason: String) {
+        pendingSafForegroundReconciliation = false
+        val persisted = getSharedPreferences(NATIVE_SCAN_LIFECYCLE_PREFS, MODE_PRIVATE)
+            .edit()
+            .remove(PENDING_SAF_FOREGROUND_RECONCILIATION)
+            .commit()
+        Log.i(tag, "SAF_FOREGROUND_RECONCILIATION_CONSUMED reason=" + reason + " persisted=" + persisted)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Do not schedule a library reconciliation when the user is entering an
+        // internal player, Android's SAF picker/settings, or a permission surface.
+        val leavingForInternalFlow = activePlayerRequestId != null ||
+            safPickerPending || broadStoragePermissionPending || mediaPermissionRequestPending ||
+            externalSettingsKind != null || googleSignInJob != null || googleSignOutJob != null
+        if (!leavingForInternalFlow && nativeBootstrapDecisionComplete && !isFinishing) {
+            markSafForegroundReconciliationPending("user_left_app")
+        }
+    }
+
     override fun onPause() {
         activityResumed = false
         if (safPickerPending) {
@@ -2721,6 +2800,7 @@ class MainActivity : ComponentActivity() {
         outState.putStringArrayList("reiflix.settingsStorageIds", ArrayList(composeSettingsStorageActions.keys))
         outState.putStringArrayList("reiflix.settingsStorageActions", ArrayList(composeSettingsStorageActions.values))
         outState.putBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED, startupDiscoveryTriggered)
+        outState.putBoolean(PENDING_SAF_FOREGROUND_RECONCILIATION, pendingSafForegroundReconciliation)
         outState.putBoolean(STATE_AUTO_SAF_PICKER_ATTEMPTED, automaticSafPickerAttempted)
         outState.putString(STATE_LAST_OBSERVED_MEDIA_ACCESS, lastObservedMediaAccess)
         lastObservedBroadAccess?.let { outState.putBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS, it) }
