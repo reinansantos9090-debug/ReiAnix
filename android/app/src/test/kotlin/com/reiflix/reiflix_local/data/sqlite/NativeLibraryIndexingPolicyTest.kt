@@ -82,4 +82,59 @@ class NativeLibraryIndexingPolicyTest {
         assertTrue(weak.copy(identificationConfidence = "high").hasConfidentEpisodeIdentity)
         assertFalse(weak.copy(ambiguous = true, identificationConfidence = "high").hasConfidentEpisodeIdentity)
     }
+
+    @Test
+    fun highConfidenceStandaloneMovieDoesNotRequireAnEpisodeNumber() {
+        val movie = NativeDiscoveredMedia(
+            location = "content://provider/document/look-back",
+            fileName = "Look Back.mp4",
+            scopeLocation = "look-back",
+            scopeVerified = true,
+            animeTitle = "Look Back",
+            episodeType = "movie",
+            identificationSource = "standalone_root_movie",
+            identificationConfidence = "high",
+        )
+
+        assertTrue(movie.hasConfidentEpisodeIdentity)
+    }
+
+    @Test
+    fun repeatedTrailingEpisodeNumberIsRemovedPerAnimeEvenWhenRootContainsMixedSeries() {
+        val seihantai = listOf(9, 10, 11).map { number ->
+            NativeDiscoveredMedia(
+                location = "content://provider/seihantai/$number",
+                fileName = "Seihantai na Kimi to Boku $number Dublado %02d.mp4".format(number),
+                animeTitle = "Seihantai na Kimi to Boku $number",
+                season = 1,
+                episodeNumber = number.toDouble(),
+                episodeType = "regular",
+                identificationSource = "release_language_episode",
+                identificationConfidence = "high",
+                sourceFolder = "saf://adm",
+                relativePath = "episode-$number.mp4",
+            )
+        }
+        val yozakura = listOf(2, 3, 12).map { number ->
+            NativeDiscoveredMedia(
+                location = "content://provider/yozakura/$number",
+                fileName = "Yozakura-san Chi no Daisakusen 2 Dublado %02d.mp4".format(number),
+                animeTitle = "Yozakura-san Chi no Daisakusen 2",
+                season = 1,
+                episodeNumber = number.toDouble(),
+                episodeType = "regular",
+                identificationSource = "release_language_episode",
+                identificationConfidence = "high",
+                sourceFolder = "saf://adm",
+                relativePath = "episode-$number.mp4",
+            )
+        }
+
+        // Both series share the same SAF root and immediate folder (the root itself).
+        val mixedRoot = seihantai + yozakura
+        val normalized = normalizeDuplicateReleaseEpisodeTitleSuffixes(mixedRoot)
+
+        assertTrue(normalized.take(3).all { it.animeTitle == "Seihantai na Kimi to Boku" })
+        assertTrue(normalized.drop(3).all { it.animeTitle == "Yozakura-san Chi no Daisakusen 2" })
+    }
 }

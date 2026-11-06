@@ -1515,7 +1515,8 @@ class ReiAnixSqliteLibraryRepository(
                 val seenIdentities = linkedSetOf<String>()
                 val inputIdentities = hashSetOf<String>()
 
-                for (item in snapshot.items) {
+                val indexedItems = normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items)
+                for (item in indexedItems) {
                     db.execSQL("SAVEPOINT native_index_item")
                     try {
                     if (!item.scopeVerified && !(item.scopeLocation ?: item.location).isWithinScope(snapshot.scopeRoot)) {
@@ -1580,21 +1581,38 @@ class ReiAnixSqliteLibraryRepository(
                         ambiguous++
                         continue
                     }
-                    val animeIds = db.rawQuery("SELECT id, title, lookup_title FROM anime", null).use { cursor ->
+                    val isMovie = item.episodeType?.trim()?.equals("movie", ignoreCase = true) == true
+                    val expectedMediaKind = if (isMovie) "movie" else "series"
+                    var incompatibleAnimeKindMatches = 0
+                    val animeIds = db.rawQuery("SELECT id, title, lookup_title, media_kind FROM anime", null).use { cursor ->
                         buildList {
                             while (cursor.moveToNext()) {
                                 val candidateTitle = MediaTitleNormalizer.normalizeTitle(cursor.getString(1))
                                 val lookup = MediaTitleNormalizer.normalizeTitle(cursor.getString(2))
-                                if (title == candidateTitle || title == lookup) add(cursor.getLong(0))
+                                if (title == candidateTitle || title == lookup) {
+                                    val existingKind = cursor.getString(3)?.trim()?.lowercase().orEmpty()
+                                    val existingIsMovie = existingKind in setOf("movie", "film")
+                                    val kindCompatible = existingKind.isBlank() || existingIsMovie == isMovie
+                                    if (kindCompatible) add(cursor.getLong(0)) else incompatibleAnimeKindMatches++
+                                }
                             }
                         }
                     }
-                    if (animeIds.size > 1) {
+                    if (animeIds.size > 1 || incompatibleAnimeKindMatches > 0) {
                         ambiguous++
                         continue
                     }
                     val animeId = if (animeIds.size == 1) {
-                        animeIds.single()
+                        val existingId = animeIds.single()
+                        if (isMovie) {
+                            db.update(
+                                "anime",
+                                ContentValues().apply { put("media_kind", "movie") },
+                                "id = ? AND (media_kind IS NULL OR trim(media_kind) = '')",
+                                arrayOf(existingId.toString()),
+                            )
+                        }
+                        existingId
                     } else {
                         // A confidently parsed new local title can become a local-only
                         // anime row. It is not auto-associated with any remote catalog ID.
@@ -1611,12 +1629,16 @@ class ReiAnixSqliteLibraryRepository(
                             put("title", item.animeTitle!!.trim())
                             put("added_at", System.currentTimeMillis() / 1000.0)
                             put("metadata_source", "local_index")
-                            put("media_kind", "series")
+                            put("media_kind", expectedMediaKind)
                         }
                         db.insertOrThrow("anime", null, localAnime)
                     }
                     val season = item.season ?: 0
                     val logicalCount = when {
+                        isMovie -> db.rawQuery(
+                            "SELECT id FROM episodes WHERE anime_id = ? AND lower(COALESCE(episode_type, '')) = 'movie'",
+                            arrayOf(animeId.toString()),
+                        ).use { it.count }
                         item.episodeNumber != null -> db.rawQuery(
                             "SELECT id FROM episodes WHERE anime_id = ? AND season = ? AND number = ?",
                             arrayOf(animeId.toString(), season.toString(), item.episodeNumber.toString()),

@@ -70,10 +70,15 @@ data class NativeDiscoveredMedia(
             ?: location.trim().takeIf { it.isNotEmpty() }?.let { "location:$it" }
 
     val hasConfidentEpisodeIdentity: Boolean
-        get() = !ambiguous && !animeTitle.isNullOrBlank() &&
-            ((season != null && season >= 0) || absoluteNumber != null) &&
-            (episodeNumber != null || absoluteNumber != null) &&
-            identificationConfidence?.trim()?.lowercase() in setOf("high", "certain", "exact", "high_confidence")
+        get() {
+            val confident = identificationConfidence?.trim()?.lowercase() in
+                setOf("high", "certain", "exact", "high_confidence")
+            if (ambiguous || animeTitle.isNullOrBlank() || !confident) return false
+            // A standalone movie is a valid catalog item without an episode number.
+            if (episodeType?.trim()?.equals("movie", ignoreCase = true) == true) return true
+            return ((season != null && season >= 0) || absoluteNumber != null) &&
+                (episodeNumber != null || absoluteNumber != null)
+        }
 }
 
 data class NativeLibraryIndexReport(
@@ -96,3 +101,57 @@ internal fun String.isWithinScope(scopeRoot: String): Boolean {
 
 internal fun NativeDiscoveredMedia.normalizedAnimeTitle(): String =
     MediaTitleNormalizer.normalizeTitle(animeTitle)
+
+
+/**
+ * Removes a trailing title number only when sibling files in the same folder prove that
+ * the number is repeated as the release episode marker for every discovered episode.
+ * Seihantai na Kimi to Boku's trailing 9/10/11 can be removed as a group; the sequel
+ * suffix in Yozakura-san Chi no Daisakusen 2 remains because its episode numbers differ.
+ */
+internal fun normalizeDuplicateReleaseEpisodeTitleSuffixes(
+    items: List<NativeDiscoveredMedia>,
+): List<NativeDiscoveredMedia> {
+    data class Candidate(
+        val index: Int,
+        val baseTitle: String,
+        val normalizedBaseTitle: String,
+        val sourceFolder: String,
+        val episodeNumber: Double,
+    )
+
+    val terminalNumber = Regex("^(.+?)\\s+(\\d{1,4})$")
+    val candidates = items.mapIndexedNotNull { index, item ->
+        if (item.identificationSource != "release_language_episode") return@mapIndexedNotNull null
+        val title = item.animeTitle?.trim().orEmpty()
+        val match = terminalNumber.matchEntire(title) ?: return@mapIndexedNotNull null
+        val episode = item.episodeNumber ?: return@mapIndexedNotNull null
+        val suffix = match.groupValues[2].toDoubleOrNull() ?: return@mapIndexedNotNull null
+        val base = match.groupValues[1].trim()
+        if (base.isBlank() || suffix != episode) return@mapIndexedNotNull null
+        val normalizedBase = MediaTitleNormalizer.normalizeTitle(base)
+        if (normalizedBase.isBlank()) return@mapIndexedNotNull null
+        Candidate(
+            index = index,
+            baseTitle = base,
+            normalizedBaseTitle = normalizedBase,
+            sourceFolder = item.sourceFolder.orEmpty().trim(),
+            episodeNumber = episode,
+        )
+    }
+
+    // Group by the selected library scope and canonical base title, not by the
+    // immediate directory. A scan can contain multiple unrelated anime in the root,
+    // and one series can have episodes distributed across season subfolders.
+    val replacements = HashMap<Int, String>()
+    val grouped = candidates.groupBy { it.sourceFolder + "|" + it.normalizedBaseTitle }
+    for (siblings in grouped.values) {
+        if (siblings.size < 2) continue
+        if (siblings.map { it.episodeNumber }.distinct().size < 2) continue
+        siblings.forEach { replacements[it.index] = it.baseTitle }
+    }
+
+    return items.mapIndexed { index, item ->
+        replacements[index]?.let { item.copy(animeTitle = it) } ?: item
+    }
+}
