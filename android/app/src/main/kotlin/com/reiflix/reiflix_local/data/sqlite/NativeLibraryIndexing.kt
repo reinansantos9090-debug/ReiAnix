@@ -112,35 +112,43 @@ internal fun NativeDiscoveredMedia.normalizedAnimeTitle(): String =
 internal fun normalizeDuplicateReleaseEpisodeTitleSuffixes(
     items: List<NativeDiscoveredMedia>,
 ): List<NativeDiscoveredMedia> {
-    val grouped = items.withIndex()
-        .filter { (_, item) ->
-            item.identificationSource == "release_language_episode" &&
-                item.episodeNumber != null && !item.relativePath.isNullOrBlank()
-        }
-        .groupBy { (_, item) ->
-            val relative = item.relativePath.orEmpty().replace('\\', '/').trim('/')
-            val parent = relative.substringBeforeLast('/', "")
-            item.sourceFolder.orEmpty().trim() + "|" + parent
-        }
-    val replacements = HashMap<Int, String>()
-    val terminalNumber = Regex("^(.+?)\\s+(\\d{1,4})$")
+    data class Candidate(
+        val index: Int,
+        val baseTitle: String,
+        val normalizedBaseTitle: String,
+        val sourceFolder: String,
+        val episodeNumber: Double,
+    )
 
+    val terminalNumber = Regex("^(.+?)\\s+(\\d{1,4})$")
+    val candidates = items.mapIndexedNotNull { index, item ->
+        if (item.identificationSource != "release_language_episode") return@mapIndexedNotNull null
+        val title = item.animeTitle?.trim().orEmpty()
+        val match = terminalNumber.matchEntire(title) ?: return@mapIndexedNotNull null
+        val episode = item.episodeNumber ?: return@mapIndexedNotNull null
+        val suffix = match.groupValues[2].toDoubleOrNull() ?: return@mapIndexedNotNull null
+        val base = match.groupValues[1].trim()
+        if (base.isBlank() || suffix != episode) return@mapIndexedNotNull null
+        val normalizedBase = MediaTitleNormalizer.normalizeTitle(base)
+        if (normalizedBase.isBlank()) return@mapIndexedNotNull null
+        Candidate(
+            index = index,
+            baseTitle = base,
+            normalizedBaseTitle = normalizedBase,
+            sourceFolder = item.sourceFolder.orEmpty().trim(),
+            episodeNumber = episode,
+        )
+    }
+
+    // Group by the selected library scope and canonical base title, not by the
+    // immediate directory. A scan can contain multiple unrelated anime in the root,
+    // and one series can have episodes distributed across season subfolders.
+    val replacements = HashMap<Int, String>()
+    val grouped = candidates.groupBy { it.sourceFolder + "|" + it.normalizedBaseTitle }
     for (siblings in grouped.values) {
         if (siblings.size < 2) continue
-        val parsed = siblings.mapNotNull { (index, item) ->
-            val title = item.animeTitle?.trim().orEmpty()
-            val match = terminalNumber.matchEntire(title) ?: return@mapNotNull null
-            val episode = item.episodeNumber ?: return@mapNotNull null
-            val suffix = match.groupValues[2].toDoubleOrNull() ?: return@mapNotNull null
-            val base = match.groupValues[1].trim()
-            if (base.isBlank() || suffix != episode) return@mapNotNull null
-            Triple(index, base, MediaTitleNormalizer.normalizeTitle(base))
-        }
-        if (parsed.size != siblings.size) continue
-        if (parsed.map { it.first }.distinct().size != siblings.size) continue
-        if (siblings.mapNotNull { it.value.episodeNumber }.distinct().size != siblings.size) continue
-        if (parsed.map { it.third }.distinct().size != 1) continue
-        parsed.forEach { (index, base, _) -> replacements[index] = base }
+        if (siblings.map { it.episodeNumber }.distinct().size < 2) continue
+        siblings.forEach { replacements[it.index] = it.baseTitle }
     }
 
     return items.mapIndexed { index, item ->

@@ -100,7 +100,7 @@ class NativeLibraryIndexingPolicyTest {
     }
 
     @Test
-    fun repeatedTrailingEpisodeNumberIsRemovedOnlyWithConsistentSiblingEvidence() {
+    fun repeatedTrailingEpisodeNumberIsRemovedPerAnimeEvenWhenRootContainsMixedSeries() {
         val seihantai = listOf(9, 10, 11).map { number ->
             NativeDiscoveredMedia(
                 location = "content://provider/seihantai/$number",
@@ -112,12 +112,9 @@ class NativeLibraryIndexingPolicyTest {
                 identificationSource = "release_language_episode",
                 identificationConfidence = "high",
                 sourceFolder = "saf://adm",
-                relativePath = "Seihantai na Kimi/episode-$number.mp4",
+                relativePath = "episode-$number.mp4",
             )
         }
-        val normalizedSeihantai = normalizeDuplicateReleaseEpisodeTitleSuffixes(seihantai)
-        assertTrue(normalizedSeihantai.all { it.animeTitle == "Seihantai na Kimi to Boku" })
-
         val yozakura = listOf(2, 3, 12).map { number ->
             NativeDiscoveredMedia(
                 location = "content://provider/yozakura/$number",
@@ -129,10 +126,15 @@ class NativeLibraryIndexingPolicyTest {
                 identificationSource = "release_language_episode",
                 identificationConfidence = "high",
                 sourceFolder = "saf://adm",
-                relativePath = "Yozakura-san Chi no Daisakusen 2/episode-$number.mp4",
+                relativePath = "episode-$number.mp4",
             )
         }
-        val normalizedYozakura = normalizeDuplicateReleaseEpisodeTitleSuffixes(yozakura)
-        assertTrue(normalizedYozakura.all { it.animeTitle == "Yozakura-san Chi no Daisakusen 2" })
+
+        // Both series share the same SAF root and immediate folder (the root itself).
+        val mixedRoot = seihantai + yozakura
+        val normalized = normalizeDuplicateReleaseEpisodeTitleSuffixes(mixedRoot)
+
+        assertTrue(normalized.take(3).all { it.animeTitle == "Seihantai na Kimi to Boku" })
+        assertTrue(normalized.drop(3).all { it.animeTitle == "Yozakura-san Chi no Daisakusen 2" })
     }
 }
