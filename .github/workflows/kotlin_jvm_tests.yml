@@ -10,6 +10,8 @@ on:
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/tracemoe/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteAniListAssociation.kt"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/NativeStorageOnboardingState.kt"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/storage/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/catalog/**"
@@ -72,7 +74,7 @@ jobs:
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Run focused artwork JVM tests and compile release Kotlin sources
+      - name: Run focused Android JVM contract tests and compile release Kotlin sources
         shell: bash
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
@@ -99,4 +101,5 @@ jobs:
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
+              --tests com.reiflix.reiflix_local.storage.NativeStorageOnboardingStateTest \
             :app:compileReleaseKotlin
