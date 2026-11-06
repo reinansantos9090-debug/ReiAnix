@@ -2489,37 +2489,9 @@ class MainActivity : ComponentActivity() {
             safDiscoveryAlreadyDispatched = source == null
         }
 
-        if (pendingSafForegroundReconciliation) {
-            when {
-                !hasPersistedSafTree -> {
-                    // Explicit folder selection launches its own first scan.
-                    clearSafForegroundReconciliationPending("no_authorized_saf_root")
-                }
-                safDiscoveryAlreadyDispatched -> {
-                    // The existing startup/permission SAF scan owns this reconciliation.
-                    // Its completion callback consumes the durable pending marker.
-                }
-                else -> {
-                    val reconciliationRequestId = UUID.randomUUID().toString()
-                    publishNativeDiagnostic(
-                        "SAF_FOREGROUND_RECONCILIATION_REQUESTED",
-                        reconciliationRequestId,
-                        action = "scan",
-                        state = "QUEUED",
-                        result = "app_returned_to_foreground",
-                    )
-                    // Use configured SAF roots only. Existing files flow through the
-                    // same idempotent SQLite indexer; newly discovered files are inserted.
-                    scanConfiguredSafRoots(
-                        reconciliationRequestId,
-                        "BACKGROUND_RECONCILIATION",
-                        "app_returned_to_foreground",
-                        includeAuthorizedDiagnostics = false,
-                        onFinished = { clearSafForegroundReconciliationPending("saf_reconciliation_completed") },
-                    )
-                }
-            }
-        }
+        dispatchPendingSafForegroundReconciliation(
+            safDiscoveryAlreadyDispatched = safDiscoveryAlreadyDispatched,
+        )
     }
 
     /**
@@ -2528,11 +2500,15 @@ class MainActivity : ComponentActivity() {
      * already-authorized SAF library could miss its first scan until another resume.
      */
     private fun dispatchStartupDiscoveryAfterBootstrap() {
-        if (
-            !activityResumed ||
-            startupDiscoveryTriggered ||
-            !bootstrapAllowsNativeOperations()
-        ) return
+        if (!activityResumed || !bootstrapAllowsNativeOperations()) return
+
+        if (startupDiscoveryTriggered) {
+            // The Activity may be recreated with a durable SAF refresh pending while
+            // onResume already ran before the asynchronous database bootstrap completed.
+            // In that case this is the first safe point to consume the pending request.
+            dispatchPendingSafForegroundReconciliation()
+            return
+        }
 
         val hasPersistedSafTree = hasPersistedSafTreeGrant()
         startupDiscoveryTriggered = true
@@ -2546,6 +2522,9 @@ class MainActivity : ComponentActivity() {
                 source = null,
                 full = false,
                 reason = "first_activity_resume",
+                onSafScanFinished = if (pendingSafForegroundReconciliation) {
+                    { clearSafForegroundReconciliationPending("bootstrap_startup_saf_scan_completed") }
+                } else null,
             )
         } else {
             Log.i(tag, "STARTUP_SCAN_SKIPPED reason=no_persisted_saf_tree")
@@ -2556,7 +2535,52 @@ class MainActivity : ComponentActivity() {
                 state = "SKIPPED",
                 result = "no_persisted_saf_tree",
             )
+            if (pendingSafForegroundReconciliation) {
+                clearSafForegroundReconciliationPending("bootstrap_no_authorized_saf_root")
+            }
         }
+    }
+
+    private fun dispatchPendingSafForegroundReconciliation(
+        safDiscoveryAlreadyDispatched: Boolean = false,
+    ) {
+        if (!pendingSafForegroundReconciliation || !activityResumed || !bootstrapAllowsNativeOperations()) return
+        if (
+            safPickerPending ||
+            broadStoragePermissionPending ||
+            mediaPermissionRequestPending ||
+            !nativeRequestState.pendingLifecycleAction.isNullOrBlank()
+        ) return
+
+        if (safDiscoveryAlreadyDispatched) {
+            // The startup/combined-permission request already attached a completion
+            // callback to the SAF pipeline, so do not create a second scan.
+            return
+        }
+
+        if (!hasPersistedSafTreeGrant()) {
+            // Selecting an initial/replacement folder has its own explicit scan path.
+            clearSafForegroundReconciliationPending("no_authorized_saf_root")
+            return
+        }
+
+        val reconciliationRequestId = UUID.randomUUID().toString()
+        publishNativeDiagnostic(
+            "SAF_FOREGROUND_RECONCILIATION_REQUESTED",
+            reconciliationRequestId,
+            action = "scan",
+            state = "QUEUED",
+            result = "app_returned_to_foreground",
+        )
+        // Use configured SAF roots only. Existing files flow through the same
+        // idempotent SQLite indexer; newly discovered files are inserted.
+        scanConfiguredSafRoots(
+            reconciliationRequestId,
+            "BACKGROUND_RECONCILIATION",
+            "app_returned_to_foreground",
+            includeAuthorizedDiagnostics = false,
+            onFinished = { clearSafForegroundReconciliationPending("saf_reconciliation_completed") },
+        )
     }
 
     private fun bootstrapAllowsNativeOperations(): Boolean =
