@@ -770,9 +770,10 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "library.page_size",
                             title = "Itens por página",
-                            description = "Quantidade persistida de itens da paginação.",
+                            description = "Define quantos animes são exibidos; Tudo mostra a biblioteca completa.",
                             selectedValue = state.settings["library.page_size"],
                             choices = listOf(
+                                SettingChoice("0", "Tudo"),
                                 SettingChoice("24", "24"),
                                 SettingChoice("36", "36"),
                                 SettingChoice("48", "48"),

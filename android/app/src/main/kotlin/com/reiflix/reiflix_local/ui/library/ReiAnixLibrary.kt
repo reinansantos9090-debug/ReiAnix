@@ -95,7 +95,7 @@ fun ReiAnixLibraryRoute(
     viewModel: ReiAnixLibraryViewModel,
     cardSize: String = "medium",
     gridDensity: String = "medium",
-    pageSize: Int = 36,
+    pageSize: Int = 0,
     defaultSortKey: String = "added_desc",
 ) {
     LaunchedEffect(pageSize) {

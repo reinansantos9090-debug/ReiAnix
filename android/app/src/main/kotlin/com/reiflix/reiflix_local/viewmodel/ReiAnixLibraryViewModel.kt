@@ -92,6 +92,7 @@ import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
 import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
+private const val REIANIX_LIBRARY_ALL_ITEMS = 0
 private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
     setOf("movie", "special", "ova", "oad", "ona", "extra")
 
@@ -579,7 +580,7 @@ class ReiAnixLibraryViewModel(
 
     // These values are projections of the persisted SettingsStore preferences,
     // not another preference store. The settings StateFlow remains canonical.
-    private var configuredLibraryPageSize: Int = 36
+    private var configuredLibraryPageSize: Int = REIANIX_LIBRARY_ALL_ITEMS
     private var appliedLibrarySortDefault: String = "added_desc"
 
     private fun librarySortLabelForSetting(value: String): String = when (value) {
@@ -590,7 +591,8 @@ class ReiAnixLibraryViewModel(
     }
 
     fun applyLibraryPageSize(value: Int) {
-        val normalized = value.takeIf { it in setOf(24, 36, 48, 72) } ?: 36
+        val normalized = value.takeIf { it in setOf(REIANIX_LIBRARY_ALL_ITEMS, 24, 36, 48, 72) }
+            ?: REIANIX_LIBRARY_ALL_ITEMS
         if (configuredLibraryPageSize == normalized) return
         configuredLibraryPageSize = normalized
         val filters = libraryFilters.value
@@ -838,7 +840,11 @@ class ReiAnixLibraryViewModel(
                     animes = canonical,
                     filters = filters,
                 )
-                requested.take(page.pageSize.coerceIn(12, 72))
+                if (page.pageSize == REIANIX_LIBRARY_ALL_ITEMS) {
+                    requested
+                } else {
+                    requested.take(page.pageSize.coerceIn(12, 72))
+                }
             } else {
                 emptyList()
             }
@@ -1965,7 +1971,11 @@ class ReiAnixLibraryViewModel(
         reset: Boolean = page == 0,
     ) {
         val requestedPage = page.coerceAtLeast(0)
-        val normalizedPageSize = pageSize.coerceIn(12, 72)
+        val normalizedPageSize = if (pageSize == REIANIX_LIBRARY_ALL_ITEMS) {
+            REIANIX_LIBRARY_ALL_ITEMS
+        } else {
+            pageSize.coerceIn(12, 72)
+        }
         val generation = if (reset) {
             nativePageGeneration.incrementAndGet()
         } else {
@@ -2020,9 +2030,14 @@ class ReiAnixLibraryViewModel(
                 watchingOnly = watchingOnly,
                 completedOnly = completedOnly,
                 sortLabel = sort,
-                limit = normalizedPageSize,
-                offset = offset,
+                limit = if (normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS) {
+                    ReiAnixLibraryQueryService.DEFAULT_PAGE_SIZE
+                } else {
+                    normalizedPageSize
+                },
+                offset = if (normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS) 0 else offset,
                 libraryOnly = true,
+                allResults = normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS,
             )) {
                 is ReiAnixLibraryQueryResult.Success -> {
                     val pageResult = result.value
