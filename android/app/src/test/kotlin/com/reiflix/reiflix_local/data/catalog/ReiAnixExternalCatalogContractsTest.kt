@@ -331,6 +331,11 @@ class ReiAnixExternalCatalogContractsTest {
             ids = ReiAnixExternalCatalogIds(kitsuId = "no-artwork"),
             coverUrl = null,
         )
+        val anipubRejected = rejected.copy(
+            source = ReiAnixCatalogSource.ANIPUB,
+            ids = ReiAnixExternalCatalogIds(additionalIds = mapOf("anipub" to "anipub-rejected")),
+            coverUrl = "https://cdn.example/anipub-rejected-poster.jpg",
+        )
 
         assertEquals(
             ReiAnixCatalogIdentityDecision.PROBABLE,
@@ -345,12 +350,14 @@ class ReiAnixExternalCatalogContractsTest {
             ReiAnixCatalogIdentityMatcher.evaluateCandidates(7L, local, listOf(probableFirst, probableSecond)).decision,
         )
 
-        val usable = usableCatalogArtworkCandidates(listOf(rejected, noArtwork, probableFirst, probableSecond))
-        assertEquals(
-            listOf("rejected", "probable-first", "probable-second"),
-            usable.map { it.ids.kitsuId },
+        val usable = usableCatalogArtworkCandidates(
+            listOf(rejected, noArtwork, probableFirst, probableSecond, anipubRejected),
         )
-        assertEquals(3, usable.size)
+        assertEquals(
+            listOf("rejected", "probable-first", "probable-second", "anipub-rejected"),
+            usable.map { it.ids.idFor(it.source) },
+        )
+        assertEquals(4, usable.size)
         assertTrue(usable.all { it.artworkCandidates().isNotEmpty() })
         assertTrue(usableCatalogArtworkCandidates(emptyList()).isEmpty())
     }
