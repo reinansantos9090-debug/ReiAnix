@@ -312,7 +312,15 @@ internal fun evaluateTraceMoeProgressiveIdentity(
     )
 }
 
-internal const val MAX_TRACE_MOE_EPISODE_SAMPLES = 5
+internal fun firstTraceMoeEpisodeMatches(
+    matchesByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
+): LinkedHashMap<Long, List<TraceMoeSearchMatch>> = LinkedHashMap<Long, List<TraceMoeSearchMatch>>().apply {
+    matchesByEpisode.entries.take(MAX_TRACE_MOE_EPISODE_SAMPLES).forEach { (episodeId, matches) ->
+        put(episodeId, matches)
+    }
+}
+
+internal const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
 
 const val MINIMUM_TRACE_MOE_SIMILARITY = 0.90
 const val MINIMUM_TRACE_MOE_FRAME_MARGIN = 0.02

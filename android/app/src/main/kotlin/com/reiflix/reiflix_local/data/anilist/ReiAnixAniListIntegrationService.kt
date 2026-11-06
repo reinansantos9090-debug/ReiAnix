@@ -11,6 +11,7 @@ import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
+import com.reiflix.reiflix_local.data.tracemoe.firstTraceMoeEpisodeMatches
 import com.reiflix.reiflix_local.data.tracemoe.evaluateTraceMoeProgressiveIdentity
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import kotlinx.coroutines.flow.Flow
@@ -416,7 +417,7 @@ class ReiAnixAniListIntegrationService(
         // Pre-progress releases stamped the 24-hour cooldown on the first frame.
         // A legacy timestamp without a saved progressive state is treated as an
         // unfinished window so newly published episode thumbnails can resume it.
-        val matchesByEpisode = LinkedHashMap(progress.matchesByEpisode)
+        val matchesByEpisode = firstTraceMoeEpisodeMatches(progress.matchesByEpisode)
         var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
 
         if (confirmedIdentity == null && matchesByEpisode.size < MAX_TRACE_MOE_EPISODE_SAMPLES) {
@@ -460,7 +461,7 @@ class ReiAnixAniListIntegrationService(
                 writeTraceMoeAttemptAt(animeId, completedAt, correction)
             }
             // Partial windows remain open for the next batch; no 24-hour cooldown
-            // is applied until five distinct episodes have actually been queried.
+            // is applied until three distinct episodes have actually been queried.
             return false
         }
 
