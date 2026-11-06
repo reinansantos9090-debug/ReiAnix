@@ -244,7 +244,7 @@ fun ReiAnixNavigationHost(
     appearanceCardSize: String = "medium",
     appearanceShowThumbnails: Boolean = true,
     libraryGridDensity: String = "medium",
-    libraryPageSize: Int = 36,
+    libraryPageSize: Int = 0,
     librarySortDefault: String = "added_desc",
     continueWatchingEnabled: Boolean = true,
     continueWatchingLimit: Int = 10,

@@ -15,6 +15,7 @@ class ReiAnixSettingsContractTest {
         assertEquals("true", ReiAnixSettingsContract.defaultFor("gestures.double_tap"))
         assertEquals("false", ReiAnixSettingsContract.defaultFor("gestures.horizontal_seek"))
         assertEquals(ReiAnixSettingKind.LANGUAGE, ReiAnixSettingsContract.definitions["audio.preferred_language"]?.kind)
+        assertEquals("0", ReiAnixSettingsContract.defaultFor("library.page_size"))
         assertNull(ReiAnixSettingsContract.defaultFor("future.legacy_key"))
     }
 
@@ -24,7 +25,7 @@ class ReiAnixSettingsContractTest {
         assertEquals("5", effective["appearance.poster_size"])
         assertEquals("true", effective["appearance.show_thumbnails"])
         assertEquals("dark", effective["appearance.theme"])
-        assertEquals("36", effective["library.page_size"])
+        assertEquals("0", effective["library.page_size"])
         assertEquals("false", effective["player.zoom_enabled"])
         assertEquals("false", effective["gestures.volume"])
     }
@@ -37,7 +38,7 @@ class ReiAnixSettingsContractTest {
 
         assertEquals("light", effective["appearance.theme"])
         assertEquals("true", effective["appearance.show_thumbnails"])
-        assertEquals("36", effective["library.page_size"])
+        assertEquals("0", effective["library.page_size"])
     }
 
     @Test fun persistedPreferencesOverrideDefaultsAndLegacyKeysAreRetained() {
@@ -64,6 +65,8 @@ class ReiAnixSettingsContractTest {
         assertThrows(IllegalArgumentException::class.java) {
             ReiAnixSettingsContract.normalize("appearance.theme", "sepia")
         }
+        assertEquals("0", ReiAnixSettingsContract.normalize("library.page_size", "0"))
+        assertEquals("72", ReiAnixSettingsContract.normalize("library.page_size", "72"))
         assertThrows(IllegalArgumentException::class.java) {
             ReiAnixSettingsContract.normalize("library.page_size", "37")
         }

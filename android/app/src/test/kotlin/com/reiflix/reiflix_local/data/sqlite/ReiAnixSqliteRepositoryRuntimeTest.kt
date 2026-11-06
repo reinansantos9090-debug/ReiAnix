@@ -1704,6 +1704,13 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
         val firstPage = repository.searchAnimeIds("", null, false, false, false, null, 1, 0)
         val secondPage = repository.searchAnimeIds("", null, false, false, false, null, 1, 1)
+        val allResults = repository.searchAnimeIds(
+            "", null, false, false, false, null, 1, 0, allResults = true,
+        )
+        assertEquals(listOf(2L, 1L), allResults.animeIds)
+        assertEquals(2, allResults.totalCount)
+        assertEquals(2, allResults.limit)
+        assertFalse(allResults.hasMore)
         assertEquals(listOf(2L), firstPage.animeIds)
         assertTrue(firstPage.hasMore)
         assertEquals(listOf(1L), secondPage.animeIds)
@@ -1712,6 +1719,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
 
         val titlePageOne = repository.searchAnimeIds("title", null, false, false, false, null, 1, 0)
         val titlePageTwo = repository.searchAnimeIds("title", null, false, false, false, null, 1, 1)
+        val allTextResults = repository.searchAnimeIds(
+            "title", null, false, false, false, null, 1, 0, allResults = true,
+        )
+        assertEquals(listOf(1L, 2L), allTextResults.animeIds)
+        assertFalse(allTextResults.hasMore)
         assertEquals(listOf(1L), titlePageOne.animeIds)
         assertEquals(listOf(2L), titlePageTwo.animeIds)
         assertFalse(titlePageOne.animeIds.intersect(titlePageTwo.animeIds.toSet()).isNotEmpty())

@@ -7,7 +7,7 @@ import androidx.compose.runtime.Immutable
  * Incremental presentation state for the Library route.
  *
  * This is not a second persistence source: SQLite/Python remain canonical.
- * It only retains the bounded pages currently requested by the visible Library.
+ * It retains the current Library result set. A pageSize of 0 represents all matching items.
  */
 @Keep
 @Immutable
@@ -18,7 +18,7 @@ data class ReiAnixLibraryPagedUiState(
     val hasMore: Boolean = false,
     val loadedPage: Int = -1,
     val isLoading: Boolean = false,
-    val pageSize: Int = 36,
+    val pageSize: Int = 0,
     val requestId: String? = null,
     val generation: Long = 0L,
     /**

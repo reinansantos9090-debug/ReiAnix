@@ -56,12 +56,14 @@ class ReiAnixLibraryQueryService(
         limit: Int = DEFAULT_PAGE_SIZE,
         offset: Int = 0,
         libraryOnly: Boolean = false,
+        allResults: Boolean = false,
     ): ReiAnixLibraryQueryResult<ReiAnixSqliteSearchPage> =
         this.query("searchAnime") {
             require(limit in 1..MAX_PAGE_SIZE) {
                 "Search page size must be between 1 and $MAX_PAGE_SIZE."
             }
             require(offset >= 0) { "Search offset cannot be negative." }
+            require(!allResults || offset == 0) { "All-results queries must start at offset zero." }
             val page = repository.searchAnimeIds(
                 query = searchText,
                 genreKey = genreKey,
@@ -72,6 +74,7 @@ class ReiAnixLibraryQueryService(
                 limit = limit,
                 offset = offset,
                 libraryOnly = libraryOnly,
+                allResults = allResults,
             )
             if (page.animeIds.isEmpty()) ReiAnixLibraryQueryResult.Empty("searchAnime")
             else ReiAnixLibraryQueryResult.Success(page)

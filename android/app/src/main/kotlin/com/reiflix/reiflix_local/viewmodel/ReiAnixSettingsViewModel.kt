@@ -67,11 +67,11 @@ class ReiAnixSettingsViewModel(
     val libraryPageSize: StateFlow<Int> = uiState
         .map { state ->
             state.settings["library.page_size"]?.toIntOrNull()
-                ?.takeIf { it in setOf(24, 36, 48, 72) }
-                ?: 36
+                ?.takeIf { it in setOf(0, 24, 36, 48, 72) }
+                ?: 0
         }
         .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), 36)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), 0)
 
     val librarySortDefault: StateFlow<String> = uiState
         .map { state ->

@@ -59,7 +59,7 @@ A implementação do ReiAnix continua própria e usa SettingsStore, LibraryServi
 | Mostrar miniaturas | Biblioteca | true | evita carregamento/renderização de imagens na Home quando desativado |
 | Ordenação padrão | Biblioteca | added_desc | define a ordenação inicial da Home |
 | Densidade da grade | Biblioteca | medium | altera espaçamento da grade |
-| Itens por página | Biblioteca | 36 | altera page_size da consulta existente |
+| Itens por página | Biblioteca | Tudo | exibe todos os animes correspondentes; as opções 24, 36, 48 e 72 mantêm o carregamento paginado |
 | Salto no double tap | Player/Gestos | 10 s | altera o seek do double tap; swipe horizontal continua desativado |
 | Velocidade da pressão longa | Player/Gestos | 2.0x | aplica velocidade temporária durante long press |
 | Resolução máxima | Vídeo | automática | limita a seleção de vídeo do Media3 |
