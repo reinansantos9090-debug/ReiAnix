@@ -240,9 +240,8 @@ internal fun evaluateTraceMoeIdentityConsensus(
  * Progressive identity policy used while episode thumbnails arrive.
  *
  * A clear single-frame result can be accepted immediately. When one frame is not
- * decisive, two different episode files agreeing on the same AniList ID are enough;
- * with up to five frames, the same two-frame agreement remains sufficient. This avoids waiting for a full
- * season while remaining tolerant of one misleading episode frame.
+ * decisive, two different episode files agreeing on the same AniList ID are enough.
+ * The stream can inspect later episode thumbnails until that consensus is reached.
  */
 internal fun evaluateTraceMoeProgressiveIdentity(
     resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
