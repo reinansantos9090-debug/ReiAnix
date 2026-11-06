@@ -23,10 +23,16 @@ import kotlinx.coroutines.Job
 internal class TraceMoeHttpException(
     val statusCode: Int,
     message: String,
+    val retryAfterSeconds: Long? = null,
 ) : IOException(message)
 
 internal fun isRetryableTraceMoeHttpStatus(statusCode: Int): Boolean =
     statusCode == 408 || statusCode == 425 || statusCode in 500..599
+
+internal fun parseTraceMoeRetryAfterSeconds(value: String?): Long? =
+    value?.trim()?.toLongOrNull()?.coerceIn(1L, MAX_TRACE_MOE_RETRY_AFTER_SECONDS)
+
+private const val MAX_TRACE_MOE_RETRY_AFTER_SECONDS = 60L * 60L
 
 class ReiAnixTraceMoeClient(
     private val connectTimeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
@@ -113,8 +119,9 @@ class ReiAnixTraceMoeClient(
                 }.orEmpty()
                 if (statusCode == 429) {
                     throw TraceMoeHttpException(
-                        statusCode,
-                        "Trace.moe rate limit reached; the local episode identification was postponed.",
+                        statusCode = statusCode,
+                        message = "Trace.moe rate limit reached; the local episode identification was postponed.",
+                        retryAfterSeconds = parseTraceMoeRetryAfterSeconds(connection.getHeaderField("Retry-After")),
                     )
                 }
                 if (statusCode !in 200..299) {

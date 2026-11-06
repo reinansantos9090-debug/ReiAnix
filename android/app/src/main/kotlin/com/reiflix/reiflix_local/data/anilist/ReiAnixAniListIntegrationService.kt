@@ -217,6 +217,7 @@ class ReiAnixAniListIntegrationService(
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
+    private val traceMoeRateLimitRetryNotBeforeMs = ConcurrentHashMap<Long, Long>()
 
     private data class TraceMoeProgressState(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>>,
@@ -419,6 +420,18 @@ class ReiAnixAniListIntegrationService(
         return progress.matchesByEpisode.keys.toSet()
     }
 
+    /**
+     * Remaining server-requested delay after a Trace.moe HTTP 429. A zero result
+     * means an automatic retry is allowed; the map is process-scoped and expires.
+     */
+    fun traceMoePendingRetryDelayMillis(animeId: Long): Long {
+        if (animeId <= 0L) return 0L
+        val retryNotBefore = traceMoeRateLimitRetryNotBeforeMs[animeId] ?: return 0L
+        val remaining = (retryNotBefore - System.currentTimeMillis()).coerceAtLeast(0L)
+        if (remaining == 0L) traceMoeRateLimitRetryNotBeforeMs.remove(animeId, retryNotBefore)
+        return remaining
+    }
+
     /** Whether an unfinished visual-identity window is eligible for another attempt. */
     suspend fun shouldRetryTraceMoeIdentification(animeId: Long): Boolean {
         if (
@@ -426,6 +439,7 @@ class ReiAnixAniListIntegrationService(
             !isAniListEnabled() ||
             !settingEnabled("metadata.auto_match", defaultValue = true)
         ) return false
+        if (traceMoePendingRetryDelayMillis(animeId) > 0L) return false
         val local = library.getAnime(animeId) ?: return false
         if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") {
             return false
@@ -463,6 +477,19 @@ class ReiAnixAniListIntegrationService(
         if (animeId <= 0L || !isAniListEnabled() ||
             !settingEnabled("metadata.auto_match", defaultValue = true)
         ) return false
+        if (traceMoePendingRetryDelayMillis(animeId) > 0L) {
+            ReiAnixDiagnosticTimeline.record(
+                name = "TRACE_MOE_RATE_LIMIT_DEFERRED",
+                severity = "WARN",
+                source = "ReiAnixAniListIntegrationService",
+                result = "WAITING_FOR_RETRY_AFTER",
+                context = mapOf(
+                    "anime_id" to animeId,
+                    "remaining_ms" to traceMoePendingRetryDelayMillis(animeId),
+                ),
+            )
+            return false
+        }
 
         var local = library.getAnime(animeId) ?: return false
         if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") {
@@ -545,13 +572,19 @@ class ReiAnixAniListIntegrationService(
                     confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
                 }
                 is TraceMoeSampleRequestResult.Failed -> {
-                    failedSamplesThisRun++
                     Log.w(
                         TAG,
                         "Trace.moe episode-frame search failed animeId=" + animeId +
                             " episodeId=" + sample.episodeId,
                         request.error,
                     )
+                    if (request.error is TraceMoeHttpException && request.error.statusCode == 429) {
+                        // The server has explicitly asked us to slow down. Stop this
+                        // anime's sample loop now and let the scheduled retry honor
+                        // Retry-After instead of sending the remaining frames immediately.
+                        break
+                    }
+                    failedSamplesThisRun++
                 }
                 TraceMoeSampleRequestResult.BudgetExhausted -> {
                     Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
@@ -695,6 +728,11 @@ class ReiAnixAniListIntegrationService(
                     is IOException -> true
                     else -> false
                 }
+                if (error is TraceMoeHttpException && error.statusCode == 429) {
+                    val retryAfterSeconds = error.retryAfterSeconds ?: TRACE_MOE_RATE_LIMIT_DEFAULT_RETRY_AFTER_SECONDS
+                    traceMoeRateLimitRetryNotBeforeMs[animeId] =
+                        System.currentTimeMillis() + retryAfterSeconds * 1_000L
+                }
                 ReiAnixDiagnosticTimeline.record(
                     name = "TRACE_MOE_REQUEST_FAILED",
                     severity = "WARN",
@@ -707,6 +745,7 @@ class ReiAnixAniListIntegrationService(
                         "episode_id" to sample.episodeId,
                         "attempt" to attemptIndex + 1,
                         "http_status" to (error as? TraceMoeHttpException)?.statusCode,
+                        "retry_after_seconds" to (error as? TraceMoeHttpException)?.retryAfterSeconds,
                     ),
                 )
                 Log.w(
@@ -1624,6 +1663,7 @@ class ReiAnixAniListIntegrationService(
         private const val TRACE_MOE_PROGRESS_VERSION = 2
         private const val TRACE_MOE_HTTP_MAX_ATTEMPTS = 2
         private const val TRACE_MOE_HTTP_RETRY_DELAY_MILLIS = 900L
+        private const val TRACE_MOE_RATE_LIMIT_DEFAULT_RETRY_AFTER_SECONDS = 60L
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN

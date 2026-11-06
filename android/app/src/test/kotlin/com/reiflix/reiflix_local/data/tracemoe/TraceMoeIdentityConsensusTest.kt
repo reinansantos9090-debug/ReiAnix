@@ -218,9 +218,18 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(true, isRetryableTraceMoeHttpStatus(503))
         assertEquals(false, isRetryableTraceMoeHttpStatus(400))
         assertEquals(false, isRetryableTraceMoeHttpStatus(404))
-        // Respect Trace.moe's explicit rate limit and let a later lifecycle retry it.
+        // HTTP 429 is deferred by Retry-After instead of being retried immediately.
         assertEquals(false, isRetryableTraceMoeHttpStatus(429))
         assertEquals(false, isRetryableTraceMoeHttpStatus(200))
+    }
+
+    @Test
+    fun retryAfterHeaderIsParsedAndBounded() {
+        assertEquals(30L, parseTraceMoeRetryAfterSeconds("30"))
+        assertEquals(1L, parseTraceMoeRetryAfterSeconds("0"))
+        assertEquals(3_600L, parseTraceMoeRetryAfterSeconds("99999"))
+        assertEquals(null, parseTraceMoeRetryAfterSeconds("not-a-number"))
+        assertEquals(null, parseTraceMoeRetryAfterSeconds(null))
     }
 
 }

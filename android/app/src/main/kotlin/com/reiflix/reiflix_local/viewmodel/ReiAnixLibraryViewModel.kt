@@ -259,6 +259,7 @@ class ReiAnixLibraryViewModel(
     // Serialize batches per anime so only one Trace.moe stream owns its samples.
     private val episodeThumbnailBatchesInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val episodeThumbnailBatchRerunRequested = ConcurrentHashMap.newKeySet<Long>()
+    private val traceMoeAutomaticRetryScheduled = ConcurrentHashMap.newKeySet<Long>()
     private data class TraceMoeSampleSession(
         val channel: Channel<TraceMoeEpisodeSample>,
         val queuedEpisodeIds: MutableSet<Long>,
@@ -1716,16 +1717,25 @@ class ReiAnixLibraryViewModel(
      * does not require the user to close and reopen the app.
      */
     private fun scheduleTraceMoePendingRetry(animeId: Long) {
+        if (!traceMoeAutomaticRetryScheduled.add(animeId)) return
         val attempt = traceMoeAutomaticRetryAttempts.merge(animeId, 1) { previous, _ -> previous + 1 } ?: 1
-        if (attempt > TRACE_MOE_AUTOMATIC_RETRY_MAX) return
+        if (attempt > TRACE_MOE_AUTOMATIC_RETRY_MAX) {
+            traceMoeAutomaticRetryScheduled.remove(animeId)
+            return
+        }
         viewModelScope.launch {
-            delay(TRACE_MOE_AUTOMATIC_RETRY_DELAY_MILLIS * attempt)
-            val integration = appDependencies?.aniListIntegrationService ?: return@launch
-            if (!integration.shouldRetryTraceMoeIdentification(animeId)) {
-                traceMoeAutomaticRetryAttempts.remove(animeId)
-                return@launch
+            try {
+                val integration = appDependencies?.aniListIntegrationService ?: return@launch
+                val retryAfterMillis = integration.traceMoePendingRetryDelayMillis(animeId)
+                delay(maxOf(TRACE_MOE_AUTOMATIC_RETRY_DELAY_MILLIS * attempt, retryAfterMillis))
+                if (!integration.shouldRetryTraceMoeIdentification(animeId)) {
+                    traceMoeAutomaticRetryAttempts.remove(animeId)
+                    return@launch
+                }
+                enqueuePersistedEpisodeThumbnailsForAnime(animeId)
+            } finally {
+                traceMoeAutomaticRetryScheduled.remove(animeId)
             }
-            enqueuePersistedEpisodeThumbnailsForAnime(animeId)
         }
     }
 
