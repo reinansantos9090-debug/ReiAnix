@@ -232,4 +232,18 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(null, parseTraceMoeRetryAfterSeconds(null))
     }
 
+    @Test
+    fun persistedRateLimitDeadlineNeverShortensAConcurrentRetryAfter() {
+        assertEquals(5_000L, mergeTraceMoeRateLimitDeadlineMillis(5_000L, 2_000L))
+        assertEquals(8_000L, mergeTraceMoeRateLimitDeadlineMillis(5_000L, 8_000L))
+        assertEquals(0L, mergeTraceMoeRateLimitDeadlineMillis(-1L, 0L))
+    }
+
+    @Test
+    fun persistedRateLimitDeadlineBlocksUntilItsAbsoluteTime() {
+        assertEquals(3_000L, remainingTraceMoeRateLimitDelayMillis(8_000L, 5_000L))
+        assertEquals(0L, remainingTraceMoeRateLimitDelayMillis(5_000L, 5_000L))
+        assertEquals(0L, remainingTraceMoeRateLimitDelayMillis(4_000L, 5_000L))
+    }
+
 }

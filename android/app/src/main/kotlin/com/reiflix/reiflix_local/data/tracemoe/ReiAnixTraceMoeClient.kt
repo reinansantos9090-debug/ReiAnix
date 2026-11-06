@@ -32,6 +32,16 @@ internal fun isRetryableTraceMoeHttpStatus(statusCode: Int): Boolean =
 internal fun parseTraceMoeRetryAfterSeconds(value: String?): Long? =
     value?.trim()?.toLongOrNull()?.coerceIn(1L, MAX_TRACE_MOE_RETRY_AFTER_SECONDS)
 
+internal fun mergeTraceMoeRateLimitDeadlineMillis(
+    existingDeadlineMillis: Long,
+    requestedDeadlineMillis: Long,
+): Long = maxOf(existingDeadlineMillis, requestedDeadlineMillis).coerceAtLeast(0L)
+
+internal fun remainingTraceMoeRateLimitDelayMillis(
+    deadlineMillis: Long,
+    nowMillis: Long,
+): Long = (deadlineMillis - nowMillis).coerceAtLeast(0L)
+
 private const val MAX_TRACE_MOE_RETRY_AFTER_SECONDS = 60L * 60L
 
 class ReiAnixTraceMoeClient(

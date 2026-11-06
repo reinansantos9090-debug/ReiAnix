@@ -11,6 +11,8 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeHttpException
 import com.reiflix.reiflix_local.data.tracemoe.isRetryableTraceMoeHttpStatus
+import com.reiflix.reiflix_local.data.tracemoe.mergeTraceMoeRateLimitDeadlineMillis
+import com.reiflix.reiflix_local.data.tracemoe.remainingTraceMoeRateLimitDelayMillis
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
@@ -421,15 +423,100 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Remaining server-requested delay after a Trace.moe HTTP 429. A zero result
-     * means an automatic retry is allowed; the map is process-scoped and expires.
+     * Remaining server-requested delay after a Trace.moe HTTP 429. The deadline is
+     * persisted globally in SQLite so process death/restart cannot bypass Retry-After.
      */
-    fun traceMoePendingRetryDelayMillis(animeId: Long): Long {
+    suspend fun traceMoePendingRetryDelayMillis(animeId: Long): Long {
         if (animeId <= 0L) return 0L
-        val retryNotBefore = traceMoeRateLimitRetryNotBeforeMs[animeId] ?: return 0L
-        val remaining = (retryNotBefore - System.currentTimeMillis()).coerceAtLeast(0L)
-        if (remaining == 0L) traceMoeRateLimitRetryNotBeforeMs.remove(animeId, retryNotBefore)
+        val nowMillis = System.currentTimeMillis()
+        val inMemoryDeadline = traceMoeRateLimitRetryNotBeforeMs[animeId] ?: 0L
+        val persistedDeadline = try {
+            readPersistedTraceMoeRateLimitDeadlineMillis()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not read persisted Trace.moe rate-limit deadline", error)
+            0L
+        }
+        val deadline = mergeTraceMoeRateLimitDeadlineMillis(inMemoryDeadline, persistedDeadline)
+        val remaining = remainingTraceMoeRateLimitDelayMillis(deadline, nowMillis)
+        if (remaining == 0L) {
+            if (inMemoryDeadline > 0L) {
+                traceMoeRateLimitRetryNotBeforeMs.remove(animeId, inMemoryDeadline)
+            }
+            if (persistedDeadline > 0L) {
+                clearExpiredPersistedTraceMoeRateLimitDeadline(persistedDeadline)
+            }
+        }
         return remaining
+    }
+
+    private suspend fun readPersistedTraceMoeRateLimitDeadlineMillis(): Long =
+        withContext(Dispatchers.IO) {
+            library.database.read { connection ->
+                connection.rawQuery(
+                    "SELECT value FROM preferences WHERE key=? LIMIT 1",
+                    arrayOf(TRACE_MOE_RATE_LIMIT_RETRY_NOT_BEFORE_PREFERENCE_KEY),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        cursor.getString(0)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                    } else {
+                        0L
+                    }
+                }
+            }
+        }
+
+    /**
+     * Extends, but never shortens, the global server-requested deadline. A SQLite
+     * transaction protects concurrent 429 responses from different anime sessions.
+     */
+    private suspend fun persistTraceMoeRateLimitDeadlineMillis(requestedDeadlineMillis: Long): Long =
+        withContext(Dispatchers.IO) {
+            library.database.transaction { connection ->
+                val existingDeadline = connection.rawQuery(
+                    "SELECT value FROM preferences WHERE key=? LIMIT 1",
+                    arrayOf(TRACE_MOE_RATE_LIMIT_RETRY_NOT_BEFORE_PREFERENCE_KEY),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        cursor.getString(0)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                    } else {
+                        0L
+                    }
+                }
+                val mergedDeadline = mergeTraceMoeRateLimitDeadlineMillis(
+                    existingDeadline,
+                    requestedDeadlineMillis,
+                )
+                val nowSeconds = System.currentTimeMillis() / 1000.0
+                val values = ContentValues().apply {
+                    put("key", TRACE_MOE_RATE_LIMIT_RETRY_NOT_BEFORE_PREFERENCE_KEY)
+                    put("value", mergedDeadline.toString())
+                    put("updated_at", nowSeconds)
+                }
+                connection.insertWithOnConflict(
+                    "preferences",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+                mergedDeadline
+            }
+        }
+
+    private suspend fun clearExpiredPersistedTraceMoeRateLimitDeadline(expiredDeadlineMillis: Long) {
+        withContext(Dispatchers.IO) {
+            library.database.transaction { connection ->
+                connection.delete(
+                    "preferences",
+                    "key=? AND value=?",
+                    arrayOf(
+                        TRACE_MOE_RATE_LIMIT_RETRY_NOT_BEFORE_PREFERENCE_KEY,
+                        expiredDeadlineMillis.toString(),
+                    ),
+                )
+            }
+        }
     }
 
     /** Whether an unfinished visual-identity window is eligible for another attempt. */
@@ -477,7 +564,8 @@ class ReiAnixAniListIntegrationService(
         if (animeId <= 0L || !isAniListEnabled() ||
             !settingEnabled("metadata.auto_match", defaultValue = true)
         ) return false
-        if (traceMoePendingRetryDelayMillis(animeId) > 0L) {
+        val rateLimitRemainingMillis = traceMoePendingRetryDelayMillis(animeId)
+        if (rateLimitRemainingMillis > 0L) {
             ReiAnixDiagnosticTimeline.record(
                 name = "TRACE_MOE_RATE_LIMIT_DEFERRED",
                 severity = "WARN",
@@ -485,7 +573,8 @@ class ReiAnixAniListIntegrationService(
                 result = "WAITING_FOR_RETRY_AFTER",
                 context = mapOf(
                     "anime_id" to animeId,
-                    "remaining_ms" to traceMoePendingRetryDelayMillis(animeId),
+                    "remaining_ms" to rateLimitRemainingMillis,
+                    "deadline_persisted" to true,
                 ),
             )
             return false
@@ -735,8 +824,23 @@ class ReiAnixAniListIntegrationService(
                 }
                 if (error is TraceMoeHttpException && error.statusCode == 429) {
                     val retryAfterSeconds = error.retryAfterSeconds ?: TRACE_MOE_RATE_LIMIT_DEFAULT_RETRY_AFTER_SECONDS
-                    traceMoeRateLimitRetryNotBeforeMs[animeId] =
-                        System.currentTimeMillis() + retryAfterSeconds * 1_000L
+                    val requestedDeadline = System.currentTimeMillis() + retryAfterSeconds * 1_000L
+                    val persistedDeadline = try {
+                        persistTraceMoeRateLimitDeadlineMillis(requestedDeadline)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (persistenceError: Exception) {
+                        Log.w(
+                            TAG,
+                            "Could not persist Trace.moe HTTP 429 retry deadline; keeping process-local protection",
+                            persistenceError,
+                        )
+                        requestedDeadline
+                    }
+                    traceMoeRateLimitRetryNotBeforeMs[animeId] = maxOf(
+                        traceMoeRateLimitRetryNotBeforeMs[animeId] ?: 0L,
+                        persistedDeadline,
+                    )
                 }
                 ReiAnixDiagnosticTimeline.record(
                     name = "TRACE_MOE_REQUEST_FAILED",
@@ -1669,6 +1773,8 @@ class ReiAnixAniListIntegrationService(
         private const val TRACE_MOE_HTTP_MAX_ATTEMPTS = 2
         private const val TRACE_MOE_HTTP_RETRY_DELAY_MILLIS = 900L
         private const val TRACE_MOE_RATE_LIMIT_DEFAULT_RETRY_AFTER_SECONDS = 60L
+        private const val TRACE_MOE_RATE_LIMIT_RETRY_NOT_BEFORE_PREFERENCE_KEY =
+            "__reianix.internal.trace_moe_retry_not_before_ms_v1"
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
