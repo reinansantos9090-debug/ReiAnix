@@ -405,7 +405,21 @@ class ReiAnixAniListIntegrationService(
         val nowSeconds = System.currentTimeMillis() / 1000.0
         val previousAttempt = readTraceMoeAttemptAt(animeId, correction)
         if (progress.completed) {
-            if (previousAttempt != null && nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS) return false
+            val savedConfirmation = evaluateTraceMoeProgressiveIdentity(progress.matchesByEpisode)
+            if (savedConfirmation != null &&
+                previousAttempt != null &&
+                nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
+            ) {
+                return false
+            }
+
+            // Older releases also marked an unsuccessful five-episode window as
+            // completed. Such a window has no valid consensus and must be reopened
+            // immediately; otherwise its legacy 24-hour cooldown would still block
+            // the additional thumbnails this release is able to inspect.
+            if (savedConfirmation == null) {
+                Log.i(TAG, "Resuming an unfinished legacy Trace.moe sample window animeId=$animeId")
+            }
             progress.matchesByEpisode.clear()
             writeTraceMoeProgress(animeId, progress.matchesByEpisode, completed = false, correction = correction)
         }
