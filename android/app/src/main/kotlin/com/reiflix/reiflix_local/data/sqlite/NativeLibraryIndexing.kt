@@ -70,10 +70,15 @@ data class NativeDiscoveredMedia(
             ?: location.trim().takeIf { it.isNotEmpty() }?.let { "location:$it" }
 
     val hasConfidentEpisodeIdentity: Boolean
-        get() = !ambiguous && !animeTitle.isNullOrBlank() &&
-            ((season != null && season >= 0) || absoluteNumber != null) &&
-            (episodeNumber != null || absoluteNumber != null) &&
-            identificationConfidence?.trim()?.lowercase() in setOf("high", "certain", "exact", "high_confidence")
+        get() {
+            val confident = identificationConfidence?.trim()?.lowercase() in
+                setOf("high", "certain", "exact", "high_confidence")
+            if (ambiguous || animeTitle.isNullOrBlank() || !confident) return false
+            // A standalone movie is a valid catalog item without an episode number.
+            if (episodeType?.trim()?.equals("movie", ignoreCase = true) == true) return true
+            return ((season != null && season >= 0) || absoluteNumber != null) &&
+                (episodeNumber != null || absoluteNumber != null)
+        }
 }
 
 data class NativeLibraryIndexReport(
@@ -96,3 +101,49 @@ internal fun String.isWithinScope(scopeRoot: String): Boolean {
 
 internal fun NativeDiscoveredMedia.normalizedAnimeTitle(): String =
     MediaTitleNormalizer.normalizeTitle(animeTitle)
+
+
+/**
+ * Removes a trailing title number only when sibling files in the same folder prove that
+ * the number is repeated as the release episode marker for every discovered episode.
+ * Seihantai na Kimi to Boku's trailing 9/10/11 can be removed as a group; the sequel
+ * suffix in Yozakura-san Chi no Daisakusen 2 remains because its episode numbers differ.
+ */
+internal fun normalizeDuplicateReleaseEpisodeTitleSuffixes(
+    items: List<NativeDiscoveredMedia>,
+): List<NativeDiscoveredMedia> {
+    val grouped = items.withIndex()
+        .filter { (_, item) ->
+            item.identificationSource == "release_language_episode" &&
+                item.episodeNumber != null && !item.relativePath.isNullOrBlank()
+        }
+        .groupBy { (_, item) ->
+            val relative = item.relativePath.orEmpty().replace('\\', '/').trim('/')
+            val parent = relative.substringBeforeLast('/', "")
+            item.sourceFolder.orEmpty().trim() + "|" + parent
+        }
+    val replacements = HashMap<Int, String>()
+    val terminalNumber = Regex("^(.+?)\\s+(\\d{1,4})$")
+
+    for (siblings in grouped.values) {
+        if (siblings.size < 2) continue
+        val parsed = siblings.mapNotNull { (index, item) ->
+            val title = item.animeTitle?.trim().orEmpty()
+            val match = terminalNumber.matchEntire(title) ?: return@mapNotNull null
+            val episode = item.episodeNumber ?: return@mapNotNull null
+            val suffix = match.groupValues[2].toDoubleOrNull() ?: return@mapNotNull null
+            val base = match.groupValues[1].trim()
+            if (base.isBlank() || suffix != episode) return@mapNotNull null
+            Triple(index, base, MediaTitleNormalizer.normalizeTitle(base))
+        }
+        if (parsed.size != siblings.size) continue
+        if (parsed.map { it.first }.distinct().size != siblings.size) continue
+        if (siblings.mapNotNull { it.value.episodeNumber }.distinct().size != siblings.size) continue
+        if (parsed.map { it.third }.distinct().size != 1) continue
+        parsed.forEach { (index, base, _) -> replacements[index] = base }
+    }
+
+    return items.mapIndexed { index, item ->
+        replacements[index]?.let { item.copy(animeTitle = it) } ?: item
+    }
+}

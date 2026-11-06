@@ -59,6 +59,12 @@ object MediaFilenameParser {
     private val tempEpisode = Regex("\\b(?:temp|temporada)[ ._-]*(\\d{1,3})[ ._-]*E(?:P(?:ISODE)?)?[ ._-]*(\\d{1,4})(?:v\\d+)?\\b", RegexOption.IGNORE_CASE)
     private val crossEpisode = Regex("\\b(\\d{1,2})\\s*[xX]\\s*(\\d{1,4})(?:v\\d+)?\\b")
     private val wordEpisode = Regex("\\b(?:E(?:P(?:ISODE)?)?|EPISODE|Epis[oó]dio)[ ._-]*(\\d{1,4})(?:v\\d+)?\\b", RegexOption.IGNORE_CASE)
+    // Portuguese releases may repeat the episode number after the audio/subtitle label:
+    // "Show 9 Dublado 09 [720p]". Bracket metadata is masked before matching.
+    private val releaseLanguageEpisode = Regex(
+        "\\b(?:dublado|dub|legendado|sub)[ ._-]*(\\d{1,4})(?:v\\d+)?(?=\\s*$)",
+        RegexOption.IGNORE_CASE,
+    )
     private val special = Regex("\\b(OVA|OAD|ONA|SPECIALS?|SP|EXTRA)(?:\\b|(?=\\d))[ ._-]*(\\d{1,4})?", RegexOption.IGNORE_CASE)
     private val specialZero = Regex("\\bS00(?:[ ._-]*E(?:P(?:ISODE)?)?[ ._-]*(\\d{1,4}))?\\b", RegexOption.IGNORE_CASE)
     private val absolute = Regex("\\b(?:ABS(?:OLUTE)?|ANIME[- ._]?EP)[ ._-]*(\\d{1,4})\\b", RegexOption.IGNORE_CASE)
@@ -83,7 +89,11 @@ object MediaFilenameParser {
         return true
     }
 
-    fun parseVideoPath(path: String, libraryRoot: String? = null): ParsedMediaName {
+    fun parseVideoPath(
+        path: String,
+        libraryRoot: String? = null,
+        allowStandaloneMovie: Boolean = false,
+    ): ParsedMediaName {
         val normalizedPath = path.replace('\\', '/')
         val fileName = normalizedPath.substringAfterLast('/')
         val extensionStart = fileName.lastIndexOf('.').takeIf { it > 0 } ?: -1
@@ -111,6 +121,8 @@ object MediaFilenameParser {
         val seasonZero = specialZero.find(stem)
         val specialMatch = special.find(stem)
         val absoluteMatch = absolute.find(stem)
+        val releaseMarkerInput = stem.replace(Regex("\\[[^\\]]*]")) { " ".repeat(it.value.length) }
+        val releaseEpisode = releaseLanguageEpisode.find(releaseMarkerInput)
 
         if (seasonZero != null) {
             marker = seasonZero
@@ -179,6 +191,15 @@ object MediaFilenameParser {
                     source = "episode_marker"
                     confidence = MediaIdentificationConfidence.HIGH
                     evidence += "EXPLICIT_EPISODE_TOKEN:${word.value}"
+                }
+                releaseEpisode != null -> {
+                    marker = releaseEpisode
+                    episode = releaseEpisode.groupValues[1].toDouble()
+                    season = season ?: 1
+                    kind = ParsedMediaKind.REGULAR
+                    source = "release_language_episode"
+                    confidence = MediaIdentificationConfidence.HIGH
+                    evidence += "RELEASE_LANGUAGE_EPISODE_TOKEN:" + stem.substring(releaseEpisode.range.first, releaseEpisode.range.last + 1).trim()
                 }
                 movie.find(stem) != null -> {
                     marker = movie.find(stem)
@@ -267,6 +288,21 @@ object MediaFilenameParser {
             source = "unknown"
             confidence = MediaIdentificationConfidence.LOW
             episode = null
+        }
+
+        // Only the selected SAF root opts into recognizing plain named videos as films.
+        // Files in nested folders and generic clips remain conservatively unidentified.
+        val nonFeatureVideoTitles = setOf("trailer", "preview", "sample", "opening", "ending", "teaser", "clip", "pv", "op", "ed")
+        if (
+            allowStandaloneMovie && kind == ParsedMediaKind.UNKNOWN && effectiveFolders.isEmpty() &&
+            extension in supportedVideoExtensions && title.isNotBlank() &&
+            title != "Arquivo não identificado" &&
+            title.trim().lowercase(Locale.ROOT) !in nonFeatureVideoTitles
+        ) {
+            kind = ParsedMediaKind.MOVIE
+            source = "standalone_root_movie"
+            confidence = MediaIdentificationConfidence.HIGH
+            evidence += "ROOT_LEVEL_STANDALONE_MOVIE"
         }
 
         val tail = MediaTitleNormalizer.episodeTitleAfter(stem, marker).orEmpty()

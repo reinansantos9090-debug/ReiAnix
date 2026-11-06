@@ -35,7 +35,12 @@ internal object DiscoveredMediaMetadata {
         }
 
         val parseInput = relativePath.trim().takeIf { it.isNotEmpty() } ?: fileName
-        val parsed = MediaFilenameParser.parseVideoPath(parseInput)
+        val normalizedRelativePath = relativePath.trim().replace('\\', '/').trim('/')
+        val isRootLevelSafVideo = source == "saf" && normalizedRelativePath.isNotEmpty() && '/' !in normalizedRelativePath
+        val parsed = MediaFilenameParser.parseVideoPath(
+            parseInput,
+            allowStandaloneMovie = isRootLevelSafVideo,
+        )
         val fieldConfidence = JSONObject()
         parsed.fieldConfidence.forEach { (field, confidence) ->
             fieldConfidence.put(field.name.lowercase(), confidence.name.lowercase())

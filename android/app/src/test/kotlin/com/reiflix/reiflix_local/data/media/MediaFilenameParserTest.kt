@@ -228,3 +228,52 @@ class MediaFilenameParserTest {
         assertEquals(MediaIdentificationConfidence.HIGH, parsed.fieldConfidence[ParsedMediaField.EPISODE_NUMBER])
     }
 }
+
+
+    @Test
+    fun portugueseReleaseLanguageEpisodeNumbersAreExplicitAndPreserveSequelSuffixes() {
+        val seihantai = listOf(9, 10, 11).map { number ->
+            MediaFilenameParser.parseVideoPath(
+                "Seihantai na Kimi to Boku $number Dublado %02d [720p].mp4".format(number)
+            )
+        }
+        val yozakura = listOf(2, 3, 12).map { number ->
+            MediaFilenameParser.parseVideoPath(
+                "Yozakura-san Chi no Daisakusen 2 Dublado %02d [720p].mp4".format(number)
+            )
+        }
+        val otome = MediaFilenameParser.parseVideoPath(
+            "Otome Game Sekai wa Mob ni Kibishii Sekai desu 2 Dublado 1 [720p].mp4"
+        )
+
+        assertEquals(listOf(9.0, 10.0, 11.0), seihantai.map { it.episodeNumber })
+        assertTrue(seihantai.all { it.identificationSource == "release_language_episode" })
+        assertTrue(seihantai.all { it.confidence == MediaIdentificationConfidence.HIGH })
+        assertTrue(seihantai.all { it.animeTitle.startsWith("Seihantai na Kimi to Boku ") })
+
+        assertEquals(listOf(2.0, 3.0, 12.0), yozakura.map { it.episodeNumber })
+        assertTrue(yozakura.all { it.animeTitle == "Yozakura-san Chi no Daisakusen 2" })
+        assertTrue(yozakura.all { it.confidence == MediaIdentificationConfidence.HIGH })
+
+        assertEquals("Otome Game Sekai wa Mob ni Kibishii Sekai desu 2", otome.animeTitle)
+        assertEquals(1.0, otome.episodeNumber!!, 0.0)
+        assertEquals("release_language_episode", otome.identificationSource)
+    }
+
+    @Test
+    fun rootLevelPlainNamedVideoCanBeRecognizedAsMovieOnlyWhenOptedIn() {
+        val lookBack = MediaFilenameParser.parseVideoPath("Look Back.mp4", allowStandaloneMovie = true)
+        val nestedVideo = MediaFilenameParser.parseVideoPath(
+            "Films/Look Back.mp4",
+            allowStandaloneMovie = true,
+        )
+        val ordinaryVideo = MediaFilenameParser.parseVideoPath("Look Back.mp4")
+
+        assertEquals("Look Back", lookBack.animeTitle)
+        assertEquals(ParsedMediaKind.MOVIE, lookBack.kind)
+        assertEquals("standalone_root_movie", lookBack.identificationSource)
+        assertEquals(MediaIdentificationConfidence.HIGH, lookBack.confidence)
+        assertNull(lookBack.episodeNumber)
+        assertTrue(nestedVideo.kind != ParsedMediaKind.MOVIE)
+        assertTrue(ordinaryVideo.kind != ParsedMediaKind.MOVIE)
+    }
