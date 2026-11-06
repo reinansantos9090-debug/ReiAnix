@@ -260,6 +260,8 @@ class ReiAnixLibraryViewModel(
         val job: Job,
     )
     private val traceMoeSampleSessions = ConcurrentHashMap<Long, TraceMoeSampleSession>()
+    // Serialize new thumbnail publications behind startup recovery of already saved images.
+    private val traceMoePublicationQueue = Channel<ReiAnixArtworkPublication>(Channel.UNLIMITED)
     // If the local-media/artwork projection changes during extraction, rerun once
     // after the current batch releases its episode locks instead of dropping the
     // newer request because that episode is still in flight.
@@ -1642,22 +1644,24 @@ class ReiAnixLibraryViewModel(
 
     private fun enqueuePublishedEpisodeThumbnail(publication: ReiAnixArtworkPublication) {
         if (publication.entityType != "episode" ||
-            publication.artworkType != "episode_thumbnail"
+            publication.artworkType != "episode_thumbnail" ||
+            publication.localPath.isNullOrBlank()
         ) return
+        traceMoePublicationQueue.trySend(publication)
+    }
+
+    private suspend fun processPublishedEpisodeThumbnail(publication: ReiAnixArtworkPublication) {
         val episodeId = publication.entityId.toLongOrNull() ?: return
         val localPath = publication.localPath?.trim()?.takeIf(String::isNotEmpty) ?: return
         val imageFile = File(localPath)
         if (!imageFile.isFile) return
-
-        viewModelScope.launch {
-            try {
-                val episode = nativeLibraryRepository.getEpisode(episodeId) ?: return@launch
-                enqueueTraceMoeSample(episode.animeId, episodeId, imageFile)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TAG, "Could not route a published episode thumbnail to Trace.moe", error)
-            }
+        try {
+            val episode = nativeLibraryRepository.getEpisode(episodeId) ?: return
+            enqueueTraceMoeSample(episode.animeId, episodeId, imageFile)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not route a published episode thumbnail to Trace.moe", error)
         }
     }
 
@@ -1754,9 +1758,14 @@ class ReiAnixLibraryViewModel(
         canonicalConsumersStarted = true
 
         // Read the canonical catalog and rehydrate saved thumbnails after app startup.
+        // New publication events are buffered while this runs, so older saved images
+        // enter the per-anime stream before thumbnails published during startup.
         viewModelScope.launch {
             refreshNativeCatalog()
             enqueuePersistedEpisodeThumbnailsForTraceMoe()
+            for (publication in traceMoePublicationQueue) {
+                processPublishedEpisodeThumbnail(publication)
+            }
         }
 
         // A successful artwork commit must invalidate the existing SQLite projection:
