@@ -46,12 +46,14 @@ class ReiAnixSettingsContractTest {
             mapOf(
                 "appearance.show_thumbnails" to "false",
                 "appearance.theme" to "light",
+                "library.page_size" to "36",
                 "plugin.legacy" to "custom-old-format",
             ),
         )
 
         assertEquals("false", effective["appearance.show_thumbnails"])
         assertEquals("light", effective["appearance.theme"])
+        assertEquals("36", effective["library.page_size"])
         assertEquals("custom-old-format", effective["plugin.legacy"])
         assertEquals("false", effective["player.zoom_enabled"])
     }
