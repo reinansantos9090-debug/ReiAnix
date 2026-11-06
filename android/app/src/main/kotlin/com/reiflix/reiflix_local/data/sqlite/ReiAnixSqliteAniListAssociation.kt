@@ -18,6 +18,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         manual: Boolean,
         score: Double?,
         margin: Double?,
+        traceMoeConfirmed: Boolean = false,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -46,9 +47,21 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
             val current = currentAndManualFields.first
             val protectedFields = currentAndManualFields.second
-            if (!manual && current.anilistMatchManual == true) return@transaction current
-            if (!manual && current.anilistId != null && current.anilistId != anilistId) return@transaction current
-            if (!manual && (score == null || score < 0.86 || margin == null || margin < 0.05)) {
+            if (!manual && (
+                    current.anilistMatchManual == true ||
+                        current.metadataSource == "manual" ||
+                        current.metadataStatus == "manual"
+                )
+            ) return@transaction current
+            if (!manual && !traceMoeConfirmed &&
+                current.anilistId != null && current.anilistId != anilistId
+            ) return@transaction current
+            if (!manual && traceMoeConfirmed && (score == null || score < 0.86)) {
+                return@transaction current
+            }
+            if (!manual && !traceMoeConfirmed &&
+                (score == null || score < 0.86 || margin == null || margin < 0.05)
+            ) {
                 return@transaction current
             }
 

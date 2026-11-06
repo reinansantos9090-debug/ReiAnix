@@ -28,6 +28,9 @@ import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
 import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
 import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
+import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
+import kotlinx.coroutines.flow.receiveAsFlow
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
@@ -59,6 +62,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -248,6 +252,12 @@ class ReiAnixLibraryViewModel(
     // after the current batch releases its episode locks instead of dropping the
     // newer request because that episode is still in flight.
     private val episodeThumbnailRerunRequested = ConcurrentHashMap.newKeySet<Long>()
+    private data class TraceMoeSampleSession(
+        val channel: Channel<TraceMoeEpisodeSample>,
+        val queuedEpisodeIds: MutableSet<Long>,
+        val job: Job,
+    )
+    private val traceMoeSampleSessions = ConcurrentHashMap<Long, TraceMoeSampleSession>()
     // Legacy runtime callbacks can invalidate the same projection many times in a burst.
     // A conflated channel keeps one follow-up reload instead of launching dozens of
     // identical SQLite catalog reads while the previous reload is still in flight.
@@ -1387,6 +1397,9 @@ class ReiAnixLibraryViewModel(
                         val rawSource = episodeThumbnailSource(episode) ?: return@mapNotNull null
                         val existingPath = episode.artwork?.localPath
                         val existingIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(existingPath)
+                        if (existingIsUsable && !existingPath.isNullOrBlank()) {
+                            enqueueTraceMoeSample(animeId, episode.id, File(existingPath))
+                        }
                         if (!VideoThumbnailExtractor.thumbnailNeedsRegeneration(existingPath, existingIsUsable)) {
                             ReiAnixDiagnosticTimeline.record(
                                 name = "EPISODE_THUMBNAIL_CACHE_REUSED",
@@ -1464,6 +1477,9 @@ class ReiAnixLibraryViewModel(
                                 )
                             } else {
                                 val outputIsUsable = VideoThumbnailExtractor.isUsableThumbnailFile(result.path)
+                                if (outputIsUsable) {
+                                    enqueueTraceMoeSample(animeId, episode.id, File(result.path))
+                                }
                                 ReiAnixDiagnosticTimeline.record(
                                     name = "EPISODE_THUMBNAIL_OUTPUT_VALIDATED",
                                     source = "ReiAnixLibraryViewModel",
@@ -1503,6 +1519,58 @@ class ReiAnixLibraryViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * One stream per anime is shared by every thumbnail batch. Details can publish
+     * several new thumbnail revisions while an earlier batch is still running;
+     * those later images must join the same Trace.moe attempt instead of being lost.
+     */
+    private fun enqueueTraceMoeSample(animeId: Long, episodeId: Long, imageFile: File) {
+        if (animeId <= 0L || episodeId <= 0L || !imageFile.isFile) return
+        val integration = appDependencies?.aniListIntegrationService ?: return
+        val session = traceMoeSampleSessions.compute(animeId) { _, existing ->
+            if (existing != null && !existing.job.isCompleted && !existing.job.isCancelled) {
+                existing
+            } else {
+                val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
+                lateinit var created: TraceMoeSampleSession
+                val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+                    try {
+                        integration.identifyFromEpisodeThumbnails(
+                            animeId = animeId,
+                            samples = channel.receiveAsFlow(),
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Trace.moe visual identification failed for animeId=$animeId", error)
+                    } finally {
+                        channel.close()
+                        traceMoeSampleSessions.remove(animeId, created)
+                    }
+                }
+                created = TraceMoeSampleSession(
+                    channel = channel,
+                    queuedEpisodeIds = ConcurrentHashMap.newKeySet<Long>(),
+                    job = job,
+                )
+                created
+            }
+        } ?: return
+
+        val accepted = synchronized(session) {
+            session.queuedEpisodeIds.size < MAX_TRACE_MOE_EPISODE_SAMPLES &&
+                session.queuedEpisodeIds.add(episodeId)
+        }
+        if (!accepted) return
+        val sent = session.channel.trySend(
+            TraceMoeEpisodeSample(episodeId = episodeId, imageFile = imageFile),
+        )
+        if (sent.isFailure) {
+            synchronized(session) { session.queuedEpisodeIds.remove(episodeId) }
+        }
+        session.job.start()
     }
 
     private fun episodeThumbnailSource(episode: com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel): String? =
