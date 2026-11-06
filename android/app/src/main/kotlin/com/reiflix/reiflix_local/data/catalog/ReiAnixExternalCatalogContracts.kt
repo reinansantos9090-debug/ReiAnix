@@ -105,7 +105,7 @@ data class ReiAnixCatalogArtworkSourceField(
 
 /**
  * Fully typed provider candidate. Dimensions may produce a warning, never a type conversion.
- * The local anime row ID is attached only after the external identity is verified.
+ * The local anime target is supplied by the artwork request, independently of identity matching.
  */
 data class ReiAnixCatalogArtworkCandidate(
     val source: ReiAnixCatalogSource,
@@ -118,7 +118,7 @@ data class ReiAnixCatalogArtworkCandidate(
     val entityType: String = "anime",
     val width: Int? = null,
     val height: Int? = null,
-    /** Local SQLite owner, set only after the external identity has passed verification. */
+    /** Optional local SQLite target; it is not an identity-verification result. */
     val localAnimeId: Long? = null,
 ) {
     init {
