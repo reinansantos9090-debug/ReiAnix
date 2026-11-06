@@ -14,6 +14,10 @@ data class NativeStorageOnboardingState(
     val error: String? = null,
     val dismissed: Boolean = false,
 ) {
+    /**
+     * Keep the prompt hidden until storage validation has a result. Otherwise a
+     * saved, accessible SAF folder briefly looks unconfigured during app startup.
+     */
     val isPromptVisible: Boolean
         get() = !dismissed && phase in PROMPT_PHASES
 
@@ -25,7 +29,6 @@ data class NativeStorageOnboardingState(
         const val PHASE_ERROR = "error"
 
         private val PROMPT_PHASES = setOf(
-            PHASE_CHECKING,
             PHASE_NEEDS_FOLDER,
             PHASE_FOLDER_PICKER_OPEN,
             PHASE_ERROR,
