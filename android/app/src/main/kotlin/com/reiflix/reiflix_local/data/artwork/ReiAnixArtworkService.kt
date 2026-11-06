@@ -64,6 +64,7 @@ internal data class ReiAnixArtworkPublication(
     val entityId: String,
     val artworkType: String,
     val sourceKind: String,
+    val localPath: String? = null,
 )
 
 /** Candidate artwork URLs remain separate from the local identity association. */
@@ -2086,6 +2087,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             entityId = id,
             artworkType = type,
             sourceKind = sourceKind,
+            localPath = path.takeIf { entity == "episode" && type == "episode_thumbnail" },
         )
         if (!publicationSignal.publishIfCommitted(
                 publication = publication,

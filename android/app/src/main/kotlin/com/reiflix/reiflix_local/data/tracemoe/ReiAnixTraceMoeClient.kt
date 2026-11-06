@@ -240,9 +240,9 @@ internal fun evaluateTraceMoeIdentityConsensus(
  * Progressive identity policy used while episode thumbnails arrive.
  *
  * A clear single-frame result can be accepted immediately. When one frame is not
- * decisive, two different episode files agreeing on the same AniList ID are enough;
- * with up to five frames, the same two-frame agreement remains sufficient. This avoids waiting for a full
- * season while remaining tolerant of one misleading episode frame.
+ * decisive, two different episode files agreeing on the same AniList ID are enough.
+ * Only three distinct thumbnail samples are examined; if those remain inconclusive,
+ * the strongest returned match is used as the final fallback.
  */
 internal fun evaluateTraceMoeProgressiveIdentity(
     resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
@@ -309,6 +309,32 @@ internal fun evaluateTraceMoeProgressiveIdentity(
         averageSimilarity = average,
         margin = (average - strongestCompetitorSimilarity).coerceAtLeast(0.0),
         supportingEpisodes = winner.value.size,
+    )
+}
+
+internal fun evaluateTraceMoeBestEffortIdentity(
+    resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
+): TraceMoeIdentityConsensus? {
+    val allMatches = resultsByEpisode.values.asSequence()
+        .flatten()
+        .filter { it.anilistId > 0 && it.similarity.isFinite() && it.similarity in 0.0..1.0 }
+        .toList()
+    val best = allMatches.maxWithOrNull(
+        compareBy<TraceMoeSearchMatch> { it.similarity }
+            .thenByDescending { it.anilistId },
+    ) ?: return null
+    val strongestDifferentAnime = allMatches.asSequence()
+        .filter { it.anilistId != best.anilistId }
+        .maxOfOrNull(TraceMoeSearchMatch::similarity)
+        ?: 0.0
+    val supportingEpisodes = resultsByEpisode.count { (_, matches) ->
+        matches.any { it.anilistId == best.anilistId }
+    }
+    return TraceMoeIdentityConsensus(
+        anilistId = best.anilistId,
+        averageSimilarity = best.similarity,
+        margin = (best.similarity - strongestDifferentAnime).coerceAtLeast(0.0),
+        supportingEpisodes = supportingEpisodes,
     )
 }
 

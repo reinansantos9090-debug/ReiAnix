@@ -136,6 +136,35 @@ class TraceMoeIdentityConsensusTest {
     }
 
     @Test
+    fun thirdInconclusiveFrameFallsBackToTheStrongestTraceMoeCandidate() {
+        val fallback = evaluateTraceMoeBestEffortIdentity(
+            linkedMapOf(
+                11L to listOf(TraceMoeSearchMatch(anilistId = 21, similarity = 0.88)),
+                12L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.84)),
+                13L to listOf(TraceMoeSearchMatch(anilistId = 5114, similarity = 0.91)),
+            ),
+        )
+
+        assertNotNull(fallback)
+        assertEquals(5114, fallback?.anilistId)
+        assertEquals(0.91, fallback?.averageSimilarity ?: 0.0, 0.0001)
+        assertEquals(1, fallback?.supportingEpisodes)
+    }
+
+    @Test
+    fun emptyTraceMoeResultsDoNotProduceAnUnverifiedFallback() {
+        assertNull(
+            evaluateTraceMoeBestEffortIdentity(
+                linkedMapOf(
+                    11L to emptyList(),
+                    12L to emptyList(),
+                    13L to emptyList(),
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun onlyTheFirstThreeEpisodeResultsCanContributeToIdentification() {
         val results = linkedMapOf(
             11L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.88)),
