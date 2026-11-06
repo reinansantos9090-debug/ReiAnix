@@ -2752,14 +2752,17 @@ class MainActivity : ComponentActivity() {
         Log.i(tag, "SAF_FOREGROUND_RECONCILIATION_CONSUMED reason=" + reason + " persisted=" + persisted)
     }
 
+    private fun isTransitioningToInternalActivity(): Boolean =
+        activePlayerRequestId != null ||
+            safPickerPending || broadStoragePermissionPending || mediaPermissionRequestPending ||
+            externalSettingsKind != null || googleSignInJob != null || googleSignOutJob != null ||
+            pendingSettingsFileAction != null || settingsFileProcessing
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // Do not schedule a library reconciliation when the user is entering an
         // internal player, Android's SAF picker/settings, or a permission surface.
-        val leavingForInternalFlow = activePlayerRequestId != null ||
-            safPickerPending || broadStoragePermissionPending || mediaPermissionRequestPending ||
-            externalSettingsKind != null || googleSignInJob != null || googleSignOutJob != null
-        if (!leavingForInternalFlow && nativeBootstrapDecisionComplete && !isFinishing) {
+        if (!isTransitioningToInternalActivity() && nativeBootstrapDecisionComplete && !isFinishing) {
             markSafForegroundReconciliationPending("user_left_app")
         }
     }
@@ -2777,6 +2780,17 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        // onStop is a fallback for genuine background transitions not accompanied by
+        // onUserLeaveHint (for example, certain system/task transitions). Internal
+        // Activity handoffs and configuration changes must not queue a library scan.
+        if (
+            !isChangingConfigurations &&
+            !isFinishing &&
+            !isTransitioningToInternalActivity() &&
+            nativeBootstrapDecisionComplete
+        ) {
+            markSafForegroundReconciliationPending("activity_stopped")
+        }
         logLifecycle("onStop")
         unregisterStorageReceiver()
         MediaStoreScanner.stopChangeObserver(this)
