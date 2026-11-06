@@ -4,6 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Test
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.runBlocking
+import java.io.File
 
 class TraceMoeIdentityConsensusTest {
     @Test
@@ -149,6 +155,75 @@ class TraceMoeIdentityConsensusTest {
         assertNotNull(consensus)
         assertEquals(16498, consensus?.anilistId)
         assertEquals(2, consensus?.supportingEpisodes)
+    }
+
+
+    @Test
+    fun laterEpisodeCanConfirmAfterMoreThanFiveNonDecisiveThumbnails() = runBlocking {
+        val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
+        val searchedEpisodeIds = mutableListOf<Long>()
+        val result = async(start = CoroutineStart.UNDISPATCHED) {
+            collectTraceMoeSamplesUntilConfirmed(
+                samples = channel.receiveAsFlow(),
+                initialMatchesByEpisode = emptyMap(),
+                isSampleUsable = { true },
+                search = { sample ->
+                    searchedEpisodeIds += sample.episodeId
+                    val anilistId = if (sample.episodeId >= 10L) {
+                        42
+                    } else {
+                        1_000 + sample.episodeId.toInt()
+                    }
+                    listOf(TraceMoeSearchMatch(anilistId = anilistId, similarity = 0.87))
+                },
+            )
+        }
+
+        (1L..11L).forEach { episodeId ->
+            channel.send(
+                TraceMoeEpisodeSample(
+                    episodeId = episodeId,
+                    imageFile = File("episode-$episodeId.jpg"),
+                ),
+            )
+        }
+
+        // The channel remains open, but two later matching frames end collection.
+        val decision = result.await()
+        assertEquals((1L..11L).toList(), searchedEpisodeIds)
+        assertEquals(11, decision.matchesByEpisode.size)
+        assertNotNull(decision.consensus)
+        assertEquals(42, decision.consensus?.anilistId)
+        assertEquals(2, decision.consensus?.supportingEpisodes)
+    }
+
+    @Test
+    fun firstClearThumbnailConfirmsWithoutWaitingForLaterEpisodes() = runBlocking {
+        val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
+        val searchedEpisodeIds = mutableListOf<Long>()
+        val result = async(start = CoroutineStart.UNDISPATCHED) {
+            collectTraceMoeSamplesUntilConfirmed(
+                samples = channel.receiveAsFlow(),
+                initialMatchesByEpisode = emptyMap(),
+                isSampleUsable = { true },
+                search = { sample ->
+                    searchedEpisodeIds += sample.episodeId
+                    listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.96))
+                },
+            )
+        }
+
+        channel.send(
+            TraceMoeEpisodeSample(
+                episodeId = 1L,
+                imageFile = File("episode-1.jpg"),
+            ),
+        )
+
+        val decision = result.await()
+        assertEquals(listOf(1L), searchedEpisodeIds)
+        assertEquals(1, decision.consensus?.supportingEpisodes)
+        assertEquals(16498, decision.consensus?.anilistId)
     }
 
 }
