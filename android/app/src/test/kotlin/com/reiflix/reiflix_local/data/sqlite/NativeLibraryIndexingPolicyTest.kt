@@ -82,8 +82,6 @@ class NativeLibraryIndexingPolicyTest {
         assertTrue(weak.copy(identificationConfidence = "high").hasConfidentEpisodeIdentity)
         assertFalse(weak.copy(ambiguous = true, identificationConfidence = "high").hasConfidentEpisodeIdentity)
     }
-}
-
 
     @Test
     fun highConfidenceStandaloneMovieDoesNotRequireAnEpisodeNumber() {
@@ -137,3 +135,4 @@ class NativeLibraryIndexingPolicyTest {
         val normalizedYozakura = normalizeDuplicateReleaseEpisodeTitleSuffixes(yozakura)
         assertTrue(normalizedYozakura.all { it.animeTitle == "Yozakura-san Chi no Daisakusen 2" })
     }
+}

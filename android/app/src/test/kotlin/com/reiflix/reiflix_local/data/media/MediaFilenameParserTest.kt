@@ -227,8 +227,6 @@ class MediaFilenameParserTest {
         assertEquals(MediaIdentificationConfidence.HIGH, parsed.fieldConfidence[ParsedMediaField.SEASON])
         assertEquals(MediaIdentificationConfidence.HIGH, parsed.fieldConfidence[ParsedMediaField.EPISODE_NUMBER])
     }
-}
-
 
     @Test
     fun portugueseReleaseLanguageEpisodeNumbersAreExplicitAndPreserveSequelSuffixes() {
@@ -277,3 +275,4 @@ class MediaFilenameParserTest {
         assertTrue(nestedVideo.kind != ParsedMediaKind.MOVIE)
         assertTrue(ordinaryVideo.kind != ParsedMediaKind.MOVIE)
     }
+}
