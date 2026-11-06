@@ -7,17 +7,14 @@ import com.reiflix.reiflix_local.data.artwork.aniListArtworkCandidateKey
 import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 
-import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.collectTraceMoeSamplesUntilConfirmed
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
 import com.reiflix.reiflix_local.data.tracemoe.evaluateTraceMoeProgressiveIdentity
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.transform
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.take
 import android.content.Context
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
@@ -413,56 +410,53 @@ class ReiAnixAniListIntegrationService(
             writeTraceMoeProgress(animeId, progress.matchesByEpisode, completed = false, correction = correction)
         }
 
-        // Pre-progress releases stamped the 24-hour cooldown on the first frame.
-        // A legacy timestamp without a saved progressive state is treated as an
-        // unfinished window so newly published episode thumbnails can resume it.
-        val matchesByEpisode = LinkedHashMap(progress.matchesByEpisode)
-        var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
-
-        if (confirmedIdentity == null && matchesByEpisode.size < MAX_TRACE_MOE_EPISODE_SAMPLES) {
-            val seenEpisodeIds = HashSet<Long>().apply { addAll(matchesByEpisode.keys) }
-            samples.transform { sample ->
-                if (sample.episodeId > 0L && seenEpisodeIds.add(sample.episodeId)) emit(sample)
-            }.take(MAX_TRACE_MOE_EPISODE_SAMPLES - matchesByEpisode.size)
-                .firstOrNull { sample ->
-                    currentCoroutineContext().ensureActive()
-                    val usable = withContext(Dispatchers.IO) {
-                        sample.imageFile.isFile &&
-                            sample.imageFile.length() in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES &&
-                            VideoThumbnailExtractor.isUsableThumbnailFile(sample.imageFile.absolutePath)
-                    }
-                    if (!usable) return@firstOrNull false
-                    val requestAt = System.currentTimeMillis() / 1000.0
-                    if (!reserveTraceMoeRequest(requestAt)) {
-                        Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
-                        return@firstOrNull true
-                    }
-                    val matches = try {
+        // Keep the collector attached to the per-anime thumbnail stream. Each distinct
+        // episode is queried as soon as its JPEG becomes available; there is no episode
+        // sample ceiling and the stream is cancelled only after strict identity confirmation.
+        val progressiveResult = collectTraceMoeSamplesUntilConfirmed(
+            samples = samples,
+            initialMatchesByEpisode = progress.matchesByEpisode,
+            isSampleUsable = { sample ->
+                withContext(Dispatchers.IO) {
+                    sample.imageFile.isFile &&
+                        sample.imageFile.length() in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES &&
+                        VideoThumbnailExtractor.isUsableThumbnailFile(sample.imageFile.absolutePath)
+                }
+            },
+            search = { sample ->
+                val requestAt = System.currentTimeMillis() / 1000.0
+                if (!reserveTraceMoeRequest(requestAt)) {
+                    Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
+                    null
+                } else {
+                    try {
                         traceMoeClient.search(sample.imageFile)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
-                        Log.w(TAG, "Trace.moe episode-frame search failed animeId=$animeId episodeId=${sample.episodeId}", error)
-                        return@firstOrNull true
+                        Log.w(
+                            TAG,
+                            "Trace.moe episode-frame search failed animeId=$animeId episodeId=${sample.episodeId}",
+                            error,
+                        )
+                        // A failed request does not close the stream. A later episode
+                        // thumbnail gets its own attempt, subject to the shared API budget.
+                        emptyList()
                     }
-                    matchesByEpisode[sample.episodeId] = matches
-                    writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
-                    confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
-                    confirmedIdentity != null
                 }
-        }
-
-        val consensus = confirmedIdentity
-        if (consensus == null) {
-            if (matchesByEpisode.size >= MAX_TRACE_MOE_EPISODE_SAMPLES) {
-                val completedAt = System.currentTimeMillis() / 1000.0
-                writeTraceMoeProgress(animeId, matchesByEpisode, completed = true, correction = correction)
-                writeTraceMoeAttemptAt(animeId, completedAt, correction)
-            }
-            // Partial windows remain open for the next batch; no 24-hour cooldown
-            // is applied until five distinct episodes have actually been queried.
-            return false
-        }
+            },
+            onMatchesUpdated = { updatedMatches ->
+                writeTraceMoeProgress(
+                    animeId = animeId,
+                    matchesByEpisode = updatedMatches,
+                    completed = false,
+                    correction = correction,
+                )
+            },
+        )
+        val matchesByEpisode = progressiveResult.matchesByEpisode
+        val consensus = progressiveResult.consensus
+        if (consensus == null) return false
 
         local = library.getAnime(animeId) ?: return false
         if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") {
