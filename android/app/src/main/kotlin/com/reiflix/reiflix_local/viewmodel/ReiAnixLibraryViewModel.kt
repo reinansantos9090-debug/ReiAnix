@@ -248,6 +248,10 @@ class ReiAnixLibraryViewModel(
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
     private val episodeThumbnailRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
+    // Details can request a new batch after each published artwork projection.
+    // Serialize batches per anime so only one Trace.moe stream owns its samples.
+    private val episodeThumbnailBatchesInFlight = ConcurrentHashMap.newKeySet<Long>()
+    private val episodeThumbnailBatchRerunRequested = ConcurrentHashMap.newKeySet<Long>()
     // If the local-media/artwork projection changes during extraction, rerun once
     // after the current batch releases its episode locks instead of dropping the
     // newer request because that episode is still in flight.
@@ -1370,7 +1374,14 @@ class ReiAnixLibraryViewModel(
      */
     fun requestMissingEpisodeThumbnails(animeId: Long) {
         if (animeId <= 0L) return
-        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
+        if (!episodeThumbnailBatchesInFlight.add(animeId)) {
+            episodeThumbnailBatchRerunRequested.add(animeId)
+            return
+        }
+        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: run {
+            episodeThumbnailBatchesInFlight.remove(animeId)
+            return
+        }
         // Queue all available local episodes in the catalog's season/episode order.
         // Existing paths are decoded and visually checked on Dispatchers.IO.
         val pending = anime.contentEpisodes.filter { episode ->
@@ -1388,7 +1399,10 @@ class ReiAnixLibraryViewModel(
                 false
             }
         }
-        if (pending.isEmpty()) return
+        if (pending.isEmpty()) {
+            episodeThumbnailBatchesInFlight.remove(animeId)
+            return
+        }
 
         viewModelScope.launch {
             val traceMoeChannel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
@@ -1583,9 +1597,12 @@ class ReiAnixLibraryViewModel(
                 pending.forEach { episode ->
                     episodeThumbnailRequestsInFlight.remove(episode.id)
                 }
-                val rerunRequested = pending.any { episode ->
+                val episodeRerunRequested = pending.any { episode ->
                     episodeThumbnailRerunRequested.remove(episode.id)
                 }
+                val rerunRequested =
+                    episodeThumbnailBatchRerunRequested.remove(animeId) || episodeRerunRequested
+                episodeThumbnailBatchesInFlight.remove(animeId)
                 if (rerunRequested) {
                     ReiAnixDiagnosticTimeline.record(
                         name = "EPISODE_THUMBNAIL_RERUN_QUEUED",
