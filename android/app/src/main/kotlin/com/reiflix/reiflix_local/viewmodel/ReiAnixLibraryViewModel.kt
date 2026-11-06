@@ -32,6 +32,7 @@ import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
+import com.reiflix.reiflix_local.data.tracemoe.pendingTraceMoeEpisodeSamples
 import kotlinx.coroutines.flow.receiveAsFlow
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -40,6 +41,7 @@ import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import android.net.Uri
 import java.io.File
 import java.util.Locale
@@ -206,6 +208,8 @@ class ReiAnixLibraryViewModel(
         const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
         const val SEARCH_DEBOUNCE_MS = 180L
         const val ARTWORK_PROJECTION_REFRESH_DEBOUNCE_MS = 180L
+        private const val TRACE_MOE_AUTOMATIC_RETRY_MAX = 2
+        private const val TRACE_MOE_AUTOMATIC_RETRY_DELAY_MILLIS = 1_500L
 
         internal fun projectHomeState(state: ReiAnixLibraryUiState): ReiAnixHomeLibraryUiState =
             ReiAnixHomeLibraryUiState.from(state)
@@ -259,8 +263,10 @@ class ReiAnixLibraryViewModel(
         val channel: Channel<TraceMoeEpisodeSample>,
         val queuedEpisodeIds: MutableSet<Long>,
         val job: Job,
+        @Volatile var acceptingSamples: Boolean = true,
     )
     private val traceMoeSampleSessions = ConcurrentHashMap<Long, TraceMoeSampleSession>()
+    private val traceMoeAutomaticRetryAttempts = ConcurrentHashMap<Long, Int>()
     // Serialize new thumbnail publications behind startup recovery of already saved images.
     private val traceMoePublicationQueue = Channel<ReiAnixArtworkPublication>(Channel.UNLIMITED)
     // If the local-media/artwork projection changes during extraction, rerun once
@@ -1394,8 +1400,20 @@ class ReiAnixLibraryViewModel(
             episodeThumbnailBatchRerunRequested.add(animeId)
             return
         }
-        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: run {
-            episodeThumbnailBatchesInFlight.remove(animeId)
+        val catalogSnapshot = nativeCatalogState.value
+        val anime = catalogSnapshot.animes.firstOrNull { it.id == animeId } ?: run {
+            if (catalogSnapshot.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING) {
+                // Details can become READY before the independent canonical SQLite
+                // projection finishes its first load. Keep this request alive instead
+                // of permanently dropping the first thumbnail-generation pass.
+                viewModelScope.launch {
+                    nativeCatalogState.first { it.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING }
+                    episodeThumbnailBatchesInFlight.remove(animeId)
+                    requestMissingEpisodeThumbnails(animeId)
+                }
+            } else {
+                episodeThumbnailBatchesInFlight.remove(animeId)
+            }
             return
         }
         // Queue all available local episodes in the catalog's season/episode order.
@@ -1493,14 +1511,23 @@ class ReiAnixLibraryViewModel(
 
                 // Replay cached episode images in creation-time order. This picks
                 // whichever episode thumbnail became available first, not episode 1.
+                val processedTraceMoeEpisodeIds = appDependencies?.aniListIntegrationService
+                    ?.processedTraceMoeEpisodeIds(animeId)
+                    .orEmpty()
                 val cachedTraceMoeItems = withContext(Dispatchers.IO) {
-                    thumbnailWorkItems
+                    val candidates = thumbnailWorkItems
                         .filter { !it.requiresGeneration && it.existingIsUsable && !it.existingPath.isNullOrBlank() }
                         .sortedBy { File(it.existingPath!!).lastModified() }
-                        .take(MAX_TRACE_MOE_EPISODE_SAMPLES)
+                        .map { item ->
+                            TraceMoeEpisodeSample(
+                                episodeId = item.episode.id,
+                                imageFile = File(item.existingPath!!),
+                            )
+                        }
+                    pendingTraceMoeEpisodeSamples(candidates, processedTraceMoeEpisodeIds)
                 }
                 cachedTraceMoeItems.forEach { item ->
-                    enqueueTraceMoeSample(item.episode.animeId, item.episode.id, File(item.existingPath!!))
+                    enqueueTraceMoeSample(animeId, item.episodeId, item.imageFile)
                 }
 
                 for (item in thumbnailWorkItems) {
@@ -1603,48 +1630,102 @@ class ReiAnixLibraryViewModel(
     private fun enqueueTraceMoeSample(animeId: Long, episodeId: Long, imageFile: File) {
         if (animeId <= 0L || episodeId <= 0L || !imageFile.isFile) return
         val integration = appDependencies?.aniListIntegrationService ?: return
-        val session = traceMoeSampleSessions.compute(animeId) { _, existing ->
-            if (existing != null && !existing.job.isCompleted && !existing.job.isCancelled) {
-                existing
-            } else {
-                val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
-                lateinit var created: TraceMoeSampleSession
-                val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
-                    try {
-                        integration.identifyFromEpisodeThumbnails(
-                            animeId = animeId,
-                            samples = channel.receiveAsFlow(),
+
+        // A publication can race the previous collector's finalization. Retry the
+        // hand-off once when that channel has stopped accepting elements; duplicates
+        // and a full three-sample session remain harmless no-ops.
+        repeat(2) {
+            val session = traceMoeSampleSessions.compute(animeId) { _, existing ->
+                if (
+                    existing != null &&
+                    existing.acceptingSamples &&
+                    !existing.job.isCompleted &&
+                    !existing.job.isCancelled
+                ) {
+                    existing
+                } else {
+                    val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
+                    lateinit var created: TraceMoeSampleSession
+                    val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+                        var identificationApplied = false
+                        try {
+                            identificationApplied = integration.identifyFromEpisodeThumbnails(
+                                animeId = animeId,
+                                samples = channel.receiveAsFlow(),
+                            )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Log.w(TAG, "Trace.moe visual identification failed for animeId=" + animeId, error)
+                        } finally {
+                            synchronized(created) {
+                                created.acceptingSamples = false
+                                channel.close()
+                            }
+                            traceMoeSampleSessions.remove(animeId, created)
+                            if (identificationApplied) {
+                                traceMoeAutomaticRetryAttempts.remove(animeId)
+                            } else {
+                                scheduleTraceMoePendingRetry(animeId)
+                            }
+                        }
+                    }
+                    created = TraceMoeSampleSession(
+                        channel = channel,
+                        queuedEpisodeIds = ConcurrentHashMap.newKeySet<Long>(),
+                        job = job,
+                    )
+                    created
+                }
+            } ?: return
+
+            val sendResult = synchronized(session) {
+                when {
+                    !session.acceptingSamples ||
+                        session.job.isCompleted ||
+                        session.job.isCancelled -> -1
+                    episodeId in session.queuedEpisodeIds ||
+                        session.queuedEpisodeIds.size >= MAX_TRACE_MOE_EPISODE_SAMPLES -> 0
+                    else -> {
+                        val sent = session.channel.trySend(
+                            TraceMoeEpisodeSample(episodeId = episodeId, imageFile = imageFile),
                         )
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
-                        Log.w(TAG, "Trace.moe visual identification failed for animeId=" + animeId, error)
-                    } finally {
-                        channel.close()
-                        traceMoeSampleSessions.remove(animeId, created)
+                        if (sent.isSuccess) {
+                            session.queuedEpisodeIds.add(episodeId)
+                            1
+                        } else {
+                            -1
+                        }
                     }
                 }
-                created = TraceMoeSampleSession(
-                    channel = channel,
-                    queuedEpisodeIds = ConcurrentHashMap.newKeySet<Long>(),
-                    job = job,
-                )
-                created
             }
-        } ?: return
-
-        val accepted = synchronized(session) {
-            session.queuedEpisodeIds.size < MAX_TRACE_MOE_EPISODE_SAMPLES &&
-                session.queuedEpisodeIds.add(episodeId)
+            when (sendResult) {
+                1 -> {
+                    session.job.start()
+                    return
+                }
+                0 -> return
+                else -> traceMoeSampleSessions.remove(animeId, session)
+            }
         }
-        if (!accepted) return
-        if (session.channel.trySend(
-                TraceMoeEpisodeSample(episodeId = episodeId, imageFile = imageFile),
-            ).isSuccess
-        ) {
-            session.job.start()
-        } else {
-            synchronized(session) { session.queuedEpisodeIds.remove(episodeId) }
+    }
+
+    /**
+     * A failed network request leaves its image unprocessed in SQLite. Rehydrate it
+     * after a short delay, with a small per-process retry cap, so a temporary outage
+     * does not require the user to close and reopen the app.
+     */
+    private fun scheduleTraceMoePendingRetry(animeId: Long) {
+        val attempt = traceMoeAutomaticRetryAttempts.merge(animeId, 1) { previous, _ -> previous + 1 } ?: 1
+        if (attempt > TRACE_MOE_AUTOMATIC_RETRY_MAX) return
+        viewModelScope.launch {
+            delay(TRACE_MOE_AUTOMATIC_RETRY_DELAY_MILLIS * attempt)
+            val integration = appDependencies?.aniListIntegrationService ?: return@launch
+            if (!integration.shouldRetryTraceMoeIdentification(animeId)) {
+                traceMoeAutomaticRetryAttempts.remove(animeId)
+                return@launch
+            }
+            enqueuePersistedEpisodeThumbnailsForAnime(animeId)
         }
     }
 
@@ -1663,7 +1744,10 @@ class ReiAnixLibraryViewModel(
         if (!imageFile.isFile) return
         try {
             val episode = nativeLibraryRepository.getEpisode(episodeId) ?: return
+            // Offer the newly published image immediately, then replay any older
+            // saved images whose Trace.moe requests never reached a persisted result.
             enqueueTraceMoeSample(episode.animeId, episodeId, imageFile)
+            enqueuePersistedEpisodeThumbnailsForAnime(episode.animeId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -1671,40 +1755,45 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    /** Restore unfinished identification from thumbnails already saved before process death. */
+    /** Restore only unfinished identification samples from the canonical saved artwork rows. */
     private suspend fun enqueuePersistedEpisodeThumbnailsForTraceMoe() {
-        val catalog = nativeCatalogState.value.animes
-        val samplesByAnime = withContext(Dispatchers.IO) {
-            buildMap<Long, List<TraceMoeEpisodeSample>> {
-                for (anime in catalog) {
-                    val candidates = anime.contentEpisodes
-                        .distinctBy { it.id }
-                        .mapNotNull { episode ->
-                            val path = episode.artwork?.localPath?.trim()?.takeIf(String::isNotEmpty)
-                                ?: return@mapNotNull null
-                            val file = File(path)
-                            if (!file.isFile || file.length() !in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES) {
-                                return@mapNotNull null
-                            }
-                            Triple(episode.id, file, file.lastModified())
-                        }
-                        .sortedBy { it.third }
-                    val usable = buildList {
-                        for ((episodeId, file) in candidates) {
-                            if (VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)) {
-                                add(TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file))
-                                if (size >= MAX_TRACE_MOE_EPISODE_SAMPLES) break
-                            }
-                        }
-                    }
-                    if (usable.isNotEmpty()) put(anime.id, usable)
-                }
-            }
+        nativeCatalogState.value.animes.forEach { anime ->
+            enqueuePersistedEpisodeThumbnailsForAnime(anime.id)
         }
-        samplesByAnime.forEach { (animeId, samples) ->
-            samples.forEach { sample ->
-                enqueueTraceMoeSample(animeId, sample.episodeId, sample.imageFile)
-            }
+    }
+
+    /**
+     * Replays already materialized thumbnails that do not yet have a successful
+     * Trace.moe response. This also retries frames left pending after transport
+     * failures when another thumbnail is published during the same app session.
+     */
+    private suspend fun enqueuePersistedEpisodeThumbnailsForAnime(animeId: Long) {
+        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
+        val integration = appDependencies?.aniListIntegrationService ?: return
+        val processedEpisodeIds = integration.processedTraceMoeEpisodeIds(animeId)
+        val candidates = withContext(Dispatchers.IO) {
+            anime.contentEpisodes
+                .distinctBy { it.id }
+                .mapNotNull { episode ->
+                    val path = episode.artwork?.localPath?.trim()?.takeIf(String::isNotEmpty)
+                        ?: return@mapNotNull null
+                    val file = File(path)
+                    if (
+                        !file.isFile ||
+                        file.length() !in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES ||
+                        !VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)
+                    ) {
+                        return@mapNotNull null
+                    }
+                    Triple(episode.id, file, file.lastModified())
+                }
+                .sortedBy { it.third }
+                .map { (episodeId, file) ->
+                    TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file)
+                }
+        }
+        pendingTraceMoeEpisodeSamples(candidates, processedEpisodeIds).forEach { sample ->
+            enqueueTraceMoeSample(animeId, sample.episodeId, sample.imageFile)
         }
     }
 
@@ -1763,23 +1852,11 @@ class ReiAnixLibraryViewModel(
         if (canonicalConsumersStarted) return
         canonicalConsumersStarted = true
 
-        // Read the canonical catalog and rehydrate saved thumbnails after app startup.
-        // New publication events are buffered while this runs, so older saved images
-        // enter the per-anime stream before thumbnails published during startup.
-        viewModelScope.launch {
-            refreshNativeCatalog()
-            enqueuePersistedEpisodeThumbnailsForTraceMoe()
-            for (publication in traceMoePublicationQueue) {
-                processPublishedEpisodeThumbnail(publication)
-            }
-        }
-
-        // A successful artwork commit must invalidate the existing SQLite projection:
-        // Compose reads immutable models and does not consume NativeMailbox directly.
-        // Keep the publication stream bounded and debounce bursts (poster + backdrop,
-        // several list items) into one canonical re-read, without rescanning media.
+        // Subscribe before the first canonical catalog read. SharedFlow retains only
+        // one replay item; starting the collector first lets the unlimited local queue
+        // preserve every thumbnail publication that arrives during startup hydration.
         appDependencies?.artworkService?.publishedArtworks?.let { publications ->
-            viewModelScope.launch {
+            viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 publications
                     .onEach { publication ->
                         enqueuePublishedEpisodeThumbnail(publication)
@@ -1813,6 +1890,16 @@ class ReiAnixLibraryViewModel(
                         )
                         refreshCatalogProjection()
                     }
+            }
+        }
+
+        // Read the canonical catalog and rehydrate saved thumbnails only after the
+        // publication collector is active, so startup cannot lose concurrent events.
+        viewModelScope.launch {
+            refreshNativeCatalog()
+            enqueuePersistedEpisodeThumbnailsForTraceMoe()
+            for (publication in traceMoePublicationQueue) {
+                processPublishedEpisodeThumbnail(publication)
             }
         }
 

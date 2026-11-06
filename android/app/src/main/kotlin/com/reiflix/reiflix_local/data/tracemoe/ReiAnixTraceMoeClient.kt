@@ -20,6 +20,14 @@ import kotlinx.coroutines.Job
  * Screenshot-only client for Trace.moe. The caller supplies a generated local episode
  * thumbnail; the source video is never uploaded.
  */
+internal class TraceMoeHttpException(
+    val statusCode: Int,
+    message: String,
+) : IOException(message)
+
+internal fun isRetryableTraceMoeHttpStatus(statusCode: Int): Boolean =
+    statusCode == 408 || statusCode == 425 || statusCode in 500..599
+
 class ReiAnixTraceMoeClient(
     private val connectTimeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
     private val readTimeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
@@ -104,10 +112,13 @@ class ReiAnixTraceMoeClient(
                     output.toString(Charsets.UTF_8.name())
                 }.orEmpty()
                 if (statusCode == 429) {
-                    throw IOException("Trace.moe rate limit reached; the local episode identification was postponed.")
+                    throw TraceMoeHttpException(
+                        statusCode,
+                        "Trace.moe rate limit reached; the local episode identification was postponed.",
+                    )
                 }
                 if (statusCode !in 200..299) {
-                    throw IOException("Trace.moe returned HTTP $statusCode.")
+                    throw TraceMoeHttpException(statusCode, "Trace.moe returned HTTP $statusCode.")
                 }
                 parseMatches(responseBody)
             } finally {
@@ -167,6 +178,22 @@ data class TraceMoeEpisodeSample(
     val episodeId: Long,
     val imageFile: File,
 )
+
+/** Select only samples that have not already contributed a persisted Trace.moe result. */
+internal fun pendingTraceMoeEpisodeSamples(
+    candidates: List<TraceMoeEpisodeSample>,
+    processedEpisodeIds: Set<Long>,
+    maximumSamples: Int = MAX_TRACE_MOE_EPISODE_SAMPLES,
+): List<TraceMoeEpisodeSample> {
+    require(maximumSamples >= 0)
+    val remaining = (maximumSamples - processedEpisodeIds.size).coerceAtLeast(0)
+    if (remaining == 0) return emptyList()
+    return candidates.asSequence()
+        .filter { it.episodeId > 0L && it.episodeId !in processedEpisodeIds }
+        .distinctBy(TraceMoeEpisodeSample::episodeId)
+        .take(remaining)
+        .toList()
+}
 
 data class TraceMoeIdentityConsensus(
     val anilistId: Int,

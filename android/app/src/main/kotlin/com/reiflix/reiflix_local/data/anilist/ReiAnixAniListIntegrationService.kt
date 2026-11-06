@@ -6,8 +6,11 @@ import com.reiflix.reiflix_local.data.artwork.ReiAnixAniListCoverCandidate
 import com.reiflix.reiflix_local.data.artwork.aniListArtworkCandidateKey
 import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeHttpException
+import com.reiflix.reiflix_local.data.tracemoe.isRetryableTraceMoeHttpStatus
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
@@ -27,6 +30,7 @@ import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -42,6 +46,7 @@ import com.reiflix.reiflix_local.data.sqlite.setMetadataStatusByLookupTitle
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 
 import java.io.File
+import java.io.IOException
 import java.net.URI
 import java.util.Locale
 import java.util.UUID
@@ -217,6 +222,12 @@ class ReiAnixAniListIntegrationService(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>>,
         val completed: Boolean,
     )
+
+    private sealed interface TraceMoeSampleRequestResult {
+        data class Success(val matches: List<TraceMoeSearchMatch>) : TraceMoeSampleRequestResult
+        data class Failed(val error: Exception) : TraceMoeSampleRequestResult
+        data object BudgetExhausted : TraceMoeSampleRequestResult
+    }
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
     private val missingArtworkRecoveryRunning = AtomicBoolean(false)
 
@@ -365,7 +376,7 @@ class ReiAnixAniListIntegrationService(
     /**
      * Uses independent local episode thumbnails to verify or correct an automatic
      * AniList association. A clear first-frame result is accepted immediately;
-     * otherwise two matching results from a maximum of five episodes are required.
+     * otherwise two matching results from a maximum of three episodes are required.
      * Manual associations and manually sourced metadata are never replaced.
      */
     suspend fun identifyFromEpisodeThumbnails(
@@ -374,9 +385,63 @@ class ReiAnixAniListIntegrationService(
     ): Boolean = identifyFromEpisodeThumbnails(animeId, samples.asFlow())
 
     /**
+     * Returns sample IDs that already have a persisted Trace.moe response. The
+     * ViewModel uses this to rehydrate only unfinished samples after startup or a
+     * transient request failure.
+     */
+    suspend fun processedTraceMoeEpisodeIds(animeId: Long): Set<Long> {
+        if (animeId <= 0L) return emptySet()
+        val local = library.getAnime(animeId) ?: return emptySet()
+        val correction = local.anilistId != null
+        val progress = readTraceMoeProgress(animeId, correction)
+        if (!progress.completed && (
+                progress.matchesByEpisode.size >= MAX_TRACE_MOE_EPISODE_SAMPLES ||
+                    evaluateTraceMoeProgressiveIdentity(progress.matchesByEpisode) != null
+            )
+        ) {
+            // The screenshot evidence is already persisted, but AniList detail
+            // lookup/association may have failed. Replay one saved frame as a wake-up
+            // signal; the service will reuse stored matches without querying Trace.moe.
+            return emptySet()
+        }
+        if (progress.completed) {
+            val previousAttempt = readTraceMoeAttemptAt(animeId, correction)
+            val nowSeconds = System.currentTimeMillis() / 1000.0
+            if (
+                previousAttempt == null ||
+                nowSeconds - previousAttempt >= TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
+            ) {
+                // A completed no-match window becomes eligible again after its
+                // existing cooldown; let startup replay its saved thumbnails then.
+                return emptySet()
+            }
+        }
+        return progress.matchesByEpisode.keys.toSet()
+    }
+
+    /** Whether an unfinished visual-identity window is eligible for another attempt. */
+    suspend fun shouldRetryTraceMoeIdentification(animeId: Long): Boolean {
+        if (
+            animeId <= 0L ||
+            !isAniListEnabled() ||
+            !settingEnabled("metadata.auto_match", defaultValue = true)
+        ) return false
+        val local = library.getAnime(animeId) ?: return false
+        if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") {
+            return false
+        }
+        val correction = local.anilistId != null
+        val progress = readTraceMoeProgress(animeId, correction)
+        if (!progress.completed) return true
+        val previousAttempt = readTraceMoeAttemptAt(animeId, correction) ?: return true
+        val nowSeconds = System.currentTimeMillis() / 1000.0
+        return nowSeconds - previousAttempt >= TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
+    }
+
+    /**
      * Consume episode thumbnails as soon as they become available. Trace.moe can
      * confirm a clear first-frame result immediately; otherwise two matching
-     * episode results out of at most five are enough to correct an automatic
+     * episode results out of at most three are enough to correct an automatic
      * association. The upstream flow is cancelled as soon as a decision is made.
      */
     suspend fun identifyFromEpisodeThumbnails(
@@ -409,10 +474,32 @@ class ReiAnixAniListIntegrationService(
         val nowSeconds = System.currentTimeMillis() / 1000.0
         val previousAttempt = readTraceMoeAttemptAt(animeId, correction)
         if (progress.completed) {
-            if (previousAttempt != null && nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS) return false
+            if (previousAttempt != null && nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS) {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_IDENTIFICATION_COOLDOWN_ACTIVE",
+                    source = "ReiAnixAniListIntegrationService",
+                    result = "SKIPPED",
+                    context = mapOf(
+                        "anime_id" to animeId,
+                        "remaining_seconds" to (TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS - (nowSeconds - previousAttempt)).toLong().coerceAtLeast(0L),
+                    ),
+                )
+                return false
+            }
             progress.matchesByEpisode.clear()
             writeTraceMoeProgress(animeId, progress.matchesByEpisode, completed = false, correction = correction)
         }
+
+        ReiAnixDiagnosticTimeline.record(
+            name = "TRACE_MOE_IDENTIFICATION_STARTED",
+            source = "ReiAnixAniListIntegrationService",
+            result = "STARTED",
+            context = mapOf(
+                "anime_id" to animeId,
+                "correction" to correction,
+                "persisted_samples" to progress.matchesByEpisode.size,
+            ),
+        )
 
         // Pre-progress releases stamped the 24-hour cooldown on the first frame.
         // A legacy timestamp without a saved progressive state is treated as an
@@ -421,10 +508,14 @@ class ReiAnixAniListIntegrationService(
         var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         val seenEpisodeIds = HashSet<Long>().apply { addAll(matchesByEpisode.keys) }
 
-        // Keep consuming the live channel while this anime needs another sample.
-        // A clear first result exits immediately; uncertain results wait for the
-        // next image publication, whatever its episode number.
-        while (confirmedIdentity == null && matchesByEpisode.size < MAX_TRACE_MOE_EPISODE_SAMPLES) {
+        // A transport/API failure is not a visual result. It must not consume a
+        // persisted sample slot or start the 24-hour no-match cooldown. Later
+        // publications can still supply another image and retry unfinished samples.
+        var failedSamplesThisRun = 0
+        while (
+            confirmedIdentity == null &&
+            matchesByEpisode.size + failedSamplesThisRun < MAX_TRACE_MOE_EPISODE_SAMPLES
+        ) {
             currentCoroutineContext().ensureActive()
             val sample = samples.firstOrNull { candidate ->
                 candidate.episodeId > 0L && seenEpisodeIds.add(candidate.episodeId)
@@ -436,32 +527,44 @@ class ReiAnixAniListIntegrationService(
                     VideoThumbnailExtractor.isUsableThumbnailFile(sample.imageFile.absolutePath)
             }
             if (!usable) {
-                // Even an unusable published image occupies one of the three sample positions.
-                matchesByEpisode[sample.episodeId] = emptyList()
-                writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
+                failedSamplesThisRun++
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_SAMPLE_REJECTED",
+                    severity = "WARN",
+                    source = "ReiAnixAniListIntegrationService",
+                    result = "THUMBNAIL_UNUSABLE",
+                    context = mapOf("anime_id" to animeId, "episode_id" to sample.episodeId),
+                )
                 continue
             }
 
-            val requestAt = System.currentTimeMillis() / 1000.0
-            if (!reserveTraceMoeRequest(requestAt)) {
-                Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
-                matchesByEpisode[sample.episodeId] = emptyList()
-                writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
-                break
+            when (val request = requestTraceMoeSample(animeId, sample)) {
+                is TraceMoeSampleRequestResult.Success -> {
+                    matchesByEpisode[sample.episodeId] = request.matches
+                    writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
+                    confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
+                }
+                is TraceMoeSampleRequestResult.Failed -> {
+                    failedSamplesThisRun++
+                    Log.w(
+                        TAG,
+                        "Trace.moe episode-frame search failed animeId=" + animeId +
+                            " episodeId=" + sample.episodeId,
+                        request.error,
+                    )
+                }
+                TraceMoeSampleRequestResult.BudgetExhausted -> {
+                    Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "TRACE_MOE_REQUEST_BUDGET_EXHAUSTED",
+                        severity = "WARN",
+                        source = "ReiAnixAniListIntegrationService",
+                        result = "POSTPONED",
+                        context = mapOf("anime_id" to animeId, "episode_id" to sample.episodeId),
+                    )
+                    break
+                }
             }
-
-            val matches = try {
-                traceMoeClient.search(sample.imageFile)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                // Failed API requests count as a consumed thumbnail, preventing a move to episode 4.
-                Log.w(TAG, "Trace.moe episode-frame search failed animeId=" + animeId + " episodeId=" + sample.episodeId, error)
-                emptyList()
-            }
-            matchesByEpisode[sample.episodeId] = matches
-            writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
-            confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         }
 
         // A single clear result or a two-episode agreement is applied immediately.
@@ -478,8 +581,26 @@ class ReiAnixAniListIntegrationService(
                 val completedAt = System.currentTimeMillis() / 1000.0
                 writeTraceMoeProgress(animeId, matchesByEpisode, completed = true, correction = correction)
                 writeTraceMoeAttemptAt(animeId, completedAt, correction)
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_IDENTIFICATION_COMPLETED_WITHOUT_MATCH",
+                    source = "ReiAnixAniListIntegrationService",
+                    result = "NO_CONFIDENT_IDENTITY",
+                    context = mapOf("anime_id" to animeId, "successful_samples" to matchesByEpisode.size),
+                )
+            } else {
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_IDENTIFICATION_REMAINS_PENDING",
+                    severity = if (failedSamplesThisRun > 0) "WARN" else "INFO",
+                    source = "ReiAnixAniListIntegrationService",
+                    result = if (failedSamplesThisRun > 0) "TRANSIENT_FAILURE_OR_INVALID_SAMPLE" else "WAITING_FOR_MORE_THUMBNAILS",
+                    context = mapOf(
+                        "anime_id" to animeId,
+                        "successful_samples" to matchesByEpisode.size,
+                        "failed_samples_this_run" to failedSamplesThisRun,
+                    ),
+                )
             }
-            // Partial windows stay open until another thumbnail is published.
+            // Incomplete windows stay retryable; failed requests do not acquire a cooldown.
             return false
         }
 
@@ -516,8 +637,91 @@ class ReiAnixAniListIntegrationService(
             val completedAt = System.currentTimeMillis() / 1000.0
             writeTraceMoeProgress(animeId, matchesByEpisode, completed = true, correction = correction)
             writeTraceMoeAttemptAt(animeId, completedAt, correction)
+            ReiAnixDiagnosticTimeline.record(
+                name = "TRACE_MOE_IDENTITY_APPLIED",
+                source = "ReiAnixAniListIntegrationService",
+                result = "COMPLETED",
+                context = mapOf(
+                    "anime_id" to animeId,
+                    "anilist_id" to consensus.anilistId,
+                    "supporting_episodes" to consensus.supportingEpisodes,
+                ),
+            )
         }
         return applied
+    }
+
+    private suspend fun requestTraceMoeSample(
+        animeId: Long,
+        sample: TraceMoeEpisodeSample,
+    ): TraceMoeSampleRequestResult {
+        repeat(TRACE_MOE_HTTP_MAX_ATTEMPTS) { attemptIndex ->
+            val requestAt = System.currentTimeMillis() / 1000.0
+            if (!reserveTraceMoeRequest(requestAt)) {
+                return TraceMoeSampleRequestResult.BudgetExhausted
+            }
+
+            val requestId = UUID.randomUUID().toString()
+            ReiAnixDiagnosticTimeline.record(
+                name = "TRACE_MOE_REQUEST_STARTED",
+                source = "ReiAnixAniListIntegrationService",
+                requestId = requestId,
+                context = mapOf(
+                    "anime_id" to animeId,
+                    "episode_id" to sample.episodeId,
+                    "attempt" to attemptIndex + 1,
+                ),
+            )
+            try {
+                val matches = traceMoeClient.search(sample.imageFile)
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_REQUEST_COMPLETED",
+                    source = "ReiAnixAniListIntegrationService",
+                    result = "HTTP_SUCCESS",
+                    requestId = requestId,
+                    context = mapOf(
+                        "anime_id" to animeId,
+                        "episode_id" to sample.episodeId,
+                        "match_count" to matches.size,
+                        "attempt" to attemptIndex + 1,
+                    ),
+                )
+                return TraceMoeSampleRequestResult.Success(matches)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val retryable = when (error) {
+                    is TraceMoeHttpException -> isRetryableTraceMoeHttpStatus(error.statusCode)
+                    is IOException -> true
+                    else -> false
+                }
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_REQUEST_FAILED",
+                    severity = "WARN",
+                    source = "ReiAnixAniListIntegrationService",
+                    result = if (retryable) "RETRYABLE_FAILURE" else "NON_RETRYABLE_FAILURE",
+                    requestId = requestId,
+                    error = error,
+                    context = mapOf(
+                        "anime_id" to animeId,
+                        "episode_id" to sample.episodeId,
+                        "attempt" to attemptIndex + 1,
+                        "http_status" to (error as? TraceMoeHttpException)?.statusCode,
+                    ),
+                )
+                Log.w(
+                    TAG,
+                    "Trace.moe request failed animeId=" + animeId +
+                        " episodeId=" + sample.episodeId + " attempt=" + (attemptIndex + 1),
+                    error,
+                )
+                if (!retryable || attemptIndex + 1 >= TRACE_MOE_HTTP_MAX_ATTEMPTS) {
+                    return TraceMoeSampleRequestResult.Failed(error)
+                }
+                delay(TRACE_MOE_HTTP_RETRY_DELAY_MILLIS * (attemptIndex + 1L))
+            }
+        }
+        return TraceMoeSampleRequestResult.Failed(IOException("Trace.moe request attempts were exhausted."))
     }
 
     private suspend fun readTraceMoeAttemptAt(animeId: Long, correction: Boolean): Double? = withContext(Dispatchers.IO) {
@@ -551,6 +755,7 @@ class ReiAnixAniListIntegrationService(
         if (raw.isNullOrBlank()) return@withContext TraceMoeProgressState(linkedMapOf(), completed = false)
         try {
             val root = JSONObject(raw)
+            val version = root.optInt("version", 1)
             val episodes = root.optJSONArray("episodes") ?: JSONArray()
             val results = linkedMapOf<Long, List<TraceMoeSearchMatch>>()
             for (index in 0 until episodes.length()) {
@@ -570,7 +775,32 @@ class ReiAnixAniListIntegrationService(
                 }
                 results[episodeId] = matches
             }
-            TraceMoeProgressState(results, root.optBoolean("completed", false))
+            val completed = root.optBoolean("completed", false)
+            // Older releases persisted invalid thumbnails and failed HTTP requests
+            // as empty match arrays. They are not proof of a successful API response,
+            // so make those episode IDs eligible for one fresh attempt after upgrade.
+            val legacyUnverifiedIds = if (version < TRACE_MOE_PROGRESS_VERSION) {
+                results.filterValues { it.isEmpty() }.keys.toList()
+            } else {
+                emptyList()
+            }
+            if (legacyUnverifiedIds.isNotEmpty()) {
+                legacyUnverifiedIds.forEach(results::remove)
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_LEGACY_FAILED_SAMPLES_RESET",
+                    severity = "WARN",
+                    source = "ReiAnixAniListIntegrationService",
+                    result = "RETRYABLE_PROGRESS_RESTORED",
+                    context = mapOf(
+                        "anime_id" to animeId,
+                        "legacy_samples_reset" to legacyUnverifiedIds.size,
+                        "successful_samples_preserved" to results.size,
+                    ),
+                )
+                TraceMoeProgressState(results, completed = false)
+            } else {
+                TraceMoeProgressState(results, completed)
+            }
         } catch (error: Exception) {
             Log.w(TAG, "Stored Trace.moe progress is unreadable for animeId=$animeId", error)
             TraceMoeProgressState(linkedMapOf(), completed = false)
@@ -592,7 +822,10 @@ class ReiAnixAniListIntegrationService(
             }
             episodes.put(JSONObject().put("episodeId", episodeId).put("matches", matchArray))
         }
-        val value = JSONObject().put("completed", completed).put("episodes", episodes)
+        val value = JSONObject()
+            .put("version", TRACE_MOE_PROGRESS_VERSION)
+            .put("completed", completed)
+            .put("episodes", episodes)
         library.database.transaction { connection ->
             val values = ContentValues().apply {
                 put("key", prefix + animeId)
@@ -1388,6 +1621,9 @@ class ReiAnixAniListIntegrationService(
         private const val TRACE_MOE_CORRECTION_PROGRESS_PREFERENCE_PREFIX = "__reianix.internal.trace_moe_correction_progress_v1."
         private const val TRACE_MOE_LOCAL_DAILY_REQUEST_BUDGET = 30
         private const val TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS = 24L * 60L * 60L
+        private const val TRACE_MOE_PROGRESS_VERSION = 2
+        private const val TRACE_MOE_HTTP_MAX_ATTEMPTS = 2
+        private const val TRACE_MOE_HTTP_RETRY_DELAY_MILLIS = 900L
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN

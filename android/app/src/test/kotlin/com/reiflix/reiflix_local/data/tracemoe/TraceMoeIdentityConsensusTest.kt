@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Test
+import java.io.File
 
 class TraceMoeIdentityConsensusTest {
     @Test
@@ -178,6 +179,48 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(3, MAX_TRACE_MOE_EPISODE_SAMPLES)
         assertEquals(listOf(11L, 12L, 13L), bounded.keys.toList())
         assertNull(evaluateTraceMoeProgressiveIdentity(bounded))
+    }
+
+    @Test
+    fun pendingStartupReplaySkipsAlreadyProcessedEpisodesAndRespectsRemainingSlots() {
+        val candidates = listOf(
+            TraceMoeEpisodeSample(11L, File("11.jpg")),
+            TraceMoeEpisodeSample(12L, File("12.jpg")),
+            TraceMoeEpisodeSample(12L, File("12-duplicate.jpg")),
+            TraceMoeEpisodeSample(13L, File("13.jpg")),
+            TraceMoeEpisodeSample(14L, File("14.jpg")),
+        )
+
+        val pending = pendingTraceMoeEpisodeSamples(candidates, processedEpisodeIds = setOf(11L))
+
+        assertEquals(listOf(12L, 13L), pending.map(TraceMoeEpisodeSample::episodeId))
+    }
+
+    @Test
+    fun pendingStartupReplayReturnsNothingWhenAllSampleSlotsAreAlreadyProcessed() {
+        val candidates = listOf(
+            TraceMoeEpisodeSample(11L, File("11.jpg")),
+            TraceMoeEpisodeSample(12L, File("12.jpg")),
+            TraceMoeEpisodeSample(13L, File("13.jpg")),
+        )
+
+        assertEquals(
+            emptyList<TraceMoeEpisodeSample>(),
+            pendingTraceMoeEpisodeSamples(candidates, processedEpisodeIds = setOf(11L, 12L, 13L)),
+        )
+    }
+
+    @Test
+    fun onlyTemporaryServerResponsesAreRetriedImmediately() {
+        assertEquals(true, isRetryableTraceMoeHttpStatus(408))
+        assertEquals(true, isRetryableTraceMoeHttpStatus(425))
+        assertEquals(true, isRetryableTraceMoeHttpStatus(500))
+        assertEquals(true, isRetryableTraceMoeHttpStatus(503))
+        assertEquals(false, isRetryableTraceMoeHttpStatus(400))
+        assertEquals(false, isRetryableTraceMoeHttpStatus(404))
+        // Respect Trace.moe's explicit rate limit and let a later lifecycle retry it.
+        assertEquals(false, isRetryableTraceMoeHttpStatus(429))
+        assertEquals(false, isRetryableTraceMoeHttpStatus(200))
     }
 
 }
