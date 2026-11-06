@@ -29,7 +29,6 @@ import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
 import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
-import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import kotlinx.coroutines.flow.receiveAsFlow
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -1560,8 +1559,7 @@ class ReiAnixLibraryViewModel(
         } ?: return
 
         val accepted = synchronized(session) {
-            session.queuedEpisodeIds.size < MAX_TRACE_MOE_EPISODE_SAMPLES &&
-                session.queuedEpisodeIds.add(episodeId)
+            session.queuedEpisodeIds.add(episodeId)
         }
         if (!accepted) return
         val sent = session.channel.trySend(
