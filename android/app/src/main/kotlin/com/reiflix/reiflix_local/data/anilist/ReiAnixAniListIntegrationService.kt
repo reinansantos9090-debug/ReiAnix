@@ -361,7 +361,7 @@ class ReiAnixAniListIntegrationService(
     /**
      * Uses independent local episode thumbnails to verify or correct an automatic
      * AniList association. A clear first-frame result is accepted immediately;
-     * otherwise two matching results from a maximum of five episodes are required.
+     * otherwise two matching results from results from distinct episodes are required.
      * Manual associations and manually sourced metadata are never replaced.
      */
     suspend fun identifyFromEpisodeThumbnails(
@@ -372,7 +372,7 @@ class ReiAnixAniListIntegrationService(
     /**
      * Consume episode thumbnails as soon as they become available. Trace.moe can
      * confirm a clear first-frame result immediately; otherwise two matching
-     * episode results out of at most five are enough to correct an automatic
+     * episode results from distinct episodes are enough to correct an automatic
      * association. The upstream flow is cancelled as soon as a decision is made.
      */
     suspend fun identifyFromEpisodeThumbnails(
