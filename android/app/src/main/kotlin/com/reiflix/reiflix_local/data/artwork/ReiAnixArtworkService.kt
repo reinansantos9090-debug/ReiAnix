@@ -80,7 +80,7 @@ data class ReiAnixArtworkCandidate(
     }
 }
 
-/** Attempts ranked candidates and their variants without letting one failed URL stop the next. */
+/** Attempts candidates and URL variants in provider order, continuing after failed URLs. */
 internal suspend fun firstSuccessfulArtworkCandidate(
     candidates: List<ReiAnixArtworkCandidate>,
     artworkUrls: (ReiAnixArtworkCandidate) -> List<String?>,
@@ -258,7 +258,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         requestAnimeArtworkInternal(animeId, force, candidateCandidates = null)
 
     /**
-     * Runs ranked candidate URLs through the existing cache, SQLite and publication
+     * Runs provider candidate URLs through the existing cache, SQLite and publication
      * pipeline without assigning a guessed AniList ID or replacing metadata URLs.
      */
     fun requestAnimeArtworkCandidates(

@@ -298,7 +298,7 @@ class ReiAnixExternalCatalogContractsTest {
     }
 
     @Test
-    fun artworkCandidateSelectionUsesProbableCandidatesAndSkipsRejectedCandidates() {
+    fun artworkCandidatesAreRetainedDespiteIdentityAndMetadataConflicts() {
         val local = ReiAnixCatalogIdentity(
             titles = setOf("Known Work", "Known Work Original"),
             releaseYear = 2021,
@@ -320,6 +320,21 @@ class ReiAnixExternalCatalogContractsTest {
         val rejected = probableFirst.copy(
             ids = ReiAnixExternalCatalogIds(kitsuId = "rejected"),
             title = "Different Work",
+            releaseYear = 2020,
+            format = "MOVIE",
+            mediaKind = ReiAnixCatalogMediaKind.MOVIE,
+            seasonNumber = 2,
+            episodes = 24,
+            coverUrl = "https://cdn.example/rejected-identity-poster.jpg",
+        )
+        val noArtwork = probableFirst.copy(
+            ids = ReiAnixExternalCatalogIds(kitsuId = "no-artwork"),
+            coverUrl = null,
+        )
+        val anipubRejected = rejected.copy(
+            source = ReiAnixCatalogSource.ANIPUB,
+            ids = ReiAnixExternalCatalogIds(additionalIds = mapOf("anipub" to "anipub-rejected")),
+            coverUrl = "https://cdn.example/anipub-rejected-poster.jpg",
         )
 
         assertEquals(
@@ -327,17 +342,24 @@ class ReiAnixExternalCatalogContractsTest {
             ReiAnixCatalogIdentityMatcher.evaluate(7L, local, probableFirst).decision,
         )
         assertEquals(
-            "probable-first",
-            ReiAnixCatalogIdentityMatcher.selectArtworkCandidate(
-                7L, local, listOf(rejected, probableFirst, probableSecond),
-            )?.ids?.kitsuId,
+            ReiAnixCatalogIdentityDecision.REJECTED,
+            ReiAnixCatalogIdentityMatcher.evaluate(7L, local, rejected).decision,
         )
-        assertNull(
-            ReiAnixCatalogIdentityMatcher.selectArtworkCandidate(
-                7L, local, listOf(rejected.copy(releaseYear = 2020)),
-            ),
+        assertEquals(
+            ReiAnixCatalogIdentityDecision.AMBIGUOUS,
+            ReiAnixCatalogIdentityMatcher.evaluateCandidates(7L, local, listOf(probableFirst, probableSecond)).decision,
         )
-        assertNull(ReiAnixCatalogIdentityMatcher.selectArtworkCandidate(7L, local, emptyList()))
+
+        val usable = usableCatalogArtworkCandidates(
+            listOf(rejected, noArtwork, probableFirst, probableSecond, anipubRejected),
+        )
+        assertEquals(
+            listOf("rejected", "probable-first", "probable-second", "anipub-rejected"),
+            usable.map { it.ids.idFor(it.source) },
+        )
+        assertEquals(4, usable.size)
+        assertTrue(usable.all { it.artworkCandidates().isNotEmpty() })
+        assertTrue(usableCatalogArtworkCandidates(emptyList()).isEmpty())
     }
 
     @Test

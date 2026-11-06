@@ -68,8 +68,9 @@ data class ReiAnixCatalogVerifiedCandidate(
 
 object ReiAnixCatalogIdentityMatcher {
     /**
-     * Assessment is deliberately exact-title only. Fuzzy similarity is not identity evidence:
-     * it can be useful for discovery/UI ranking, but cannot authorize metadata or artwork.
+     * Assessment is deliberately exact-title only. Fuzzy similarity is not identity evidence
+     * and cannot authorize metadata or external identifier persistence. Artwork publication
+     * does not consult this matcher.
      */
     fun evaluate(
         localAnimeId: Long,
@@ -122,62 +123,9 @@ object ReiAnixCatalogIdentityMatcher {
     }
 
     /**
-     * Selects an image candidate independently from the metadata/identifier decision.
-     *
-     * CONFIRMED and PROBABLE candidates may supply artwork when their title is exact and no
-     * explicitly supplied metadata contradicts the local record. A REJECTED candidate is skipped
-     * individually, so it cannot suppress another candidate from the same provider. When several
-     * candidates remain equally plausible, provider relevance order is retained as the tie-breaker.
-     * This method never creates a persistable identity match or authorizes metadata/ID writes.
-     */
-    fun selectArtworkCandidate(
-        localAnimeId: Long,
-        local: ReiAnixCatalogIdentity,
-        candidates: Collection<ReiAnixCatalogAnime>,
-        knownIds: ReiAnixExternalCatalogIds = ReiAnixExternalCatalogIds(),
-    ): ReiAnixCatalogAnime? {
-        if (localAnimeId <= 0L) return null
-        data class RankedArtwork(
-            val remote: ReiAnixCatalogAnime,
-            val providerIndex: Int,
-            val evidenceScore: Int,
-        )
-        return candidates.mapIndexedNotNull { index, remote ->
-            if (remote.artworkCandidates().isEmpty()) return@mapIndexedNotNull null
-            val evaluation = evaluate(localAnimeId, local, remote, knownIds)
-            if (evaluation.decision != ReiAnixCatalogIdentityDecision.CONFIRMED &&
-                evaluation.decision != ReiAnixCatalogIdentityDecision.PROBABLE
-            ) return@mapIndexedNotNull null
-            if (findExactTitle(local.titles, remote.alternativeTitles + remote.title) == null) {
-                return@mapIndexedNotNull null
-            }
-            val evidence = evaluateCompatibleEvidence(
-                local = local,
-                releaseYear = remote.releaseYear,
-                format = remote.format,
-                mediaKind = remote.mediaKind,
-                season = remote.season,
-                seasonNumber = remote.seasonNumber,
-                episodes = remote.episodes,
-            )
-            if (evidence.rejectionReason != null) return@mapIndexedNotNull null
-            val anchoredId = knownIds.idFor(remote.source)
-                ?.let { it == remote.ids.idFor(remote.source) } == true
-            RankedArtwork(
-                remote = remote,
-                providerIndex = index,
-                evidenceScore = (if (anchoredId) 10_000 else 0) + evidence.matchedDimensions * 100,
-            )
-        }.sortedWith(
-            compareByDescending<RankedArtwork> { it.evidenceScore }
-                .thenBy { it.providerIndex },
-        ).firstOrNull()?.remote
-    }
-
-    /**
      * Resolves a provider search result set into one explicit decision. Multiple confirmed
      * records, or a confirmed record competing with a probable one, are ambiguous for metadata
-     * and ID persistence; artwork can be assessed separately by selectArtworkCandidate().
+     * and ID persistence. Artwork candidate selection is deliberately outside this matcher.
      */
     fun evaluateCandidates(
         localAnimeId: Long,

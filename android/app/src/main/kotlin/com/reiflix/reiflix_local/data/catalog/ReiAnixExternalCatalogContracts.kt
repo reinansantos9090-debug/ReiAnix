@@ -105,7 +105,7 @@ data class ReiAnixCatalogArtworkSourceField(
 
 /**
  * Fully typed provider candidate. Dimensions may produce a warning, never a type conversion.
- * The local anime row ID is attached only after the external identity is verified.
+ * The local anime target is supplied by the artwork request, independently of identity matching.
  */
 data class ReiAnixCatalogArtworkCandidate(
     val source: ReiAnixCatalogSource,
@@ -118,7 +118,7 @@ data class ReiAnixCatalogArtworkCandidate(
     val entityType: String = "anime",
     val width: Int? = null,
     val height: Int? = null,
-    /** Local SQLite owner, set only after the external identity has passed verification. */
+    /** Optional local SQLite target; it is not an identity-verification result. */
     val localAnimeId: Long? = null,
 ) {
     init {
@@ -232,6 +232,17 @@ data class ReiAnixCatalogAnime(
             ReiAnixCatalogArtworkType.BANNER, it, bannerImageField, bannerVariant)) }
     }
 }
+
+
+/**
+ * Keeps every provider result that carries structurally valid artwork.
+ * This selection deliberately does not inspect titles, metadata, IDs already linked to the
+ * local anime, or any catalog identity decision. Provider order is preserved.
+ */
+internal fun usableCatalogArtworkCandidates(
+    candidates: Collection<ReiAnixCatalogAnime>,
+): List<ReiAnixCatalogAnime> =
+    candidates.filter { it.artworkCandidates().isNotEmpty() }
 
 sealed interface ReiAnixCatalogError {
     data class Http(val statusCode: Int) : ReiAnixCatalogError

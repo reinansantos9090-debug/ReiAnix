@@ -38,6 +38,23 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private const val MAX_ARTWORK_CANDIDATES = 5
 
+/**
+ * Artwork lookup preserves provider/query order and checks only whether a candidate has an image.
+ * Identity scoring remains available to the separate metadata auto-match path.
+ */
+internal fun usableAniListArtworkCandidates(
+    candidates: Collection<AniListAnime>,
+): List<AniListAnime> =
+    candidates.asSequence()
+        .filter { remote ->
+            remote.id > 0 &&
+                (!remote.coverExtraLargeUrl.isNullOrBlank() ||
+                    !remote.coverLargeUrl.isNullOrBlank() || !remote.bannerUrl.isNullOrBlank())
+        }
+        .distinctBy { it.id }
+        .take(MAX_ARTWORK_CANDIDATES)
+        .toList()
+
 
 /** Pure policy for bounded discovery of missing posters from the canonical catalogue. */
 @Suppress("UNUSED_PARAMETER")
@@ -500,14 +517,7 @@ class ReiAnixAniListIntegrationService(
 
     private fun publishArtworkCandidates(animeId: Long, candidates: List<AniListAnime>): Boolean {
         val publisher = artworkCandidatePublisher ?: return false
-        val artworkCandidates = candidates.asSequence()
-            .filter { remote ->
-                remote.id > 0 &&
-                    (!remote.coverExtraLargeUrl.isNullOrBlank() ||
-                        !remote.coverLargeUrl.isNullOrBlank() || !remote.bannerUrl.isNullOrBlank())
-            }
-            .distinctBy { it.id }
-            .take(MAX_ARTWORK_CANDIDATES)
+        val artworkCandidates = usableAniListArtworkCandidates(candidates)
             .map { remote ->
                 ReiAnixArtworkCandidate(
                     anilistId = remote.id.toLong(),
@@ -526,8 +536,8 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Read-only candidate search for artwork. Matcher confidence orders the candidates,
-     * but no candidate is allowed to create or replace the local AniList identity.
+     * Read-only artwork search. Results remain in provider/query order; identity matching
+     * is not consulted when deciding which returned images may be published.
      * A failed alias request does not discard results already obtained from other aliases.
      */
     private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): List<AniListAnime> {
@@ -568,20 +578,9 @@ class ReiAnixAniListIntegrationService(
             }
         }
         if (candidatesById.isEmpty()) return emptyList()
-        val context = ReiAnixAniListMatcher.Context(
-            year = local.year,
-            mediaKind = local.mediaKind,
-        )
-        return candidatesById.values.map { remote ->
-            val score = terms.maxOfOrNull { title ->
-                ReiAnixAniListMatcher.rank(title, listOf(remote), context).firstOrNull()?.score ?: 0.0
-            } ?: 0.0
-            remote to score
-        }.sortedWith(
-            compareByDescending<Pair<AniListAnime, Double>> { it.second }
-                .thenBy { (it.first.titleEnglish ?: it.first.titleRomaji ?: "").lowercase(Locale.ROOT) }
-                .thenBy { it.first.id },
-        ).take(MAX_ARTWORK_CANDIDATES).map { it.first }
+        // Do not use identity confidence, exact-title checks, or metadata similarity to
+        // decide which AniList images can be published. Keep the provider's result order.
+        return usableAniListArtworkCandidates(candidatesById.values)
     }
 
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
