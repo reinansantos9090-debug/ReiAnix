@@ -1530,7 +1530,7 @@ class ReiAnixLibraryViewModel(
         if (animeId <= 0L || episodeId <= 0L || !imageFile.isFile) return
         val integration = appDependencies?.aniListIntegrationService ?: return
         val session = traceMoeSampleSessions.compute(animeId) { _, existing ->
-            if (existing != null && existing.job.isActive) {
+            if (existing != null && !existing.job.isCompleted && !existing.job.isCancelled) {
                 existing
             } else {
                 val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
