@@ -507,6 +507,7 @@ class MainActivity : ComponentActivity() {
         full: Boolean = false,
         reason: String = "",
         triggerRequestId: String? = null,
+        onSafScanFinished: (() -> Unit)? = null,
     ) {
         val requestId = triggerRequestId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
         Log.i(
@@ -527,6 +528,7 @@ class MainActivity : ComponentActivity() {
                 origin = origin,
                 reason = reason,
                 includeAuthorizedDiagnostics = source == null,
+                onFinished = onSafScanFinished,
             )
         }
     }
@@ -2450,6 +2452,9 @@ class MainActivity : ComponentActivity() {
                 source = null,
                 full = false,
                 reason = "first_activity_resume",
+                onSafScanFinished = if (pendingSafForegroundReconciliation) {
+                    { clearSafForegroundReconciliationPending("startup_saf_scan_completed") }
+                } else null,
             )
             safDiscoveryAlreadyDispatched = true
         } else if (shouldDiscover) {
@@ -2475,6 +2480,9 @@ class MainActivity : ComponentActivity() {
                 source = source,
                 full = false,
                 reason = "permission_available_after_resume",
+                onSafScanFinished = if (pendingSafForegroundReconciliation && source == null) {
+                    { clearSafForegroundReconciliationPending("permission_saf_scan_completed") }
+                } else null,
             )
             // A combined permission transition already requests configured SAF roots.
             // A single-source MediaStore/BroadStorage refresh does not replace it.
@@ -2488,7 +2496,8 @@ class MainActivity : ComponentActivity() {
                     clearSafForegroundReconciliationPending("no_authorized_saf_root")
                 }
                 safDiscoveryAlreadyDispatched -> {
-                    clearSafForegroundReconciliationPending("startup_or_permission_scan_already_requested")
+                    // The existing startup/permission SAF scan owns this reconciliation.
+                    // Its completion callback consumes the durable pending marker.
                 }
                 else -> {
                     val reconciliationRequestId = UUID.randomUUID().toString()
@@ -2506,8 +2515,8 @@ class MainActivity : ComponentActivity() {
                         "BACKGROUND_RECONCILIATION",
                         "app_returned_to_foreground",
                         includeAuthorizedDiagnostics = false,
+                        onFinished = { clearSafForegroundReconciliationPending("saf_reconciliation_completed") },
                     )
-                    clearSafForegroundReconciliationPending("saf_reconciliation_dispatched")
                 }
             }
         }
@@ -3520,6 +3529,7 @@ class MainActivity : ComponentActivity() {
         origin: String,
         reason: String,
         includeAuthorizedDiagnostics: Boolean = false,
+        onFinished: (() -> Unit)? = null,
     ) {
         if (!activityResumed) {
             nativeRequestState.markOperationState(
@@ -3560,6 +3570,8 @@ class MainActivity : ComponentActivity() {
             var cancelledScopes = 0
             var configuredScopes = 0
             var requestedSources = 0
+            var scanCompletedSuccessfully = false
+            var noSourcesAvailable = false
 
             suspend fun awaitAndRecordSource(source: String, scanId: String) {
                 scanIds += scanId
@@ -3762,6 +3774,8 @@ class MainActivity : ComponentActivity() {
                     terminalRequestState.name,
                     result = status,
                 )
+                scanCompletedSuccessfully = status == "COMPLETED"
+                noSourcesAvailable = requestedSources == 0
             } catch (cancelled: CancellationException) {
                 nativeRequestState.markOperationState(requestId, "scan_library", NativeRequestState.OperationState.CANCELLED)
                 publishNativeDiagnostic("OPERATION_CANCELLED", requestId, "scan_library", NativeRequestState.OperationState.CANCELLED.name)
@@ -3797,6 +3811,11 @@ class MainActivity : ComponentActivity() {
                                 .put("errorType", exception::class.java.simpleName),
                         ),
                 )
+            } finally {
+                // Keep the durable request pending after partial/failed/cancelled scans.
+                // A later foreground entry can retry without treating a partial snapshot
+                // as proof that missing files were removed.
+                if (scanCompletedSuccessfully || noSourcesAvailable) onFinished?.invoke()
             }
         }
     }
