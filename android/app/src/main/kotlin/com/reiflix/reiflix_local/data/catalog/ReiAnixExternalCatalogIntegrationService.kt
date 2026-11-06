@@ -235,20 +235,10 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
             }
 
-            val remoteArtworkCandidates = resolved.artworkCandidates.ifEmpty { listOfNotNull(verified?.remote) }
+            val remoteArtworkCandidates = resolved.artworkCandidates
             if (remoteArtworkCandidates.isEmpty()) {
-                val outcome = when (resolved.decision) {
-                    ReiAnixCatalogIdentityDecision.PROBABLE -> "PROBABLE_MATCH_HAS_NO_ARTWORK"
-                    ReiAnixCatalogIdentityDecision.AMBIGUOUS -> "AMBIGUOUS_NO_SAFE_ARTWORK_CANDIDATE"
-                    ReiAnixCatalogIdentityDecision.REJECTED -> "IDENTITY_MISMATCH_REJECTED"
-                    ReiAnixCatalogIdentityDecision.UNRESOLVED -> "IDENTITY_UNRESOLVED_NO_ARTWORK"
-                    ReiAnixCatalogIdentityDecision.CONFIRMED -> "CONFIRMED_RESULT_HAS_NO_ARTWORK"
-                }
-                record(source, outcome, anime.id)
+                record(source, "NO_USABLE_ARTWORK_CANDIDATES", anime.id)
                 continue
-            }
-            if (verified == null) {
-                record(source, "ARTWORK_ONLY_IDENTITY_NOT_USED", anime.id)
             }
 
             // Queue external candidates through the current artwork publication pipeline.
