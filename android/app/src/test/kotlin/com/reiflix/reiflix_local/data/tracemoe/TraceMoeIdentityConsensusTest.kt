@@ -136,19 +136,19 @@ class TraceMoeIdentityConsensusTest {
     }
 
     @Test
-    fun fifthEpisodeCanResolveAPreviouslyUnconfirmedFourEpisodeWindow() {
+    fun onlyTheFirstThreeEpisodeResultsCanContributeToIdentification() {
         val results = linkedMapOf(
             11L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.88)),
             12L to listOf(TraceMoeSearchMatch(anilistId = 21, similarity = 0.89)),
             13L to listOf(TraceMoeSearchMatch(anilistId = 5114, similarity = 0.87)),
-            14L to listOf(TraceMoeSearchMatch(anilistId = 30276, similarity = 0.88)),
+            14L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.98)),
+            15L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.97)),
         )
-        assertNull(evaluateTraceMoeProgressiveIdentity(results))
-        results[15L] = listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.87))
-        val consensus = evaluateTraceMoeProgressiveIdentity(results)
-        assertNotNull(consensus)
-        assertEquals(16498, consensus?.anilistId)
-        assertEquals(2, consensus?.supportingEpisodes)
+
+        val bounded = firstTraceMoeEpisodeMatches(results)
+        assertEquals(3, MAX_TRACE_MOE_EPISODE_SAMPLES)
+        assertEquals(listOf(11L, 12L, 13L), bounded.keys.toList())
+        assertNull(evaluateTraceMoeProgressiveIdentity(bounded))
     }
 
 }
