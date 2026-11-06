@@ -55,8 +55,9 @@ import kotlin.math.ceil
 import kotlin.math.max
 
 /**
- * Successful artwork materialization signal. It contains no path or URL: consumers
- * need only the stable SQLite identity to invalidate their existing projection.
+ * Successful artwork materialization signal. Episode-thumbnail events also carry
+ * their local path for the in-process Trace.moe consumer; other artwork events expose
+ * only the stable SQLite identity needed to invalidate the existing projection.
  */
 internal data class ReiAnixArtworkPublication(
     val requestId: String,
@@ -64,6 +65,7 @@ internal data class ReiAnixArtworkPublication(
     val entityId: String,
     val artworkType: String,
     val sourceKind: String,
+    val localPath: String? = null,
 )
 
 /** Candidate artwork URLs remain separate from the local identity association. */
@@ -2086,6 +2088,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             entityId = id,
             artworkType = type,
             sourceKind = sourceKind,
+            localPath = path.takeIf { entity == "episode" && type == "episode_thumbnail" },
         )
         if (!publicationSignal.publishIfCommitted(
                 publication = publication,
