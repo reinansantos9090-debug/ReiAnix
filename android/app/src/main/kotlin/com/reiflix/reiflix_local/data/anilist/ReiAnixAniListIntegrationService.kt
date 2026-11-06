@@ -359,7 +359,7 @@ class ReiAnixAniListIntegrationService(
     /**
      * Uses independent local episode thumbnails to verify or correct an automatic
      * AniList association. A clear first-frame result is accepted immediately;
-     * otherwise two matching results from up to three episodes are required.
+     * otherwise two matching results from a maximum of five episodes are required.
      * Manual associations and manually sourced metadata are never replaced.
      */
     suspend fun identifyFromEpisodeThumbnails(
@@ -370,7 +370,7 @@ class ReiAnixAniListIntegrationService(
     /**
      * Consume episode thumbnails as soon as they become available. Trace.moe can
      * confirm a clear first-frame result immediately; otherwise two matching
-     * episode results out of at most three are enough to correct an automatic
+     * episode results out of at most five are enough to correct an automatic
      * association. The upstream flow is cancelled as soon as a decision is made.
      */
     suspend fun identifyFromEpisodeThumbnails(
@@ -416,8 +416,8 @@ class ReiAnixAniListIntegrationService(
         var confirmedIdentity: com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentityConsensus? = null
         var attemptTimestampWritten = false
 
-        // The flow is consumed incrementally. A strong first image or a two-of-three
-        // episode agreement ends collection immediately; no remaining thumbnails are
+        // The flow is consumed incrementally. A strong first image or a two-episode
+        // agreement ends collection immediately; no remaining thumbnails are
         // awaited and no video file is ever uploaded.
         val seenEpisodeIds = HashSet<Long>()
         samples.transform { sample ->
