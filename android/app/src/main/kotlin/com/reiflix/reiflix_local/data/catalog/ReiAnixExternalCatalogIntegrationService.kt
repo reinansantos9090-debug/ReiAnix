@@ -249,23 +249,23 @@ class ReiAnixExternalCatalogIntegrationService(
                 .flatMap { it.artworkCandidates() }
                 .distinctBy { "${it.source.key}|${it.externalRecordId}|${it.type.key}|${it.url}" }
                 .mapNotNull { candidate ->
-                val artworkType = when (candidate.type) {
-                    ReiAnixCatalogArtworkType.POSTER -> "poster"
-                    ReiAnixCatalogArtworkType.BACKDROP,
-                    ReiAnixCatalogArtworkType.BANNER -> "backdrop"
+                    val artworkType = when (candidate.type) {
+                        ReiAnixCatalogArtworkType.POSTER -> "poster"
+                        ReiAnixCatalogArtworkType.BACKDROP,
+                        ReiAnixCatalogArtworkType.BANNER -> "backdrop"
+                    }
+                    if (hasValidArtwork(anime.id, artworkType)) {
+                        record(source, "${artworkType.uppercase(Locale.ROOT)}_SKIPPED_VALID_LOCAL", anime.id)
+                        null
+                    } else {
+                        ReiAnixArtworkCandidate(
+                            anilistId = 0L,
+                            posterUrl = candidate.url.takeIf { artworkType == "poster" },
+                            bannerUrl = candidate.url.takeIf { artworkType == "backdrop" },
+                            source = candidate.source.key,
+                        )
+                    }
                 }
-                if (hasValidArtwork(anime.id, artworkType)) {
-                    record(source, "${artworkType.uppercase(Locale.ROOT)}_SKIPPED_VALID_LOCAL", anime.id)
-                    null
-                } else {
-                    ReiAnixArtworkCandidate(
-                        anilistId = 0L,
-                        posterUrl = candidate.url.takeIf { artworkType == "poster" },
-                        bannerUrl = candidate.url.takeIf { artworkType == "backdrop" },
-                        source = candidate.source.key,
-                    )
-                }
-            }
             if (pendingArtwork.isNotEmpty() &&
                 artwork.requestAnimeArtworkCandidates(anime.id, pendingArtwork, force = true)
             ) {
