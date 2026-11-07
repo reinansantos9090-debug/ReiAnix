@@ -25,9 +25,15 @@ if [[ "$adult_or_unrated" != "0" ]]; then
   exit 1
 fi
 
-pending_vectors="$(psql_scalar "SELECT COUNT(*) FROM files WHERE anilist_id IS NOT NULL AND media_info IS NOT NULL AND scene_changes IS NOT NULL AND color_layout IS NOT NULL AND loaded IS DISTINCT FROM TRUE;")"
+failed_vectors="$(psql_scalar "SELECT COUNT(*) FROM files WHERE anilist_id IS NOT NULL AND media_info IS NOT NULL AND scene_changes IS NOT NULL AND color_layout IS NOT NULL AND loaded = FALSE;")"
+if [[ "$failed_vectors" != "0" ]]; then
+  echo "${failed_vectors} eligible descriptor records are marked loaded=false. Do not rerun the upstream loader blindly: reconcile any partial Milvus inserts from the failed batches before resetting those rows to NULL." >&2
+  exit 1
+fi
+
+pending_vectors="$(psql_scalar "SELECT COUNT(*) FROM files WHERE anilist_id IS NOT NULL AND media_info IS NOT NULL AND scene_changes IS NOT NULL AND color_layout IS NOT NULL AND loaded IS NULL;")"
 if [[ "$pending_vectors" != "0" ]]; then
-  echo "${pending_vectors} eligible visual descriptor records are not loaded in Milvus; rerun bulk-load-milvus.ts and verify the logs." >&2
+  echo "${pending_vectors} eligible visual descriptor records have not been loaded into Milvus yet; finish the initial bulk-load and verify its logs." >&2
   exit 1
 fi
 
