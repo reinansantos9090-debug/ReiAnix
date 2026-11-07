@@ -48,7 +48,7 @@ internal fun classifyTraceMoeHttpFailure(
         400, 413, 415 -> TraceMoeFailureKind.BAD_IMAGE
         401 -> TraceMoeFailureKind.AUTHENTICATION
         403 -> TraceMoeFailureKind.FORBIDDEN
-        402 -> if ("concurrency" in message) {
+        402 -> if ("concurr" in message) {
             TraceMoeFailureKind.CONCURRENCY_LIMIT
         } else {
             TraceMoeFailureKind.QUOTA_EXHAUSTED
