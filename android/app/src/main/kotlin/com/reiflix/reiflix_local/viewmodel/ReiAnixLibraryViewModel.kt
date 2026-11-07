@@ -1419,7 +1419,7 @@ class ReiAnixLibraryViewModel(
         if (nativeScanInProgress) {
             pendingEpisodeThumbnailAnimeRequests.add(animeId)
         }
-        if (anime.contentEpisodes.isEmpty() || (!hasAvailableLocalEpisode && nativeScanInProgress)) {
+        if (anime.contentEpisodes.isEmpty() || !hasAvailableLocalEpisode) {
             pendingEpisodeThumbnailAnimeRequests.add(animeId)
             episodeThumbnailBatchesInFlight.remove(animeId)
             ReiAnixDiagnosticTimeline.record(
@@ -1955,9 +1955,17 @@ class ReiAnixLibraryViewModel(
      */
     private fun drainPendingEpisodeThumbnailRequests() {
         if (NativeScanController.progress.value.values.any { !it.state.isTerminal }) return
-        val readyAnimeIds = nativeCatalogState.value.animes
+        val catalog = nativeCatalogState.value
+        if (catalog.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY) return
+        val readyAnimeIds = catalog.animes
             .asSequence()
-            .filter { it.contentEpisodes.isNotEmpty() && it.id in pendingEpisodeThumbnailAnimeRequests }
+            .filter { anime ->
+                anime.id in pendingEpisodeThumbnailAnimeRequests &&
+                    anime.contentEpisodes.any { episode ->
+                        episode.media.availability.name == "AVAILABLE" &&
+                            episodeThumbnailSource(episode) != null
+                    }
+            }
             .map { it.id }
             .toList()
         readyAnimeIds.forEach { animeId ->
