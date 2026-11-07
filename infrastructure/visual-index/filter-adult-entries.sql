@@ -27,7 +27,7 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Adult-tagged records remain in the ReiAnix visual index.';
     END IF;
-END $;
+END $$;
 
 -- Keep the API's materialized AniList views consistent with the filtered base table.
 REFRESH MATERIALIZED VIEW anilist_view;
