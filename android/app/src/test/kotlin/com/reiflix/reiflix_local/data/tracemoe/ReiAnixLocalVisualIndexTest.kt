@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -26,8 +27,11 @@ class ReiAnixLocalVisualIndexTest {
         val image = createPatternThumbnail(File(temporaryFolder.root, "episode.jpg"))
         val indexFile = File(temporaryFolder.root, "data/visual-index/references.json")
         val firstIndex = ReiAnixLocalVisualIndex(indexFile)
+        val descriptor = ReiAnixMpeg7ColorLayout.extract(image.readBytes())
+        assertNotNull("The JPEG fixture must produce a Color Layout descriptor", descriptor)
 
         firstIndex.rememberConfirmedReference(image, 1234)
+        assertTrue("A confirmed descriptor must be persisted", indexFile.isFile)
         val firstResult = firstIndex.search(image)
         val secondResult = ReiAnixLocalVisualIndex(indexFile).search(image)
 
