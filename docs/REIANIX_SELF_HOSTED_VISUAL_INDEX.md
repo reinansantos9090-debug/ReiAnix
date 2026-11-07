@@ -57,9 +57,9 @@ gradle -p android \\
 O serviço upstream é usado como motor de consulta vetorial, mas o fluxo do ReiAnix importa descritores MPEG-7 Color Layout pré-calculados e metadados compatíveis com a API. Não envia vídeos do telefone e não extrai quadros dos arquivos locais durante a consulta. O diretório `VIDEO_PATH` permanece vazio, pois existe somente como requisito do processo upstream.
 
 No servidor Linux, a ordem segura é:
-1. iniciar PostgreSQL, etcd, MinIO e Milvus, mantendo a API e o Caddy desligados;
-2. executar `docker compose run --rm --no-deps api cat sql/1.init.sql | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1` para criar o esquema correspondente à mesma imagem da API;
-3. iniciar a API privada e importar um dump de **dados** compatível com a tabela `files`, incluindo descritores pré-calculados e IDs AniList;
+1. iniciar PostgreSQL, etcd, MinIO e Milvus;
+2. iniciar a API privada; na primeira inicialização, o servidor upstream cria o esquema PostgreSQL ausente usando o `sql/1.init.sql` da própria imagem;
+3. importar um dump de **dados** compatível com a tabela `files`, incluindo descritores pré-calculados e IDs AniList;
 4. preencher os metadados AniList, filtrar todas as entradas adultas ou sem classificação explícita, carregar os vetores e executar o verificador antes de publicar o HTTPS.
 
 A PR não contém o dump de dados nem cria a hospedagem. Consulte `infrastructure/visual-index/README.md` para os comandos completos, validações e variáveis de ambiente. O carregador upstream procura linhas com `loaded IS NULL`; quando uma falha marca linhas como `loaded=false`, uma nova execução não as retoma automaticamente. Não repita uma carga parcialmente falha sem reconciliar os vetores já inseridos no Milvus.
