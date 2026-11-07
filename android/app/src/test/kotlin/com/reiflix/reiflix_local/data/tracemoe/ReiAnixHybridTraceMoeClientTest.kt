@@ -249,6 +249,17 @@ class ReiAnixHybridTraceMoeClientTest {
         assertEquals(2, publicCalls)
     }
 
+    @Test
+    fun selfHostedEndpointRequiresAValidRootHttpsOrigin() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ReiAnixTraceMoeClient.selfHosted("http://visual-index.example.net")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ReiAnixTraceMoeClient.selfHosted("https://visual-index.example.net/search")
+        }
+        ReiAnixTraceMoeClient.selfHosted("https://visual-index.example.net")
+    }
+
     private fun sampleImage(): File = File(temporaryFolder.root, "episode-thumb.jpg").apply {
         writeBytes(byteArrayOf(0x01, 0x23, 0x45, 0x67, 0x12))
     }
