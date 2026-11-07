@@ -174,7 +174,7 @@ class ReiAnixAppDependencies(context: Context) {
             ?.let { baseUrl ->
                 runCatching { ReiAnixTraceMoeClient.selfHosted(baseUrl) }
                     .onFailure { error ->
-                        Log.w("ReiAnixAppDependencies", "Independent visual index URL is invalid; fallback disabled.", error)
+                        Log.w("ReiAnixAppDependencies", "Independent visual index URL is invalid; remote index disabled.", error)
                     }
                     .getOrNull()
             }
