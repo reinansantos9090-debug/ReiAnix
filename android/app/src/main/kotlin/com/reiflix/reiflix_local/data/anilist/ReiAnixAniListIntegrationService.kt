@@ -218,6 +218,8 @@ class ReiAnixAniListIntegrationService(
     private data class TraceMoeProgressState(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>>,
         val completed: Boolean,
+        val successfulApiEpisodeIds: Set<Long>,
+        val hasSuccessfulApiEpisodeMetadata: Boolean,
     )
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
     private val missingArtworkRecoveryRunning = AtomicBoolean(false)
@@ -411,15 +413,31 @@ class ReiAnixAniListIntegrationService(
         val nowSeconds = System.currentTimeMillis() / 1000.0
         val previousAttempt = readTraceMoeAttemptAt(animeId, correction)
         if (progress.completed) {
-            if (previousAttempt != null && nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS) return false
+            val isLegacyCompletion = !progress.hasSuccessfulApiEpisodeMetadata
+            if (!isLegacyCompletion &&
+                previousAttempt != null &&
+                nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
+            ) return false
+
+            // Older releases persisted a completed window without recording whether
+            // each HTTP request actually succeeded. Reopen that legacy state once so
+            // a previous transient outage cannot preserve a false 24-hour lockout.
             progress.matchesByEpisode.clear()
-            writeTraceMoeProgress(animeId, progress.matchesByEpisode, completed = false, correction = correction)
+            val emptySuccessfulIds = emptySet<Long>()
+            writeTraceMoeProgress(
+                animeId,
+                progress.matchesByEpisode,
+                completed = false,
+                correction = correction,
+                successfulApiEpisodeIds = emptySuccessfulIds,
+            )
         }
 
         // Pre-progress releases stamped the 24-hour cooldown on the first frame.
         // A legacy timestamp without a saved progressive state is treated as an
         // unfinished window so newly published episode thumbnails can resume it.
         val matchesByEpisode = firstTraceMoeEpisodeMatches(progress.matchesByEpisode)
+        val successfulApiEpisodeIds = progress.successfulApiEpisodeIds.toMutableSet()
         var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         val seenEpisodeIds = HashSet<Long>().apply { addAll(matchesByEpisode.keys) }
 
@@ -440,7 +458,13 @@ class ReiAnixAniListIntegrationService(
             if (!usable) {
                 // Even an unusable published image occupies one of the three sample positions.
                 matchesByEpisode[sample.episodeId] = emptyList()
-                writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
+                writeTraceMoeProgress(
+                    animeId,
+                    matchesByEpisode,
+                    completed = false,
+                    correction = correction,
+                    successfulApiEpisodeIds = successfulApiEpisodeIds,
+                )
                 continue
             }
 
@@ -479,6 +503,7 @@ class ReiAnixAniListIntegrationService(
                             matchesByEpisode,
                             completed = false,
                             correction = correction,
+                            successfulApiEpisodeIds = successfulApiEpisodeIds,
                         )
                         continue
                     }
@@ -498,7 +523,14 @@ class ReiAnixAniListIntegrationService(
                 }
             }
             matchesByEpisode[sample.episodeId] = matches
-            writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
+            successfulApiEpisodeIds.add(sample.episodeId)
+            writeTraceMoeProgress(
+                animeId,
+                matchesByEpisode,
+                completed = false,
+                correction = correction,
+                successfulApiEpisodeIds = successfulApiEpisodeIds,
+            )
             confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         }
 
@@ -514,8 +546,25 @@ class ReiAnixAniListIntegrationService(
         if (consensus == null) {
             if (matchesByEpisode.size >= MAX_TRACE_MOE_EPISODE_SAMPLES) {
                 val completedAt = System.currentTimeMillis() / 1000.0
-                writeTraceMoeProgress(animeId, matchesByEpisode, completed = true, correction = correction)
-                writeTraceMoeAttemptAt(animeId, completedAt, correction)
+                if (successfulApiEpisodeIds.isNotEmpty()) {
+                    writeTraceMoeProgress(
+                        animeId,
+                        matchesByEpisode,
+                        completed = true,
+                        correction = correction,
+                        successfulApiEpisodeIds = successfulApiEpisodeIds,
+                    )
+                    writeTraceMoeAttemptAt(animeId, completedAt, correction)
+                } else {
+                    // Three invalid local thumbnails are not three completed API searches.
+                    writeTraceMoeProgress(
+                        animeId,
+                        matchesByEpisode,
+                        completed = false,
+                        correction = correction,
+                        successfulApiEpisodeIds = emptySet(),
+                    )
+                }
             }
             // Partial windows stay open until another thumbnail is published.
             return false
@@ -586,7 +635,14 @@ class ReiAnixAniListIntegrationService(
                 if (cursor.moveToFirst()) cursor.getString(0) else null
             }
         }
-        if (raw.isNullOrBlank()) return@withContext TraceMoeProgressState(linkedMapOf(), completed = false)
+        if (raw.isNullOrBlank()) {
+            return@withContext TraceMoeProgressState(
+                matchesByEpisode = linkedMapOf(),
+                completed = false,
+                successfulApiEpisodeIds = emptySet(),
+                hasSuccessfulApiEpisodeMetadata = true,
+            )
+        }
         try {
             val root = JSONObject(raw)
             val episodes = root.optJSONArray("episodes") ?: JSONArray()
@@ -608,10 +664,27 @@ class ReiAnixAniListIntegrationService(
                 }
                 results[episodeId] = matches
             }
-            TraceMoeProgressState(results, root.optBoolean("completed", false))
+            val successfulIdsJson = root.optJSONArray("successfulApiEpisodeIds")
+            val successfulIds = linkedSetOf<Long>()
+            if (successfulIdsJson != null) {
+                for (index in 0 until successfulIdsJson.length()) {
+                    successfulIdsJson.optLong(index, 0L).takeIf { it > 0L }?.let(successfulIds::add)
+                }
+            }
+            TraceMoeProgressState(
+                matchesByEpisode = results,
+                completed = root.optBoolean("completed", false),
+                successfulApiEpisodeIds = successfulIds,
+                hasSuccessfulApiEpisodeMetadata = successfulIdsJson != null,
+            )
         } catch (error: Exception) {
             Log.w(TAG, "Stored Trace.moe progress is unreadable for animeId=$animeId", error)
-            TraceMoeProgressState(linkedMapOf(), completed = false)
+            TraceMoeProgressState(
+                matchesByEpisode = linkedMapOf(),
+                completed = false,
+                successfulApiEpisodeIds = emptySet(),
+                hasSuccessfulApiEpisodeMetadata = false,
+            )
         }
     }
 
@@ -620,6 +693,7 @@ class ReiAnixAniListIntegrationService(
         matchesByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
         completed: Boolean,
         correction: Boolean,
+        successfulApiEpisodeIds: Set<Long>,
     ) = withContext(Dispatchers.IO) {
         val prefix = if (correction) TRACE_MOE_CORRECTION_PROGRESS_PREFERENCE_PREFIX else TRACE_MOE_PROGRESS_PREFERENCE_PREFIX
         val episodes = JSONArray()
@@ -630,7 +704,13 @@ class ReiAnixAniListIntegrationService(
             }
             episodes.put(JSONObject().put("episodeId", episodeId).put("matches", matchArray))
         }
-        val value = JSONObject().put("completed", completed).put("episodes", episodes)
+        val successfulIds = JSONArray().apply {
+            successfulApiEpisodeIds.sorted().forEach(::put)
+        }
+        val value = JSONObject()
+            .put("completed", completed)
+            .put("episodes", episodes)
+            .put("successfulApiEpisodeIds", successfulIds)
         library.database.transaction { connection ->
             val values = ContentValues().apply {
                 put("key", prefix + animeId)
