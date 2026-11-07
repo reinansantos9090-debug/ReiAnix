@@ -129,7 +129,7 @@ class ReiAnixHybridTraceMoeClientTest {
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
-        assertEquals(expected, client.search(image, allowPublicSearch = false))
+        assertEquals(expected, client.search(image) { false })
         assertEquals(0, publicCalls)
         assertEquals(1, independentCalls)
     }
@@ -161,6 +161,7 @@ class ReiAnixHybridTraceMoeClientTest {
         val image = sampleImage()
         val expected = listOf(TraceMoeSearchMatch(anilistId = 9876, similarity = 0.96))
         var publicCalls = 0
+        var publicQuotaReservations = 0
         val client = ReiAnixHybridTraceMoeClient(
             publicProvider = ReiAnixTraceMoeSearchProvider {
                 publicCalls += 1
@@ -171,9 +172,16 @@ class ReiAnixHybridTraceMoeClientTest {
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
-        assertEquals(expected, client.search(image))
-        assertEquals(expected, client.search(image))
+        assertEquals(expected, client.search(image) {
+            publicQuotaReservations += 1
+            true
+        })
+        assertEquals(expected, client.search(image) {
+            publicQuotaReservations += 1
+            true
+        })
         assertEquals(1, publicCalls)
+        assertEquals(1, publicQuotaReservations)
     }
 
     @Test
