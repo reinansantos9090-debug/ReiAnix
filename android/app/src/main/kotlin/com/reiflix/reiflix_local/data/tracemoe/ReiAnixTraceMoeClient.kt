@@ -754,7 +754,7 @@ internal fun appendTraceMoeEpisodeMatches(
 }
 
 /** Restore the latest evidence window, not merely the first three episodes in a library. */
-internal fun firstTraceMoeEpisodeMatches(
+internal fun latestTraceMoeEpisodeMatches(
     matchesByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
 ): LinkedHashMap<Long, List<TraceMoeSearchMatch>> =
     LinkedHashMap<Long, List<TraceMoeSearchMatch>>().apply {
