@@ -111,8 +111,16 @@ jobs:
           set -euo pipefail
           bash -n infrastructure/visual-index/hydrate-anilist-metadata.sh
           bash -n infrastructure/visual-index/verify-and-publish-visual-index.sh
-          docker compose --env-file infrastructure/visual-index/.env.example \
-            -f infrastructure/visual-index/compose.yml config --quiet
+          compose_json="$(docker compose --env-file infrastructure/visual-index/.env.example \
+            -f infrastructure/visual-index/compose.yml config --format json)"
+          printf '%s' "$compose_json" | jq -e '
+            .services.minio.environment.MINIO_ROOT_USER == .services.milvus.environment.MINIO_ACCESS_KEY_ID
+            and
+            .services.minio.environment.MINIO_ROOT_PASSWORD == .services.milvus.environment.MINIO_SECRET_ACCESS_KEY
+          ' >/dev/null
+          printf '%s' "$compose_json" | jq -e '
+            (.services.api.healthcheck.test | join(" ")) | contains("/me")
+          ' >/dev/null
 
       - name: Upload focused JVM test reports
         if: always()
