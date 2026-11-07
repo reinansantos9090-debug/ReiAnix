@@ -58,10 +58,10 @@ docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 
 docker compose exec -T api node script/bulk-load-milvus.ts 500
 ```
 
-Acompanhe a saída do processo e confira se todos os registros elegíveis foram marcados `loaded=true`. Só depois de concluir essa etapa exponha o endpoint HTTPS:
+Acompanhe a saída do processo. Depois execute o verificador: ele confirma que o catálogo não está vazio, que não restam registros sem classificação geral, que não existem arquivos órfãos e que todos os vetores elegíveis foram carregados. O Caddy só é iniciado quando todas essas verificações passam:
 
 ```bash
-docker compose up -d caddy
+bash ./verify-and-publish-visual-index.sh
 ```
 
 O ReiAnix envia apenas a thumbnail JPEG que já gerou no aparelho. A pasta `VIDEO_PATH` fica vazia e `SCAN_INTERVAL=0`; não há envio de vídeo nem reextração de quadros no dispositivo.
