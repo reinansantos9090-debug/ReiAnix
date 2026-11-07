@@ -76,7 +76,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicInteger
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel

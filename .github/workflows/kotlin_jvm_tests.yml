@@ -99,4 +99,5 @@ jobs:
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
+            :app:assembleDebugAndroidTest \
             :app:compileReleaseKotlin
