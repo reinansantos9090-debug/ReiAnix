@@ -33,4 +33,4 @@ fi
 
 echo "Validated ${total_eligible} general-audience visual descriptor records. Starting the HTTPS search proxy."
 docker compose up -d caddy
-echo "The ReiAnix visual search endpoint is now published at https://${REIANIX_INDEX_DOMAIN:?Set REIANIX_INDEX_DOMAIN in .env}/search"
+echo "The ReiAnix visual search endpoint has been published. Confirm the HTTPS domain from .env and test POST /search before adding it to a release build."
