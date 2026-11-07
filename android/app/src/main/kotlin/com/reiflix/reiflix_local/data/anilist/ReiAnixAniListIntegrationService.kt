@@ -13,7 +13,8 @@ import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeFailureKind
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
-import com.reiflix.reiflix_local.data.tracemoe.firstTraceMoeEpisodeMatches
+import com.reiflix.reiflix_local.data.tracemoe.latestTraceMoeEpisodeMatches
+import com.reiflix.reiflix_local.data.tracemoe.appendTraceMoeEpisodeMatches
 import com.reiflix.reiflix_local.data.tracemoe.evaluateTraceMoeProgressiveIdentity
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import kotlinx.coroutines.flow.Flow
@@ -366,10 +367,10 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Uses independent local episode thumbnails to verify or correct an automatic
-     * AniList association. A clear first-frame result is accepted immediately;
-     * otherwise two matching results from a maximum of five episodes are required.
-     * Manual associations and manually sourced metadata are never replaced.
+     * Uses every available local episode thumbnail to verify or correct an automatic
+     * AniList association. Only the latest three successful Trace.moe responses form
+     * each identity decision; later episodes keep replacing the oldest evidence until
+     * a clear match or a two-episode majority is found. Manual metadata is protected.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -377,10 +378,10 @@ class ReiAnixAniListIntegrationService(
     ): Boolean = identifyFromEpisodeThumbnails(animeId, samples.asFlow())
 
     /**
-     * Consume episode thumbnails as soon as they become available. Trace.moe can
-     * confirm a clear first-frame result immediately; otherwise two matching
-     * episode results out of at most five are enough to correct an automatic
-     * association. The upstream flow is cancelled as soon as a decision is made.
+     * Consume episode thumbnails as soon as they become available. The app may
+     * inspect any number of episodes, while limiting each identity decision to a
+     * rolling window of three successful API responses. The upstream flow is
+     * cancelled only after a reliable identity is confirmed or the source closes.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -468,10 +469,10 @@ class ReiAnixAniListIntegrationService(
             )
         }
 
-        // Pre-progress releases stamped the 24-hour cooldown on the first frame.
-        // A legacy timestamp without a saved progressive state is treated as an
-        // unfinished window so newly published episode thumbnails can resume it.
-        var matchesByEpisode = firstTraceMoeEpisodeMatches(progress.matchesByEpisode)
+        // Old releases stamped cooldowns after their three-result guess window.
+        // Legacy incomplete states are reopened below so subsequent thumbnails can
+        // contribute instead of being blocked for an entire day.
+        var matchesByEpisode = latestTraceMoeEpisodeMatches(progress.matchesByEpisode)
         var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         // Keep the complete set of successful episode IDs separately from the rolling
         // three-result evidence window, so already-checked screenshots are not sent
@@ -497,7 +498,7 @@ class ReiAnixAniListIntegrationService(
             }
             if (!usable) {
                 // A locally unusable image is not a Trace.moe API result and must
-                // not consume one of the three successful-search sample positions.
+                // not consume one of the three current evidence-window positions.
                 continue
             }
 
