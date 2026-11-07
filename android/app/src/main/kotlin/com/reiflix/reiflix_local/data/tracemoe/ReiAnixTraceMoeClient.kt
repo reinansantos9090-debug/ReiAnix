@@ -102,8 +102,8 @@ internal fun parseTraceMoeQuotaSnapshot(responseBody: String): TraceMoeQuotaSnap
 }
 
 /**
- * Search contract shared by the public Trace.moe endpoint and a separately hosted,
- * Trace.moe-compatible visual index. Only generated local thumbnails are uploaded.
+ * Search contract shared by the public anime-scene matcher and optional web-title
+ * hint source. Only already-generated local episode thumbnails are supplied.
  */
 fun interface ReiAnixTraceMoeSearchProvider {
     suspend fun search(imageFile: File): List<TraceMoeSearchMatch>
@@ -402,27 +402,7 @@ class ReiAnixTraceMoeClient(
         private val REQUEST_GATES = java.util.concurrent.ConcurrentHashMap<String, EndpointRequestGate>()
         private val QUOTA_GATES = java.util.concurrent.ConcurrentHashMap<String, QuotaRequestGate>()
 
-        /**
-         * Creates a client for a separately operated Trace.moe-compatible HTTPS service.
-         * The configured value is a root HTTPS origin, not a path or full /search URL.
-         */
-        fun selfHosted(baseUrl: String): ReiAnixTraceMoeClient {
-            val normalized = baseUrl.trim().trimEnd('/')
-            val uri = runCatching { URI(normalized) }.getOrNull()
-            require(
-                uri != null &&
-                    uri.isAbsolute &&
-                    uri.scheme.equals("https", ignoreCase = true) &&
-                    !uri.host.isNullOrBlank() &&
-                    (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") &&
-                    uri.rawUserInfo == null &&
-                    uri.rawQuery == null &&
-                    uri.rawFragment == null
-            ) { "The self-hosted visual index must use a valid HTTPS base URL." }
-            return ReiAnixTraceMoeClient(
-                searchEndpoint = "$normalized/search?anilistInfo&cutBorders=1",
-            )
-        }
+
     }
 }
 

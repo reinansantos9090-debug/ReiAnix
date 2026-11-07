@@ -8,11 +8,11 @@ import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
-import com.reiflix.reiflix_local.data.tracemoe.MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEvidenceSource
 import com.reiflix.reiflix_local.data.tracemoe.firstTraceMoeEpisodeMatches
 import com.reiflix.reiflix_local.data.tracemoe.evaluateTraceMoeProgressiveIdentity
 import com.reiflix.reiflix_local.data.tracemoe.evaluateTraceMoeBestEffortIdentity
@@ -367,9 +367,10 @@ class ReiAnixAniListIntegrationService(
 
     /**
      * Uses independently generated episode thumbnails to verify or correct an automatic
-     * AniList association. Trace.moe, the configured ReiAnix remote index, and the local
-     * reference index are queried concurrently. Manual associations and manually sourced
-     * metadata are never replaced.
+     * AniList association. Trace.moe and optional Google Web Detection query the same
+     * already-generated episode thumbnail concurrently. Google title hints require
+     * corroboration from a second distinct episode; manual associations and metadata
+     * are never replaced.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -377,9 +378,9 @@ class ReiAnixAniListIntegrationService(
     ): Boolean = identifyFromEpisodeThumbnails(animeId, samples.asFlow())
 
     /**
-     * Consume episode thumbnails as soon as they become available. Configured visual
-     * indexes are queried concurrently for each sample. The upstream flow is cancelled
-     * as soon as the existing progressive identity policy reaches a decision.
+     * Consume existing episode thumbnails as soon as they become available. The public
+     * anime-scene matcher and optional generic web-image hints query the same JPEG in
+     * parallel. The upstream flow is cancelled when the identity policy reaches a decision.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -422,7 +423,6 @@ class ReiAnixAniListIntegrationService(
         val matchesByEpisode = firstTraceMoeEpisodeMatches(progress.matchesByEpisode)
         var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         val seenEpisodeIds = HashSet<Long>().apply { addAll(matchesByEpisode.keys) }
-        val sampleFilesByEpisode = linkedMapOf<Long, File>()
 
         // Keep consuming the live channel while this anime needs another sample.
         // A clear first result exits immediately; uncertain results wait for the
@@ -465,7 +465,6 @@ class ReiAnixAniListIntegrationService(
                 Log.w(TAG, "Anime visual search failed animeId=" + animeId + " episodeId=" + sample.episodeId, error)
                 continue
             }
-            sampleFilesByEpisode[sample.episodeId] = sample.imageFile
             matchesByEpisode[sample.episodeId] = matches
             writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
             confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
@@ -524,23 +523,7 @@ class ReiAnixAniListIntegrationService(
             writeTraceMoeProgress(animeId, matchesByEpisode, completed = true, correction = correction)
             writeTraceMoeAttemptAt(animeId, completedAt, correction)
 
-            // Only seed the on-device reference index with thumbnails that supported
-            // the exact identity just committed by the existing consensus policy.
-            val confirmedReferences = sampleFilesByEpisode.filter { (episodeId, _) ->
-                matchesByEpisode[episodeId].orEmpty().any { match ->
-                    match.anilistId == consensus.anilistId &&
-                        match.similarity >= MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY
-                }
-            }
-            for ((_, imageFile) in confirmedReferences) {
-                try {
-                    hybridVisualSearchClient?.rememberConfirmedReference(imageFile, consensus.anilistId)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    Log.w(TAG, "Confirmed thumbnail could not be added to the local visual index", error)
-                }
-            }
+
         }
         return applied
     }
@@ -589,7 +572,12 @@ class ReiAnixAniListIntegrationService(
                         val anilistId = item.optInt("anilistId", 0)
                         val similarity = item.optDouble("similarity", Double.NaN)
                         if (anilistId > 0 && similarity.isFinite() && similarity in 0.0..1.0) {
-                            add(TraceMoeSearchMatch(anilistId, similarity))
+                            val source = runCatching {
+                                TraceMoeEvidenceSource.valueOf(
+                                    item.optString("source", TraceMoeEvidenceSource.TRACE_MOE.name),
+                                )
+                            }.getOrDefault(TraceMoeEvidenceSource.TRACE_MOE)
+                            add(TraceMoeSearchMatch(anilistId, similarity, source))
                         }
                     }
                 }
@@ -613,7 +601,12 @@ class ReiAnixAniListIntegrationService(
         matchesByEpisode.forEach { (episodeId, matches) ->
             val matchArray = JSONArray()
             matches.forEach { match ->
-                matchArray.put(JSONObject().put("anilistId", match.anilistId).put("similarity", match.similarity))
+                matchArray.put(
+                    JSONObject()
+                        .put("anilistId", match.anilistId)
+                        .put("similarity", match.similarity)
+                        .put("source", match.source.name),
+                )
             }
             episodes.put(JSONObject().put("episodeId", episodeId).put("matches", matchArray))
         }

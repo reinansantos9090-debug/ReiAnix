@@ -2,11 +2,12 @@ package com.reiflix.reiflix_local.data.tracemoe
 
 import java.io.File
 import java.io.IOException
-import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.Test
@@ -22,291 +23,162 @@ class ReiAnixHybridTraceMoeClientTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun startsPublicAndIndependentIndexesBeforeWaitingForEitherResult() = runBlocking {
+    fun startsTraceAndWebDetectionInParallelForTheSameThumbnail() = runBlocking {
         val image = sampleImage()
-        val publicStarted = CompletableDeferred<Unit>()
-        val independentStarted = CompletableDeferred<Unit>()
-        val publicMatch = TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)
-        val independentMatch = TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95)
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider {
-                publicStarted.complete(Unit)
-                withTimeout(2_000) { independentStarted.await() }
-                listOf(publicMatch)
+        val traceStarted = CompletableDeferred<Unit>()
+        val webStarted = CompletableDeferred<Unit>()
+        val traceMatch = TraceMoeSearchMatch(1234, 0.97)
+        val webMatch = TraceMoeSearchMatch(5678, 0.86, TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION)
+        val client = client(
+            public = ReiAnixTraceMoeSearchProvider {
+                traceStarted.complete(Unit)
+                withTimeout(2_000) { webStarted.await() }
+                listOf(traceMatch)
             },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                independentStarted.complete(Unit)
-                withTimeout(2_000) { publicStarted.await() }
-                listOf(independentMatch)
+            web = ReiAnixTraceMoeSearchProvider {
+                webStarted.complete(Unit)
+                withTimeout(2_000) { traceStarted.await() }
+                listOf(webMatch)
             },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
-        val matches = withTimeout(3_000) { client.search(image) }
-
-        assertEquals(listOf(publicMatch, independentMatch), matches)
+        assertEquals(listOf(traceMatch, webMatch), withTimeout(3_000) { client.search(image) })
     }
 
     @Test
-    fun startsIndependentIndexesWhilePublicQuotaCheckIsStillPending() = runBlocking {
+    fun webDetectionStartsWhilePublicQuotaCheckIsPending() = runBlocking {
         val image = sampleImage()
-        val quotaCheckStarted = CompletableDeferred<Unit>()
-        val releaseQuotaCheck = CompletableDeferred<Boolean>()
-        val independentStarted = CompletableDeferred<Unit>()
-        val expected = listOf(TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95))
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider {
-                error("Public provider must not run when quota is exhausted")
+        val quotaStarted = CompletableDeferred<Unit>()
+        val releaseQuota = CompletableDeferred<Boolean>()
+        val webStarted = CompletableDeferred<Unit>()
+        val expected = TraceMoeSearchMatch(5678, 0.86, TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION)
+        val client = client(
+            public = ReiAnixTraceMoeSearchProvider { error("Public search must be skipped") },
+            web = ReiAnixTraceMoeSearchProvider {
+                webStarted.complete(Unit)
+                listOf(expected)
             },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                independentStarted.complete(Unit)
-                expected
-            },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
         val search = async {
             client.search(image) {
-                quotaCheckStarted.complete(Unit)
-                releaseQuotaCheck.await()
+                quotaStarted.complete(Unit)
+                releaseQuota.await()
             }
         }
+        quotaStarted.await()
+        withTimeout(2_000) { webStarted.await() }
+        releaseQuota.complete(false)
 
-        quotaCheckStarted.await()
-        withTimeout(2_000) { independentStarted.await() }
-        releaseQuotaCheck.complete(false)
-
-        assertEquals(expected, search.await())
+        assertEquals(listOf(expected), search.await())
     }
 
     @Test
-    fun combinesPublicAndIndependentCandidatesEvenWhenPublicHasStrongMatch() = runBlocking {
+    fun keepsTraceMoeSourceWhenEqualScoresAreReturnedForTheSameAnime() = runBlocking {
         val image = sampleImage()
-        val publicMatch = TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)
-        val independentMatch = TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95)
-        var independentCalls = 0
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider { listOf(publicMatch) },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                independentCalls += 1
-                listOf(independentMatch)
-            },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
+        val traceMatch = TraceMoeSearchMatch(1234, 0.90)
+        val webMatch = TraceMoeSearchMatch(1234, 0.90, TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION)
+        val client = client(
+            public = ReiAnixTraceMoeSearchProvider { listOf(traceMatch) },
+            web = ReiAnixTraceMoeSearchProvider { listOf(webMatch) },
         )
 
-        assertEquals(listOf(publicMatch, independentMatch), client.search(image))
-        assertEquals(1, independentCalls)
+        assertEquals(listOf(traceMatch), client.search(image))
     }
 
     @Test
-    fun mergesSameAnimeByKeepingTheStrongestProviderScore() = runBlocking {
+    fun cachesSuccessfulSearchWithEvidenceSource() = runBlocking {
         val image = sampleImage()
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider {
-                listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.91))
-            },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97))
-            },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
+        var traceCalls = 0
+        var webCalls = 0
+        val expected = TraceMoeSearchMatch(9876, 0.86, TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION)
+        val client = client(
+            public = ReiAnixTraceMoeSearchProvider { traceCalls++; emptyList() },
+            web = ReiAnixTraceMoeSearchProvider { webCalls++; listOf(expected) },
         )
 
-        assertEquals(
-            listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)),
-            client.search(image),
-        )
+        assertEquals(listOf(expected), client.search(image))
+        assertEquals(listOf(expected), client.search(image))
+        assertEquals(1, traceCalls)
+        assertEquals(1, webCalls)
     }
 
     @Test
-    fun keepsIndependentResultsWhenPublicSearchFails() = runBlocking {
+    fun doesNotCachePositivePartialResultWhenAnotherEnabledSourceFails() = runBlocking {
         val image = sampleImage()
-        val expected = listOf(TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95))
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider { throw IOException("Public endpoint unavailable") },
-            independentProvider = ReiAnixTraceMoeSearchProvider { expected },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
+        var webCalls = 0
+        val expected = TraceMoeSearchMatch(9876, 0.86, TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION)
+        val client = client(
+            public = ReiAnixTraceMoeSearchProvider { listOf(expected) },
+            web = ReiAnixTraceMoeSearchProvider {
+                webCalls++
+                throw IOException("Google Vision unavailable")
+            },
         )
 
-        assertEquals(expected, client.search(image))
+        assertEquals(listOf(expected), client.search(image))
+        assertEquals(listOf(expected), client.search(image))
+        assertEquals(2, webCalls)
     }
 
     @Test
-    fun keepsPublicResultsWhenIndependentSearchFails() = runBlocking {
+    fun incompleteNoMatchIsRetriedInsteadOfCachedAsEmpty() {
         val image = sampleImage()
-        val expected = listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.96))
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider { expected },
-            independentProvider = ReiAnixTraceMoeSearchProvider { throw IOException("Independent endpoint unavailable") },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
-        )
-
-        assertEquals(expected, client.search(image))
-    }
-
-    @Test
-    fun keepsIndependentIndexActiveWhenPublicQuotaIsExhausted() = runBlocking {
-        val image = sampleImage()
-        var publicCalls = 0
-        var independentCalls = 0
-        val expected = listOf(TraceMoeSearchMatch(anilistId = 5678, similarity = 0.97))
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider {
-                publicCalls += 1
-                emptyList()
+        var traceCalls = 0
+        var webCalls = 0
+        val client = client(
+            public = ReiAnixTraceMoeSearchProvider { traceCalls++; emptyList() },
+            web = ReiAnixTraceMoeSearchProvider {
+                webCalls++
+                throw IOException("Google Vision unavailable")
             },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                independentCalls += 1
-                expected
-            },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
-        )
-
-        assertEquals(expected, client.search(image) { false })
-        assertEquals(0, publicCalls)
-        assertEquals(1, independentCalls)
-    }
-
-    @Test
-    fun publicQuotaExhaustionDoesNotTurnAnIncompleteSearchIntoNoMatch() {
-        val image = sampleImage()
-        var independentCalls = 0
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider { emptyList() },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                independentCalls += 1
-                emptyList()
-            },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
-        )
-
-        repeat(2) {
-            assertThrows(IOException::class.java) {
-                runBlocking { client.search(image) { false } }
-            }
-        }
-        assertEquals(2, independentCalls)
-    }
-
-    @Test
-    fun cachesSuccessfulResultByExactImageContent() = runBlocking {
-        val image = sampleImage()
-        val expected = listOf(TraceMoeSearchMatch(anilistId = 9876, similarity = 0.96))
-        var publicCalls = 0
-        var publicQuotaReservations = 0
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider {
-                publicCalls += 1
-                expected
-            },
-            independentProvider = null,
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
-        )
-
-        assertEquals(expected, client.search(image) {
-            publicQuotaReservations += 1
-            true
-        })
-        assertEquals(expected, client.search(image) {
-            publicQuotaReservations += 1
-            true
-        })
-        val cacheFiles = File(temporaryFolder.root, "cache")
-            .listFiles()
-            .orEmpty()
-            .count { it.extension == "json" }
-        assertEquals(
-            "A completed successful search should create one cache record; write failure=${client.lastCacheWriteFailure}",
-            1,
-            cacheFiles,
-        )
-        assertEquals("The same image must be served from cache without a second public request", 1, publicCalls)
-        assertEquals("A cache hit must not reserve public quota again", 1, publicQuotaReservations)
-    }
-
-    @Test
-    fun doesNotCachePublicNoMatchWhenIndependentIndexFails() {
-        val image = sampleImage()
-        var publicCalls = 0
-        var independentCalls = 0
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider {
-                publicCalls += 1
-                emptyList()
-            },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                independentCalls += 1
-                throw IOException("Independent endpoint unavailable")
-            },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
         repeat(2) {
             assertThrows(IOException::class.java) { runBlocking { client.search(image) } }
         }
-        assertEquals(2, publicCalls)
-        assertEquals(2, independentCalls)
+        assertEquals(2, traceCalls)
+        assertEquals(2, webCalls)
     }
 
     @Test
-    fun doesNotAcceptPartialNoMatchWhenPublicFailsAndIndependentReturnsEmpty() {
+    fun aTraceOnlyInstallationDoesNotRequireGoogleConfiguration() = runBlocking {
         val image = sampleImage()
-        var independentCalls = 0
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider { throw IOException("Public endpoint unavailable") },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                independentCalls += 1
-                emptyList()
-            },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
+        val expected = TraceMoeSearchMatch(4321, 0.95)
+        var traceCalls = 0
+        val client = client(
+            public = ReiAnixTraceMoeSearchProvider { traceCalls++; listOf(expected) },
+            web = null,
         )
 
-        repeat(2) {
-            assertThrows(IOException::class.java) { runBlocking { client.search(image) } }
-        }
-        assertEquals(2, independentCalls)
+        assertEquals(listOf(expected), client.search(image))
+        assertEquals(1, traceCalls)
     }
 
     @Test
-    fun doesNotCacheTwoProviderFailuresAsNoMatch() {
+    fun completeNoMatchCanBeCachedOnlyAfterAllEnabledSourcesFinish() = runBlocking {
         val image = sampleImage()
-        var publicCalls = 0
-        val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider {
-                publicCalls += 1
-                throw IOException("Public endpoint unavailable")
-            },
-            independentProvider = ReiAnixTraceMoeSearchProvider { throw IOException("Independent endpoint unavailable") },
-            localReferenceIndex = null,
-            cacheDirectory = File(temporaryFolder.root, "cache"),
+        var traceCalls = 0
+        var webCalls = 0
+        val client = client(
+            public = ReiAnixTraceMoeSearchProvider { traceCalls++; emptyList() },
+            web = ReiAnixTraceMoeSearchProvider { webCalls++; emptyList() },
         )
 
-        repeat(2) {
-            assertThrows(IOException::class.java) { runBlocking { client.search(image) } }
-        }
-        assertEquals(2, publicCalls)
+        assertTrue(client.search(image).isEmpty())
+        assertTrue(client.search(image).isEmpty())
+        assertEquals(1, traceCalls)
+        assertEquals(1, webCalls)
     }
 
-    @Test
-    fun selfHostedEndpointRequiresAValidRootHttpsOrigin() {
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixTraceMoeClient.selfHosted("http://visual-index.example.net")
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixTraceMoeClient.selfHosted("https://visual-index.example.net/search")
-        }
-        ReiAnixTraceMoeClient.selfHosted("https://visual-index.example.net")
-    }
+    private fun client(
+        public: ReiAnixTraceMoeSearchProvider,
+        web: ReiAnixTraceMoeSearchProvider?,
+    ) = ReiAnixHybridTraceMoeClient(
+        publicProvider = public,
+        webDetectionProvider = web,
+        cacheDirectory = File(temporaryFolder.root, "cache"),
+    )
 
     private fun sampleImage(): File = File(temporaryFolder.root, "episode-thumb.jpg").apply {
         writeBytes(byteArrayOf(0x01, 0x23, 0x45, 0x67, 0x12))

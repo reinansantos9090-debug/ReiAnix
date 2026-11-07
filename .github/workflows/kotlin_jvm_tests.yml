@@ -14,7 +14,6 @@ on:
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/catalog/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/**"
-      - "infrastructure/visual-index/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/**"
@@ -99,28 +98,12 @@ jobs:
               --tests com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentityConsensusTest \
               --tests com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClientTest \
               --tests com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClientTest \
-              --tests com.reiflix.reiflix_local.data.tracemoe.ReiAnixLocalVisualIndexTest \
+              --tests com.reiflix.reiflix_local.data.tracemoe.ReiAnixGoogleVisionWebDetectionClientTest \
+              --tests com.reiflix.reiflix_local.data.tracemoe.ReiAnixGoogleVisionAniListProviderTest \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
             :app:compileReleaseKotlin
-
-      - name: Validate self-hosted visual-index scripts and Compose config
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash -n infrastructure/visual-index/hydrate-anilist-metadata.sh
-          bash -n infrastructure/visual-index/verify-and-publish-visual-index.sh
-          compose_json="$(docker compose --env-file infrastructure/visual-index/.env.example \
-            -f infrastructure/visual-index/compose.yml config --format json)"
-          printf '%s' "$compose_json" | jq -e '
-            .services.minio.environment.MINIO_ROOT_USER == .services.milvus.environment.MINIO_ACCESS_KEY_ID
-            and
-            .services.minio.environment.MINIO_ROOT_PASSWORD == .services.milvus.environment.MINIO_SECRET_ACCESS_KEY
-          ' >/dev/null
-          printf '%s' "$compose_json" | jq -e '
-            (.services.api.healthcheck.test | join(" ")) | contains("/me")
-          ' >/dev/null
 
       - name: Upload focused JVM test reports
         if: always()

@@ -4,10 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val selfHostedTraceMoeBaseUrl = providers.gradleProperty("reianixSelfHostedTraceMoeBaseUrl")
-    .orElse(providers.environmentVariable("REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL"))
+val googleCloudVisionApiKey = providers.gradleProperty("reianixGoogleCloudVisionApiKey")
+    .orElse(providers.environmentVariable("REIANIX_GOOGLE_CLOUD_VISION_API_KEY"))
     .getOrElse("")
-val escapedSelfHostedTraceMoeBaseUrl = selfHostedTraceMoeBaseUrl
+val escapedGoogleCloudVisionApiKey = googleCloudVisionApiKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 android {
@@ -30,7 +30,7 @@ android {
         versionCode = providers.gradleProperty("reianixBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2
         versionName = providers.gradleProperty("reianixBuildVersion").orNull?.takeIf { it.isNotBlank() } ?: "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL", "\"$escapedSelfHostedTraceMoeBaseUrl\"")
+        buildConfigField("String", "REIANIX_GOOGLE_CLOUD_VISION_API_KEY", "\"$escapedGoogleCloudVisionApiKey\"")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -1,6 +1,8 @@
 package com.reiflix.reiflix_local
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
@@ -19,10 +21,11 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClient
-import com.reiflix.reiflix_local.data.tracemoe.ReiAnixLocalVisualIndex
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeSearchProvider
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixGoogleVisionWebDetectionClient
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixGoogleVisionAniListProvider
 import java.io.File
-import java.io.IOException
+import java.security.MessageDigest
 import java.util.UUID
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -169,39 +172,52 @@ class ReiAnixAppDependencies(context: Context) {
     }
 
     /**
-     * Optional remote index. A blank URL means the owner has not deployed/configured
-     * the service yet. A nonblank but invalid URL stays represented as a failing
-     * provider so an empty search can never be mistaken for a completed no-match.
+     * Optional generic reverse-image hints. A blank API key leaves Trace.moe as the
+     * only visual search source; no server or local scene catalogue must be deployed.
      */
-    val selfHostedTraceMoeClient: ReiAnixTraceMoeSearchProvider? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL
+    val googleVisionWebDetectionClient: ReiAnixGoogleVisionWebDetectionClient? by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        BuildConfig.REIANIX_GOOGLE_CLOUD_VISION_API_KEY
             .trim()
             .takeIf(String::isNotBlank)
-            ?.let { baseUrl ->
-                runCatching { ReiAnixTraceMoeClient.selfHosted(baseUrl) }
-                    .getOrElse { error ->
-                        Log.w("ReiAnixAppDependencies", "Independent visual index URL is invalid; its search remains pending.", error)
-                        ReiAnixTraceMoeSearchProvider {
-                            throw IOException("The configured independent visual index URL is invalid.", error)
-                        }
-                    }
+            ?.let { apiKey ->
+                val certificateSha1 = signingCertificateSha1()
+                if (certificateSha1 == null) {
+                    Log.w(
+                        "ReiAnixAppDependencies",
+                        "Google Web Detection is disabled because the installed signing certificate could not be read.",
+                    )
+                    null
+                } else {
+                    ReiAnixGoogleVisionWebDetectionClient(
+                        apiKey = apiKey,
+                        androidPackageName = BuildConfig.APPLICATION_ID,
+                        signingCertificateSha1 = certificateSha1,
+                    )
+                }
             }
     }
 
-    /** Persistent device-local references learned only from successfully confirmed anime matches. */
-    val localVisualIndex: ReiAnixLocalVisualIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        ReiAnixLocalVisualIndex(
-            indexFile = File(appContext.filesDir, "data/visual-index/references.json"),
-        )
+    /** Web Detection labels are verified against exact AniList titles before becoming weak evidence. */
+    val googleVisionAniListProvider: ReiAnixTraceMoeSearchProvider? by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        googleVisionWebDetectionClient?.let { vision ->
+            ReiAnixGoogleVisionAniListProvider(vision = vision, aniList = aniListClient)
+        }
     }
 
     val hybridVisualSearchClient: ReiAnixHybridTraceMoeClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixHybridTraceMoeClient(
             publicProvider = traceMoeClient,
-            independentProvider = selfHostedTraceMoeClient,
-            localReferenceIndex = localVisualIndex,
+            webDetectionProvider = googleVisionAniListProvider,
             cacheDirectory = File(appContext.cacheDir, "visual-search-cache"),
-            cacheNamespace = BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL.ifBlank { "public-only" },
+            cacheNamespace = if (googleVisionAniListProvider == null) {
+                "trace-only"
+            } else {
+                "trace-plus-google-web-detection"
+            },
         )
     }
 
@@ -242,6 +258,30 @@ class ReiAnixAppDependencies(context: Context) {
             },
         )
     }
+
+    private fun signingCertificateSha1(): String? = runCatching {
+        @Suppress("DEPRECATION")
+        val packageInfo = if (Build.VERSION.SDK_INT >= 28) {
+            appContext.packageManager.getPackageInfo(
+                appContext.packageName,
+                PackageManager.GET_SIGNING_CERTIFICATES,
+            )
+        } else {
+            appContext.packageManager.getPackageInfo(
+                appContext.packageName,
+                PackageManager.GET_SIGNATURES,
+            )
+        }
+        @Suppress("DEPRECATION")
+        val signer = if (Build.VERSION.SDK_INT >= 28) {
+            packageInfo.signingInfo?.apkContentsSigners?.firstOrNull()
+        } else {
+            packageInfo.signatures?.firstOrNull()
+        } ?: return@runCatching null
+        MessageDigest.getInstance("SHA-1")
+            .digest(signer.toByteArray())
+            .joinToString("") { "%02X".format(it) }
+    }.getOrNull()
 
     companion object {
         /**

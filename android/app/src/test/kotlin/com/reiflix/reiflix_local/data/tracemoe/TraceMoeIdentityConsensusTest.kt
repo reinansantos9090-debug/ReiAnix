@@ -180,4 +180,55 @@ class TraceMoeIdentityConsensusTest {
         assertNull(evaluateTraceMoeProgressiveIdentity(bounded))
     }
 
+
+    @Test
+    fun aGoogleWebTitleHintCannotIdentifyFromOneEpisodeByItself() {
+        val result = evaluateTraceMoeProgressiveIdentity(
+            mapOf(
+                11L to listOf(
+                    TraceMoeSearchMatch(
+                        anilistId = 16498,
+                        similarity = 0.99,
+                        source = TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION,
+                    ),
+                ),
+            ),
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun matchingGoogleWebTitleHintsNeedTwoDistinctEpisodeThumbnails() {
+        val result = evaluateTraceMoeProgressiveIdentity(
+            mapOf(
+                11L to listOf(
+                    TraceMoeSearchMatch(16498, 0.86, TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION),
+                ),
+                12L to listOf(
+                    TraceMoeSearchMatch(16498, 0.86, TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION),
+                ),
+            ),
+        )
+
+        assertNotNull(result)
+        assertEquals(16498, result?.anilistId)
+        assertEquals(2, result?.supportingEpisodes)
+    }
+
+    @Test
+    fun bestEffortFallbackNeverPromotesAGoogleOnlyTitleHint() {
+        val fallback = evaluateTraceMoeBestEffortIdentity(
+            linkedMapOf(
+                11L to listOf(
+                    TraceMoeSearchMatch(16498, 0.86, TraceMoeEvidenceSource.GOOGLE_WEB_DETECTION),
+                ),
+                12L to emptyList(),
+                13L to emptyList(),
+            ),
+        )
+
+        assertNull(fallback)
+    }
+
 }

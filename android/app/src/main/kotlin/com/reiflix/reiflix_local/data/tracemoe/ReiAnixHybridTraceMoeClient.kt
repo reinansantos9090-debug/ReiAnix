@@ -1,5 +1,8 @@
 package com.reiflix.reiflix_local.data.tracemoe
 
+import java.io.File
+import java.io.IOException
+import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -7,25 +10,20 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.io.IOException
-import java.security.MessageDigest
 
 /**
- * Runs the public Trace.moe service and ReiAnix's independent remote index
- * concurrently. The independent engine also consults the persistent local
- * reference index in parallel. No provider is a fallback for another provider.
+ * Runs the public anime-scene matcher and optional Google Web Detection in parallel.
+ * Both receive only the already-generated JPEG thumbnail. Google labels are resolved
+ * to exact AniList titles by its provider and remain weak, multi-episode evidence.
  *
- * Exact-image response caching is separate from the perceptual local index:
- * the cache avoids repeating the same request, while the local index can find
- * a previously confirmed thumbnail after small resize/compression differences.
+ * The SHA-256 cache avoids repeating completed searches for identical image bytes;
+ * no scene catalogue, custom server, or device-local perceptual index is required.
  */
 class ReiAnixHybridTraceMoeClient(
     private val publicProvider: ReiAnixTraceMoeSearchProvider,
-    private val independentProvider: ReiAnixTraceMoeSearchProvider?,
-    private val localReferenceIndex: ReiAnixLocalVisualIndex?,
+    private val webDetectionProvider: ReiAnixTraceMoeSearchProvider?,
     private val cacheDirectory: File,
-    private val cacheNamespace: String = "public-only",
+    private val cacheNamespace: String = "trace-only",
 ) {
     suspend fun search(
         imageFile: File,
@@ -35,9 +33,8 @@ class ReiAnixHybridTraceMoeClient(
         val cached = key?.let { withContext(Dispatchers.IO) { readCache(it) } }
         if (cached != null) return cached
 
-        // Start every configured source immediately. The /me quota check belongs
-        // only to the public task; a slow status request must never delay the
-        // independent server or on-device index.
+        // The optional web search starts before the public quota check finishes.
+        // Neither provider waits for the other to be attempted.
         val outcomes = supervisorScope {
             val publicCall = async {
                 try {
@@ -58,65 +55,39 @@ class ReiAnixHybridTraceMoeClient(
                     ProviderOutcome(emptyList(), error)
                 }
             }
-            val independentCall = independentProvider?.let { provider ->
-                async { runProvider(provider, imageFile) }
-            }
-            val localCall = localReferenceIndex?.let { provider ->
+            val webCall = webDetectionProvider?.let { provider ->
                 async { runProvider(provider, imageFile) }
             }
             SearchOutcomes(
                 public = publicCall.await(),
-                independent = independentCall?.await(),
-                local = localCall?.await(),
+                web = webCall?.await(),
             )
         }
 
-        val remoteSourcesComplete =
-            outcomes.public.failure == null && (outcomes.independent?.failure == null)
-        val localSourceComplete = outcomes.local?.failure == null
-        val completeSearch = remoteSourcesComplete && localSourceComplete
-        val combined = mergeMatches(
-            outcomes.public.matches +
-                outcomes.independent?.matches.orEmpty() +
-                outcomes.local?.matches.orEmpty(),
-        )
-
+        val completeSearch = outcomes.public.failure == null && outcomes.web?.failure == null
+        val combined = mergeMatches(outcomes.public.matches + outcomes.web?.matches.orEmpty())
         if (combined.isNotEmpty()) {
-            // A partial positive result can still be used, but it is not cached
-            // while a configured source is unavailable.
+            // A positive partial answer may be useful, but it is not cached while
+            // an enabled provider is unavailable.
             if (completeSearch) {
-                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, combined) } }
+                key?.let { withContext(Dispatchers.IO) { writeCache(it, combined) } }
             }
             return combined
         }
 
         if (completeSearch) {
-            key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, emptyList()) } }
+            key?.let { withContext(Dispatchers.IO) { writeCache(it, emptyList()) } }
             return emptyList()
         }
 
-        // An empty answer is trustworthy only when every configured source
-        // completed. Otherwise the item remains eligible for a later retry.
-        val failures = listOfNotNull(
-            outcomes.public.failure,
-            outcomes.independent?.failure,
-            outcomes.local?.failure,
-        )
+        val failures = listOfNotNull(outcomes.public.failure, outcomes.web?.failure)
         val primaryFailure = failures.firstOrNull()
         throw IOException(
-            "The visual search was incomplete because one or more configured indexes were unavailable.",
+            "The visual search was incomplete because one or more enabled image-search sources were unavailable.",
             primaryFailure,
         ).also { combinedFailure ->
             failures.drop(1).forEach(combinedFailure::addSuppressed)
         }
-    }
-
-    /**
-     * Persist a reference only after the caller has successfully committed the
-     * final consensus association. A failed write must never undo that commit.
-     */
-    suspend fun rememberConfirmedReference(imageFile: File, anilistId: Int) {
-        localReferenceIndex?.rememberConfirmedReference(imageFile, anilistId)
     }
 
     private suspend fun runProvider(
@@ -140,9 +111,15 @@ class ReiAnixHybridTraceMoeClient(
             .groupBy(TraceMoeSearchMatch::anilistId)
             .values
             .mapNotNull { sameAnimeMatches ->
-                sameAnimeMatches.maxByOrNull(TraceMoeSearchMatch::similarity)
+                sameAnimeMatches.maxWithOrNull(
+                    compareBy<TraceMoeSearchMatch> { it.similarity }
+                        .thenBy { if (it.source == TraceMoeEvidenceSource.TRACE_MOE) 1 else 0 },
+                )
             }
-            .sortedByDescending(TraceMoeSearchMatch::similarity)
+            .sortedWith(
+                compareByDescending<TraceMoeSearchMatch> { it.similarity }
+                    .thenByDescending { if (it.source == TraceMoeEvidenceSource.TRACE_MOE) 1 else 0 },
+            )
             .take(MAX_MERGED_RESULTS)
 
     private fun cacheKey(imageFile: File): String? {
@@ -159,8 +136,7 @@ class ReiAnixHybridTraceMoeClient(
             }
         }
         val imageDigest = digest.digest().joinToString("") { "%02x".format(it) }
-        val localGeneration = localReferenceIndex?.cacheGeneration().orEmpty()
-        val scopedKey = CACHE_VERSION.toString() + "|" + cacheNamespace + "|" + localGeneration + "|" + imageDigest
+        val scopedKey = CACHE_VERSION.toString() + "|" + cacheNamespace + "|" + imageDigest
         return MessageDigest.getInstance("SHA-256")
             .digest(scopedKey.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
@@ -189,8 +165,13 @@ class ReiAnixHybridTraceMoeClient(
                 val item = array.optJSONObject(index) ?: continue
                 val id = item.optInt("anilistId", 0)
                 val similarity = item.optDouble("similarity", Double.NaN)
+                val source = runCatching {
+                    TraceMoeEvidenceSource.valueOf(
+                        item.optString("source", TraceMoeEvidenceSource.TRACE_MOE.name),
+                    )
+                }.getOrDefault(TraceMoeEvidenceSource.TRACE_MOE)
                 if (id > 0 && similarity.isFinite() && similarity in 0.0..1.0) {
-                    add(TraceMoeSearchMatch(id, similarity))
+                    add(TraceMoeSearchMatch(id, similarity, source))
                 }
             }
         }.sortedByDescending(TraceMoeSearchMatch::similarity)
@@ -210,7 +191,12 @@ class ReiAnixHybridTraceMoeClient(
 
             val array = JSONArray().apply {
                 matches.forEach { match ->
-                    put(JSONObject().put("anilistId", match.anilistId).put("similarity", match.similarity))
+                    put(
+                        JSONObject()
+                            .put("anilistId", match.anilistId)
+                            .put("similarity", match.similarity)
+                            .put("source", match.source.name),
+                    )
                 }
             }
             val root = JSONObject()
@@ -218,9 +204,8 @@ class ReiAnixHybridTraceMoeClient(
                 .put("storedAtMillis", System.currentTimeMillis())
                 .put("matches", array)
 
-            // This is a rebuildable cache, not canonical user data. Writing directly
-            // avoids platform-specific rename behavior; malformed partial entries are
-            // treated as cache misses by readCache().
+            // The search cache is rebuildable, not canonical user data. Malformed
+            // or partial writes are treated as cache misses on the next lookup.
             File(cacheDirectory, "$key.json").writeText(root.toString(), Charsets.UTF_8)
             trimCache()
         } catch (error: Exception) {
@@ -243,12 +228,11 @@ class ReiAnixHybridTraceMoeClient(
 
     private data class SearchOutcomes(
         val public: ProviderOutcome,
-        val independent: ProviderOutcome?,
-        val local: ProviderOutcome?,
+        val web: ProviderOutcome?,
     )
 
     private companion object {
-        const val CACHE_VERSION = 4
+        const val CACHE_VERSION = 5
         const val MAX_CACHE_ENTRIES = 200
         const val MAX_CACHE_ENTRY_BYTES = 128L * 1024L
         const val MAX_MERGED_RESULTS = 10
