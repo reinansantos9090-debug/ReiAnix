@@ -2,7 +2,9 @@ package com.reiflix.reiflix_local.data.tracemoe
 
 import java.io.File
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Rule
@@ -14,44 +16,94 @@ class ReiAnixHybridTraceMoeClientTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun usesIndependentIndexWhenPublicSearchReturnsNoMatch() = runBlocking {
+    fun startsPublicAndIndependentIndexesBeforeWaitingForEitherResult() = runBlocking {
         val image = sampleImage()
-        val expected = listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97))
-        var fallbackCalls = 0
+        val publicStarted = CompletableDeferred<Unit>()
+        val independentStarted = CompletableDeferred<Unit>()
+        val publicMatch = TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)
+        val independentMatch = TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95)
         val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider { emptyList() },
-            independentProvider = ReiAnixTraceMoeSearchProvider {
-                fallbackCalls += 1
-                expected
+            publicProvider = ReiAnixTraceMoeSearchProvider {
+                publicStarted.complete(Unit)
+                withTimeout(2_000) { independentStarted.await() }
+                listOf(publicMatch)
             },
+            independentProvider = ReiAnixTraceMoeSearchProvider {
+                independentStarted.complete(Unit)
+                withTimeout(2_000) { publicStarted.await() }
+                listOf(independentMatch)
+            },
+            localReferenceIndex = null,
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
-        assertEquals(expected, client.search(image))
-        assertEquals(1, fallbackCalls)
+        val matches = withTimeout(3_000) { client.search(image) }
+
+        assertEquals(listOf(publicMatch, independentMatch), matches)
     }
 
     @Test
-    fun usesIndependentIndexWhenPublicMatchesAreBelowExistingSupportThreshold() = runBlocking {
+    fun combinesPublicAndIndependentCandidatesEvenWhenPublicHasStrongMatch() = runBlocking {
         val image = sampleImage()
-        val weakPublic = TraceMoeSearchMatch(anilistId = 9999, similarity = 0.74)
-        val strongIndependent = TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)
+        val publicMatch = TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)
+        val independentMatch = TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95)
+        var independentCalls = 0
         val client = ReiAnixHybridTraceMoeClient(
-            publicProvider = ReiAnixTraceMoeSearchProvider { listOf(weakPublic) },
-            independentProvider = ReiAnixTraceMoeSearchProvider { listOf(strongIndependent) },
+            publicProvider = ReiAnixTraceMoeSearchProvider { listOf(publicMatch) },
+            independentProvider = ReiAnixTraceMoeSearchProvider {
+                independentCalls += 1
+                listOf(independentMatch)
+            },
+            localReferenceIndex = null,
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
-        assertEquals(listOf(strongIndependent, weakPublic), client.search(image))
+        assertEquals(listOf(publicMatch, independentMatch), client.search(image))
+        assertEquals(1, independentCalls)
     }
 
     @Test
-    fun usesIndependentIndexWhenPublicSearchFails() = runBlocking {
+    fun mergesSameAnimeByKeepingTheStrongestProviderScore() = runBlocking {
+        val image = sampleImage()
+        val client = ReiAnixHybridTraceMoeClient(
+            publicProvider = ReiAnixTraceMoeSearchProvider {
+                listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.91))
+            },
+            independentProvider = ReiAnixTraceMoeSearchProvider {
+                listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97))
+            },
+            localReferenceIndex = null,
+            cacheDirectory = File(temporaryFolder.root, "cache"),
+        )
+
+        assertEquals(
+            listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)),
+            client.search(image),
+        )
+    }
+
+    @Test
+    fun keepsIndependentResultsWhenPublicSearchFails() = runBlocking {
         val image = sampleImage()
         val expected = listOf(TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95))
         val client = ReiAnixHybridTraceMoeClient(
             publicProvider = ReiAnixTraceMoeSearchProvider { throw IOException("Public endpoint unavailable") },
             independentProvider = ReiAnixTraceMoeSearchProvider { expected },
+            localReferenceIndex = null,
+            cacheDirectory = File(temporaryFolder.root, "cache"),
+        )
+
+        assertEquals(expected, client.search(image))
+    }
+
+    @Test
+    fun keepsPublicResultsWhenIndependentSearchFails() = runBlocking {
+        val image = sampleImage()
+        val expected = listOf(TraceMoeSearchMatch(anilistId = 1234, similarity = 0.96))
+        val client = ReiAnixHybridTraceMoeClient(
+            publicProvider = ReiAnixTraceMoeSearchProvider { expected },
+            independentProvider = ReiAnixTraceMoeSearchProvider { throw IOException("Independent endpoint unavailable") },
+            localReferenceIndex = null,
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
@@ -69,6 +121,7 @@ class ReiAnixHybridTraceMoeClientTest {
                 expected
             },
             independentProvider = null,
+            localReferenceIndex = null,
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
@@ -91,6 +144,7 @@ class ReiAnixHybridTraceMoeClientTest {
                 independentCalls += 1
                 throw IOException("Independent endpoint unavailable")
             },
+            localReferenceIndex = null,
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
@@ -98,6 +152,26 @@ class ReiAnixHybridTraceMoeClientTest {
             assertThrows(IOException::class.java) { runBlocking { client.search(image) } }
         }
         assertEquals(2, publicCalls)
+        assertEquals(2, independentCalls)
+    }
+
+    @Test
+    fun doesNotAcceptPartialNoMatchWhenPublicFailsAndIndependentReturnsEmpty() {
+        val image = sampleImage()
+        var independentCalls = 0
+        val client = ReiAnixHybridTraceMoeClient(
+            publicProvider = ReiAnixTraceMoeSearchProvider { throw IOException("Public endpoint unavailable") },
+            independentProvider = ReiAnixTraceMoeSearchProvider {
+                independentCalls += 1
+                emptyList()
+            },
+            localReferenceIndex = null,
+            cacheDirectory = File(temporaryFolder.root, "cache"),
+        )
+
+        repeat(2) {
+            assertThrows(IOException::class.java) { runBlocking { client.search(image) } }
+        }
         assertEquals(2, independentCalls)
     }
 
@@ -111,6 +185,7 @@ class ReiAnixHybridTraceMoeClientTest {
                 throw IOException("Public endpoint unavailable")
             },
             independentProvider = ReiAnixTraceMoeSearchProvider { throw IOException("Independent endpoint unavailable") },
+            localReferenceIndex = null,
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
