@@ -554,7 +554,9 @@ class ReiAnixTraceMoeClient(
         }
 
     companion object {
-        const val SEARCH_ENDPOINT = "https://api.trace.moe/search?anilistInfo&cutBorders=1"
+        // AniList metadata is resolved by the app after identification; requesting it
+        // in every Trace.moe response adds work that is not used by this client.
+        const val SEARCH_ENDPOINT = "https://api.trace.moe/search?cutBorders=1"
         const val ACCOUNT_ENDPOINT = "https://api.trace.moe/me"
         const val DEFAULT_TIMEOUT_MILLIS = 15_000
         const val DEFAULT_REQUEST_INTERVAL_MILLIS = 1_200L
@@ -655,12 +657,10 @@ internal fun evaluateTraceMoeIdentityConsensus(
 
 
 /**
- * Progressive identity policy used while episode thumbnails arrive.
- *
- * A clear single-frame result can be accepted immediately. When one frame is not
- * decisive, two different episode files agreeing on the same AniList ID are enough.
- * Only three distinct thumbnail samples are examined; if those remain inconclusive,
- * the strongest returned match is used as the final fallback.
+ * Progressive identity policy evaluated over the latest three successful episode
+ * responses. A clear single-frame result can be accepted immediately. Otherwise,
+ * two different episode files must agree on the same AniList ID. The caller keeps
+ * querying later thumbnails and advances this rolling window until it is decisive.
  */
 internal fun evaluateTraceMoeProgressiveIdentity(
     resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
