@@ -188,8 +188,12 @@ class ReiAnixHybridTraceMoeClient(
         matches
     }.getOrNull()
 
+    internal var lastCacheWriteFailure: Throwable? = null
+        private set
+
     private fun writeCache(key: String, matches: List<TraceMoeSearchMatch>) {
-        runCatching {
+        lastCacheWriteFailure = null
+        try {
             if (!cacheDirectory.isDirectory &&
                 (!cacheDirectory.mkdirs() || !cacheDirectory.isDirectory)
             ) return@runCatching
@@ -209,6 +213,8 @@ class ReiAnixHybridTraceMoeClient(
             // treated as cache misses by readCache().
             File(cacheDirectory, "$key.json").writeText(root.toString(), Charsets.UTF_8)
             trimCache()
+        } catch (error: Exception) {
+            lastCacheWriteFailure = error
         }
     }
 
