@@ -220,6 +220,7 @@ class ReiAnixAniListIntegrationService(
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val traceMoeRateLimitRetryNotBeforeMs = ConcurrentHashMap<Long, Long>()
+    private val traceMoeRetryEligibleAnimeIds = ConcurrentHashMap.newKeySet<Long>()
 
     private data class TraceMoeProgressState(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>>,
@@ -545,13 +546,28 @@ class ReiAnixAniListIntegrationService(
      * episode results out of at most three are enough to correct an automatic
      * association. The upstream flow is cancelled as soon as a decision is made.
      */
+    /**
+     * Consome a decisão da sessão mais recente. Respostas HTTP permanentes e janelas
+     * concluídas sem correspondência não devem reenviar indefinidamente a mesma imagem.
+     */
+    fun consumeTraceMoeRetryEligibility(animeId: Long): Boolean =
+        animeId > 0L && traceMoeRetryEligibleAnimeIds.remove(animeId)
+
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
         samples: Flow<TraceMoeEpisodeSample>,
     ): Boolean {
         if (animeId <= 0L || !traceMoeIdentificationInFlight.add(animeId)) return false
+        traceMoeRetryEligibleAnimeIds.remove(animeId)
         return try {
             identifyFromEpisodeThumbnailsInternal(animeId, samples)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // An exception local/SQLite fora do cliente HTTP não deve descartar as
+            // amostras já salvas; a repetição é limitada pelo backoff do ViewModel.
+            traceMoeRetryEligibleAnimeIds.add(animeId)
+            throw error
         } finally {
             traceMoeIdentificationInFlight.remove(animeId)
         }
@@ -566,6 +582,7 @@ class ReiAnixAniListIntegrationService(
         ) return false
         val rateLimitRemainingMillis = traceMoePendingRetryDelayMillis(animeId)
         if (rateLimitRemainingMillis > 0L) {
+            traceMoeRetryEligibleAnimeIds.add(animeId)
             ReiAnixDiagnosticTimeline.record(
                 name = "TRACE_MOE_RATE_LIMIT_DEFERRED",
                 severity = "WARN",
@@ -663,6 +680,15 @@ class ReiAnixAniListIntegrationService(
                     confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
                 }
                 is TraceMoeSampleRequestResult.Failed -> {
+                    val retryableFailure = when (val error = request.error) {
+                        is TraceMoeHttpException ->
+                            isRetryableTraceMoeHttpStatus(error.statusCode, error.message) ||
+                                error.statusCode == 429 ||
+                                error.retryAfterSeconds != null
+                        is IOException -> true
+                        else -> false
+                    }
+                    if (retryableFailure) traceMoeRetryEligibleAnimeIds.add(animeId)
                     Log.w(
                         TAG,
                         "Trace.moe episode-frame search failed animeId=" + animeId +
@@ -681,6 +707,7 @@ class ReiAnixAniListIntegrationService(
                     break
                 }
                 TraceMoeSampleRequestResult.BudgetExhausted -> {
+                    traceMoeRetryEligibleAnimeIds.add(animeId)
                     Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
                     ReiAnixDiagnosticTimeline.record(
                         name = "TRACE_MOE_REQUEST_BUDGET_EXHAUSTED",
@@ -738,6 +765,7 @@ class ReiAnixAniListIntegrationService(
         val remote = when (val result = client.getAnime(consensus.anilistId)) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> {
+                traceMoeRetryEligibleAnimeIds.add(animeId)
                 Log.w(TAG, "AniList detail lookup failed for Trace.moe ID=${consensus.anilistId}: ${result.error}")
                 return false
             }
@@ -756,6 +784,7 @@ class ReiAnixAniListIntegrationService(
         ) {
             is AniListResult.Success -> result.value.anilistId == consensus.anilistId.toLong()
             is AniListResult.Failure -> {
+                traceMoeRetryEligibleAnimeIds.add(animeId)
                 Log.w(TAG, "Trace.moe identity could not be committed for animeId=$animeId: ${result.error}")
                 false
             }
