@@ -208,13 +208,13 @@ class ReiAnixTraceMoeClient(
                 return@withLock it
             }
 
-            val account = refreshAccountStatusLocked(forceRefresh = false)
-            if (account != null && account.quotaRemaining <= 0) {
-                throw TraceMoeApiException(
-                    TraceMoeFailureKind.QUOTA_EXHAUSTED,
-                    "Trace.moe search quota is exhausted for this IP/account.",
-                    httpStatus = 402,
-                )
+            // A daily quota is a pause, not a completed/failed episode sample. Keep this
+            // image pending and poll /me at a low frequency until the rolling 24-hour
+            // quota has room again. /me requests do not consume search quota.
+            var account = refreshAccountStatusLocked(forceRefresh = false)
+            while (account != null && account.quotaRemaining <= 0) {
+                delay(QUOTA_POLL_INTERVAL_MILLIS)
+                account = refreshAccountStatusLocked(forceRefresh = true)
             }
 
             var attempt = 0
@@ -223,7 +223,7 @@ class ReiAnixTraceMoeClient(
                 if (!reserveRequest()) {
                     throw TraceMoeApiException(
                         TraceMoeFailureKind.LOCAL_DAILY_BUDGET_EXHAUSTED,
-                        "The ReiAnix local 24-hour Trace.moe request budget is exhausted.",
+                        "A caller-local Trace.moe request reservation was rejected.",
                     )
                 }
                 TraceMoeRequestCoordinator.lastRequestAtMillis = System.currentTimeMillis()
@@ -241,6 +241,19 @@ class ReiAnixTraceMoeClient(
                 } catch (error: TraceMoeApiException) {
                     if (error.kind == TraceMoeFailureKind.QUOTA_EXHAUSTED) {
                         TraceMoeRequestCoordinator.invalidateAccountStatus()
+                        val refreshed = refreshAccountStatusLocked(forceRefresh = true)
+                        if (refreshed != null && refreshed.quotaRemaining <= 0) {
+                            // HTTP 402 is also used for concurrency. Only wait for quota
+                            // when /me confirms quotaUsed >= quota; a concurrency response
+                            // remains retryable with its normal short backoff.
+                            var remainingStatus = refreshed
+                            while (remainingStatus != null && remainingStatus.quotaRemaining <= 0) {
+                                delay(QUOTA_POLL_INTERVAL_MILLIS)
+                                remainingStatus = refreshAccountStatusLocked(forceRefresh = true)
+                            }
+                            attempt = 0
+                            continue
+                        }
                     }
                     if (!error.kind.retryable || attempt >= MAX_RETRIES) throw error
 
@@ -527,6 +540,7 @@ class ReiAnixTraceMoeClient(
         const val MAX_CACHE_ENTRIES = 200
         const val ACCOUNT_CACHE_TTL_MILLIS = 5L * 60L * 1_000L
         const val ACCOUNT_ERROR_CACHE_TTL_MILLIS = 30L * 1_000L
+        const val QUOTA_POLL_INTERVAL_MILLIS = 5L * 60L * 1_000L
         const val MAX_RETRIES = 2
         private const val ACCOUNT_TIMEOUT_MILLIS = 3_000
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
