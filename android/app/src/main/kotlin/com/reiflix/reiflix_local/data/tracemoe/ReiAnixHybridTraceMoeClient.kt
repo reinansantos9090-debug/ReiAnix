@@ -61,13 +61,10 @@ class ReiAnixHybridTraceMoeClient(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (independentFailure: Exception) {
-            if (publicMatches != null) {
-                // A valid empty public response remains a valid no-match result.
-                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, emptyList()) } }
-                return emptyList()
-            }
+            // If the public index returned no match but our own index is unavailable,
+            // the combined decision is incomplete. Never cache it as a valid no-match.
             throw IOException(
-                "Both public Trace.moe and the independent visual index are unavailable.",
+                "The independent visual index failed after the public Trace.moe search returned no match.",
                 independentFailure,
             ).also { combined ->
                 publicFailure?.let(combined::addSuppressed)

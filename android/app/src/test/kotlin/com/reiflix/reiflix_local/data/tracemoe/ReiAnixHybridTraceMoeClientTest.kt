@@ -64,6 +64,30 @@ class ReiAnixHybridTraceMoeClientTest {
     }
 
     @Test
+    fun doesNotCachePublicNoMatchWhenIndependentIndexFails() {
+        val image = sampleImage()
+        var publicCalls = 0
+        var independentCalls = 0
+        val client = ReiAnixHybridTraceMoeClient(
+            publicProvider = ReiAnixTraceMoeSearchProvider {
+                publicCalls += 1
+                emptyList()
+            },
+            independentProvider = ReiAnixTraceMoeSearchProvider {
+                independentCalls += 1
+                throw IOException("Independent endpoint unavailable")
+            },
+            cacheDirectory = File(temporaryFolder.root, "cache"),
+        )
+
+        repeat(2) {
+            assertThrows(IOException::class.java) { runBlocking { client.search(image) } }
+        }
+        assertEquals(2, publicCalls)
+        assertEquals(2, independentCalls)
+    }
+
+    @Test
     fun doesNotCacheTwoProviderFailuresAsNoMatch() {
         val image = sampleImage()
         var publicCalls = 0
