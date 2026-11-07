@@ -366,10 +366,10 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Uses independent local episode thumbnails to verify or correct an automatic
-     * AniList association. A clear first-frame result is accepted immediately;
-     * otherwise two matching results from a maximum of five episodes are required.
-     * Manual associations and manually sourced metadata are never replaced.
+     * Uses independently generated episode thumbnails to verify or correct an automatic
+     * AniList association. Trace.moe, the configured ReiAnix remote index, and the local
+     * reference index are queried concurrently. Manual associations and manually sourced
+     * metadata are never replaced.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -377,10 +377,9 @@ class ReiAnixAniListIntegrationService(
     ): Boolean = identifyFromEpisodeThumbnails(animeId, samples.asFlow())
 
     /**
-     * Consume episode thumbnails as soon as they become available. Trace.moe can
-     * confirm a clear first-frame result immediately; otherwise two matching
-     * episode results out of at most five are enough to correct an automatic
-     * association. The upstream flow is cancelled as soon as a decision is made.
+     * Consume episode thumbnails as soon as they become available. Configured visual
+     * indexes are queried concurrently for each sample. The upstream flow is cancelled
+     * as soon as the existing progressive identity policy reaches a decision.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -476,8 +475,8 @@ class ReiAnixAniListIntegrationService(
             confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         }
 
-        // A single clear result or a two-episode agreement is applied immediately.
-        // If all three remain inconclusive, use the strongest result Trace.moe returned.
+        // The existing progressive policy decides when visual candidates are sufficient.
+        // If the sample window remains inconclusive, retain its strongest combined result.
         val consensus = confirmedIdentity ?: if (
             matchesByEpisode.size >= MAX_TRACE_MOE_EPISODE_SAMPLES
         ) {
@@ -520,7 +519,7 @@ class ReiAnixAniListIntegrationService(
         ) {
             is AniListResult.Success -> result.value.anilistId == consensus.anilistId.toLong()
             is AniListResult.Failure -> {
-                Log.w(TAG, "Trace.moe identity could not be committed for animeId=$animeId: ${result.error}")
+                Log.w(TAG, "Visual-search identity could not be committed for animeId=$animeId: ${result.error}")
                 false
             }
         }
@@ -633,7 +632,7 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
-    /** Atomically reserves one Trace.moe request from the local rolling 24-hour budget. */
+    /** Atomically reserves one public Trace.moe request from the local rolling 24-hour budget. */
     private suspend fun reserveTraceMoeRequest(nowSeconds: Double): Boolean =
         withContext(Dispatchers.IO) {
             library.database.transaction { connection ->
