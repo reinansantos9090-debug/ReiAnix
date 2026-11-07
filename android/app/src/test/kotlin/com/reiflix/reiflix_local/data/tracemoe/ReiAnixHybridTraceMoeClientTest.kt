@@ -62,7 +62,7 @@ class ReiAnixHybridTraceMoeClientTest {
             cacheDirectory = File(temporaryFolder.root, "cache"),
         )
 
-        val search = kotlinx.coroutines.async {
+        val search = async {
             client.search(image) {
                 quotaCheckStarted.complete(Unit)
                 releaseQuotaCheck.await()
