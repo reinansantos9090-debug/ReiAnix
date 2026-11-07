@@ -112,3 +112,14 @@ jobs:
           bash -n infrastructure/visual-index/verify-and-publish-visual-index.sh
           docker compose --env-file infrastructure/visual-index/.env.example \
             -f infrastructure/visual-index/compose.yml config --quiet
+
+      - name: Upload focused JVM test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reianix-jvm-test-reports-${{ github.run_number }}
+          path: |
+            android/app/build/reports/tests/testDebugUnitTest
+            android/app/build/test-results/testDebugUnitTest
+          retention-days: 1
+          if-no-files-found: ignore
