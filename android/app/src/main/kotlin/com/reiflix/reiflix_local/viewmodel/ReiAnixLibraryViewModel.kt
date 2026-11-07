@@ -208,8 +208,8 @@ class ReiAnixLibraryViewModel(
         const val DERIVED_FLOW_STOP_TIMEOUT_MS = 5_000L
         const val SEARCH_DEBOUNCE_MS = 180L
         const val ARTWORK_PROJECTION_REFRESH_DEBOUNCE_MS = 180L
-        private const val TRACE_MOE_AUTOMATIC_RETRY_MAX = 2
-        private const val TRACE_MOE_AUTOMATIC_RETRY_DELAY_MILLIS = 1_500L
+        private const val TRACE_MOE_AUTOMATIC_RETRY_BASE_DELAY_MILLIS = 5_000L
+        private const val TRACE_MOE_AUTOMATIC_RETRY_MAX_DELAY_MILLIS = 15L * 60L * 1_000L
 
         internal fun projectHomeState(state: ReiAnixLibraryUiState): ReiAnixHomeLibraryUiState =
             ReiAnixHomeLibraryUiState.from(state)
@@ -1712,27 +1712,58 @@ class ReiAnixLibraryViewModel(
     }
 
     /**
-     * A failed network request leaves its image unprocessed in SQLite. Rehydrate it
-     * after a short delay, with a small per-process retry cap, so a temporary outage
-     * does not require the user to close and reopen the app.
+     * A failed request does not consume a sample. Keep retrying pending local
+     * thumbnails with bounded exponential backoff instead of abandoning an anime
+     * after two short attempts. A persisted HTTP 429/402 deadline always wins over
+     * the local backoff, and startup rehydration remains the recovery path after
+     * Android kills the process.
      */
     private fun scheduleTraceMoePendingRetry(animeId: Long) {
         if (!traceMoeAutomaticRetryScheduled.add(animeId)) return
-        val attempt = traceMoeAutomaticRetryAttempts.merge(animeId, 1) { previous, _ -> previous + 1 } ?: 1
-        if (attempt > TRACE_MOE_AUTOMATIC_RETRY_MAX) {
-            traceMoeAutomaticRetryScheduled.remove(animeId)
-            return
-        }
+        val attempt = traceMoeAutomaticRetryAttempts.merge(animeId, 1) { previous, _ ->
+            if (previous < Int.MAX_VALUE) previous + 1 else Int.MAX_VALUE
+        } ?: 1
+        val shift = (attempt - 1).coerceIn(0, 10)
+        val exponentialDelay = TRACE_MOE_AUTOMATIC_RETRY_BASE_DELAY_MILLIS * (1L shl shift)
+        val localBackoffMillis = minOf(
+            exponentialDelay,
+            TRACE_MOE_AUTOMATIC_RETRY_MAX_DELAY_MILLIS,
+        )
         viewModelScope.launch {
             try {
                 val integration = appDependencies?.aniListIntegrationService ?: return@launch
                 val retryAfterMillis = integration.traceMoePendingRetryDelayMillis(animeId)
-                delay(maxOf(TRACE_MOE_AUTOMATIC_RETRY_DELAY_MILLIS * attempt, retryAfterMillis))
+                val waitMillis = maxOf(localBackoffMillis, retryAfterMillis)
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_AUTOMATIC_RETRY_SCHEDULED",
+                    severity = "WARN",
+                    source = "ReiAnixLibraryViewModel",
+                    result = "PENDING_SAMPLES_WILL_BE_REHYDRATED",
+                    context = mapOf(
+                        "anime_id" to animeId,
+                        "attempt" to attempt,
+                        "backoff_ms" to localBackoffMillis,
+                        "server_delay_ms" to retryAfterMillis,
+                    ),
+                )
+                delay(waitMillis)
                 if (!integration.shouldRetryTraceMoeIdentification(animeId)) {
                     traceMoeAutomaticRetryAttempts.remove(animeId)
                     return@launch
                 }
                 enqueuePersistedEpisodeThumbnailsForAnime(animeId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not rehydrate pending Trace.moe samples for animeId=$animeId", error)
+                ReiAnixDiagnosticTimeline.record(
+                    name = "TRACE_MOE_AUTOMATIC_RETRY_FAILED",
+                    severity = "WARN",
+                    source = "ReiAnixLibraryViewModel",
+                    result = "RETRY_WORKER_EXCEPTION",
+                    error = error,
+                    context = mapOf("anime_id" to animeId, "attempt" to attempt),
+                )
             } finally {
                 traceMoeAutomaticRetryScheduled.remove(animeId)
             }
