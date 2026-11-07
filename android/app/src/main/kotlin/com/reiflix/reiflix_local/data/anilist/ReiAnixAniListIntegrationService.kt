@@ -9,6 +9,8 @@ import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeFailureKind
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
 import com.reiflix.reiflix_local.data.tracemoe.firstTraceMoeEpisodeMatches
@@ -442,22 +444,58 @@ class ReiAnixAniListIntegrationService(
                 continue
             }
 
-            val requestAt = System.currentTimeMillis() / 1000.0
-            if (!reserveTraceMoeRequest(requestAt)) {
-                Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
-                matchesByEpisode[sample.episodeId] = emptyList()
-                writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
-                break
-            }
-
+            // Reserve the local budget per actual HTTP attempt. Cache hits do not
+            // consume quota, and automatic retries are counted separately.
             val matches = try {
-                traceMoeClient.search(sample.imageFile)
+                traceMoeClient.search(sample.imageFile) {
+                    reserveTraceMoeRequest(System.currentTimeMillis() / 1000.0)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (error: Exception) {
-                // Failed API requests count as a consumed thumbnail, preventing a move to episode 4.
-                Log.w(TAG, "Trace.moe episode-frame search failed animeId=" + animeId + " episodeId=" + sample.episodeId, error)
-                emptyList()
+            } catch (error: TraceMoeApiException) {
+                when (error.kind) {
+                    TraceMoeFailureKind.LOCAL_DAILY_BUDGET_EXHAUSTED,
+                    TraceMoeFailureKind.QUOTA_EXHAUSTED,
+                    -> {
+                        Log.i(
+                            TAG,
+                            "Trace.moe identification deferred: " + error.kind +
+                                " animeId=" + animeId + " episodeId=" + sample.episodeId,
+                        )
+                        // Keep this window incomplete. A quota/budget stop is not a
+                        // valid empty search result and must not start the 24-hour cooldown.
+                        return false
+                    }
+                    TraceMoeFailureKind.BAD_IMAGE -> {
+                        Log.w(
+                            TAG,
+                            "Trace.moe rejected an unusable thumbnail animeId=" +
+                                animeId + " episodeId=" + sample.episodeId,
+                            error,
+                        )
+                        matchesByEpisode[sample.episodeId] = emptyList()
+                        writeTraceMoeProgress(
+                            animeId,
+                            matchesByEpisode,
+                            completed = false,
+                            correction = correction,
+                        )
+                        continue
+                    }
+                    else -> {
+                        Log.w(
+                            TAG,
+                            "Trace.moe request deferred after retries kind=" + error.kind +
+                                " httpStatus=" + error.httpStatus +
+                                " animeId=" + animeId + " episodeId=" + sample.episodeId,
+                            error,
+                        )
+                        // Do not persist a transport/API failure as a successful empty
+                        // response. Leaving the window incomplete makes it eligible for
+                        // recovery on the next thumbnail/session instead of a 24-hour lockout.
+                        throw error
+                    }
+                }
             }
             matchesByEpisode[sample.episodeId] = matches
             writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
