@@ -14,7 +14,7 @@ Nenhuma porta de PostgreSQL, Milvus, etcd ou MinIO é publicada no host. Somente
 
 ## Requisitos
 
-Use uma máquina Linux dedicada, com Docker Engine e Docker Compose plugin, domínio próprio apontado para o IP público e armazenamento persistente. A capacidade necessária depende do tamanho do catálogo. Um índice completo do porte do Trace.moe é muito pesado: a documentação upstream relata aproximadamente 140 GB de RAM para carregar todo o dump publicado em memória, além do tempo de reindexação/otimização. Não dimensione uma hospedagem pequena supondo que o catálogo completo caberá nela.
+Use uma máquina Linux dedicada, com Docker Engine e Docker Compose plugin, domínio próprio apontado para o IP público e armazenamento persistente. A capacidade necessária depende do tamanho do catálogo. Um índice de cenas amplo exige armazenamento persistente, memória e recursos vetoriais consideráveis; dimensione a máquina com base no número real de descritores que será importado e valide a carga antes de abrir o endpoint.
 
 O serviço não está implantado automaticamente por esta PR. É necessário ter um servidor, domínio, DNS e credenciais de hospedagem sob controle do mantenedor do ReiAnix.
 
