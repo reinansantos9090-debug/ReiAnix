@@ -35,9 +35,17 @@ class ReiAnixLocalVisualIndex(
     private val lock = Any()
 
     /** Changes whenever the persisted reference set is rewritten, invalidating stale negative cache entries. */
-    internal fun cacheGeneration(): String =
-        if (indexFile.isFile) indexFile.lastModified().toString() + "-" + indexFile.length().toString()
-        else "empty"
+    internal fun cacheGeneration(): String {
+        if (!indexFile.isFile) return "empty"
+        return runCatching {
+            JSONObject(indexFile.readText(Charsets.UTF_8))
+                .optString("generation")
+                .takeIf(String::isNotBlank)
+                ?: indexFile.lastModified().toString() + "-" + indexFile.length().toString()
+        }.getOrElse {
+            indexFile.lastModified().toString() + "-" + indexFile.length().toString()
+        }
+    }
 
     init {
         require(maximumEntries in 1..MAXIMUM_ALLOWED_ENTRIES)
@@ -119,12 +127,16 @@ class ReiAnixLocalVisualIndex(
     private fun readEntries(): List<VisualReference> {
         if (!indexFile.exists()) return emptyList()
         if (indexFile.length() !in 1L..MAX_INDEX_FILE_BYTES) {
-            throw IOException("The local visual reference index has an invalid file size.")
+            // This is a rebuildable cache, not the user's library. Remove a corrupt
+            // oversized cache instead of permanently blocking remote no-match results.
+            indexFile.delete()
+            return emptyList()
         }
         val root = try {
             JSONObject(indexFile.readText(Charsets.UTF_8))
-        } catch (error: Exception) {
-            throw IOException("The local visual reference index is unreadable.", error)
+        } catch (_: Exception) {
+            indexFile.delete()
+            return emptyList()
         }
         // Version 1 stored grayscale perceptual hashes. It is intentionally
         // treated as an empty index instead of mixing incompatible descriptors.
@@ -132,8 +144,10 @@ class ReiAnixLocalVisualIndex(
             indexFile.delete()
             return emptyList()
         }
-        val array = root.optJSONArray("references")
-            ?: throw IOException("The local visual reference index has no references array.")
+        val array = root.optJSONArray("references") ?: run {
+            indexFile.delete()
+            return emptyList()
+        }
         return buildList {
             for (index in 0 until array.length()) {
                 val item = array.optJSONObject(index) ?: continue
@@ -179,6 +193,7 @@ class ReiAnixLocalVisualIndex(
         }
         val root = JSONObject()
             .put("version", INDEX_VERSION)
+            .put("generation", java.util.UUID.randomUUID().toString())
             .put("references", array)
         val temporary = File(indexFile.parentFile, "." + indexFile.name + ".tmp")
         try {
