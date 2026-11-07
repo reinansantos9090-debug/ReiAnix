@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.tracemoe
 
 import java.io.File
 import java.io.IOException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
