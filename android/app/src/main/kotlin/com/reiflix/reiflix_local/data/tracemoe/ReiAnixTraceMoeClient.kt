@@ -12,6 +12,9 @@ import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Job
@@ -45,8 +48,35 @@ internal fun isRetryableTraceMoeHttpStatus(
     (statusCode == 402 && isTraceMoeConcurrencyLimitResponse(responseError)) ||
         statusCode == 408 || statusCode == 425 || statusCode in 500..599
 
-internal fun parseTraceMoeRetryAfterSeconds(value: String?): Long? =
-    value?.trim()?.toLongOrNull()?.coerceIn(1L, MAX_TRACE_MOE_RETRY_AFTER_SECONDS)
+internal fun parseTraceMoeRetryAfterSeconds(
+    value: String?,
+    nowEpochMillis: Long = System.currentTimeMillis(),
+): Long? {
+    val normalized = value?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    normalized.toLongOrNull()?.let { seconds ->
+        return seconds.coerceIn(1L, MAX_TRACE_MOE_RETRY_AFTER_SECONDS)
+    }
+
+    // RFC 9110 permits Retry-After to be either delay-seconds or an HTTP-date.
+    // Android minSdk is 24, so use the platform SimpleDateFormat rather than
+    // java.time APIs that would require a desugaring change.
+    val patterns = listOf(
+        "EEE, dd MMM yyyy HH:mm:ss zzz",
+        "EEEE, dd-MMM-yy HH:mm:ss zzz",
+        "EEE MMM d HH:mm:ss yyyy",
+    )
+    val deadlineMillis = patterns.firstNotNullOfOrNull { pattern ->
+        runCatching {
+            SimpleDateFormat(pattern, Locale.US).apply {
+                isLenient = false
+                timeZone = TimeZone.getTimeZone("GMT")
+            }.parse(normalized)?.time
+        }.getOrNull()
+    } ?: return null
+    val remainingMillis = (deadlineMillis - nowEpochMillis).coerceAtLeast(0L)
+    val seconds = ((remainingMillis + 999L) / 1_000L).coerceAtLeast(1L)
+    return seconds.coerceIn(1L, MAX_TRACE_MOE_RETRY_AFTER_SECONDS)
+}
 
 /** Retry policy for the public API's structured 402 and 429 responses. */
 internal fun traceMoeRetryAfterSecondsForHttpFailure(
