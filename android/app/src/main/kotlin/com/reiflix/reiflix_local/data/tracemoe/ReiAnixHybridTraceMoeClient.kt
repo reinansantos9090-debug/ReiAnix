@@ -196,7 +196,7 @@ class ReiAnixHybridTraceMoeClient(
         try {
             if (!cacheDirectory.isDirectory &&
                 (!cacheDirectory.mkdirs() || !cacheDirectory.isDirectory)
-            ) return@runCatching
+            ) return
 
             val array = JSONArray().apply {
                 matches.forEach { match ->
