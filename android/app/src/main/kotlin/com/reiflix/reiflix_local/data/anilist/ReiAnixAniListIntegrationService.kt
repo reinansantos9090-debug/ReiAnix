@@ -445,21 +445,23 @@ class ReiAnixAniListIntegrationService(
                 continue
             }
 
-            val requestAt = System.currentTimeMillis() / 1000.0
-            val publicSearchAllowed = reserveTraceMoeRequest(requestAt)
-            if (!publicSearchAllowed) {
-                Log.i(TAG, "Public Trace.moe request budget is exhausted; independent indexes remain enabled")
-            }
-
             val matches = try {
                 val hybridSearch = hybridVisualSearchClient
                 if (hybridSearch != null) {
-                    hybridSearch.search(
-                        imageFile = sample.imageFile,
-                        allowPublicSearch = publicSearchAllowed,
-                    )
+                    hybridSearch.search(imageFile = sample.imageFile) {
+                        val requestAt = System.currentTimeMillis() / 1000.0
+                        val allowed = reserveTraceMoeRequest(requestAt)
+                        if (!allowed) {
+                            Log.i(TAG, "Public Trace.moe request budget is exhausted; independent indexes remain enabled")
+                        }
+                        allowed
+                    }
                 } else {
-                    if (!publicSearchAllowed) break
+                    val requestAt = System.currentTimeMillis() / 1000.0
+                    if (!reserveTraceMoeRequest(requestAt)) {
+                        Log.i(TAG, "Public Trace.moe request budget is exhausted")
+                        break
+                    }
                     traceMoeClient.search(sample.imageFile)
                 }
             } catch (cancelled: CancellationException) {
