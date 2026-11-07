@@ -33,6 +33,8 @@ import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -54,6 +56,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 private const val MAX_ARTWORK_CANDIDATES = 5
 
@@ -221,6 +224,10 @@ class ReiAnixAniListIntegrationService(
     private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val traceMoeRateLimitRetryNotBeforeMs = ConcurrentHashMap<Long, Long>()
     private val traceMoeRetryEligibleAnimeIds = ConcurrentHashMap.newKeySet<Long>()
+    // Serializes the final deadline check, request reservation, HTTP call, and
+    // 429/402 persistence. A queued anime must re-check after acquiring this gate.
+    private val traceMoeRequestGate = Mutex()
+    private val traceMoeGlobalRateLimitRetryNotBeforeMs = AtomicLong(0L)
 
     private data class TraceMoeProgressState(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>>,
@@ -230,6 +237,7 @@ class ReiAnixAniListIntegrationService(
     private sealed interface TraceMoeSampleRequestResult {
         data class Success(val matches: List<TraceMoeSearchMatch>) : TraceMoeSampleRequestResult
         data class Failed(val error: Exception) : TraceMoeSampleRequestResult
+        data class DeferredBySharedRateLimit(val remainingMillis: Long) : TraceMoeSampleRequestResult
         data object BudgetExhausted : TraceMoeSampleRequestResult
     }
     private val missingArtworkLookupAttempts = ConcurrentHashMap<Long, Long>()
@@ -431,6 +439,7 @@ class ReiAnixAniListIntegrationService(
         if (animeId <= 0L) return 0L
         val nowMillis = System.currentTimeMillis()
         val inMemoryDeadline = traceMoeRateLimitRetryNotBeforeMs[animeId] ?: 0L
+        val globalInMemoryDeadline = traceMoeGlobalRateLimitRetryNotBeforeMs.get()
         val persistedDeadline = try {
             readPersistedTraceMoeRateLimitDeadlineMillis()
         } catch (cancelled: CancellationException) {
@@ -439,11 +448,17 @@ class ReiAnixAniListIntegrationService(
             Log.w(TAG, "Could not read persisted Trace.moe rate-limit deadline", error)
             0L
         }
-        val deadline = mergeTraceMoeRateLimitDeadlineMillis(inMemoryDeadline, persistedDeadline)
+        val deadline = mergeTraceMoeRateLimitDeadlineMillis(
+            mergeTraceMoeRateLimitDeadlineMillis(inMemoryDeadline, globalInMemoryDeadline),
+            persistedDeadline,
+        )
         val remaining = remainingTraceMoeRateLimitDelayMillis(deadline, nowMillis)
         if (remaining == 0L) {
             if (inMemoryDeadline > 0L) {
                 traceMoeRateLimitRetryNotBeforeMs.remove(animeId, inMemoryDeadline)
+            }
+            if (globalInMemoryDeadline > 0L) {
+                traceMoeGlobalRateLimitRetryNotBeforeMs.compareAndSet(globalInMemoryDeadline, 0L)
             }
             if (persistedDeadline > 0L) {
                 clearExpiredPersistedTraceMoeRateLimitDeadline(persistedDeadline)
@@ -721,6 +736,21 @@ class ReiAnixAniListIntegrationService(
                     // persisted above and therefore do not repeat after process death.
                     break
                 }
+                is TraceMoeSampleRequestResult.DeferredBySharedRateLimit -> {
+                    traceMoeRetryEligibleAnimeIds.add(animeId)
+                    ReiAnixDiagnosticTimeline.record(
+                        name = "TRACE_MOE_REQUEST_DEFERRED_BY_SHARED_DEADLINE",
+                        severity = "WARN",
+                        source = "ReiAnixAniListIntegrationService",
+                        result = "WAITING_FOR_LATEST_SHARED_RETRY_AFTER",
+                        context = mapOf(
+                            "anime_id" to animeId,
+                            "episode_id" to sample.episodeId,
+                            "remaining_ms" to request.remainingMillis,
+                        ),
+                    )
+                    break
+                }
                 TraceMoeSampleRequestResult.BudgetExhausted -> {
                     traceMoeRetryEligibleAnimeIds.add(animeId)
                     Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
@@ -825,11 +855,19 @@ class ReiAnixAniListIntegrationService(
     private suspend fun requestTraceMoeSample(
         animeId: Long,
         sample: TraceMoeEpisodeSample,
-    ): TraceMoeSampleRequestResult {
+    ): TraceMoeSampleRequestResult = traceMoeRequestGate.withLock {
         repeat(TRACE_MOE_HTTP_MAX_ATTEMPTS) { attemptIndex ->
+            // Re-read the shared deadline only after this request owns the same gate
+            // that protects HTTP execution and 429/402 persistence. This prevents an
+            // anime queued behind another request from bypassing a newly stored wait.
+            val sharedRetryDelay = traceMoePendingRetryDelayMillis(animeId)
+            if (sharedRetryDelay > 0L) {
+                return@withLock TraceMoeSampleRequestResult.DeferredBySharedRateLimit(sharedRetryDelay)
+            }
+
             val requestAt = System.currentTimeMillis() / 1000.0
             if (!reserveTraceMoeRequest(requestAt)) {
-                return TraceMoeSampleRequestResult.BudgetExhausted
+                return@withLock TraceMoeSampleRequestResult.BudgetExhausted
             }
 
             val requestId = UUID.randomUUID().toString()
@@ -857,7 +895,7 @@ class ReiAnixAniListIntegrationService(
                         "attempt" to attemptIndex + 1,
                     ),
                 )
-                return TraceMoeSampleRequestResult.Success(matches)
+                return@withLock TraceMoeSampleRequestResult.Success(matches)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -894,6 +932,9 @@ class ReiAnixAniListIntegrationService(
                         traceMoeRateLimitRetryNotBeforeMs[animeId] ?: 0L,
                         persistedDeadline,
                     )
+                    traceMoeGlobalRateLimitRetryNotBeforeMs.updateAndGet { current ->
+                        maxOf(current, persistedDeadline)
+                    }
                 }
                 ReiAnixDiagnosticTimeline.record(
                     name = "TRACE_MOE_REQUEST_FAILED",
@@ -916,19 +957,18 @@ class ReiAnixAniListIntegrationService(
                         " episodeId=" + sample.episodeId + " attempt=" + (attemptIndex + 1),
                     error,
                 )
-                // HTTP 402 concurrency/quota responses already carry a durable
-                // deferral deadline. Retrying immediately would contend for the same
-                // single guest slot or waste another request against an empty quota.
+                // A 402 already carries a durable deferral. Do not immediately retry;
+                // after any Retry-After deadline, the next gated iteration will check it.
                 if (error is TraceMoeHttpException && error.statusCode == 402) {
-                    return TraceMoeSampleRequestResult.Failed(error)
+                    return@withLock TraceMoeSampleRequestResult.Failed(error)
                 }
                 if (!retryable || attemptIndex + 1 >= TRACE_MOE_HTTP_MAX_ATTEMPTS) {
-                    return TraceMoeSampleRequestResult.Failed(error)
+                    return@withLock TraceMoeSampleRequestResult.Failed(error)
                 }
                 delay(TRACE_MOE_HTTP_RETRY_DELAY_MILLIS * (attemptIndex + 1L))
             }
         }
-        return TraceMoeSampleRequestResult.Failed(IOException("Trace.moe request attempts were exhausted."))
+        TraceMoeSampleRequestResult.Failed(IOException("Trace.moe request attempts were exhausted."))
     }
 
     private suspend fun readTraceMoeAttemptAt(animeId: Long, correction: Boolean): Double? = withContext(Dispatchers.IO) {
