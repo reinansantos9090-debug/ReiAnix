@@ -211,13 +211,13 @@ class ReiAnixTraceMoeClient(
             // A daily quota is a pause, not a completed/failed episode sample. Keep this
             // image pending and poll /me at a low frequency until the rolling 24-hour
             // quota has room again. /me requests do not consume search quota.
-            var account = refreshAccountStatusLocked(forceRefresh = false)
-            while (account != null && account.quotaRemaining <= 0) {
-                delay(QUOTA_POLL_INTERVAL_MILLIS)
-                account = refreshAccountStatusLocked(forceRefresh = true)
+            val account = refreshAccountStatusLocked(forceRefresh = false)
+            if (account != null && account.quotaRemaining <= 0) {
+                awaitSearchQuotaLocked()
             }
 
             var attempt = 0
+            var quotaStatusMismatchCount = 0
             while (true) {
                 waitForGlobalRequestSlot()
                 if (!reserveRequest()) {
@@ -241,16 +241,21 @@ class ReiAnixTraceMoeClient(
                 } catch (error: TraceMoeApiException) {
                     if (error.kind == TraceMoeFailureKind.QUOTA_EXHAUSTED) {
                         TraceMoeRequestCoordinator.invalidateAccountStatus()
-                        val refreshed = refreshAccountStatusLocked(forceRefresh = true)
-                        if (refreshed != null && refreshed.quotaRemaining <= 0) {
-                            // HTTP 402 is also used for concurrency. Only wait for quota
-                            // when /me confirms quotaUsed >= quota; a concurrency response
-                            // remains retryable with its normal short backoff.
-                            var remainingStatus = refreshed
-                            while (remainingStatus != null && remainingStatus.quotaRemaining <= 0) {
-                                delay(QUOTA_POLL_INTERVAL_MILLIS)
-                                remainingStatus = refreshAccountStatusLocked(forceRefresh = true)
+                        val refreshed = awaitSearchQuotaLocked()
+                        if (refreshed.quotaRemaining > 0) {
+                            // A 402 can also reflect an eventual-consistency gap between
+                            // /search and /me. Retry that mismatch once, with a pause; if it
+                            // repeats, surface a retryable service failure instead of looping.
+                            quotaStatusMismatchCount += 1
+                            if (quotaStatusMismatchCount > MAX_QUOTA_STATUS_MISMATCH_RETRIES) {
+                                throw TraceMoeApiException(
+                                    TraceMoeFailureKind.SERVER_UNAVAILABLE,
+                                    "Trace.moe reports quota exhaustion while /me still reports available quota.",
+                                    httpStatus = error.httpStatus,
+                                    cause = error,
+                                )
                             }
+                            delay(QUOTA_STATUS_MISMATCH_RETRY_MILLIS)
                             attempt = 0
                             continue
                         }
@@ -266,6 +271,24 @@ class ReiAnixTraceMoeClient(
             @Suppress("UNREACHABLE_CODE")
             emptyList()
         }
+    }
+
+    /**
+     * Waits on the authoritative /me quota instead of treating HTTP 402 as a completed
+     * thumbnail. A null /me response is retried at its short error-cache cadence; once
+     * quota is exhausted, the next search resumes when the rolling window frees a slot.
+     * Caller holds the process-wide request mutex, so all app searches stay serialized.
+     */
+    private suspend fun awaitSearchQuotaLocked(): TraceMoeAccountStatus {
+        var status = refreshAccountStatusLocked(forceRefresh = true)
+        while (status == null || status.quotaRemaining <= 0) {
+            delay(
+                if (status == null) ACCOUNT_ERROR_CACHE_TTL_MILLIS
+                else QUOTA_POLL_INTERVAL_MILLIS,
+            )
+            status = refreshAccountStatusLocked(forceRefresh = true)
+        }
+        return status
     }
 
     /** Refreshes /me at most once per five minutes; a temporary /me failure is non-fatal. */
@@ -541,6 +564,8 @@ class ReiAnixTraceMoeClient(
         const val ACCOUNT_CACHE_TTL_MILLIS = 5L * 60L * 1_000L
         const val ACCOUNT_ERROR_CACHE_TTL_MILLIS = 30L * 1_000L
         const val QUOTA_POLL_INTERVAL_MILLIS = 5L * 60L * 1_000L
+        const val QUOTA_STATUS_MISMATCH_RETRY_MILLIS = 15L * 1_000L
+        const val MAX_QUOTA_STATUS_MISMATCH_RETRIES = 1
         const val MAX_RETRIES = 2
         private const val ACCOUNT_TIMEOUT_MILLIS = 3_000
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
