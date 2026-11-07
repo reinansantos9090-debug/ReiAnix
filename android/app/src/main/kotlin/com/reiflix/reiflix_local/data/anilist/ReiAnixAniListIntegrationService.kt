@@ -478,15 +478,8 @@ class ReiAnixAniListIntegrationService(
                     VideoThumbnailExtractor.isUsableThumbnailFile(sample.imageFile.absolutePath)
             }
             if (!usable) {
-                // Even an unusable published image occupies one of the three sample positions.
-                matchesByEpisode[sample.episodeId] = emptyList()
-                writeTraceMoeProgress(
-                    animeId,
-                    matchesByEpisode,
-                    completed = false,
-                    correction = correction,
-                    successfulApiEpisodeIds = successfulApiEpisodeIds,
-                )
+                // A locally unusable image is not a Trace.moe API result and must
+                // not consume one of the three successful-search sample positions.
                 continue
             }
 
@@ -519,14 +512,8 @@ class ReiAnixAniListIntegrationService(
                                 animeId + " episodeId=" + sample.episodeId,
                             error,
                         )
-                        matchesByEpisode[sample.episodeId] = emptyList()
-                        writeTraceMoeProgress(
-                            animeId,
-                            matchesByEpisode,
-                            completed = false,
-                            correction = correction,
-                            successfulApiEpisodeIds = successfulApiEpisodeIds,
-                        )
+                        // The API did not produce a successful scene-search result.
+                        // Do not persist the sample as an empty match or consume a slot.
                         continue
                     }
                     else -> {
