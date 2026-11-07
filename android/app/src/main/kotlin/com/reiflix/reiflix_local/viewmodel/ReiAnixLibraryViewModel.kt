@@ -12,6 +12,7 @@ import com.reiflix.reiflix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
@@ -30,6 +31,7 @@ import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
 import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -73,6 +75,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -93,6 +96,8 @@ import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
 private const val REIANIX_LIBRARY_ALL_ITEMS = 0
+private const val MAX_TRACE_MOE_AUTOMATIC_RECOVERIES = 2
+private const val TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS = 30_000L
 private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
     setOf("movie", "special", "ova", "oad", "ona", "extra")
 
@@ -255,12 +260,16 @@ class ReiAnixLibraryViewModel(
     // Serialize batches per anime so only one Trace.moe stream owns its samples.
     private val episodeThumbnailBatchesInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val episodeThumbnailBatchRerunRequested = ConcurrentHashMap.newKeySet<Long>()
+    // Keep Details requests that arrive before the native scan/catalog has committed episode rows.
+    private val pendingEpisodeThumbnailAnimeRequests = ConcurrentHashMap.newKeySet<Long>()
     private data class TraceMoeSampleSession(
         val channel: Channel<TraceMoeEpisodeSample>,
         val queuedEpisodeIds: MutableSet<Long>,
         val job: Job,
     )
     private val traceMoeSampleSessions = ConcurrentHashMap<Long, TraceMoeSampleSession>()
+    // A transient API failure gets a small number of delayed replays of already-saved thumbnails.
+    private val traceMoeAutomaticRecoveryAttempts = ConcurrentHashMap<Long, AtomicInteger>()
     // Serialize new thumbnail publications behind startup recovery of already saved images.
     private val traceMoePublicationQueue = Channel<ReiAnixArtworkPublication>(Channel.UNLIMITED)
     // If the local-media/artwork projection changes during extraction, rerun once
@@ -1394,9 +1403,47 @@ class ReiAnixLibraryViewModel(
             episodeThumbnailBatchRerunRequested.add(animeId)
             return
         }
-        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: run {
+        val catalogSnapshot = nativeCatalogState.value
+        val anime = catalogSnapshot.animes.firstOrNull { it.id == animeId } ?: run {
+            pendingEpisodeThumbnailAnimeRequests.add(animeId)
             episodeThumbnailBatchesInFlight.remove(animeId)
+            ReiAnixDiagnosticTimeline.record(
+                name = "TRACE_MOE_THUMBNAIL_REQUEST_DEFERRED",
+                source = "ReiAnixLibraryViewModel",
+                result = "ANIME_NOT_IN_CANONICAL_CATALOG",
+                context = mapOf(
+                    "anime_id" to animeId,
+                    "catalog_status" to catalogSnapshot.status.name,
+                ),
+            )
+            projectionRefreshRequests.trySend(Unit)
             return
+        }
+        val nativeScanInProgress = NativeScanController.progress.value.values.any { !it.state.isTerminal }
+        val hasAvailableLocalEpisode = anime.contentEpisodes.any { episode ->
+            episode.media.availability.name == "AVAILABLE" && episodeThumbnailSource(episode) != null
+        }
+        if (nativeScanInProgress) {
+            pendingEpisodeThumbnailAnimeRequests.add(animeId)
+        }
+        if (anime.contentEpisodes.isEmpty() || !hasAvailableLocalEpisode) {
+            pendingEpisodeThumbnailAnimeRequests.add(animeId)
+            episodeThumbnailBatchesInFlight.remove(animeId)
+            ReiAnixDiagnosticTimeline.record(
+                name = "TRACE_MOE_THUMBNAIL_REQUEST_DEFERRED",
+                source = "ReiAnixLibraryViewModel",
+                result = "EPISODE_ROWS_NOT_READY",
+                context = mapOf(
+                    "anime_id" to animeId,
+                    "episode_count" to anime.contentEpisodes.size,
+                    "scan_in_progress" to nativeScanInProgress,
+                ),
+            )
+            projectionRefreshRequests.trySend(Unit)
+            return
+        }
+        if (!nativeScanInProgress) {
+            pendingEpisodeThumbnailAnimeRequests.remove(animeId)
         }
         // Queue all available local episodes in the catalog's season/episode order.
         // Existing paths are decoded and visually checked on Dispatchers.IO.
@@ -1615,8 +1662,18 @@ class ReiAnixLibraryViewModel(
                             animeId = animeId,
                             samples = channel.receiveAsFlow(),
                         )
+                        // A normal completion means the request stream itself recovered.
+                        traceMoeAutomaticRecoveryAttempts.remove(animeId)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
+                    } catch (error: TraceMoeApiException) {
+                        Log.w(
+                            TAG,
+                            "Trace.moe visual identification deferred kind=" + error.kind +
+                                " status=" + error.httpStatus + " animeId=" + animeId,
+                            error,
+                        )
+                        if (error.kind.retryable) scheduleTraceMoeAutomaticRecovery(animeId, error.retryAfterMillis)
                     } catch (error: Exception) {
                         Log.w(TAG, "Trace.moe visual identification failed for animeId=" + animeId, error)
                     } finally {
@@ -1671,12 +1728,36 @@ class ReiAnixLibraryViewModel(
         }
     }
 
+    /** Schedule at most two delayed replays after a transient API failure. */
+    private fun scheduleTraceMoeAutomaticRecovery(animeId: Long, retryAfterMillis: Long? = null) {
+        val attempts = traceMoeAutomaticRecoveryAttempts.computeIfAbsent(animeId) { AtomicInteger(0) }
+            .incrementAndGet()
+        if (attempts > MAX_TRACE_MOE_AUTOMATIC_RECOVERIES) return
+        viewModelScope.launch {
+            val scheduledDelay = TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS * attempts
+            delay(maxOf(scheduledDelay, retryAfterMillis ?: 0L))
+            if (traceMoeSampleSessions[animeId] != null) return@launch
+            try {
+                enqueuePersistedEpisodeThumbnailsForTraceMoe(onlyAnimeId = animeId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(
+                    TAG,
+                    "Could not replay saved Trace.moe thumbnails for animeId=" + animeId,
+                    error,
+                )
+            }
+        }
+    }
+
     /** Restore unfinished identification from thumbnails already saved before process death. */
-    private suspend fun enqueuePersistedEpisodeThumbnailsForTraceMoe() {
+    private suspend fun enqueuePersistedEpisodeThumbnailsForTraceMoe(onlyAnimeId: Long? = null) {
         val catalog = nativeCatalogState.value.animes
         val samplesByAnime = withContext(Dispatchers.IO) {
             buildMap<Long, List<TraceMoeEpisodeSample>> {
                 for (anime in catalog) {
+                    if (onlyAnimeId != null && anime.id != onlyAnimeId) continue
                     val candidates = anime.contentEpisodes
                         .distinctBy { it.id }
                         .mapNotNull { episode ->
@@ -1779,7 +1860,7 @@ class ReiAnixLibraryViewModel(
         // Keep the publication stream bounded and debounce bursts (poster + backdrop,
         // several list items) into one canonical re-read, without rescanning media.
         appDependencies?.artworkService?.publishedArtworks?.let { publications ->
-            viewModelScope.launch {
+            viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 publications
                     .onEach { publication ->
                         enqueuePublishedEpisodeThumbnail(publication)
@@ -1838,19 +1919,21 @@ class ReiAnixLibraryViewModel(
 
         // Load catalog records directly from the canonical SQLite repository. The legacy
         // snapshot is retained only for storage/onboarding and diagnostic scan state.
-        viewModelScope.launch {
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             NativeScanController.progress
                 .map { snapshots ->
                     snapshots.filterValues { it.state.isTerminal }
                         .mapValues { (_, snapshot) -> snapshot.finishedAtMillis }
                 }
                 .distinctUntilChanged()
-                .drop(1)
-                .collectLatest {
-                    // This collector emits only after a new terminal native-scan snapshot;
-                    // its first saved value is dropped, so process startup alone does not
-                    // trigger network metadata matching or artwork backfill.
-                    refreshNativeCatalog()
+                .collectLatest { terminalScans ->
+                    // StateFlow may already contain a completed first scan before this
+                    // ViewModel subscribes. Never discard that snapshot: refresh SQLite
+                    // and replay the thumbnails committed by the completed scan.
+                    if (terminalScans.isNotEmpty()) {
+                        refreshNativeCatalog()
+                        enqueuePersistedEpisodeThumbnailsForTraceMoe()
+                    }
                 }
         }
         // Legacy commands can still mutate unrelated fields; their revision is only an
@@ -1907,6 +1990,33 @@ class ReiAnixLibraryViewModel(
             nativePagedLibraryState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
     }
 
+    /**
+     * Resume Details thumbnail requests that arrived before scanner/catalog completion.
+     * This runs only after a fresh SQLite projection and only when all native scans ended.
+     */
+    private fun drainPendingEpisodeThumbnailRequests() {
+        if (NativeScanController.progress.value.values.any { !it.state.isTerminal }) return
+        val catalog = nativeCatalogState.value
+        if (catalog.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY) return
+
+        val readyAnimeIds = catalog.animes.asSequence()
+            .filter { anime ->
+                anime.id in pendingEpisodeThumbnailAnimeRequests &&
+                    anime.contentEpisodes.any { episode ->
+                        episode.media.availability.name == "AVAILABLE" &&
+                            episodeThumbnailSource(episode) != null
+                    }
+            }
+            .map { it.id }
+            .toList()
+
+        readyAnimeIds.forEach { animeId ->
+            if (pendingEpisodeThumbnailAnimeRequests.remove(animeId)) {
+                requestMissingEpisodeThumbnails(animeId)
+            }
+        }
+    }
+
     private suspend fun refreshNativeCatalog() {
         nativeCatalogReloadMutex.withLock {
             try {
@@ -1957,6 +2067,7 @@ class ReiAnixLibraryViewModel(
                 }
             }
         }
+        drainPendingEpisodeThumbnailRequests()
     }
 
     private fun loadNativeLibraryPage(
