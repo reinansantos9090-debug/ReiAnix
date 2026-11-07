@@ -16,9 +16,11 @@ O índice local fica em:
 
 \`filesDir/data/visual-index/references.json\`
 
-Ele armazena somente o ID AniList já confirmado, um hash perceptual compacto (DCT de 63 bits) da thumbnail e a data de inclusão. Ele não armazena os vídeos e não extrai novos quadros.
+Ele armazena somente o ID AniList já confirmado, o descritor visual MPEG-7 Color Layout de 33 coeficientes da thumbnail e a data de inclusão. O descritor divide a imagem em uma grade 8×8, converte as médias de cor para Y/Cb/Cr, aplica DCT, varredura zig-zag e quantização. Ele não armazena os vídeos e não extrai novos quadros.
 
-Uma referência só é adicionada **depois** que o ReiAnix confirma e grava a associação usando o consenso visual existente. O índice mantém até 5.000 referências recentes; a busca aceita correspondências com similaridade perceptual de pelo menos 0,94. A política é conservadora: uma imagem sem detalhe suficiente é rejeitada, em vez de gerar um palpite.
+Uma referência só é adicionada **depois** que o ReiAnix confirma e grava a associação usando o consenso visual existente. O índice mantém até 5.000 referências recentes; a busca usa a distância ponderada do Color Layout e aceita correspondências com pontuação local normalizada de pelo menos 0,90. Imagens sem detalhe suficiente são ignoradas, em vez de gerar palpites.
+
+A extração do descritor segue a implementação pública trace.moe-id (MIT), que também é usada pelo ecossistema Trace.moe. A pontuação local é normalizada para a escala 0–1 do consenso do ReiAnix; ela não deve ser interpretada como uma calibração estatística idêntica à pontuação do serviço remoto.
 
 Este índice local aprende com as correspondências que já foram confirmadas naquele aparelho. Ele acelera reconhecimentos repetidos ou imagens visualmente muito próximas, mas não contém, na instalação inicial, um catálogo universal de todas as cenas de anime. O índice remoto é necessário para a pesquisa ampla de cenas ainda desconhecidas pelo aparelho.
 
@@ -30,7 +32,7 @@ Este índice local aprende com as correspondências que já foram confirmadas na
 - Resultados de diferentes fontes são combinados por ID AniList; a pontuação mais alta do mesmo ID é mantida.
 - Uma resposta vazia somente é armazenada como ausência de correspondência quando todas as fontes configuradas concluem a consulta. Uma falha parcial sem resultado positivo permanece pendente para nova tentativa.
 - Cancelamento de coroutine continua sendo propagado; não é convertido em resultado vazio.
-- O cache de respostas por SHA-256 é separado do índice perceptual local. Ele possui limite de 200 entradas e validade de sete dias para resultados positivos e seis horas para ausência de correspondência confirmada. Consultas incompletas não são gravadas no cache.
+- O cache de respostas por SHA-256 é separado do índice Color Layout local. Ele possui limite de 200 entradas e validade de sete dias para resultados positivos e seis horas para ausência de correspondência confirmada. Consultas incompletas não são gravadas no cache. A versão do cache foi incrementada ao migrar do formato de hash antigo para o descritor Color Layout.
 
 ## Configuração do índice remoto próprio
 
@@ -81,5 +83,5 @@ A resposta deve ser compatível com o formato da API pública, contendo um array
 
 - Não existe servidor próprio publicado ou ativo nesta PR.
 - Não existe dump universal incluído no APK ou no repositório do ReiAnix.
-- O índice local do aparelho não substitui a base remota universal; ele aprende apenas com thumbnails de associações confirmadas.
+- O índice local do aparelho não substitui a base remota universal; ele aprende apenas com thumbnails de associações confirmadas. Embora use o mesmo tipo de descritor Color Layout publicado pelo Trace.moe, não contém o catálogo remoto de quadros nem a mesma cobertura.
 - Um build aprovado não prova a precisão da busca com uma base remota real. A validação ponta a ponta exige provisionar o servidor, importar/indexar os dados autorizados, configurar a URL no build e testar com thumbnails reais.
