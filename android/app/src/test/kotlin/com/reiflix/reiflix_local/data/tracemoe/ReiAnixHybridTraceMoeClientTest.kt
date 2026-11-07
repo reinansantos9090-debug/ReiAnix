@@ -150,7 +150,7 @@ class ReiAnixHybridTraceMoeClientTest {
 
         repeat(2) {
             assertThrows(IOException::class.java) {
-                runBlocking { client.search(image, allowPublicSearch = false) }
+                runBlocking { client.search(image) { false } }
             }
         }
         assertEquals(2, independentCalls)
