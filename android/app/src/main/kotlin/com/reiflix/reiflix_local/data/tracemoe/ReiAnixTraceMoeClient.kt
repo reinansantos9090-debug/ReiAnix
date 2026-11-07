@@ -727,6 +727,10 @@ internal fun firstTraceMoeEpisodeMatches(
 
 internal const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
 
+// Candidate thumbnails are allowed to include invalid files; only three successful
+// API responses can contribute to the identity decision.
+internal const val MAX_TRACE_MOE_EPISODE_CANDIDATES = MAX_TRACE_MOE_EPISODE_SAMPLES * 5
+
 const val MINIMUM_TRACE_MOE_SIMILARITY = 0.90
 const val MINIMUM_TRACE_MOE_FRAME_MARGIN = 0.02
 const val MINIMUM_TRACE_MOE_SUPPORTING_EPISODES = 2
