@@ -31,7 +31,10 @@ class ReiAnixLocalVisualIndexTest {
         assertNotNull("The JPEG fixture must produce a Color Layout descriptor", descriptor)
 
         firstIndex.rememberConfirmedReference(image, 1234)
-        assertTrue("A confirmed descriptor must be persisted", indexFile.isFile)
+        assertTrue(
+            "A confirmed descriptor must be persisted; files=${indexFile.parentFile?.listFiles()?.joinToString { it.name + ":" + it.length() }}",
+            indexFile.isFile,
+        )
         val firstResult = firstIndex.search(image)
         val secondResult = ReiAnixLocalVisualIndex(indexFile).search(image)
 
