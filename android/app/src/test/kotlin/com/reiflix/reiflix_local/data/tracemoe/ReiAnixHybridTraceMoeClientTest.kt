@@ -111,6 +111,52 @@ class ReiAnixHybridTraceMoeClientTest {
     }
 
     @Test
+    fun keepsIndependentIndexActiveWhenPublicQuotaIsExhausted() = runBlocking {
+        val image = sampleImage()
+        var publicCalls = 0
+        var independentCalls = 0
+        val expected = listOf(TraceMoeSearchMatch(anilistId = 5678, similarity = 0.97))
+        val client = ReiAnixHybridTraceMoeClient(
+            publicProvider = ReiAnixTraceMoeSearchProvider {
+                publicCalls += 1
+                emptyList()
+            },
+            independentProvider = ReiAnixTraceMoeSearchProvider {
+                independentCalls += 1
+                expected
+            },
+            localReferenceIndex = null,
+            cacheDirectory = File(temporaryFolder.root, "cache"),
+        )
+
+        assertEquals(expected, client.search(image, allowPublicSearch = false))
+        assertEquals(0, publicCalls)
+        assertEquals(1, independentCalls)
+    }
+
+    @Test
+    fun publicQuotaExhaustionDoesNotTurnAnIncompleteSearchIntoNoMatch() {
+        val image = sampleImage()
+        var independentCalls = 0
+        val client = ReiAnixHybridTraceMoeClient(
+            publicProvider = ReiAnixTraceMoeSearchProvider { emptyList() },
+            independentProvider = ReiAnixTraceMoeSearchProvider {
+                independentCalls += 1
+                emptyList()
+            },
+            localReferenceIndex = null,
+            cacheDirectory = File(temporaryFolder.root, "cache"),
+        )
+
+        repeat(2) {
+            assertThrows(IOException::class.java) {
+                runBlocking { client.search(image, allowPublicSearch = false) }
+            }
+        }
+        assertEquals(2, independentCalls)
+    }
+
+    @Test
     fun cachesSuccessfulResultByExactImageContent() = runBlocking {
         val image = sampleImage()
         val expected = listOf(TraceMoeSearchMatch(anilistId = 9876, similarity = 0.96))
