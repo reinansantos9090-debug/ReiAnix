@@ -85,6 +85,7 @@ class ReiAnixAniListClientTest {
         val transport = FakeTransport(AniListHttpResponse(200, """
             {"data":{"Media":{
               "id":16498,
+              "isAdult":false,
               "title":{"romaji":"Shingeki no Kyojin"},
               "coverImage":{
                 "large":"http://img.example/cleartext-large.jpg",
