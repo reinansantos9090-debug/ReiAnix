@@ -43,6 +43,39 @@ class ReiAnixHybridTraceMoeClientTest {
     }
 
     @Test
+    fun startsIndependentIndexesWhilePublicQuotaCheckIsStillPending() = runBlocking {
+        val image = sampleImage()
+        val quotaCheckStarted = CompletableDeferred<Unit>()
+        val releaseQuotaCheck = CompletableDeferred<Boolean>()
+        val independentStarted = CompletableDeferred<Unit>()
+        val expected = listOf(TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95))
+        val client = ReiAnixHybridTraceMoeClient(
+            publicProvider = ReiAnixTraceMoeSearchProvider {
+                error("Public provider must not run when quota is exhausted")
+            },
+            independentProvider = ReiAnixTraceMoeSearchProvider {
+                independentStarted.complete(Unit)
+                expected
+            },
+            localReferenceIndex = null,
+            cacheDirectory = File(temporaryFolder.root, "cache"),
+        )
+
+        val search = kotlinx.coroutines.async {
+            client.search(image) {
+                quotaCheckStarted.complete(Unit)
+                releaseQuotaCheck.await()
+            }
+        }
+
+        quotaCheckStarted.await()
+        withTimeout(2_000) { independentStarted.await() }
+        releaseQuotaCheck.complete(false)
+
+        assertEquals(expected, search.await())
+    }
+
+    @Test
     fun combinesPublicAndIndependentCandidatesEvenWhenPublicHasStrongMatch() = runBlocking {
         val image = sampleImage()
         val publicMatch = TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)
