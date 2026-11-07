@@ -1666,7 +1666,7 @@ class ReiAnixLibraryViewModel(
                             traceMoeSampleSessions.remove(animeId, created)
                             if (identificationApplied) {
                                 traceMoeAutomaticRetryAttempts.remove(animeId)
-                            } else {
+                            } else if (integration.consumeTraceMoeRetryEligibility(animeId)) {
                                 scheduleTraceMoePendingRetry(animeId)
                             }
                         }
