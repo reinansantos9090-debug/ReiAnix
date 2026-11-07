@@ -138,48 +138,91 @@ class TraceMoeIdentityConsensusTest {
     }
 
     @Test
-    fun thirdInconclusiveFrameFallsBackToTheStrongestTraceMoeCandidate() {
-        val fallback = evaluateTraceMoeBestEffortIdentity(
-            linkedMapOf(
-                11L to listOf(TraceMoeSearchMatch(anilistId = 21, similarity = 0.88)),
-                12L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.84)),
-                13L to listOf(TraceMoeSearchMatch(anilistId = 5114, similarity = 0.91)),
-            ),
+    fun threeInconclusiveEpisodesDoNotProduceAnUnverifiedIdentity() {
+        val window = linkedMapOf(
+            11L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.88)),
+            12L to listOf(TraceMoeSearchMatch(anilistId = 21, similarity = 0.89)),
+            13L to listOf(TraceMoeSearchMatch(anilistId = 5114, similarity = 0.87)),
         )
 
-        assertNotNull(fallback)
-        assertEquals(5114, fallback?.anilistId)
-        assertEquals(0.91, fallback?.averageSimilarity ?: 0.0, 0.0001)
-        assertEquals(1, fallback?.supportingEpisodes)
+        assertNull(evaluateTraceMoeProgressiveIdentity(window))
     }
 
     @Test
-    fun emptyTraceMoeResultsDoNotProduceAnUnverifiedFallback() {
-        assertNull(
-            evaluateTraceMoeBestEffortIdentity(
-                linkedMapOf(
-                    11L to emptyList(),
-                    12L to emptyList(),
-                    13L to emptyList(),
-                ),
-            ),
+    fun laterEpisodesCanConfirmAfterTheFirstThreeWereInconclusive() {
+        var window = linkedMapOf<Long, List<TraceMoeSearchMatch>>()
+        window = appendTraceMoeEpisodeMatches(
+            window,
+            11L,
+            listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.88)),
         )
+        window = appendTraceMoeEpisodeMatches(
+            window,
+            12L,
+            listOf(TraceMoeSearchMatch(anilistId = 21, similarity = 0.89)),
+        )
+        window = appendTraceMoeEpisodeMatches(
+            window,
+            13L,
+            listOf(TraceMoeSearchMatch(anilistId = 5114, similarity = 0.87)),
+        )
+        assertNull(evaluateTraceMoeProgressiveIdentity(window))
+
+        window = appendTraceMoeEpisodeMatches(
+            window,
+            14L,
+            listOf(TraceMoeSearchMatch(anilistId = 42, similarity = 0.88)),
+        )
+        assertNull(evaluateTraceMoeProgressiveIdentity(window))
+        assertEquals(listOf(12L, 13L, 14L), window.keys.toList())
+
+        window = appendTraceMoeEpisodeMatches(
+            window,
+            15L,
+            listOf(TraceMoeSearchMatch(anilistId = 42, similarity = 0.87)),
+        )
+
+        assertEquals(listOf(13L, 14L, 15L), window.keys.toList())
+        val confirmed = evaluateTraceMoeProgressiveIdentity(window)
+        assertNotNull(confirmed)
+        assertEquals(42, confirmed?.anilistId)
+        assertEquals(2, confirmed?.supportingEpisodes)
     }
 
     @Test
-    fun onlyTheFirstThreeEpisodeResultsCanContributeToIdentification() {
+    fun restoringProgressUsesTheMostRecentThreeSuccessfulEpisodes() {
         val results = linkedMapOf(
             11L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.88)),
             12L to listOf(TraceMoeSearchMatch(anilistId = 21, similarity = 0.89)),
             13L to listOf(TraceMoeSearchMatch(anilistId = 5114, similarity = 0.87)),
-            14L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.98)),
-            15L to listOf(TraceMoeSearchMatch(anilistId = 16498, similarity = 0.97)),
+            14L to listOf(TraceMoeSearchMatch(anilistId = 42, similarity = 0.88)),
+            15L to listOf(TraceMoeSearchMatch(anilistId = 42, similarity = 0.87)),
         )
 
-        val bounded = firstTraceMoeEpisodeMatches(results)
+        val window = firstTraceMoeEpisodeMatches(results)
+
         assertEquals(3, MAX_TRACE_MOE_EPISODE_SAMPLES)
-        assertEquals(listOf(11L, 12L, 13L), bounded.keys.toList())
-        assertNull(evaluateTraceMoeProgressiveIdentity(bounded))
+        assertEquals(listOf(13L, 14L, 15L), window.keys.toList())
+        assertEquals(42, evaluateTraceMoeProgressiveIdentity(window)?.anilistId)
+    }
+
+    @Test
+    fun addingAnEpisodeDoesNotDiscardEarlierSuccessfulApiIdsOutsideEvidenceWindow() {
+        val successfulApiEpisodeIds = linkedSetOf(11L, 12L, 13L, 14L, 15L)
+        var window = linkedMapOf(
+            13L to listOf(TraceMoeSearchMatch(anilistId = 5114, similarity = 0.87)),
+            14L to listOf(TraceMoeSearchMatch(anilistId = 42, similarity = 0.88)),
+            15L to listOf(TraceMoeSearchMatch(anilistId = 42, similarity = 0.87)),
+        )
+        window = appendTraceMoeEpisodeMatches(
+            window,
+            16L,
+            listOf(TraceMoeSearchMatch(anilistId = 42, similarity = 0.86)),
+        )
+        successfulApiEpisodeIds.add(16L)
+
+        assertEquals(listOf(14L, 15L, 16L), window.keys.toList())
+        assertEquals(setOf(11L, 12L, 13L, 14L, 15L, 16L), successfulApiEpisodeIds)
     }
 
 
