@@ -1,0 +1,18 @@
+({
+    auto_https disable_redirects
+})
+
+{REIANIX_INDEX_DOMAIN} {
+    encode zstd gzip
+
+    @search path /search
+    handle @search {
+        @post method POST
+        handle @post {
+            reverse_proxy api:3000
+        }
+        respond "Method Not Allowed" 405
+    }
+
+    respond "Not Found" 404
+}
