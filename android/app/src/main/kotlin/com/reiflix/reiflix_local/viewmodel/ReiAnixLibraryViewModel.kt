@@ -1729,9 +1729,13 @@ class ReiAnixLibraryViewModel(
             exponentialDelay,
             TRACE_MOE_AUTOMATIC_RETRY_MAX_DELAY_MILLIS,
         )
+        val integration = appDependencies?.aniListIntegrationService ?: run {
+            traceMoeAutomaticRetryScheduled.remove(animeId)
+            return
+        }
         viewModelScope.launch {
+            var wasCancelled = false
             try {
-                val integration = appDependencies?.aniListIntegrationService ?: return@launch
                 val retryAfterMillis = integration.traceMoePendingRetryDelayMillis(animeId)
                 val waitMillis = maxOf(localBackoffMillis, retryAfterMillis)
                 ReiAnixDiagnosticTimeline.record(
@@ -1748,11 +1752,14 @@ class ReiAnixLibraryViewModel(
                 )
                 delay(waitMillis)
                 if (!integration.shouldRetryTraceMoeIdentification(animeId)) {
-                    traceMoeAutomaticRetryAttempts.remove(animeId)
+                    if (integration.traceMoePendingRetryDelayMillis(animeId) == 0L) {
+                        traceMoeAutomaticRetryAttempts.remove(animeId)
+                    }
                     return@launch
                 }
                 enqueuePersistedEpisodeThumbnailsForAnime(animeId)
             } catch (cancelled: CancellationException) {
+                wasCancelled = true
                 throw cancelled
             } catch (error: Exception) {
                 Log.w(TAG, "Could not rehydrate pending Trace.moe samples for animeId=$animeId", error)
@@ -1766,6 +1773,21 @@ class ReiAnixLibraryViewModel(
                 )
             } finally {
                 traceMoeAutomaticRetryScheduled.remove(animeId)
+                // A different anime can extend the shared Retry-After deadline
+                // after this job sampled it. Re-arm after releasing the per-anime
+                // scheduled flag so that a competing session cannot lose its retry.
+                if (!wasCancelled) {
+                    val latestDelay = try {
+                        integration.traceMoePendingRetryDelayMillis(animeId)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        0L
+                    }
+                    if (latestDelay > 0L) {
+                        scheduleTraceMoePendingRetry(animeId)
+                    }
+                }
             }
         }
     }
