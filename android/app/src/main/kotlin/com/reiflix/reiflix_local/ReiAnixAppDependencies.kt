@@ -20,7 +20,9 @@ import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixLocalVisualIndex
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeSearchProvider
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -166,17 +168,23 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixTraceMoeClient()
     }
 
-    /** Optional, separately operated visual index queried in parallel with public Trace.moe. */
-    val selfHostedTraceMoeClient: ReiAnixTraceMoeClient? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+    /**
+     * Optional remote index. A blank URL means the owner has not deployed/configured
+     * the service yet. A nonblank but invalid URL stays represented as a failing
+     * provider so an empty search can never be mistaken for a completed no-match.
+     */
+    val selfHostedTraceMoeClient: ReiAnixTraceMoeSearchProvider? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL
             .trim()
             .takeIf(String::isNotBlank)
             ?.let { baseUrl ->
                 runCatching { ReiAnixTraceMoeClient.selfHosted(baseUrl) }
-                    .onFailure { error ->
-                        Log.w("ReiAnixAppDependencies", "Independent visual index URL is invalid; remote index disabled.", error)
+                    .getOrElse { error ->
+                        Log.w("ReiAnixAppDependencies", "Independent visual index URL is invalid; its search remains pending.", error)
+                        ReiAnixTraceMoeSearchProvider {
+                            throw IOException("The configured independent visual index URL is invalid.", error)
+                        }
                     }
-                    .getOrNull()
             }
     }
 
