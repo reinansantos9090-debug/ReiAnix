@@ -448,6 +448,11 @@ class ReiAnixAniListIntegrationService(
             Log.w(TAG, "Could not read persisted Trace.moe rate-limit deadline", error)
             0L
         }
+        if (persistedDeadline > 0L) {
+            traceMoeGlobalRateLimitRetryNotBeforeMs.updateAndGet { current ->
+                maxOf(current, persistedDeadline)
+            }
+        }
         val deadline = mergeTraceMoeRateLimitDeadlineMillis(
             mergeTraceMoeRateLimitDeadlineMillis(inMemoryDeadline, globalInMemoryDeadline),
             persistedDeadline,
