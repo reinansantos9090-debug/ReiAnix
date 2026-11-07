@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 private const val TRACE_MOE_INITIAL_RETRY_DELAY_MILLIS = 500L
 private const val TRACE_MOE_MAX_RETRY_DELAY_MILLIS = 5_000L
 private const val TRACE_MOE_MAX_RETRY_AFTER_MILLIS = 30_000L
+private const val TRACE_MOE_MAX_RETRY_AFTER_MILLIS = 30_000L
 
 enum class TraceMoeFailureCategory(val retryable: Boolean) {
     INVALID_IMAGE(false),
@@ -223,7 +224,7 @@ class ReiAnixTraceMoeClient(
         imageBytes
     }
 
-    private fun requestOnce(imageBytes: ByteArray): List<TraceMoeSearchMatch> {
+    private suspend fun requestOnce(imageBytes: ByteArray): List<TraceMoeSearchMatch> {
         val boundary = "ReiAnixTraceMoe" + UUID.randomUUID().toString().replace("-", "")
         val prefix = (
             "--$boundary\r\n" +
@@ -264,7 +265,7 @@ class ReiAnixTraceMoeClient(
                     retryAfterMillis = retryAfterMillis(connection),
                 )
             }
-            parseMatches(responseBody)
+            return parseMatches(responseBody)
         } finally {
             connection.disconnect()
         }
