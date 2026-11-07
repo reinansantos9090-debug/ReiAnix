@@ -234,6 +234,20 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(3_600L, parseTraceMoeRetryAfterSeconds("99999"))
         assertEquals(null, parseTraceMoeRetryAfterSeconds("not-a-number"))
         assertEquals(null, parseTraceMoeRetryAfterSeconds(null))
+        assertEquals(
+            30L,
+            parseTraceMoeRetryAfterSeconds(
+                value = "Thu, 01 Jan 1970 00:00:30 GMT",
+                nowEpochMillis = 0L,
+            ),
+        )
+        assertEquals(
+            null,
+            parseTraceMoeRetryAfterSeconds(
+                value = "not-an-http-date",
+                nowEpochMillis = 0L,
+            ),
+        )
     }
 
     @Test
