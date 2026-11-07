@@ -67,7 +67,7 @@ bash ./verify-and-publish-visual-index.sh
 O ReiAnix envia apenas a thumbnail JPEG que já gerou no aparelho. A pasta `VIDEO_PATH` fica vazia e `SCAN_INTERVAL=0`; não há envio de vídeo nem reextração de quadros no dispositivo.
 ## Configurar o ReiAnix
 
-Quando o endpoint HTTPS estiver realmente ativo e a pesquisa tiver sido validada, construa o APK com a origem/base URL (sem `/search`, sem query e sem fragmento):
+Quando o endpoint HTTPS estiver realmente ativo e a pesquisa tiver sido validada, construa o APK com a origem HTTPS na raiz do domínio (sem caminho, `/search`, query ou fragmento):
 
 ```bash
 gradle -p android \
