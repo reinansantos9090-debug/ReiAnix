@@ -172,7 +172,7 @@ class ReiAnixTraceMoeClient(
 
         /**
          * Creates a client for a separately operated Trace.moe-compatible HTTPS service.
-         * The configured value is an origin/base path, not a full /search URL.
+         * The configured value is a root HTTPS origin, not a path or full /search URL.
          */
         fun selfHosted(baseUrl: String): ReiAnixTraceMoeClient {
             val normalized = baseUrl.trim().trimEnd('/')
@@ -182,6 +182,7 @@ class ReiAnixTraceMoeClient(
                     uri.isAbsolute &&
                     uri.scheme.equals("https", ignoreCase = true) &&
                     !uri.host.isNullOrBlank() &&
+                    (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") &&
                     uri.rawUserInfo == null &&
                     uri.rawQuery == null &&
                     uri.rawFragment == null
