@@ -17,13 +17,9 @@ import java.util.UUID
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Job
 
-/**
- * Search contract shared by the public Trace.moe endpoint and a separately hosted,
- * Trace.moe-compatible visual index. Only generated local thumbnails are uploaded.
- */
-fun interface ReiAnixTraceMoeSearchProvider {
-    suspend fun search(imageFile: File): List<TraceMoeSearchMatch>
-}
+private const val TRACE_MOE_INITIAL_RETRY_DELAY_MILLIS = 500L
+private const val TRACE_MOE_MAX_RETRY_DELAY_MILLIS = 5_000L
+private const val TRACE_MOE_MAX_RETRY_AFTER_MILLIS = 30_000L
 
 enum class TraceMoeFailureCategory(val retryable: Boolean) {
     INVALID_IMAGE(false),
@@ -76,9 +72,9 @@ internal fun classifyTraceMoeHttpStatus(statusCode: Int): TraceMoeFailureCategor
 
 internal fun traceMoeRetryDelayMillis(retryIndex: Int, retryAfterMillis: Long = 0L): Long {
     require(retryIndex >= 0)
-    val backoff = (INITIAL_RETRY_DELAY_MILLIS shl retryIndex.coerceAtMost(4))
-        .coerceAtMost(MAX_RETRY_DELAY_MILLIS)
-    return maxOf(backoff, retryAfterMillis.coerceIn(0L, MAX_RETRY_AFTER_MILLIS))
+    val backoff = (TRACE_MOE_INITIAL_RETRY_DELAY_MILLIS shl retryIndex.coerceAtMost(4))
+        .coerceAtMost(TRACE_MOE_MAX_RETRY_DELAY_MILLIS)
+    return maxOf(backoff, retryAfterMillis.coerceIn(0L, TRACE_MOE_MAX_RETRY_AFTER_MILLIS))
 }
 
 internal fun traceMoeQuotaEndpoint(searchEndpoint: String): String =
@@ -401,9 +397,6 @@ class ReiAnixTraceMoeClient(
         private const val MAX_QUOTA_RESPONSE_BYTES = 16 * 1024
         private const val USER_AGENT = "ReiAnix-Android/1.0 (local anime identification)"
         private const val MAX_RETRIES = 2
-        private const val INITIAL_RETRY_DELAY_MILLIS = 500L
-        private const val MAX_RETRY_DELAY_MILLIS = 5_000L
-        private const val MAX_RETRY_AFTER_MILLIS = 30_000L
         private const val QUOTA_CACHE_TTL_MILLIS = 15_000L
 
         private val REQUEST_GATES = java.util.concurrent.ConcurrentHashMap<String, EndpointRequestGate>()
