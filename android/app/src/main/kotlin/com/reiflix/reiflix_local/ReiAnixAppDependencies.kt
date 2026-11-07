@@ -19,6 +19,7 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixLocalVisualIndex
 import java.io.File
 import java.util.UUID
 import org.json.JSONObject
@@ -165,7 +166,7 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixTraceMoeClient()
     }
 
-    /** Optional, separately operated Trace.moe-compatible service used only as fallback. */
+    /** Optional, separately operated visual index queried in parallel with public Trace.moe. */
     val selfHostedTraceMoeClient: ReiAnixTraceMoeClient? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL
             .trim()
@@ -179,10 +180,18 @@ class ReiAnixAppDependencies(context: Context) {
             }
     }
 
+    /** Persistent device-local references learned only from successfully confirmed anime matches. */
+    val localVisualIndex: ReiAnixLocalVisualIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixLocalVisualIndex(
+            indexFile = File(appContext.filesDir, "data/visual-index/references.json"),
+        )
+    }
+
     val hybridVisualSearchClient: ReiAnixHybridTraceMoeClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixHybridTraceMoeClient(
             publicProvider = traceMoeClient,
             independentProvider = selfHostedTraceMoeClient,
+            localReferenceIndex = localVisualIndex,
             cacheDirectory = File(appContext.cacheDir, "visual-search-cache"),
             cacheNamespace = BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL.ifBlank { "public-only" },
         )
