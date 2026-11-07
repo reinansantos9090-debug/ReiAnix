@@ -48,6 +48,21 @@ internal fun isRetryableTraceMoeHttpStatus(
 internal fun parseTraceMoeRetryAfterSeconds(value: String?): Long? =
     value?.trim()?.toLongOrNull()?.coerceIn(1L, MAX_TRACE_MOE_RETRY_AFTER_SECONDS)
 
+/** Retry policy for the public API's structured 402 and 429 responses. */
+internal fun traceMoeRetryAfterSecondsForHttpFailure(
+    statusCode: Int,
+    responseError: String?,
+    retryAfterHeader: String? = null,
+): Long? = when {
+    statusCode == 429 ->
+        parseTraceMoeRetryAfterSeconds(retryAfterHeader)
+    statusCode == 402 && isTraceMoeConcurrencyLimitResponse(responseError) ->
+        ReiAnixTraceMoeClient.DEFAULT_CONCURRENCY_RETRY_AFTER_SECONDS
+    statusCode == 402 && isTraceMoeQuotaDepletedResponse(responseError) ->
+        ReiAnixTraceMoeClient.DEFAULT_QUOTA_RETRY_AFTER_SECONDS
+    else -> null
+}
+
 internal fun mergeTraceMoeRateLimitDeadlineMillis(
     existingDeadlineMillis: Long,
     requestedDeadlineMillis: Long,
@@ -147,18 +162,21 @@ class ReiAnixTraceMoeClient(
                     throw TraceMoeHttpException(
                         statusCode = statusCode,
                         message = "Trace.moe rate limit reached; the local episode identification was postponed.",
-                        retryAfterSeconds = parseTraceMoeRetryAfterSeconds(connection.getHeaderField("Retry-After")),
+                        retryAfterSeconds = traceMoeRetryAfterSecondsForHttpFailure(
+                            statusCode = statusCode,
+                            responseError = null,
+                            retryAfterHeader = connection.getHeaderField("Retry-After"),
+                        ),
                     )
                 }
                 if (statusCode == 402) {
                     val apiError = runCatching {
                         JSONObject(responseBody).optString("error").trim()
                     }.getOrNull().orEmpty()
-                    val retryAfterSeconds = when {
-                        isTraceMoeConcurrencyLimitResponse(apiError) -> DEFAULT_CONCURRENCY_RETRY_AFTER_SECONDS
-                        isTraceMoeQuotaDepletedResponse(apiError) -> DEFAULT_QUOTA_RETRY_AFTER_SECONDS
-                        else -> null
-                    }
+                    val retryAfterSeconds = traceMoeRetryAfterSecondsForHttpFailure(
+                        statusCode = statusCode,
+                        responseError = apiError,
+                    )
                     throw TraceMoeHttpException(
                         statusCode = statusCode,
                         message = apiError.ifBlank { "Trace.moe refused the request with HTTP 402." },
