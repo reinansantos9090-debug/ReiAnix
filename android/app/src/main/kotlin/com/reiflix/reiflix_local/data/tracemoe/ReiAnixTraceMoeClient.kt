@@ -691,39 +691,38 @@ internal fun evaluateTraceMoeProgressiveIdentity(
     )
 }
 
-internal fun evaluateTraceMoeBestEffortIdentity(
-    resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
-): TraceMoeIdentityConsensus? {
-    val allMatches = resultsByEpisode.values.asSequence()
-        .flatten()
-        .filter { it.anilistId > 0 && it.similarity.isFinite() && it.similarity in 0.0..1.0 }
-        .toList()
-    val best = allMatches.maxWithOrNull(
-        compareBy<TraceMoeSearchMatch> { it.similarity }
-            .thenByDescending { it.anilistId },
-    ) ?: return null
-    val strongestDifferentAnime = allMatches.asSequence()
-        .filter { it.anilistId != best.anilistId }
-        .maxOfOrNull(TraceMoeSearchMatch::similarity)
-        ?: 0.0
-    val supportingEpisodes = resultsByEpisode.count { (_, matches) ->
-        matches.any { it.anilistId == best.anilistId }
+/**
+ * Appends one successful Trace.moe response to the rolling evidence window.
+ *
+ * The app may inspect any number of local episode thumbnails, but only the most
+ * recent three successful responses participate in a single identity decision.
+ * Failed requests never call this helper and therefore never evict valid evidence.
+ */
+internal fun appendTraceMoeEpisodeMatches(
+    matchesByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
+    episodeId: Long,
+    matches: List<TraceMoeSearchMatch>,
+): LinkedHashMap<Long, List<TraceMoeSearchMatch>> {
+    require(episodeId > 0L) { "Trace.moe evidence requires a positive episode ID." }
+    return LinkedHashMap(matchesByEpisode).apply {
+        remove(episodeId)
+        put(episodeId, matches.toList())
+        while (size > MAX_TRACE_MOE_EPISODE_SAMPLES) {
+            val oldestEpisodeId = keys.firstOrNull() ?: break
+            remove(oldestEpisodeId)
+        }
     }
-    return TraceMoeIdentityConsensus(
-        anilistId = best.anilistId,
-        averageSimilarity = best.similarity,
-        margin = (best.similarity - strongestDifferentAnime).coerceAtLeast(0.0),
-        supportingEpisodes = supportingEpisodes,
-    )
 }
 
+/** Restore the latest evidence window, not merely the first three episodes in a library. */
 internal fun firstTraceMoeEpisodeMatches(
     matchesByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
-): LinkedHashMap<Long, List<TraceMoeSearchMatch>> = LinkedHashMap<Long, List<TraceMoeSearchMatch>>().apply {
-    matchesByEpisode.entries.take(MAX_TRACE_MOE_EPISODE_SAMPLES).forEach { (episodeId, matches) ->
-        put(episodeId, matches)
+): LinkedHashMap<Long, List<TraceMoeSearchMatch>> =
+    LinkedHashMap<Long, List<TraceMoeSearchMatch>>().apply {
+        matchesByEpisode.entries
+            .takeLast(MAX_TRACE_MOE_EPISODE_SAMPLES)
+            .forEach { (episodeId, matches) -> put(episodeId, matches) }
     }
-}
 
 internal const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
 
