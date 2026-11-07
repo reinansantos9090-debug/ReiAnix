@@ -25,38 +25,46 @@ O serviço não está implantado automaticamente por esta PR. É necessário ter
 3. Gere senhas exclusivas para `TRACE_API_SALT`, `POSTGRES_PASSWORD` e `MINIO_SECRET_KEY`; não reutilize as credenciais de exemplo.
 4. Valide a configuração com `docker compose config --quiet`.
 5. Crie a pasta indicada por `VIDEO_PATH` e mantenha-a vazia nesta configuração baseada em descritores pré-calculados. O ReiAnix não envia vídeos para esse servidor.
-6. Inicie a infraestrutura: `docker compose up -d`.
+6. Inicie apenas os bancos e a API, mantendo o proxy público desligado durante a importação: `docker compose up -d postgres etcd minio milvus api`.
 
 Caddy solicitará e renovará o certificado TLS automaticamente quando o DNS e as portas 80/443 estiverem corretamente configurados.
 
 ## Popular a base visual
 
-A configuração do ReiAnix deve usar um catálogo de descritores MPEG-7 Color Layout pré-calculados em formato compatível com as tabelas `files` e `anilist` do servidor. O arquivo de dados não acompanha o ReiAnix. Essa base contém vetores visuais e metadados; não contém os vídeos de referência. Mantenha `VIDEO_PATH` vazio e `SCAN_INTERVAL=0`: o aplicativo envia somente a thumbnail JPEG da busca, nunca os vídeos do telefone. Antes de carregar qualquer vetor no Milvus, importe os metadados, execute o filtro de segurança abaixo e só então solicite a carga dos vetores.
+A configuração do ReiAnix usa um catálogo de descritores MPEG-7 Color Layout pré-calculados, não vídeos. O dump de referência precisa conter registros compatíveis com a tabela `files` (incluindo `anilist_id`, `media_info`, `scene_changes` e `color_layout`). O arquivo de dados não acompanha esta PR.
 
-### Filtragem obrigatória antes de carregar o Milvus
-
-O banco precisa estar inicializado pelo serviço API. Importe apenas um dump de metadados/descritores compatível e que você tenha autorização para usar; por exemplo, se o arquivo estiver disponível no host em `./data/visual-index.sql.zst`:
+1. Com os serviços internos iniciados e o Caddy ainda desligado, importe o dump SQL dos descritores. Por exemplo, se o mantenedor tiver um dump compatível em `./data/visual-index.sql.zst`:
 
 ```bash
 zstd -dc ./data/visual-index.sql.zst | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
 ```
 
-Depois de importar o dump no PostgreSQL, execute:
+2. Preencha a tabela AniList para os IDs referenciados pelos registros importados. O script consulta metadados em lotes de até 50 IDs, incluindo a propriedade `isAdult`:
 
 ```bash
-docker compose exec -T postgres psql -U "${POSTGRES_USER:-postgres}" -d postgres -v ON_ERROR_STOP=1 < filter-adult-entries.sql
+bash ./hydrate-anilist-metadata.sh
 ```
 
-O script remove os IDs AniList marcados `isAdult=true` e os respectivos registros de vídeo, remove órfãos e falha caso algum registro adulto permaneça. Não pule esta etapa.
-
-Depois da filtragem, acione a reconstrução do índice vetorial:
+3. Aplique o filtro de conteúdo geral. Ele mantém somente registros cujo AniList declara explicitamente `isAdult=false`; itens adultos, sem classificação ou com classificação inválida são removidos:
 
 ```bash
-printf 'UPDATE files SET loaded = NULL;\n' | docker compose exec -T postgres psql -U "${POSTGRES_USER:-postgres}" -d postgres -v ON_ERROR_STOP=1
+docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 < filter-adult-entries.sql
 ```
 
-Acompanhe a fila de indexação nos logs do serviço API e consulte os estados da tabela `files` no PostgreSQL. A busca só deve ser liberada depois que os registros filtrados estiverem carregados no Milvus. Os vídeos não são necessários para a consulta do ReiAnix: a resposta usa os campos AniList e a similaridade dos descritores.
+4. Recarregue somente os vetores já pré-calculados no Milvus. Isso não executa FFmpeg nem cria vetores a partir de vídeos:
 
+```bash
+docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'UPDATE files SET loaded = NULL;'
+docker compose exec -T api node script/bulk-load-milvus.ts 500
+```
+
+Acompanhe a saída do processo e confira se todos os registros elegíveis foram marcados `loaded=true`. Só depois de concluir essa etapa exponha o endpoint HTTPS:
+
+```bash
+docker compose up -d caddy
+```
+
+O ReiAnix envia apenas a thumbnail JPEG que já gerou no aparelho. A pasta `VIDEO_PATH` fica vazia e `SCAN_INTERVAL=0`; não há envio de vídeo nem reextração de quadros no dispositivo.
 ## Configurar o ReiAnix
 
 Quando o endpoint HTTPS estiver realmente ativo e a pesquisa tiver sido validada, construa o APK com a origem/base URL (sem `/search`, sem query e sem fragmento):
