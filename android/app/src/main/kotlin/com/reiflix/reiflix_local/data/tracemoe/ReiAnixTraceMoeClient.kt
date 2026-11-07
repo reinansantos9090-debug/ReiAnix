@@ -44,18 +44,17 @@ internal fun classifyTraceMoeHttpFailure(
     errorMessage: String?,
 ): TraceMoeFailureKind {
     val message = errorMessage.orEmpty().lowercase()
-    return when (statusCode) {
-        400, 413, 415 -> TraceMoeFailureKind.BAD_IMAGE
-        401 -> TraceMoeFailureKind.AUTHENTICATION
-        403 -> TraceMoeFailureKind.FORBIDDEN
-        402 -> if ("concurr" in message) {
-            TraceMoeFailureKind.CONCURRENCY_LIMIT
-        } else {
-            TraceMoeFailureKind.QUOTA_EXHAUSTED
-        }
-        408, 425 -> TraceMoeFailureKind.SERVER_UNAVAILABLE
-        429 -> TraceMoeFailureKind.RATE_LIMITED
-        in 500..599 -> TraceMoeFailureKind.SERVER_UNAVAILABLE
+    return when {
+        "concurr" in message -> TraceMoeFailureKind.CONCURRENCY_LIMIT
+        statusCode == 402 -> TraceMoeFailureKind.QUOTA_EXHAUSTED
+        statusCode == 429 ||
+            "rate limit" in message ||
+            "too many requests" in message -> TraceMoeFailureKind.RATE_LIMITED
+        statusCode in setOf(400, 413, 415) -> TraceMoeFailureKind.BAD_IMAGE
+        statusCode == 401 -> TraceMoeFailureKind.AUTHENTICATION
+        statusCode == 403 -> TraceMoeFailureKind.FORBIDDEN
+        statusCode == 408 || statusCode == 425 -> TraceMoeFailureKind.SERVER_UNAVAILABLE
+        statusCode in 500..599 -> TraceMoeFailureKind.SERVER_UNAVAILABLE
         else -> TraceMoeFailureKind.HTTP_ERROR
     }
 }
@@ -407,6 +406,8 @@ class ReiAnixTraceMoeClient(
                 }
                 val inlineError = parseErrorMessage(root)
                 if (inlineError != null) {
+                    // Some deployments can return an API-level error in a JSON
+                    // body even when the HTTP envelope itself is successful.
                     val kind = classifyTraceMoeHttpFailure(statusCode, inlineError)
                     throw TraceMoeApiException(
                         kind,
@@ -474,11 +475,18 @@ class ReiAnixTraceMoeClient(
     }
 
     private fun parseRetryAfterMillis(headerValue: String?, body: String): Long? {
-        val headerSeconds = headerValue?.trim()?.toLongOrNull()
+        val headerSeconds = headerValue?.trim()?.toDoubleOrNull()
         val bodySeconds = runCatching {
-            JSONObject(body).optDouble("retry_after_seconds", Double.NaN)
+            val root = JSONObject(body)
+            val retryAfter = root.opt("retry_after_seconds")
+                ?: root.opt("retry_after")
+            when (retryAfter) {
+                is Number -> retryAfter.toDouble()
+                is String -> retryAfter.toDoubleOrNull()
+                else -> null
+            }
         }.getOrNull()
-        val seconds = headerSeconds?.toDouble()
+        val seconds = headerSeconds?.takeIf { it.isFinite() && it > 0.0 }
             ?: bodySeconds?.takeIf { it.isFinite() && it > 0.0 }
             ?: return null
         return (seconds * 1_000.0).toLong().coerceAtLeast(MIN_RETRY_DELAY_MILLIS)
