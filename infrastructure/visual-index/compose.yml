@@ -13,7 +13,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   api:
     image: ghcr.io/soruly/trace.moe-api:latest
@@ -36,6 +37,12 @@ services:
       - ${VIDEO_PATH:-./video}:/app/video:ro
     expose:
       - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/me').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,8 +89,8 @@ services:
     image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
     restart: unless-stopped
     environment:
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in .env}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
     volumes:
       - minio_data:/minio
     command: ["minio", "server", "/minio", "--console-address", ":9001"]
