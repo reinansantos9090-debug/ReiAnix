@@ -25,6 +25,94 @@ fun interface ReiAnixTraceMoeSearchProvider {
     suspend fun search(imageFile: File): List<TraceMoeSearchMatch>
 }
 
+enum class TraceMoeFailureCategory(val retryable: Boolean) {
+    INVALID_IMAGE(false),
+    INVALID_REQUEST(false),
+    QUOTA_OR_CONCURRENCY(false),
+    FORBIDDEN(false),
+    METHOD_NOT_ALLOWED(false),
+    PAYLOAD_TOO_LARGE(false),
+    UNSUPPORTED_MEDIA_TYPE(false),
+    RATE_LIMITED(true),
+    QUEUE_FULL(true),
+    SERVER_ERROR(true),
+    HTTP_ERROR(false),
+    NETWORK_ERROR(true),
+    INVALID_RESPONSE(false),
+}
+
+class TraceMoeRequestException(
+    val category: TraceMoeFailureCategory,
+    message: String,
+    val httpStatus: Int? = null,
+    val retryable: Boolean = category.retryable,
+    val retryAfterMillis: Long = 0L,
+    cause: Throwable? = null,
+) : IOException(message, cause)
+
+data class TraceMoeQuotaSnapshot(
+    val quota: Int,
+    val quotaUsed: Int,
+) {
+    val remainingRequests: Int
+        get() = (quota - quotaUsed).coerceAtLeast(0)
+
+    val isDepleted: Boolean
+        get() = remainingRequests == 0
+}
+
+internal fun classifyTraceMoeHttpStatus(statusCode: Int): TraceMoeFailureCategory = when (statusCode) {
+    400 -> TraceMoeFailureCategory.INVALID_REQUEST
+    402 -> TraceMoeFailureCategory.QUOTA_OR_CONCURRENCY
+    403 -> TraceMoeFailureCategory.FORBIDDEN
+    405 -> TraceMoeFailureCategory.METHOD_NOT_ALLOWED
+    413 -> TraceMoeFailureCategory.PAYLOAD_TOO_LARGE
+    415 -> TraceMoeFailureCategory.UNSUPPORTED_MEDIA_TYPE
+    429 -> TraceMoeFailureCategory.RATE_LIMITED
+    503 -> TraceMoeFailureCategory.QUEUE_FULL
+    in 500..599 -> TraceMoeFailureCategory.SERVER_ERROR
+    else -> TraceMoeFailureCategory.HTTP_ERROR
+}
+
+internal fun traceMoeRetryDelayMillis(retryIndex: Int, retryAfterMillis: Long = 0L): Long {
+    require(retryIndex >= 0)
+    val backoff = (INITIAL_RETRY_DELAY_MILLIS shl retryIndex.coerceAtMost(4))
+        .coerceAtMost(MAX_RETRY_DELAY_MILLIS)
+    return maxOf(backoff, retryAfterMillis.coerceIn(0L, MAX_RETRY_AFTER_MILLIS))
+}
+
+internal fun traceMoeQuotaEndpoint(searchEndpoint: String): String =
+    URI(searchEndpoint).resolve("/me").toASCIIString()
+
+internal fun parseTraceMoeQuotaSnapshot(responseBody: String): TraceMoeQuotaSnapshot {
+    val root = try {
+        JSONObject(responseBody)
+    } catch (error: Exception) {
+        throw TraceMoeRequestException(
+            TraceMoeFailureCategory.INVALID_RESPONSE,
+            "Trace.moe returned malformed quota JSON.",
+            cause = error,
+        )
+    }
+    val quota = root.optInt("quota", -1)
+    val quotaUsed = root.optInt("quotaUsed", -1)
+    if (quota < 0 || quotaUsed < 0) {
+        throw TraceMoeRequestException(
+            TraceMoeFailureCategory.INVALID_RESPONSE,
+            "Trace.moe quota response did not contain valid quota values.",
+        )
+    }
+    return TraceMoeQuotaSnapshot(quota, quotaUsed)
+}
+
+/**
+ * Search contract shared by the public Trace.moe endpoint and a separately hosted,
+ * Trace.moe-compatible visual index. Only generated local thumbnails are uploaded.
+ */
+fun interface ReiAnixTraceMoeSearchProvider {
+    suspend fun search(imageFile: File): List<TraceMoeSearchMatch>
+}
+
 class ReiAnixTraceMoeClient(
     private val connectTimeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
     private val readTimeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
@@ -43,98 +131,229 @@ class ReiAnixTraceMoeClient(
         ) { "The visual-search endpoint must be an absolute HTTPS URL." }
     }
 
-    private val requestMutex = Mutex()
-    private var lastRequestAtMillis = 0L
+    private val endpointKey = runCatching {
+        URI(searchEndpoint).let { "${it.scheme}://${it.rawAuthority}${it.rawPath}" }
+    }.getOrDefault(searchEndpoint)
+    private val requestGate = REQUEST_GATES.computeIfAbsent(endpointKey) {
+        EndpointRequestGate(minimumRequestIntervalMillis)
+    }
+    private val quotaGate = QUOTA_GATES.computeIfAbsent(endpointKey) { QuotaRequestGate() }
 
-    override suspend fun search(imageFile: File): List<TraceMoeSearchMatch> = requestMutex.withLock {
-        val now = System.currentTimeMillis()
-        val waitMillis = (lastRequestAtMillis + minimumRequestIntervalMillis - now).coerceAtLeast(0L)
-        if (waitMillis > 0L) delay(waitMillis)
-        lastRequestAtMillis = System.currentTimeMillis()
-        request(imageFile)
+    /**
+     * A process-wide, per-endpoint mutex serializes every instance in the app process.
+     * The public API and a separately hosted API use different gates, so they remain
+     * independent and can still be queried in parallel by the hybrid client.
+     */
+    override suspend fun search(imageFile: File): List<TraceMoeSearchMatch> =
+        requestGate.mutex.withLock {
+            val imageBytes = readSearchImage(imageFile)
+            var retryIndex = 0
+            while (true) {
+                val now = System.currentTimeMillis()
+                val waitMillis = (
+                    requestGate.lastRequestAtMillis + minimumRequestIntervalMillis - now
+                ).coerceAtLeast(0L)
+                if (waitMillis > 0L) delay(waitMillis)
+                requestGate.lastRequestAtMillis = System.currentTimeMillis()
+
+                try {
+                    return@withLock withContext(Dispatchers.IO) {
+                        requestOnce(imageBytes)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: TraceMoeRequestException) {
+                    if (!error.retryable || retryIndex >= MAX_RETRIES) throw error
+                    delay(traceMoeRetryDelayMillis(retryIndex, error.retryAfterMillis))
+                    retryIndex += 1
+                } catch (error: IOException) {
+                    if (retryIndex >= MAX_RETRIES) {
+                        throw TraceMoeRequestException(
+                            TraceMoeFailureCategory.NETWORK_ERROR,
+                            error.message ?: "Trace.moe could not be reached.",
+                            cause = error,
+                        )
+                    }
+                    delay(traceMoeRetryDelayMillis(retryIndex))
+                    retryIndex += 1
+                }
+            }
+            @Suppress("UNREACHABLE_CODE")
+            emptyList()
+        }
+
+    /**
+     * Reads Trace.moe's /me quota endpoint. The result is cached briefly because /me
+     * is a status query and must not add one request for every episode thumbnail.
+     */
+    suspend fun getQuota(forceRefresh: Boolean = false): TraceMoeQuotaSnapshot =
+        quotaGate.mutex.withLock {
+            val now = System.currentTimeMillis()
+            val cached = quotaGate.cachedQuota
+            if (!forceRefresh && cached != null &&
+                now >= quotaGate.cachedAtMillis &&
+                now - quotaGate.cachedAtMillis < QUOTA_CACHE_TTL_MILLIS
+            ) {
+                return@withLock cached
+            }
+            val fresh = withContext(Dispatchers.IO) { requestQuotaOnce() }
+            quotaGate.cachedQuota = fresh
+            quotaGate.cachedAtMillis = System.currentTimeMillis()
+            fresh
+        }
+
+    private suspend fun readSearchImage(imageFile: File): ByteArray = withContext(Dispatchers.IO) {
+        if (!imageFile.isFile || imageFile.length() !in 4L..MAX_IMAGE_BYTES) {
+            throw TraceMoeRequestException(
+                TraceMoeFailureCategory.INVALID_IMAGE,
+                "Trace.moe requires a readable episode thumbnail within the image-size limit.",
+            )
+        }
+        val imageBytes = try {
+            imageFile.readBytes()
+        } catch (error: IOException) {
+            throw TraceMoeRequestException(
+                TraceMoeFailureCategory.INVALID_IMAGE,
+                "The generated episode thumbnail could not be read.",
+                cause = error,
+            )
+        }
+        if (imageBytes.size.toLong() > MAX_IMAGE_BYTES || !isJpeg(imageBytes)) {
+            throw TraceMoeRequestException(
+                TraceMoeFailureCategory.INVALID_IMAGE,
+                "Trace.moe input must be a valid JPEG episode thumbnail.",
+            )
+        }
+        imageBytes
     }
 
-    private suspend fun request(imageFile: File): List<TraceMoeSearchMatch> =
-        withContext(Dispatchers.IO) {
-            if (!imageFile.isFile || imageFile.length() !in 4L..MAX_IMAGE_BYTES) {
-                throw IOException("Trace.moe requires a readable episode thumbnail within the image-size limit.")
-            }
-            val imageBytes = imageFile.readBytes()
-            if (imageBytes.size.toLong() > MAX_IMAGE_BYTES || !isJpeg(imageBytes)) {
-                throw IOException("Trace.moe input must be a valid JPEG episode thumbnail.")
-            }
+    private fun requestOnce(imageBytes: ByteArray): List<TraceMoeSearchMatch> {
+        val boundary = "ReiAnixTraceMoe" + UUID.randomUUID().toString().replace("-", "")
+        val prefix = (
+            "--$boundary\r\n" +
+                "Content-Disposition: form-data; name=\"image\"; filename=\"episode-frame.jpg\"\r\n" +
+                "Content-Type: image/jpeg\r\n\r\n"
+            ).toByteArray(Charsets.UTF_8)
+        val suffix = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+        val requestBytes = ByteArrayOutputStream(prefix.size + imageBytes.size + suffix.size).apply {
+            write(prefix)
+            write(imageBytes)
+            write(suffix)
+        }.toByteArray()
 
-            val boundary = "ReiAnixTraceMoe" + UUID.randomUUID().toString().replace("-", "")
-            val prefix = (
-                "--$boundary\r\n" +
-                    "Content-Disposition: form-data; name=\"image\"; filename=\"episode-frame.jpg\"\r\n" +
-                    "Content-Type: image/jpeg\r\n\r\n"
-                ).toByteArray(Charsets.UTF_8)
-            val suffix = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
-            val requestBytes = ByteArrayOutputStream(prefix.size + imageBytes.size + suffix.size).apply {
-                write(prefix)
-                write(imageBytes)
-                write(suffix)
-            }.toByteArray()
-
-            val connection = URL(searchEndpoint).openConnection() as? HttpURLConnection
-                ?: throw IOException("Trace.moe did not provide an HTTP connection.")
-            try {
-                connection.requestMethod = "POST"
-                connection.connectTimeout = connectTimeoutMillis
-                connection.readTimeout = readTimeoutMillis
-                connection.instanceFollowRedirects = false
-                connection.doOutput = true
-                connection.setFixedLengthStreamingMode(requestBytes.size)
-                connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-                connection.setRequestProperty("User-Agent", USER_AGENT)
-                coroutineContext[Job]?.invokeOnCompletion { cause ->
-                    if (cause is CancellationException) connection.disconnect()
-                }
-                connection.outputStream.use { output -> output.write(requestBytes) }
-                val statusCode = connection.responseCode
-                val responseStream = if (statusCode in 200..299) {
-                    connection.inputStream
-                } else {
-                    connection.errorStream
-                }
-                val responseBody = responseStream?.use { input ->
-                    val output = ByteArrayOutputStream()
-                    val buffer = ByteArray(8 * 1024)
-                    var total = 0
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        if (count == 0) continue
-                        total += count
-                        if (total > MAX_RESPONSE_BYTES) {
-                            throw IOException("Trace.moe response exceeded the configured size limit.")
-                        }
-                        output.write(buffer, 0, count)
-                    }
-                    output.toString(Charsets.UTF_8.name())
-                }.orEmpty()
-                if (statusCode == 429) {
-                    throw IOException("Trace.moe rate limit reached; the local episode identification was postponed.")
-                }
-                if (statusCode !in 200..299) {
-                    throw IOException("Trace.moe returned HTTP $statusCode.")
-                }
-                parseMatches(responseBody)
-            } finally {
-                connection.disconnect()
+        val connection = URL(searchEndpoint).openConnection() as? HttpURLConnection
+            ?: throw IOException("Trace.moe did not provide an HTTP connection.")
+        try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = connectTimeoutMillis
+            connection.readTimeout = readTimeoutMillis
+            connection.instanceFollowRedirects = false
+            connection.doOutput = true
+            connection.setFixedLengthStreamingMode(requestBytes.size)
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            connection.setRequestProperty("User-Agent", USER_AGENT)
+            coroutineContext[Job]?.invokeOnCompletion { cause ->
+                if (cause is CancellationException) connection.disconnect()
             }
+            connection.outputStream.use { output -> output.write(requestBytes) }
+            val statusCode = connection.responseCode
+            val responseBody = readBoundedResponse(connection, statusCode, MAX_RESPONSE_BYTES)
+            if (statusCode !in 200..299) {
+                val category = classifyTraceMoeHttpStatus(statusCode)
+                throw TraceMoeRequestException(
+                    category = category,
+                    message = errorMessage(statusCode, responseBody),
+                    httpStatus = statusCode,
+                    retryAfterMillis = retryAfterMillis(connection),
+                )
+            }
+            parseMatches(responseBody)
+        } finally {
+            connection.disconnect()
         }
+    }
+
+    private fun requestQuotaOnce(): TraceMoeQuotaSnapshot {
+        val connection = URL(traceMoeQuotaEndpoint(searchEndpoint)).openConnection() as? HttpURLConnection
+            ?: throw IOException("Trace.moe did not provide an HTTP connection for /me.")
+        try {
+            connection.requestMethod = "GET"
+            connection.connectTimeout = connectTimeoutMillis
+            connection.readTimeout = readTimeoutMillis
+            connection.instanceFollowRedirects = false
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("User-Agent", USER_AGENT)
+            val statusCode = connection.responseCode
+            val responseBody = readBoundedResponse(connection, statusCode, MAX_QUOTA_RESPONSE_BYTES)
+            if (statusCode !in 200..299) {
+                val category = classifyTraceMoeHttpStatus(statusCode)
+                throw TraceMoeRequestException(
+                    category = category,
+                    message = errorMessage(statusCode, responseBody),
+                    httpStatus = statusCode,
+                    retryable = false,
+                )
+            }
+            return parseTraceMoeQuotaSnapshot(responseBody)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun readBoundedResponse(
+        connection: HttpURLConnection,
+        statusCode: Int,
+        maximumBytes: Int,
+    ): String {
+        val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
+            ?: return ""
+        return stream.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8 * 1024)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                total += count
+                if (total > maximumBytes) {
+                    throw TraceMoeRequestException(
+                        TraceMoeFailureCategory.INVALID_RESPONSE,
+                        "Trace.moe response exceeded the configured size limit.",
+                    )
+                }
+                output.write(buffer, 0, count)
+            }
+            output.toString(Charsets.UTF_8.name())
+        }
+    }
+
+    private fun retryAfterMillis(connection: HttpURLConnection): Long {
+        val seconds = connection.getHeaderField("Retry-After")?.trim()?.toLongOrNull() ?: return 0L
+        return (seconds * 1_000L).coerceIn(0L, MAX_RETRY_AFTER_MILLIS)
+    }
+
+    private fun errorMessage(statusCode: Int, responseBody: String): String {
+        val detail = runCatching { JSONObject(responseBody).optString("error").take(160) }.getOrNull()
+        return detail?.takeIf(String::isNotBlank) ?: "Trace.moe returned HTTP $statusCode."
+    }
 
     private fun parseMatches(responseBody: String): List<TraceMoeSearchMatch> {
         val root = try {
             JSONObject(responseBody)
         } catch (error: Exception) {
-            throw IOException("Trace.moe returned malformed JSON.", error)
+            throw TraceMoeRequestException(
+                TraceMoeFailureCategory.INVALID_RESPONSE,
+                "Trace.moe returned malformed JSON.",
+                cause = error,
+            )
         }
         val results = root.optJSONArray("result")
-            ?: throw IOException("Trace.moe response did not contain a result array.")
+            ?: throw TraceMoeRequestException(
+                TraceMoeFailureCategory.INVALID_RESPONSE,
+                "Trace.moe response did not contain a result array.",
+            )
         return buildList {
             for (index in 0 until results.length()) {
                 val item = results.optJSONObject(index) ?: continue
@@ -162,13 +381,33 @@ class ReiAnixTraceMoeClient(
             bytes[bytes.lastIndex - 1] == 0xff.toByte() &&
             bytes[bytes.lastIndex] == 0xd9.toByte()
 
+    private class EndpointRequestGate(val minimumIntervalMillis: Long) {
+        val mutex = Mutex()
+        var lastRequestAtMillis: Long = 0L
+    }
+
+    private class QuotaRequestGate {
+        val mutex = Mutex()
+        var cachedQuota: TraceMoeQuotaSnapshot? = null
+        var cachedAtMillis: Long = 0L
+    }
+
     companion object {
         const val SEARCH_ENDPOINT = "https://api.trace.moe/search?anilistInfo&cutBorders=1"
         const val DEFAULT_TIMEOUT_MILLIS = 15_000
         const val DEFAULT_REQUEST_INTERVAL_MILLIS = 1_200L
         const val MAX_IMAGE_BYTES = 4L * 1024L * 1024L
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+        private const val MAX_QUOTA_RESPONSE_BYTES = 16 * 1024
         private const val USER_AGENT = "ReiAnix-Android/1.0 (local anime identification)"
+        private const val MAX_RETRIES = 2
+        private const val INITIAL_RETRY_DELAY_MILLIS = 500L
+        private const val MAX_RETRY_DELAY_MILLIS = 5_000L
+        private const val MAX_RETRY_AFTER_MILLIS = 30_000L
+        private const val QUOTA_CACHE_TTL_MILLIS = 15_000L
+
+        private val REQUEST_GATES = java.util.concurrent.ConcurrentHashMap<String, EndpointRequestGate>()
+        private val QUOTA_GATES = java.util.concurrent.ConcurrentHashMap<String, QuotaRequestGate>()
 
         /**
          * Creates a client for a separately operated Trace.moe-compatible HTTPS service.
