@@ -447,14 +447,22 @@ class ReiAnixAniListIntegrationService(
             }
 
             val requestAt = System.currentTimeMillis() / 1000.0
-            if (!reserveTraceMoeRequest(requestAt)) {
-                Log.i(TAG, "Visual-identification local rolling request budget is exhausted")
-                // A quota limit is not evidence that this episode has no match.
-                break
+            val publicSearchAllowed = reserveTraceMoeRequest(requestAt)
+            if (!publicSearchAllowed) {
+                Log.i(TAG, "Public Trace.moe request budget is exhausted; independent indexes remain enabled")
             }
 
             val matches = try {
-                hybridVisualSearchClient?.search(sample.imageFile) ?: traceMoeClient.search(sample.imageFile)
+                val hybridSearch = hybridVisualSearchClient
+                if (hybridSearch != null) {
+                    hybridSearch.search(
+                        imageFile = sample.imageFile,
+                        allowPublicSearch = publicSearchAllowed,
+                    )
+                } else {
+                    if (!publicSearchAllowed) break
+                    traceMoeClient.search(sample.imageFile)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
