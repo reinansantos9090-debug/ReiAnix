@@ -1,0 +1,6 @@
+.env
+video/
+data/
+dump*.sql
+dump*.sql.zst
+logs/
