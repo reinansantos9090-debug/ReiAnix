@@ -1,5 +1,6 @@
 .env
 video/
+video-empty/
 data/
 dump*.sql
 dump*.sql.zst
