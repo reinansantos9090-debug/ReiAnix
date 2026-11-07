@@ -406,9 +406,15 @@ class ReiAnixTraceMoeClient(
     }
 }
 
+enum class TraceMoeEvidenceSource {
+    TRACE_MOE,
+    GOOGLE_WEB_DETECTION,
+}
+
 data class TraceMoeSearchMatch(
     val anilistId: Int,
     val similarity: Double,
+    val source: TraceMoeEvidenceSource = TraceMoeEvidenceSource.TRACE_MOE,
 )
 
 /** A local episode image is always tied to its canonical episode row. */
@@ -517,7 +523,10 @@ internal fun evaluateTraceMoeProgressiveIdentity(
         val best = rankedAnime.firstOrNull() ?: continue
         val secondSimilarity = rankedAnime.getOrNull(1)?.similarity ?: 0.0
 
-        if (best.similarity >= singleFrameMinimumSimilarity &&
+        // Only Trace.moe's scene-similarity score can authorize a one-thumbnail
+        // fast path. Generic web-search labels are hints, not visual confidence.
+        if (best.source == TraceMoeEvidenceSource.TRACE_MOE &&
+            best.similarity >= singleFrameMinimumSimilarity &&
             best.similarity - secondSimilarity >= minimumSingleFrameMargin
         ) {
             return TraceMoeIdentityConsensus(
@@ -564,9 +573,16 @@ internal fun evaluateTraceMoeProgressiveIdentity(
 internal fun evaluateTraceMoeBestEffortIdentity(
     resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
 ): TraceMoeIdentityConsensus? {
+    // The best-effort fallback is reserved for Trace.moe scene matches.
+    // Weak title hints from generic web detection must never be promoted alone.
     val allMatches = resultsByEpisode.values.asSequence()
         .flatten()
-        .filter { it.anilistId > 0 && it.similarity.isFinite() && it.similarity in 0.0..1.0 }
+        .filter {
+            it.source == TraceMoeEvidenceSource.TRACE_MOE &&
+                it.anilistId > 0 &&
+                it.similarity.isFinite() &&
+                it.similarity in 0.0..1.0
+        }
         .toList()
     val best = allMatches.maxWithOrNull(
         compareBy<TraceMoeSearchMatch> { it.similarity }
