@@ -26,8 +26,24 @@ internal class TraceMoeHttpException(
     val retryAfterSeconds: Long? = null,
 ) : IOException(message)
 
-internal fun isRetryableTraceMoeHttpStatus(statusCode: Int): Boolean =
-    statusCode == 408 || statusCode == 425 || statusCode in 500..599
+/**
+ * HTTP 402 has two distinct meanings in Trace.moe: another request from the same
+ * public IP is currently running (temporary), or the shared 24-hour quota is spent
+ * (not temporary). Treating every 402 as a permanent failure caused valid samples
+ * to be abandoned when another app/device used the same IP concurrently.
+ */
+internal fun isTraceMoeConcurrencyLimitResponse(responseError: String?): Boolean =
+    responseError?.contains("Concurrency limit exceeded", ignoreCase = true) == true
+
+internal fun isTraceMoeQuotaDepletedResponse(responseError: String?): Boolean =
+    responseError?.contains("Search quota depleted", ignoreCase = true) == true
+
+internal fun isRetryableTraceMoeHttpStatus(
+    statusCode: Int,
+    responseError: String? = null,
+): Boolean =
+    (statusCode == 402 && isTraceMoeConcurrencyLimitResponse(responseError)) ||
+        statusCode == 408 || statusCode == 425 || statusCode in 500..599
 
 internal fun parseTraceMoeRetryAfterSeconds(value: String?): Long? =
     value?.trim()?.toLongOrNull()?.coerceIn(1L, MAX_TRACE_MOE_RETRY_AFTER_SECONDS)
@@ -134,6 +150,21 @@ class ReiAnixTraceMoeClient(
                         retryAfterSeconds = parseTraceMoeRetryAfterSeconds(connection.getHeaderField("Retry-After")),
                     )
                 }
+                if (statusCode == 402) {
+                    val apiError = runCatching {
+                        JSONObject(responseBody).optString("error").trim()
+                    }.getOrNull().orEmpty()
+                    val retryAfterSeconds = when {
+                        isTraceMoeConcurrencyLimitResponse(apiError) -> DEFAULT_CONCURRENCY_RETRY_AFTER_SECONDS
+                        isTraceMoeQuotaDepletedResponse(apiError) -> DEFAULT_QUOTA_RETRY_AFTER_SECONDS
+                        else -> null
+                    }
+                    throw TraceMoeHttpException(
+                        statusCode = statusCode,
+                        message = apiError.ifBlank { "Trace.moe refused the request with HTTP 402." },
+                        retryAfterSeconds = retryAfterSeconds,
+                    )
+                }
                 if (statusCode !in 200..299) {
                     throw TraceMoeHttpException(statusCode, "Trace.moe returned HTTP $statusCode.")
                 }
@@ -181,6 +212,11 @@ class ReiAnixTraceMoeClient(
         const val DEFAULT_REQUEST_INTERVAL_MILLIS = 1_200L
         const val MAX_IMAGE_BYTES = 4L * 1024L * 1024L
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+        // Guest accounts are limited to one in-flight search per public IP. Other
+        // apps/devices behind the same Wi-Fi can temporarily occupy that slot.
+        const val DEFAULT_CONCURRENCY_RETRY_AFTER_SECONDS = 8L
+        // Trace.moe quota is rolling over 24 hours and shared by all clients on an IP.
+        const val DEFAULT_QUOTA_RETRY_AFTER_SECONDS = 24L * 60L * 60L
         private const val USER_AGENT = "ReiAnix-Android/1.0 (local anime identification)"
     }
 }
