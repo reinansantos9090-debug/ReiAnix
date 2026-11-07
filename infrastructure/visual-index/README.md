@@ -25,15 +25,9 @@ O serviço não está implantado automaticamente por esta PR. É necessário ter
 3. Gere senhas exclusivas para `TRACE_API_SALT`, `POSTGRES_PASSWORD` e `MINIO_SECRET_KEY`; não reutilize as credenciais de exemplo.
 4. Valide a configuração com `docker compose config --quiet`.
 5. Crie a pasta indicada por `VIDEO_PATH` e mantenha-a vazia nesta configuração baseada em descritores pré-calculados. O ReiAnix não envia vídeos para esse servidor.
-6. Inicie somente os bancos internos, mantendo a API e o proxy público desligados durante a preparação: `docker compose up -d postgres etcd minio milvus`.
-7. Inicialize o esquema PostgreSQL usando o SQL que acompanha **a mesma imagem da API** configurada no Compose. Isso cria as tabelas, views, índices e extensões esperados pela versão da API:
-
-```bash
-docker compose run --rm --no-deps api cat sql/1.init.sql \\
-  | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
-```
-
-8. Só depois da inicialização do esquema, inicie a API privada: `docker compose up -d api`. Mantenha o Caddy desligado até a verificação final.
+6. Inicie primeiro os bancos internos: `docker compose up -d postgres etcd minio milvus`.
+7. Inicie a API privada: `docker compose up -d api`. Na primeira inicialização, o servidor upstream detecta se o PostgreSQL ainda está sem tabelas e executa o seu próprio `sql/1.init.sql`, criando o esquema compatível com a mesma versão da imagem. Confira os logs da API e confirme que ela conectou ao PostgreSQL e ao Milvus.
+8. Mantenha o Caddy desligado até a verificação final.
 
 Caddy solicitará e renovará o certificado TLS automaticamente quando o DNS e as portas 80/443 estiverem corretamente configurados.
 
