@@ -413,16 +413,38 @@ class ReiAnixAniListIntegrationService(
         val nowSeconds = System.currentTimeMillis() / 1000.0
         val previousAttempt = readTraceMoeAttemptAt(animeId, correction)
         val successfulApiEpisodeIds = progress.successfulApiEpisodeIds.toMutableSet()
-        if (progress.completed) {
-            val isLegacyCompletion = !progress.hasSuccessfulApiEpisodeMetadata
-            if (!isLegacyCompletion &&
-                previousAttempt != null &&
+        val isLegacyProgress = !progress.hasSuccessfulApiEpisodeMetadata
+        if (isLegacyProgress) {
+            // A non-empty legacy match list proves that the API returned candidates,
+            // but an empty legacy sample is ambiguous: old code also wrote empty lists
+            // after transport failures. Keep known successful samples and reopen only
+            // the ambiguous ones so they can be searched again from their saved images.
+            successfulApiEpisodeIds.addAll(
+                progress.matchesByEpisode.filterValues { it.isNotEmpty() }.keys,
+            )
+        }
+        val hasAmbiguousLegacySamples = isLegacyProgress && (
+            progress.completed && progress.matchesByEpisode.isEmpty() ||
+                progress.matchesByEpisode.values.any { it.isEmpty() }
+            )
+        if (hasAmbiguousLegacySamples) {
+            val knownSuccessfulMatches = progress.matchesByEpisode.filterValues { it.isNotEmpty() }
+            progress.matchesByEpisode.clear()
+            progress.matchesByEpisode.putAll(knownSuccessfulMatches)
+            successfulApiEpisodeIds.clear()
+            successfulApiEpisodeIds.addAll(knownSuccessfulMatches.keys)
+            writeTraceMoeProgress(
+                animeId,
+                progress.matchesByEpisode,
+                completed = false,
+                correction = correction,
+                successfulApiEpisodeIds = successfulApiEpisodeIds,
+            )
+        } else if (progress.completed) {
+            if (previousAttempt != null &&
                 nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
             ) return false
 
-            // Older releases persisted a completed window without recording whether
-            // each HTTP request actually succeeded. Reopen that legacy state once so
-            // a previous transient outage cannot preserve a false 24-hour lockout.
             progress.matchesByEpisode.clear()
             successfulApiEpisodeIds.clear()
             writeTraceMoeProgress(
