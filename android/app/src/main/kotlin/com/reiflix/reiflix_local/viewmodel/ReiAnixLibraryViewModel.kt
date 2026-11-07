@@ -1410,6 +1410,9 @@ class ReiAnixLibraryViewModel(
                     "catalog_status" to catalogSnapshot.status.name,
                 ),
             )
+            // Coalesce one immediate canonical refresh; scan completion will retry
+            // again if the SQLite projection is still being populated.
+            projectionRefreshRequests.trySend(Unit)
             return
         }
         val nativeScanInProgress = NativeScanController.progress.value.values.any { !it.state.isTerminal }
@@ -1432,6 +1435,9 @@ class ReiAnixLibraryViewModel(
                     "scan_in_progress" to nativeScanInProgress,
                 ),
             )
+            // A conflated read covers the case where the scan completed before
+            // this request was deferred and no later scan event will arrive.
+            projectionRefreshRequests.trySend(Unit)
             return
         }
         if (!nativeScanInProgress) {
