@@ -103,7 +103,7 @@ internal fun remainingTraceMoeRateLimitDelayMillis(
     nowMillis: Long,
 ): Long = (deadlineMillis - nowMillis).coerceAtLeast(0L)
 
-private const val MAX_TRACE_MOE_RETRY_AFTER_SECONDS = 60L * 60L
+private const val MAX_TRACE_MOE_RETRY_AFTER_SECONDS = 7L * 24L * 60L * 60L
 
 class ReiAnixTraceMoeClient(
     private val connectTimeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
