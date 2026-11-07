@@ -218,6 +218,10 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(true, isRetryableTraceMoeHttpStatus(503))
         assertEquals(false, isRetryableTraceMoeHttpStatus(400))
         assertEquals(false, isRetryableTraceMoeHttpStatus(404))
+        // Guest HTTP 402 is transient only for the shared-IP concurrency slot.
+        assertEquals(true, isRetryableTraceMoeHttpStatus(402, "Concurrency limit exceeded"))
+        assertEquals(false, isRetryableTraceMoeHttpStatus(402, "Search quota depleted"))
+        assertEquals(false, isRetryableTraceMoeHttpStatus(402, "Unknown payment-required response"))
         // HTTP 429 is deferred by Retry-After instead of being retried immediately.
         assertEquals(false, isRetryableTraceMoeHttpStatus(429))
         assertEquals(false, isRetryableTraceMoeHttpStatus(200))
@@ -230,6 +234,26 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(3_600L, parseTraceMoeRetryAfterSeconds("99999"))
         assertEquals(null, parseTraceMoeRetryAfterSeconds("not-a-number"))
         assertEquals(null, parseTraceMoeRetryAfterSeconds(null))
+    }
+
+    @Test
+    fun 402ConcurrencyAndQuotaFailuresUseDifferentSafeRetryDeadlines() {
+        assertEquals(
+            ReiAnixTraceMoeClient.DEFAULT_CONCURRENCY_RETRY_AFTER_SECONDS,
+            traceMoeRetryAfterSecondsForHttpFailure(402, "Concurrency limit exceeded"),
+        )
+        assertEquals(
+            ReiAnixTraceMoeClient.DEFAULT_QUOTA_RETRY_AFTER_SECONDS,
+            traceMoeRetryAfterSecondsForHttpFailure(
+                402,
+                "Search quota depleted (quota per 24 hours: 100, used: 100)",
+            ),
+        )
+        assertEquals(
+            null,
+            traceMoeRetryAfterSecondsForHttpFailure(402, "Unknown response"),
+        )
+        assertEquals(45L, traceMoeRetryAfterSecondsForHttpFailure(429, null, "45"))
     }
 
     @Test
