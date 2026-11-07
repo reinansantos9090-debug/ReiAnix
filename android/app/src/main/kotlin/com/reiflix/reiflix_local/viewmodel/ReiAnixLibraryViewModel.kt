@@ -255,6 +255,9 @@ class ReiAnixLibraryViewModel(
     // Serialize batches per anime so only one Trace.moe stream owns its samples.
     private val episodeThumbnailBatchesInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val episodeThumbnailBatchRerunRequested = ConcurrentHashMap.newKeySet<Long>()
+    // Details can become ready before the independent native catalog/scanner. Keep
+    // the request until the canonical episode rows are actually available.
+    private val pendingEpisodeThumbnailAnimeRequests = ConcurrentHashMap.newKeySet<Long>()
     private data class TraceMoeSampleSession(
         val channel: Channel<TraceMoeEpisodeSample>,
         val queuedEpisodeIds: MutableSet<Long>,
@@ -1394,9 +1397,45 @@ class ReiAnixLibraryViewModel(
             episodeThumbnailBatchRerunRequested.add(animeId)
             return
         }
-        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: run {
+        val catalogSnapshot = nativeCatalogState.value
+        val anime = catalogSnapshot.animes.firstOrNull { it.id == animeId } ?: run {
+            pendingEpisodeThumbnailAnimeRequests.add(animeId)
             episodeThumbnailBatchesInFlight.remove(animeId)
+            ReiAnixDiagnosticTimeline.record(
+                name = "TRACE_MOE_THUMBNAIL_REQUEST_DEFERRED",
+                source = "ReiAnixLibraryViewModel",
+                result = "ANIME_NOT_IN_CANONICAL_CATALOG",
+                context = mapOf(
+                    "anime_id" to animeId,
+                    "catalog_status" to catalogSnapshot.status.name,
+                ),
+            )
             return
+        }
+        val nativeScanInProgress = NativeScanController.progress.value.values.any { !it.state.isTerminal }
+        val hasAvailableLocalEpisode = anime.contentEpisodes.any { episode ->
+            episode.media.availability.name == "AVAILABLE" && episodeThumbnailSource(episode) != null
+        }
+        if (nativeScanInProgress) {
+            pendingEpisodeThumbnailAnimeRequests.add(animeId)
+        }
+        if (anime.contentEpisodes.isEmpty() || (!hasAvailableLocalEpisode && nativeScanInProgress)) {
+            pendingEpisodeThumbnailAnimeRequests.add(animeId)
+            episodeThumbnailBatchesInFlight.remove(animeId)
+            ReiAnixDiagnosticTimeline.record(
+                name = "TRACE_MOE_THUMBNAIL_REQUEST_DEFERRED",
+                source = "ReiAnixLibraryViewModel",
+                result = "EPISODE_ROWS_NOT_READY",
+                context = mapOf(
+                    "anime_id" to animeId,
+                    "episode_count" to anime.contentEpisodes.size,
+                    "scan_in_progress" to nativeScanInProgress,
+                ),
+            )
+            return
+        }
+        if (!nativeScanInProgress) {
+            pendingEpisodeThumbnailAnimeRequests.remove(animeId)
         }
         // Queue all available local episodes in the catalog's season/episode order.
         // Existing paths are decoded and visually checked on Dispatchers.IO.
@@ -1763,23 +1802,12 @@ class ReiAnixLibraryViewModel(
         if (canonicalConsumersStarted) return
         canonicalConsumersStarted = true
 
-        // Read the canonical catalog and rehydrate saved thumbnails after app startup.
-        // New publication events are buffered while this runs, so older saved images
-        // enter the per-anime stream before thumbnails published during startup.
-        viewModelScope.launch {
-            refreshNativeCatalog()
-            enqueuePersistedEpisodeThumbnailsForTraceMoe()
-            for (publication in traceMoePublicationQueue) {
-                processPublishedEpisodeThumbnail(publication)
-            }
-        }
-
         // A successful artwork commit must invalidate the existing SQLite projection:
         // Compose reads immutable models and does not consume NativeMailbox directly.
         // Keep the publication stream bounded and debounce bursts (poster + backdrop,
         // several list items) into one canonical re-read, without rescanning media.
         appDependencies?.artworkService?.publishedArtworks?.let { publications ->
-            viewModelScope.launch {
+            viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 publications
                     .onEach { publication ->
                         enqueuePublishedEpisodeThumbnail(publication)
@@ -1816,6 +1844,17 @@ class ReiAnixLibraryViewModel(
             }
         }
 
+        // Read the canonical catalog and rehydrate saved thumbnails after app startup.
+        // New publication events are buffered while this runs, so older saved images
+        // enter the per-anime stream before thumbnails published during startup.
+        viewModelScope.launch {
+            refreshNativeCatalog()
+            enqueuePersistedEpisodeThumbnailsForTraceMoe()
+            for (publication in traceMoePublicationQueue) {
+                processPublishedEpisodeThumbnail(publication)
+            }
+        }
+
         // Opening the app must not schedule missing/stale artwork downloads. Artwork is
         // requested only by explicit details/artwork actions or existing pipeline events.
         // Player notifications are emitted only after a successful SQLite commit.
@@ -1838,19 +1877,21 @@ class ReiAnixLibraryViewModel(
 
         // Load catalog records directly from the canonical SQLite repository. The legacy
         // snapshot is retained only for storage/onboarding and diagnostic scan state.
-        viewModelScope.launch {
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             NativeScanController.progress
                 .map { snapshots ->
                     snapshots.filterValues { it.state.isTerminal }
                         .mapValues { (_, snapshot) -> snapshot.finishedAtMillis }
                 }
                 .distinctUntilChanged()
-                .drop(1)
-                .collectLatest {
-                    // This collector emits only after a new terminal native-scan snapshot;
-                    // its first saved value is dropped, so process startup alone does not
-                    // trigger network metadata matching or artwork backfill.
-                    refreshNativeCatalog()
+                .collectLatest { terminalScans ->
+                    // StateFlow may already contain a completed first-run scan by the
+                    // time this ViewModel subscribes. Do not drop that initial snapshot:
+                    // the first catalog read may have happened before the scan committed.
+                    if (terminalScans.isNotEmpty()) {
+                        refreshNativeCatalog()
+                        enqueuePersistedEpisodeThumbnailsForTraceMoe()
+                    }
                 }
         }
         // Legacy commands can still mutate unrelated fields; their revision is only an
@@ -1907,6 +1948,25 @@ class ReiAnixLibraryViewModel(
             nativePagedLibraryState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
     }
 
+    /**
+     * Replays Details requests that arrived before the canonical scan/projection
+     * exposed their episode rows. Wait until all currently active native scans have
+     * committed, so the retry sees the complete set rather than a partial snapshot.
+     */
+    private fun drainPendingEpisodeThumbnailRequests() {
+        if (NativeScanController.progress.value.values.any { !it.state.isTerminal }) return
+        val readyAnimeIds = nativeCatalogState.value.animes
+            .asSequence()
+            .filter { it.contentEpisodes.isNotEmpty() && it.id in pendingEpisodeThumbnailAnimeRequests }
+            .map { it.id }
+            .toList()
+        readyAnimeIds.forEach { animeId ->
+            if (pendingEpisodeThumbnailAnimeRequests.remove(animeId)) {
+                requestMissingEpisodeThumbnails(animeId)
+            }
+        }
+    }
+
     private suspend fun refreshNativeCatalog() {
         nativeCatalogReloadMutex.withLock {
             try {
@@ -1957,6 +2017,7 @@ class ReiAnixLibraryViewModel(
                 }
             }
         }
+        drainPendingEpisodeThumbnailRequests()
     }
 
     private fun loadNativeLibraryPage(
