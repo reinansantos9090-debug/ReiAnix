@@ -95,8 +95,9 @@ import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
 private const val REIANIX_LIBRARY_ALL_ITEMS = 0
-private const val MAX_TRACE_MOE_AUTOMATIC_RECOVERIES = 2
+private const val MAX_TRACE_MOE_AUTOMATIC_RECOVERIES = 6
 private const val TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS = 30_000L
+private const val TRACE_MOE_AUTOMATIC_RECOVERY_MAX_DELAY_MILLIS = 8L * 60L * 1_000L
 private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
     setOf("movie", "special", "ova", "oad", "ona", "extra")
 
@@ -1685,13 +1686,17 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    /** Schedule at most two delayed replays after a transient API failure. */
+    /** Schedule bounded exponential retries after a transient API failure. */
     private fun scheduleTraceMoeAutomaticRecovery(animeId: Long) {
         val attempts = traceMoeAutomaticRecoveryAttempts.computeIfAbsent(animeId) { AtomicInteger(0) }
             .incrementAndGet()
         if (attempts > MAX_TRACE_MOE_AUTOMATIC_RECOVERIES) return
+        val backoffMultiplier = 1L shl (attempts - 1).coerceAtMost(4)
+        val recoveryDelay = (
+            TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS * backoffMultiplier
+        ).coerceAtMost(TRACE_MOE_AUTOMATIC_RECOVERY_MAX_DELAY_MILLIS)
         viewModelScope.launch {
-            delay(TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS * attempts)
+            delay(recoveryDelay)
             if (traceMoeSampleSessions[animeId] != null) return@launch
             try {
                 enqueuePersistedEpisodeThumbnailsForTraceMoe(onlyAnimeId = animeId)
