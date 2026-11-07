@@ -216,7 +216,7 @@ class ReiAnixLocalVisualIndex(
     )
 
     private companion object {
-        const val INDEX_VERSION = 2
+        const val INDEX_VERSION = 3
         const val DESCRIPTOR_SIZE = 33
         const val DEFAULT_MAXIMUM_ENTRIES = 5_000
         const val MAXIMUM_ALLOWED_ENTRIES = 20_000
