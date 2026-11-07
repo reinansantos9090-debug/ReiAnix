@@ -759,6 +759,7 @@ internal fun latestTraceMoeEpisodeMatches(
 ): LinkedHashMap<Long, List<TraceMoeSearchMatch>> =
     LinkedHashMap<Long, List<TraceMoeSearchMatch>>().apply {
         matchesByEpisode.entries
+            .toList()
             .takeLast(MAX_TRACE_MOE_EPISODE_SAMPLES)
             .forEach { (episodeId, matches) -> put(episodeId, matches) }
     }
