@@ -4,18 +4,27 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
 import java.io.IOException
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Persistent, on-device visual reference index.
+ * Persistent on-device MPEG-7 Color Layout reference index.
  *
- * Only thumbnails belonging to an identity already confirmed by the normal
- * ReiAnix consensus flow are inserted. This is deliberately not a video scanner
- * and never extracts additional frames. The index is a compact perceptual-hash
- * lookup for images the user has already had identified on this device.
+ * The 33-value descriptor follows the ColorLayout algorithm used by
+ * soruly/trace.moe-id (MIT; Copyright (c) 2026 soruly). See
+ * docs/THIRD_PARTY_NOTICES.md for the required license notice.
+ *
+ * Only thumbnails belonging to an identity already confirmed by ReiAnix's
+ * visual consensus are inserted. This class never scans videos or extracts
+ * additional frames.
  */
 class ReiAnixLocalVisualIndex(
     private val indexFile: File,
@@ -37,12 +46,16 @@ class ReiAnixLocalVisualIndex(
     override suspend fun search(imageFile: File): List<TraceMoeSearchMatch> =
         withContext(Dispatchers.IO) {
             val imageBytes = readUsableJpeg(imageFile)
-            val queryHash = ReiAnixPerceptualHash.calculate(imageBytes) ?: return@withContext emptyList()
+            val queryDescriptor = ReiAnixMpeg7ColorLayout.extract(imageBytes)
+                ?: return@withContext emptyList()
             val references = synchronized(lock) { readEntries() }
 
             references.asSequence()
                 .map { reference ->
-                    reference.anilistId to ReiAnixPerceptualHash.similarity(queryHash, reference.hash)
+                    reference.anilistId to ReiAnixMpeg7ColorLayout.similarity(
+                        queryDescriptor,
+                        reference.descriptor,
+                    )
                 }
                 .filter { (_, similarity) -> similarity >= minimumSimilarity }
                 .groupBy({ it.first }, { it.second })
@@ -62,17 +75,17 @@ class ReiAnixLocalVisualIndex(
         withContext(Dispatchers.IO) {
             require(anilistId > 0) { "A confirmed AniList ID is required for a visual reference." }
             val imageBytes = readUsableJpeg(imageFile)
-            val hash = ReiAnixPerceptualHash.calculate(imageBytes) ?: return@withContext
+            val descriptor = ReiAnixMpeg7ColorLayout.extract(imageBytes) ?: return@withContext
             synchronized(lock) {
                 val entries = readEntries().toMutableList()
                 val now = System.currentTimeMillis()
                 val existingIndex = entries.indexOfFirst {
-                    it.anilistId == anilistId && it.hash == hash
+                    it.anilistId == anilistId && it.descriptor == descriptor
                 }
                 if (existingIndex >= 0) {
                     entries[existingIndex] = entries[existingIndex].copy(addedAtMillis = now)
                 } else {
-                    entries += VisualReference(anilistId, hash, now)
+                    entries += VisualReference(anilistId, descriptor, now)
                 }
                 writeEntries(
                     entries.sortedByDescending(VisualReference::addedAtMillis)
@@ -112,24 +125,38 @@ class ReiAnixLocalVisualIndex(
         } catch (error: Exception) {
             throw IOException("The local visual reference index is unreadable.", error)
         }
-        if (root.optInt("version", 0) != INDEX_VERSION) {
-            throw IOException("The local visual reference index version is unsupported.")
-        }
+        // Version 1 stored grayscale perceptual hashes. It is intentionally
+        // treated as an empty index instead of mixing incompatible descriptors.
+        if (root.optInt("version", 0) != INDEX_VERSION) return emptyList()
         val array = root.optJSONArray("references")
             ?: throw IOException("The local visual reference index has no references array.")
         return buildList {
             for (index in 0 until array.length()) {
                 val item = array.optJSONObject(index) ?: continue
                 val anilistId = item.optInt("anilistId", 0)
-                val rawHash = item.optString("hash", "")
-                val hash = runCatching { rawHash.toULong(16).toLong() }.getOrNull()
+                val descriptorArray = item.optJSONArray("descriptor") ?: continue
+                if (anilistId <= 0 || descriptorArray.length() != DESCRIPTOR_SIZE) continue
+                val descriptor = buildList {
+                    for (coefficientIndex in 0 until descriptorArray.length()) {
+                        add(descriptorArray.optInt(coefficientIndex, Int.MIN_VALUE))
+                    }
+                }
                 val addedAt = item.optLong("addedAtMillis", 0L)
-                if (anilistId > 0 && rawHash.length == HASH_HEX_LENGTH && hash != null && addedAt > 0L) {
-                    add(VisualReference(anilistId, hash, addedAt))
+                if (isValidDescriptor(descriptor) && addedAt > 0L) {
+                    add(VisualReference(anilistId, descriptor, addedAt))
                 }
             }
         }
     }
+
+    private fun isValidDescriptor(values: List<Int>): Boolean =
+        values.size == DESCRIPTOR_SIZE &&
+            values[0] in 0..63 &&
+            values.subList(1, 21).all { it in 0..31 } &&
+            values[21] in 0..63 &&
+            values.subList(22, 27).all { it in 0..31 } &&
+            values[27] in 0..63 &&
+            values.subList(28, 33).all { it in 0..31 }
 
     private fun writeEntries(entries: List<VisualReference>) {
         val parent = indexFile.parentFile
@@ -141,7 +168,7 @@ class ReiAnixLocalVisualIndex(
                 put(
                     JSONObject()
                         .put("anilistId", entry.anilistId)
-                        .put("hash", java.lang.Long.toUnsignedString(entry.hash, 16).padStart(HASH_HEX_LENGTH, '0'))
+                        .put("descriptor", JSONArray(entry.descriptor))
                         .put("addedAtMillis", entry.addedAtMillis),
                 )
             }
@@ -153,6 +180,7 @@ class ReiAnixLocalVisualIndex(
         try {
             temporary.writeText(root.toString(), Charsets.UTF_8)
             try {
+                // POSIX rename replaces the destination atomically on the same filesystem.
                 android.system.Os.rename(temporary.absolutePath, indexFile.absolutePath)
             } catch (error: android.system.ErrnoException) {
                 throw IOException("The new local visual reference index could not be committed.", error)
@@ -164,33 +192,96 @@ class ReiAnixLocalVisualIndex(
 
     private data class VisualReference(
         val anilistId: Int,
-        val hash: Long,
+        val descriptor: List<Int>,
         val addedAtMillis: Long,
     )
 
     private companion object {
-        const val INDEX_VERSION = 1
-        const val HASH_HEX_LENGTH = 16
+        const val INDEX_VERSION = 2
+        const val DESCRIPTOR_SIZE = 33
         const val DEFAULT_MAXIMUM_ENTRIES = 5_000
         const val MAXIMUM_ALLOWED_ENTRIES = 20_000
-        const val MAX_INDEX_FILE_BYTES = 2L * 1024L * 1024L
-        const val DEFAULT_MINIMUM_SIMILARITY = 0.94
+        const val MAX_INDEX_FILE_BYTES = 8L * 1024L * 1024L
+        const val DEFAULT_MINIMUM_SIMILARITY = 0.90
         const val MAX_RESULTS = 5
     }
 }
 
 /**
- * 64-bit DCT perceptual hash over the already-generated JPEG thumbnail.
- * The lowest-frequency 8x8 coefficients are robust to small resize/compression
- * differences; a strict distance threshold prevents broad visual guesses.
+ * MPEG-7 Color Layout descriptor extraction and weighted distance.
+ *
+ * The 8x8 RGB block averages are converted to Y/Cb/Cr, transformed with an
+ * 8x8 DCT, zig-zag scanned, and quantized into the standard 33 coefficients:
+ * 21 luminance values, 6 Cb values, and 6 Cr values.
  */
-internal object ReiAnixPerceptualHash {
-    private const val INPUT_SIZE = 32
-    private const val LOW_FREQUENCY_SIZE = 8
-    private const val HASH_BITS = 63
+internal object ReiAnixMpeg7ColorLayout {
     private const val MAX_IMAGE_PIXELS = 25_000_000L
+    private const val MAX_PREPARED_DIMENSION = 320
+    private const val MINIMUM_GRAYSCALE_VARIANCE = 64.0
+    private const val OUTPUT_SCORE_RANGE = 255.0
 
-    fun calculate(jpegBytes: ByteArray): Long? {
+    private val zigZag = intArrayOf(
+        0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33,
+        40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50,
+        43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39,
+        46, 53, 60, 61, 54, 47, 55, 62, 63,
+    )
+
+    private val cosine = arrayOf(
+        doubleArrayOf(0.3535534, 0.3535534, 0.3535534, 0.3535534, 0.3535534, 0.3535534, 0.3535534, 0.3535534),
+        doubleArrayOf(0.4903926, 0.4157348, 0.2777851, 0.09754516, -0.09754516, -0.2777851, -0.4157348, -0.4903926),
+        doubleArrayOf(0.4619398, 0.1913417, -0.1913417, -0.4619398, -0.4619398, -0.1913417, 0.1913417, 0.4619398),
+        doubleArrayOf(0.4157348, -0.09754516, -0.4903926, -0.2777851, 0.2777851, 0.4903926, 0.09754516, -0.4157348),
+        doubleArrayOf(0.3535534, -0.3535534, -0.3535534, 0.3535534, 0.3535534, -0.3535534, -0.3535534, 0.3535534),
+        doubleArrayOf(0.2777851, -0.4903926, 0.09754516, 0.4157348, -0.4157348, -0.09754516, 0.4903926, -0.2777851),
+        doubleArrayOf(0.1913417, -0.4619398, 0.4619398, -0.1913417, -0.1913417, 0.4619398, -0.4619398, 0.1913417),
+        doubleArrayOf(0.09754516, -0.2777851, 0.4157348, -0.4903926, 0.4903926, -0.4157348, 0.2777851, -0.09754516),
+    )
+
+    fun extract(jpegBytes: ByteArray): List<Int>? {
+        val bitmap = decodePreparedBitmap(jpegBytes)
+        return try {
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            if (!hasSufficientDetail(pixels)) return null
+            extractFromPixels(pixels, bitmap.width, bitmap.height)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    fun similarity(first: List<Int>, second: List<Int>): Double {
+        val distance = distance(first, second)
+        return ((OUTPUT_SCORE_RANGE - distance).coerceIn(0.0, OUTPUT_SCORE_RANGE)) / OUTPUT_SCORE_RANGE
+    }
+
+    private fun distance(first: List<Int>, second: List<Int>): Double {
+        require(first.size == DESCRIPTOR_SIZE && second.size == DESCRIPTOR_SIZE)
+        var sumY = 0.0
+        var sumCb = 0.0
+        var sumCr = 0.0
+        for (index in 0 until 21) {
+            val difference = (first[index] - second[index]).toDouble()
+            val weight = if (index < 3) 2.0 else 1.0
+            sumY += weight * difference * difference
+        }
+        for (index in 0 until 6) {
+            val cbDifference = (first[21 + index] - second[21 + index]).toDouble()
+            val cbWeight = if (index == 0) 2.0 else 1.0
+            sumCb += cbWeight * cbDifference * cbDifference
+
+            val crDifference = (first[27 + index] - second[27 + index]).toDouble()
+            val crWeight = when (index) {
+                0 -> 4.0
+                1, 2 -> 2.0
+                else -> 1.0
+            }
+            sumCr += crWeight * crDifference * crDifference
+        }
+        return sqrt(sumY) + sqrt(sumCb) + sqrt(sumCr)
+    }
+
+    private fun decodePreparedBitmap(jpegBytes: ByteArray): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
@@ -199,90 +290,291 @@ internal object ReiAnixPerceptualHash {
             throw IOException("The thumbnail dimensions are invalid for local visual search.")
         }
 
-        val source = BitmapFactory.decodeByteArray(
-            jpegBytes,
-            0,
-            jpegBytes.size,
-            BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 },
-        ) ?: throw IOException("The thumbnail could not be decoded for local visual search.")
-
-        val scaled = try {
-            Bitmap.createScaledBitmap(source, INPUT_SIZE, INPUT_SIZE, true)
-        } catch (error: Exception) {
-            source.recycle()
-            throw IOException("The thumbnail could not be resized for local visual search.", error)
+        var sampleSize = 1
+        val longestSide = max(bounds.outWidth, bounds.outHeight)
+        while (longestSide / (sampleSize * 2) >= MAX_PREPARED_DIMENSION) {
+            sampleSize *= 2
         }
-        if (scaled !== source) source.recycle()
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        var working = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, options)
+            ?: throw IOException("The thumbnail could not be decoded for local visual search.")
 
         try {
-            val pixels = IntArray(INPUT_SIZE * INPUT_SIZE)
-            scaled.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
-            val grayscale = DoubleArray(pixels.size) { index ->
-                val color = pixels[index]
-                val red = (color shr 16) and 0xff
-                val green = (color shr 8) and 0xff
-                val blue = color and 0xff
-                0.299 * red + 0.587 * green + 0.114 * blue
+            val scale = min(
+                1.0,
+                min(
+                    MAX_PREPARED_DIMENSION.toDouble() / working.width,
+                    MAX_PREPARED_DIMENSION.toDouble() / working.height,
+                ),
+            )
+            val width = max(1, (working.width * scale).toInt())
+            val height = max(1, (working.height * scale).toInt())
+            if (width != working.width || height != working.height) {
+                val scaled = Bitmap.createScaledBitmap(working, width, height, true)
+                if (scaled !== working) working.recycle()
+                working = scaled
             }
-            val mean = grayscale.average()
-            val variance = grayscale.sumOf { value ->
-                val difference = value - mean
-                difference * difference
-            } / grayscale.size
-            if (variance < MINIMUM_GRAYSCALE_VARIANCE) return null
 
-            val cosine = Array(LOW_FREQUENCY_SIZE) { frequency ->
-                DoubleArray(INPUT_SIZE) { coordinate ->
-                    kotlin.math.cos(
-                        ((2 * coordinate + 1) * frequency * Math.PI) / (2.0 * INPUT_SIZE),
+            val ratio = working.width.toDouble() / working.height
+            val targetRatios = doubleArrayOf(4.0 / 3.0, 16.0 / 9.0, 21.0 / 9.0)
+            val nearestRatio = targetRatios.minBy { abs(ratio - it) }
+            if (abs(ratio - nearestRatio) > 0.05) {
+                val detected = detectFrameRect(working)
+                val cropped = snapRectToAspectRatio(detected, working.width, working.height)
+                if (cropped.x != 0 || cropped.y != 0 ||
+                    cropped.width != working.width || cropped.height != working.height
+                ) {
+                    val result = Bitmap.createBitmap(
+                        working,
+                        cropped.x,
+                        cropped.y,
+                        cropped.width,
+                        cropped.height,
                     )
+                    if (result !== working) working.recycle()
+                    working = result
                 }
             }
-            val coefficients = DoubleArray(LOW_FREQUENCY_SIZE * LOW_FREQUENCY_SIZE)
-            for (vertical in 0 until LOW_FREQUENCY_SIZE) {
-                for (horizontal in 0 until LOW_FREQUENCY_SIZE) {
-                    var sum = 0.0
-                    for (y in 0 until INPUT_SIZE) {
-                        val verticalWeight = cosine[vertical][y]
-                        val rowOffset = y * INPUT_SIZE
-                        for (x in 0 until INPUT_SIZE) {
-                            sum += grayscale[rowOffset + x] * cosine[horizontal][x] * verticalWeight
-                        }
-                    }
-                    val horizontalScale = if (horizontal == 0) {
-                        kotlin.math.sqrt(1.0 / INPUT_SIZE)
-                    } else {
-                        kotlin.math.sqrt(2.0 / INPUT_SIZE)
-                    }
-                    val verticalScale = if (vertical == 0) {
-                        kotlin.math.sqrt(1.0 / INPUT_SIZE)
-                    } else {
-                        kotlin.math.sqrt(2.0 / INPUT_SIZE)
-                    }
-                    coefficients[vertical * LOW_FREQUENCY_SIZE + horizontal] =
-                        sum * horizontalScale * verticalScale
-                }
-            }
-
-            val median = coefficients.drop(1).sorted()[HASH_BITS / 2]
-            var hash = 0L
-            var bit = 0
-            for (coefficientIndex in 1 until coefficients.size) {
-                if (coefficients[coefficientIndex] > median) {
-                    hash = hash or (1L shl bit)
-                }
-                bit += 1
-            }
-            return hash
-        } finally {
-            scaled.recycle()
+            return working
+        } catch (error: Exception) {
+            if (!working.isRecycled) working.recycle()
+            throw IOException("The thumbnail could not be prepared for local visual search.", error)
         }
     }
 
-    fun similarity(first: Long, second: Long): Double {
-        val differentBits = java.lang.Long.bitCount(first xor second)
-        return 1.0 - differentBits.toDouble() / HASH_BITS
+    private data class CropRect(val x: Int, val y: Int, val width: Int, val height: Int)
+
+    private fun detectFrameRect(bitmap: Bitmap): CropRect {
+        val width = bitmap.width
+        val height = bitmap.height
+        val centerX = width / 2
+        val centerY = height / 2
+
+        fun isDark(x: Int, y: Int): Boolean {
+            val color = bitmap.getPixel(x, y)
+            return ((color shr 16) and 0xff) <= 10 &&
+                ((color shr 8) and 0xff) <= 10 &&
+                (color and 0xff) <= 10
+        }
+
+        fun isRowDark(y: Int): Boolean {
+            var count = 0
+            for (x in 0 until width) if (isDark(x, y)) count++
+            return count > width * 0.95
+        }
+
+        fun isColumnDark(x: Int): Boolean {
+            var count = 0
+            for (y in 0 until height) if (isDark(x, y)) count++
+            return count > height * 0.95
+        }
+
+        var top = 0
+        var bottom = height - 1
+        var left = 0
+        var right = width - 1
+        if (!isDark(centerX, centerY)) {
+            top = centerY
+            bottom = centerY
+            left = centerX
+            right = centerX
+            while (top > 0 && !isRowDark(top - 1)) top--
+            while (bottom < height - 1 && !isRowDark(bottom + 1)) bottom++
+            while (left > 0 && !isColumnDark(left - 1)) left--
+            while (right < width - 1 && !isColumnDark(right + 1)) right++
+        } else {
+            while (top < height && isRowDark(top)) top++
+            while (bottom > top && isRowDark(bottom)) bottom--
+            while (left < width && isColumnDark(left)) left++
+            while (right > left && isColumnDark(right)) right--
+        }
+        return CropRect(
+            x = left.coerceIn(0, width - 1),
+            y = top.coerceIn(0, height - 1),
+            width = max(1, right - left + 1),
+            height = max(1, bottom - top + 1),
+        )
     }
 
-    private const val MINIMUM_GRAYSCALE_VARIANCE = 64.0
+    private fun snapRectToAspectRatio(rect: CropRect, maxWidth: Int, maxHeight: Int): CropRect {
+        val ratios = doubleArrayOf(4.0 / 3.0, 16.0 / 9.0, 21.0 / 9.0)
+        val currentRatio = rect.width.toDouble() / max(1, rect.height)
+        val ratio = ratios.minBy { abs(currentRatio - it) }
+        var width = rect.width.toDouble()
+        var height = rect.height.toDouble()
+        if (width / ratio > height) width = height * ratio else height = width / ratio
+        if (width < 10.0) width = 10.0
+        if (height < 10.0) height = 10.0
+
+        val centerX = rect.x + rect.width / 2.0
+        val centerY = rect.y + rect.height / 2.0
+        var x = centerX - width / 2.0
+        var y = centerY - height / 2.0
+        if (x < 0) x = 0.0
+        if (y < 0) y = 0.0
+        if (x + width > maxWidth) {
+            x = maxWidth - width
+            if (x < 0) {
+                x = 0.0
+                width = maxWidth.toDouble()
+            }
+        }
+        if (y + height > maxHeight) {
+            y = maxHeight - height
+            if (y < 0) {
+                y = 0.0
+                height = maxHeight.toDouble()
+            }
+        }
+
+        val left = x.toInt().coerceIn(0, maxWidth - 1)
+        val top = y.toInt().coerceIn(0, maxHeight - 1)
+        val right = (x + width).toInt().coerceIn(left + 1, maxWidth)
+        val bottom = (y + height).toInt().coerceIn(top + 1, maxHeight)
+        return CropRect(left, top, right - left, bottom - top)
+    }
+
+    private fun hasSufficientDetail(pixels: IntArray): Boolean {
+        var sum = 0.0
+        var sumSquared = 0.0
+        for (color in pixels) {
+            val red = ((color shr 16) and 0xff).toDouble()
+            val green = ((color shr 8) and 0xff).toDouble()
+            val blue = (color and 0xff).toDouble()
+            val luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+            sum += luminance
+            sumSquared += luminance * luminance
+        }
+        val mean = sum / pixels.size
+        return (sumSquared / pixels.size - mean * mean) >= MINIMUM_GRAYSCALE_VARIANCE
+    }
+
+    private fun extractFromPixels(pixels: IntArray, width: Int, height: Int): List<Int> {
+        val sumRed = FloatArray(64)
+        val sumGreen = FloatArray(64)
+        val sumBlue = FloatArray(64)
+        val xStart = IntArray(9) { index -> ceil(index * width / 8.0).toInt() }
+        val yStart = IntArray(9) { index -> ceil(index * height / 8.0).toInt() }
+
+        for (blockY in 0 until 8) {
+            for (y in yStart[blockY] until yStart[blockY + 1]) {
+                for (blockX in 0 until 8) {
+                    val blockIndex = (blockY shl 3) + blockX
+                    var red = sumRed[blockIndex].toDouble()
+                    var green = sumGreen[blockIndex].toDouble()
+                    var blue = sumBlue[blockIndex].toDouble()
+                    for (x in xStart[blockX] until xStart[blockX + 1]) {
+                        val color = pixels[y * width + x]
+                        red += ((color shr 16) and 0xff)
+                        green += ((color shr 8) and 0xff)
+                        blue += (color and 0xff)
+                    }
+                    sumRed[blockIndex] = red.toFloat()
+                    sumGreen[blockIndex] = green.toFloat()
+                    sumBlue[blockIndex] = blue.toFloat()
+                }
+            }
+        }
+
+        val shape = Array(3) { IntArray(64) }
+        for (blockY in 0 until 8) {
+            val blockHeight = yStart[blockY + 1] - yStart[blockY]
+            for (blockX in 0 until 8) {
+                val blockWidth = xStart[blockX + 1] - xStart[blockX]
+                val count = blockWidth * blockHeight
+                val blockIndex = (blockY shl 3) + blockX
+                if (count > 0) {
+                    val inverseCount = 1.0 / (count * 256.0)
+                    val red = sumRed[blockIndex].toDouble() * inverseCount
+                    val green = sumGreen[blockIndex].toDouble() * inverseCount
+                    val blue = sumBlue[blockIndex].toDouble() * inverseCount
+                    val luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+                    shape[0][blockIndex] = floor(219.0 * luminance + 16.5).toInt()
+                    shape[1][blockIndex] = floor(126.336 * (blue - luminance) + 128.5).toInt()
+                    shape[2][blockIndex] = floor(159.712 * (red - luminance) + 128.5).toInt()
+                }
+            }
+        }
+
+        shape.forEach(::forwardDct)
+        val yCoefficients = IntArray(64)
+        val cbCoefficients = IntArray(64)
+        val crCoefficients = IntArray(64)
+        yCoefficients[0] = quantizeYdc(shape[0][0] shr 3) shr 1
+        cbCoefficients[0] = quantizeCdc(shape[1][0] shr 3)
+        crCoefficients[0] = quantizeCdc(shape[2][0] shr 3)
+
+        for (index in 1 until 64) {
+            val zigZagIndex = zigZag[index]
+            yCoefficients[index] = quantizeAc(shape[0][zigZagIndex] shr 1) shr 3
+            cbCoefficients[index] = quantizeAc(shape[1][zigZagIndex]) shr 3
+            crCoefficients[index] = quantizeAc(shape[2][zigZagIndex]) shr 3
+        }
+
+        return buildList(DESCRIPTOR_SIZE) {
+            add(yCoefficients[0])
+            for (index in 1..20) add(yCoefficients[index])
+            add(cbCoefficients[0])
+            for (index in 1..5) add(cbCoefficients[index])
+            add(crCoefficients[0])
+            for (index in 1..5) add(crCoefficients[index])
+        }
+    }
+
+    private fun forwardDct(shape: IntArray) {
+        val intermediate = FloatArray(64)
+        for (row in 0 until 8) {
+            for (frequency in 0 until 8) {
+                var sum = 0.0
+                for (column in 0 until 8) {
+                    sum += cosine[frequency][column] * shape[8 * row + column]
+                }
+                intermediate[8 * row + frequency] = sum.toFloat()
+            }
+        }
+        for (column in 0 until 8) {
+            for (frequency in 0 until 8) {
+                var sum = 0.0
+                for (row in 0 until 8) {
+                    sum += cosine[frequency][row] * intermediate[8 * row + column]
+                }
+                shape[8 * frequency + column] = floor(sum + 0.499999).toInt()
+            }
+        }
+    }
+
+    private fun quantizeYdc(value: Int): Int = when {
+        value > 192 -> 112 + ((value - 192) shr 2)
+        value > 160 -> 96 + ((value - 160) shr 1)
+        value > 96 -> 32 + (value - 96)
+        value > 64 -> 16 + ((value - 64) shr 1)
+        else -> value shr 2
+    }
+
+    private fun quantizeCdc(value: Int): Int = when {
+        value > 191 -> 63
+        value > 160 -> 56 + ((value - 160) shr 2)
+        value > 144 -> 48 + ((value - 144) shr 1)
+        value > 112 -> 16 + (value - 112)
+        value > 96 -> 8 + ((value - 96) shr 1)
+        value > 64 -> (value - 64) shr 2
+        else -> 0
+    }
+
+    private fun quantizeAc(value: Int): Int {
+        val bounded = value.coerceIn(-256, 255)
+        val absolute = abs(bounded)
+        var quantized = when {
+            absolute > 127 -> 64 + (absolute shr 2)
+            absolute > 63 -> 32 + (absolute shr 1)
+            else -> absolute
+        }
+        if (bounded < 0) quantized = -quantized
+        return quantized + 128
+    }
+
+    private const val DESCRIPTOR_SIZE = 33
 }
