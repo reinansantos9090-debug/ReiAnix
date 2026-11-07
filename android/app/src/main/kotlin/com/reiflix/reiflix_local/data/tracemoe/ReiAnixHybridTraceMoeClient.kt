@@ -2,6 +2,8 @@ package com.reiflix.reiflix_local.data.tracemoe
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -10,16 +12,18 @@ import java.io.IOException
 import java.security.MessageDigest
 
 /**
- * Public-first visual identification with an optional independently hosted index.
+ * Runs the public Trace.moe service and ReiAnix's independent remote index
+ * concurrently. The independent engine also consults the persistent local
+ * reference index in parallel. No provider is a fallback for another provider.
  *
- * The private index is queried only when the public Trace.moe endpoint fails or
- * returns no match, so a healthy public response keeps its normal latency and
- * does not cause a second upload. Successful responses are cached by exact image
- * content; failed requests are never cached as "not found".
+ * Exact-image response caching is separate from the perceptual local index:
+ * the cache avoids repeating the same request, while the local index can find
+ * a previously confirmed thumbnail after small resize/compression differences.
  */
 class ReiAnixHybridTraceMoeClient(
     private val publicProvider: ReiAnixTraceMoeSearchProvider,
     private val independentProvider: ReiAnixTraceMoeSearchProvider?,
+    private val localReferenceIndex: ReiAnixLocalVisualIndex?,
     private val cacheDirectory: File,
     private val cacheNamespace: String = "public-only",
 ) {
@@ -28,58 +32,95 @@ class ReiAnixHybridTraceMoeClient(
         val cached = key?.let { withContext(Dispatchers.IO) { readCache(it) } }
         if (cached != null) return cached
 
-        var publicMatches: List<TraceMoeSearchMatch>? = null
-        var publicFailure: Exception? = null
-        try {
-            val matches = publicProvider.search(imageFile)
-            publicMatches = matches
-            if (matches.any { it.similarity >= MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY }) {
-                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, matches) } }
-                return matches
+        // All configured sources start before any result is awaited.
+        val outcomes = supervisorScope {
+            val publicCall = async { runProvider(publicProvider, imageFile) }
+            val independentCall = independentProvider?.let { provider ->
+                async { runProvider(provider, imageFile) }
             }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            publicFailure = error
-        }
-
-        val fallback = independentProvider
-        if (fallback == null) {
-            val validPublicMatches = publicMatches
-            if (validPublicMatches != null) {
-                key?.let { cacheKey ->
-                    withContext(Dispatchers.IO) { writeCache(cacheKey, validPublicMatches) }
-                }
-                return validPublicMatches
+            val localCall = localReferenceIndex?.let { provider ->
+                async { runProvider(provider, imageFile) }
             }
-            throw IOException(
-                "The public Trace.moe search failed and no independent visual index is configured.",
-                publicFailure,
+            SearchOutcomes(
+                public = publicCall.await(),
+                independent = independentCall?.await(),
+                local = localCall?.await(),
             )
         }
 
-        try {
-            val independentMatches = fallback.search(imageFile)
-            val combinedMatches = (publicMatches.orEmpty() + independentMatches)
-                .groupBy(TraceMoeSearchMatch::anilistId)
-                .values
-                .mapNotNull { sameAnimeMatches -> sameAnimeMatches.maxByOrNull(TraceMoeSearchMatch::similarity) }
-                .sortedByDescending(TraceMoeSearchMatch::similarity)
-            key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, combinedMatches) } }
-            return combinedMatches
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (independentFailure: Exception) {
-            // If the public index returned no match but our own index is unavailable,
-            // the combined decision is incomplete. Never cache it as a valid no-match.
-            throw IOException(
-                "The independent visual index failed after the public Trace.moe search returned no match.",
-                independentFailure,
-            ).also { combined ->
-                publicFailure?.let(combined::addSuppressed)
+        val remoteSourcesComplete =
+            outcomes.public.failure == null && (outcomes.independent?.failure == null)
+        val localSourceComplete = outcomes.local?.failure == null
+        val completeSearch = remoteSourcesComplete && localSourceComplete
+        val combined = mergeMatches(
+            outcomes.public.matches +
+                outcomes.independent?.matches.orEmpty() +
+                outcomes.local?.matches.orEmpty(),
+        )
+
+        if (combined.isNotEmpty()) {
+            // A partial positive result can still be used, but it is not cached
+            // while a configured source is unavailable.
+            if (completeSearch) {
+                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, combined) } }
             }
+            return combined
+        }
+
+        if (completeSearch) {
+            key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, emptyList()) } }
+            return emptyList()
+        }
+
+        // An empty answer is trustworthy only when every configured source
+        // completed. Otherwise the item remains eligible for a later retry.
+        val failures = listOfNotNull(
+            outcomes.public.failure,
+            outcomes.independent?.failure,
+            outcomes.local?.failure,
+        )
+        val primaryFailure = failures.firstOrNull()
+        throw IOException(
+            "The visual search was incomplete because one or more configured indexes were unavailable.",
+            primaryFailure,
+        ).also { combinedFailure ->
+            failures.drop(1).forEach(combinedFailure::addSuppressed)
         }
     }
+
+    /**
+     * Persist a reference only after the caller has successfully committed the
+     * final consensus association. A failed write must never undo that commit.
+     */
+    suspend fun rememberConfirmedReference(imageFile: File, anilistId: Int) {
+        localReferenceIndex?.rememberConfirmedReference(imageFile, anilistId)
+    }
+
+    private suspend fun runProvider(
+        provider: ReiAnixTraceMoeSearchProvider,
+        imageFile: File,
+    ): ProviderOutcome = try {
+        ProviderOutcome(
+            matches = provider.search(imageFile).filter {
+                it.anilistId > 0 && it.similarity.isFinite() && it.similarity in 0.0..1.0
+            },
+            failure = null,
+        )
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        ProviderOutcome(emptyList(), error)
+    }
+
+    private fun mergeMatches(matches: List<TraceMoeSearchMatch>): List<TraceMoeSearchMatch> =
+        matches.asSequence()
+            .groupBy(TraceMoeSearchMatch::anilistId)
+            .values
+            .mapNotNull { sameAnimeMatches ->
+                sameAnimeMatches.maxByOrNull(TraceMoeSearchMatch::similarity)
+            }
+            .sortedByDescending(TraceMoeSearchMatch::similarity)
+            .take(MAX_MERGED_RESULTS)
 
     private fun cacheKey(imageFile: File): String? {
         if (!imageFile.isFile || imageFile.length() !in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES) {
@@ -165,10 +206,22 @@ class ReiAnixHybridTraceMoeClient(
         entries.take((entries.size - MAX_CACHE_ENTRIES).coerceAtLeast(0)).forEach { it.delete() }
     }
 
+    private data class ProviderOutcome(
+        val matches: List<TraceMoeSearchMatch>,
+        val failure: Exception?,
+    )
+
+    private data class SearchOutcomes(
+        val public: ProviderOutcome,
+        val independent: ProviderOutcome?,
+        val local: ProviderOutcome?,
+    )
+
     private companion object {
-        const val CACHE_VERSION = 1
+        const val CACHE_VERSION = 2
         const val MAX_CACHE_ENTRIES = 200
         const val MAX_CACHE_ENTRY_BYTES = 128L * 1024L
+        const val MAX_MERGED_RESULTS = 10
         const val POSITIVE_CACHE_TTL_MILLIS = 7L * 24L * 60L * 60L * 1000L
         const val NEGATIVE_CACHE_TTL_MILLIS = 6L * 60L * 60L * 1000L
     }
