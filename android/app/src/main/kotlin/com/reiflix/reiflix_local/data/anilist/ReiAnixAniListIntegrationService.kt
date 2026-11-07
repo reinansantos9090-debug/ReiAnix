@@ -9,6 +9,7 @@ import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
 import com.reiflix.reiflix_local.data.tracemoe.firstTraceMoeEpisodeMatches
@@ -206,6 +207,7 @@ class ReiAnixAniListIntegrationService(
     private val genreRegistry: ReiAnixGenreRegistry? = null,
     private val artworkCandidatePublisher: ((Long, List<ReiAnixArtworkCandidate>) -> Boolean)? = null,
     private val traceMoeClient: ReiAnixTraceMoeClient = ReiAnixTraceMoeClient(),
+    private val hybridVisualSearchClient: ReiAnixHybridTraceMoeClient? = null,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -444,20 +446,19 @@ class ReiAnixAniListIntegrationService(
 
             val requestAt = System.currentTimeMillis() / 1000.0
             if (!reserveTraceMoeRequest(requestAt)) {
-                Log.i(TAG, "Trace.moe local rolling request budget is exhausted")
-                matchesByEpisode[sample.episodeId] = emptyList()
-                writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
+                Log.i(TAG, "Visual-identification local rolling request budget is exhausted")
+                // A quota limit is not evidence that this episode has no match.
                 break
             }
 
             val matches = try {
-                traceMoeClient.search(sample.imageFile)
+                hybridVisualSearchClient?.search(sample.imageFile) ?: traceMoeClient.search(sample.imageFile)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                // Failed API requests count as a consumed thumbnail, preventing a move to episode 4.
-                Log.w(TAG, "Trace.moe episode-frame search failed animeId=" + animeId + " episodeId=" + sample.episodeId, error)
-                emptyList()
+                // A transport failure from both providers is pending work, not a valid no-match result.
+                Log.w(TAG, "Anime visual search failed animeId=" + animeId + " episodeId=" + sample.episodeId, error)
+                continue
             }
             matchesByEpisode[sample.episodeId] = matches
             writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)

@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local
 
 import android.content.Context
+import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
@@ -17,6 +18,7 @@ import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClient
 import java.io.File
 import java.util.UUID
 import org.json.JSONObject
@@ -163,6 +165,29 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixTraceMoeClient()
     }
 
+    /** Optional, separately operated Trace.moe-compatible service used only as fallback. */
+    val selfHostedTraceMoeClient: ReiAnixTraceMoeClient? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL
+            .trim()
+            .takeIf(String::isNotBlank)
+            ?.let { baseUrl ->
+                runCatching { ReiAnixTraceMoeClient.selfHosted(baseUrl) }
+                    .onFailure { error ->
+                        Log.w("ReiAnixAppDependencies", "Independent visual index URL is invalid; fallback disabled.", error)
+                    }
+                    .getOrNull()
+            }
+    }
+
+    val hybridVisualSearchClient: ReiAnixHybridTraceMoeClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixHybridTraceMoeClient(
+            publicProvider = traceMoeClient,
+            independentProvider = selfHostedTraceMoeClient,
+            cacheDirectory = File(appContext.cacheDir, "visual-search-cache"),
+            cacheNamespace = BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL.ifBlank { "public-only" },
+        )
+    }
+
     val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAniListClient()
     }
@@ -176,6 +201,7 @@ class ReiAnixAppDependencies(context: Context) {
             settings = sqliteSettingsRepository,
             genreRegistry = genreRegistry,
             traceMoeClient = traceMoeClient,
+            hybridVisualSearchClient = hybridVisualSearchClient,
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),

@@ -11,30 +11,41 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.util.UUID
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Job
 
 /**
- * Screenshot-only client for Trace.moe. The caller supplies a generated local episode
- * thumbnail; the source video is never uploaded.
+ * Search contract shared by the public Trace.moe endpoint and a separately hosted,
+ * Trace.moe-compatible visual index. Only generated local thumbnails are uploaded.
  */
+fun interface ReiAnixTraceMoeSearchProvider {
+    suspend fun search(imageFile: File): List<TraceMoeSearchMatch>
+}
+
 class ReiAnixTraceMoeClient(
     private val connectTimeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
     private val readTimeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
     private val minimumRequestIntervalMillis: Long = DEFAULT_REQUEST_INTERVAL_MILLIS,
-) {
+    private val searchEndpoint: String = SEARCH_ENDPOINT,
+) : ReiAnixTraceMoeSearchProvider {
     init {
         require(connectTimeoutMillis in 1..60_000)
         require(readTimeoutMillis in 1..60_000)
         require(minimumRequestIntervalMillis >= 0L)
+        val endpointUri = runCatching { URI(searchEndpoint) }.getOrNull()
+        require(
+            endpointUri?.scheme.equals("https", ignoreCase = true) &&
+                !endpointUri?.host.isNullOrBlank()
+        ) { "The visual-search endpoint must be an absolute HTTPS URL." }
     }
 
     private val requestMutex = Mutex()
     private var lastRequestAtMillis = 0L
 
-    suspend fun search(imageFile: File): List<TraceMoeSearchMatch> = requestMutex.withLock {
+    override suspend fun search(imageFile: File): List<TraceMoeSearchMatch> = requestMutex.withLock {
         val now = System.currentTimeMillis()
         val waitMillis = (lastRequestAtMillis + minimumRequestIntervalMillis - now).coerceAtLeast(0L)
         if (waitMillis > 0L) delay(waitMillis)
@@ -65,7 +76,7 @@ class ReiAnixTraceMoeClient(
                 write(suffix)
             }.toByteArray()
 
-            val connection = URL(SEARCH_ENDPOINT).openConnection() as? HttpURLConnection
+            val connection = URL(searchEndpoint).openConnection() as? HttpURLConnection
                 ?: throw IOException("Trace.moe did not provide an HTTP connection.")
             try {
                 connection.requestMethod = "POST"
@@ -154,6 +165,27 @@ class ReiAnixTraceMoeClient(
         const val MAX_IMAGE_BYTES = 4L * 1024L * 1024L
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
         private const val USER_AGENT = "ReiAnix-Android/1.0 (local anime identification)"
+
+        /**
+         * Creates a client for a separately operated Trace.moe-compatible HTTPS service.
+         * The configured value is an origin/base path, not a full /search URL.
+         */
+        fun selfHosted(baseUrl: String): ReiAnixTraceMoeClient {
+            val normalized = baseUrl.trim().trimEnd('/')
+            val uri = runCatching { URI(normalized) }.getOrNull()
+            require(
+                uri != null &&
+                    uri.isAbsolute &&
+                    uri.scheme.equals("https", ignoreCase = true) &&
+                    !uri.host.isNullOrBlank() &&
+                    uri.rawUserInfo == null &&
+                    uri.rawQuery == null &&
+                    uri.rawFragment == null
+            ) { "The self-hosted visual index must use a valid HTTPS base URL." }
+            return ReiAnixTraceMoeClient(
+                searchEndpoint = "$normalized/search?anilistInfo&cutBorders=1",
+            )
+        }
     }
 }
 
