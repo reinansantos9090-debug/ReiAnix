@@ -74,7 +74,9 @@ class ReiAnixAniListClient(
                     ?: return@execute AniListResult.Failure(
                         AniListError.InvalidResponse("Anime item is missing a valid AniList ID"),
                     )
-                results += anime
+                // This app targets a general-audience local library. AniList's
+                // adult-tagged catalogue entries are not surfaced or associated.
+                if (!anime.isAdult) results += anime
             }
             AniListResult.Success(results)
         }
@@ -102,6 +104,7 @@ class ReiAnixAniListClient(
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("AniList detail is missing a valid media ID"),
                 )
+            if (anime.isAdult) return@execute AniListResult.Success(null)
             AniListResult.Success(anime)
         }
     }
@@ -232,6 +235,8 @@ class ReiAnixAniListClient(
             coverExtraLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("extraLarge").nonBlankOrNull()),
             bannerUrl = media.stringOrNull("bannerImage").nonBlankOrNull(),
             studios = studioNames,
+            // Missing/invalid flags fail closed rather than treating unknown content as general audience.
+            isAdult = media.optBoolean("isAdult", true),
         )
     }
 
@@ -258,6 +263,7 @@ class ReiAnixAniListClient(
             description(asHtml: false) format episodes duration status averageScore season seasonYear
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
+            isAdult
         """
     }
 }
@@ -281,6 +287,7 @@ data class AniListAnime(
     val coverExtraLargeUrl: String?,
     val bannerUrl: String?,
     val studios: List<String>,
+    val isAdult: Boolean = false,
 ) {
     /** Secure, de-duplicated variants ordered by preferred image quality. */
     internal val coverCandidates: List<ReiAnixAniListCoverCandidate>

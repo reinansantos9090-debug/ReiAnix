@@ -21,7 +21,7 @@ class ReiAnixAniListClientTest {
         val transport = FakeTransport(AniListHttpResponse(200, """
             {
               "data": {"Page": {"media": [{
-                "id": 16498,
+                "id": 16498, "isAdult": false,
                 "title": {"romaji":"Shingeki no Kyojin","english":"Attack on Titan","native":"進撃の巨人"},
                 "synonyms": ["Attack on Titan"],
                 "description": "Humanity fights titans",
@@ -59,7 +59,7 @@ class ReiAnixAniListClientTest {
     fun cleartextExtraLargeCoverDoesNotHideSecureLargeVariant() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """
             {"data":{"Media":{
-              "id":16498,
+              "id":16498,"isAdult":false,
               "title":{"romaji":"Shingeki no Kyojin"},
               "coverImage":{
                 "large":"https://img.example/secure-large.jpg",
@@ -121,7 +121,7 @@ class ReiAnixAniListClientTest {
 
     @Test
     fun idLookupSendsLiteralIdVariableAndExpectedJsonValue() = runBlocking {
-        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":42,"title":{}}}}"""))
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":42,"isAdult":false,"title":{}}}}"""))
         val result = ReiAnixAniListClient(transport, 0).getAnime(42)
 
         assertTrue(result is AniListResult.Success)
@@ -205,7 +205,7 @@ class ReiAnixAniListClientTest {
 
     @Test
     fun missingOptionalMetadataDoesNotRejectAnime() = runBlocking {
-        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":7,"title":{}}}}"""))
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":7,"isAdult":false,"title":{}}}}"""))
         val result = ReiAnixAniListClient(transport, 0).getAnime(7)
         assertTrue(result is AniListResult.Success)
         val anime = (result as AniListResult.Success).value!!
@@ -213,6 +213,38 @@ class ReiAnixAniListClientTest {
         assertEquals("", anime.preferredTitle)
         assertEquals(null, anime.episodes)
         assertTrue(anime.genres.isEmpty())
+    }
+
+
+    @Test
+    fun adultFlaggedAnimeIsNotReturnedBySearchOrIdLookup() = runBlocking {
+        val searchTransport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Page":{"media":[
+              {"id":100,"isAdult":true,"title":{"romaji":"Adult entry"}},
+              {"id":101,"isAdult":false,"title":{"romaji":"General audience entry"}}
+            ]}}}
+        """.trimIndent()))
+        val searchResult = ReiAnixAniListClient(searchTransport, 0).searchAnime("test")
+        assertTrue(searchResult is AniListResult.Success)
+        assertEquals(
+            listOf(101),
+            (searchResult as AniListResult.Success).value.map(AniListAnime::id),
+        )
+
+        val detailTransport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Media":{"id":100,"isAdult":true,"title":{"romaji":"Adult entry"}}}}
+        """.trimIndent()))
+        val detailResult = ReiAnixAniListClient(detailTransport, 0).getAnime(100)
+        assertEquals(AniListResult.Success<AniListAnime?>(null), detailResult)
+    }
+
+    @Test
+    fun missingAdultFlagFailsClosedForRemoteAnimeMetadata() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Media":{"id":77,"title":{"romaji":"Unknown content rating"}}}}
+        """.trimIndent()))
+        val result = ReiAnixAniListClient(transport, 0).getAnime(77)
+        assertEquals(AniListResult.Success<AniListAnime?>(null), result)
     }
 
     private class FakeTransport(

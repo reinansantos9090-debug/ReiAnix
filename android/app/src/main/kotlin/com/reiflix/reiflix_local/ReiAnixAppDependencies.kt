@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local
 
 import android.content.Context
+import android.util.Log
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
 import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
@@ -17,7 +18,11 @@ import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixLocalVisualIndex
+import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeSearchProvider
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import org.json.JSONObject
 import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
@@ -163,6 +168,43 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixTraceMoeClient()
     }
 
+    /**
+     * Optional remote index. A blank URL means the owner has not deployed/configured
+     * the service yet. A nonblank but invalid URL stays represented as a failing
+     * provider so an empty search can never be mistaken for a completed no-match.
+     */
+    val selfHostedTraceMoeClient: ReiAnixTraceMoeSearchProvider? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL
+            .trim()
+            .takeIf(String::isNotBlank)
+            ?.let { baseUrl ->
+                runCatching { ReiAnixTraceMoeClient.selfHosted(baseUrl) }
+                    .getOrElse { error ->
+                        Log.w("ReiAnixAppDependencies", "Independent visual index URL is invalid; its search remains pending.", error)
+                        ReiAnixTraceMoeSearchProvider {
+                            throw IOException("The configured independent visual index URL is invalid.", error)
+                        }
+                    }
+            }
+    }
+
+    /** Persistent device-local references learned only from successfully confirmed anime matches. */
+    val localVisualIndex: ReiAnixLocalVisualIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixLocalVisualIndex(
+            indexFile = File(appContext.filesDir, "data/visual-index/references.json"),
+        )
+    }
+
+    val hybridVisualSearchClient: ReiAnixHybridTraceMoeClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixHybridTraceMoeClient(
+            publicProvider = traceMoeClient,
+            independentProvider = selfHostedTraceMoeClient,
+            localReferenceIndex = localVisualIndex,
+            cacheDirectory = File(appContext.cacheDir, "visual-search-cache"),
+            cacheNamespace = BuildConfig.REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL.ifBlank { "public-only" },
+        )
+    }
+
     val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAniListClient()
     }
@@ -176,6 +218,7 @@ class ReiAnixAppDependencies(context: Context) {
             settings = sqliteSettingsRepository,
             genreRegistry = genreRegistry,
             traceMoeClient = traceMoeClient,
+            hybridVisualSearchClient = hybridVisualSearchClient,
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),

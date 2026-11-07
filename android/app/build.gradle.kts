@@ -4,6 +4,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val selfHostedTraceMoeBaseUrl = providers.gradleProperty("reianixSelfHostedTraceMoeBaseUrl")
+    .orElse(providers.environmentVariable("REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL"))
+    .getOrElse("")
+val escapedSelfHostedTraceMoeBaseUrl = selfHostedTraceMoeBaseUrl
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 android {
     namespace = "com.reiflix.reiflix_local"
     compileSdk = 36
@@ -24,6 +30,7 @@ android {
         versionCode = providers.gradleProperty("reianixBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2
         versionName = providers.gradleProperty("reianixBuildVersion").orNull?.takeIf { it.isNotBlank() } ?: "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL", "\"$escapedSelfHostedTraceMoeBaseUrl\"")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
