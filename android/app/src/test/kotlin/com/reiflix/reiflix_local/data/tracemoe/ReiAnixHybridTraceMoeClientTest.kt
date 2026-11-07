@@ -32,6 +32,20 @@ class ReiAnixHybridTraceMoeClientTest {
     }
 
     @Test
+    fun usesIndependentIndexWhenPublicMatchesAreBelowExistingSupportThreshold() = runBlocking {
+        val image = sampleImage()
+        val weakPublic = TraceMoeSearchMatch(anilistId = 9999, similarity = 0.74)
+        val strongIndependent = TraceMoeSearchMatch(anilistId = 1234, similarity = 0.97)
+        val client = ReiAnixHybridTraceMoeClient(
+            publicProvider = ReiAnixTraceMoeSearchProvider { listOf(weakPublic) },
+            independentProvider = ReiAnixTraceMoeSearchProvider { listOf(strongIndependent) },
+            cacheDirectory = File(temporaryFolder.root, "cache"),
+        )
+
+        assertEquals(listOf(strongIndependent, weakPublic), client.search(image))
+    }
+
+    @Test
     fun usesIndependentIndexWhenPublicSearchFails() = runBlocking {
         val image = sampleImage()
         val expected = listOf(TraceMoeSearchMatch(anilistId = 5678, similarity = 0.95))

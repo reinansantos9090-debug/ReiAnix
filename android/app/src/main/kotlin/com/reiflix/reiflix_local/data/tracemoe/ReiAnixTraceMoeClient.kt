@@ -279,7 +279,7 @@ internal fun evaluateTraceMoeIdentityConsensus(
 internal fun evaluateTraceMoeProgressiveIdentity(
     resultsByEpisode: Map<Long, List<TraceMoeSearchMatch>>,
     singleFrameMinimumSimilarity: Double = MINIMUM_TRACE_MOE_SIMILARITY,
-    supportingFrameMinimumSimilarity: Double = 0.86,
+    supportingFrameMinimumSimilarity: Double = MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY,
     minimumSingleFrameMargin: Double = MINIMUM_TRACE_MOE_FRAME_MARGIN,
 ): TraceMoeIdentityConsensus? {
     require(singleFrameMinimumSimilarity in 0.0..1.0)
@@ -379,6 +379,7 @@ internal fun firstTraceMoeEpisodeMatches(
 }
 
 internal const val MAX_TRACE_MOE_EPISODE_SAMPLES = 3
+internal const val MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY = 0.86
 
 const val MINIMUM_TRACE_MOE_SIMILARITY = 0.90
 const val MINIMUM_TRACE_MOE_FRAME_MARGIN = 0.02

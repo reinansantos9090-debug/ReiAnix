@@ -2,7 +2,7 @@
 
 ## Estado e arquitetura
 
-O aplicativo mantém a API pública do Trace.moe como primeira fonte de identificação. Quando ela retorna uma lista válida sem correspondências ou falha por transporte/HTTP, o cliente consulta opcionalmente uma instância HTTPS própria compatível com a API do Trace.moe.
+O aplicativo mantém a API pública do Trace.moe como primeira fonte de identificação. Quando ela retorna uma lista vazia, somente candidatos abaixo do patamar de suporte visual de 0,86 ou falha por transporte/HTTP, o cliente consulta opcionalmente uma instância HTTPS própria compatível com a API do Trace.moe.
 
 A instância própria não é criada nem hospedada por esta aplicação. Ela precisa ser provisionada pelo mantenedor em uma infraestrutura remota. O endereço é injetado no APK pelo Gradle:
 
@@ -50,7 +50,7 @@ A resposta deve ser compatível com o formato público do Trace.moe, contendo um
 
 1. A identificação usa a thumbnail já gerada pelo ReiAnix. O arquivo de vídeo não é enviado.
 2. O Trace.moe público é consultado primeiro, mantendo a latência normal quando ele retorna uma correspondência.
-3. Se a pesquisa pública não encontrar correspondência ou falhar, a instância independente configurada é consultada.
+3. Se a pesquisa pública não encontrar correspondência, retornar somente candidatos abaixo do patamar de suporte de 0,86 ou falhar, a instância independente configurada é consultada.
 4. Resultados válidos são guardados em cache local pelo SHA-256 exato da thumbnail. Resultados positivos expiram após sete dias; respostas válidas sem correspondência após seis horas.
 5. Falhas simultâneas dos dois serviços não são gravadas como uma resposta válida sem correspondência. O episódio permanece elegível para uma nova tentativa.
 6. Os resultados continuam passando pela política de consenso existente do ReiAnix. Esta implementação não altera os limiares, o número máximo de episódios usados, a escolha da capa, as associações manuais ou o SQLite canônico.

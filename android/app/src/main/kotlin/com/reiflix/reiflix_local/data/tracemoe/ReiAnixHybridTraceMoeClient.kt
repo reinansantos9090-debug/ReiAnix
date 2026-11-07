@@ -33,7 +33,7 @@ class ReiAnixHybridTraceMoeClient(
         try {
             val matches = publicProvider.search(imageFile)
             publicMatches = matches
-            if (matches.isNotEmpty()) {
+            if (matches.any { it.similarity >= MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY }) {
                 key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, matches) } }
                 return matches
             }
@@ -46,8 +46,8 @@ class ReiAnixHybridTraceMoeClient(
         val fallback = independentProvider
         if (fallback == null) {
             if (publicMatches != null) {
-                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, emptyList()) } }
-                return emptyList()
+                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, publicMatches) } }
+                return publicMatches
             }
             throw IOException(
                 "The public Trace.moe search failed and no independent visual index is configured.",
@@ -57,8 +57,13 @@ class ReiAnixHybridTraceMoeClient(
 
         try {
             val independentMatches = fallback.search(imageFile)
-            key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, independentMatches) } }
-            return independentMatches
+            val combinedMatches = (publicMatches.orEmpty() + independentMatches)
+                .groupBy(TraceMoeSearchMatch::anilistId)
+                .values
+                .mapNotNull { sameAnimeMatches -> sameAnimeMatches.maxByOrNull(TraceMoeSearchMatch::similarity) }
+                .sortedByDescending(TraceMoeSearchMatch::similarity)
+            key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, combinedMatches) } }
+            return combinedMatches
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (independentFailure: Exception) {
@@ -101,7 +106,12 @@ class ReiAnixHybridTraceMoeClient(
         val storedAt = root.optLong("storedAtMillis", 0L)
         val now = System.currentTimeMillis()
         val array = root.optJSONArray("matches") ?: return@runCatching null
-        val ttl = if (array.length() == 0) NEGATIVE_CACHE_TTL_MILLIS else POSITIVE_CACHE_TTL_MILLIS
+        val hasPotentialMatch = (0 until array.length()).any { index ->
+            array.optJSONObject(index)?.optDouble("similarity", Double.NaN)
+                ?.let { it.isFinite() && it >= MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY }
+                ?: false
+        }
+        val ttl = if (hasPotentialMatch) POSITIVE_CACHE_TTL_MILLIS else NEGATIVE_CACHE_TTL_MILLIS
         if (storedAt <= 0L || now < storedAt || now - storedAt > ttl) {
             file.delete()
             return@runCatching null
