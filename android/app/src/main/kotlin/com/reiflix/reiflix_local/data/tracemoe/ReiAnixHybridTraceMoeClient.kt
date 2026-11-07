@@ -31,10 +31,11 @@ class ReiAnixHybridTraceMoeClient(
         var publicMatches: List<TraceMoeSearchMatch>? = null
         var publicFailure: Exception? = null
         try {
-            publicMatches = publicProvider.search(imageFile)
-            if (publicMatches.isNotEmpty()) {
-                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, publicMatches) } }
-                return publicMatches
+            val matches = publicProvider.search(imageFile)
+            publicMatches = matches
+            if (matches.isNotEmpty()) {
+                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, matches) } }
+                return matches
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
