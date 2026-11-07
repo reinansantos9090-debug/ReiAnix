@@ -40,6 +40,14 @@ class TraceMoeFailurePolicyTest {
     }
 
     @Test
+    fun textualQuotaExhaustionIsNotRetriedEvenWithoutHttp402() {
+        val kind = classifyTraceMoeHttpFailure(200, "Search quota exceeded")
+
+        assertEquals(TraceMoeFailureKind.QUOTA_EXHAUSTED, kind)
+        assertFalse(kind.retryable)
+    }
+
+    @Test
     fun rateLimitIsRetryable() {
         val kind = classifyTraceMoeHttpFailure(429, "Too many requests")
 
