@@ -1,6 +1,6 @@
 package com.reiflix.reiflix_local.data.tracemoe
 
-import android.util.Base64
+import java.util.Base64
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.runBlocking
@@ -45,8 +45,15 @@ class ReiAnixGoogleVisionWebDetectionClientTest {
         assertEquals("com.example.reianix", requestHeaders["X-Android-Package"])
         assertEquals("0123456789012345678901234567890123456789", requestHeaders["X-Android-Cert"])
         val body = String(requestBody, Charsets.UTF_8)
-        val encodedThumbnail = Base64.encodeToString(image.readBytes(), Base64.NO_WRAP)
-        assertTrue(body.contains(encodedThumbnail))
+        val submittedThumbnail = org.json.JSONObject(body)
+            .getJSONArray("requests")
+            .getJSONObject(0)
+            .getJSONObject("image")
+            .getString("content")
+        assertTrue(
+            "The request must contain the complete original thumbnail",
+            Base64.getDecoder().decode(submittedThumbnail).contentEquals(image.readBytes()),
+        )
         assertTrue(body.contains("WEB_DETECTION"))
         assertFalse(body.contains("video"))
     }
