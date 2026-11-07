@@ -33,7 +33,6 @@ import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
-import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_CANDIDATES
 import kotlinx.coroutines.flow.receiveAsFlow
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
@@ -1845,17 +1844,6 @@ class ReiAnixLibraryViewModel(
         if (canonicalConsumersStarted) return
         canonicalConsumersStarted = true
 
-        // Read the canonical catalog and rehydrate saved thumbnails after app startup.
-        // New publication events are buffered while this runs, so older saved images
-        // enter the per-anime stream before thumbnails published during startup.
-        viewModelScope.launch {
-            refreshNativeCatalog()
-            enqueuePersistedEpisodeThumbnailsForTraceMoe()
-            for (publication in traceMoePublicationQueue) {
-                processPublishedEpisodeThumbnail(publication)
-            }
-        }
-
         // A successful artwork commit must invalidate the existing SQLite projection:
         // Compose reads immutable models and does not consume NativeMailbox directly.
         // Keep the publication stream bounded and debounce bursts (poster + backdrop,
@@ -1895,6 +1883,17 @@ class ReiAnixLibraryViewModel(
                         )
                         refreshCatalogProjection()
                     }
+            }
+        }
+
+        // Read the canonical catalog and rehydrate saved thumbnails after app startup.
+        // New publication events are buffered while this runs, so older saved images
+        // enter the per-anime stream before thumbnails published during startup.
+        viewModelScope.launch {
+            refreshNativeCatalog()
+            enqueuePersistedEpisodeThumbnailsForTraceMoe()
+            for (publication in traceMoePublicationQueue) {
+                processPublishedEpisodeThumbnail(publication)
             }
         }
 
