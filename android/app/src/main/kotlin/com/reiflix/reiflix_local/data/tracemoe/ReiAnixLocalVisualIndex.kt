@@ -10,6 +10,7 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -127,7 +128,10 @@ class ReiAnixLocalVisualIndex(
         }
         // Version 1 stored grayscale perceptual hashes. It is intentionally
         // treated as an empty index instead of mixing incompatible descriptors.
-        if (root.optInt("version", 0) != INDEX_VERSION) return emptyList()
+        if (root.optInt("version", 0) != INDEX_VERSION) {
+            indexFile.delete()
+            return emptyList()
+        }
         val array = root.optJSONArray("references")
             ?: throw IOException("The local visual reference index has no references array.")
         return buildList {
@@ -430,11 +434,11 @@ internal object ReiAnixMpeg7ColorLayout {
             }
         }
 
-        val left = x.toInt().coerceIn(0, maxWidth - 1)
-        val top = y.toInt().coerceIn(0, maxHeight - 1)
-        val right = (x + width).toInt().coerceIn(left + 1, maxWidth)
-        val bottom = (y + height).toInt().coerceIn(top + 1, maxHeight)
-        return CropRect(left, top, right - left, bottom - top)
+        val left = x.roundToInt().coerceIn(0, maxWidth - 1)
+        val top = y.roundToInt().coerceIn(0, maxHeight - 1)
+        val cropWidth = width.roundToInt().coerceIn(1, maxWidth - left)
+        val cropHeight = height.roundToInt().coerceIn(1, maxHeight - top)
+        return CropRect(left, top, cropWidth, cropHeight)
     }
 
     private fun hasSufficientDetail(pixels: IntArray): Boolean {
