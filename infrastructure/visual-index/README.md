@@ -24,16 +24,14 @@ O serviço não está implantado automaticamente por esta PR. É necessário ter
 2. Aponte `REIANIX_INDEX_DOMAIN` para um domínio cujo DNS A/AAAA chegue ao servidor.
 3. Gere senhas exclusivas para `TRACE_API_SALT`, `POSTGRES_PASSWORD` e `MINIO_SECRET_KEY`; não reutilize as credenciais de exemplo.
 4. Valide a configuração com `docker compose config --quiet`.
-5. Crie a pasta indicada por `VIDEO_PATH` se for indexar uma coleção própria autorizada.
+5. Crie a pasta indicada por `VIDEO_PATH` e mantenha-a vazia nesta configuração baseada em descritores pré-calculados. O ReiAnix não envia vídeos para esse servidor.
 6. Inicie a infraestrutura: `docker compose up -d`.
 
 Caddy solicitará e renovará o certificado TLS automaticamente quando o DNS e as portas 80/443 estiverem corretamente configurados.
 
 ## Popular a base visual
 
-A API upstream consegue construir um índice a partir de arquivos de vídeo organizados em subpastas pelo ID AniList dentro de `VIDEO_PATH`. Use somente material que você tenha autorização para indexar e mantenha essa coleção adequada a todas as idades.
-
-Também é possível importar um dump de descritores MPEG-7 Color Layout em formato compatível com as tabelas `files` e `anilist` do servidor. O arquivo de dump não acompanha o ReiAnix. Antes de carregar qualquer vetor no Milvus, importe os metadados, execute o filtro de segurança abaixo e só então solicite a carga dos vetores.
+A configuração do ReiAnix deve usar um catálogo de descritores MPEG-7 Color Layout pré-calculados em formato compatível com as tabelas `files` e `anilist` do servidor. O arquivo de dados não acompanha o ReiAnix. Essa base contém vetores visuais e metadados; não contém os vídeos de referência. Mantenha `VIDEO_PATH` vazio e `SCAN_INTERVAL=0`: o aplicativo envia somente a thumbnail JPEG da busca, nunca os vídeos do telefone. Antes de carregar qualquer vetor no Milvus, importe os metadados, execute o filtro de segurança abaixo e só então solicite a carga dos vetores.
 
 ### Filtragem obrigatória antes de carregar o Milvus
 
@@ -57,7 +55,7 @@ Depois da filtragem, acione a reconstrução do índice vetorial:
 printf 'UPDATE files SET loaded = NULL;\n' | docker compose exec -T postgres psql -U "${POSTGRES_USER:-postgres}" -d postgres -v ON_ERROR_STOP=1
 ```
 
-Acompanhe a fila de indexação nos logs do serviço API e consulte os estados da tabela `files` no PostgreSQL. A busca só deve ser liberada depois que os registros filtrados estiverem carregados no Milvus.
+Acompanhe a fila de indexação nos logs do serviço API e consulte os estados da tabela `files` no PostgreSQL. A busca só deve ser liberada depois que os registros filtrados estiverem carregados no Milvus. Os vídeos não são necessários para a consulta do ReiAnix: a resposta usa os campos AniList e a similaridade dos descritores.
 
 ## Configurar o ReiAnix
 
@@ -81,7 +79,7 @@ Ou defina `REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL` no ambiente de build. O app e
 
 ## Limites desta pasta
 
-- Não contém vídeos nem um catálogo de anime pré-carregado.
+- Não contém vídeos nem um catálogo de anime pré-carregado. O índice pré-calculado precisa ser importado pelo mantenedor.
 - Não contém credenciais reais, domínio, servidor ou dump de dados.
 - Não faz deploy em nuvem: isso requer a conta e o servidor do mantenedor.
 - Não certifica a precisão do índice; é necessário testar com thumbnails reais conhecidas antes de configurar o APK de produção.
