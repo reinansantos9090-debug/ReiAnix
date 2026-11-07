@@ -8,6 +8,7 @@ import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
 
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
+import com.reiflix.reiflix_local.data.tracemoe.MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
@@ -422,6 +423,7 @@ class ReiAnixAniListIntegrationService(
         val matchesByEpisode = firstTraceMoeEpisodeMatches(progress.matchesByEpisode)
         var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         val seenEpisodeIds = HashSet<Long>().apply { addAll(matchesByEpisode.keys) }
+        val sampleFilesByEpisode = linkedMapOf<Long, File>()
 
         // Keep consuming the live channel while this anime needs another sample.
         // A clear first result exits immediately; uncertain results wait for the
@@ -460,6 +462,7 @@ class ReiAnixAniListIntegrationService(
                 Log.w(TAG, "Anime visual search failed animeId=" + animeId + " episodeId=" + sample.episodeId, error)
                 continue
             }
+            sampleFilesByEpisode[sample.episodeId] = sample.imageFile
             matchesByEpisode[sample.episodeId] = matches
             writeTraceMoeProgress(animeId, matchesByEpisode, completed = false, correction = correction)
             confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
@@ -517,6 +520,24 @@ class ReiAnixAniListIntegrationService(
             val completedAt = System.currentTimeMillis() / 1000.0
             writeTraceMoeProgress(animeId, matchesByEpisode, completed = true, correction = correction)
             writeTraceMoeAttemptAt(animeId, completedAt, correction)
+
+            // Only seed the on-device reference index with thumbnails that supported
+            // the exact identity just committed by the existing consensus policy.
+            val confirmedReferences = sampleFilesByEpisode.filter { (episodeId, _) ->
+                matchesByEpisode[episodeId].orEmpty().any { match ->
+                    match.anilistId == consensus.anilistId &&
+                        match.similarity >= MINIMUM_TRACE_MOE_SUPPORTING_FRAME_SIMILARITY
+                }
+            }
+            for ((_, imageFile) in confirmedReferences) {
+                try {
+                    hybridVisualSearchClient?.rememberConfirmedReference(imageFile, consensus.anilistId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Confirmed thumbnail could not be added to the local visual index", error)
+                }
+            }
         }
         return applied
     }
