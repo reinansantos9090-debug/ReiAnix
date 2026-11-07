@@ -720,7 +720,7 @@ class ReiAnixAniListIntegrationService(
             episodes.put(JSONObject().put("episodeId", episodeId).put("matches", matchArray))
         }
         val successfulIds = JSONArray().apply {
-            successfulApiEpisodeIds.sorted().forEach(::put)
+            successfulApiEpisodeIds.sorted().forEach { put(it) }
         }
         val value = JSONObject()
             .put("completed", completed)
