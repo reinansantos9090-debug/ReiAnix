@@ -229,7 +229,7 @@ class ReiAnixHybridTraceMoeClient(
     )
 
     private companion object {
-        const val CACHE_VERSION = 3
+        const val CACHE_VERSION = 4
         const val MAX_CACHE_ENTRIES = 200
         const val MAX_CACHE_ENTRY_BYTES = 128L * 1024L
         const val MAX_MERGED_RESULTS = 10
