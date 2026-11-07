@@ -36,3 +36,9 @@ The upstream project is distributed under the MIT License:
 Upstream source and license:
 - https://github.com/soruly/trace.moe-id
 - https://github.com/soruly/trace.moe-id/blob/master/LICENSE
+## trace.moe-api deployment image
+
+The optional self-hosted visual-index infrastructure references the upstream `ghcr.io/soruly/trace.moe-api` container image. The API project's source is distributed under the MIT License (Copyright (c) 2019 soruly). The image is not bundled in the ReiAnix APK, and this repository does not copy its API source code.
+
+- https://github.com/soruly/trace.moe-api
+- https://github.com/soruly/trace.moe-api/blob/master/LICENSE
