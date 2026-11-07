@@ -324,7 +324,7 @@ internal object ReiAnixMpeg7ColorLayout {
 
             val ratio = working.width.toDouble() / working.height
             val targetRatios = doubleArrayOf(4.0 / 3.0, 16.0 / 9.0, 21.0 / 9.0)
-            val nearestRatio = targetRatios.minBy { abs(ratio - it) }
+            val nearestRatio = nearestAspectRatio(ratio, targetRatios)
             if (abs(ratio - nearestRatio) > 0.05) {
                 val detected = detectFrameRect(working)
                 val cropped = snapRectToAspectRatio(detected, working.width, working.height)
@@ -347,6 +347,19 @@ internal object ReiAnixMpeg7ColorLayout {
             if (!working.isRecycled) working.recycle()
             throw IOException("The thumbnail could not be prepared for local visual search.", error)
         }
+    }
+
+    private fun nearestAspectRatio(value: Double, ratios: DoubleArray): Double {
+        var best = ratios.first()
+        var smallestDifference = abs(value - best)
+        for (index in 1 until ratios.size) {
+            val difference = abs(value - ratios[index])
+            if (difference < smallestDifference) {
+                best = ratios[index]
+                smallestDifference = difference
+            }
+        }
+        return best
     }
 
     private data class CropRect(val x: Int, val y: Int, val width: Int, val height: Int)
@@ -406,7 +419,7 @@ internal object ReiAnixMpeg7ColorLayout {
     private fun snapRectToAspectRatio(rect: CropRect, maxWidth: Int, maxHeight: Int): CropRect {
         val ratios = doubleArrayOf(4.0 / 3.0, 16.0 / 9.0, 21.0 / 9.0)
         val currentRatio = rect.width.toDouble() / max(1, rect.height)
-        val ratio = ratios.minBy { abs(currentRatio - it) }
+        val ratio = nearestAspectRatio(currentRatio, ratios)
         var width = rect.width.toDouble()
         var height = rect.height.toDouble()
         if (width / ratio > height) width = height * ratio else height = width / ratio
