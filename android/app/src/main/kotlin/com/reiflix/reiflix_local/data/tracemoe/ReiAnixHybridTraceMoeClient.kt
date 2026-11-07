@@ -136,7 +136,8 @@ class ReiAnixHybridTraceMoeClient(
             }
         }
         val imageDigest = digest.digest().joinToString("") { "%02x".format(it) }
-        val scopedKey = "$CACHE_VERSION|$cacheNamespace|$imageDigest"
+        val localGeneration = localReferenceIndex?.cacheGeneration().orEmpty()
+        val scopedKey = CACHE_VERSION.toString() + "|" + cacheNamespace + "|" + localGeneration + "|" + imageDigest
         return MessageDigest.getInstance("SHA-256")
             .digest(scopedKey.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
