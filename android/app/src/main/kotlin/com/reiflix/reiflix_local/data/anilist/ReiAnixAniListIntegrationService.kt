@@ -449,17 +449,11 @@ class ReiAnixAniListIntegrationService(
                 val hybridSearch = hybridVisualSearchClient
                 if (hybridSearch != null) {
                     hybridSearch.search(imageFile = sample.imageFile) {
-                        val requestAt = System.currentTimeMillis() / 1000.0
-                        val allowed = reserveTraceMoeRequest(requestAt)
-                        if (!allowed) {
-                            Log.i(TAG, "Public Trace.moe request budget is exhausted; independent indexes remain enabled")
-                        }
-                        allowed
+                        reservePublicTraceMoeRequest()
                     }
                 } else {
-                    val requestAt = System.currentTimeMillis() / 1000.0
-                    if (!reserveTraceMoeRequest(requestAt)) {
-                        Log.i(TAG, "Public Trace.moe request budget is exhausted")
+                    if (!reservePublicTraceMoeRequest()) {
+                        Log.i(TAG, "Public Trace.moe quota or local daily budget is exhausted")
                         break
                     }
                     traceMoeClient.search(sample.imageFile)
@@ -632,6 +626,32 @@ class ReiAnixAniListIntegrationService(
             }
             connection.insertWithOnConflict("preferences", null, values, SQLiteDatabase.CONFLICT_REPLACE)
         }
+    }
+
+    /**
+     * Checks the upstream /me quota before reserving from the app's own rolling
+     * 24-hour budget. A /me outage does not disable identification: the conservative
+     * local budget remains the fallback. Quota depletion disables only the public
+     * provider; the independent and on-device indexes still run.
+     */
+    private suspend fun reservePublicTraceMoeRequest(): Boolean {
+        val remoteQuota = try {
+            traceMoeClient.getQuota()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not read public Trace.moe /me quota; using the local request budget", error)
+            null
+        }
+        if (remoteQuota?.isDepleted == true) {
+            Log.i(TAG, "Public Trace.moe /me quota is exhausted; independent indexes remain enabled")
+            return false
+        }
+        val allowed = reserveTraceMoeRequest(System.currentTimeMillis() / 1000.0)
+        if (!allowed) {
+            Log.i(TAG, "Public Trace.moe local rolling 24-hour request budget is exhausted")
+        }
+        return allowed
     }
 
     /** Atomically reserves one public Trace.moe request from the local rolling 24-hour budget. */
