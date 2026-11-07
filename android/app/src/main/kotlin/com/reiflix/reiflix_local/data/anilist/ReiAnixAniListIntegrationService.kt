@@ -412,6 +412,7 @@ class ReiAnixAniListIntegrationService(
         val progress = readTraceMoeProgress(animeId, correction)
         val nowSeconds = System.currentTimeMillis() / 1000.0
         val previousAttempt = readTraceMoeAttemptAt(animeId, correction)
+        val successfulApiEpisodeIds = progress.successfulApiEpisodeIds.toMutableSet()
         if (progress.completed) {
             val isLegacyCompletion = !progress.hasSuccessfulApiEpisodeMetadata
             if (!isLegacyCompletion &&
@@ -423,13 +424,13 @@ class ReiAnixAniListIntegrationService(
             // each HTTP request actually succeeded. Reopen that legacy state once so
             // a previous transient outage cannot preserve a false 24-hour lockout.
             progress.matchesByEpisode.clear()
-            val emptySuccessfulIds = emptySet<Long>()
+            successfulApiEpisodeIds.clear()
             writeTraceMoeProgress(
                 animeId,
                 progress.matchesByEpisode,
                 completed = false,
                 correction = correction,
-                successfulApiEpisodeIds = emptySuccessfulIds,
+                successfulApiEpisodeIds = successfulApiEpisodeIds,
             )
         }
 
@@ -437,7 +438,6 @@ class ReiAnixAniListIntegrationService(
         // A legacy timestamp without a saved progressive state is treated as an
         // unfinished window so newly published episode thumbnails can resume it.
         val matchesByEpisode = firstTraceMoeEpisodeMatches(progress.matchesByEpisode)
-        val successfulApiEpisodeIds = progress.successfulApiEpisodeIds.toMutableSet()
         var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         val seenEpisodeIds = HashSet<Long>().apply { addAll(matchesByEpisode.keys) }
 
@@ -601,7 +601,13 @@ class ReiAnixAniListIntegrationService(
         }
         if (applied) {
             val completedAt = System.currentTimeMillis() / 1000.0
-            writeTraceMoeProgress(animeId, matchesByEpisode, completed = true, correction = correction)
+            writeTraceMoeProgress(
+                animeId,
+                matchesByEpisode,
+                completed = true,
+                correction = correction,
+                successfulApiEpisodeIds = successfulApiEpisodeIds,
+            )
             writeTraceMoeAttemptAt(animeId, completedAt, correction)
         }
         return applied
