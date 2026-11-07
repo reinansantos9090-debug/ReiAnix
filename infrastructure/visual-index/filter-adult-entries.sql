@@ -5,7 +5,7 @@ BEGIN;
 CREATE TEMP TABLE reianix_excluded_anilist_ids ON COMMIT DROP AS
 SELECT id
 FROM anilist
-WHERE lower(COALESCE(json->>'isAdult', 'false')) IN ('true', '1', 'yes');
+WHERE lower(COALESCE(json->>'isAdult', '')) NOT IN ('false', '0', 'no');
 
 DELETE FROM files
 WHERE anilist_id IN (SELECT id FROM reianix_excluded_anilist_ids);
@@ -23,7 +23,7 @@ BEGIN
         SELECT 1
         FROM files AS f
         JOIN anilist AS a ON a.id = f.anilist_id
-        WHERE lower(COALESCE(a.json->>'isAdult', 'false')) IN ('true', '1', 'yes')
+        WHERE lower(COALESCE(a.json->>'isAdult', '')) NOT IN ('false', '0', 'no')
     ) THEN
         RAISE EXCEPTION 'Adult-tagged records remain in the ReiAnix visual index.';
     END IF;
