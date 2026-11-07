@@ -473,16 +473,19 @@ class ReiAnixTraceMoeClient(
 
     private fun parseErrorMessage(root: JSONObject): String? {
         val error = root.opt("error")
-        val message = when (error) {
+        val errorMessage = when (error) {
             is String -> error
-            is JSONObject ->
-                error.optString("message").takeIf(String::isNotBlank)
-                    ?: error.optString("code").takeIf(String::isNotBlank)
+            is JSONObject -> error.optString("message").takeIf(String::isNotBlank)
             else -> null
         }
-        return message?.takeIf(String::isNotBlank)
-            ?: root.optString("message").takeIf(String::isNotBlank)
-            ?: root.optString("code").takeIf(String::isNotBlank)
+        val errorCode = (error as? JSONObject)?.optString("code")?.takeIf(String::isNotBlank)
+        val message = root.optString("message").takeIf(String::isNotBlank)
+        val code = root.optString("code").takeIf(String::isNotBlank)
+        return listOfNotNull(errorMessage, errorCode, message, code)
+            .distinct()
+            .joinToString(" ")
+            .takeIf(String::isNotBlank)
+            ?.take(256)
     }
 
     private fun parseRetryAfterMillis(headerValue: String?, body: String): Long? {
