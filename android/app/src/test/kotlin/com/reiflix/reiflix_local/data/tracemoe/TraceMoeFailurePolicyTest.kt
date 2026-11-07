@@ -14,6 +14,23 @@ class TraceMoeFailurePolicyTest {
         assertTrue(kind.retryable)
     }
 
+
+    @Test
+    fun concurrencyMessageIsRetryableEvenInSuccessfulHttpEnvelope() {
+        val kind = classifyTraceMoeHttpFailure(200, "Too many concurrent searches")
+
+        assertEquals(TraceMoeFailureKind.CONCURRENCY_LIMIT, kind)
+        assertTrue(kind.retryable)
+    }
+
+    @Test
+    fun textualRateLimitIsRetryableEvenWithoutHttp429() {
+        val kind = classifyTraceMoeHttpFailure(200, "Rate limit exceeded")
+
+        assertEquals(TraceMoeFailureKind.RATE_LIMITED, kind)
+        assertTrue(kind.retryable)
+    }
+
     @Test
     fun exhaustedSearchQuotaIsNotRetried() {
         val kind = classifyTraceMoeHttpFailure(402, "Search quota exceeded")
