@@ -46,15 +46,18 @@ internal fun classifyTraceMoeHttpFailure(
     val message = errorMessage.orEmpty().lowercase()
     return when {
         "concurr" in message -> TraceMoeFailureKind.CONCURRENCY_LIMIT
+        "rate limit" in message || "too many requests" in message -> TraceMoeFailureKind.RATE_LIMITED
+        "quota" in message -> TraceMoeFailureKind.QUOTA_EXHAUSTED
         statusCode == 402 -> TraceMoeFailureKind.QUOTA_EXHAUSTED
         statusCode == 429 -> TraceMoeFailureKind.RATE_LIMITED
         statusCode in setOf(400, 413, 415) -> TraceMoeFailureKind.BAD_IMAGE
+        "invalid image" in message || "unsupported image" in message ||
+            "image is too large" in message || "image size limit" in message ->
+            TraceMoeFailureKind.BAD_IMAGE
         statusCode == 401 -> TraceMoeFailureKind.AUTHENTICATION
         statusCode == 403 -> TraceMoeFailureKind.FORBIDDEN
         statusCode == 408 || statusCode == 425 -> TraceMoeFailureKind.SERVER_UNAVAILABLE
         statusCode in 500..599 -> TraceMoeFailureKind.SERVER_UNAVAILABLE
-        "rate limit" in message || "too many requests" in message -> TraceMoeFailureKind.RATE_LIMITED
-        "quota" in message -> TraceMoeFailureKind.QUOTA_EXHAUSTED
         else -> TraceMoeFailureKind.HTTP_ERROR
     }
 }
@@ -460,18 +463,26 @@ class ReiAnixTraceMoeClient(
             }
         }.sortedByDescending(TraceMoeSearchMatch::similarity)
 
-    private fun parseErrorMessage(responseBody: String): String? =
-        runCatching { parseErrorMessage(JSONObject(responseBody)) }.getOrNull()
+    private fun parseErrorMessage(responseBody: String): String? {
+        val trimmed = responseBody.trim()
+        if (trimmed.isEmpty()) return null
+        val structured = runCatching { parseErrorMessage(JSONObject(trimmed)) }.getOrNull()
+        // Some API/proxy failures are plain text rather than a JSON error envelope.
+        return structured ?: trimmed.take(256)
+    }
 
     private fun parseErrorMessage(root: JSONObject): String? {
         val error = root.opt("error")
         val message = when (error) {
             is String -> error
-            is JSONObject -> error.optString("message").takeIf(String::isNotBlank)
+            is JSONObject ->
+                error.optString("message").takeIf(String::isNotBlank)
+                    ?: error.optString("code").takeIf(String::isNotBlank)
             else -> null
         }
         return message?.takeIf(String::isNotBlank)
             ?: root.optString("message").takeIf(String::isNotBlank)
+            ?: root.optString("code").takeIf(String::isNotBlank)
     }
 
     private fun parseRetryAfterMillis(headerValue: String?, body: String): Long? {
