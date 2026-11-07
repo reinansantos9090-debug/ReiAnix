@@ -231,7 +231,8 @@ class ReiAnixLocalVisualIndex(
  *
  * The 8x8 RGB block averages are converted to Y/Cb/Cr, transformed with an
  * 8x8 DCT, zig-zag scanned, and quantized into the standard 33 coefficients:
- * 21 luminance values, 6 Cb values, and 6 Cr values.
+ * 21 luminance values, 6 Cb values, and 6 Cr values. Matching uses the same
+ * unweighted L2 metric and (255 - distance) / 255 score mapping as the API.
  */
 internal object ReiAnixMpeg7ColorLayout {
     private const val MAX_IMAGE_PIXELS = 25_000_000L
@@ -274,30 +275,20 @@ internal object ReiAnixMpeg7ColorLayout {
         return ((OUTPUT_SCORE_RANGE - distance).coerceIn(0.0, OUTPUT_SCORE_RANGE)) / OUTPUT_SCORE_RANGE
     }
 
+    /**
+     * Unweighted Euclidean L2 over all 33 coefficients. The upstream API's
+     * Milvus collection uses MetricType.L2 and maps its score with
+     * (255 - distance) / 255; use the same metric locally so scores share
+     * the same scale before entering the existing consensus policy.
+     */
     private fun distance(first: List<Int>, second: List<Int>): Double {
         require(first.size == DESCRIPTOR_SIZE && second.size == DESCRIPTOR_SIZE)
-        var sumY = 0.0
-        var sumCb = 0.0
-        var sumCr = 0.0
-        for (index in 0 until 21) {
+        var squaredDistance = 0.0
+        for (index in 0 until DESCRIPTOR_SIZE) {
             val difference = (first[index] - second[index]).toDouble()
-            val weight = if (index < 3) 2.0 else 1.0
-            sumY += weight * difference * difference
+            squaredDistance += difference * difference
         }
-        for (index in 0 until 6) {
-            val cbDifference = (first[21 + index] - second[21 + index]).toDouble()
-            val cbWeight = if (index == 0) 2.0 else 1.0
-            sumCb += cbWeight * cbDifference * cbDifference
-
-            val crDifference = (first[27 + index] - second[27 + index]).toDouble()
-            val crWeight = when (index) {
-                0 -> 4.0
-                1, 2 -> 2.0
-                else -> 1.0
-            }
-            sumCr += crWeight * crDifference * crDifference
-        }
-        return sqrt(sumY) + sqrt(sumCb) + sqrt(sumCr)
+        return sqrt(squaredDistance)
     }
 
     private fun decodePreparedBitmap(jpegBytes: ByteArray): Bitmap {
