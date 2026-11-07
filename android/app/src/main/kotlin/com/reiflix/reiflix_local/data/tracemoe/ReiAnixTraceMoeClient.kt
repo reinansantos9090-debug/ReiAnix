@@ -46,7 +46,7 @@ internal fun classifyTraceMoeHttpFailure(
     val message = errorMessage.orEmpty().lowercase()
     return when {
         "concurr" in message -> TraceMoeFailureKind.CONCURRENCY_LIMIT
-        statusCode == 402 -> TraceMoeFailureKind.QUOTA_EXHAUSTED
+        statusCode == 402 || "quota" in message -> TraceMoeFailureKind.QUOTA_EXHAUSTED
         statusCode == 429 ||
             "rate limit" in message ||
             "too many requests" in message -> TraceMoeFailureKind.RATE_LIMITED
