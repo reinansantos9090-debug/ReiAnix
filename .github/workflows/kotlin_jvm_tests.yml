@@ -98,6 +98,7 @@ jobs:
               --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
               --tests com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentityConsensusTest \
               --tests com.reiflix.reiflix_local.data.tracemoe.ReiAnixHybridTraceMoeClientTest \
+              --tests com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClientTest \
               --tests com.reiflix.reiflix_local.data.tracemoe.ReiAnixLocalVisualIndexTest \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
