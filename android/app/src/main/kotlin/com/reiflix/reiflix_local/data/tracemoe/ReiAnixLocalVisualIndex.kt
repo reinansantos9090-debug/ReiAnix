@@ -9,7 +9,6 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sqrt
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -232,7 +231,7 @@ class ReiAnixLocalVisualIndex(
  * The 8x8 RGB block averages are converted to Y/Cb/Cr, transformed with an
  * 8x8 DCT, zig-zag scanned, and quantized into the standard 33 coefficients:
  * 21 luminance values, 6 Cb values, and 6 Cr values. Matching uses the same
- * unweighted L2 metric and (255 - distance) / 255 score mapping as the API.
+ * squared L2 metric and (255 - distance) / 255 score mapping as the API.
  */
 internal object ReiAnixMpeg7ColorLayout {
     private const val MAX_IMAGE_PIXELS = 25_000_000L
@@ -276,10 +275,9 @@ internal object ReiAnixMpeg7ColorLayout {
     }
 
     /**
-     * Unweighted Euclidean L2 over all 33 coefficients. The upstream API's
-     * Milvus collection uses MetricType.L2 and maps its score with
-     * (255 - distance) / 255; use the same metric locally so scores share
-     * the same scale before entering the existing consensus policy.
+     * Squared Euclidean L2 over all 33 coefficients. Milvus returns the sum
+     * of squared coefficient differences for MetricType.L2; the upstream API
+     * maps that value with (255 - distance) / 255. Do not take the square root.
      */
     private fun distance(first: List<Int>, second: List<Int>): Double {
         require(first.size == DESCRIPTOR_SIZE && second.size == DESCRIPTOR_SIZE)
@@ -288,7 +286,7 @@ internal object ReiAnixMpeg7ColorLayout {
             val difference = (first[index] - second[index]).toDouble()
             squaredDistance += difference * difference
         }
-        return sqrt(squaredDistance)
+        return squaredDistance
     }
 
     private fun decodePreparedBitmap(jpegBytes: ByteArray): Bitmap {
