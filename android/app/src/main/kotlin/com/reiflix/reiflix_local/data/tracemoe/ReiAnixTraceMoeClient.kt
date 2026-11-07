@@ -139,6 +139,9 @@ class ReiAnixTraceMoeClient(
             for (index in 0 until results.length()) {
                 val item = results.optJSONObject(index) ?: continue
                 val rawId = item.opt("anilist")
+                // The upstream anilistInfo response includes AniList's adult flag.
+                // Skip flagged entries before they can participate in visual consensus.
+                if (rawId is JSONObject && rawId.optBoolean("isAdult", false)) continue
                 val anilistId = when (rawId) {
                     is Number -> rawId.toInt()
                     is JSONObject -> rawId.optInt("id", 0)
