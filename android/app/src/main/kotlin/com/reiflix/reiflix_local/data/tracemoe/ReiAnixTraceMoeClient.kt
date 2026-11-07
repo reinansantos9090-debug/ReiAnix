@@ -20,7 +20,6 @@ import kotlinx.coroutines.Job
 private const val TRACE_MOE_INITIAL_RETRY_DELAY_MILLIS = 500L
 private const val TRACE_MOE_MAX_RETRY_DELAY_MILLIS = 5_000L
 private const val TRACE_MOE_MAX_RETRY_AFTER_MILLIS = 30_000L
-private const val TRACE_MOE_MAX_RETRY_AFTER_MILLIS = 30_000L
 
 enum class TraceMoeFailureCategory(val retryable: Boolean) {
     INVALID_IMAGE(false),
@@ -328,7 +327,7 @@ class ReiAnixTraceMoeClient(
 
     private fun retryAfterMillis(connection: HttpURLConnection): Long {
         val seconds = connection.getHeaderField("Retry-After")?.trim()?.toLongOrNull() ?: return 0L
-        return (seconds * 1_000L).coerceIn(0L, MAX_RETRY_AFTER_MILLIS)
+        return (seconds * 1_000L).coerceIn(0L, TRACE_MOE_MAX_RETRY_AFTER_MILLIS)
     }
 
     private fun errorMessage(statusCode: Int, responseBody: String): String {
