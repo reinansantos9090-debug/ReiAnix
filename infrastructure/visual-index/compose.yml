@@ -25,7 +25,7 @@ services:
       SCAN_INTERVAL: ${SCAN_INTERVAL:-0}
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_USER: postgres
       DB_PASS: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       DB_NAME: postgres
       MILVUS_ADDR: http://milvus:19530
@@ -46,13 +46,13 @@ services:
     image: postgres:18
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: postgres
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 12
