@@ -996,8 +996,9 @@ private fun DetailsHero(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = responsive.horizontalPadding,
+                    start = responsive.horizontalPadding,
                     top = ReiAnixTokens.Spacing.md,
+                    end = responsive.horizontalPadding,
                 ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
         ) {
