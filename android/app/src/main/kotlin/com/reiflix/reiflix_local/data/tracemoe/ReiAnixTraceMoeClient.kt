@@ -46,15 +46,15 @@ internal fun classifyTraceMoeHttpFailure(
     val message = errorMessage.orEmpty().lowercase()
     return when {
         "concurr" in message -> TraceMoeFailureKind.CONCURRENCY_LIMIT
-        statusCode == 402 || "quota" in message -> TraceMoeFailureKind.QUOTA_EXHAUSTED
-        statusCode == 429 ||
-            "rate limit" in message ||
-            "too many requests" in message -> TraceMoeFailureKind.RATE_LIMITED
+        statusCode == 402 -> TraceMoeFailureKind.QUOTA_EXHAUSTED
+        statusCode == 429 -> TraceMoeFailureKind.RATE_LIMITED
         statusCode in setOf(400, 413, 415) -> TraceMoeFailureKind.BAD_IMAGE
         statusCode == 401 -> TraceMoeFailureKind.AUTHENTICATION
         statusCode == 403 -> TraceMoeFailureKind.FORBIDDEN
         statusCode == 408 || statusCode == 425 -> TraceMoeFailureKind.SERVER_UNAVAILABLE
         statusCode in 500..599 -> TraceMoeFailureKind.SERVER_UNAVAILABLE
+        "rate limit" in message || "too many requests" in message -> TraceMoeFailureKind.RATE_LIMITED
+        "quota" in message -> TraceMoeFailureKind.QUOTA_EXHAUSTED
         else -> TraceMoeFailureKind.HTTP_ERROR
     }
 }
