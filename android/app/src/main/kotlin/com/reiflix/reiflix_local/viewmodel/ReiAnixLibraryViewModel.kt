@@ -34,6 +34,7 @@ import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
+import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_CANDIDATES
 import kotlinx.coroutines.flow.receiveAsFlow
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.bridge.NativeMailbox
@@ -1544,7 +1545,7 @@ class ReiAnixLibraryViewModel(
                     thumbnailWorkItems
                         .filter { !it.requiresGeneration && it.existingIsUsable && !it.existingPath.isNullOrBlank() }
                         .sortedBy { File(it.existingPath!!).lastModified() }
-                        .take(MAX_TRACE_MOE_EPISODE_SAMPLES)
+                        .take(MAX_TRACE_MOE_EPISODE_CANDIDATES)
                 }
                 cachedTraceMoeItems.forEach { item ->
                     enqueueTraceMoeSample(item.episode.animeId, item.episode.id, File(item.existingPath!!))
@@ -1691,7 +1692,7 @@ class ReiAnixLibraryViewModel(
         } ?: return
 
         val accepted = synchronized(session) {
-            session.queuedEpisodeIds.size < MAX_TRACE_MOE_EPISODE_SAMPLES &&
+            session.queuedEpisodeIds.size < MAX_TRACE_MOE_EPISODE_CANDIDATES &&
                 session.queuedEpisodeIds.add(episodeId)
         }
         if (!accepted) return
@@ -1774,7 +1775,7 @@ class ReiAnixLibraryViewModel(
                         for ((episodeId, file) in candidates) {
                             if (VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)) {
                                 add(TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file))
-                                if (size >= MAX_TRACE_MOE_EPISODE_SAMPLES) break
+                                if (size >= MAX_TRACE_MOE_EPISODE_CANDIDATES) break
                             }
                         }
                     }
