@@ -27,14 +27,21 @@ class ReiAnixHybridTraceMoeClient(
     private val cacheDirectory: File,
     private val cacheNamespace: String = "public-only",
 ) {
-    suspend fun search(imageFile: File): List<TraceMoeSearchMatch> {
+    suspend fun search(
+        imageFile: File,
+        allowPublicSearch: Boolean = true,
+    ): List<TraceMoeSearchMatch> {
         val key = withContext(Dispatchers.IO) { cacheKey(imageFile) }
         val cached = key?.let { withContext(Dispatchers.IO) { readCache(it) } }
         if (cached != null) return cached
 
         // All configured sources start before any result is awaited.
         val outcomes = supervisorScope {
-            val publicCall = async { runProvider(publicProvider, imageFile) }
+            val publicCall = if (allowPublicSearch) {
+                async { runProvider(publicProvider, imageFile) }
+            } else {
+                null
+            }
             val independentCall = independentProvider?.let { provider ->
                 async { runProvider(provider, imageFile) }
             }
@@ -42,7 +49,10 @@ class ReiAnixHybridTraceMoeClient(
                 async { runProvider(provider, imageFile) }
             }
             SearchOutcomes(
-                public = publicCall.await(),
+                public = publicCall?.await() ?: ProviderOutcome(
+                    emptyList(),
+                    IOException("The public Trace.moe daily request budget is exhausted."),
+                ),
                 independent = independentCall?.await(),
                 local = localCall?.await(),
             )
