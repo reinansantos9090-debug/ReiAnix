@@ -26,8 +26,6 @@ O serviço não está implantado automaticamente por esta PR. É necessário ter
 4. Valide a configuração com `docker compose config --quiet`.
 5. Crie a pasta indicada por `VIDEO_PATH` se for indexar uma coleção própria autorizada.
 6. Inicie a infraestrutura: `docker compose up -d`.
-5. Crie a pasta indicada por `VIDEO_PATH` se for indexar uma coleção própria autorizada.
-6. Inicie a infraestrutura: `docker compose up -d`.
 
 Caddy solicitará e renovará o certificado TLS automaticamente quando o DNS e as portas 80/443 estiverem corretamente configurados.
 
@@ -42,7 +40,7 @@ Também é possível importar um dump de descritores MPEG-7 Color Layout em form
 O banco precisa estar inicializado pelo serviço API. Importe apenas um dump de metadados/descritores compatível e que você tenha autorização para usar; por exemplo, se o arquivo estiver disponível no host em `./data/visual-index.sql.zst`:
 
 ```bash
-zstd -dc ./data/visual-index.sql.zst | docker compose exec -T postgres psql -U "${POSTGRES_USER:-postgres}" -d postgres -v ON_ERROR_STOP=1
+zstd -dc ./data/visual-index.sql.zst | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
 ```
 
 Depois de importar o dump no PostgreSQL, execute:
