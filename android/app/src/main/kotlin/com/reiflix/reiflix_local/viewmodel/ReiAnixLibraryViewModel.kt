@@ -12,6 +12,7 @@ import com.reiflix.reiflix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
@@ -30,6 +31,7 @@ import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
 import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -73,6 +75,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -93,6 +96,8 @@ import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
 private const val REIANIX_LIBRARY_ALL_ITEMS = 0
+private const val MAX_TRACE_MOE_AUTOMATIC_RECOVERIES = 2
+private const val TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS = 30_000L
 private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
     setOf("movie", "special", "ova", "oad", "ona", "extra")
 
@@ -261,6 +266,8 @@ class ReiAnixLibraryViewModel(
         val job: Job,
     )
     private val traceMoeSampleSessions = ConcurrentHashMap<Long, TraceMoeSampleSession>()
+    // A transient API failure gets a small number of delayed replays of already-saved thumbnails.
+    private val traceMoeAutomaticRecoveryAttempts = ConcurrentHashMap<Long, AtomicInteger>()
     // Serialize new thumbnail publications behind startup recovery of already saved images.
     private val traceMoePublicationQueue = Channel<ReiAnixArtworkPublication>(Channel.UNLIMITED)
     // If the local-media/artwork projection changes during extraction, rerun once
@@ -1615,8 +1622,18 @@ class ReiAnixLibraryViewModel(
                             animeId = animeId,
                             samples = channel.receiveAsFlow(),
                         )
+                        // A normal completion means the request stream itself recovered.
+                        traceMoeAutomaticRecoveryAttempts.remove(animeId)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
+                    } catch (error: TraceMoeApiException) {
+                        Log.w(
+                            TAG,
+                            "Trace.moe visual identification deferred kind=" + error.kind +
+                                " status=" + error.httpStatus + " animeId=" + animeId,
+                            error,
+                        )
+                        if (error.kind.retryable) scheduleTraceMoeAutomaticRecovery(animeId)
                     } catch (error: Exception) {
                         Log.w(TAG, "Trace.moe visual identification failed for animeId=" + animeId, error)
                     } finally {
@@ -1671,12 +1688,35 @@ class ReiAnixLibraryViewModel(
         }
     }
 
+    /** Schedule at most two delayed replays after a transient API failure. */
+    private fun scheduleTraceMoeAutomaticRecovery(animeId: Long) {
+        val attempts = traceMoeAutomaticRecoveryAttempts.computeIfAbsent(animeId) { AtomicInteger(0) }
+            .incrementAndGet()
+        if (attempts > MAX_TRACE_MOE_AUTOMATIC_RECOVERIES) return
+        viewModelScope.launch {
+            delay(TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS * attempts)
+            if (traceMoeSampleSessions[animeId] != null) return@launch
+            try {
+                enqueuePersistedEpisodeThumbnailsForTraceMoe(onlyAnimeId = animeId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(
+                    TAG,
+                    "Could not replay saved Trace.moe thumbnails for animeId=" + animeId,
+                    error,
+                )
+            }
+        }
+    }
+
     /** Restore unfinished identification from thumbnails already saved before process death. */
-    private suspend fun enqueuePersistedEpisodeThumbnailsForTraceMoe() {
+    private suspend fun enqueuePersistedEpisodeThumbnailsForTraceMoe(onlyAnimeId: Long? = null) {
         val catalog = nativeCatalogState.value.animes
         val samplesByAnime = withContext(Dispatchers.IO) {
             buildMap<Long, List<TraceMoeEpisodeSample>> {
                 for (anime in catalog) {
+                    if (onlyAnimeId != null && anime.id != onlyAnimeId) continue
                     val candidates = anime.contentEpisodes
                         .distinctBy { it.id }
                         .mapNotNull { episode ->
