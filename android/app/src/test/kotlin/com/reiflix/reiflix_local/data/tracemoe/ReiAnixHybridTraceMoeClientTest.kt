@@ -184,7 +184,11 @@ class ReiAnixHybridTraceMoeClientTest {
             .listFiles()
             .orEmpty()
             .count { it.extension == "json" }
-        assertEquals("A completed successful search should create one cache record", 1, cacheFiles)
+        assertEquals(
+            "A completed successful search should create one cache record; write failure=${client.lastCacheWriteFailure}",
+            1,
+            cacheFiles,
+        )
         assertEquals("The same image must be served from cache without a second public request", 1, publicCalls)
         assertEquals("A cache hit must not reserve public quota again", 1, publicQuotaReservations)
     }
