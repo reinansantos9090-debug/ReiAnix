@@ -21,11 +21,19 @@ DO $$
 BEGIN
     IF EXISTS (
         SELECT 1
-        FROM files AS f
-        JOIN anilist AS a ON a.id = f.anilist_id
+        FROM anilist AS a
         WHERE lower(COALESCE(a.json->>'isAdult', '')) NOT IN ('false', '0', 'no')
     ) THEN
-        RAISE EXCEPTION 'Adult-tagged records remain in the ReiAnix visual index.';
+        RAISE EXCEPTION 'Adult or unclassified AniList records remain in the ReiAnix visual index.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM files AS f
+        LEFT JOIN anilist AS a ON a.id = f.anilist_id
+        WHERE a.id IS NULL
+    ) THEN
+        RAISE EXCEPTION 'Files without verified AniList metadata remain in the ReiAnix visual index.';
     END IF;
 END $$;
 
