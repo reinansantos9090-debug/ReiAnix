@@ -260,6 +260,9 @@ class ReiAnixLibraryViewModel(
     private val episodeThumbnailBatchesInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val episodeThumbnailBatchRerunRequested = ConcurrentHashMap.newKeySet<Long>()
     private val traceMoeAutomaticRetryScheduled = ConcurrentHashMap.newKeySet<Long>()
+    // Retains retry ownership while waiting on the shared server deadline, so a
+    // different anime extending that deadline cannot leave this anime stranded.
+    private val traceMoeRetryPendingAnimeIds = ConcurrentHashMap.newKeySet<Long>()
     private data class TraceMoeSampleSession(
         val channel: Channel<TraceMoeEpisodeSample>,
         val queuedEpisodeIds: MutableSet<Long>,
@@ -1666,8 +1669,12 @@ class ReiAnixLibraryViewModel(
                             traceMoeSampleSessions.remove(animeId, created)
                             if (identificationApplied) {
                                 traceMoeAutomaticRetryAttempts.remove(animeId)
+                                traceMoeRetryPendingAnimeIds.remove(animeId)
                             } else if (integration.consumeTraceMoeRetryEligibility(animeId)) {
+                                traceMoeRetryPendingAnimeIds.add(animeId)
                                 scheduleTraceMoePendingRetry(animeId)
+                            } else {
+                                traceMoeRetryPendingAnimeIds.remove(animeId)
                             }
                         }
                     }
@@ -1754,6 +1761,7 @@ class ReiAnixLibraryViewModel(
                 if (!integration.shouldRetryTraceMoeIdentification(animeId)) {
                     if (integration.traceMoePendingRetryDelayMillis(animeId) == 0L) {
                         traceMoeAutomaticRetryAttempts.remove(animeId)
+                        traceMoeRetryPendingAnimeIds.remove(animeId)
                     }
                     return@launch
                 }
@@ -1776,7 +1784,7 @@ class ReiAnixLibraryViewModel(
                 // A different anime can extend the shared Retry-After deadline
                 // after this job sampled it. Re-arm after releasing the per-anime
                 // scheduled flag so that a competing session cannot lose its retry.
-                if (!wasCancelled) {
+                if (!wasCancelled && animeId in traceMoeRetryPendingAnimeIds) {
                     val latestDelay = try {
                         integration.traceMoePendingRetryDelayMillis(animeId)
                     } catch (cancelled: CancellationException) {
