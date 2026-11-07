@@ -66,6 +66,8 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -95,9 +97,9 @@ import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
 
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
 private const val REIANIX_LIBRARY_ALL_ITEMS = 0
-private const val MAX_TRACE_MOE_AUTOMATIC_RECOVERIES = 6
-private const val TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS = 30_000L
-private const val TRACE_MOE_AUTOMATIC_RECOVERY_MAX_DELAY_MILLIS = 8L * 60L * 1_000L
+private const val MAX_TRACE_MOE_MANUAL_RECOVERIES = 6
+private const val TRACE_MOE_MANUAL_RECOVERY_DELAY_MILLIS = 30_000L
+private const val TRACE_MOE_MANUAL_RECOVERY_MAX_DELAY_MILLIS = 8L * 60L * 1_000L
 private val REIANIX_NON_REGULAR_PLAYER_EPISODE_TYPES =
     setOf("movie", "special", "ova", "oad", "ona", "extra")
 
@@ -186,6 +188,19 @@ data class ReiAnixNativeFoldersUiState(
  * ViewModel coordinating the real read-only SQLite folder query for Storage.
  * The existing projection still owns SAF commands and permission state.
  */
+enum class ReiAnixTraceMoeIdentificationStatus {
+    IDLE,
+    RUNNING,
+    SUCCESS,
+    NO_MATCH,
+    FAILED,
+}
+
+data class ReiAnixTraceMoeIdentificationUiState(
+    val status: ReiAnixTraceMoeIdentificationStatus = ReiAnixTraceMoeIdentificationStatus.IDLE,
+    val message: String? = null,
+)
+
 @Keep
 class ReiAnixLibraryViewModel(
     context: Context,
@@ -194,6 +209,18 @@ class ReiAnixLibraryViewModel(
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
     private val appContext = context.applicationContext
     private val appDependencies = dependencies ?: ReiAnixAppDependencies.existingOrNull(appContext)
+    private val traceMoeRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
+    private val _traceMoeIdentificationStates =
+        MutableStateFlow<Map<Long, ReiAnixTraceMoeIdentificationUiState>>(emptyMap())
+    val traceMoeIdentificationStates: StateFlow<Map<Long, ReiAnixTraceMoeIdentificationUiState>> =
+        _traceMoeIdentificationStates.asStateFlow()
+
+    private fun publishTraceMoeIdentificationState(
+        animeId: Long,
+        state: ReiAnixTraceMoeIdentificationUiState,
+    ) {
+        _traceMoeIdentificationStates.value = _traceMoeIdentificationStates.value + (animeId to state)
+    }
 
     // The former main.py player_launch_inflight flag allowed only one handoff to
     // be pending at a time. Keep that guarantee while MainActivity validates and
@@ -266,9 +293,9 @@ class ReiAnixLibraryViewModel(
         val job: Job,
     )
     private val traceMoeSampleSessions = ConcurrentHashMap<Long, TraceMoeSampleSession>()
-    // A transient API failure gets a small number of delayed replays of already-saved thumbnails.
-    private val traceMoeAutomaticRecoveryAttempts = ConcurrentHashMap<Long, AtomicInteger>()
-    // Serialize new thumbnail publications behind startup recovery of already saved images.
+    // Completes only after the active thumbnail batch and any requested rerun have settled.
+    private val episodeThumbnailBatchCompletions = ConcurrentHashMap<Long, CompletableDeferred<Unit>>()
+    // Buffer artwork publications while the canonical catalog is being restored.
     private val traceMoePublicationQueue = Channel<ReiAnixArtworkPublication>(Channel.UNLIMITED)
     // If the local-media/artwork projection changes during extraction, rerun once
     // after the current batch releases its episode locks instead of dropping the
@@ -1390,6 +1417,164 @@ class ReiAnixLibraryViewModel(
     }
 
     /**
+     * Start Trace.moe only after an explicit user action on this anime.
+     * Existing local thumbnails are sent immediately; newly generated thumbnails
+     * are appended to this anime's session before its input is closed.
+     */
+    fun identifyAnimeWithTraceMoe(animeId: Long) {
+        if (animeId <= 0L || !traceMoeRequestsInFlight.add(animeId)) return
+        val integration = appDependencies?.aniListIntegrationService
+        if (integration == null) {
+            traceMoeRequestsInFlight.remove(animeId)
+            publishTraceMoeIdentificationState(
+                animeId,
+                ReiAnixTraceMoeIdentificationUiState(
+                    status = ReiAnixTraceMoeIdentificationStatus.FAILED,
+                    message = "O serviço de identificação não está disponível.",
+                ),
+            )
+            return
+        }
+
+        publishTraceMoeIdentificationState(
+            animeId,
+            ReiAnixTraceMoeIdentificationUiState(
+                status = ReiAnixTraceMoeIdentificationStatus.RUNNING,
+                message = "Preparando as miniaturas locais...",
+            ),
+        )
+        viewModelScope.launch {
+            try {
+                var recovery = 0
+                while (true) {
+                    try {
+                        val matched = runTraceMoeIdentificationAttempt(
+                            animeId = animeId,
+                            integration = integration,
+                            prepareMissingThumbnails = recovery == 0,
+                        )
+                        publishTraceMoeIdentificationState(
+                            animeId,
+                            if (matched) {
+                                ReiAnixTraceMoeIdentificationUiState(
+                                    status = ReiAnixTraceMoeIdentificationStatus.SUCCESS,
+                                    message = "Identificação confirmada. Atualizando a capa automaticamente.",
+                                )
+                            } else {
+                                ReiAnixTraceMoeIdentificationUiState(
+                                    status = ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
+                                    message = "Não foi possível confirmar uma identificação com as miniaturas disponíveis.",
+                                )
+                            },
+                        )
+                        return@launch
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: TraceMoeApiException) {
+                        if (!error.kind.retryable || recovery >= MAX_TRACE_MOE_MANUAL_RECOVERIES) {
+                            publishTraceMoeIdentificationState(
+                                animeId,
+                                ReiAnixTraceMoeIdentificationUiState(
+                                    status = ReiAnixTraceMoeIdentificationStatus.FAILED,
+                                    message = "Não foi possível concluir a identificação (" + error.kind + "). Tente novamente.",
+                                ),
+                            )
+                            return@launch
+                        }
+                        recovery += 1
+                        val multiplier = 1L shl (recovery - 1).coerceAtMost(4)
+                        val retryDelay = (
+                            TRACE_MOE_MANUAL_RECOVERY_DELAY_MILLIS * multiplier
+                        ).coerceAtMost(TRACE_MOE_MANUAL_RECOVERY_MAX_DELAY_MILLIS)
+                        publishTraceMoeIdentificationState(
+                            animeId,
+                            ReiAnixTraceMoeIdentificationUiState(
+                                status = ReiAnixTraceMoeIdentificationStatus.RUNNING,
+                                message = "Falha temporária. Nova tentativa em instantes...",
+                            ),
+                        )
+                        delay(retryDelay)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Manual Trace.moe identification failed.", error)
+                publishTraceMoeIdentificationState(
+                    animeId,
+                    ReiAnixTraceMoeIdentificationUiState(
+                        status = ReiAnixTraceMoeIdentificationStatus.FAILED,
+                        message = "Ocorreu um erro durante a identificação. Tente novamente.",
+                    ),
+                )
+            } finally {
+                traceMoeSampleSessions.remove(animeId)?.channel?.close()
+                traceMoeRequestsInFlight.remove(animeId)
+            }
+        }
+    }
+
+    private suspend fun runTraceMoeIdentificationAttempt(
+        animeId: Long,
+        integration: com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService,
+        prepareMissingThumbnails: Boolean,
+    ): Boolean = coroutineScope {
+        val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
+        var matched = false
+        lateinit var session: TraceMoeSampleSession
+        val analysisJob = launch(start = CoroutineStart.LAZY) {
+            try {
+                matched = integration.identifyFromEpisodeThumbnails(
+                    animeId = animeId,
+                    samples = channel.receiveAsFlow(),
+                    userInitiated = true,
+                )
+            } finally {
+                channel.close()
+                traceMoeSampleSessions.remove(animeId, session)
+            }
+        }
+        session = TraceMoeSampleSession(
+            channel = channel,
+            queuedEpisodeIds = ConcurrentHashMap.newKeySet<Long>(),
+            job = analysisJob,
+        )
+        if (traceMoeSampleSessions.putIfAbsent(animeId, session) != null) {
+            channel.close()
+            analysisJob.cancel()
+            throw IllegalStateException("A Trace.moe session for this anime is already active.")
+        }
+        analysisJob.start()
+
+        try {
+            refreshNativeCatalog()
+            enqueuePersistedEpisodeThumbnailsForTraceMoe(animeId)
+            if (prepareMissingThumbnails) {
+                requestMissingEpisodeThumbnails(animeId)
+                awaitEpisodeThumbnailBatch(animeId)
+            }
+            publishTraceMoeIdentificationState(
+                animeId,
+                ReiAnixTraceMoeIdentificationUiState(
+                    status = ReiAnixTraceMoeIdentificationStatus.RUNNING,
+                    message = "Analisando as miniaturas dos episódios...",
+                ),
+            )
+            refreshNativeCatalog()
+            enqueuePersistedEpisodeThumbnailsForTraceMoe(animeId)
+        } finally {
+            channel.close()
+        }
+
+        analysisJob.join()
+        matched
+    }
+
+    private suspend fun awaitEpisodeThumbnailBatch(animeId: Long) {
+        episodeThumbnailBatchCompletions[animeId]?.await()
+    }
+
+    /**
      * Episode artwork is a local video-frame pipeline, independent of AniList
      * posters/backdrops. Generate missing episode thumbnails when Details opens;
      * the extractor commits them to the canonical artwork table and its
@@ -1397,12 +1582,14 @@ class ReiAnixLibraryViewModel(
      */
     fun requestMissingEpisodeThumbnails(animeId: Long) {
         if (animeId <= 0L) return
+        episodeThumbnailBatchCompletions.computeIfAbsent(animeId) { CompletableDeferred() }
         if (!episodeThumbnailBatchesInFlight.add(animeId)) {
             episodeThumbnailBatchRerunRequested.add(animeId)
             return
         }
         val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: run {
             episodeThumbnailBatchesInFlight.remove(animeId)
+            episodeThumbnailBatchCompletions.remove(animeId)?.complete(Unit)
             return
         }
         // Queue all available local episodes in the catalog's season/episode order.
@@ -1424,6 +1611,7 @@ class ReiAnixLibraryViewModel(
         }
         if (pending.isEmpty()) {
             episodeThumbnailBatchesInFlight.remove(animeId)
+            episodeThumbnailBatchCompletions.remove(animeId)?.complete(Unit)
             return
         }
 
@@ -1595,6 +1783,8 @@ class ReiAnixLibraryViewModel(
                         context = mapOf("anime_id" to animeId),
                     )
                     requestMissingEpisodeThumbnails(animeId)
+                } else {
+                    episodeThumbnailBatchCompletions.remove(animeId)?.complete(Unit)
                 }
             }
         }
@@ -1605,60 +1795,19 @@ class ReiAnixLibraryViewModel(
             ?: episode.media.uri?.trim()?.takeIf(String::isNotEmpty)
             ?: episode.media.path?.trim()?.takeIf(String::isNotEmpty)
 
-    /** One open Trace.moe stream per anime, fed by the first available thumbnail. */
+    /** Feed a thumbnail only when the user explicitly started Trace.moe for this anime. */
     private fun enqueueTraceMoeSample(animeId: Long, episodeId: Long, imageFile: File) {
         if (animeId <= 0L || episodeId <= 0L || !imageFile.isFile) return
-        val integration = appDependencies?.aniListIntegrationService ?: return
-        val session = traceMoeSampleSessions.compute(animeId) { _, existing ->
-            if (existing != null && !existing.job.isCompleted && !existing.job.isCancelled) {
-                existing
-            } else {
-                val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
-                lateinit var created: TraceMoeSampleSession
-                val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
-                    try {
-                        integration.identifyFromEpisodeThumbnails(
-                            animeId = animeId,
-                            samples = channel.receiveAsFlow(),
-                        )
-                        // A normal completion means the request stream itself recovered.
-                        traceMoeAutomaticRecoveryAttempts.remove(animeId)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: TraceMoeApiException) {
-                        Log.w(
-                            TAG,
-                            "Trace.moe visual identification deferred kind=" + error.kind +
-                                " status=" + error.httpStatus + " animeId=" + animeId,
-                            error,
-                        )
-                        if (error.kind.retryable) scheduleTraceMoeAutomaticRecovery(animeId)
-                    } catch (error: Exception) {
-                        Log.w(TAG, "Trace.moe visual identification failed for animeId=" + animeId, error)
-                    } finally {
-                        channel.close()
-                        traceMoeSampleSessions.remove(animeId, created)
-                    }
-                }
-                created = TraceMoeSampleSession(
-                    channel = channel,
-                    queuedEpisodeIds = ConcurrentHashMap.newKeySet<Long>(),
-                    job = job,
-                )
-                created
-            }
-        } ?: return
-
+        val session = traceMoeSampleSessions[animeId] ?: return
+        if (!session.job.isActive) return
         val accepted = synchronized(session) {
             session.queuedEpisodeIds.add(episodeId)
         }
         if (!accepted) return
         if (session.channel.trySend(
                 TraceMoeEpisodeSample(episodeId = episodeId, imageFile = imageFile),
-            ).isSuccess
+            ).isFailure
         ) {
-            session.job.start()
-        } else {
             synchronized(session) { session.queuedEpisodeIds.remove(episodeId) }
         }
     }
@@ -1686,39 +1835,13 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    /** Schedule bounded exponential retries after a transient API failure. */
-    private fun scheduleTraceMoeAutomaticRecovery(animeId: Long) {
-        val attempts = traceMoeAutomaticRecoveryAttempts.computeIfAbsent(animeId) { AtomicInteger(0) }
-            .incrementAndGet()
-        if (attempts > MAX_TRACE_MOE_AUTOMATIC_RECOVERIES) return
-        val backoffMultiplier = 1L shl (attempts - 1).coerceAtMost(4)
-        val recoveryDelay = (
-            TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS * backoffMultiplier
-        ).coerceAtMost(TRACE_MOE_AUTOMATIC_RECOVERY_MAX_DELAY_MILLIS)
-        viewModelScope.launch {
-            delay(recoveryDelay)
-            if (traceMoeSampleSessions[animeId] != null) return@launch
-            try {
-                enqueuePersistedEpisodeThumbnailsForTraceMoe(onlyAnimeId = animeId)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(
-                    TAG,
-                    "Could not replay saved Trace.moe thumbnails for animeId=" + animeId,
-                    error,
-                )
-            }
-        }
-    }
-
-    /** Restore unfinished identification from thumbnails already saved before process death. */
-    private suspend fun enqueuePersistedEpisodeThumbnailsForTraceMoe(onlyAnimeId: Long? = null) {
+    /** Queue usable saved thumbnails for the one anime explicitly requested by the user. */
+    private suspend fun enqueuePersistedEpisodeThumbnailsForTraceMoe(animeId: Long) {
         val catalog = nativeCatalogState.value.animes
         val samplesByAnime = withContext(Dispatchers.IO) {
             buildMap<Long, List<TraceMoeEpisodeSample>> {
                 for (anime in catalog) {
-                    if (onlyAnimeId != null && anime.id != onlyAnimeId) continue
+                    if (anime.id != animeId) continue
                     val candidates = anime.contentEpisodes
                         .distinctBy { it.id }
                         .mapNotNull { episode ->
@@ -1809,7 +1932,6 @@ class ReiAnixLibraryViewModel(
         // enter the per-anime stream before thumbnails published during startup.
         viewModelScope.launch {
             refreshNativeCatalog()
-            enqueuePersistedEpisodeThumbnailsForTraceMoe()
             for (publication in traceMoePublicationQueue) {
                 processPublishedEpisodeThumbnail(publication)
             }

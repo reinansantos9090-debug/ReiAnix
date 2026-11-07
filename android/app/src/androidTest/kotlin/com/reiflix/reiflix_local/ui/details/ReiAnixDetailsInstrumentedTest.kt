@@ -87,6 +87,29 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
+    fun traceMoeIdentificationButtonDispatchesTheCurrentAnimeId() {
+        var requestedAnimeId: Long? = null
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    onIdentifyWithTraceMoe = { requestedAnimeId = it },
+                )
+            }
+        }
+
+        val identifyButton = composeRule.onNodeWithTag("details-tracemoe-identify-button")
+        identifyButton.assertIsDisplayed()
+        identifyButton.performClick()
+        assertEquals(700L, requestedAnimeId)
+    }
+
+    @Test
     fun episodeThumbnailMovesFromMissingSourceToDecodedImageForItsOwnEpisode() {
         ReiAnixDiagnosticTimeline.clear()
         val context = InstrumentationRegistry.getInstrumentation().targetContext

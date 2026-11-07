@@ -1,5 +1,7 @@
 package com.reiflix.reiflix_local.data.tracemoe
 
+import com.reiflix.reiflix_local.data.anilist.shouldAllowTraceMoeWithAutoMatchSetting
+import com.reiflix.reiflix_local.data.anilist.shouldHonorTraceMoeSuccessfulCooldown
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
@@ -225,6 +227,35 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(setOf(11L, 12L, 13L, 14L, 15L, 16L), successfulApiEpisodeIds)
     }
 
+
+    @Test
+    fun explicitTraceMoeRequestRunsWhenAutomaticMatchingIsDisabled() {
+        assertTrue(shouldAllowTraceMoeWithAutoMatchSetting(autoMatchEnabled = false, userInitiated = true))
+        assertFalse(shouldAllowTraceMoeWithAutoMatchSetting(autoMatchEnabled = false, userInitiated = false))
+    }
+
+    @Test
+    fun explicitTraceMoeRequestCanBypassSuccessfulIdentificationCooldown() {
+        val previousAttempt = 1_000.0
+        val now = 1_100.0
+
+        assertFalse(
+            shouldHonorTraceMoeSuccessfulCooldown(
+                userInitiated = true,
+                previousAttemptSeconds = previousAttempt,
+                nowSeconds = now,
+                cooldownSeconds = 86_400L,
+            ),
+        )
+        assertTrue(
+            shouldHonorTraceMoeSuccessfulCooldown(
+                userInitiated = false,
+                previousAttemptSeconds = previousAttempt,
+                nowSeconds = now,
+                cooldownSeconds = 86_400L,
+            ),
+        )
+    }
 
     @Test
     fun concurrencyLimitIsRetryableAndDistinctFromQuotaExhaustion() {

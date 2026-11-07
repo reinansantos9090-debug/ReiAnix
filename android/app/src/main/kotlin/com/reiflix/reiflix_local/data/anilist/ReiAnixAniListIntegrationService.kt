@@ -50,6 +50,22 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+internal fun shouldAllowTraceMoeWithAutoMatchSetting(
+    autoMatchEnabled: Boolean,
+    userInitiated: Boolean,
+): Boolean = autoMatchEnabled || userInitiated
+
+internal fun shouldHonorTraceMoeSuccessfulCooldown(
+    userInitiated: Boolean,
+    previousAttemptSeconds: Double?,
+    nowSeconds: Double,
+    cooldownSeconds: Long,
+): Boolean {
+    if (userInitiated) return false
+    val previous = previousAttemptSeconds?.takeIf { it.isFinite() } ?: return false
+    return nowSeconds - previous < cooldownSeconds
+}
+
 private const val MAX_ARTWORK_CANDIDATES = 5
 
 /**
@@ -375,7 +391,8 @@ class ReiAnixAniListIntegrationService(
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
         samples: List<TraceMoeEpisodeSample>,
-    ): Boolean = identifyFromEpisodeThumbnails(animeId, samples.asFlow())
+        userInitiated: Boolean = false,
+    ): Boolean = identifyFromEpisodeThumbnails(animeId, samples.asFlow(), userInitiated)
 
     /**
      * Consume episode thumbnails as soon as they become available. The app may
@@ -386,10 +403,11 @@ class ReiAnixAniListIntegrationService(
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
         samples: Flow<TraceMoeEpisodeSample>,
+        userInitiated: Boolean = false,
     ): Boolean {
         if (animeId <= 0L || !traceMoeIdentificationInFlight.add(animeId)) return false
         return try {
-            identifyFromEpisodeThumbnailsInternal(animeId, samples)
+            identifyFromEpisodeThumbnailsInternal(animeId, samples, userInitiated)
         } finally {
             traceMoeIdentificationInFlight.remove(animeId)
         }
@@ -398,9 +416,13 @@ class ReiAnixAniListIntegrationService(
     private suspend fun identifyFromEpisodeThumbnailsInternal(
         animeId: Long,
         samples: Flow<TraceMoeEpisodeSample>,
+        userInitiated: Boolean,
     ): Boolean {
         if (animeId <= 0L || !isAniListEnabled() ||
-            !settingEnabled("metadata.auto_match", defaultValue = true)
+            !shouldAllowTraceMoeWithAutoMatchSetting(
+                autoMatchEnabled = settingEnabled("metadata.auto_match", defaultValue = true),
+                userInitiated = userInitiated,
+            )
         ) return false
 
         var local = library.getAnime(animeId) ?: return false
@@ -454,8 +476,12 @@ class ReiAnixAniListIntegrationService(
                 successfulApiEpisodeIds = successfulApiEpisodeIds,
             )
         } else if (progress.completed) {
-            if (previousAttempt != null &&
-                nowSeconds - previousAttempt < TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS
+            if (shouldHonorTraceMoeSuccessfulCooldown(
+                    userInitiated = userInitiated,
+                    previousAttemptSeconds = previousAttempt,
+                    nowSeconds = nowSeconds,
+                    cooldownSeconds = TRACE_MOE_ATTEMPT_COOLDOWN_SECONDS,
+                )
             ) return false
 
             progress.matchesByEpisode.clear()
