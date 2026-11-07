@@ -61,11 +61,12 @@ Há duas formas documentadas de alimentar a instância:
 - Indexar uma coleção própria de vídeos autorizados, organizada por ID AniList em \`VIDEO_PATH\`. O servidor processa os vídeos de referência e constrói seu próprio índice.
 - Importar o dump pré-hash publicado pelo projeto Trace.moe. A documentação oficial alerta que carregar os 114.514 arquivos requer aproximadamente 140 GB de RAM; a reindexação no Milvus pode levar cerca de 24 horas e a otimização pode continuar por dias.
 
-Referências upstream:
+Referências de código upstream:
 - https://github.com/soruly/trace.moe
 - https://github.com/soruly/trace.moe-api
 - https://github.com/soruly/trace.moe-id
-- https://trace.moe/database
+
+A configuração operacional pronta para revisão está em `infrastructure/visual-index/README.md`. Ela mantém os bancos fora da internet e inclui um filtro obrigatório para remover registros AniList marcados como adultos antes da carga no Milvus. O servidor precisa ser provisionado em uma máquina controlada pelo mantenedor; esta PR não publica um endpoint.
 
 A disponibilidade do código ou de um dump público não concede automaticamente direitos sobre os vídeos ou imagens indexados. Antes de alimentar ou redistribuir uma base, é necessário verificar as licenças, os termos aplicáveis e a autorização para usar os dados.
 
