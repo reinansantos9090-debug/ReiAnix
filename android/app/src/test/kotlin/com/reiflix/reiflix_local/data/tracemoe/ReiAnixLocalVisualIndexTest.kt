@@ -35,6 +35,18 @@ class ReiAnixLocalVisualIndexTest {
     }
 
     @Test
+    fun localSimilarityUsesTheSameSquaredL2MappingAsMilvus() {
+        val first = List(33) { 0 }
+        val second = first.toMutableList().apply { this[0] = 4 }
+
+        assertEquals(
+            (255.0 - 16.0) / 255.0,
+            ReiAnixMpeg7ColorLayout.similarity(first, second),
+            0.000001,
+        )
+    }
+
+    @Test
     fun doesNotProduceAResultBeforeAReferenceHasBeenConfirmed() = runBlocking {
         val image = createPatternThumbnail(File(temporaryFolder.root, "episode.jpg"))
         val index = ReiAnixLocalVisualIndex(File(temporaryFolder.root, "empty-index.json"))
