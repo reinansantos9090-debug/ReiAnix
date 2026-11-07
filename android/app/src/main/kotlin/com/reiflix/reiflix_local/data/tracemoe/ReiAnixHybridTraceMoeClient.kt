@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
+import android.system.Os
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -189,10 +191,12 @@ class ReiAnixHybridTraceMoeClient(
     }.getOrNull()
 
     private fun writeCache(key: String, matches: List<TraceMoeSearchMatch>) {
-        runCatching {
-            if (!cacheDirectory.exists() && !cacheDirectory.mkdirs()) return
+        val temporary = File(cacheDirectory, ".$key." + java.util.UUID.randomUUID() + ".tmp")
+        try {
+            if (!cacheDirectory.isDirectory && (!cacheDirectory.mkdirs() || !cacheDirectory.isDirectory)) {
+                throw IOException("The visual-search cache directory could not be created.")
+            }
             val target = File(cacheDirectory, "$key.json")
-            val temporary = File(cacheDirectory, ".$key." + java.util.UUID.randomUUID() + ".tmp")
             val array = JSONArray().apply {
                 matches.forEach { match ->
                     put(JSONObject().put("anilistId", match.anilistId).put("similarity", match.similarity))
@@ -203,12 +207,17 @@ class ReiAnixHybridTraceMoeClient(
                 .put("storedAtMillis", System.currentTimeMillis())
                 .put("matches", array)
             temporary.writeText(root.toString(), Charsets.UTF_8)
-            if (target.exists() && !target.delete()) {
-                temporary.delete()
-                return
+            try {
+                // Use the same atomic POSIX rename strategy as the persistent local index.
+                Os.rename(temporary.absolutePath, target.absolutePath)
+            } catch (error: android.system.ErrnoException) {
+                throw IOException("The visual-search cache entry could not be committed.", error)
             }
-            if (!temporary.renameTo(target)) temporary.delete()
+            if (!target.isFile) throw IOException("The visual-search cache entry was not created.")
             trimCache()
+        } catch (error: Exception) {
+            temporary.delete()
+            Log.w(TAG, "Could not persist an exact-thumbnail visual-search cache entry", error)
         }
     }
 
@@ -232,6 +241,7 @@ class ReiAnixHybridTraceMoeClient(
     )
 
     private companion object {
+        const val TAG = "ReiAnixVisualSearch"
         const val CACHE_VERSION = 4
         const val MAX_CACHE_ENTRIES = 200
         const val MAX_CACHE_ENTRY_BYTES = 128L * 1024L
