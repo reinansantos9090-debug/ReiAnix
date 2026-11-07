@@ -23,8 +23,11 @@ O serviço não está implantado automaticamente por esta PR. É necessário ter
 1. Copie `.env.example` para `.env`.
 2. Aponte `REIANIX_INDEX_DOMAIN` para um domínio cujo DNS A/AAAA chegue ao servidor.
 3. Gere senhas exclusivas para `TRACE_API_SALT`, `POSTGRES_PASSWORD` e `MINIO_SECRET_KEY`; não reutilize as credenciais de exemplo.
-4. Crie a pasta indicada por `VIDEO_PATH` se for indexar uma coleção própria autorizada.
-5. Inicie a infraestrutura: `docker compose up -d`.
+4. Valide a configuração com `docker compose config --quiet`.
+5. Crie a pasta indicada por `VIDEO_PATH` se for indexar uma coleção própria autorizada.
+6. Inicie a infraestrutura: `docker compose up -d`.
+5. Crie a pasta indicada por `VIDEO_PATH` se for indexar uma coleção própria autorizada.
+6. Inicie a infraestrutura: `docker compose up -d`.
 
 Caddy solicitará e renovará o certificado TLS automaticamente quando o DNS e as portas 80/443 estiverem corretamente configurados.
 
@@ -35,6 +38,12 @@ A API upstream consegue construir um índice a partir de arquivos de vídeo orga
 Também é possível importar um dump de descritores MPEG-7 Color Layout em formato compatível com as tabelas `files` e `anilist` do servidor. O arquivo de dump não acompanha o ReiAnix. Antes de carregar qualquer vetor no Milvus, importe os metadados, execute o filtro de segurança abaixo e só então solicite a carga dos vetores.
 
 ### Filtragem obrigatória antes de carregar o Milvus
+
+O banco precisa estar inicializado pelo serviço API. Importe apenas um dump de metadados/descritores compatível e que você tenha autorização para usar; por exemplo, se o arquivo estiver disponível no host em `./data/visual-index.sql.zst`:
+
+```bash
+zstd -dc ./data/visual-index.sql.zst | docker compose exec -T postgres psql -U "${POSTGRES_USER:-postgres}" -d postgres -v ON_ERROR_STOP=1
+```
 
 Depois de importar o dump no PostgreSQL, execute:
 
@@ -81,5 +90,5 @@ Ou defina `REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL` no ambiente de build. O app e
 
 ## Referências de implementação
 
-- API upstream e seu contrato de busca: https://github.com/soruly/trace.moe-api
+- API upstream e seu contrato de busca: https://github.com/soruly/trace.moe-api (licença MIT; a infraestrutura não copia o código-fonte para o APK)
 - Descritor Color Layout usado no cliente: https://github.com/soruly/trace.moe-id
