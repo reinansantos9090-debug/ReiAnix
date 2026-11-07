@@ -273,8 +273,8 @@ class ReiAnixTraceMoeClient(
         TraceMoeRequestCoordinator.lastRequestAtMillis = System.currentTimeMillis()
         val status = try {
             requestAccountStatus()
-        } catch (_: CancellationException) {
-            throw CancellationException("Trace.moe account-status request was cancelled.")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         }
@@ -283,9 +283,10 @@ class ReiAnixTraceMoeClient(
     }
 
     private suspend fun waitForGlobalRequestSlot() {
+        val effectiveInterval = maxOf(minimumRequestIntervalMillis, DEFAULT_REQUEST_INTERVAL_MILLIS)
         val waitMillis = (
             TraceMoeRequestCoordinator.lastRequestAtMillis +
-                minimumRequestIntervalMillis -
+                effectiveInterval -
                 System.currentTimeMillis()
             ).coerceAtLeast(0L)
         if (waitMillis > 0L) delay(waitMillis)
