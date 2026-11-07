@@ -1618,11 +1618,12 @@ class ReiAnixLibraryViewModel(
                 lateinit var created: TraceMoeSampleSession
                 val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
                     try {
-                        val identified = integration.identifyFromEpisodeThumbnails(
+                        integration.identifyFromEpisodeThumbnails(
                             animeId = animeId,
                             samples = channel.receiveAsFlow(),
                         )
-                        if (identified) traceMoeAutomaticRecoveryAttempts.remove(animeId)
+                        // A normal completion means the request stream itself recovered.
+                        traceMoeAutomaticRecoveryAttempts.remove(animeId)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: TraceMoeApiException) {
