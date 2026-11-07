@@ -54,12 +54,9 @@ gradle -p android \\
 
 ### Como disponibilizar a base remota
 
-O projeto oficial separa o mecanismo de indexação e pesquisa do serviço web. O repositório principal descreve o uso de Docker Compose, com vídeos organizados em pastas pelo ID AniList; a API oficial documenta Node.js, PostgreSQL, Milvus, FFmpeg e Docker como pré-requisitos. É necessário provisionar e operar essa infraestrutura fora do aplicativo.
+O serviço upstream é usado como motor de consulta vetorial, mas o fluxo do ReiAnix importa descritores MPEG-7 Color Layout pré-calculados e metadados compatíveis com a API. Não envia vídeos do telefone e não extrai quadros dos arquivos locais durante a consulta. O diretório `VIDEO_PATH` permanece vazio, pois existe somente como requisito do processo upstream.
 
-Há duas formas documentadas de alimentar a instância:
-
-- Indexar uma coleção própria de vídeos autorizados, organizada por ID AniList em \`VIDEO_PATH\`. O servidor processa os vídeos de referência e constrói seu próprio índice.
-- Importar o dump pré-hash publicado pelo projeto Trace.moe. A documentação oficial alerta que carregar os 114.514 arquivos requer aproximadamente 140 GB de RAM; a reindexação no Milvus pode levar cerca de 24 horas e a otimização pode continuar por dias.
+A base remota precisa ser obtida e importada pelo mantenedor em uma máquina adequada. A documentação upstream alerta que carregar o catálogo completo pode exigir aproximadamente 140 GB de RAM; a carga dos vetores no Milvus pode levar cerca de 24 horas e a otimização pode continuar por dias. Antes de carregar qualquer vetor, a etapa obrigatória em `infrastructure/visual-index/filter-adult-entries.sql` remove os registros marcados como adultos.
 
 Referências de código upstream:
 - https://github.com/soruly/trace.moe
