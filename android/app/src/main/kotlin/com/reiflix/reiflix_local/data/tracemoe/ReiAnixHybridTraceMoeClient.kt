@@ -35,15 +35,28 @@ class ReiAnixHybridTraceMoeClient(
         val cached = key?.let { withContext(Dispatchers.IO) { readCache(it) } }
         if (cached != null) return cached
 
-        // Reserve public quota only after the content-addressed cache has missed.
-        val shouldSearchPublic = allowPublicSearch()
-
-        // All configured sources start before any result is awaited.
+        // Start every configured source immediately. The /me quota check belongs
+        // only to the public task; a slow status request must never delay the
+        // independent server or on-device index.
         val outcomes = supervisorScope {
-            val publicCall = if (shouldSearchPublic) {
-                async { runProvider(publicProvider, imageFile) }
-            } else {
-                null
+            val publicCall = async {
+                try {
+                    if (allowPublicSearch()) {
+                        runProvider(publicProvider, imageFile)
+                    } else {
+                        ProviderOutcome(
+                            emptyList(),
+                            TraceMoeRequestException(
+                                TraceMoeFailureCategory.QUOTA_OR_CONCURRENCY,
+                                "The public Trace.moe daily request budget is exhausted.",
+                            ),
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    ProviderOutcome(emptyList(), error)
+                }
             }
             val independentCall = independentProvider?.let { provider ->
                 async { runProvider(provider, imageFile) }
@@ -52,10 +65,7 @@ class ReiAnixHybridTraceMoeClient(
                 async { runProvider(provider, imageFile) }
             }
             SearchOutcomes(
-                public = publicCall?.await() ?: ProviderOutcome(
-                    emptyList(),
-                    IOException("The public Trace.moe daily request budget is exhausted."),
-                ),
+                public = publicCall.await(),
                 independent = independentCall?.await(),
                 local = localCall?.await(),
             )
