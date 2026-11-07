@@ -688,7 +688,21 @@ class ReiAnixAniListIntegrationService(
                         is IOException -> true
                         else -> false
                     }
-                    if (retryableFailure) traceMoeRetryEligibleAnimeIds.add(animeId)
+                    if (retryableFailure) {
+                        traceMoeRetryEligibleAnimeIds.add(animeId)
+                    } else if (request.error is TraceMoeHttpException) {
+                        // A permanent HTTP rejection will not become valid by sending
+                        // the exact same frame again after an app restart. Persist this
+                        // episode as terminal-empty while leaving the other episode
+                        // samples eligible for the normal three-frame decision.
+                        matchesByEpisode[sample.episodeId] = emptyList()
+                        writeTraceMoeProgress(
+                            animeId,
+                            matchesByEpisode,
+                            completed = false,
+                            correction = correction,
+                        )
+                    }
                     Log.w(
                         TAG,
                         "Trace.moe episode-frame search failed animeId=" + animeId +
@@ -701,9 +715,10 @@ class ReiAnixAniListIntegrationService(
                         // Retry-After instead of sending the remaining frames immediately.
                         break
                     }
-                    failedSamplesThisRun++
-                    // Release the session now; the ViewModel will replay saved,
-                    // still-unprocessed thumbnails after its bounded backoff.
+                    if (retryableFailure) failedSamplesThisRun++
+                    // Release the session now; the ViewModel will replay only pending
+                    // images after a transient failure. Permanent HTTP failures are
+                    // persisted above and therefore do not repeat after process death.
                     break
                 }
                 TraceMoeSampleRequestResult.BudgetExhausted -> {
