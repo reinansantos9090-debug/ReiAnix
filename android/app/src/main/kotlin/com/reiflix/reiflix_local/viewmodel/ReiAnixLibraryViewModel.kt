@@ -1695,8 +1695,17 @@ class ReiAnixLibraryViewModel(
         if (attempts > MAX_TRACE_MOE_AUTOMATIC_RECOVERIES) return
         viewModelScope.launch {
             delay(TRACE_MOE_AUTOMATIC_RECOVERY_DELAY_MILLIS * attempts)
-            if (traceMoeSampleSessions[animeId] == null) {
+            if (traceMoeSampleSessions[animeId] != null) return@launch
+            try {
                 enqueuePersistedEpisodeThumbnailsForTraceMoe(onlyAnimeId = animeId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(
+                    TAG,
+                    "Could not replay saved Trace.moe thumbnails for animeId=" + animeId,
+                    error,
+                )
             }
         }
     }
