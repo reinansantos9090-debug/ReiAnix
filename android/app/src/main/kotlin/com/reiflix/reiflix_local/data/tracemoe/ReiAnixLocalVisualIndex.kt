@@ -226,7 +226,7 @@ class ReiAnixLocalVisualIndex(
 }
 
 /**
- * MPEG-7 Color Layout descriptor extraction and weighted distance.
+ * MPEG-7 Color Layout descriptor extraction and squared-L2 distance.
  *
  * The 8x8 RGB block averages are converted to Y/Cb/Cr, transformed with an
  * 8x8 DCT, zig-zag scanned, and quantized into the standard 33 coefficients:
