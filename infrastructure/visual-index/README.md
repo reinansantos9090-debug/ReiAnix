@@ -22,7 +22,7 @@ O serviço não está implantado automaticamente por esta PR. É necessário ter
 
 1. Copie `.env.example` para `.env`.
 2. Aponte `REIANIX_INDEX_DOMAIN` para um domínio cujo DNS A/AAAA chegue ao servidor.
-3. Gere senhas exclusivas para `TRACE_API_SALT`, `POSTGRES_PASSWORD` e `MINIO_SECRET_KEY`; não reutilize as credenciais de exemplo.
+3. Gere senhas exclusivas para `TRACE_API_SALT`, `POSTGRES_PASSWORD` e `MINIO_SECRET_KEY`; não reutilize as credenciais de exemplo. O compose passa o mesmo usuário/chave ao MinIO e ao Milvus, pois os dois lados precisam coincidir para que os dados vetoriais persistam.
 4. Valide a configuração com `docker compose config --quiet`.
 5. Crie a pasta indicada por `VIDEO_PATH` e mantenha-a vazia nesta configuração baseada em descritores pré-calculados. O ReiAnix não envia vídeos para esse servidor.
 6. Inicie primeiro os bancos internos: `docker compose up -d postgres etcd minio milvus`.
