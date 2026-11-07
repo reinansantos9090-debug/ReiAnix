@@ -44,7 +44,7 @@ A configuração do ReiAnix usa um catálogo de descritores MPEG-7 Color Layout 
 1. Com o esquema inicializado e os serviços internos em execução, importe o dump de dados compatível. Por exemplo, se o mantenedor tiver um dump compatível em `./data/visual-index-data.sql.zst`:
 
 ```bash
-zstd -dc ./data/visual-index.sql.zst | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
+zstd -dc ./data/visual-index-data.sql.zst | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
 ```
 
 2. Preencha a tabela AniList para os IDs referenciados pelos registros importados. O script consulta metadados em lotes de até 50 IDs, incluindo a propriedade `isAdult`:
