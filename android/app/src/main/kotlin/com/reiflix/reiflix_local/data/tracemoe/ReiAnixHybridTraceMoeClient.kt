@@ -29,15 +29,18 @@ class ReiAnixHybridTraceMoeClient(
 ) {
     suspend fun search(
         imageFile: File,
-        allowPublicSearch: Boolean = true,
+        allowPublicSearch: suspend () -> Boolean = { true },
     ): List<TraceMoeSearchMatch> {
         val key = withContext(Dispatchers.IO) { cacheKey(imageFile) }
         val cached = key?.let { withContext(Dispatchers.IO) { readCache(it) } }
         if (cached != null) return cached
 
+        // Reserve public quota only after the content-addressed cache has missed.
+        val shouldSearchPublic = allowPublicSearch()
+
         // All configured sources start before any result is awaited.
         val outcomes = supervisorScope {
-            val publicCall = if (allowPublicSearch) {
+            val publicCall = if (shouldSearchPublic) {
                 async { runProvider(publicProvider, imageFile) }
             } else {
                 null
