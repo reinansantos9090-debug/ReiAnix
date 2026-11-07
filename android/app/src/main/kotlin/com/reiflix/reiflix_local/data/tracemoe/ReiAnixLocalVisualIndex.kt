@@ -24,6 +24,11 @@ class ReiAnixLocalVisualIndex(
 ) : ReiAnixTraceMoeSearchProvider {
     private val lock = Any()
 
+    /** Changes whenever the persisted reference set is rewritten, invalidating stale negative cache entries. */
+    internal fun cacheGeneration(): String =
+        if (indexFile.isFile) indexFile.lastModified().toString() + "-" + indexFile.length().toString()
+        else "empty"
+
     init {
         require(maximumEntries in 1..MAXIMUM_ALLOWED_ENTRIES)
         require(minimumSimilarity in 0.0..1.0)
