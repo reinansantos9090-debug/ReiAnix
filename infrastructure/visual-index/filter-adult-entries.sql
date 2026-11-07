@@ -1,5 +1,5 @@
 -- Run immediately after importing a metadata dump and BEFORE setting files.loaded=NULL.
--- The visual index must not contain AniList records marked isAdult=true.
+-- Fail closed: only records explicitly marked isAdult=false are eligible for the general-audience index.
 BEGIN;
 
 CREATE TEMP TABLE reianix_excluded_anilist_ids ON COMMIT DROP AS
@@ -27,6 +27,10 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Adult-tagged records remain in the ReiAnix visual index.';
     END IF;
-END $$;
+END $;
+
+-- Keep the API's materialized AniList views consistent with the filtered base table.
+REFRESH MATERIALIZED VIEW anilist_view;
+REFRESH MATERIALIZED VIEW anilist_title;
 
 COMMIT;
