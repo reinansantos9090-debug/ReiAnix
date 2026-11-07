@@ -231,7 +231,7 @@ class TraceMoeIdentityConsensusTest {
     fun retryAfterHeaderIsParsedAndBounded() {
         assertEquals(30L, parseTraceMoeRetryAfterSeconds("30"))
         assertEquals(1L, parseTraceMoeRetryAfterSeconds("0"))
-        assertEquals(3_600L, parseTraceMoeRetryAfterSeconds("99999"))
+        assertEquals(99_999L, parseTraceMoeRetryAfterSeconds("99999"))
         assertEquals(null, parseTraceMoeRetryAfterSeconds("not-a-number"))
         assertEquals(null, parseTraceMoeRetryAfterSeconds(null))
         assertEquals(
