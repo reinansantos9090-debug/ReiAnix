@@ -1,62 +1,85 @@
-# Índice visual independente do ReiAnix
+# Base visual híbrida do ReiAnix
 
-## Estado e arquitetura
+## Arquitetura implementada no aplicativo
 
-O aplicativo mantém a API pública do Trace.moe como primeira fonte de identificação. Quando ela retorna uma lista vazia, somente candidatos abaixo do patamar de suporte visual de 0,86 ou falha por transporte/HTTP, o cliente consulta opcionalmente uma instância HTTPS própria compatível com a API do Trace.moe.
+Cada thumbnail JPEG já gerada pelo ReiAnix é consultada em paralelo por:
 
-A instância própria não é criada nem hospedada por esta aplicação. Ela precisa ser provisionada pelo mantenedor em uma infraestrutura remota. O endereço é injetado no APK pelo Gradle:
+1. **Trace.moe público:** permanece ativo como fonte independente de identificação.
+2. **Índice remoto próprio:** uma instalação HTTPS separada, compatível com a API de pesquisa do Trace.moe. Ela é consultada ao mesmo tempo que a API pública; nunca é um fallback sequencial.
+3. **Índice visual local:** uma base persistente no aparelho, consultada em paralelo com as fontes remotas.
 
-- Propriedade Gradle: `reianixSelfHostedTraceMoeBaseUrl`
-- Variável de ambiente equivalente: `REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL`
-- Valor: origem/base path HTTPS da instalação, sem `/search`, query ou fragmento.
+Os resultados válidos são agrupados por ID AniList, preservando a melhor similaridade por anime. Em seguida, o ReiAnix aplica a política progressiva de consenso que já existia. Nenhum resultado sozinho altera a proteção das associações manuais nem substitui a fonte de verdade SQLite.
 
-Exemplo de build:
+### Índice local do aparelho
 
-```bash
-gradle -p android \
-  -PreianixSelfHostedTraceMoeBaseUrl=https://visual-index.example.net \
+O índice local fica em:
+
+\`filesDir/data/visual-index/references.json\`
+
+Ele armazena somente o ID AniList já confirmado, um hash perceptual compacto (DCT de 63 bits) da thumbnail e a data de inclusão. Ele não armazena os vídeos e não extrai novos quadros.
+
+Uma referência só é adicionada **depois** que o ReiAnix confirma e grava a associação usando o consenso visual existente. O índice mantém até 5.000 referências recentes; a busca aceita correspondências com similaridade perceptual de pelo menos 0,94. A política é conservadora: uma imagem sem detalhe suficiente é rejeitada, em vez de gerar um palpite.
+
+Este índice local aprende com as correspondências que já foram confirmadas naquele aparelho. Ele acelera reconhecimentos repetidos ou imagens visualmente muito próximas, mas não contém, na instalação inicial, um catálogo universal de todas as cenas de anime. O índice remoto é necessário para a pesquisa ampla de cenas ainda desconhecidas pelo aparelho.
+
+### Execução paralela e falhas
+
+- Trace.moe público, índice remoto próprio e índice local começam a consulta em paralelo assim que a thumbnail utilizável fica disponível.
+- Os dois serviços remotos recebem a mesma thumbnail JPEG já produzida pelo ReiAnix. O arquivo de vídeo não é enviado.
+- Uma fonte que retorna resultado positivo pode contribuir mesmo que outra esteja indisponível.
+- Resultados de diferentes fontes são combinados por ID AniList; a pontuação mais alta do mesmo ID é mantida.
+- Uma resposta vazia somente é armazenada como ausência de correspondência quando todas as fontes configuradas concluem a consulta. Uma falha parcial sem resultado positivo permanece pendente para nova tentativa.
+- Cancelamento de coroutine continua sendo propagado; não é convertido em resultado vazio.
+- O cache de respostas por SHA-256 é separado do índice perceptual local. Ele possui limite de 200 entradas e validade de sete dias para resultados positivos e seis horas para ausência de correspondência confirmada. Consultas incompletas não são gravadas no cache.
+
+## Configuração do índice remoto próprio
+
+O endereço é injetado no APK por:
+
+- Propriedade Gradle: \`reianixSelfHostedTraceMoeBaseUrl\`
+- Variável de ambiente equivalente: \`REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL\`
+- Valor: origem/base path HTTPS da instalação, sem \`/search\`, query ou fragmento.
+
+Exemplo:
+
+\`\`\`bash
+gradle -p android \\
+  -PreianixSelfHostedTraceMoeBaseUrl=https://visual-index.example.net \\
   :app:assembleRelease
-```
+\`\`\`
 
-Sem essa configuração, o aplicativo continua usando o Trace.moe público e o cache local; não existe uma instância independente ativa no APK.
+**O endereço de exemplo não é um servidor real.** O valor padrão continua vazio porque esta alteração não tem acesso a uma conta de hospedagem, servidor remoto ou credenciais de implantação. Sem uma URL real apontando para uma instância funcional, o APK consulta Trace.moe público e o índice local aprendido no aparelho; a fonte remota independente não fica ativa.
 
-## Base e mecanismo
+### Como disponibilizar a base remota
 
-O projeto oficial do Trace.moe documenta um sistema de pesquisa por recuperação de imagem baseada em conteúdo (CBIR), com vetores/características visuais e um índice Milvus. A documentação não descreve isso como um modelo que entende personagens ou como um classificador treinável.
+O projeto oficial separa o mecanismo de indexação e pesquisa do serviço web. O repositório principal descreve o uso de Docker Compose, com vídeos organizados em pastas pelo ID AniList; a API oficial documenta Node.js, PostgreSQL, Milvus, FFmpeg e Docker como pré-requisitos. É necessário provisionar e operar essa infraestrutura fora do aplicativo.
 
-Referências oficiais:
+Há duas formas documentadas de alimentar a instância:
+
+- Indexar uma coleção própria de vídeos autorizados, organizada por ID AniList em \`VIDEO_PATH\`. O servidor processa os vídeos de referência e constrói seu próprio índice.
+- Importar o dump pré-hash publicado pelo projeto Trace.moe. A documentação oficial alerta que carregar os 114.514 arquivos requer aproximadamente 140 GB de RAM; a reindexação no Milvus pode levar cerca de 24 horas e a otimização pode continuar por dias.
+
+Referências upstream:
 - https://github.com/soruly/trace.moe
 - https://github.com/soruly/trace.moe-api
 - https://github.com/soruly/trace.moe-id
 - https://trace.moe/database
 
-O repositório principal documenta a execução com Docker Compose, o monitoramento de uma pasta de vídeos organizados por AniList ID e a opção de importar o dump pré-processado publicado pelo projeto.
+A disponibilidade do código ou de um dump público não concede automaticamente direitos sobre os vídeos ou imagens indexados. Antes de alimentar ou redistribuir uma base, é necessário verificar as licenças, os termos aplicáveis e a autorização para usar os dados.
 
-**Requisito de infraestrutura:** a documentação oficial consultada informa que carregar o dump completo (114.514 arquivos na documentação) requer aproximadamente 140 GB de RAM. O carregamento dos hashes no Milvus pode levar cerca de 24 horas e a otimização posterior pode durar alguns dias. Portanto, a base completa não deve ser empacotada nem carregada no celular; ela precisa permanecer em servidor remoto.
+## Contrato HTTP remoto
 
-A disponibilização do dump e do código upstream não elimina a obrigação de analisar as licenças aplicáveis, termos de serviço e direitos sobre os dados/vídeos que serão indexados. O ReiAnix não redistribui o dump nem vídeos protegidos.
+O aplicativo envia apenas a thumbnail JPEG, em multipart/form-data no campo \`image\`, para:
 
-## Contrato HTTP esperado
-
-O app envia somente o JPEG da thumbnail local, usando multipart/form-data no campo `image`, para:
-
-```
+\`\`\`
 POST {BASE_URL}/search?anilistInfo&cutBorders=1
-```
+\`\`\`
 
-A resposta deve ser compatível com o formato público do Trace.moe, contendo um array `result` com `anilist` (ID numérico ou objeto com `id`) e `similarity` entre 0 e 1. O servidor próprio deve estar exposto via HTTPS.
+A resposta deve ser compatível com o formato da API pública, contendo um array \`result\` com \`anilist\` (ID numérico ou objeto com \`id\`) e \`similarity\` entre 0 e 1. A instância deve estar acessível por HTTPS.
 
-## Comportamento no aplicativo
+## O que esta alteração não afirma
 
-1. A identificação usa a thumbnail já gerada pelo ReiAnix. O arquivo de vídeo não é enviado.
-2. O Trace.moe público é consultado primeiro, mantendo a latência normal quando ele retorna uma correspondência.
-3. Se a pesquisa pública não encontrar correspondência, retornar somente candidatos abaixo do patamar de suporte de 0,86 ou falhar, a instância independente configurada é consultada.
-4. Resultados válidos são guardados em cache local pelo SHA-256 exato da thumbnail. Resultados positivos expiram após sete dias; respostas válidas sem correspondência após seis horas.
-5. Falhas simultâneas dos dois serviços não são gravadas como uma resposta válida sem correspondência. O episódio permanece elegível para uma nova tentativa.
-6. Os resultados continuam passando pela política de consenso existente do ReiAnix. Esta implementação não altera os limiares, o número máximo de episódios usados, a escolha da capa, as associações manuais ou o SQLite canônico.
-
-O cache é apenas um cache de respostas para imagens idênticas; ele não é uma cópia do índice remoto, não faz busca aproximada local e não torna o reconhecimento geral disponível offline.
-
-## Limitação desta entrega
-
-Esta alteração entrega o cliente Android, a configuração de endpoint, o fallback, o cache local e a documentação de hospedagem. Ela **não provisiona um servidor, não baixa/importa o dump e não hospeda a base**. Enquanto `REIANIX_SELF_HOSTED_TRACE_MOE_BASE_URL` não apontar para uma instância funcional, a identificação independente não poderá ser testada nem usada no dispositivo. O build padrão permanece compatível com o uso do Trace.moe público.
+- Não existe servidor próprio publicado ou ativo nesta PR.
+- Não existe dump universal incluído no APK ou no repositório do ReiAnix.
+- O índice local do aparelho não substitui a base remota universal; ele aprende apenas com thumbnails de associações confirmadas.
+- Um build aprovado não prova a precisão da busca com uma base remota real. A validação ponta a ponta exige provisionar o servidor, importar/indexar os dados autorizados, configurar a URL no build e testar com thumbnails reais.
