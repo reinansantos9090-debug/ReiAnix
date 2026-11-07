@@ -1,8 +1,4 @@
-({
-    auto_https disable_redirects
-})
-
-{REIANIX_INDEX_DOMAIN} {
+{$REIANIX_INDEX_DOMAIN} {
     encode zstd gzip
 
     @search path /search
