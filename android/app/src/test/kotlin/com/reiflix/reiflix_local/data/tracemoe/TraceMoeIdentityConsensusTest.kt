@@ -255,4 +255,21 @@ class TraceMoeIdentityConsensusTest {
         assertFalse(kind.retryable)
     }
 
+    @Test
+    fun invalidImageMessageIsRecognizedEvenWithSuccessfulHttpEnvelope() {
+        val kind = classifyTraceMoeHttpFailure(200, "Invalid image: unsupported image type")
+
+        assertEquals(TraceMoeFailureKind.BAD_IMAGE, kind)
+        assertFalse(kind.retryable)
+    }
+
+    @Test
+    fun emptyHttp402ResponseRemainsQuotaExhaustion() {
+        val kind = classifyTraceMoeHttpFailure(402, null)
+
+        assertEquals(TraceMoeFailureKind.QUOTA_EXHAUSTED, kind)
+        assertFalse(kind.retryable)
+    }
+
+
 }
