@@ -960,7 +960,10 @@ class ReiAnixAniListIntegrationService(
                         "successful_samples_preserved" to results.size,
                     ),
                 )
-                TraceMoeProgressState(results, completed = false)
+                // Keep a legacy completed no-match window completed after removing
+                // unverifiable empty samples. Its persisted attempt timestamp still
+                // gates retries until the original 24-hour cooldown expires.
+                TraceMoeProgressState(results, completed)
             } else {
                 TraceMoeProgressState(results, completed)
             }
