@@ -37,7 +37,7 @@ class ReiAnixLocalVisualIndex(
     override suspend fun search(imageFile: File): List<TraceMoeSearchMatch> =
         withContext(Dispatchers.IO) {
             val imageBytes = readUsableJpeg(imageFile)
-            val queryHash = ReiAnixPerceptualHash.calculate(imageBytes)
+            val queryHash = ReiAnixPerceptualHash.calculate(imageBytes) ?: return@withContext emptyList()
             val references = synchronized(lock) { readEntries() }
 
             references.asSequence()
@@ -62,7 +62,7 @@ class ReiAnixLocalVisualIndex(
         withContext(Dispatchers.IO) {
             require(anilistId > 0) { "A confirmed AniList ID is required for a visual reference." }
             val imageBytes = readUsableJpeg(imageFile)
-            val hash = ReiAnixPerceptualHash.calculate(imageBytes)
+            val hash = ReiAnixPerceptualHash.calculate(imageBytes) ?: return@withContext
             synchronized(lock) {
                 val entries = readEntries().toMutableList()
                 val now = System.currentTimeMillis()
@@ -152,11 +152,10 @@ class ReiAnixLocalVisualIndex(
         val temporary = File(indexFile.parentFile, "." + indexFile.name + ".tmp")
         try {
             temporary.writeText(root.toString(), Charsets.UTF_8)
-            if (indexFile.exists() && !indexFile.delete()) {
-                throw IOException("The previous local visual reference index could not be replaced.")
-            }
-            if (!temporary.renameTo(indexFile)) {
-                throw IOException("The new local visual reference index could not be committed.")
+            try {
+                android.system.Os.rename(temporary.absolutePath, indexFile.absolutePath)
+            } catch (error: android.system.ErrnoException) {
+                throw IOException("The new local visual reference index could not be committed.", error)
             }
         } finally {
             if (temporary.exists()) temporary.delete()
@@ -191,7 +190,7 @@ internal object ReiAnixPerceptualHash {
     private const val HASH_BITS = 63
     private const val MAX_IMAGE_PIXELS = 25_000_000L
 
-    fun calculate(jpegBytes: ByteArray): Long {
+    fun calculate(jpegBytes: ByteArray): Long? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
@@ -230,9 +229,7 @@ internal object ReiAnixPerceptualHash {
                 val difference = value - mean
                 difference * difference
             } / grayscale.size
-            if (variance < MINIMUM_GRAYSCALE_VARIANCE) {
-                throw IOException("The thumbnail has insufficient visual detail for a reliable local match.")
-            }
+            if (variance < MINIMUM_GRAYSCALE_VARIANCE) return null
 
             val cosine = Array(LOW_FREQUENCY_SIZE) { frequency ->
                 DoubleArray(INPUT_SIZE) { coordinate ->
