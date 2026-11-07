@@ -268,8 +268,8 @@ class ReiAnixTraceMoeClient(
         val (isFresh, cached) = TraceMoeRequestCoordinator.freshAccountStatus(now)
         if (!forceRefresh && isFresh) return cached
 
-        waitForGlobalRequestSlot()
-        TraceMoeRequestCoordinator.lastRequestAtMillis = System.currentTimeMillis()
+        // /me is account metadata, not a scene-search request; it shares the
+        // global mutex but does not consume or reset the /search interval.
         val status = try {
             requestAccountStatus()
         } catch (cancelled: CancellationException) {
