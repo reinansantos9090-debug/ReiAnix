@@ -43,7 +43,7 @@ class ReiAnixLocalVisualIndexTest {
     }
 
     @Test
-    fun rejectsUniformImagesInsteadOfInventingAVisualMatch() {
+    fun treatsUniformImagesAsUnsupportedInsteadOfInventingAVisualMatch() = runBlocking {
         val uniform = File(temporaryFolder.root, "uniform.jpg")
         val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
         try {
@@ -57,9 +57,7 @@ class ReiAnixLocalVisualIndexTest {
         }
 
         val index = ReiAnixLocalVisualIndex(File(temporaryFolder.root, "index.json"))
-        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
-            runBlocking { index.search(uniform) }
-        }
+        assertTrue(index.search(uniform).isEmpty())
     }
 
     private fun createPatternThumbnail(file: File): File {
