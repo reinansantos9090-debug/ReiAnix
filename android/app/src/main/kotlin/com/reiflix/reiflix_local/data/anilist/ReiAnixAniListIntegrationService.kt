@@ -818,11 +818,20 @@ class ReiAnixAniListIntegrationService(
                 throw cancelled
             } catch (error: Exception) {
                 val retryable = when (error) {
-                    is TraceMoeHttpException -> isRetryableTraceMoeHttpStatus(error.statusCode)
+                    is TraceMoeHttpException -> isRetryableTraceMoeHttpStatus(
+                        error.statusCode,
+                        error.message,
+                    )
                     is IOException -> true
                     else -> false
                 }
-                if (error is TraceMoeHttpException && error.statusCode == 429) {
+                if (
+                    error is TraceMoeHttpException &&
+                    (
+                        error.statusCode == 429 ||
+                            (error.statusCode == 402 && error.retryAfterSeconds != null)
+                    )
+                ) {
                     val retryAfterSeconds = error.retryAfterSeconds ?: TRACE_MOE_RATE_LIMIT_DEFAULT_RETRY_AFTER_SECONDS
                     val requestedDeadline = System.currentTimeMillis() + retryAfterSeconds * 1_000L
                     val persistedDeadline = try {
@@ -863,6 +872,12 @@ class ReiAnixAniListIntegrationService(
                         " episodeId=" + sample.episodeId + " attempt=" + (attemptIndex + 1),
                     error,
                 )
+                // HTTP 402 concurrency/quota responses already carry a durable
+                // deferral deadline. Retrying immediately would contend for the same
+                // single guest slot or waste another request against an empty quota.
+                if (error is TraceMoeHttpException && error.statusCode == 402) {
+                    return TraceMoeSampleRequestResult.Failed(error)
+                }
                 if (!retryable || attemptIndex + 1 >= TRACE_MOE_HTTP_MAX_ATTEMPTS) {
                     return TraceMoeSampleRequestResult.Failed(error)
                 }
