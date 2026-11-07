@@ -45,9 +45,12 @@ class ReiAnixHybridTraceMoeClient(
 
         val fallback = independentProvider
         if (fallback == null) {
-            if (publicMatches != null) {
-                key?.let { cacheKey -> withContext(Dispatchers.IO) { writeCache(cacheKey, publicMatches) } }
-                return publicMatches
+            val validPublicMatches = publicMatches
+            if (validPublicMatches != null) {
+                key?.let { cacheKey ->
+                    withContext(Dispatchers.IO) { writeCache(cacheKey, validPublicMatches) }
+                }
+                return validPublicMatches
             }
             throw IOException(
                 "The public Trace.moe search failed and no independent visual index is configured.",

@@ -37,8 +37,9 @@ class ReiAnixTraceMoeClient(
         require(minimumRequestIntervalMillis >= 0L)
         val endpointUri = runCatching { URI(searchEndpoint) }.getOrNull()
         require(
-            endpointUri?.scheme.equals("https", ignoreCase = true) &&
-                !endpointUri?.host.isNullOrBlank()
+            endpointUri != null &&
+                endpointUri.scheme.equals("https", ignoreCase = true) &&
+                !endpointUri.host.isNullOrBlank()
         ) { "The visual-search endpoint must be an absolute HTTPS URL." }
     }
 
