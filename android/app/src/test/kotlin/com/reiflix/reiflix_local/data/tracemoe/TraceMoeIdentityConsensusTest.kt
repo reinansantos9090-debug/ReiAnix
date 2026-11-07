@@ -237,7 +237,7 @@ class TraceMoeIdentityConsensusTest {
     }
 
     @Test
-    fun 402ConcurrencyAndQuotaFailuresUseDifferentSafeRetryDeadlines() {
+    fun http402ConcurrencyAndQuotaFailuresUseDifferentSafeRetryDeadlines() {
         assertEquals(
             ReiAnixTraceMoeClient.DEFAULT_CONCURRENCY_RETRY_AFTER_SECONDS,
             traceMoeRetryAfterSecondsForHttpFailure(402, "Concurrency limit exceeded"),
