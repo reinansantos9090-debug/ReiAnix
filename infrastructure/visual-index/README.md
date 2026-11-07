@@ -60,7 +60,7 @@ docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 
 docker compose exec -T api node script/bulk-load-milvus.ts 500
 ```
 
-Acompanhe a saída do processo. O carregador upstream marca `loaded=true` somente após inserir o lote; registros que falham podem ficar com `loaded=false`. **Não execute o mesmo carregamento repetidamente às cegas**: o seletor upstream busca `loaded IS NULL`, não seleciona automaticamente os registros `false`, e uma falha durante a inserção pode exigir reconciliação dos vetores que já chegaram ao Milvus. Preserve os logs, mantenha o Caddy desligado e reconcilie o lote/coleção com base no backup consistente antes de reiniciar uma carga completa.
+Acompanhe a saída do processo. O carregador upstream marca `loaded=true` somente após inserir o lote; registros que falham podem ficar com `loaded=false`. **Não execute o mesmo carregamento repetidamente às cegas**: o seletor upstream busca `loaded IS NULL`, não seleciona automaticamente os registros `false`, e uma falha durante a inserção pode exigir reconciliação dos vetores que já chegaram ao Milvus. Preserve os logs, mantenha o Caddy desligado e reconcilie o lote/coleção com base no backup consistente antes de reiniciar uma carga completa. O script de publicação agora interrompe explicitamente a ativação HTTPS quando encontra linhas `loaded=false` ou `loaded IS NULL`.
 
 Depois execute o verificador: ele confirma que o catálogo não está vazio, que não restam registros sem classificação geral, que não existem arquivos órfãos e que todos os vetores elegíveis foram carregados. O Caddy só é iniciado quando todas essas verificações passam:
 
