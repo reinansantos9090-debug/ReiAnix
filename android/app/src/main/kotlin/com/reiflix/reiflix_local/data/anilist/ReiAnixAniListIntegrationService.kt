@@ -841,7 +841,7 @@ class ReiAnixAniListIntegrationService(
                     } catch (persistenceError: Exception) {
                         Log.w(
                             TAG,
-                            "Could not persist Trace.moe HTTP 429 retry deadline; keeping process-local protection",
+                            "Could not persist Trace.moe retry deadline; keeping process-local protection",
                             persistenceError,
                         )
                         requestedDeadline
