@@ -18,9 +18,9 @@ O índice local fica em:
 
 Ele armazena somente o ID AniList já confirmado, o descritor visual MPEG-7 Color Layout de 33 coeficientes da thumbnail e a data de inclusão. O descritor divide a imagem em uma grade 8×8, converte as médias de cor para Y/Cb/Cr, aplica DCT, varredura zig-zag e quantização. Ele não armazena os vídeos e não extrai novos quadros.
 
-Uma referência só é adicionada **depois** que o ReiAnix confirma e grava a associação usando o consenso visual existente. O índice mantém até 5.000 referências recentes; a busca usa distância euclidiana L2 sem pesos sobre os 33 coeficientes e o mesmo mapeamento da API (`(255 - distância) / 255`), aceitando correspondências com pontuação local de pelo menos 0,90. Imagens sem detalhe suficiente são ignoradas, em vez de gerar palpites.
+Uma referência só é adicionada **depois** que o ReiAnix confirma e grava a associação usando o consenso visual existente. O índice mantém até 5.000 referências recentes; a busca usa a soma dos quadrados das diferenças (L2 ao quadrado, sem pesos) sobre os 33 coeficientes e o mesmo mapeamento da API (`(255 - distância²) / 255`), aceitando correspondências com pontuação local de pelo menos 0,90. Imagens sem detalhe suficiente são ignoradas, em vez de gerar palpites.
 
-A extração do descritor segue a implementação pública trace.moe-id (MIT). A distância e a normalização local seguem a métrica L2 e a fórmula usadas pela API/Milvus upstream. Pequenas diferenças ainda podem ocorrer por causa do redimensionamento/corte da imagem no Android versus Sharp no servidor.
+A extração do descritor segue a implementação pública trace.moe-id (MIT). A distância e a normalização local seguem a métrica L2 ao quadrado e a fórmula usadas pela API/Milvus upstream. Pequenas diferenças ainda podem ocorrer por causa do redimensionamento/corte da imagem no Android versus Sharp no servidor.
 
 Este índice local aprende com as correspondências que já foram confirmadas naquele aparelho. Ele acelera reconhecimentos repetidos ou imagens visualmente muito próximas, mas não contém, na instalação inicial, um catálogo universal de todas as cenas de anime. O índice remoto é necessário para a pesquisa ampla de cenas ainda desconhecidas pelo aparelho.
 
