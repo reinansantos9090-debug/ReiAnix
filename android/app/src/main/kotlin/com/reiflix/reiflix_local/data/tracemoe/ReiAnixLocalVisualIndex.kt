@@ -201,7 +201,17 @@ class ReiAnixLocalVisualIndex(
                 // POSIX rename replaces the destination atomically on the same filesystem.
                 android.system.Os.rename(temporary.absolutePath, indexFile.absolutePath)
             } catch (error: android.system.ErrnoException) {
-                throw IOException("The new local visual reference index could not be committed.", error)
+                if (!temporary.renameTo(indexFile)) {
+                    throw IOException("The new local visual reference index could not be committed.", error)
+                }
+            }
+            // Robolectric and some filesystem providers may report a successful
+            // native call without moving the file; fall back only when the temp remains.
+            if (temporary.exists() && !temporary.renameTo(indexFile)) {
+                throw IOException("The new local visual reference index could not be committed.")
+            }
+            if (!indexFile.isFile) {
+                throw IOException("The new local visual reference index was not created.")
             }
         } finally {
             if (temporary.exists()) temporary.delete()
