@@ -199,7 +199,7 @@ class TraceMoeIdentityConsensusTest {
             15L to listOf(TraceMoeSearchMatch(anilistId = 42, similarity = 0.87)),
         )
 
-        val window = firstTraceMoeEpisodeMatches(results)
+        val window = latestTraceMoeEpisodeMatches(results)
 
         assertEquals(3, MAX_TRACE_MOE_EPISODE_SAMPLES)
         assertEquals(listOf(13L, 14L, 15L), window.keys.toList())
