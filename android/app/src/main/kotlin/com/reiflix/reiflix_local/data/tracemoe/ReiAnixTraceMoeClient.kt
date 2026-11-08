@@ -174,6 +174,7 @@ class ReiAnixTraceMoeClient(
     suspend fun search(
         imageFile: File,
         reserveRequest: suspend () -> Boolean = { true },
+        onQuotaWait: suspend () -> Unit = {},
     ): List<TraceMoeSearchMatch> {
         val imageBytes = withContext(Dispatchers.IO) {
             if (!imageFile.isFile || imageFile.length() !in 4L..MAX_IMAGE_BYTES) {
@@ -208,12 +209,12 @@ class ReiAnixTraceMoeClient(
                 return@withLock it
             }
 
-            // A daily quota is a pause, not a completed/failed episode sample. Keep this
-            // image pending and poll /me at a low frequency until the rolling 24-hour
-            // quota has room again. /me requests do not consume search quota.
+            // Do not hold the user's identification indefinitely when the daily quota
+            // is exhausted or /me is temporarily unavailable. Report the wait and give
+            // the account endpoint a short, bounded recovery window.
             val account = refreshAccountStatusLocked(forceRefresh = false)
             if (account != null && account.quotaRemaining <= 0) {
-                awaitSearchQuotaLocked()
+                awaitSearchQuotaLocked(onQuotaWait)
             }
 
             var attempt = 0
@@ -241,7 +242,7 @@ class ReiAnixTraceMoeClient(
                 } catch (error: TraceMoeApiException) {
                     if (error.kind == TraceMoeFailureKind.QUOTA_EXHAUSTED) {
                         TraceMoeRequestCoordinator.invalidateAccountStatus()
-                        val refreshed = awaitSearchQuotaLocked()
+                        val refreshed = awaitSearchQuotaLocked(onQuotaWait)
                         if (refreshed.quotaRemaining > 0) {
                             // A 402 can also reflect an eventual-consistency gap between
                             // /search and /me. Retry that mismatch once, with a pause; if it
@@ -274,18 +275,25 @@ class ReiAnixTraceMoeClient(
     }
 
     /**
-     * Waits on the authoritative /me quota instead of treating HTTP 402 as a completed
-     * thumbnail. A null /me response is retried at its short error-cache cadence; once
-     * quota is exhausted, the next search resumes when the rolling window frees a slot.
-     * Caller holds the process-wide request mutex, so all app searches stay serialized.
+     * Wait briefly for authoritative /me quota recovery. A full rolling quota can
+     * remain exhausted for hours, so a manual identification must not sit in a loop.
+     * The caller holds the global request mutex; cancellation always releases it.
      */
-    private suspend fun awaitSearchQuotaLocked(): TraceMoeAccountStatus {
+    private suspend fun awaitSearchQuotaLocked(
+        onQuotaWait: suspend () -> Unit,
+    ): TraceMoeAccountStatus {
+        onQuotaWait()
+        val deadline = System.currentTimeMillis() + MAX_QUOTA_WAIT_MILLIS
         var status = refreshAccountStatusLocked(forceRefresh = true)
         while (status == null || status.quotaRemaining <= 0) {
-            delay(
-                if (status == null) ACCOUNT_ERROR_CACHE_TTL_MILLIS
-                else QUOTA_POLL_INTERVAL_MILLIS,
-            )
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining <= 0L) {
+                throw TraceMoeApiException(
+                    TraceMoeFailureKind.QUOTA_EXHAUSTED,
+                    "Trace.moe quota did not become available within the bounded wait.",
+                )
+            }
+            delay(minOf(QUOTA_POLL_INTERVAL_MILLIS, remaining))
             status = refreshAccountStatusLocked(forceRefresh = true)
         }
         return status
@@ -558,15 +566,16 @@ class ReiAnixTraceMoeClient(
         // in every Trace.moe response adds work that is not used by this client.
         const val SEARCH_ENDPOINT = "https://api.trace.moe/search?cutBorders=1"
         const val ACCOUNT_ENDPOINT = "https://api.trace.moe/me"
-        const val DEFAULT_TIMEOUT_MILLIS = 15_000
+        const val DEFAULT_TIMEOUT_MILLIS = 10_000
         const val DEFAULT_REQUEST_INTERVAL_MILLIS = 1_200L
         const val MAX_IMAGE_BYTES = 4L * 1024L * 1024L
         const val RESULT_CACHE_TTL_MILLIS = 60L * 60L * 1_000L
         const val MAX_CACHE_ENTRIES = 200
         const val ACCOUNT_CACHE_TTL_MILLIS = 5L * 60L * 1_000L
         const val ACCOUNT_ERROR_CACHE_TTL_MILLIS = 30L * 1_000L
-        const val QUOTA_POLL_INTERVAL_MILLIS = 5L * 60L * 1_000L
-        const val QUOTA_STATUS_MISMATCH_RETRY_MILLIS = 15L * 1_000L
+        const val QUOTA_POLL_INTERVAL_MILLIS = 2_000L
+        const val MAX_QUOTA_WAIT_MILLIS = 8_000L
+        const val QUOTA_STATUS_MISMATCH_RETRY_MILLIS = 1_500L
         const val MAX_QUOTA_STATUS_MISMATCH_RETRIES = 1
         const val MAX_RETRIES = 2
         private const val ACCOUNT_TIMEOUT_MILLIS = 3_000
@@ -586,6 +595,52 @@ data class TraceMoeSearchMatch(
 data class TraceMoeEpisodeSample(
     val episodeId: Long,
     val imageFile: File,
+)
+
+enum class TraceMoeIdentificationProgressPhase {
+    PREPARING_THUMBNAIL,
+    SENDING_TO_API,
+    WAITING_FOR_API,
+    WAITING_FOR_QUOTA,
+    RESPONSE_RECEIVED,
+    SKIPPING_FAILED_EPISODE,
+    VERIFYING_IDENTITY,
+    UPDATING_COVER,
+}
+
+data class TraceMoeIdentificationProgress(
+    val phase: TraceMoeIdentificationProgressPhase,
+    val episodeId: Long? = null,
+    val thumbnailPath: String? = null,
+    val validResponses: Int = 0,
+    val message: String,
+)
+
+internal fun hasRemainingTraceMoeResponseSlots(
+    successfulResponses: Int,
+    maximumResponses: Int = MAX_TRACE_MOE_EPISODE_SAMPLES,
+): Boolean {
+    require(successfulResponses >= 0)
+    require(maximumResponses > 0)
+    return successfulResponses < maximumResponses
+}
+
+/**
+ * Request-specific/transient failures can be replaced by a later episode thumbnail.
+ * Account-wide failures must stop the session rather than flooding the API with more
+ * images that will fail for the same reason.
+ */
+internal fun shouldAdvanceToNextTraceMoeEpisodeAfterFailure(
+    kind: TraceMoeFailureKind,
+): Boolean = kind in setOf(
+    TraceMoeFailureKind.BAD_IMAGE,
+    TraceMoeFailureKind.CONCURRENCY_LIMIT,
+    TraceMoeFailureKind.RATE_LIMITED,
+    TraceMoeFailureKind.NETWORK_UNAVAILABLE,
+    TraceMoeFailureKind.TIMEOUT,
+    TraceMoeFailureKind.SERVER_UNAVAILABLE,
+    TraceMoeFailureKind.INVALID_RESPONSE,
+    TraceMoeFailureKind.HTTP_ERROR,
 )
 
 data class TraceMoeIdentityConsensus(
