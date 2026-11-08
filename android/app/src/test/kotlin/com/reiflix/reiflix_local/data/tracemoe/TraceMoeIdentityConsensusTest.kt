@@ -238,6 +238,23 @@ class TraceMoeIdentityConsensusTest {
     }
 
     @Test
+    fun anUnreplacedFailureDoesNotMarkAnIncompleteSessionCompleted() {
+        assertFalse(shouldCompleteTraceMoeIdentification(0, hadUnreplacedFailure = true))
+        assertFalse(shouldCompleteTraceMoeIdentification(1, hadUnreplacedFailure = true))
+        assertFalse(shouldCompleteTraceMoeIdentification(2, hadUnreplacedFailure = true))
+    }
+
+    @Test
+    fun threeValidResponsesCompleteEvenIfAnEarlierEpisodeFailed() {
+        assertTrue(shouldCompleteTraceMoeIdentification(3, hadUnreplacedFailure = true))
+    }
+
+    @Test
+    fun noMoreThumbnailsWithoutApiFailuresCanCompleteWithFewerThanThreeResponses() {
+        assertTrue(shouldCompleteTraceMoeIdentification(1, hadUnreplacedFailure = false))
+    }
+
+    @Test
     fun failedEpisodeRequestsCanBeReplacedWithoutConsumingAValidResponseSlot() {
         assertTrue(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.BAD_IMAGE))
         assertTrue(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.TIMEOUT))
