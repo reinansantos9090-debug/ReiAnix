@@ -175,9 +175,32 @@ class ReiAnixComposeLibraryHost(
                     }
             }
 
-            // Recover persisted poster/backdrop URLs on ordinary app opens too.
-            // This path deliberately does not run title matching or issue AniList
-            // metadata lookups; it only replays the canonical artwork queue.
+            // Resume durable poster/backdrop work as soon as the canonical database is
+            // ready. Do this independently from remote metadata discovery and library
+            // size changes so a quick app close cannot strand queued image downloads.
+            LaunchedEffect(
+                libraryViewModel,
+                bootstrapState.phase,
+                bootstrapState.persistenceStatus,
+            ) {
+                if (
+                    bootstrapState.phase != ReiAnixBootstrapPhase.READY ||
+                    bootstrapState.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY
+                ) return@LaunchedEffect
+
+                val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                runCatching { dependencies.artworkService.requestPendingArtwork() }
+                    .onFailure { error ->
+                        android.util.Log.w(
+                            TAG,
+                            "Native artwork startup recovery failed. errorType=" +
+                                error::class.java.simpleName,
+                        )
+                    }
+            }
+
+            // Recover missing metadata after the durable local artwork queue has
+            // already been resumed. Keep this bounded metadata pass separate.
             LaunchedEffect(
                 libraryViewModel,
                 bootstrapState.phase,
@@ -204,15 +227,6 @@ class ReiAnixComposeLibraryHost(
                             error::class.java.simpleName,
                     )
                 }
-                runCatching { dependencies.artworkService.requestPendingArtwork() }
-                    .onFailure { error ->
-                        android.util.Log.w(
-                            TAG,
-                            "Native artwork startup backfill failed. errorType=" +
-                                error::class.java.simpleName,
-                        )
-                    }
-
                 try {
                     withContext(Dispatchers.IO) {
                         dependencies.externalCatalogIntegrationService.enrichLibraryGaps()
