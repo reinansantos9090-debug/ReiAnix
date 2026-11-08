@@ -1906,37 +1906,24 @@ class ReiAnixLibraryViewModel(
 
     /** Queue usable saved thumbnails for the one anime explicitly requested by the user. */
     private suspend fun enqueuePersistedEpisodeThumbnailsForTraceMoe(animeId: Long) {
-        val catalog = nativeCatalogState.value.animes
-        val samplesByAnime = withContext(Dispatchers.IO) {
-            buildMap<Long, List<TraceMoeEpisodeSample>> {
-                for (anime in catalog) {
-                    if (anime.id != animeId) continue
-                    val candidates = anime.contentEpisodes
-                        .distinctBy { it.id }
-                        .mapNotNull { episode ->
-                            val path = episode.artwork?.localPath?.trim()?.takeIf(String::isNotEmpty)
-                                ?: return@mapNotNull null
-                            val file = File(path)
-                            if (!file.isFile || file.length() !in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES) {
-                                return@mapNotNull null
-                            }
-                            episode.id to file
-                        }
-                    val usable = buildList {
-                        for ((episodeId, file) in candidates) {
-                            if (VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)) {
-                                add(TraceMoeEpisodeSample(episodeId = episodeId, imageFile = file))
-                            }
-                        }
-                    }
-                    if (usable.isNotEmpty()) put(anime.id, usable)
-                }
+        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
+
+        // Inspect and queue one episode at a time. Building/validating a complete
+        // season-sized list before sending anything delayed episode 1 behind every
+        // later file and made the first API request wait unnecessarily.
+        for (episode in anime.contentEpisodes.distinctBy { it.id }) {
+            val path = episode.artwork?.localPath?.trim()?.takeIf(String::isNotEmpty) ?: continue
+            val imageFile = File(path)
+            if (!imageFile.isFile ||
+                imageFile.length() !in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES
+            ) continue
+
+            val usable = withContext(Dispatchers.IO) {
+                VideoThumbnailExtractor.isUsableThumbnailFile(imageFile.absolutePath)
             }
-        }
-        samplesByAnime.forEach { (animeId, samples) ->
-            samples.forEach { sample ->
-                enqueueTraceMoeSample(animeId, sample.episodeId, sample.imageFile)
-            }
+            if (!usable) continue
+
+            enqueueTraceMoeSample(animeId, episode.id, imageFile)
         }
     }
 
