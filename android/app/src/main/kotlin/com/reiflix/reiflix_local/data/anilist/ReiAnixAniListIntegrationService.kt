@@ -575,6 +575,8 @@ class ReiAnixAniListIntegrationService(
             // Any normal HTTP/API response, including an empty result list, is one
             // successful response and consumes exactly one of the three slots.
             successfulResponses += 1
+            // A later valid response replaced any earlier transient thumbnail failure.
+            lastEpisodeFailure = null
             successfulApiEpisodeIds.add(sample.episodeId)
             matchesByEpisode = appendTraceMoeEpisodeMatches(
                 matchesByEpisode,
