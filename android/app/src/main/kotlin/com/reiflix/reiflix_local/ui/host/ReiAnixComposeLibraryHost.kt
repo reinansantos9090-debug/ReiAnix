@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -42,6 +43,8 @@ import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -204,6 +207,41 @@ class ReiAnixComposeLibraryHost(
                     return@DisposableEffect onDispose { }
                 }
                 var startEventDelivered = false
+                var metadataRecoveryJob: Job? = null
+                fun resumeArtworkDiscovery(trigger: String) {
+                    if (metadataRecoveryJob?.isActive == true) return
+                    metadataRecoveryJob = activity.lifecycleScope.launch(Dispatchers.IO) {
+                        try {
+                            // Walk every missing-poster item in bounded lookup batches.
+                            // Completed work is throttled; interrupted work remains pending.
+                            dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w(
+                                TAG,
+                                "Native AniList artwork discovery failed trigger=$trigger errorType=" +
+                                    error::class.java.simpleName,
+                            )
+                        }
+
+                        try {
+                            // Revisit the complete eligible catalog on each foreground entry.
+                            // Per-provider cooldowns prevent duplicate API calls for finished rows.
+                            dependencies.externalCatalogIntegrationService.enrichLibraryGaps(
+                                restartFromLibraryScan = true,
+                            )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w(
+                                TAG,
+                                "Supplemental artwork discovery failed trigger=$trigger errorType=" +
+                                    error::class.java.simpleName,
+                            )
+                        }
+                    }
+                }
                 val observer = LifecycleEventObserver { _, event ->
                     if (event == Lifecycle.Event.ON_START) {
                         startEventDelivered = true
@@ -216,6 +254,7 @@ class ReiAnixComposeLibraryHost(
                                     error::class.java.simpleName,
                             )
                         }
+                        resumeArtworkDiscovery("activity_on_start")
                     }
                 }
                 activity.lifecycle.addObserver(observer)
@@ -234,57 +273,11 @@ class ReiAnixComposeLibraryHost(
                                 error::class.java.simpleName,
                         )
                     }
+                    resumeArtworkDiscovery("host_attached_while_started")
                 }
                 onDispose {
                     activity.lifecycle.removeObserver(observer)
                 }
-            }
-
-            // Recover missing metadata after the durable local artwork queue has
-            // already been resumed. Keep this bounded metadata pass separate.
-            LaunchedEffect(
-                libraryViewModel,
-                bootstrapState.phase,
-                bootstrapState.persistenceStatus,
-                libraryState.animes.size,
-            ) {
-                if (
-                    bootstrapState.phase != ReiAnixBootstrapPhase.READY ||
-                    bootstrapState.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY ||
-                    libraryState.animes.isEmpty()
-                ) return@LaunchedEffect
-
-                val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                try {
-                    withContext(Dispatchers.IO) {
-                        dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        TAG,
-                        "Native missing-artwork metadata discovery failed. errorType=" +
-                            error::class.java.simpleName,
-                    )
-                }
-                try {
-                    withContext(Dispatchers.IO) {
-                        dependencies.externalCatalogIntegrationService.enrichLibraryGaps()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        TAG,
-                        "Supplemental catalog startup enrichment failed. errorType=" +
-                            error::class.java.simpleName,
-                    )
-                }
-
-                // Both metadata integrations enqueue each discovered artwork URL directly
-                // into the application-scoped service. A second whole-library backfill here
-                // would revisit the same records and duplicate cache/projection work.
             }
 
             ReiAnixComposeRoot(

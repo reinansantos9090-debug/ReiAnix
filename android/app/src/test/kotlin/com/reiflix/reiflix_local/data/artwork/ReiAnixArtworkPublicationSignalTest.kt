@@ -6,6 +6,7 @@ import com.reiflix.reiflix_local.data.anilist.rotateArtworkDiscoveryIds
 import com.reiflix.reiflix_local.data.anilist.MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
 import com.reiflix.reiflix_local.data.anilist.artworkDiscoveryAttemptPreferenceKey
 import com.reiflix.reiflix_local.data.anilist.shouldDeferArtworkDiscoveryAttempt
+import com.reiflix.reiflix_local.data.catalog.shouldDeferExternalCatalogAttempt
 import com.reiflix.reiflix_local.data.sqlite.shouldIncludeArtworkRecord
 
 import java.io.File
@@ -415,7 +416,9 @@ class ReiAnixArtworkPublicationSignalTest {
             nowSeconds = 100_000.0,
         ))
         assertFalse(shouldDiscoverMissingArtwork(null, true, false, false, null, null, 100_000.0))
-        assertFalse(shouldDiscoverMissingArtwork(null, false, true, false, null, 99_000.0, 100_000.0))
+        // Recent metadata does not mean the poster exists. Artwork-only discovery
+        // must still run when the canonical URL and usable local file are both absent.
+        assertTrue(shouldDiscoverMissingArtwork(null, false, true, false, null, 99_000.0, 100_000.0))
     }
 
     @Test
@@ -523,9 +526,22 @@ class ReiAnixArtworkPublicationSignalTest {
     @Test
     fun artworkDiscoveryAttemptPreferencesUseStablePositiveAnimeIds() {
         assertEquals(
-            "__reianix.internal.artwork_discovery_attempt_v1.812",
+            "__reianix.internal.artwork_discovery_attempt_v2.812",
             artworkDiscoveryAttemptPreferenceKey(812L),
         )
+    }
+
+    @Test
+    fun interruptedArtworkDiscoveryWithoutACompletionTimestampIsImmediatelyEligibleAgain() {
+        assertFalse(shouldDeferArtworkDiscoveryAttempt(null, 100_000.0))
+    }
+
+    @Test
+    fun knownExternalCatalogIdsRespectTheSamePersistedRetryCooldown() {
+        val cooldown = 6L * 60L * 60L
+        assertTrue(shouldDeferExternalCatalogAttempt(90_000.0, 100_000.0, cooldown))
+        assertFalse(shouldDeferExternalCatalogAttempt(100_000.0 - cooldown, 100_000.0, cooldown))
+        assertFalse(shouldDeferExternalCatalogAttempt(null, 100_000.0, cooldown))
     }
 
     @Test

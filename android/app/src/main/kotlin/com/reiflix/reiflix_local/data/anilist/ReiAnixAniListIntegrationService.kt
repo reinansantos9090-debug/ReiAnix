@@ -117,12 +117,10 @@ internal fun shouldDiscoverMissingArtwork(
         val hasUsableHttpUrl = validReiAnixArtworkHttpUrl(coverUrl) != null
         if (hasUsableHttpUrl && !hasExhaustedArtworkFailure) return false
     }
-    // Identity and metadata provenance describe association confidence, not whether an
-    // image may be displayed. Manual metadata remains untouched by artwork-only lookup.
-    val fetchedAt = metadataFetchedAtSeconds
-    if (!manualMetadata && fetchedAt != null && fetchedAt.isFinite() &&
-        nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
-    ) return false
+    // Metadata freshness is not artwork freshness. A title can have recent metadata
+    // and still have no poster URL; that missing image must remain eligible for lookup.
+    // Completed artwork-only lookups are throttled separately by the durable per-anime
+    // attempt timestamp below. Interrupted lookups do not write that timestamp.
     return true
 }
 
@@ -137,7 +135,7 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 }
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
-internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v2."
 
 /** Read attempt timestamps from the existing schema-v29 preferences table. */
 internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
@@ -1119,7 +1117,6 @@ class ReiAnixAniListIntegrationService(
             var recovered = 0
             val nowSeconds = System.currentTimeMillis() / 1000.0
             for (row in orderedRows) {
-                if (examined >= maxRecords) break
                 currentCoroutineContext().ensureActive()
                 val local = row.anime
                 if (local.id <= 0L) continue
@@ -1150,59 +1147,72 @@ class ReiAnixAniListIntegrationService(
                 if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds)) {
                     continue
                 }
-                if (examined >= maxRecords) break
-                val attemptAt = nowSeconds.toLong()
+
+                // Only a completed lookup enters the durable cooldown. Writing before the
+                // HTTP request made an app/process interruption indistinguishable from a
+                // finished search and could suppress this artwork recovery for 24 hours.
+                val attemptAt = System.currentTimeMillis() / 1000L
                 val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
                 if (previousAttempt != null) {
                     if (nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS ||
                         !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
                     ) continue
                 }
+
                 examined++
-                // Persist before the request starts so a process restart after a network
-                // failure/crash cannot immediately repeat the same lookup.
-                val attemptAtSeconds = attemptAt.toDouble()
-                writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
-                persistedAttemptTimes[local.id] = attemptAtSeconds
-                val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
-                if (remoteId != null) {
-                    val remote = when (val result = client.getAnime(remoteId.toInt())) {
-                        is AniListResult.Success -> result.value
-                        is AniListResult.Failure -> {
-                            Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=" + local.id + ": " + result.error)
-                            null
-                        }
-                    }
-                    if (remote == null) {
-                        if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
-                        continue
-                    }
-                    val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
-                    when (val applied = applyRemote(
-                        local = local,
-                        remote = remote,
-                        manual = local.anilistMatchManual == true ||
-                            local.metadataSource == "manual" || local.metadataStatus == "manual",
-                        score = local.anilistMatchScore,
-                        margin = local.anilistMatchMargin,
-                    )) {
-                        is AniListResult.Success -> {
-                            if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
-                                recovered++
-                            } else if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) {
-                                recovered++
+                try {
+                    val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+                    if (remoteId != null) {
+                        val remote = when (val result = client.getAnime(remoteId.toInt())) {
+                            is AniListResult.Success -> result.value
+                            is AniListResult.Failure -> {
+                                Log.w(TAG, "Missing-artwork AniList lookup failed for animeId=" + local.id + ": " + result.error)
+                                null
                             }
                         }
-                        is AniListResult.Failure -> {
-                            Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
+                        if (remote == null) {
                             if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                        } else {
+                            val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
+                            when (val applied = applyRemote(
+                                local = local,
+                                remote = remote,
+                                manual = local.anilistMatchManual == true ||
+                                    local.metadataSource == "manual" || local.metadataStatus == "manual",
+                                score = local.anilistMatchScore,
+                                margin = local.anilistMatchMargin,
+                            )) {
+                                is AniListResult.Success -> {
+                                    if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
+                                        recovered++
+                                    } else if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) {
+                                        recovered++
+                                    }
+                                }
+                                is AniListResult.Failure -> {
+                                    Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
+                                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                                }
+                            }
                         }
+                    } else {
+                        // Artwork-only search never creates or changes a local AniList ID.
+                        if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                     }
-                } else {
-                    // Artwork recovery is read-only with respect to identity:
-                    // PROBABLE/AMBIGUOUS/REJECTED/UNRESOLVED titles can provide ranked image
-                    // candidates without assigning their AniList ID to the local anime.
-                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+
+                    val completedAt = System.currentTimeMillis() / 1000.0
+                    writeArtworkDiscoveryAttemptAt(local.id, completedAt)
+                    persistedAttemptTimes[local.id] = completedAt
+                    missingArtworkLookupAttempts[local.id] = completedAt.toLong()
+                    if (examined % maxRecords == 0) kotlinx.coroutines.yield()
+                } catch (cancelled: CancellationException) {
+                    // Leave this item pending so the next foreground can resume it immediately.
+                    missingArtworkLookupAttempts.remove(local.id, attemptAt)
+                    throw cancelled
+                } catch (error: Exception) {
+                    // An exception is not a completed lookup and must not poison the cooldown.
+                    missingArtworkLookupAttempts.remove(local.id, attemptAt)
+                    Log.w(TAG, "Missing-artwork recovery interrupted for animeId=" + local.id, error)
                 }
             }
             if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {

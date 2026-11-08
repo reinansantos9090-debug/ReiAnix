@@ -22,6 +22,15 @@ import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 import java.io.File
 
+internal fun shouldDeferExternalCatalogAttempt(
+    lastAttemptSeconds: Double?,
+    nowSeconds: Double,
+    cooldownSeconds: Long,
+): Boolean {
+    val lastAttempt = lastAttemptSeconds?.takeIf { it.isFinite() && it >= 0.0 } ?: return false
+    return nowSeconds - lastAttempt < cooldownSeconds
+}
+
 /**
  * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Tenrai/AniPub are
  * consulted only for metadata gaps or missing usable artwork, and every association is reverified.
@@ -189,8 +198,11 @@ class ReiAnixExternalCatalogIntegrationService(
 
             val previousAttempt = library.externalCatalogAttemptAt(anime.id, source.key)
             val knownId = ids.idFor(source)
-            if (knownId == null && previousAttempt != null &&
-                System.currentTimeMillis() / 1_000.0 - previousAttempt < SOURCE_RETRY_COOLDOWN_SECONDS
+            if (shouldDeferExternalCatalogAttempt(
+                    lastAttemptSeconds = previousAttempt,
+                    nowSeconds = System.currentTimeMillis() / 1_000.0,
+                    cooldownSeconds = SOURCE_RETRY_COOLDOWN_SECONDS,
+                )
             ) continue
 
             val provider = providers.provider(source) ?: continue
