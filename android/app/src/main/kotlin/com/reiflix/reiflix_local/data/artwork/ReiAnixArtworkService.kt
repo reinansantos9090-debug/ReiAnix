@@ -696,7 +696,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
         Log.i(
             TAG,
-            "ARTWORK_BACKFILL_FINISHED trigger=$trigger pass=$pass prioritized=$prioritizedCount visited=$visitedCount",
+            "ARTWORK_BACKFILL_FINISHED trigger=$trigger pass=$pass prioritized=$prioritizedCount backdrops=$visitedCount",
         )
     }
 
@@ -926,7 +926,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val path = existing.path ?: return false
             val alreadyPublished = existing.status.equals("ready", true) &&
                 (type != "poster" || !requireCurrentUrl || isCoverPointerCurrent(id, path))
-            if (markReady(existing.id, id, type, url, path, requireCurrentUrl) && !alreadyPublished) {
+            if (alreadyPublished) return true
+            if (markReady(existing.id, id, type, url, path, requireCurrentUrl)) {
                 publish("artwork_published", entity, id.toString(), type, path, url,
                     existing.key ?: remoteKey(aniId, url, type), url, existing.mime ?: mime(path), requestId)
             }
@@ -1183,36 +1184,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
     }
 
-    private fun loadPersistedRetryCandidates(animeId: Long): List<ReiAnixArtworkCandidate> =
-        database.read { db ->
-            db.rawQuery(
-                "SELECT art.artwork_type,art.external_url FROM artwork art " +
-                    "JOIN anime a ON CAST(a.id AS TEXT)=art.entity_id " +
-                    "WHERE a.id=? AND art.entity_type IN ('anime','movie') " +
-                    "AND art.artwork_type IN ('poster','backdrop') " +
-                    "AND art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL " +
-                    "AND art.next_retry_at<=? AND TRIM(COALESCE(art.external_url,''))!='' " +
-                    "AND ((art.artwork_type='poster' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.cover_url,''))) " +
-                    "OR (art.artwork_type='backdrop' AND TRIM(COALESCE(art.external_url,''))!=TRIM(COALESCE(a.banner_url,'')))) " +
-                    "ORDER BY art.priority DESC,art.updated_at DESC,art.id DESC LIMIT ?",
-                arrayOf(animeId.toString(), nowSeconds().toString(), MAX_CANDIDATE_ARTWORKS.toString()),
-            ).use { cursor ->
-                buildList {
-                    while (cursor.moveToNext()) {
-                        val type = cursor.getString(0)
-                        val url = cursor.getString(1)?.trim()?.takeIf(String::isNotEmpty) ?: continue
-                        add(
-                            ReiAnixArtworkCandidate(
-                                anilistId = 0L,
-                                posterUrl = url.takeIf { type == "poster" },
-                                bannerUrl = url.takeIf { type == "backdrop" },
-                            ),
-                        )
-                    }
-                }.distinct()
-            }
-        }
-
     /** Restores canonical URL and candidate-only retries using persisted v29 timestamps. */
     private fun schedulePersistedArtworkRetry(animeId: Long) {
         if (animeId <= 0L || cacheClearInProgress.get() || retryJobs[animeId]?.isActive == true) return
@@ -1231,7 +1202,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             .getOrNull() ?: return
         if (!nextRetryAt.isFinite()) return
         val delaySeconds = ceil(nextRetryAt - nowSeconds()).toLong().coerceAtLeast(1L)
-        scheduleArtworkRetry(animeId, delaySeconds, loadPersistedRetryCandidates(animeId))
+        // Re-enter the canonical request path after the persisted cooldown. It now
+        // reloads the original provider/source from SQLite instead of reconstructing
+        // every interrupted candidate as an AniList URL.
+        scheduleArtworkRetry(animeId, delaySeconds)
     }
 
     private fun scheduleArtworkRetry(
