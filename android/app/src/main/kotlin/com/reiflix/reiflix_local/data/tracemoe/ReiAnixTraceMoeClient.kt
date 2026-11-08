@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.data.tracemoe
 
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -28,6 +29,8 @@ enum class TraceMoeFailureKind(val retryable: Boolean) {
     BAD_IMAGE(false),
     CONCURRENCY_LIMIT(true),
     QUOTA_EXHAUSTED(false),
+    PAYMENT_REQUIRED_UNCLASSIFIED(false),
+    ACCOUNT_STATUS_UNAVAILABLE(false),
     LOCAL_DAILY_BUDGET_EXHAUSTED(false),
     RATE_LIMITED(true),
     NETWORK_UNAVAILABLE(true),
@@ -46,8 +49,11 @@ internal fun classifyTraceMoeHttpFailure(
 ): TraceMoeFailureKind {
     val message = errorMessage.orEmpty().lowercase()
     return when {
+        // HTTP 402 represents either exhausted quota or concurrency in trace.moe.
+        // Only the response text distinguishes the documented cases reliably.
         "concurr" in message -> TraceMoeFailureKind.CONCURRENCY_LIMIT
-        statusCode == 402 -> TraceMoeFailureKind.QUOTA_EXHAUSTED
+        "quota" in message || "deplet" in message -> TraceMoeFailureKind.QUOTA_EXHAUSTED
+        statusCode == 402 -> TraceMoeFailureKind.PAYMENT_REQUIRED_UNCLASSIFIED
         statusCode == 429 -> TraceMoeFailureKind.RATE_LIMITED
         statusCode in setOf(400, 413, 415) -> TraceMoeFailureKind.BAD_IMAGE
         statusCode == 401 -> TraceMoeFailureKind.AUTHENTICATION
@@ -65,6 +71,8 @@ class TraceMoeApiException(
     message: String,
     val httpStatus: Int? = null,
     val retryAfterMillis: Long? = null,
+    val quota: Int? = null,
+    val quotaUsed: Int? = null,
     cause: Throwable? = null,
 ) : IOException(message, cause)
 
@@ -210,16 +218,15 @@ class ReiAnixTraceMoeClient(
                 return@withLock it
             }
 
-            // Do not hold the user's identification indefinitely when the daily quota
-            // is exhausted or /me is temporarily unavailable. Report the wait and give
-            // the account endpoint a short, bounded recovery window.
+            // /me is a read-only preflight. A zero balance cannot recover by polling:
+            // trace.moe counts searches in a rolling 24-hour window. Fail immediately
+            // and expose the authoritative usage values instead of waiting eight seconds.
             val account = refreshAccountStatusLocked(forceRefresh = false)
             if (account != null && account.quotaRemaining <= 0) {
-                awaitSearchQuotaLocked(onQuotaWait)
+                throw quotaExhausted(account)
             }
 
             var attempt = 0
-            var quotaStatusMismatchCount = 0
             while (true) {
                 waitForGlobalRequestSlot()
                 if (!reserveRequest()) {
@@ -241,26 +248,38 @@ class ReiAnixTraceMoeClient(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: TraceMoeApiException) {
-                    if (error.kind == TraceMoeFailureKind.QUOTA_EXHAUSTED) {
-                        TraceMoeRequestCoordinator.invalidateAccountStatus()
-                        val refreshed = awaitSearchQuotaLocked(onQuotaWait)
-                        if (refreshed.quotaRemaining > 0) {
-                            // A 402 can also reflect an eventual-consistency gap between
-                            // /search and /me. Retry that mismatch once, with a pause; if it
-                            // repeats, surface a retryable service failure instead of looping.
-                            quotaStatusMismatchCount += 1
-                            if (quotaStatusMismatchCount > MAX_QUOTA_STATUS_MISMATCH_RETRIES) {
+                    when (error.kind) {
+                        TraceMoeFailureKind.PAYMENT_REQUIRED_UNCLASSIFIED -> {
+                            // A generic HTTP 402 is ambiguous in trace.moe: it can mean
+                            // exhausted quota or a concurrency rejection. Ask /me once.
+                            // If /me is unavailable, never misreport that as exhausted quota.
+                            TraceMoeRequestCoordinator.invalidateAccountStatus()
+                            val refreshed = refreshAccountStatusLocked(forceRefresh = true)
+                                ?: throw TraceMoeApiException(
+                                    TraceMoeFailureKind.ACCOUNT_STATUS_UNAVAILABLE,
+                                    "Trace.moe returned HTTP 402, but its /me account status could not be read.",
+                                    httpStatus = error.httpStatus,
+                                    cause = error,
+                                )
+                            if (refreshed.quotaRemaining <= 0) {
+                                throw quotaExhausted(refreshed, error.httpStatus, error)
+                            }
+                            // Positive quota plus an unclassified 402 is most likely a
+                            // concurrency rejection. Retry once, then stop the session.
+                            if (attempt >= MAX_RETRIES) {
                                 throw TraceMoeApiException(
-                                    TraceMoeFailureKind.SERVER_UNAVAILABLE,
-                                    "Trace.moe reports quota exhaustion while /me still reports available quota.",
+                                    TraceMoeFailureKind.CONCURRENCY_LIMIT,
+                                    "Trace.moe rejected the search with HTTP 402 while quota remains; concurrency may be busy.",
                                     httpStatus = error.httpStatus,
                                     cause = error,
                                 )
                             }
-                            delay(QUOTA_STATUS_MISMATCH_RETRY_MILLIS)
-                            attempt = 0
+                            attempt++
+                            delay(UNCLASSIFIED_402_RETRY_MILLIS)
                             continue
                         }
+                        TraceMoeFailureKind.QUOTA_EXHAUSTED -> throw error
+                        else -> Unit
                     }
                     if (!error.kind.retryable || attempt >= MAX_RETRIES) throw error
 
@@ -275,36 +294,18 @@ class ReiAnixTraceMoeClient(
         }
     }
 
-    /**
-     * Wait briefly for authoritative /me quota recovery. A full rolling quota can
-     * remain exhausted for hours, so a manual identification must not sit in a loop.
-     * The caller holds the global request mutex; cancellation always releases it.
-     */
-    private suspend fun awaitSearchQuotaLocked(
-        onQuotaWait: suspend () -> Unit,
-    ): TraceMoeAccountStatus {
-        onQuotaWait()
-        val deadline = System.currentTimeMillis() + MAX_QUOTA_WAIT_MILLIS
-        while (true) {
-            val remaining = deadline - System.currentTimeMillis()
-            if (remaining <= 0L) {
-                throw TraceMoeApiException(
-                    TraceMoeFailureKind.QUOTA_EXHAUSTED,
-                    "Trace.moe quota did not become available within the bounded wait.",
-                )
-            }
-            // Bound the /me network call itself as well as the polling delay so
-            // repeated slow account responses cannot extend the user-visible wait.
-            val status = withTimeoutOrNull(remaining) {
-                refreshAccountStatusLocked(forceRefresh = true)
-            }
-            if (status != null && status.quotaRemaining > 0) return status
-
-            val pause = deadline - System.currentTimeMillis()
-            if (pause <= 0L) continue
-            delay(minOf(QUOTA_POLL_INTERVAL_MILLIS, pause))
-        }
-    }
+    private fun quotaExhausted(
+        status: TraceMoeAccountStatus,
+        httpStatus: Int? = null,
+        cause: Throwable? = null,
+    ) = TraceMoeApiException(
+        kind = TraceMoeFailureKind.QUOTA_EXHAUSTED,
+        message = "Trace.moe search quota exhausted (${status.quotaUsed}/${status.quota} searches used in the rolling 24-hour window).",
+        httpStatus = httpStatus,
+        quota = status.quota,
+        quotaUsed = status.quotaUsed,
+        cause = cause,
+    )
 
     /** Refreshes /me at most once per five minutes; a temporary /me failure is non-fatal. */
     suspend fun getAccountStatus(forceRefresh: Boolean = false): TraceMoeAccountStatus? =
@@ -325,7 +326,8 @@ class ReiAnixTraceMoeClient(
             requestAccountStatus()
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Log.w(TAG, "Trace.moe /me lookup failed: ${error.javaClass.simpleName}")
             null
         }
         TraceMoeRequestCoordinator.cacheAccountStatus(status, System.currentTimeMillis())
@@ -350,8 +352,12 @@ class ReiAnixTraceMoeClient(
                 connection.connectTimeout = minOf(connectTimeoutMillis, ACCOUNT_TIMEOUT_MILLIS)
                 connection.readTimeout = minOf(readTimeoutMillis, ACCOUNT_TIMEOUT_MILLIS)
                 connection.setRequestProperty("Accept", "application/json")
+                val startedAt = System.currentTimeMillis()
                 val statusCode = connection.responseCode
-                if (statusCode !in 200..299) return@withContext null
+                if (statusCode !in 200..299) {
+                    Log.w(TAG, "Trace.moe /me HTTP $statusCode (${System.currentTimeMillis() - startedAt} ms)")
+                    return@withContext null
+                }
                 val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                 val root = JSONObject(body)
                 val quota = root.optInt("quota", -1)
@@ -364,7 +370,9 @@ class ReiAnixTraceMoeClient(
                     concurrency = concurrency,
                     quota = quota,
                     quotaUsed = quotaUsed,
-                )
+                ).also {
+                    Log.i(TAG, "Trace.moe /me OK (${System.currentTimeMillis() - startedAt} ms): quota=${it.quota} used=${it.quotaUsed} concurrency=${it.concurrency}")
+                }
             } finally {
                 connection.disconnect()
             }
@@ -403,8 +411,12 @@ class ReiAnixTraceMoeClient(
                 coroutineContext[Job]?.invokeOnCompletion { cause ->
                     if (cause is CancellationException) connection.disconnect()
                 }
+                val requestStartedAt = System.currentTimeMillis()
+                Log.i(TAG, "Trace.moe /search upload starting: imageBytes=${imageBytes.size}")
                 connection.outputStream.use { output -> output.write(requestBytes) }
+                Log.i(TAG, "Trace.moe /search upload completed (${System.currentTimeMillis() - requestStartedAt} ms)")
                 val statusCode = connection.responseCode
+                Log.i(TAG, "Trace.moe /search HTTP $statusCode (${System.currentTimeMillis() - requestStartedAt} ms)")
                 val responseStream = if (statusCode in 200..299) {
                     connection.inputStream
                 } else {
@@ -437,6 +449,7 @@ class ReiAnixTraceMoeClient(
                         body = responseBody,
                     )
                     val kind = classifyTraceMoeHttpFailure(statusCode, errorMessage)
+                    Log.w(TAG, "Trace.moe /search rejected: kind=$kind status=$statusCode message=${errorMessage.orEmpty().take(160)}")
                     throw TraceMoeApiException(
                         kind = kind,
                         message = errorMessage ?: ("Trace.moe returned HTTP " + statusCode + "."),
@@ -472,7 +485,9 @@ class ReiAnixTraceMoeClient(
                         "Trace.moe response did not contain a result array.",
                         httpStatus = statusCode,
                     )
-                parseMatches(results)
+                parseMatches(results).also { matches ->
+                    Log.i(TAG, "Trace.moe /search response parsed: candidates=${matches.size} elapsed=${System.currentTimeMillis() - requestStartedAt} ms")
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: TraceMoeApiException) {
@@ -565,6 +580,7 @@ class ReiAnixTraceMoeClient(
         }
 
     companion object {
+        private const val TAG = "ReiAnixTraceMoe"
         // AniList metadata is resolved by the app after identification; requesting it
         // in every Trace.moe response adds work that is not used by this client.
         const val SEARCH_ENDPOINT = "https://api.trace.moe/search?cutBorders=1"
@@ -576,10 +592,7 @@ class ReiAnixTraceMoeClient(
         const val MAX_CACHE_ENTRIES = 200
         const val ACCOUNT_CACHE_TTL_MILLIS = 5L * 60L * 1_000L
         const val ACCOUNT_ERROR_CACHE_TTL_MILLIS = 30L * 1_000L
-        const val QUOTA_POLL_INTERVAL_MILLIS = 2_000L
-        const val MAX_QUOTA_WAIT_MILLIS = 8_000L
-        const val QUOTA_STATUS_MISMATCH_RETRY_MILLIS = 1_500L
-        const val MAX_QUOTA_STATUS_MISMATCH_RETRIES = 1
+        const val UNCLASSIFIED_402_RETRY_MILLIS = 1_500L
         const val MAX_RETRIES = 1
         private const val ACCOUNT_TIMEOUT_MILLIS = 3_000
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
