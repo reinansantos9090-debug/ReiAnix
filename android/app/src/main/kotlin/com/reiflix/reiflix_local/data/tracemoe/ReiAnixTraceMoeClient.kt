@@ -75,6 +75,13 @@ class TraceMoeApiException(
     cause: Throwable? = null,
 ) : IOException(message, cause)
 
+enum class TraceMoeRequestProgressStage {
+    CHECKING_QUOTA,
+    UPLOADING_IMAGE,
+    WAITING_FOR_RESPONSE,
+    RETRYING_REQUEST,
+}
+
 data class TraceMoeAccountStatus(
     val id: String,
     val priority: Int,
@@ -182,6 +189,7 @@ class ReiAnixTraceMoeClient(
     suspend fun search(
         imageFile: File,
         reserveRequest: suspend () -> Boolean = { true },
+        onProgress: suspend (TraceMoeRequestProgressStage) -> Unit = {},
     ): List<TraceMoeSearchMatch> {
         val imageBytes = withContext(Dispatchers.IO) {
             if (!imageFile.isFile || imageFile.length() !in 4L..MAX_IMAGE_BYTES) {
@@ -216,9 +224,10 @@ class ReiAnixTraceMoeClient(
                 return@withLock it
             }
 
-            // /me is a read-only preflight. A zero balance cannot recover by polling:
-            // trace.moe counts searches in a rolling 24-hour window. Fail immediately
-            // and expose the authoritative usage values instead of waiting eight seconds.
+            // /me is a read-only preflight. Report this stage before any image upload.
+            // A zero balance cannot recover by polling: trace.moe counts searches in
+            // a rolling 24-hour window, so fail immediately with its authoritative usage.
+            onProgress(TraceMoeRequestProgressStage.CHECKING_QUOTA)
             val account = refreshAccountStatusLocked(forceRefresh = false)
             if (account != null && account.quotaRemaining <= 0) {
                 throw quotaExhausted(account)
@@ -236,7 +245,7 @@ class ReiAnixTraceMoeClient(
                 TraceMoeRequestCoordinator.lastRequestAtMillis = System.currentTimeMillis()
 
                 try {
-                    val matches = request(imageBytes)
+                    val matches = request(imageBytes, onProgress)
                     TraceMoeRequestCoordinator.cacheResult(
                         contentKey,
                         matches,
@@ -252,6 +261,7 @@ class ReiAnixTraceMoeClient(
                             // exhausted quota or a concurrency rejection. Ask /me once.
                             // If /me is unavailable, never misreport that as exhausted quota.
                             TraceMoeRequestCoordinator.invalidateAccountStatus()
+                            onProgress(TraceMoeRequestProgressStage.CHECKING_QUOTA)
                             val refreshed = refreshAccountStatusLocked(forceRefresh = true)
                                 ?: throw TraceMoeApiException(
                                     TraceMoeFailureKind.ACCOUNT_STATUS_UNAVAILABLE,
@@ -273,6 +283,7 @@ class ReiAnixTraceMoeClient(
                                 )
                             }
                             attempt++
+                            onProgress(TraceMoeRequestProgressStage.RETRYING_REQUEST)
                             delay(UNCLASSIFIED_402_RETRY_MILLIS)
                             continue
                         }
@@ -284,6 +295,7 @@ class ReiAnixTraceMoeClient(
                     val delayMillis = error.retryAfterMillis
                         ?: defaultRetryDelayMillis(error.kind, attempt)
                     attempt++
+                    onProgress(TraceMoeRequestProgressStage.RETRYING_REQUEST)
                     delay(delayMillis.coerceIn(MIN_RETRY_DELAY_MILLIS, MAX_RETRY_DELAY_MILLIS))
                 }
             }
@@ -376,7 +388,10 @@ class ReiAnixTraceMoeClient(
             }
         }
 
-    private suspend fun request(imageBytes: ByteArray): List<TraceMoeSearchMatch> =
+    private suspend fun request(
+        imageBytes: ByteArray,
+        onProgress: suspend (TraceMoeRequestProgressStage) -> Unit,
+    ): List<TraceMoeSearchMatch> =
         withContext(Dispatchers.IO) {
             val boundary = "ReiAnixTraceMoe" + UUID.randomUUID().toString().replace("-", "")
             val prefix = (
@@ -410,9 +425,11 @@ class ReiAnixTraceMoeClient(
                     if (cause is CancellationException) connection.disconnect()
                 }
                 val requestStartedAt = System.currentTimeMillis()
+                onProgress(TraceMoeRequestProgressStage.UPLOADING_IMAGE)
                 Log.i(TAG, "Trace.moe /search upload starting: imageBytes=${imageBytes.size}")
                 connection.outputStream.use { output -> output.write(requestBytes) }
                 Log.i(TAG, "Trace.moe /search upload completed (${System.currentTimeMillis() - requestStartedAt} ms)")
+                onProgress(TraceMoeRequestProgressStage.WAITING_FOR_RESPONSE)
                 val statusCode = connection.responseCode
                 Log.i(TAG, "Trace.moe /search HTTP $statusCode (${System.currentTimeMillis() - requestStartedAt} ms)")
                 val responseStream = if (statusCode in 200..299) {
