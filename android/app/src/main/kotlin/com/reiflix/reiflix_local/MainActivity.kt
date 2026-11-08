@@ -2505,7 +2505,18 @@ class MainActivity : ComponentActivity() {
                     val terminal = NativeScanController.progress.first { snapshots ->
                         snapshots[scanId]?.state?.isTerminal == true
                     }[scanId] ?: return@launch
-                    SafTreeChangeMonitor.completePendingChange(applicationContext, reference, timestamp)
+                    val scanSucceeded = terminal.state == ScanLifecycleState.SUCCEEDED
+                    if (scanSucceeded) {
+                        SafTreeChangeMonitor.completePendingChange(applicationContext, reference, timestamp)
+                    } else {
+                        // A partial, cancelled or failed scan is not proof that the new
+                        // video was indexed. Keep the durable request for a later retry.
+                        Log.w(
+                            tag,
+                            "SAF_VIDEO_CHANGE_SCAN_RETAINED treeHash=" + reference.hashCode() +
+                                " state=" + terminal.state.name,
+                        )
+                    }
                     Log.i(
                         tag,
                         "SAF_VIDEO_CHANGE_SCAN_FINISHED treeHash=" + reference.hashCode() +
