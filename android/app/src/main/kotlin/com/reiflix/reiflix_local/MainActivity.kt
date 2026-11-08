@@ -125,7 +125,6 @@ class MainActivity : ComponentActivity() {
     private var startupDiscoveryTriggered = false
     private var pendingSafForegroundReconciliation = false
     private var nativeBootstrapDecisionComplete = false
-    private var automaticSafPickerAttempted = false
     private val pendingNativeIntentsBeforeBootstrap = ArrayList<Intent>()
     private var lastObservedMediaAccess: String? = null
     private val _nativeStorageOnboardingState = MutableStateFlow(NativeStorageOnboardingState())
@@ -279,7 +278,6 @@ class MainActivity : ComponentActivity() {
         private const val STATE_STARTUP_DISCOVERY_TRIGGERED = "reiflix.startupDiscoveryTriggered"
         private const val NATIVE_SCAN_LIFECYCLE_PREFS = "reianix_native_scan_lifecycle"
         private const val PENDING_SAF_FOREGROUND_RECONCILIATION = "pending_saf_foreground_reconciliation"
-        private const val STATE_AUTO_SAF_PICKER_ATTEMPTED = "reiflix.autoSafPickerAttempted"
         private const val STATE_LAST_OBSERVED_MEDIA_ACCESS = "reiflix.lastObservedMediaAccess"
         private const val STATE_LAST_OBSERVED_BROAD_ACCESS = "reiflix.lastObservedBroadAccess"
         private const val LOG_TAG = "[REIFLIX][ANDROID]"
@@ -1078,11 +1076,9 @@ class MainActivity : ComponentActivity() {
                 result = "user_cancelled_picker",
             )
             clearSafPickerPending(requestId, SafPickerPhase.CANCELLED)
-            // Cancellation is an intentional user decision for this Activity session.
-            // Suppress the automatic first-run retry even when the picker was opened
-            // manually before the automatic-launch guard had been set. The user can
-            // always request the SAF picker again from the normal library/settings UI.
-            automaticSafPickerAttempted = true
+            // Cancellation returns to the onboarding choice. The SAF picker is never
+            // relaunched automatically; the user can retry through the visible button
+            // or select a folder later from the library/storage settings.
             getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
                 .edit()
                 .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
@@ -1321,7 +1317,6 @@ class MainActivity : ComponentActivity() {
         pendingSafForegroundReconciliation = getSharedPreferences(NATIVE_SCAN_LIFECYCLE_PREFS, MODE_PRIVATE)
             .getBoolean(PENDING_SAF_FOREGROUND_RECONCILIATION, false) ||
             (savedInstanceState?.getBoolean(PENDING_SAF_FOREGROUND_RECONCILIATION) ?: false)
-        automaticSafPickerAttempted = savedInstanceState?.getBoolean(STATE_AUTO_SAF_PICKER_ATTEMPTED) ?: false
         lastObservedMediaAccess = savedInstanceState?.getString(STATE_LAST_OBSERVED_MEDIA_ACCESS)
         if (savedInstanceState?.containsKey(STATE_LAST_OBSERVED_BROAD_ACCESS) == true) {
             lastObservedBroadAccess = savedInstanceState.getBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS)
@@ -1374,7 +1369,6 @@ class MainActivity : ComponentActivity() {
                 if (!hadPendingLifecycleAction && activityResumed && !broadStoragePermissionPending) {
                     dispatchStartupDiscoveryAfterBootstrap()
                 }
-                if (!hadPendingLifecycleAction) maybeLaunchAutomaticSafPicker()
             }
         }
         // The existing SystemUiController remains the single Android system-bar
@@ -2848,7 +2842,6 @@ class MainActivity : ComponentActivity() {
         outState.putStringArrayList("reiflix.settingsStorageActions", ArrayList(composeSettingsStorageActions.values))
         outState.putBoolean(STATE_STARTUP_DISCOVERY_TRIGGERED, startupDiscoveryTriggered)
         outState.putBoolean(PENDING_SAF_FOREGROUND_RECONCILIATION, pendingSafForegroundReconciliation)
-        outState.putBoolean(STATE_AUTO_SAF_PICKER_ATTEMPTED, automaticSafPickerAttempted)
         outState.putString(STATE_LAST_OBSERVED_MEDIA_ACCESS, lastObservedMediaAccess)
         lastObservedBroadAccess?.let { outState.putBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS, it) }
         outState.putString(STATE_SEEN_NATIVE_REQUEST_IDS, nativeRequestState.seenRequestIdsState())
@@ -4049,22 +4042,8 @@ class MainActivity : ComponentActivity() {
     fun dismissNativeStorageOnboarding() {
         storageOnboardingRefreshJob?.cancel()
         val current = _nativeStorageOnboardingState.value
-        if (
-            current.phase == NativeStorageOnboardingState.PHASE_NEEDS_FOLDER ||
-            (current.phase != NativeStorageOnboardingState.PHASE_READY && !hasPersistedSafTreeGrant())
-        ) {
-            getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
-                .edit()
-                .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
-                .apply()
-            _nativeStorageOnboardingState.value = current.copy(
-                dismissed = false,
-                phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
-                message = "A biblioteca ainda não tem uma pasta SAF configurada. Escolha uma pasta para continuar.",
-            )
-            maybeLaunchAutomaticSafPicker()
-            return
-        }
+        // Cancel only dismisses this onboarding surface. It does not create a SAF
+        // grant, change configured roots, or prevent a later manual folder selection.
         getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
             .edit()
             .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, true)
@@ -4107,35 +4086,6 @@ class MainActivity : ComponentActivity() {
                 " hasMessage=" + !message.isNullOrBlank() +
                 " hasError=" + !error.isNullOrBlank(),
         )
-    }
-
-    /** Launches the existing SAF picker once after bootstrap and lifecycle validation. */
-    private fun maybeLaunchAutomaticSafPicker() {
-        if (
-            !nativeBootstrapDecisionComplete ||
-            !activityResumed ||
-            window?.decorView?.hasWindowFocus() != true ||
-            isFinishing ||
-            isDestroyed ||
-            automaticSafPickerAttempted ||
-            safPickerPending ||
-            pendingMediaRequestId != null ||
-            broadStoragePermissionPending ||
-            externalSettingsKind != null ||
-            nativeRequestState.pendingLifecycleAction == "select_tree" ||
-            appDependencies.bootstrap.state.value.recoveryRequired ||
-            appDependencies.bootstrap.state.value.stage != ReiAnixBootstrapStage.READY ||
-            _nativeStorageOnboardingState.value.phase != NativeStorageOnboardingState.PHASE_NEEDS_FOLDER
-        ) return
-
-        // Set the idempotence guard before dispatching into the existing command/picker flow.
-        automaticSafPickerAttempted = true
-        getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
-            .edit()
-            .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
-            .apply()
-        Log.i(tag, "SAF_PICKER_AUTO_REQUESTED origin=first_run_no_configured_root")
-        requestNativeStorageAction("select_tree")
     }
 
     /**
@@ -4184,7 +4134,7 @@ class MainActivity : ComponentActivity() {
                         NativeStorageOnboardingState(
                             phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
                             message = "Selecione uma pasta para criar sua biblioteca. A permissão de mídia ou o acesso amplo não substitui uma pasta SAF configurada.",
-                            dismissed = false,
+                            dismissed = wasDismissed,
                         )
                     } else {
                         var revoked = false
@@ -4256,14 +4206,13 @@ class MainActivity : ComponentActivity() {
             ) {
                 prefs.edit().putBoolean(
                     NATIVE_STORAGE_ONBOARDING_DISMISSED,
-                    result.phase != NativeStorageOnboardingState.PHASE_NEEDS_FOLDER && result.dismissed,
+                    result.dismissed,
                 ).apply()
             }
             _nativeStorageOnboardingState.value = result
             Log.i(tag, "NATIVE_STORAGE_ONBOARDING_REVALIDATED origin=" + origin + " phase=" + result.phase)
             if (result.phase == NativeStorageOnboardingState.PHASE_NEEDS_FOLDER) {
-                maybeLaunchAutomaticSafPicker()
-            }
+                }
         }
     }
 
@@ -5550,7 +5499,6 @@ class MainActivity : ComponentActivity() {
                     openTreePicker(queued.requestId)
                 }
             }
-            maybeLaunchAutomaticSafPicker()
         } else if (safPickerPending) {
             safPickerFocusLost = true
             safPickerFocusRegainedAtMs = 0L
