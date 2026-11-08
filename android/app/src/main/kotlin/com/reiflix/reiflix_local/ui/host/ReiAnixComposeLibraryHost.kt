@@ -196,8 +196,8 @@ class ReiAnixComposeLibraryHost(
                     return@DisposableEffect onDispose { }
                 }
 
-                val artworkService = runCatching {
-                    ReiAnixAppDependencies.from(activity.applicationContext).artworkService
+                val dependencies = runCatching {
+                    ReiAnixAppDependencies.from(activity.applicationContext)
                 }.getOrElse { error ->
                     android.util.Log.w(
                         TAG,
@@ -206,6 +206,7 @@ class ReiAnixComposeLibraryHost(
                     )
                     return@DisposableEffect onDispose { }
                 }
+                val artworkService = dependencies.artworkService
                 var startEventDelivered = false
                 var metadataRecoveryJob: Job? = null
                 fun resumeArtworkDiscovery(trigger: String) {
