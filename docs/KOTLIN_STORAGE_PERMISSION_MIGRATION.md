@@ -48,8 +48,12 @@ A suíte Python de regressão recebe contratos de arquitetura para o estado nati
 O acesso real por provedor SAF/MediaStore, inclusive estados de revogação de permissões definidos pelo SO, depende do contrato e do estado de runtime do dispositivo. O workflow de CI comprova compilação e verificações automatizadas, não substitui testes físicos no aparelho. O runtime híbrido e os consumidores Python mencionados acima continuam sendo pendências separadas na migração geral.
 
 
-## Correção complementar do primeiro início
+## Seleção manual da pasta no primeiro início
 
-Quando o bootstrap liberar o uso normal e a consulta da tabela canônica `folders` não encontrar uma raiz SAF, a Activity tenta abrir o seletor SAF existente automaticamente uma vez. O estado `folder_picker_open` é publicado antes do `ACTION_OPEN_DOCUMENT_TREE`; a operação reutiliza o launcher existente e requer URI de árvore válida, grant persistente verificável e registro no SQLite canônico antes de marcar o onboarding como pronto.
+Quando o bootstrap liberar o uso normal e a tabela canônica `folders` não contiver uma raiz SAF, o ReiAnix apresenta a escolha de onboarding, mas **não abre o seletor Android automaticamente**. O seletor `ACTION_OPEN_DOCUMENT_TREE` só é iniciado depois de uma ação explícita em **Escolher pasta**, seja no cartão inicial ou na tela de armazenamento.
 
-A guarda de tentativa única evita loops após cancelamento/erro e o cartão continua oferecendo retry manual. Dismiss não pode ocultar o onboarding quando ainda não existe uma raiz válida. A mera presença de permissão MediaStore/Broad Storage não equivale a uma raiz SAF. A abertura do app não dispara scan geral automático; scan só é solicitado por seleção SAF validada ou pelos fluxos de ação/permissão já estabelecidos e autorizados.
+- **Cancelar** dispensa a sobreposição e permite entrar/navegar pelo aplicativo sem configurar uma pasta. Essa decisão de apresentação é persistida e não equivale a uma concessão SAF nem a um estado `ready`.
+- A sobreposição permanece oculta enquanto a validação SAF está em andamento (`checking`). Depois da validação, só aparece quando há uma ação necessária: nenhuma pasta configurada, seletor aberto ou erro de recuperação ainda não dispensado.
+- A dispensa permanece válida entre aberturas enquanto não houver uma nova seleção explícita. Uma seleção manual reabre o fluxo; a autorização só é marcada como pronta depois da validação da concessão e do registro no SQLite canônico.
+- Cancelar o seletor Android retorna à escolha de onboarding, mas nunca relança o seletor automaticamente. O usuário pode tentar novamente pelo botão ou escolher uma pasta mais tarde na tela de armazenamento.
+- A mera presença de permissão MediaStore/Broad Storage não equivale a uma raiz SAF. O app não dispara scan geral sem uma fonte autorizada; scan de uma nova raiz começa somente após seleção, validação e persistência bem-sucedidas.

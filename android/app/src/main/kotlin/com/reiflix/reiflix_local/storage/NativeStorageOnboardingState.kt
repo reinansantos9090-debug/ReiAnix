@@ -25,7 +25,6 @@ data class NativeStorageOnboardingState(
         const val PHASE_ERROR = "error"
 
         private val PROMPT_PHASES = setOf(
-            PHASE_CHECKING,
             PHASE_NEEDS_FOLDER,
             PHASE_FOLDER_PICKER_OPEN,
             PHASE_ERROR,
