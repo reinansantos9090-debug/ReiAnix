@@ -19,12 +19,14 @@ on:
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/ui/model/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/catalog/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
@@ -106,6 +108,7 @@ jobs:
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
+              --tests com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
               --tests com.reiflix.reiflix_local.storage.NativeStorageOnboardingStateTest \
               --tests com.reiflix.reiflix_local.scanner.SafTreeChangeDetectionTest \
             :app:assembleDebugAndroidTest \
