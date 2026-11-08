@@ -224,8 +224,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val candidateFollowUpRequests = ConcurrentHashMap<Long, List<ReiAnixArtworkCandidate>>()
     private val permits = Semaphore(2)
     private val backfillRunning = AtomicBoolean(false)
+    private val missingPosterBackfillRunning = AtomicBoolean(false)
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
+    @Volatile private var missingPosterBackfillJob: Job? = null
 
     private data class Anime(
         val anilistId: Long?,
@@ -296,25 +298,64 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     }
 
     /**
-     * Enqueue only anime whose poster is not already materialized as a valid local image.
-     * Requests still use the canonical per-anime job map, cache, SQLite writer, semaphore,
-     * retry handling and publication stream; this method does not implement a downloader.
+     * Recovers missing posters through the canonical pipeline in small, awaited batches.
+     * The existing artwork pipeline allows two simultaneous downloads; enqueueing an
+     * entire library at once would still create an unbounded number of waiting coroutines.
      */
-    fun requestMissingPosterArtwork(animeIds: List<Long>, forceRetry: Boolean = false): Int {
-        if (cacheClearInProgress.get()) return 0
-        var queued = 0
-        animeIds.asSequence().filter { it > 0L }.distinct().forEach { animeId ->
-            val anime = loadAnime(animeId) ?: return@forEach
-            val entityType = if (anime.kind.equals("movie", ignoreCase = true)) "movie" else "anime"
-            if (!hasUsablePersistedPoster(animeId, entityType)) {
-                // Do not force a second follow-up when the canonical job already owns this ID.
-                val alreadyInFlight = synchronized(jobs) { jobs[animeId]?.isActive == true }
-                if (requestAnimeArtwork(animeId, force = forceRetry && !alreadyInFlight)) {
-                    queued++
+    fun requestMissingPosterArtwork(animeIds: List<Long>, forceRetry: Boolean = false): Boolean {
+        if (cacheClearInProgress.get() ||
+            !missingPosterBackfillRunning.compareAndSet(false, true)
+        ) return false
+
+        val pendingIds = animeIds.asSequence()
+            .filter { it > 0L }
+            .distinct()
+            .toList()
+        if (pendingIds.isEmpty()) {
+            missingPosterBackfillRunning.set(false)
+            return false
+        }
+
+        missingPosterBackfillJob = scope.launch {
+            try {
+                for (batch in pendingIds.chunked(MISSING_POSTER_BATCH_SIZE)) {
+                    currentCoroutineContext().ensureActive()
+                    if (cacheClearInProgress.get()) break
+
+                    val activeJobs = ArrayList<Job>(batch.size)
+                    for (animeId in batch) {
+                        currentCoroutineContext().ensureActive()
+                        if (cacheClearInProgress.get()) break
+                        val anime = loadAnime(animeId) ?: continue
+                        val entityType = if (anime.kind.equals("movie", ignoreCase = true)) "movie" else "anime"
+                        if (hasUsablePersistedPoster(animeId, entityType)) continue
+
+                        // Reuse an already-running canonical request instead of creating a
+                        // forced follow-up. This keeps retries idempotent per anime.
+                        val existingJob = synchronized(jobs) {
+                            jobs[animeId]?.takeIf { it.isActive }
+                        }
+                        if (existingJob == null) {
+                            requestAnimeArtwork(animeId, force = forceRetry)
+                        }
+                        synchronized(jobs) {
+                            jobs[animeId]?.takeIf { it.isActive }
+                        }?.let(activeJobs::add)
+                    }
+
+                    // At most one small batch can wait for the two existing download permits.
+                    activeJobs.distinct().joinAll()
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "Missing-poster artwork recovery failed", error)
+            } finally {
+                missingPosterBackfillJob = null
+                missingPosterBackfillRunning.set(false)
             }
         }
-        return queued
+        return true
     }
 
     private fun requestAnimeArtworkInternal(
@@ -2298,6 +2339,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val MAX_CANDIDATE_ARTWORKS = 5
         const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
+        const val MISSING_POSTER_BATCH_SIZE = 12
         const val IO_BUFFER_BYTES = 64 * 1024
         const val POSTER_PRIORITY = 400
         const val STALE_PRIORITY = 350
