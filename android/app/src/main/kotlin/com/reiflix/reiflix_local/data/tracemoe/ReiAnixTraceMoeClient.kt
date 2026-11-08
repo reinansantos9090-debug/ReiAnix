@@ -540,13 +540,9 @@ class ReiAnixTraceMoeClient(
         kind: TraceMoeFailureKind,
         attempt: Int,
     ): Long = when (kind) {
-        TraceMoeFailureKind.CONCURRENCY_LIMIT -> 5_000L
-        TraceMoeFailureKind.RATE_LIMITED -> 5_000L
-        else -> when (attempt) {
-            0 -> 1_500L
-            1 -> 4_000L
-            else -> 8_000L
-        }
+        TraceMoeFailureKind.CONCURRENCY_LIMIT -> 1_500L
+        TraceMoeFailureKind.RATE_LIMITED -> 2_500L
+        else -> 1_000L
     }
 
     private fun isJpeg(bytes: ByteArray): Boolean =
@@ -566,7 +562,7 @@ class ReiAnixTraceMoeClient(
         // in every Trace.moe response adds work that is not used by this client.
         const val SEARCH_ENDPOINT = "https://api.trace.moe/search?cutBorders=1"
         const val ACCOUNT_ENDPOINT = "https://api.trace.moe/me"
-        const val DEFAULT_TIMEOUT_MILLIS = 10_000
+        const val DEFAULT_TIMEOUT_MILLIS = 8_000
         const val DEFAULT_REQUEST_INTERVAL_MILLIS = 1_200L
         const val MAX_IMAGE_BYTES = 4L * 1024L * 1024L
         const val RESULT_CACHE_TTL_MILLIS = 60L * 60L * 1_000L
@@ -577,11 +573,11 @@ class ReiAnixTraceMoeClient(
         const val MAX_QUOTA_WAIT_MILLIS = 8_000L
         const val QUOTA_STATUS_MISMATCH_RETRY_MILLIS = 1_500L
         const val MAX_QUOTA_STATUS_MISMATCH_RETRIES = 1
-        const val MAX_RETRIES = 2
+        const val MAX_RETRIES = 1
         private const val ACCOUNT_TIMEOUT_MILLIS = 3_000
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
-        private const val MIN_RETRY_DELAY_MILLIS = 1_000L
-        private const val MAX_RETRY_DELAY_MILLIS = 300_000L
+        private const val MIN_RETRY_DELAY_MILLIS = 800L
+        private const val MAX_RETRY_DELAY_MILLIS = 5_000L
         private const val USER_AGENT = "ReiAnix-Android/1.0 (local anime identification)"
     }
 }
