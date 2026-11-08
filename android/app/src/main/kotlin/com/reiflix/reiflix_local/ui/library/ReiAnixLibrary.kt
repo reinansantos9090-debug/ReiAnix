@@ -144,7 +144,7 @@ fun ReiAnixLibraryRoute(
         },
         onToggleFavorite = viewModel::toggleFavorite,
         hasMore = pageState.hasMore,
-        isLoadingMore = pageState.isLoading && visibleAnimes.isNotEmpty(),
+        isLoadingMore = pageState.isLoadingMore,
         onLoadMore = viewModel::loadNextLibraryPage,
     )
 }
@@ -180,7 +180,7 @@ fun ReiAnixLibraryRoute(
         onOpenDetails = onOpenDetails,
         onToggleFavorite = viewModel::toggleFavorite,
         hasMore = pageState.hasMore,
-        isLoadingMore = pageState.isLoading && pageState.animes.isNotEmpty(),
+        isLoadingMore = pageState.isLoadingMore,
         onLoadMore = viewModel::loadNextLibraryPage,
     )
 }
