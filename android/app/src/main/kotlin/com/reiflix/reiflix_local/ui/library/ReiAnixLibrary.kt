@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -65,6 +66,8 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixTopBar
+import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeader
+import com.reiflix.reiflix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixChip
@@ -279,19 +282,23 @@ private fun ReiAnixLibraryPresentationScreen(
     onSelectSource: () -> Unit = onRefresh,
 ) {
     ReiAnixResponsiveRoot {
+    val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .nestedScroll(scrollHeaderState.nestedScrollConnection)
             .background(MaterialTheme.colorScheme.background),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        LibraryHeader(
-            sourceAvailable = state.sourceAvailable,
-            onSearch = onSearch,
-            onRefresh = onRefresh,
-            isRefreshing = isRefreshing,
-            onOpenStorage = onOpenStorage,
-        )
+        ReiAnixScrollAwareHeader(state = scrollHeaderState) {
+            LibraryHeader(
+                sourceAvailable = state.sourceAvailable,
+                onSearch = onSearch,
+                onRefresh = onRefresh,
+                isRefreshing = isRefreshing,
+                onOpenStorage = onOpenStorage,
+            )
+        }
 
         val renderReadyContent: @Composable () -> Unit = {
             LibraryReadyContent(
