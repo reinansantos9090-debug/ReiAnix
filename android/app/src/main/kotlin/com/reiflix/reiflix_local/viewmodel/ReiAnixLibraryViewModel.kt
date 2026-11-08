@@ -1476,10 +1476,12 @@ class ReiAnixLibraryViewModel(
 
                 // Start canonical URL/cache recovery immediately. Per-anime locks, verified
                 // local files, the shared two-request semaphore and publication remain intact.
-                dependencies.artworkService.requestMissingPosterArtwork(
-                    animeIds = missingAnimeIds,
-                    forceRetry = true,
-                )
+                withContext(Dispatchers.IO) {
+                    dependencies.artworkService.requestMissingPosterArtwork(
+                        animeIds = missingAnimeIds,
+                        forceRetry = true,
+                    )
+                }
 
                 // Match the artwork discovery phases used after a successful folder scan,
                 // but let this explicit user action bypass old lookup/source cooldowns.
