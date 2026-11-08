@@ -222,6 +222,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val retryJobs = ConcurrentHashMap<Long, Job>()
     private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
     private val candidateFollowUpRequests = ConcurrentHashMap<Long, List<ReiAnixArtworkCandidate>>()
+    private val permits = Semaphore(2)
     // Foreground/startup triggers are coalesced. A trigger received while a pass is
     // running schedules one immediate follow-up instead of being silently discarded.
     private val backfillGuard = Any()
