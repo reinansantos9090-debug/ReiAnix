@@ -182,7 +182,6 @@ class ReiAnixTraceMoeClient(
     suspend fun search(
         imageFile: File,
         reserveRequest: suspend () -> Boolean = { true },
-        onQuotaWait: suspend () -> Unit = {},
     ): List<TraceMoeSearchMatch> {
         val imageBytes = withContext(Dispatchers.IO) {
             if (!imageFile.isFile || imageFile.length() !in 4L..MAX_IMAGE_BYTES) {
