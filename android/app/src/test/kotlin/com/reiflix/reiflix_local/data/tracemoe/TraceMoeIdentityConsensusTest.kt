@@ -270,6 +270,9 @@ class TraceMoeIdentityConsensusTest {
     @Test
     fun accountWideFailuresStopInsteadOfFloodingLaterEpisodes() {
         assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.QUOTA_EXHAUSTED))
+        assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.CONCURRENCY_LIMIT))
+        assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.PAYMENT_REQUIRED_UNCLASSIFIED))
+        assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.ACCOUNT_STATUS_UNAVAILABLE))
         assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.AUTHENTICATION))
         assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.FORBIDDEN))
     }
@@ -317,6 +320,30 @@ class TraceMoeIdentityConsensusTest {
 
         assertEquals(TraceMoeFailureKind.CONCURRENCY_LIMIT, kind)
         assertTrue(kind.retryable)
+    }
+
+    @Test
+    fun genericHttp402RequiresAccountStatusInsteadOfAssumingQuotaIsExhausted() {
+        assertEquals(
+            TraceMoeFailureKind.PAYMENT_REQUIRED_UNCLASSIFIED,
+            classifyTraceMoeHttpFailure(402, null),
+        )
+        assertEquals(
+            TraceMoeFailureKind.PAYMENT_REQUIRED_UNCLASSIFIED,
+            classifyTraceMoeHttpFailure(402, "Payment Required"),
+        )
+    }
+
+    @Test
+    fun explicitQuotaExhaustionIsClassifiedSeparatelyFromConcurrency() {
+        assertEquals(
+            TraceMoeFailureKind.QUOTA_EXHAUSTED,
+            classifyTraceMoeHttpFailure(402, "Search quota depleted (quota per 24 hours: 100, used: 100)"),
+        )
+        assertEquals(
+            TraceMoeFailureKind.CONCURRENCY_LIMIT,
+            classifyTraceMoeHttpFailure(402, "Concurrency limit exceeded"),
+        )
     }
 
     @Test
