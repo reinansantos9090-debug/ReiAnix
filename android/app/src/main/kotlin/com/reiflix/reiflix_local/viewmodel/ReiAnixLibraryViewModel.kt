@@ -1749,6 +1749,29 @@ class ReiAnixLibraryViewModel(
                         continue
                     }
 
+                    // Make local preparation visible before extraction finishes. This
+                    // state is published only while the user-initiated Trace.moe session
+                    // is active; the thumbnail generator itself remains independent.
+                    if (traceMoeSampleSessions.containsKey(animeId)) {
+                        val numberLabel = episode.number?.let { number ->
+                            if (number % 1.0 == 0.0) number.toInt().toString()
+                            else number.toString()
+                        } ?: episode.title?.takeIf(String::isNotBlank) ?: episode.id.toString()
+                        val episodeLabel = "Episódio $numberLabel"
+                        val previousProgress = _traceMoeIdentificationStates.value[animeId]
+                        if (previousProgress?.status == ReiAnixTraceMoeIdentificationStatus.RUNNING) {
+                            publishTraceMoeIdentificationState(
+                                animeId,
+                                previousProgress.copy(
+                                    message = "Gerando thumbnail local de $episodeLabel...",
+                                    currentEpisodeId = episode.id,
+                                    currentEpisodeLabel = episodeLabel,
+                                    currentThumbnailPath = null,
+                                ),
+                            )
+                        }
+                    }
+
                     try {
                         val sourceUri = VideoThumbnailExtractor.normalizeLocalMediaUri(item.rawSource)
                         if (sourceUri == null) {
