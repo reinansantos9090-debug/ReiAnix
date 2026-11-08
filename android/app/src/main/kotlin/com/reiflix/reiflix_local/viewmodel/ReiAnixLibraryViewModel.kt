@@ -1729,12 +1729,13 @@ class ReiAnixLibraryViewModel(
                     refreshNativeCatalog()
                 }
 
-                // Replay cached episode images in creation-time order. This picks
-                // whichever episode thumbnail became available first, not episode 1.
+                // Preserve the canonical season/episode order. File creation time is
+                // unrelated to episode order and previously caused episode 3 or later
+                // to be sent before episode 1.
                 val cachedTraceMoeItems = withContext(Dispatchers.IO) {
-                    thumbnailWorkItems
-                        .filter { !it.requiresGeneration && it.existingIsUsable && !it.existingPath.isNullOrBlank() }
-                        .sortedBy { File(it.existingPath!!).lastModified() }
+                    thumbnailWorkItems.filter {
+                        !it.requiresGeneration && it.existingIsUsable && !it.existingPath.isNullOrBlank()
+                    }
                 }
                 cachedTraceMoeItems.forEach { item ->
                     enqueueTraceMoeSample(item.episode.animeId, item.episode.id, File(item.existingPath!!))
@@ -1894,9 +1895,8 @@ class ReiAnixLibraryViewModel(
                             if (!file.isFile || file.length() !in 4L..ReiAnixTraceMoeClient.MAX_IMAGE_BYTES) {
                                 return@mapNotNull null
                             }
-                            Triple(episode.id, file, file.lastModified())
+                            episode.id to file
                         }
-                        .sortedBy { it.third }
                     val usable = buildList {
                         for ((episodeId, file) in candidates) {
                             if (VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)) {
