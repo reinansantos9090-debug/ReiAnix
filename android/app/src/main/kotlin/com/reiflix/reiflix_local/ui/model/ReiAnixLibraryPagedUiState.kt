@@ -33,4 +33,14 @@ data class ReiAnixLibraryPagedUiState(
     val completedOnly: Boolean = false,
     val sort: String = "Mais recentes",
     val error: String? = null,
-)
+) {
+    /**
+     * True only while requesting a page after the first one.
+     *
+     * Page-zero reloads are projection refreshes (for example after a cover or
+     * episode thumbnail is published), not pagination. They must not show the
+     * grid's blue "load more" spinner.
+     */
+    val isLoadingMore: Boolean
+        get() = isLoading && loadedPage >= 0
+}
