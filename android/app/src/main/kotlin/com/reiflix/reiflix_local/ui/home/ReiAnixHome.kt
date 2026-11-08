@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -37,6 +42,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +51,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -55,6 +63,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.collect
 import androidx.navigation.NavHostController
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
@@ -74,6 +83,9 @@ import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeader
+import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeaderState
+import com.reiflix.reiflix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
 import com.reiflix.reiflix_local.ui.discovery.ReiAnixDurationAnomalyDialog
 import com.reiflix.reiflix_local.ui.discovery.ReiAnixTimelineDialog
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
@@ -189,34 +201,41 @@ private fun ReiAnixHomeObservedScreen(
     onOpenDurationAnomalies: () -> Unit,
 ) {
     ReiAnixResponsiveRoot {
+    val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .nestedScroll(scrollHeaderState.nestedScrollConnection)
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top)),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        HomeHeader(
-            onOpenCollector = onOpenCollector,
-            onSearch = onSearch,
-            onRefresh = onRefresh,
-        )
+        ReiAnixScrollAwareHeader(state = scrollHeaderState) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                HomeHeader(
+                    onOpenCollector = onOpenCollector,
+                    onSearch = onSearch,
+                    onRefresh = onRefresh,
+                )
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-        ) {
-            ReiAnixSecondaryButton(
-                text = "Linha do tempo",
-                onClick = onOpenTimeline,
-                modifier = Modifier.weight(1f),
-            )
-            ReiAnixSecondaryButton(
-                text = "Durações incomuns",
-                onClick = onOpenDurationAnomalies,
-                modifier = Modifier.weight(1f),
-            )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                ) {
+                    ReiAnixSecondaryButton(
+                        text = "Linha do tempo",
+                        onClick = onOpenTimeline,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ReiAnixSecondaryButton(
+                        text = "Durações incomuns",
+                        onClick = onOpenDurationAnomalies,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
 
         if (!personalListMutationError.isNullOrBlank()) {
@@ -254,6 +273,7 @@ private fun ReiAnixHomeObservedScreen(
                 if (state.animes.isNotEmpty()) {
                     HomeObservedContent(
                         state = state,
+                        scrollHeaderState = scrollHeaderState,
                         continueWatching = continueWatching,
                         cardSize = cardSize,
                     showThumbnails = showThumbnails,
@@ -276,6 +296,7 @@ private fun ReiAnixHomeObservedScreen(
                 if (state.animes.isNotEmpty()) {
                     HomeObservedContent(
                         state = state,
+                        scrollHeaderState = scrollHeaderState,
                         continueWatching = continueWatching,
                         cardSize = cardSize,
                     showThumbnails = showThumbnails,
@@ -298,6 +319,7 @@ private fun ReiAnixHomeObservedScreen(
                 if (state.animes.isNotEmpty()) {
                     HomeObservedContent(
                         state = state,
+                        scrollHeaderState = scrollHeaderState,
                         continueWatching = continueWatching,
                         cardSize = cardSize,
                     showThumbnails = showThumbnails,
@@ -336,6 +358,7 @@ private fun ReiAnixHomeObservedScreen(
             }
             ReiAnixLibraryLoadStatus.READY -> HomeObservedContent(
                 state = state,
+                scrollHeaderState = scrollHeaderState,
                 continueWatching = continueWatching,
                 cardSize = cardSize,
                     showThumbnails = showThumbnails,
@@ -354,6 +377,7 @@ private fun ReiAnixHomeObservedScreen(
 @Composable
 private fun ColumnScope.HomeObservedContent(
     state: ReiAnixHomeLibraryUiState,
+    scrollHeaderState: ReiAnixScrollAwareHeaderState,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
@@ -365,6 +389,7 @@ private fun ColumnScope.HomeObservedContent(
 ) {
     HomeReadyContent(
         animes = state.animes,
+        scrollHeaderState = scrollHeaderState,
         continueWatching = continueWatching,
         cardSize = cardSize,
                     showThumbnails = showThumbnails,
@@ -651,8 +676,17 @@ private fun ColumnScope.HomeReadyContent(
     heroSecondaryLabel: (ReiAnixHomeAnimeUiModel) -> String,
     onOpenMyList: () -> Unit,
     onOpenLibrary: () -> Unit,
+    scrollHeaderState: ReiAnixScrollAwareHeaderState? = null,
 ) {
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    LaunchedEffect(listState, scrollHeaderState) {
+        val headerState = scrollHeaderState ?: return@LaunchedEffect
+        snapshotFlow {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }.collect { isAtTop ->
+            headerState.updateContentAtTop(isAtTop)
+        }
+    }
     val responsive = LocalReiAnixResponsiveMetrics.current
     val posterSize = LocalReiAnixPosterSize.current
     val posterCardWidth = responsive.posterCardWidth(posterSize)
