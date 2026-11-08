@@ -745,20 +745,6 @@ private fun ColumnScope.LibraryReadyContent(
                                 onClick = onToggleCompleted,
                             )
                         }
-                        item(key = "filter-missing-artwork-retry") {
-                            ReiAnixChip(
-                                text = if (missingArtworkRetryState.isRunning) {
-                                    "Buscando capas..."
-                                } else {
-                                    "Baixar capas que faltam"
-                                },
-                                enabled = !missingArtworkRetryState.isRunning,
-                                onClick = onRetryMissingArtwork,
-                                modifier = Modifier.semantics {
-                                    contentDescription = "Baixar capas que faltam"
-                                },
-                            )
-                        }
                     }
 
                     Box {
@@ -797,6 +783,31 @@ private fun ColumnScope.LibraryReadyContent(
                             }
                         }
                     }
+                }
+            }
+
+            item(
+                key = "library-missing-artwork-retry",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "library-missing-artwork-retry",
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ReiAnixChip(
+                        text = if (missingArtworkRetryState.isRunning) {
+                            "Buscando capas..."
+                        } else {
+                            "Baixar capas que faltam"
+                        },
+                        enabled = !missingArtworkRetryState.isRunning,
+                        onClick = onRetryMissingArtwork,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Baixar capas que faltam"
+                        },
+                    )
                 }
             }
 
