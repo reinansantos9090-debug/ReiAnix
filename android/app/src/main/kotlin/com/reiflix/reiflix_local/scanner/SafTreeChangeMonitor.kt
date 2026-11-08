@@ -24,7 +24,6 @@ import java.util.ArrayDeque
 import java.util.HashMap
 import java.util.HashSet
 import java.util.LinkedHashMap
-import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
@@ -133,11 +132,10 @@ object SafTreeChangeMonitor {
                 // Before the first durable snapshot exists, accept only a directly
                 // identified video document. A null/root notification must not scan
                 // merely because the library already contains some videos.
-                current != null && previous == null && changedUri != null &&
-                    DocumentsContract.isDocumentUri(context, changedUri) ->
-                    runCatching {
-                        SafScanner.containsPotentialVideoChange(context, treeUri, changedUri)
-                    }.getOrDefault(false)
+                // A missing baseline is initialized silently. Folder selection already
+                // performs its own validated initial scan, and guessing here would cause
+                // false positives for folders that merely contain existing videos.
+                current != null && previous == null -> false
                 current == null && changedUri != null &&
                     DocumentsContract.isDocumentUri(context, changedUri) ->
                     runCatching {
