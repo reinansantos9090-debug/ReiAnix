@@ -549,16 +549,7 @@ class ReiAnixAniListIntegrationService(
                 "Aguardando a resposta do Trace.moe...",
             )
             val matches = try {
-                traceMoeClient.search(
-                    imageFile = sample.imageFile,
-                    onQuotaWait = {
-                        report(
-                            TraceMoeIdentificationProgressPhase.WAITING_FOR_QUOTA,
-                            sample,
-                            "Aguardando brevemente a disponibilidade da API Trace.moe...",
-                        )
-                    },
-                )
+                traceMoeClient.search(imageFile = sample.imageFile)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: TraceMoeApiException) {
