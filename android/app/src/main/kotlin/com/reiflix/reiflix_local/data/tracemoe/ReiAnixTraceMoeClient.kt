@@ -622,6 +622,20 @@ internal fun hasRemainingTraceMoeResponseSlots(
 }
 
 /**
+ * Do not start a long successful-attempt cooldown after a session ended with an
+ * unreplaced recoverable failure. That failure did not count as a valid response.
+ */
+internal fun shouldCompleteTraceMoeIdentification(
+    successfulResponses: Int,
+    hadUnreplacedFailure: Boolean,
+    maximumResponses: Int = MAX_TRACE_MOE_EPISODE_SAMPLES,
+): Boolean {
+    require(successfulResponses >= 0)
+    require(maximumResponses > 0)
+    return successfulResponses >= maximumResponses || !hadUnreplacedFailure
+}
+
+/**
  * Request-specific/transient failures can be replaced by a later episode thumbnail.
  * Account-wide failures must stop the session rather than flooding the API with more
  * images that will fail for the same reason.
