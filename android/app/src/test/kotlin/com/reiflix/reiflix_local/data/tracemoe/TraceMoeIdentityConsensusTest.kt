@@ -151,7 +151,7 @@ class TraceMoeIdentityConsensusTest {
     }
 
     @Test
-    fun laterEpisodesCanConfirmAfterTheFirstThreeWereInconclusive() {
+    fun evidenceWindowHelperMaintainsOnlyThreeLatestResponses() {
         var window = linkedMapOf<Long, List<TraceMoeSearchMatch>>()
         window = appendTraceMoeEpisodeMatches(
             window,
@@ -227,6 +227,38 @@ class TraceMoeIdentityConsensusTest {
         assertEquals(setOf(11L, 12L, 13L, 14L, 15L, 16L), successfulApiEpisodeIds)
     }
 
+
+    @Test
+    fun identificationStopsAfterThreeSuccessfulResponses() {
+        assertTrue(hasRemainingTraceMoeResponseSlots(0))
+        assertTrue(hasRemainingTraceMoeResponseSlots(1))
+        assertTrue(hasRemainingTraceMoeResponseSlots(2))
+        assertFalse(hasRemainingTraceMoeResponseSlots(3))
+        assertFalse(hasRemainingTraceMoeResponseSlots(4))
+    }
+
+    @Test
+    fun failedEpisodeRequestsCanBeReplacedWithoutConsumingAValidResponseSlot() {
+        assertTrue(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.BAD_IMAGE))
+        assertTrue(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.TIMEOUT))
+        assertTrue(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.NETWORK_UNAVAILABLE))
+        assertTrue(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.SERVER_UNAVAILABLE))
+    }
+
+    @Test
+    fun accountWideFailuresStopInsteadOfFloodingLaterEpisodes() {
+        assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.QUOTA_EXHAUSTED))
+        assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.AUTHENTICATION))
+        assertFalse(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.FORBIDDEN))
+    }
+
+    @Test
+    fun anEmptyButSuccessfulApiResponseStillConsumesAResponseSlot() {
+        // Every normal response increments the session counter regardless of the
+        // number of Trace.moe candidates; this checks the three-slot boundary.
+        assertTrue(hasRemainingTraceMoeResponseSlots(2))
+        assertFalse(hasRemainingTraceMoeResponseSlots(3))
+    }
 
     @Test
     fun explicitTraceMoeRequestRunsWhenAutomaticMatchingIsDisabled() {
