@@ -22,9 +22,8 @@ As origens reconhecidas são:
 - VOLUME_UNMOUNT
 - RECOVERY
 - EXPLICIT_FULL_RESCAN
-- BACKGROUND_RECONCILIATION
 
-onResume() não é uma origem de scan. Ele apenas pode gerar STARTUP na primeira descoberta ou PERMISSION_CHANGE quando a capacidade nativa realmente mudou.
+onResume() não é uma origem de scan. Ele apenas publica o estado de permissões; uma transição real de capacidade pode gerar PERMISSION_CHANGE. A descoberta de novos vídeos SAF vem do monitor de alterações, nunca da simples abertura/retomada do app.
 
 ## Estados
 O estado lógico é:
@@ -50,7 +49,6 @@ A ordem é explícita no código:
 6. VOLUME_MOUNT
 7. SAF_CHANGE
 8. MEDIA_CHANGE
-9. BACKGROUND_RECONCILIATION
 
 VOLUME_UNMOUNT fica com prioridade alta para registrar rapidamente uma mudança de disponibilidade, mas não dispara uma varredura de um volume que acabou de ficar inacessível.
 
@@ -99,11 +97,15 @@ O NativeMailbox continua responsável pela fila atômica, deduplicação e ackno
 ## Lifecycle
 O comportamento de MainActivity.onResume() foi separado da indexação.
 
-Retornar do player, background ou outra tela não inicia um full scan.
+Retornar do player, background ou outra tela não inicia scan nem reconciliação completa.
+A seleção inicial de uma pasta executa seu scan validado; a varredura manual continua
+disponível; mudanças efetivas de permissão/volume continuam usando seus fluxos próprios.
 
-Somente primeiro startup real ou mudança efetiva de permissão podem gerar uma nova solicitação a partir do lifecycle.
-
-O MediaStore ContentObserver também não executa scanner diretamente. Ele somente produz uma solicitação MEDIA_CHANGE após o debounce existente.
+O MediaStore ContentObserver produz uma solicitação MEDIA_CHANGE após o debounce
+existente. Para SAF, `SafTreeChangeMonitor` observa as árvores autorizadas, filtra
+notificações para conteúdo de vídeo, persiste alterações por árvore e solicita
+`SAF_CHANGE` somente para a pasta que recebeu conteúdo novo. A simples retomada
+do app nunca cria `BACKGROUND_RECONCILIATION`.
 
 ## Cancelamento
 ScanCoordinator.cancel() muda para CANCELLING, limpa requests pendentes e chama o cancelamento nativo existente.
@@ -136,11 +138,11 @@ Nesta fase o callback deixou de iniciar scanMediaStore() diretamente.
 Agora ele publica um MEDIA_CHANGE para o Coordinator.
 
 ## Startup
-Se LibraryStore.last_scan() já estiver em estado terminal completo, STARTUP é deduplicado.
+A primeira seleção de uma pasta SAF executa a varredura inicial validada; a ação manual continua disponível em qualquer momento.
 
-Se não houver scan anterior ou o último estado não for completo, STARTUP pode iniciar descoberta.
+Depois que uma pasta está configurada, o startup apenas registra os observadores e reconcilia o inventário leve de metadados de vídeos com o último snapshot persistido. Um snapshot inicial é silencioso. Em processos seguintes, somente IDs de documentos de vídeo novos ou metadados de vídeo alterados criam trabalho SAF_CHANGE. Exclusões isoladas, imagens, legendas, NFO e a simples abertura do app não disparam varredura.
 
-Isso evita transformar cada criação/retorno da Activity em um full scan.
+O inventário é comprimido e persistido por árvore. O pedido de scan é gravado antes de avançar o snapshot e permanece pendente após scan parcial, cancelado ou com falha; somente uma geração SUCCEEDED consome a alteração. Assim, vídeos copiados enquanto o processo estava encerrado são detectados na próxima inicialização sem executar uma varredura completa em cada onResume.
 
 ## Escopo mantido
 Esta fase não implementa:

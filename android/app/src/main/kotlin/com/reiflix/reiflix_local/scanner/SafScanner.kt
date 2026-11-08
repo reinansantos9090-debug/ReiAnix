@@ -29,6 +29,138 @@ object SafScanner {
         "webm","ts","m2ts","wmv"
     )
 
+    internal fun isPotentialVideoDocument(name: String?, mimeType: String?): Boolean {
+        if (mimeType?.trim()?.startsWith("video/", ignoreCase = true) == true) return true
+        val extension = name?.substringAfterLast('.', "")?.trim()?.lowercase().orEmpty()
+        return extension in videoExtensions
+    }
+
+    /**
+     * Filters a DocumentsProvider change notification before scheduling a library scan.
+     * File notifications are accepted only for video documents. Directory/root changes
+     * are inspected beneath the changed directory so a newly added anime folder is
+     * detected without starting scans for unrelated document edits.
+     *
+     * A provider that cannot describe the changed item is treated conservatively: the
+     * caller received a real descendant notification, so it is safer to reconcile once
+     * than to silently miss a newly copied video.
+     */
+    fun containsPotentialVideoChange(
+        context: Context,
+        treeUri: Uri,
+        changedUri: Uri?,
+        maxDocuments: Int = 5_000,
+    ): Boolean {
+        if (!hasPersistedReadPermission(context, treeUri)) return false
+        val identity = runCatching { treeIdentity(treeUri) }.getOrNull() ?: return false
+        val startDocumentId = when {
+            changedUri == null -> identity.documentId
+            !changedUri.authority.equals(identity.authority, ignoreCase = true) -> return false
+            DocumentsContract.isTreeUri(changedUri) -> runCatching {
+                DocumentsContract.getTreeDocumentId(changedUri)
+            }.getOrNull() ?: identity.documentId
+            DocumentsContract.isDocumentUri(context, changedUri) -> runCatching {
+                DocumentsContract.getDocumentId(changedUri)
+            }.getOrNull() ?: return true
+            else -> identity.documentId
+        }
+        if (!isDocumentWithinTree(context, treeUri, startDocumentId)) return false
+
+        val pending = ArrayDeque<String>()
+        val visited = HashSet<String>()
+        pending.addLast(startDocumentId)
+        var examined = 0
+        while (pending.isNotEmpty()) {
+            val documentId = pending.removeFirst()
+            if (!visited.add(documentId)) continue
+            examined++
+            if (examined > maxDocuments) return true
+
+            val documentUri = runCatching {
+                DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+            }.getOrNull() ?: return true
+            val metadata = try {
+                context.contentResolver.query(
+                    documentUri,
+                    arrayOf(
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    ),
+                    null,
+                    null,
+                    null,
+                )?.use { cursor ->
+                    if (!cursor.moveToFirst()) null
+                    else {
+                        val idIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                        val nameIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                        val mimeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                        if (idIndex < 0 || mimeIndex < 0) null
+                        else Triple(
+                            cursor.getString(idIndex).orEmpty(),
+                            if (nameIndex >= 0) cursor.getString(nameIndex).orEmpty() else "",
+                            cursor.getString(mimeIndex).orEmpty(),
+                        )
+                    }
+                }
+            } catch (error: SecurityException) {
+                Log.w(TAG, "SAF change inspection lost access to a document.", error)
+                return false
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                Log.w(TAG, "SAF change inspection could not query a document.", error)
+                return true
+            } ?: continue
+
+            if (isPotentialVideoDocument(metadata.second, metadata.third)) return true
+            if (!metadata.third.equals(DocumentsContract.Document.MIME_TYPE_DIR, ignoreCase = true)) continue
+
+            val childrenUri = runCatching {
+                DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, metadata.first.ifBlank { documentId })
+            }.getOrNull() ?: return true
+            try {
+                val children = context.contentResolver.query(
+                    childrenUri,
+                    arrayOf(
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    ),
+                    null,
+                    null,
+                    null,
+                ) ?: return true
+                children.use { cursor ->
+                    val idIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val mimeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    if (idIndex < 0 || mimeIndex < 0) return true
+                    while (cursor.moveToNext()) {
+                        examined++
+                        if (examined > maxDocuments) return true
+                        val childId = cursor.getString(idIndex)?.trim().orEmpty()
+                        if (childId.isBlank()) continue
+                        val name = if (nameIndex >= 0) cursor.getString(nameIndex).orEmpty() else ""
+                        val mime = cursor.getString(mimeIndex).orEmpty()
+                        if (isPotentialVideoDocument(name, mime)) return true
+                        if (mime.equals(DocumentsContract.Document.MIME_TYPE_DIR, ignoreCase = true)) {
+                            pending.addLast(childId)
+                        }
+                    }
+                }
+            } catch (error: SecurityException) {
+                Log.w(TAG, "SAF change inspection lost access while listing a directory.", error)
+                return false
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                Log.w(TAG, "SAF change inspection could not list a directory.", error)
+                return true
+            }
+        }
+        return false
+    }
+
     data class TreeIdentity(val treeUri:String,val authority:String,val documentId:String,val volumeId:String,val identity:String)
 
     fun treeIdentity(treeUri:Uri):TreeIdentity {

@@ -72,7 +72,17 @@ A missing removable volume is therefore not equivalent to a deleted file.
 MainActivity is `singleTask` with `documentLaunchMode="never"`. Permission,
 SAF and Broad Storage callbacks converge through the existing Activity Result
 and lifecycle state. Ordinary `onResume`, player return and background/foreground
-transitions do not trigger a full rescan.
+transitions do not trigger a library scan.
+
+Configured SAF roots are observed with a process-scoped `ContentObserver` on the
+tree document URI. A compressed per-tree inventory of video document IDs and
+metadata is persisted. On process recreation, only new or changed video entries
+create pending `SAF_CHANGE` work; an initial inventory baseline, deletions alone,
+images, subtitles and NFO files do not start scans. Provider notifications update
+the inventory and persist a pending request before acknowledging the snapshot.
+The observer remains registered while the Activity is stopped. A pending request
+survives Activity/process recreation and is consumed only after a `SUCCEEDED`
+scan; partial, cancelled and failed scans retain it for a later retry.
 
 NativeMailbox remains the transport boundary. ScanCoordinator remains the single
 logical scan coordinator.

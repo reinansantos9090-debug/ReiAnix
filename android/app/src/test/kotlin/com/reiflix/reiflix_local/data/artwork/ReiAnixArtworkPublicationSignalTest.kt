@@ -115,6 +115,45 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun interruptedPersistedArtworkRowsAreEligibleForReplay() {
+        for (status in ARTWORK_RESUMABLE_CANDIDATE_STATUSES) {
+            assertTrue(
+                "Persisted artwork status $status must resume after process recreation.",
+                isArtworkResumableCandidateStatus(status),
+            )
+            assertTrue(
+                "Interrupted artwork status $status must be retried by the materializer.",
+                shouldRetryArtworkRequest(status, null, 0, 10_000.0, force = false),
+            )
+        }
+        assertFalse(isArtworkResumableCandidateStatus("ready"))
+        assertFalse(isArtworkResumableCandidateStatus("failed"))
+        assertFalse(isArtworkResumableCandidateStatus("retry_wait"))
+    }
+
+    @Test
+    fun retryWaitArtworkRemainsDeferredUntilItsPersistedCooldownExpires() {
+        assertFalse(
+            shouldRetryArtworkRequest(
+                status = "retry_wait",
+                retryAtSeconds = 20_000.0,
+                failureCount = 3,
+                nowSeconds = 19_999.0,
+                force = false,
+            ),
+        )
+        assertTrue(
+            shouldRetryArtworkRequest(
+                status = "retry_wait",
+                retryAtSeconds = 20_000.0,
+                failureCount = 3,
+                nowSeconds = 20_000.0,
+                force = false,
+            ),
+        )
+    }
+
+    @Test
     fun rankedArtworkCandidatesContinueAfterRejectedImageSources() = runBlocking {
         val candidates = listOf(
             ReiAnixArtworkCandidate(11L, "https://img.example/rejected.jpg", null),
