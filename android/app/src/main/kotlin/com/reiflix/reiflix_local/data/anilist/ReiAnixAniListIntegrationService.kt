@@ -107,6 +107,7 @@ internal fun shouldDiscoverMissingArtwork(
     metadataFetchedAtSeconds: Double?,
     nowSeconds: Double,
     hasExhaustedArtworkFailure: Boolean = false,
+    forceRetry: Boolean = false,
 ): Boolean {
     if (hasUsableLocalCover) return false
     if (!coverUrl.isNullOrBlank()) {
@@ -120,7 +121,7 @@ internal fun shouldDiscoverMissingArtwork(
     // Identity and metadata provenance describe association confidence, not whether an
     // image may be displayed. Manual metadata remains untouched by artwork-only lookup.
     val fetchedAt = metadataFetchedAtSeconds
-    if (!manualMetadata && fetchedAt != null && fetchedAt.isFinite() &&
+    if (!forceRetry && !manualMetadata && fetchedAt != null && fetchedAt.isFinite() &&
         nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
     ) return false
     return true
@@ -199,7 +200,9 @@ internal fun artworkDiscoveryAttemptPreferenceKey(animeId: Long): String {
 internal fun shouldDeferArtworkDiscoveryAttempt(
     lastAttemptSeconds: Double?,
     nowSeconds: Double,
+    forceRetry: Boolean = false,
 ): Boolean {
+    if (forceRetry) return false
     val lastAttempt = lastAttemptSeconds?.takeIf { it.isFinite() } ?: return false
     return nowSeconds - lastAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
 }
@@ -1095,7 +1098,10 @@ class ReiAnixAniListIntegrationService(
      * it does not create local anime rows or a second catalogue.
      * A small per-run budget and persisted metadata freshness prevent startup request storms.
      */
-    suspend fun recoverMissingArtworkMetadata(maxRecords: Int = 12): Int {
+    suspend fun recoverMissingArtworkMetadata(
+        maxRecords: Int = 12,
+        forceRetry: Boolean = false,
+    ): Int {
         if (!missingArtworkRecoveryRunning.compareAndSet(false, true)) return 0
         try {
             require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
@@ -1145,16 +1151,20 @@ class ReiAnixAniListIntegrationService(
                         matchStatus = local.anilistMatchStatus,
                         metadataFetchedAtSeconds = local.metadataFetchedAt,
                         nowSeconds = nowSeconds,
+                        forceRetry = forceRetry,
                     )
                 ) continue
-                if (shouldDeferArtworkDiscoveryAttempt(persistedAttemptTimes[local.id], nowSeconds)) {
+                if (shouldDeferArtworkDiscoveryAttempt(
+                        persistedAttemptTimes[local.id], nowSeconds, forceRetry = forceRetry,
+                    )
+                ) {
                     continue
                 }
                 if (examined >= maxRecords) break
                 val attemptAt = nowSeconds.toLong()
                 val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
                 if (previousAttempt != null) {
-                    if (nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS ||
+                    if ((!forceRetry && nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS) ||
                         !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
                     ) continue
                 }
