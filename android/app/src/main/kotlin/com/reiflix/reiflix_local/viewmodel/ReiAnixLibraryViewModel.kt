@@ -1492,10 +1492,10 @@ class ReiAnixLibraryViewModel(
                     animeId,
                     ReiAnixTraceMoeIdentificationUiState(
                         status = ReiAnixTraceMoeIdentificationStatus.FAILED,
-                        message = when (error.kind) {
-                            TraceMoeFailureKind.QUOTA_EXHAUSTED ->
-                                "A quota do Trace.moe está indisponível no momento. Tente novamente mais tarde."
-                            else -> "A API Trace.moe não respondeu corretamente. Tente novamente.",
+                        message = if (error.kind == TraceMoeFailureKind.QUOTA_EXHAUSTED) {
+                            "A quota do Trace.moe está indisponível no momento. Tente novamente mais tarde."
+                        } else {
+                            "A API Trace.moe não respondeu corretamente. Tente novamente."
                         },
                         validResponses = _traceMoeIdentificationStates.value[animeId]?.validResponses ?: 0,
                     ),
