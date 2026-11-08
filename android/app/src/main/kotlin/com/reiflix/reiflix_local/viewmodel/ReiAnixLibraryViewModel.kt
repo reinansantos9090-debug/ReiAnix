@@ -79,6 +79,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
@@ -173,6 +174,12 @@ data class ReiAnixOrganizerGenreOperationState(
     val isError: Boolean = false,
 )
 
+data class ReiAnixMissingArtworkRetryUiState(
+    val isRunning: Boolean = false,
+    val message: String? = null,
+    val isError: Boolean = false,
+)
+
 data class ReiAnixNativeFolderUiModel(
     val name: String?,
     val path: String,
@@ -233,6 +240,11 @@ class ReiAnixLibraryViewModel(
     // acknowledges the URI request.
     private val nativePlayerHandoffLock = Any()
     private var pendingNativePlayerHandoffRequestId: String? = null
+
+    private val missingArtworkRetryLock = AtomicBoolean(false)
+    private val _missingArtworkRetryState = MutableStateFlow(ReiAnixMissingArtworkRetryUiState())
+    val missingArtworkRetryState: StateFlow<ReiAnixMissingArtworkRetryUiState> =
+        _missingArtworkRetryState.asStateFlow()
 
     /** Process-owned bootstrap state is observable by Compose without transferring lifecycle ownership. */
     val bootstrapState: StateFlow<ReiAnixBootstrapState> =
@@ -1419,6 +1431,90 @@ class ReiAnixLibraryViewModel(
         viewModelScope.launch {
             refreshNativeCatalog()
             appDependencies?.artworkService?.requestAnimeArtwork(animeId)
+        }
+    }
+
+    /**
+     * Explicitly retries only missing posters using the same native artwork and catalog
+     * services used after folder scans. No media scan or second downloader is started.
+     */
+    fun retryMissingArtwork() {
+        if (!missingArtworkRetryLock.compareAndSet(false, true)) return
+        val dependencies = appDependencies
+        if (dependencies == null) {
+            _missingArtworkRetryState.value = ReiAnixMissingArtworkRetryUiState(
+                message = "O serviço de capas não está disponível agora.",
+                isError = true,
+            )
+            missingArtworkRetryLock.set(false)
+            return
+        }
+        if (uiState.value.scanInProgress) {
+            _missingArtworkRetryState.value = ReiAnixMissingArtworkRetryUiState(
+                message = "Aguarde a leitura da pasta terminar para buscar as capas.",
+                isError = true,
+            )
+            missingArtworkRetryLock.set(false)
+            return
+        }
+
+        _missingArtworkRetryState.value = ReiAnixMissingArtworkRetryUiState(
+            isRunning = true,
+            message = "Verificando capas que estão faltando...",
+        )
+        viewModelScope.launch {
+            try {
+                val missingAnimeIds = withContext(Dispatchers.IO) {
+                    dependencies.externalCatalogIntegrationService.missingPosterAnimeIds()
+                }
+                if (missingAnimeIds.isEmpty()) {
+                    _missingArtworkRetryState.value = ReiAnixMissingArtworkRetryUiState(
+                        message = "Todas as capas já estão disponíveis.",
+                    )
+                    return@launch
+                }
+
+                // Start canonical URL/cache recovery immediately. Per-anime locks, verified
+                // local files, the shared two-request semaphore and publication remain intact.
+                dependencies.artworkService.requestMissingPosterArtwork(
+                    animeIds = missingAnimeIds,
+                    forceRetry = true,
+                )
+
+                // Match the artwork discovery phases used after a successful folder scan,
+                // but let this explicit user action bypass old lookup/source cooldowns.
+                withContext(Dispatchers.IO) {
+                    dependencies.aniListIntegrationService.recoverMissingArtworkMetadata(
+                        maxRecords = 24,
+                        forceRetry = true,
+                    )
+                }
+                withContext(Dispatchers.IO) {
+                    dependencies.externalCatalogIntegrationService.enrichLibraryGaps(
+                        restartFromLibraryScan = true,
+                        forceRetry = true,
+                    )
+                }
+                refreshCatalogProjection()
+                _missingArtworkRetryState.value = ReiAnixMissingArtworkRetryUiState(
+                    message = "Busca iniciada para " + missingAnimeIds.size + " anime(s) sem capa.",
+                )
+            } catch (cancelled: CancellationException) {
+                _missingArtworkRetryState.value = ReiAnixMissingArtworkRetryUiState(
+                    message = "A busca de capas foi interrompida.",
+                    isError = true,
+                )
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Manual missing-artwork recovery failed", error)
+                _missingArtworkRetryState.value = ReiAnixMissingArtworkRetryUiState(
+                    message = "Não foi possível buscar as capas agora. Verifique a conexão e tente novamente.",
+                    isError = true,
+                )
+            } finally {
+                missingArtworkRetryLock.set(false)
+                _missingArtworkRetryState.value = _missingArtworkRetryState.value.copy(isRunning = false)
+            }
         }
     }
 
