@@ -65,8 +65,9 @@ class ReiAnixExternalCatalogIntegrationService(
      * Drain the eligible catalog through keyset-paginated SQLite pages. The persisted
      * anime ID cursor advances only after a row finishes, so cancellation resumes at
      * the first unfinished row and inserts made during a pass are visible to later pages.
-     * A completed cursor is deliberately not wrapped: foreground resumes do not rescan
-     * completed records. A confirmed library scan explicitly rewinds the same cursor.
+     * The cursor checkpoints progress within one pass. Foreground recovery rewinds it so
+     * still-missing posters are reconsidered; per-provider cooldown timestamps prevent
+     * repeating external requests for recently completed rows.
      */
     private suspend fun runEnrichmentPass(batchSize: Int): Int {
         require(batchSize in 1..MAX_BATCH_SIZE)

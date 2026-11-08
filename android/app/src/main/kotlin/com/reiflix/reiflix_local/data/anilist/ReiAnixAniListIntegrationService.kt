@@ -1088,15 +1088,16 @@ class ReiAnixAniListIntegrationService(
         writePersistedArtworkDiscoveryAttemptAt(library.database, animeId, attemptAtSeconds)
 
     /**
-     * Discovers artwork for existing canonical rows whose poster URL was never saved.
-     * It reuses the existing AniList client, conservative matcher and SQLite writer;
-     * it does not create local anime rows or a second catalogue.
-     * A small per-run budget and persisted metadata freshness prevent startup request storms.
+     * Discovers artwork for every existing canonical row that still lacks a usable poster.
+     * [batchSize] controls how often the coroutine yields, not how many animes are examined:
+     * the full keyset pass continues until every row has been checked.
+     * Attempt cooldowns apply only after a lookup finishes; a cancelled/interrupted request
+     * remains eligible when the app returns.
      */
-    suspend fun recoverMissingArtworkMetadata(maxRecords: Int = 12): Int {
+    suspend fun recoverMissingArtworkMetadata(batchSize: Int = 12): Int {
         if (!missingArtworkRecoveryRunning.compareAndSet(false, true)) return 0
         try {
-            require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
+            require(batchSize in 1..24) { "Artwork discovery batch size must be between 1 and 24." }
             if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
             val rows = library.loadLibraryCatalogRows()
             if (rows.isEmpty()) return 0
@@ -1112,6 +1113,28 @@ class ReiAnixAniListIntegrationService(
                         "AND artwork_type='poster' AND status='failed' AND COALESCE(failure_count, 0)>=5",
                     null,
                 ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+            }
+            // Candidate-only posters from Kitsu/AniPub/AniList fallbacks may be ready
+            // without populating anime.cover_cache. They are already displayable and must
+            // suppress another AniList title search just like a canonical cache pointer.
+            val readyPosterIds = library.database.read { connection ->
+                connection.rawQuery(
+                    "SELECT entity_id,local_path FROM artwork WHERE entity_type IN ('anime','movie') " +
+                        "AND artwork_type='poster' AND status='ready' AND local_path IS NOT NULL " +
+                        "AND TRIM(local_path)!=''",
+                    null,
+                ).use { cursor ->
+                    buildSet {
+                        while (cursor.moveToNext()) {
+                            val entityId = cursor.getString(0)?.trim().orEmpty()
+                            val path = cursor.getString(1)?.trim().orEmpty()
+                            if (entityId.isNotEmpty() && path.isNotEmpty()) {
+                                val file = File(path)
+                                if (file.isFile && file.length() > 0L) add(entityId)
+                            }
+                        }
+                    }
+                }
             }
             var examined = 0
             var recovered = 0
@@ -1134,7 +1157,7 @@ class ReiAnixAniListIntegrationService(
                 }.getOrDefault(false)
                 if (!shouldDiscoverMissingArtwork(
                         coverUrl = local.coverUrl,
-                        hasUsableLocalCover = usableLocalCover,
+                        hasUsableLocalCover = usableLocalCover || local.id.toString() in readyPosterIds,
                         hasAniListId = local.anilistId != null,
                         hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
                         manualMetadata = local.anilistMatchManual == true ||
@@ -1204,7 +1227,7 @@ class ReiAnixAniListIntegrationService(
                     writeArtworkDiscoveryAttemptAt(local.id, completedAt)
                     persistedAttemptTimes[local.id] = completedAt
                     missingArtworkLookupAttempts[local.id] = completedAt.toLong()
-                    if (examined % maxRecords == 0) kotlinx.coroutines.yield()
+                    if (examined % batchSize == 0) kotlinx.coroutines.yield()
                 } catch (cancelled: CancellationException) {
                     // Leave this item pending so the next foreground can resume it immediately.
                     missingArtworkLookupAttempts.remove(local.id, attemptAt)

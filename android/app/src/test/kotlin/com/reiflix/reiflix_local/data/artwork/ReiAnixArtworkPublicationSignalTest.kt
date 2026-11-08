@@ -402,7 +402,7 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
-    fun existingUrlLocalCoverAndRecentlyFetchedRowsAreNotRediscovered() {
+    fun validUrlAndLocalCoverAreNotRediscoveredButRecentMetadataWithoutPosterIs() {
         assertFalse(shouldDiscoverMissingArtwork("https://example.test/poster.jpg", false, false, false, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork("not-a-url", false, false, false, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork(

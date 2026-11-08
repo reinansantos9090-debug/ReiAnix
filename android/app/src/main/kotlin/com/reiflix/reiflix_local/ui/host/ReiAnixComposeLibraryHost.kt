@@ -277,6 +277,7 @@ class ReiAnixComposeLibraryHost(
                 }
                 onDispose {
                     activity.lifecycle.removeObserver(observer)
+                    metadataRecoveryJob?.cancel()
                 }
             }
 
