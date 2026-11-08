@@ -457,6 +457,34 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun manualArtworkDiscoveryCanRetryEvenWhenMetadataWasFetchedRecently() {
+        assertTrue(
+            shouldDiscoverMissingArtwork(
+                coverUrl = null,
+                hasUsableLocalCover = false,
+                hasAniListId = true,
+                manualMetadata = false,
+                matchStatus = null,
+                metadataFetchedAtSeconds = 99_000.0,
+                nowSeconds = 100_000.0,
+                forceRetry = true,
+            ),
+        )
+    }
+
+    @Test
+    fun manualArtworkDiscoveryBypassesPersistedLookupCooldownOnlyWhenRequested() {
+        assertTrue(shouldDeferArtworkDiscoveryAttempt(99_999.0, 100_000.0))
+        assertFalse(
+            shouldDeferArtworkDiscoveryAttempt(
+                lastAttemptSeconds = 99_999.0,
+                nowSeconds = 100_000.0,
+                forceRetry = true,
+            ),
+        )
+    }
+
+    @Test
     fun artworkDiscoveryAttemptPreferencesUseStablePositiveAnimeIds() {
         assertEquals(
             "__reianix.internal.artwork_discovery_attempt_v1.812",
