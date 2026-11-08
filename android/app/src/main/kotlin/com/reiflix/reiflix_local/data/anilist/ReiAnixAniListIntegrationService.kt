@@ -16,6 +16,7 @@ import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentificationProgress
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentificationProgressPhase
 import com.reiflix.reiflix_local.data.tracemoe.hasRemainingTraceMoeResponseSlots
+import com.reiflix.reiflix_local.data.tracemoe.shouldCompleteTraceMoeIdentification
 import com.reiflix.reiflix_local.data.tracemoe.shouldAdvanceToNextTraceMoeEpisodeAfterFailure
 import com.reiflix.reiflix_local.data.tracemoe.latestTraceMoeEpisodeMatches
 import com.reiflix.reiflix_local.data.tracemoe.appendTraceMoeEpisodeMatches
@@ -483,7 +484,6 @@ class ReiAnixAniListIntegrationService(
             addAll(successfulApiEpisodeIds)
             addAll(matchesByEpisode.keys)
         }
-        var attemptedEpisodes = 0
         var lastEpisodeFailure: TraceMoeApiException? = null
         var confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
 
@@ -515,7 +515,6 @@ class ReiAnixAniListIntegrationService(
                 candidate.episodeId > 0L && seenEpisodeIds.add(candidate.episodeId)
             } ?: break
 
-            attemptedEpisodes += 1
             report(
                 TraceMoeIdentificationProgressPhase.PREPARING_THUMBNAIL,
                 sample,
@@ -609,22 +608,24 @@ class ReiAnixAniListIntegrationService(
 
         val consensus = confirmedIdentity
         if (consensus == null) {
-            // A no-match result after three valid responses is final for this session.
-            // Persist completion to prevent automatic loops; a manual retry starts fresh.
+            // A third valid response ends the session. If recoverable failures remain
+            // unreplaced and fewer than three valid responses were obtained, preserve
+            // the progress as incomplete and do not activate the 24-hour cooldown.
+            val canMarkCompleted = shouldCompleteTraceMoeIdentification(
+                successfulResponses = successfulResponses,
+                hadUnreplacedFailure = lastEpisodeFailure != null,
+            )
             writeTraceMoeProgress(
                 animeId,
                 matchesByEpisode,
-                completed = true,
+                completed = canMarkCompleted,
                 correction = correction,
                 successfulApiEpisodeIds = successfulApiEpisodeIds,
             )
-            writeTraceMoeAttemptAt(animeId, System.currentTimeMillis() / 1000.0, correction)
-            if (lastEpisodeFailure != null &&
-                successfulResponses < MAX_TRACE_MOE_EPISODE_SAMPLES &&
-                attemptedEpisodes > 0
-            ) {
-                throw lastEpisodeFailure
+            if (!canMarkCompleted) {
+                throw checkNotNull(lastEpisodeFailure)
             }
+            writeTraceMoeAttemptAt(animeId, System.currentTimeMillis() / 1000.0, correction)
             return false
         }
 
