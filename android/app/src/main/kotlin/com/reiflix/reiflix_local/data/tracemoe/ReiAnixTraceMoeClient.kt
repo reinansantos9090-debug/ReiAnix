@@ -7,7 +7,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -665,7 +664,6 @@ internal fun shouldAdvanceToNextTraceMoeEpisodeAfterFailure(
     kind: TraceMoeFailureKind,
 ): Boolean = kind in setOf(
     TraceMoeFailureKind.BAD_IMAGE,
-    TraceMoeFailureKind.CONCURRENCY_LIMIT,
     TraceMoeFailureKind.RATE_LIMITED,
     TraceMoeFailureKind.NETWORK_UNAVAILABLE,
     TraceMoeFailureKind.TIMEOUT,
