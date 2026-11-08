@@ -450,27 +450,22 @@ class ReiAnixAniListIntegrationService(
             )
         ) return false
 
-        // A fresh manual tap is a new identification session. Previous inconclusive
-        // results must not make it jump over episode 1, and the SHA-256 cache still
-        // makes already-searched thumbnails effectively immediate without another API call.
-        var matchesByEpisode = if (userInitiated || persisted.completed) {
-            linkedMapOf()
-        } else {
-            latestTraceMoeEpisodeMatches(persisted.matchesByEpisode)
-        }
+        // Reuse persisted successful responses on manual retries as well as automatic
+        // recovery. This survives Android process restarts (unlike the in-memory SHA
+        // cache), prevents uploading the same episode thumbnail repeatedly, and lets an
+        // interrupted session continue with the next unconsumed thumbnail.
+        var matchesByEpisode = latestTraceMoeEpisodeMatches(persisted.matchesByEpisode)
         val successfulApiEpisodeIds = linkedSetOf<Long>()
-        if (!userInitiated && !persisted.completed) {
-            if (persisted.hasSuccessfulApiEpisodeMetadata) {
-                successfulApiEpisodeIds.addAll(persisted.successfulApiEpisodeIds)
-            } else {
-                // Legacy non-empty result arrays prove a successful API response;
-                // legacy empty arrays are ambiguous and are deliberately retried.
-                successfulApiEpisodeIds.addAll(
-                    persisted.matchesByEpisode.filterValues { it.isNotEmpty() }.keys,
-                )
-            }
-            successfulApiEpisodeIds.addAll(matchesByEpisode.keys)
+        if (persisted.hasSuccessfulApiEpisodeMetadata) {
+            successfulApiEpisodeIds.addAll(persisted.successfulApiEpisodeIds)
+        } else {
+            // Legacy non-empty result arrays prove a successful API response;
+            // legacy empty arrays are ambiguous and are deliberately retried.
+            successfulApiEpisodeIds.addAll(
+                persisted.matchesByEpisode.filterValues { it.isNotEmpty() }.keys,
+            )
         }
+        successfulApiEpisodeIds.addAll(matchesByEpisode.keys)
         var successfulResponses = successfulApiEpisodeIds.size
         writeTraceMoeProgress(
             animeId,
