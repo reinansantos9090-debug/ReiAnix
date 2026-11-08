@@ -455,20 +455,30 @@ class ReiAnixAniListIntegrationService(
         // recovery. This survives Android process restarts (unlike the in-memory SHA
         // cache), prevents uploading the same episode thumbnail repeatedly, and lets an
         // interrupted session continue with the next unconsumed thumbnail.
-        var matchesByEpisode = latestTraceMoeEpisodeMatches(persisted.matchesByEpisode)
-        val successfulApiEpisodeIds = linkedSetOf<Long>()
-        if (persisted.hasSuccessfulApiEpisodeMetadata) {
-            successfulApiEpisodeIds.addAll(persisted.successfulApiEpisodeIds)
+        // A completed session is final for that run, but a new manual attempt must
+        // be allowed to re-query with fresh API data. Incomplete sessions (for example,
+        // cancellation or a recoverable failure before three valid responses) resume
+        // from their persisted evidence to avoid duplicate uploads after process death.
+        var matchesByEpisode = if (persisted.completed) {
+            linkedMapOf()
         } else {
-            // Legacy non-empty result arrays prove a successful API response;
-            // legacy empty arrays are ambiguous and must be queried again.
-            val provenSuccessfulIds = persisted.matchesByEpisode
-                .filterValues { it.isNotEmpty() }
-                .keys
-            successfulApiEpisodeIds.addAll(provenSuccessfulIds)
-            matchesByEpisode = LinkedHashMap(matchesByEpisode.filterKeys { it in provenSuccessfulIds })
+            latestTraceMoeEpisodeMatches(persisted.matchesByEpisode)
         }
-        successfulApiEpisodeIds.addAll(matchesByEpisode.keys)
+        val successfulApiEpisodeIds = linkedSetOf<Long>()
+        if (!persisted.completed) {
+            if (persisted.hasSuccessfulApiEpisodeMetadata) {
+                successfulApiEpisodeIds.addAll(persisted.successfulApiEpisodeIds)
+            } else {
+                // Legacy non-empty result arrays prove a successful API response;
+                // legacy empty arrays are ambiguous and must be queried again.
+                val provenSuccessfulIds = persisted.matchesByEpisode
+                    .filterValues { it.isNotEmpty() }
+                    .keys
+                successfulApiEpisodeIds.addAll(provenSuccessfulIds)
+                matchesByEpisode = LinkedHashMap(matchesByEpisode.filterKeys { it in provenSuccessfulIds })
+            }
+            successfulApiEpisodeIds.addAll(matchesByEpisode.keys)
+        }
         var successfulResponses = successfulApiEpisodeIds.size
         writeTraceMoeProgress(
             animeId,
