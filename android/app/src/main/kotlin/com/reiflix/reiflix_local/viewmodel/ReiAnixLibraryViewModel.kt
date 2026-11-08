@@ -1554,14 +1554,17 @@ class ReiAnixLibraryViewModel(
                             } ?: it.title?.takeIf(String::isNotBlank) ?: it.id.toString()
                             "Episódio $numberLabel"
                         }
+                        val previous = _traceMoeIdentificationStates.value[animeId]
                         publishTraceMoeIdentificationState(
                             animeId,
                             ReiAnixTraceMoeIdentificationUiState(
                                 status = ReiAnixTraceMoeIdentificationStatus.RUNNING,
                                 message = progress.message,
-                                currentEpisodeId = progress.episodeId,
-                                currentEpisodeLabel = label ?: progress.episodeId?.let { "Episódio $it" },
-                                currentThumbnailPath = progress.thumbnailPath,
+                                currentEpisodeId = progress.episodeId ?: previous?.currentEpisodeId,
+                                currentEpisodeLabel = label
+                                    ?: progress.episodeId?.let { "Episódio $it" }
+                                    ?: previous?.currentEpisodeLabel,
+                                currentThumbnailPath = progress.thumbnailPath ?: previous?.currentThumbnailPath,
                                 validResponses = progress.validResponses,
                             ),
                         )
