@@ -17,6 +17,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -67,6 +71,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeader
+import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeaderState
 import com.reiflix.reiflix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
@@ -287,7 +292,8 @@ private fun ReiAnixLibraryPresentationScreen(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollHeaderState.nestedScrollConnection)
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top)),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ReiAnixScrollAwareHeader(state = scrollHeaderState) {
@@ -303,6 +309,7 @@ private fun ReiAnixLibraryPresentationScreen(
         val renderReadyContent: @Composable () -> Unit = {
             LibraryReadyContent(
                 state = state,
+                scrollHeaderState = scrollHeaderState,
                 filters = filters,
                 visibleAnimes = visibleAnimes,
                 genres = genres,
@@ -495,6 +502,7 @@ private fun ColumnScope.LibraryReadyContent(
     onLoadMore: () -> Unit = {},
     errorMessage: String? = null,
     modifier: Modifier = Modifier,
+    scrollHeaderState: ReiAnixScrollAwareHeaderState? = null,
 ) {
     var sortMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var genreMenuExpanded by rememberSaveable { mutableStateOf(false) }
@@ -517,6 +525,15 @@ private fun ColumnScope.LibraryReadyContent(
         saver = LazyGridState.Saver,
     ) {
         LazyGridState()
+    }
+
+    LaunchedEffect(gridState, scrollHeaderState) {
+        val headerState = scrollHeaderState ?: return@LaunchedEffect
+        snapshotFlow {
+            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+        }.collect { isAtTop ->
+            headerState.updateContentAtTop(isAtTop)
+        }
     }
 
     LaunchedEffect(gridState, visibleAnimes.size, hasMore, isLoadingMore) {
