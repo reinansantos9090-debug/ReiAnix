@@ -155,6 +155,37 @@ internal val ARTWORK_RESUMABLE_CANDIDATE_STATUSES = setOf(
 internal fun isArtworkResumableCandidateStatus(status: String?): Boolean =
     status?.trim()?.lowercase(Locale.ROOT) in ARTWORK_RESUMABLE_CANDIDATE_STATUSES
 
+/** Provider identity survives process death because candidate URLs are persisted in SQLite. */
+internal fun normalizePersistedArtworkSource(source: String?): String =
+    when (source?.trim()?.lowercase(Locale.ROOT)) {
+        "kitsu" -> "kitsu"
+        "anipub" -> "anipub"
+        else -> "anilist"
+    }
+
+/** Whether a persisted row still represents work that must be resumed now. */
+internal fun shouldResumePersistedArtworkCandidate(
+    status: String?,
+    localFileAvailable: Boolean,
+    retryAtSeconds: Double?,
+    failureCount: Int,
+    nowSeconds: Double,
+): Boolean {
+    val normalized = status?.trim()?.lowercase(Locale.ROOT)
+    return when (normalized) {
+        in ARTWORK_RESUMABLE_CANDIDATE_STATUSES -> true
+        "failed", "retry_wait" -> shouldRetryArtworkRequest(
+            status = normalized,
+            retryAtSeconds = retryAtSeconds,
+            failureCount = failureCount,
+            nowSeconds = nowSeconds,
+            force = false,
+        )
+        "ready" -> !localFileAvailable
+        else -> false
+    }
+}
+
 internal fun isRetryableArtworkHttpStatus(statusCode: Int): Boolean =
     statusCode == 408 || statusCode == 425 || statusCode == 429 || statusCode in 500..599
 
@@ -347,12 +378,22 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         // Keep the fast path unchanged: secondary AniList URLs are only read and
                         // attempted after the primary URL is absent or could not be materialized.
                         if (!posterMaterialized) {
-                            val alternatives = loadAlternativePosterCandidates(
-                                animeId = animeId,
-                                anime = anime,
-                                primaryUrl = posterUrl,
-                                force = force,
-                            )
+                            // Resume persisted fallback URLs as well as newly discovered AniList
+                            // variants. Keep Kitsu/AniPub source identity when rebuilding jobs
+                            // from SQLite after the process has been killed or stopped.
+                            val alternatives = (
+                                loadAlternativePosterCandidates(
+                                    animeId = animeId,
+                                    anime = anime,
+                                    primaryUrl = posterUrl,
+                                    force = force,
+                                ) + loadPersistedArtworkCandidates(
+                                    animeId = animeId,
+                                    artworkType = "poster",
+                                    canonicalUrl = posterUrl,
+                                    aniListId = anime.anilistId,
+                                )
+                            ).distinct().take(MAX_CANDIDATE_ARTWORKS)
                             if (alternatives.isNotEmpty()) {
                                 posterMaterialized = firstSuccessfulArtworkCandidate(
                                     candidates = alternatives,
@@ -415,8 +456,33 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                 )
                             }
                         }
-                        backdropUrl?.let {
+                        val backdropMaterialized = backdropUrl?.let {
                             materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId)
+                        } ?: false
+                        if (!backdropMaterialized) {
+                            val persistedBackdrops = loadPersistedArtworkCandidates(
+                                animeId = animeId,
+                                artworkType = "backdrop",
+                                canonicalUrl = backdropUrl,
+                                aniListId = anime.anilistId,
+                            )
+                            firstSuccessfulArtworkCandidate(
+                                candidates = persistedBackdrops,
+                                artworkUrls = { listOf(it.bannerUrl) },
+                            ) { candidate, url ->
+                                materialize(
+                                    animeId,
+                                    entityType,
+                                    "backdrop",
+                                    url,
+                                    candidate.anilistId.takeIf { it > 0L },
+                                    force,
+                                    requestId,
+                                    requireCurrentUrl = false,
+                                    retryCandidates = persistedBackdrops,
+                                    sourceKind = candidate.source,
+                                )
+                            }
                         }
                     } else {
                         val posterRecovered = firstSuccessfulArtworkCandidate(
@@ -501,8 +567,15 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         synchronized(backfillGuard) {
             if (cacheClearInProgress.get()) return false
             if (backfillRunning) {
-                backfillRerunRequested = true
-                Log.i(TAG, "ARTWORK_BACKFILL_FOLLOW_UP_QUEUED trigger=$normalizedTrigger")
+                // A repeated foreground event adds no new work: individual downloads
+                // are already deduplicated by anime ID. Only a completed scan can expose
+                // new local rows that an active keyset pass may already have passed.
+                if (normalizedTrigger == "scan_complete") {
+                    backfillRerunRequested = true
+                    Log.i(TAG, "ARTWORK_BACKFILL_SCAN_FOLLOW_UP_QUEUED")
+                } else {
+                    Log.i(TAG, "ARTWORK_BACKFILL_TRIGGER_COALESCED trigger=$normalizedTrigger")
+                }
                 return true
             }
 
@@ -574,12 +647,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         "(TRIM(COALESCE(a.cover_url,''))!='' AND TRIM(COALESCE(a.cover_cache,''))='') OR " +
                         "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
                         "AND art.entity_type IN ('anime','movie') AND art.artwork_type='poster' " +
+                        "AND COALESCE(art.manual,0)=0 AND LOWER(COALESCE(art.source,'')) IN ('anilist','cache','kitsu','anipub') " +
                         "AND TRIM(COALESCE(art.external_url,''))!='' AND (" +
-                        "art.status IN ('downloading','queued','pending','not_requested','source_candidate') OR " +
-                        "(art.status IN ('failed','retry_wait') AND " +
-                        "(art.next_retry_at IS NULL OR art.next_retry_at<=?)))" +
-                        ")) ORDER BY a.id LIMIT 16",
-                    arrayOf(pendingAfterId.toString(), nowSeconds().toString()),
+                        "art.status IN ('downloading','queued','pending','not_requested','source_candidate','failed','retry_wait') OR " +
+                        "(art.status='ready' AND (art.local_path IS NULL OR TRIM(art.local_path)=''))" +
+                        "))) ORDER BY a.id LIMIT 16",
+                    arrayOf(pendingAfterId.toString()),
                 ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
             }
             if (pendingPosterIds.isEmpty()) break
@@ -592,20 +665,27 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             "ARTWORK_BACKFILL_POSTER_PRIORITY trigger=$trigger pass=$pass animeCount=$prioritizedCount",
         )
 
+        // Only walk records with a missing canonical backdrop or persisted backdrop work.
+        // Local episode paths do not make an anime's poster pending and must not trigger
+        // a broad revalidation sweep on every foreground entry.
         var afterId = 0L
         var visitedCount = 0
         while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
             val ids = database.read { db ->
                 db.rawQuery(
-                    "SELECT id FROM anime a WHERE id>? AND (" +
-                        "TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='' OR " +
-                        "EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 " +
-                        "AND TRIM(COALESCE(e.path,''))!='') OR " +
+                    "SELECT a.id FROM anime a WHERE a.id>? AND (" +
+                        "(TRIM(COALESCE(a.banner_url,''))!='' AND NOT EXISTS (" +
+                        "SELECT 1 FROM artwork ready WHERE ready.entity_type IN ('anime','movie') " +
+                        "AND ready.entity_id=CAST(a.id AS TEXT) AND ready.artwork_type='backdrop' " +
+                        "AND ready.external_url=a.banner_url AND ready.status='ready' " +
+                        "AND TRIM(COALESCE(ready.local_path,''))!='')) OR " +
                         "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
-                        "AND art.entity_type IN ('anime','movie') AND art.artwork_type IN ('poster','backdrop') " +
-                        "AND ((art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL) OR " +
-                        "art.status IN ('downloading','queued','pending','not_requested','source_candidate')) " +
-                        "AND TRIM(COALESCE(art.external_url,''))!='')) ORDER BY id LIMIT 16",
+                        "AND art.entity_type IN ('anime','movie') AND art.artwork_type='backdrop' " +
+                        "AND COALESCE(art.manual,0)=0 AND LOWER(COALESCE(art.source,'')) IN ('anilist','cache','kitsu','anipub') " +
+                        "AND TRIM(COALESCE(art.external_url,''))!='' AND (" +
+                        "art.status IN ('downloading','queued','pending','not_requested','source_candidate','failed','retry_wait') OR " +
+                        "(art.status='ready' AND (art.local_path IS NULL OR TRIM(art.local_path)=''))" +
+                        "))) ORDER BY a.id LIMIT 16",
                     arrayOf(afterId.toString()),
                 ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
             }
@@ -837,11 +917,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     ): Boolean {
         val rows = candidates(entity, id.toString(), type, url)
         if (rows.any { it.manual || it.source.equals("manual", true) }) return true
-        if (rows.any { it.source.equals("local", true) && validImage(it.path) }) return true
-        val existing = rows.firstOrNull { it.url == url && validImage(it.path) }
+        if (rows.any { it.source.equals("local", true) && hasNonEmptyLocalFile(it.path) }) return true
+        // A committed ready row has already passed image validation. On every app
+        // reopen, a file stat is enough to reuse it; decoding and publishing the same
+        // path again only creates CPU work and redundant catalog projection refreshes.
+        val existing = rows.firstOrNull { it.url == url && hasNonEmptyLocalFile(it.path) }
         if (existing != null) {
             val path = existing.path ?: return false
-            if (markReady(existing.id, id, type, url, path, requireCurrentUrl)) {
+            val alreadyPublished = existing.status.equals("ready", true) &&
+                (type != "poster" || !requireCurrentUrl || isCoverPointerCurrent(id, path))
+            if (markReady(existing.id, id, type, url, path, requireCurrentUrl) && !alreadyPublished) {
                 publish("artwork_published", entity, id.toString(), type, path, url,
                     existing.key ?: remoteKey(aniId, url, type), url, existing.mime ?: mime(path), requestId)
             }
@@ -1029,6 +1114,22 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (db.update("artwork", values, "id=?", arrayOf(rowId.toString())) != 1) return@transaction SaveResult(false, false)
             if (current && type == "poster") updateCoverPointer(db, id, url, image.file.absolutePath)
             SaveResult(true, current)
+        }
+
+    private fun hasNonEmptyLocalFile(path: String?): Boolean {
+        if (path.isNullOrBlank()) return false
+        val file = File(path)
+        return file.isFile && file.length() > 0L
+    }
+
+    private fun isCoverPointerCurrent(animeId: Long, path: String): Boolean =
+        database.read { db ->
+            db.rawQuery(
+                "SELECT cover_cache FROM anime WHERE id=? LIMIT 1",
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                cursor.moveToFirst() && cursor.getString(0)?.trim() == path
+            }
         }
 
     private fun markReady(
@@ -1867,6 +1968,55 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
      * after the primary URL failed or was absent, so successful primary downloads retain the
      * existing single-request fast path.
      */
+    private fun loadPersistedArtworkCandidates(
+        animeId: Long,
+        artworkType: String,
+        canonicalUrl: String?,
+        aniListId: Long?,
+    ): List<ReiAnixArtworkCandidate> {
+        require(artworkType == "poster" || artworkType == "backdrop")
+        val canonical = canonicalUrl?.trim().orEmpty()
+        val now = nowSeconds()
+        return database.read { db ->
+            db.rawQuery(
+                "SELECT external_url,source,status,local_path,next_retry_at,failure_count FROM artwork " +
+                    "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type=? " +
+                    "AND COALESCE(manual,0)=0 AND LOWER(COALESCE(source,'')) IN ('anilist','cache','kitsu','anipub') " +
+                    "AND external_url IS NOT NULL AND TRIM(external_url)!='' " +
+                    "ORDER BY priority DESC,updated_at DESC,id DESC LIMIT 32",
+                arrayOf(animeId.toString(), artworkType),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val url = cursor.getString(0)?.trim()?.takeIf(String::isNotEmpty) ?: continue
+                        if (url == canonical) continue
+                        val source = normalizePersistedArtworkSource(cursor.getString(1))
+                        val status = cursor.getString(2)
+                        val localPath = cursor.getString(3)
+                        val retryAt = if (cursor.isNull(4)) null else cursor.getDouble(4)
+                        val failures = cursor.getInt(5)
+                        if (!shouldResumePersistedArtworkCandidate(
+                                status = status,
+                                localFileAvailable = hasNonEmptyLocalFile(localPath),
+                                retryAtSeconds = retryAt,
+                                failureCount = failures,
+                                nowSeconds = now,
+                            )
+                        ) continue
+                        add(
+                            ReiAnixArtworkCandidate(
+                                anilistId = if (source == "anilist") aniListId?.takeIf { it > 0L } ?: 0L else 0L,
+                                posterUrl = url.takeIf { artworkType == "poster" },
+                                bannerUrl = url.takeIf { artworkType == "backdrop" },
+                                source = source,
+                            ),
+                        )
+                    }
+                }.distinct().take(MAX_CANDIDATE_ARTWORKS)
+            }
+        }
+    }
+
     private suspend fun loadAlternativePosterCandidates(
         animeId: Long,
         anime: Anime,
@@ -1954,7 +2104,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 }
             }
         }
-        return paths.any(::validImage)
+        return paths.any(::hasNonEmptyLocalFile)
     }
 
     private fun candidates(entity: String, id: String, type: String, url: String): List<Artwork> =

@@ -282,18 +282,9 @@ class ReiAnixComposeLibraryHost(
                     )
                 }
 
-                // Metadata discovery can publish additional image candidates after
-                // the foreground pass has already started. Coalesce one follow-up so
-                // those URLs join the same native downloader without delaying startup.
-                runCatching {
-                    dependencies.artworkService.requestPendingArtwork("metadata_recovery_complete")
-                }.onFailure { error ->
-                    android.util.Log.w(
-                        TAG,
-                        "Native artwork post-metadata recovery failed. errorType=" +
-                            error::class.java.simpleName,
-                    )
-                }
+                // Both metadata integrations enqueue each discovered artwork URL directly
+                // into the application-scoped service. A second whole-library backfill here
+                // would revisit the same records and duplicate cache/projection work.
             }
 
             ReiAnixComposeRoot(

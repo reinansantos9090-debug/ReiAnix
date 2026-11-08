@@ -132,6 +132,70 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun persistedArtworkCandidatesKeepTheirOriginalProviderAfterProcessRestart() {
+        assertEquals("anilist", normalizePersistedArtworkSource("cache"))
+        assertEquals("anilist", normalizePersistedArtworkSource("anilist"))
+        assertEquals("kitsu", normalizePersistedArtworkSource("KITSU"))
+        assertEquals("anipub", normalizePersistedArtworkSource("AniPub"))
+    }
+
+    @Test
+    fun persistedInterruptedArtworkRowsResumeWithoutRepeatingReadyFiles() {
+        for (status in ARTWORK_RESUMABLE_CANDIDATE_STATUSES) {
+            assertTrue(
+                "Interrupted status $status must resume after process recreation.",
+                shouldResumePersistedArtworkCandidate(
+                    status = status,
+                    localFileAvailable = false,
+                    retryAtSeconds = null,
+                    failureCount = 0,
+                    nowSeconds = 10_000.0,
+                ),
+            )
+        }
+        assertFalse(
+            shouldResumePersistedArtworkCandidate(
+                status = "ready",
+                localFileAvailable = true,
+                retryAtSeconds = null,
+                failureCount = 0,
+                nowSeconds = 10_000.0,
+            ),
+        )
+        assertTrue(
+            shouldResumePersistedArtworkCandidate(
+                status = "ready",
+                localFileAvailable = false,
+                retryAtSeconds = null,
+                failureCount = 0,
+                nowSeconds = 10_000.0,
+            ),
+        )
+    }
+
+    @Test
+    fun persistedRetryWaitRowsRespectTheirCooldownAndResumeWhenDue() {
+        assertFalse(
+            shouldResumePersistedArtworkCandidate(
+                status = "retry_wait",
+                localFileAvailable = false,
+                retryAtSeconds = 10_001.0,
+                failureCount = 3,
+                nowSeconds = 10_000.0,
+            ),
+        )
+        assertTrue(
+            shouldResumePersistedArtworkCandidate(
+                status = "retry_wait",
+                localFileAvailable = false,
+                retryAtSeconds = 10_000.0,
+                failureCount = 3,
+                nowSeconds = 10_000.0,
+            ),
+        )
+    }
+
+    @Test
     fun retryWaitArtworkRemainsDeferredUntilItsPersistedCooldownExpires() {
         assertFalse(
             shouldRetryArtworkRequest(
