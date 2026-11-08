@@ -634,10 +634,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private suspend fun runPendingArtworkBackfillPass(trigger: String, pass: Int) {
         if (cacheClearInProgress.get()) return
 
-        // Start unfinished posters before walking every anime for banners/sidecars.
-        // In the common "48 done, 12 left" case this avoids spending the first batches
-        // rechecking already-materialized covers before the missing ones even enter
-        // the existing FIFO Semaphore(2) download queue.
+        // Start unfinished posters first. The existing two-permit materializer remains
+        // the only download queue, so foreground recovery keeps the previous download rate.
         var pendingAfterId = 0L
         var prioritizedCount = 0
         while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
@@ -694,9 +692,36 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             visitedCount += ids.size
             afterId = ids.last()
         }
+        // Preserve the legacy local-sidecar fallback, but only inspect anime that
+        // have no canonical or persisted remote poster candidate and no ready poster.
+        var sidecarAfterId = 0L
+        var sidecarCount = 0
+        while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
+            val ids = database.read { db ->
+                db.rawQuery(
+                    "SELECT a.id FROM anime a WHERE a.id>? " +
+                        "AND TRIM(COALESCE(a.cover_url,''))='' " +
+                        "AND TRIM(COALESCE(a.cover_cache,''))='' " +
+                        "AND EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id " +
+                        "AND COALESCE(e.missing,0)=0 AND TRIM(COALESCE(e.path,''))!='') " +
+                        "AND NOT EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
+                        "AND art.entity_type IN ('anime','movie') AND art.artwork_type='poster' AND (" +
+                        "art.manual=1 OR LOWER(COALESCE(art.source,'')) IN ('manual','local') OR " +
+                        "(art.status='ready' AND TRIM(COALESCE(art.local_path,''))!='') OR " +
+                        "(TRIM(COALESCE(art.external_url,''))!='' AND art.status IN " +
+                        "('downloading','queued','pending','not_requested','source_candidate','failed','retry_wait')))) " +
+                        "ORDER BY a.id LIMIT 16",
+                    arrayOf(sidecarAfterId.toString()),
+                ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
+            }
+            if (ids.isEmpty()) break
+            requestArtworkBatch(ids)
+            sidecarCount += ids.size
+            sidecarAfterId = ids.last()
+        }
         Log.i(
             TAG,
-            "ARTWORK_BACKFILL_FINISHED trigger=$trigger pass=$pass prioritized=$prioritizedCount backdrops=$visitedCount",
+            "ARTWORK_BACKFILL_FINISHED trigger=$trigger pass=$pass prioritized=$prioritizedCount backdrops=$visitedCount sidecars=$sidecarCount",
         )
     }
 
