@@ -141,6 +141,20 @@ internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val BASE_ARTWORK_RETRY_BACKOFF_SECONDS = 60L
 internal const val MAX_ARTWORK_RETRY_BACKOFF_SECONDS = 6L * 60L * 60L
 
+// Candidate rows are durable work items. A process death can leave any of these
+// states behind; replaying them is safe because materialize() reuses verified local
+// files and prepareRow() enforces the persisted retry cooldown for failed rows.
+internal val ARTWORK_RESUMABLE_CANDIDATE_STATUSES = setOf(
+    "downloading",
+    "queued",
+    "pending",
+    "not_requested",
+    "source_candidate",
+)
+
+internal fun isArtworkResumableCandidateStatus(status: String?): Boolean =
+    status?.trim()?.lowercase(Locale.ROOT) in ARTWORK_RESUMABLE_CANDIDATE_STATUSES
+
 internal fun isRetryableArtworkHttpStatus(statusCode: Int): Boolean =
     statusCode == 408 || statusCode == 425 || statusCode == 429 || statusCode in 500..599
 
@@ -488,7 +502,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                 "AND TRIM(COALESCE(e.path,''))!='') OR " +
                                 "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
                                 "AND art.entity_type IN ('anime','movie') AND art.artwork_type IN ('poster','backdrop') " +
-                                "AND art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL " +
+                                "AND ((art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL) OR " +
+                                "art.status IN ('downloading','queued','pending','not_requested','source_candidate')) " +
                                 "AND TRIM(COALESCE(art.external_url,''))!='')) ORDER BY id LIMIT 16",
                             arrayOf(afterId.toString()),
                         ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
@@ -1776,7 +1791,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     "AND LOWER(COALESCE(source,'')) IN ('anilist','cache') AND COALESCE(manual,0)=0 " +
                     "AND external_url IS NOT NULL AND TRIM(external_url)!='' " +
                     "AND external_url!=COALESCE(?, '') AND LOWER(COALESCE(variant,''))!='obsolete' " +
-                    "AND LOWER(COALESCE(status,'')) IN ('source_candidate','not_requested','pending','ready','failed','retry_wait') " +
+                    "AND LOWER(COALESCE(status,'')) IN ('source_candidate','not_requested','pending','queued','downloading','ready','failed','retry_wait') " +
                     "ORDER BY CASE LOWER(COALESCE(status,'')) WHEN 'source_candidate' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END, " +
                     "priority DESC,CASE LOWER(COALESCE(variant,'')) WHEN 'large' THEN 0 WHEN 'extralarge' THEN 1 ELSE 2 END," +
                     "updated_at DESC,id DESC",
