@@ -575,8 +575,10 @@ class MainActivity : ComponentActivity() {
                 applicationContext,
                 NativeIndex.volumeSnapshot(applicationContext),
             )
-            val discoveryEvent = action == Intent.ACTION_MEDIA_MOUNTED ||
-                action == Intent.ACTION_MEDIA_SCANNER_FINISHED
+            // Only a real volume mount transition can trigger a broad storage scan.
+            // ACTION_MEDIA_SCANNER_FINISHED is a completion notification, not evidence
+            // that a new anime was added to the configured library.
+            val discoveryEvent = action == Intent.ACTION_MEDIA_MOUNTED
             if (changes.optBoolean("changed")) {
                 val payload = JSONObject(changes.toString())
                     .put("source", "android_storage")
@@ -612,13 +614,6 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-            } else if (discoveryEvent && activityResumed) {
-                publishScanRequest(
-                    "VOLUME_MOUNT",
-                    source = null,
-                    full = false,
-                    reason = action,
-                )
             }
             if (action == Intent.ACTION_MEDIA_UNMOUNTED ||
                 action == Intent.ACTION_MEDIA_EJECT ||
@@ -1164,6 +1159,7 @@ class MainActivity : ComponentActivity() {
                         status = SafScanner.STATUS_FAILED, treeUri = uri)
                     return@launch
                 }
+                synchronizeSafTreeChangeObservers()
                 getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
                     .edit()
                     .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
@@ -4712,6 +4708,7 @@ class MainActivity : ComponentActivity() {
                 if (nativeFolderConfigOwner) {
                     libraryViewModel.onSafRemovalTerminal(normalizedReference)
                     refreshNativeStorageOnboardingState("saf_release_terminal")
+                    synchronizeSafTreeChangeObservers()
                 }
                 (waiters.ifEmpty { listOf(requestId.orEmpty()) }).forEach { waiterId ->
                     nativeRequestState.markOperationState(
