@@ -23,7 +23,7 @@ As origens reconhecidas são:
 - RECOVERY
 - EXPLICIT_FULL_RESCAN
 
-onResume() não é uma origem de scan. Ele apenas pode gerar STARTUP na primeira descoberta ou PERMISSION_CHANGE quando a capacidade nativa realmente mudou.
+onResume() não é uma origem de scan. Ele apenas publica o estado de permissões; uma transição real de capacidade pode gerar PERMISSION_CHANGE. A descoberta de novos vídeos SAF vem do monitor de alterações, nunca da simples abertura/retomada do app.
 
 ## Estados
 O estado lógico é:
@@ -138,11 +138,11 @@ Nesta fase o callback deixou de iniciar scanMediaStore() diretamente.
 Agora ele publica um MEDIA_CHANGE para o Coordinator.
 
 ## Startup
-Se LibraryStore.last_scan() já estiver em estado terminal completo, STARTUP é deduplicado.
+A primeira seleção de uma pasta SAF executa a varredura inicial validada; a ação manual continua disponível em qualquer momento.
 
-Se não houver scan anterior ou o último estado não for completo, STARTUP pode iniciar descoberta.
+Depois que uma pasta está configurada, o startup apenas registra os observadores e reconcilia o inventário leve de metadados de vídeos com o último snapshot persistido. Um snapshot inicial é silencioso. Em processos seguintes, somente IDs de documentos de vídeo novos ou metadados de vídeo alterados criam trabalho SAF_CHANGE. Exclusões isoladas, imagens, legendas, NFO e a simples abertura do app não disparam varredura.
 
-Isso evita transformar cada criação/retorno da Activity em um full scan.
+O inventário é comprimido e persistido por árvore. O pedido de scan é gravado antes de avançar o snapshot e permanece pendente após scan parcial, cancelado ou com falha; somente uma geração SUCCEEDED consome a alteração. Assim, vídeos copiados enquanto o processo estava encerrado são detectados na próxima inicialização sem executar uma varredura completa em cada onResume.
 
 ## Escopo mantido
 Esta fase não implementa:
