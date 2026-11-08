@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local.data.tracemoe
 
 import com.reiflix.reiflix_local.data.anilist.shouldAllowTraceMoeWithAutoMatchSetting
 import com.reiflix.reiflix_local.data.anilist.shouldHonorTraceMoeSuccessfulCooldown
+import com.reiflix.reiflix_local.data.anilist.shouldResumeTraceMoeSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
@@ -283,6 +284,12 @@ class TraceMoeIdentityConsensusTest {
         // number of Trace.moe candidates; this checks the three-slot boundary.
         assertTrue(hasRemainingTraceMoeResponseSlots(2))
         assertFalse(hasRemainingTraceMoeResponseSlots(3))
+    }
+
+    @Test
+    fun incompleteTraceMoeSessionsResumeButCompletedManualRetriesStartFresh() {
+        assertTrue(shouldResumeTraceMoeSession(persistedCompleted = false))
+        assertFalse(shouldResumeTraceMoeSession(persistedCompleted = true))
     }
 
     @Test
