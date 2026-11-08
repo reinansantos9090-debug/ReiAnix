@@ -19,6 +19,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.io.File
 
@@ -40,37 +41,51 @@ class ReiAnixExternalCatalogIntegrationService(
     )
 
     /**
-     * Returns canonical anime IDs without a ready poster file. This is a local SQLite/filesystem
-     * check only: it does not contact providers, mutate metadata, or start artwork requests.
+     * Returns anime IDs without a usable local poster. This deliberately reads only the
+     * anime/artwork tables: loading the full catalog snapshot here would also materialize
+     * every episode, thumbnail and genre just to discover a list of missing poster IDs.
      */
-    suspend fun missingPosterAnimeIds(): List<Long> {
-        val rows = library.loadLibraryCatalogRows()
-        if (rows.isEmpty()) return emptyList()
-        val readyPosterPaths = library.database.read { db ->
+    suspend fun missingPosterAnimeIds(): List<Long> = withContext(Dispatchers.IO) {
+        val posterPathsByAnime = library.database.read { db ->
             db.rawQuery(
-                "SELECT entity_id, local_path FROM artwork " +
-                    "WHERE entity_type IN ('anime','movie') AND artwork_type='poster' " +
-                    "AND status='ready' AND TRIM(COALESCE(local_path,''))!=''",
+                """
+                SELECT a.id, art.local_path
+                FROM anime a
+                LEFT JOIN artwork art
+                  ON art.entity_id=CAST(a.id AS TEXT)
+                 AND art.entity_type IN ('anime','movie')
+                 AND art.artwork_type='poster'
+                 AND LOWER(COALESCE(art.status,''))='ready'
+                 AND TRIM(COALESCE(art.local_path,''))!=''
+                ORDER BY a.id, art.priority DESC, art.updated_at DESC, art.id DESC
+                """.trimIndent(),
                 null,
             ).use { cursor ->
-                buildMap<String, MutableList<String>> {
+                buildMap<Long, MutableList<String>> {
                     while (cursor.moveToNext()) {
-                        val id = cursor.getString(0)?.trim().orEmpty()
-                        val path = cursor.getString(1)?.trim().orEmpty()
-                        if (id.isNotEmpty() && path.isNotEmpty()) {
-                            getOrPut(id) { mutableListOf() }.add(path)
-                        }
+                        val animeId = cursor.getLong(0)
+                        val paths = getOrPut(animeId) { mutableListOf() }
+                        cursor.getString(1)?.trim()?.takeIf(String::isNotEmpty)?.let(paths::add)
                     }
                 }
             }
         }
-        return rows.mapNotNull { row ->
-            val id = row.anime.id
-            val hasValidPoster = readyPosterPaths[id.toString()].orEmpty().any { path ->
+
+        posterPathsByAnime.mapNotNull { (animeId, paths) ->
+            val hasUsablePoster = paths.any { path ->
                 val file = File(path)
-                file.isFile && file.length() > 0L
+                if (!file.isFile || file.length() <= 0L || !file.canRead()) {
+                    false
+                } else {
+                    val options = android.graphics.BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                    }
+                    runCatching {
+                        android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+                    }.isSuccess && options.outWidth > 0 && options.outHeight > 0
+                }
             }
-            id.takeIf { it > 0L && !hasValidPoster }
+            animeId.takeIf { it > 0L && !hasUsablePoster }
         }
     }
 
