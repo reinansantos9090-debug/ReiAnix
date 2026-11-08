@@ -8,6 +8,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -24,13 +25,14 @@ import kotlin.math.roundToInt
 /**
  * Keeps a custom top chrome synchronized with the user's vertical scroll gesture.
  *
- * Upward content movement collapses the header; reversing the gesture expands it
- * immediately. The connection consumes only the portion of the drag needed to
- * change the header height, leaving the remaining delta to the scrolling content.
+ * Downward content movement collapses the header. Upward movement can expand it
+ * only while the associated list/grid is actually at its first item and offset zero.
+ * The connection consumes only the drag distance needed to change header height.
  */
 @Stable
 class ReiAnixScrollAwareHeaderState internal constructor() {
     private var measuredHeightPx by mutableIntStateOf(0)
+    private var contentAtTop by mutableStateOf(true)
 
     var visibleHeightPx by mutableFloatStateOf(0f)
         private set
@@ -45,14 +47,27 @@ class ReiAnixScrollAwareHeaderState internal constructor() {
         ): Offset {
             val totalHeight = measuredHeightPx.toFloat()
             if (totalHeight <= 0f || available.y == 0f) return Offset.Zero
+            if (available.y > 0f && !contentAtTop) return Offset.Zero
 
             val previousHeight = visibleHeightPx
-            val nextHeight = (previousHeight + available.y).coerceIn(0f, totalHeight)
+            val boundedHeight = (previousHeight + available.y).coerceIn(0f, totalHeight)
+            val nextHeight = when {
+                boundedHeight <= 0.5f -> 0f
+                totalHeight - boundedHeight <= 0.5f -> totalHeight
+                else -> boundedHeight
+            }
             val consumedY = nextHeight - previousHeight
             if (consumedY == 0f) return Offset.Zero
 
             visibleHeightPx = nextHeight
             return Offset(x = 0f, y = consumedY)
+        }
+    }
+
+    internal fun updateContentAtTop(isAtTop: Boolean) {
+        contentAtTop = isAtTop
+        if (isAtTop && measuredHeightPx > 0) {
+            visibleHeightPx = measuredHeightPx.toFloat()
         }
     }
 
