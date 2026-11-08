@@ -47,6 +47,34 @@ class SafTreeChangeDetectionTest {
     }
 
     @Test
+    fun persistedInventoryDetectsNewOrChangedVideosAfterProcessRestart() {
+        val previous = mapOf(
+            "root:Show/episode-01.mkv" to "episode-01.mkv|video/x-matroska|1000|100",
+            "root:Show/episode-02.mkv" to "episode-02.mkv|video/x-matroska|2000|200",
+        )
+        val afterAddingEpisode = previous + (
+            "root:Show/episode-03.mkv" to "episode-03.mkv|video/x-matroska|3000|300"
+        )
+        assertTrue(hasNewOrChangedVideoDocuments(previous, afterAddingEpisode))
+    }
+
+    @Test
+    fun changedVideoMetadataIsDetectedButDeletionAloneDoesNotStartScan() {
+        val previous = mapOf(
+            "root:Show/episode-01.mkv" to "episode-01.mkv|video/x-matroska|1000|100",
+            "root:Show/episode-02.mkv" to "episode-02.mkv|video/x-matroska|2000|200",
+        )
+        val changed = previous + (
+            "root:Show/episode-01.mkv" to "episode-01.mkv|video/x-matroska|1500|150"
+        )
+        val deletedOnly = previous - "root:Show/episode-02.mkv"
+
+        assertTrue(hasNewOrChangedVideoDocuments(previous, changed))
+        assertFalse(hasNewOrChangedVideoDocuments(previous, deletedOnly))
+        assertFalse(hasNewOrChangedVideoDocuments(previous, previous.toMap()))
+    }
+
+    @Test
     fun videoMimeIsNotRequiredWhenARecognizedExtensionExists() {
         assertTrue(SafScanner.isPotentialVideoDocument("Episode 03.mkv", "application/octet-stream"))
         assertFalse(SafScanner.isPotentialVideoDocument("Episode 03.txt", "application/octet-stream"))
