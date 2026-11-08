@@ -255,6 +255,11 @@ class TraceMoeIdentityConsensusTest {
     }
 
     @Test
+    fun noThumbnailResponseDoesNotStartTheCompletionCooldown() {
+        assertFalse(shouldCompleteTraceMoeIdentification(0, hadUnreplacedFailure = false))
+    }
+
+    @Test
     fun failedEpisodeRequestsCanBeReplacedWithoutConsumingAValidResponseSlot() {
         assertTrue(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.BAD_IMAGE))
         assertTrue(shouldAdvanceToNextTraceMoeEpisodeAfterFailure(TraceMoeFailureKind.TIMEOUT))
