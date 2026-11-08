@@ -949,7 +949,13 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         // A committed ready row has already passed image validation. On every app
         // reopen, a file stat is enough to reuse it; decoding and publishing the same
         // path again only creates CPU work and redundant catalog projection refreshes.
-        val existing = rows.firstOrNull { it.url == url && hasNonEmptyLocalFile(it.path) }
+        val existing = rows.firstOrNull {
+            it.url == url && if (it.status.equals("ready", true)) {
+                hasNonEmptyLocalFile(it.path)
+            } else {
+                validImage(it.path)
+            }
+        }
         if (existing != null) {
             val path = existing.path ?: return false
             val alreadyPublished = existing.status.equals("ready", true) &&
