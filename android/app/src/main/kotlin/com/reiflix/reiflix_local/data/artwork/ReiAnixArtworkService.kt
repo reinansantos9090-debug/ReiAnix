@@ -222,8 +222,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val retryJobs = ConcurrentHashMap<Long, Job>()
     private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
     private val candidateFollowUpRequests = ConcurrentHashMap<Long, List<ReiAnixArtworkCandidate>>()
-    private val permits = Semaphore(2)
-    private val backfillRunning = AtomicBoolean(false)
+    // Foreground/startup triggers are coalesced. A trigger received while a pass is
+    // running schedules one immediate follow-up instead of being silently discarded.
+    private val backfillGuard = Any()
+    private var backfillRunning = false
+    private var backfillRerunRequested = false
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
 
@@ -486,49 +489,145 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return true
     }
 
-    /** Repair existing persisted image URLs in bounded asynchronous batches. */
-    fun requestPendingArtwork(): Boolean {
-        if (cacheClearInProgress.get() || !backfillRunning.compareAndSet(false, true)) return false
-        backfillJob = scope.launch {
-            try {
-                if (cacheClearInProgress.get()) return@launch
-                var afterId = 0L
-                while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
-                    val ids = database.read { db ->
-                        db.rawQuery(
-                            "SELECT id FROM anime a WHERE id>? AND (" +
-                                "TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='' OR " +
-                                "EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 " +
-                                "AND TRIM(COALESCE(e.path,''))!='') OR " +
-                                "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
-                                "AND art.entity_type IN ('anime','movie') AND art.artwork_type IN ('poster','backdrop') " +
-                                "AND ((art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL) OR " +
-                                "art.status IN ('downloading','queued','pending','not_requested','source_candidate')) " +
-                                "AND TRIM(COALESCE(art.external_url,''))!='')) ORDER BY id LIMIT 16",
-                            arrayOf(afterId.toString()),
-                        ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
+    /**
+     * Replays persisted artwork work through the same two-permit materializer used
+     * during normal library loading. Calls made while a pass is active are coalesced
+     * into one immediate follow-up pass.
+     */
+    fun requestPendingArtwork(trigger: String = "unspecified"): Boolean {
+        val normalizedTrigger = trigger.trim().take(64).ifBlank { "unspecified" }
+        val task: Job
+        synchronized(backfillGuard) {
+            if (cacheClearInProgress.get()) return false
+            if (backfillRunning) {
+                backfillRerunRequested = true
+                Log.i(TAG, "ARTWORK_BACKFILL_FOLLOW_UP_QUEUED trigger=$normalizedTrigger")
+                return true
+            }
+
+            backfillRunning = true
+            task = scope.launch(start = CoroutineStart.LAZY) {
+                val ownJob = checkNotNull(currentCoroutineContext()[Job])
+                var pass = 0
+                try {
+                    while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
+                        synchronized(backfillGuard) {
+                            backfillRerunRequested = false
+                        }
+                        Log.i(TAG, "ARTWORK_BACKFILL_STARTED trigger=$normalizedTrigger pass=$pass")
+                        runPendingArtworkBackfillPass(normalizedTrigger, pass)
+                        pass++
+
+                        val runAgain = synchronized(backfillGuard) {
+                            if (backfillRerunRequested && !cacheClearInProgress.get()) {
+                                backfillRerunRequested = false
+                                true
+                            } else {
+                                backfillRunning = false
+                                if (backfillJob === ownJob) backfillJob = null
+                                false
+                            }
+                        }
+                        if (!runAgain) break
                     }
-                    if (ids.isEmpty()) break
-                    val batch = ArrayList<Job>()
-                    ids.forEach { id ->
-                        if (!cacheClearInProgress.get()) {
-                            requestAnimeArtwork(id)
-                            jobs[id]?.let(batch::add)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e(TAG, "Artwork backfill failed trigger=$normalizedTrigger", error)
+                } finally {
+                    val restartRequested = synchronized(backfillGuard) {
+                        if (backfillJob === ownJob) {
+                            backfillJob = null
+                            backfillRunning = false
+                            val shouldRestart = backfillRerunRequested && !cacheClearInProgress.get()
+                            backfillRerunRequested = false
+                            shouldRestart
+                        } else {
+                            false
                         }
                     }
-                    batch.distinct().joinAll()
-                    afterId = ids.last()
+                    if (restartRequested && !cacheClearInProgress.get()) {
+                        requestPendingArtwork("$normalizedTrigger:follow-up")
+                    }
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.e(TAG, "Artwork backfill failed", error)
-            } finally {
-                backfillJob = null
-                backfillRunning.set(false)
+            }
+            backfillJob = task
+        }
+        task.start()
+        return true
+    }
+
+    private suspend fun runPendingArtworkBackfillPass(trigger: String, pass: Int) {
+        if (cacheClearInProgress.get()) return
+
+        // Start unfinished posters before walking every anime for banners/sidecars.
+        // In the common "48 done, 12 left" case this avoids spending the first batches
+        // rechecking already-materialized covers before the missing ones even enter
+        // the existing FIFO Semaphore(2) download queue.
+        var pendingAfterId = 0L
+        var prioritizedCount = 0
+        while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
+            val pendingPosterIds = database.read { db ->
+                db.rawQuery(
+                    "SELECT a.id FROM anime a WHERE a.id>? AND (" +
+                        "(TRIM(COALESCE(a.cover_url,''))!='' AND TRIM(COALESCE(a.cover_cache,''))='') OR " +
+                        "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
+                        "AND art.entity_type IN ('anime','movie') AND art.artwork_type='poster' " +
+                        "AND TRIM(COALESCE(art.external_url,''))!='' AND (" +
+                        "art.status IN ('downloading','queued','pending','not_requested','source_candidate') OR " +
+                        "(art.status IN ('failed','retry_wait') AND " +
+                        "(art.next_retry_at IS NULL OR art.next_retry_at<=?)))" +
+                        ")) ORDER BY a.id LIMIT 16",
+                    arrayOf(pendingAfterId.toString(), nowSeconds().toString()),
+                ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
+            }
+            if (pendingPosterIds.isEmpty()) break
+            requestArtworkBatch(pendingPosterIds)
+            prioritizedCount += pendingPosterIds.size
+            pendingAfterId = pendingPosterIds.last()
+        }
+        Log.i(
+            TAG,
+            "ARTWORK_BACKFILL_POSTER_PRIORITY trigger=$trigger pass=$pass animeCount=$prioritizedCount",
+        )
+
+        var afterId = 0L
+        var visitedCount = 0
+        while (currentCoroutineContext().isActive && !cacheClearInProgress.get()) {
+            val ids = database.read { db ->
+                db.rawQuery(
+                    "SELECT id FROM anime a WHERE id>? AND (" +
+                        "TRIM(COALESCE(cover_url,''))!='' OR TRIM(COALESCE(banner_url,''))!='' OR " +
+                        "EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id AND COALESCE(e.missing,0)=0 " +
+                        "AND TRIM(COALESCE(e.path,''))!='') OR " +
+                        "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
+                        "AND art.entity_type IN ('anime','movie') AND art.artwork_type IN ('poster','backdrop') " +
+                        "AND ((art.status IN ('failed','retry_wait') AND art.next_retry_at IS NOT NULL) OR " +
+                        "art.status IN ('downloading','queued','pending','not_requested','source_candidate')) " +
+                        "AND TRIM(COALESCE(art.external_url,''))!='')) ORDER BY id LIMIT 16",
+                    arrayOf(afterId.toString()),
+                ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
+            }
+            if (ids.isEmpty()) break
+            requestArtworkBatch(ids)
+            visitedCount += ids.size
+            afterId = ids.last()
+        }
+        Log.i(
+            TAG,
+            "ARTWORK_BACKFILL_FINISHED trigger=$trigger pass=$pass prioritized=$prioritizedCount visited=$visitedCount",
+        )
+    }
+
+    private suspend fun requestArtworkBatch(ids: List<Long>) {
+        val batch = ArrayList<Job>(ids.size)
+        ids.forEach { id ->
+            if (!cacheClearInProgress.get()) {
+                requestAnimeArtwork(id)
+                jobs[id]?.let(batch::add)
             }
         }
-        return true
+        batch.distinct().joinAll()
     }
 
     /**
@@ -609,8 +708,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             }
             return removed
         } finally {
-            backfillJob = null
-            backfillRunning.set(false)
+            synchronized(backfillGuard) {
+                backfillJob = null
+                backfillRunning = false
+                backfillRerunRequested = false
+            }
             cacheClearInProgress.set(false)
         }
     }
