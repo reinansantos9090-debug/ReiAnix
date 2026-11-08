@@ -1101,18 +1101,30 @@ class ReiAnixAniListIntegrationService(
     suspend fun recoverMissingArtworkMetadata(
         maxRecords: Int = 12,
         forceRetry: Boolean = false,
+        targetAnimeIds: List<Long>? = null,
     ): Int {
         if (!missingArtworkRecoveryRunning.compareAndSet(false, true)) return 0
         try {
             require(maxRecords in 1..24) { "Missing-artwork lookup budget must be between 1 and 24." }
             if (!isAniListEnabled() || !settingEnabled("artwork.enabled", defaultValue = true)) return 0
-            val rows = library.loadLibraryCatalogRows()
-            if (rows.isEmpty()) return 0
-            val rowsById = rows.associateBy { it.anime.id }
             val discoveryCursor = readArtworkDiscoveryCursor()
             val persistedAttemptTimes = readArtworkDiscoveryAttemptTimes().toMutableMap()
-            val orderedRows = rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
-                .mapNotNull(rowsById::get)
+            // Manual recovery already knows exactly which IDs are missing posters. Fetch only
+            // a small bounded set of anime records; never materialize the entire episode,
+            // thumbnail and genre catalog snapshot for a button press.
+            val orderedAnimes = if (targetAnimeIds != null) {
+                rotateArtworkDiscoveryIds(targetAnimeIds, discoveryCursor)
+                    .take(maxRecords)
+                    .mapNotNull { animeId -> library.getAnime(animeId) }
+            } else {
+                val rows = library.loadLibraryCatalogRows()
+                if (rows.isEmpty()) return 0
+                val rowsById = rows.associateBy { it.anime.id }
+                rotateArtworkDiscoveryIds(rowsById.keys.toList(), discoveryCursor)
+                    .mapNotNull(rowsById::get)
+                    .map { it.anime }
+            }
+            if (orderedAnimes.isEmpty()) return 0
             var lastVisitedCursor = discoveryCursor
             val exhaustedPosterIds = library.database.read { connection ->
                 connection.rawQuery(
@@ -1124,10 +1136,9 @@ class ReiAnixAniListIntegrationService(
             var examined = 0
             var recovered = 0
             val nowSeconds = System.currentTimeMillis() / 1000.0
-            for (row in orderedRows) {
+            for (local in orderedAnimes) {
                 if (examined >= maxRecords) break
                 currentCoroutineContext().ensureActive()
-                val local = row.anime
                 if (local.id <= 0L) continue
                 lastVisitedCursor = local.id
                 val cachedPath = local.coverCache?.trim().orEmpty()
@@ -1215,7 +1226,7 @@ class ReiAnixAniListIntegrationService(
                     if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                 }
             }
-            if (lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
+            if (targetAnimeIds == null && lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
                 writeArtworkDiscoveryCursor(lastVisitedCursor)
             }
             return recovered
