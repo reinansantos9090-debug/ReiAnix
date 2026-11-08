@@ -4709,6 +4709,7 @@ class MainActivity : ComponentActivity() {
                     libraryViewModel.onSafRemovalTerminal(normalizedReference)
                     refreshNativeStorageOnboardingState("saf_release_terminal")
                     synchronizeSafTreeChangeObservers()
+                    synchronizeSafTreeChangeObservers()
                 }
                 (waiters.ifEmpty { listOf(requestId.orEmpty()) }).forEach { waiterId ->
                     nativeRequestState.markOperationState(
