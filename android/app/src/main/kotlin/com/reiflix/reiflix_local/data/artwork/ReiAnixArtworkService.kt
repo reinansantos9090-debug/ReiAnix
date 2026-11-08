@@ -171,7 +171,7 @@ internal fun shouldResumePersistedArtworkCandidate(
     failureCount: Int,
     nowSeconds: Double,
 ): Boolean {
-    val normalized = status?.trim()?.lowercase(Locale.ROOT)
+    val normalized = status?.trim()?.lowercase(Locale.ROOT) ?: return false
     return when (normalized) {
         in ARTWORK_RESUMABLE_CANDIDATE_STATUSES -> true
         "failed", "retry_wait" -> shouldRetryArtworkRequest(
