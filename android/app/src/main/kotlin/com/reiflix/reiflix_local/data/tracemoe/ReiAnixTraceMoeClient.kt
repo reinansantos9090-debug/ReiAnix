@@ -630,8 +630,10 @@ data class TraceMoeEpisodeSample(
 
 enum class TraceMoeIdentificationProgressPhase {
     PREPARING_THUMBNAIL,
+    CHECKING_QUOTA,
     SENDING_TO_API,
     WAITING_FOR_API,
+    RETRYING_REQUEST,
     WAITING_FOR_QUOTA,
     RESPONSE_RECEIVED,
     SKIPPING_FAILED_EPISODE,
