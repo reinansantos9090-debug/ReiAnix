@@ -40,16 +40,52 @@ class ReiAnixExternalCatalogIntegrationService(
     )
 
     /**
+     * Returns canonical anime IDs without a ready poster file. This is a local SQLite/filesystem
+     * check only: it does not contact providers, mutate metadata, or start artwork requests.
+     */
+    suspend fun missingPosterAnimeIds(): List<Long> {
+        val rows = library.loadLibraryCatalogRows()
+        if (rows.isEmpty()) return emptyList()
+        val readyPosterPaths = library.database.read { db ->
+            db.rawQuery(
+                "SELECT entity_id, local_path FROM artwork " +
+                    "WHERE entity_type IN ('anime','movie') AND artwork_type='poster' " +
+                    "AND status='ready' AND TRIM(COALESCE(local_path,''))!=''",
+                null,
+            ).use { cursor ->
+                buildMap<String, MutableList<String>> {
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(0)?.trim().orEmpty()
+                        val path = cursor.getString(1)?.trim().orEmpty()
+                        if (id.isNotEmpty() && path.isNotEmpty()) {
+                            getOrPut(id) { mutableListOf() }.add(path)
+                        }
+                    }
+                }
+            }
+        }
+        return rows.mapNotNull { row ->
+            val id = row.anime.id
+            val hasValidPoster = readyPosterPaths[id.toString()].orEmpty().any { path ->
+                val file = File(path)
+                file.isFile && file.length() > 0L
+            }
+            id.takeIf { it > 0L && !hasValidPoster }
+        }
+    }
+
+    /**
      * Traverses every eligible anime with bounded SQLite keyset pages. Provider calls and
      * artwork materialization remain sequential per anime and use the existing shared services.
      */
     suspend fun enrichLibraryGaps(
         batchSize: Int = DEFAULT_BATCH_SIZE,
         restartFromLibraryScan: Boolean = false,
+        forceRetry: Boolean = false,
     ): Int = enrichmentPassMutex.withLock {
         require(batchSize in 1..MAX_BATCH_SIZE)
         if (restartFromLibraryScan) library.setExternalCatalogCursor(0L)
-        runEnrichmentPass(batchSize)
+        runEnrichmentPass(batchSize, forceRetry)
     }
 
     /**
@@ -59,7 +95,7 @@ class ReiAnixExternalCatalogIntegrationService(
      * A completed cursor is deliberately not wrapped: foreground resumes do not rescan
      * completed records. A confirmed library scan explicitly rewinds the same cursor.
      */
-    private suspend fun runEnrichmentPass(batchSize: Int): Int {
+    private suspend fun runEnrichmentPass(batchSize: Int, forceRetry: Boolean): Int {
         require(batchSize in 1..MAX_BATCH_SIZE)
         var cursor = library.externalCatalogCursor()
         var enriched = 0
@@ -71,7 +107,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             for (row in rows) {
                 currentCoroutineContext().ensureActive()
-                if (isEligible(row) && enrichOne(row)) enriched++
+                if (isEligible(row) && enrichOne(row, forceRetry)) enriched++
                 // Commit progress per row. If an exception/cancellation happens before
                 // this write, the same row is retried; later rows are never skipped.
                 library.setExternalCatalogCursor(row.id)
@@ -114,7 +150,7 @@ class ReiAnixExternalCatalogIntegrationService(
             anime.year == null ||
             anime.score == null
 
-    private suspend fun enrichOne(initial: ReiAnixAnimeRecord): Boolean {
+    private suspend fun enrichOne(initial: ReiAnixAnimeRecord, forceRetry: Boolean): Boolean {
         var anime = library.getAnime(initial.id) ?: return false
         val identity = anime.toExternalCatalogIdentity()
         val posterReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "poster")
@@ -189,7 +225,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             val previousAttempt = library.externalCatalogAttemptAt(anime.id, source.key)
             val knownId = ids.idFor(source)
-            if (knownId == null && previousAttempt != null &&
+            if (!forceRetry && knownId == null && previousAttempt != null &&
                 System.currentTimeMillis() / 1_000.0 - previousAttempt < SOURCE_RETRY_COOLDOWN_SECONDS
             ) continue
 
