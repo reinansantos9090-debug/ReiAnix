@@ -295,6 +295,26 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         return requestAnimeArtworkInternal(animeId, force, usable)
     }
 
+    /**
+     * Enqueue only anime whose poster is not already materialized as a valid local image.
+     * Requests still use the canonical per-anime job map, cache, SQLite writer, semaphore,
+     * retry handling and publication stream; this method does not implement a downloader.
+     */
+    fun requestMissingPosterArtwork(animeIds: List<Long>, forceRetry: Boolean = false): Int {
+        if (cacheClearInProgress.get()) return 0
+        var queued = 0
+        animeIds.asSequence().filter { it > 0L }.distinct().forEach { animeId ->
+            val anime = loadAnime(animeId) ?: return@forEach
+            val entityType = if (anime.kind.equals("movie", ignoreCase = true)) "movie" else "anime"
+            if (!hasUsablePersistedPoster(animeId, entityType) &&
+                requestAnimeArtwork(animeId, force = forceRetry)
+            ) {
+                queued++
+            }
+        }
+        return queued
+    }
+
     private fun requestAnimeArtworkInternal(
         animeId: Long,
         force: Boolean,
