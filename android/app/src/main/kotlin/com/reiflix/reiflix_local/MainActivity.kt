@@ -575,9 +575,9 @@ class MainActivity : ComponentActivity() {
                 applicationContext,
                 NativeIndex.volumeSnapshot(applicationContext),
             )
-            // Only a real volume mount transition can trigger a broad storage scan.
-            // ACTION_MEDIA_SCANNER_FINISHED is a completion notification, not evidence
-            // that a new anime was added to the configured library.
+            // A real volume mount is a reason to recheck configured SAF inventory,
+            // not to start a broad scan. ACTION_MEDIA_SCANNER_FINISHED is only a
+            // completion notification and is deliberately ignored.
             val discoveryEvent = action == Intent.ACTION_MEDIA_MOUNTED
             if (changes.optBoolean("changed")) {
                 val payload = JSONObject(changes.toString())
@@ -606,14 +606,13 @@ class MainActivity : ComponentActivity() {
                         JSONObject().put("type", "volume_changed").put("payload", payload),
                     )
                     if (discoveryEvent && activityResumed) {
-                        publishScanRequest(
-                            "VOLUME_MOUNT",
-                            source = null,
-                            full = false,
-                            reason = action,
-                        )
+                        synchronizeSafTreeChangeObservers(forceInventoryCheck = true)
                     }
                 }
+            } else if (discoveryEvent && activityResumed) {
+                // The volume may have remounted with the same identity snapshot.
+                // Compare SAF video inventories and scan only folders with new videos.
+                synchronizeSafTreeChangeObservers(forceInventoryCheck = true)
             }
             if (action == Intent.ACTION_MEDIA_UNMOUNTED ||
                 action == Intent.ACTION_MEDIA_EJECT ||
@@ -2464,7 +2463,7 @@ class MainActivity : ComponentActivity() {
         dispatchPendingSafTreeChanges()
     }
 
-    private fun synchronizeSafTreeChangeObservers() {
+    private fun synchronizeSafTreeChangeObservers(forceInventoryCheck: Boolean = false) {
         if (!bootstrapAllowsNativeOperations() || safTreeObserverSyncJob?.isActive == true) return
         safTreeObserverSyncJob = lifecycleScope.launch {
             val references = withContext(Dispatchers.IO) {
@@ -2475,7 +2474,11 @@ class MainActivity : ComponentActivity() {
                     .distinct()
                     .toList()
             }
-            SafTreeChangeMonitor.synchronize(applicationContext, references)
+            SafTreeChangeMonitor.synchronize(
+                context = applicationContext,
+                treeReferences = references,
+                forceInventoryCheck = forceInventoryCheck,
+            )
             if (activityResumed) dispatchPendingSafTreeChanges()
         }
     }
