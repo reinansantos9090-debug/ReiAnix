@@ -387,10 +387,11 @@ class ReiAnixAniListIntegrationService(
     }
 
     /**
-     * Uses every available local episode thumbnail to verify or correct an automatic
-     * AniList association. Only the latest three successful Trace.moe responses form
-     * each identity decision; later episodes keep replacing the oldest evidence until
-     * a clear match or a two-episode majority is found. Manual metadata is protected.
+     * Uses local episode thumbnails to verify or correct an automatic AniList association.
+     * Each manual session consumes no more than three valid Trace.moe responses. A strong
+     * result is applied immediately; inconclusive valid responses advance only until the
+     * third response. A failed image request does not consume a slot and may be replaced
+     * by a later episode. Manual metadata is protected.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -400,10 +401,9 @@ class ReiAnixAniListIntegrationService(
     ): Boolean = identifyFromEpisodeThumbnails(animeId, samples.asFlow(), userInitiated, onProgress)
 
     /**
-     * Consume episode thumbnails as soon as they become available. The app may
-     * inspect any number of episodes, while limiting each identity decision to a
-     * rolling window of three successful API responses. The upstream flow is
-     * cancelled only after a reliable identity is confirmed or the source closes.
+     * Consume thumbnails in episode order, stopping on a reliable identity or after
+     * three successful API responses. Failed requests are skipped and replaced by a
+     * later thumbnail without consuming a valid-response slot.
      */
     suspend fun identifyFromEpisodeThumbnails(
         animeId: Long,
@@ -540,6 +540,11 @@ class ReiAnixAniListIntegrationService(
                 sample,
                 "Enviando thumbnail ao Trace.moe (${successfulResponses.coerceAtMost(MAX_TRACE_MOE_EPISODE_SAMPLES)}/$MAX_TRACE_MOE_EPISODE_SAMPLES respostas válidas)...",
             )
+            report(
+                TraceMoeIdentificationProgressPhase.WAITING_FOR_API,
+                sample,
+                "Aguardando a resposta do Trace.moe...",
+            )
             val matches = try {
                 traceMoeClient.search(
                     imageFile = sample.imageFile,
@@ -592,7 +597,12 @@ class ReiAnixAniListIntegrationService(
             report(
                 TraceMoeIdentificationProgressPhase.RESPONSE_RECEIVED,
                 sample,
-                "Resposta recebida (${successfulResponses}/$MAX_TRACE_MOE_EPISODE_SAMPLES respostas válidas). Verificando a correspondência...",
+                "Resposta recebida (${successfulResponses}/$MAX_TRACE_MOE_EPISODE_SAMPLES respostas válidas).",
+            )
+            report(
+                TraceMoeIdentificationProgressPhase.VERIFYING_IDENTITY,
+                sample,
+                "Conferindo se o resultado corresponde ao anime...",
             )
             confirmedIdentity = evaluateTraceMoeProgressiveIdentity(matchesByEpisode)
         }
