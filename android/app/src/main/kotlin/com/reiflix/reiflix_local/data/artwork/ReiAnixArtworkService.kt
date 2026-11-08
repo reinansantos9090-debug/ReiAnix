@@ -137,6 +137,19 @@ internal fun invalidGeneratedThumbnailPaths(
     .distinct()
     .filterNot(isUsable)
 
+internal const val MISSING_POSTER_BATCH_SIZE = 12
+
+/** Lazily deduplicates valid IDs and emits bounded batches without copying the whole library. */
+internal fun boundedMissingPosterBatches(
+    animeIds: Sequence<Long>,
+    batchSize: Int = MISSING_POSTER_BATCH_SIZE,
+): Sequence<List<Long>> {
+    require(batchSize in 1..MISSING_POSTER_BATCH_SIZE) {
+        "Missing-poster batch size must be between 1 and $MISSING_POSTER_BATCH_SIZE."
+    }
+    return animeIds.filter { it > 0L }.distinct().chunked(batchSize)
+}
+
 internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val BASE_ARTWORK_RETRY_BACKOFF_SECONDS = 60L
 internal const val MAX_ARTWORK_RETRY_BACKOFF_SECONDS = 6L * 60L * 60L
@@ -313,11 +326,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
         scope.launch {
             try {
-                for (batch in animeIds.asSequence()
-                    .filter { it > 0L }
-                    .distinct()
-                    .chunked(MISSING_POSTER_BATCH_SIZE)
-                ) {
+                for (batch in boundedMissingPosterBatches(animeIds.asSequence())) {
                     currentCoroutineContext().ensureActive()
                     if (cacheClearInProgress.get()) break
 
@@ -2337,7 +2346,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val MAX_CANDIDATE_ARTWORKS = 5
         const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
-        const val MISSING_POSTER_BATCH_SIZE = 12
         const val IO_BUFFER_BYTES = 64 * 1024
         const val POSTER_PRIORITY = 400
         const val STALE_PRIORITY = 350
