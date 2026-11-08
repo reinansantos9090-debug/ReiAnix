@@ -100,7 +100,7 @@ fun ReiAnixScrollAwareHeader(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onSizeChanged(state::updateMeasuredHeight),
+                    .onSizeChanged { size -> state.updateMeasuredHeight(size.height) },
             ) {
                 content()
             }
