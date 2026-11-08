@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.data.artwork
 
+import com.reiflix.reiflix_local.data.anilist.ArtworkCandidateDiscovery
 import com.reiflix.reiflix_local.data.anilist.shouldDiscoverMissingArtwork
 import com.reiflix.reiflix_local.data.anilist.boundedAniListSearchTerms
 import com.reiflix.reiflix_local.data.anilist.rotateArtworkDiscoveryIds

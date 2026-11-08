@@ -216,7 +216,6 @@ class ReiAnixExternalCatalogIntegrationService(
                 null
             }
 
-            library.markExternalCatalogAttempt(anime.id, source.key)
             val resolved = resolution ?: continue
             // Do not turn a failed provider request into a six-hour completed-search
             // cooldown. Partial image results can still be queued, but a failed search
