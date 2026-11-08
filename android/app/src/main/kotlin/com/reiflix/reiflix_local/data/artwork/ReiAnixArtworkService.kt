@@ -227,7 +227,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val missingPosterBackfillRunning = AtomicBoolean(false)
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
-    @Volatile private var missingPosterBackfillJob: Job? = null
 
     private data class Anime(
         val anilistId: Long?,
@@ -307,18 +306,18 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             !missingPosterBackfillRunning.compareAndSet(false, true)
         ) return false
 
-        val pendingIds = animeIds.asSequence()
-            .filter { it > 0L }
-            .distinct()
-            .toList()
-        if (pendingIds.isEmpty()) {
+        if (animeIds.none { it > 0L }) {
             missingPosterBackfillRunning.set(false)
             return false
         }
 
-        missingPosterBackfillJob = scope.launch {
+        scope.launch {
             try {
-                for (batch in pendingIds.chunked(MISSING_POSTER_BATCH_SIZE)) {
+                for (batch in animeIds.asSequence()
+                    .filter { it > 0L }
+                    .distinct()
+                    .chunked(MISSING_POSTER_BATCH_SIZE)
+                ) {
                     currentCoroutineContext().ensureActive()
                     if (cacheClearInProgress.get()) break
 
@@ -351,7 +350,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             } catch (error: Exception) {
                 Log.e(TAG, "Missing-poster artwork recovery failed", error)
             } finally {
-                missingPosterBackfillJob = null
                 missingPosterBackfillRunning.set(false)
             }
         }
