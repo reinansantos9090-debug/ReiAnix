@@ -1548,12 +1548,10 @@ class ReiAnixLibraryViewModel(
                                 ?.firstOrNull { it.id == episodeId }
                         }
                         val label = episode?.let {
-                            val number = it.number
-                            val numberLabel = if (number % 1.0 == 0.0) {
-                                number.toInt().toString()
-                            } else {
-                                number.toString()
-                            }
+                            val numberLabel = it.number?.let { number ->
+                                if (number % 1.0 == 0.0) number.toInt().toString()
+                                else number.toString()
+                            } ?: it.title?.takeIf(String::isNotBlank) ?: it.id.toString()
                             "Episódio $numberLabel"
                         }
                         publishTraceMoeIdentificationState(
