@@ -88,6 +88,7 @@ import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixMissingArtworkRetryUiState
 
 @Composable
 fun ReiAnixLibraryRoute(
@@ -111,6 +112,7 @@ fun ReiAnixLibraryRoute(
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val missingArtworkRetryState by viewModel.missingArtworkRetryState.collectAsStateWithLifecycle()
     val state = baseState
 
     ReiAnixLibraryPresentationScreen(
@@ -121,6 +123,8 @@ fun ReiAnixLibraryRoute(
         cardSize = cardSize,
         gridDensity = gridDensity,
         isRefreshing = isRefreshing,
+        missingArtworkRetryState = missingArtworkRetryState,
+        onRetryMissingArtwork = viewModel::retryMissingArtwork,
         onQueryChange = viewModel::setLibrarySearchQuery,
         onGenreSelected = viewModel::setLibraryGenreFilter,
         onToggleFavorites = viewModel::toggleLibraryFavoritesFilter,
@@ -160,6 +164,7 @@ fun ReiAnixLibraryRoute(
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val missingArtworkRetryState by viewModel.missingArtworkRetryState.collectAsStateWithLifecycle()
     val state = baseState
 
     ReiAnixLibraryPresentationScreen(
@@ -168,6 +173,8 @@ fun ReiAnixLibraryRoute(
         visibleAnimes = visibleAnimes,
         genres = genres,
         isRefreshing = isRefreshing,
+        missingArtworkRetryState = missingArtworkRetryState,
+        onRetryMissingArtwork = viewModel::retryMissingArtwork,
         onQueryChange = viewModel::setLibrarySearchQuery,
         onGenreSelected = viewModel::setLibraryGenreFilter,
         onToggleFavorites = viewModel::toggleLibraryFavoritesFilter,
@@ -200,6 +207,8 @@ fun ReiAnixLibraryScreen(
     visibleAnimes: List<ReiAnixAnimeUiModel>,
     genres: List<ReiAnixGenreUiModel>,
     isRefreshing: Boolean = false,
+    missingArtworkRetryState: ReiAnixMissingArtworkRetryUiState = ReiAnixMissingArtworkRetryUiState(),
+    onRetryMissingArtwork: () -> Unit = {},
     onQueryChange: (String) -> Unit,
     onGenreSelected: (String?) -> Unit,
     onToggleFavorites: () -> Unit,
@@ -236,6 +245,8 @@ fun ReiAnixLibraryScreen(
         visibleAnimes = visibleAnimes,
         genres = genres,
         isRefreshing = isRefreshing,
+        missingArtworkRetryState = missingArtworkRetryState,
+        onRetryMissingArtwork = onRetryMissingArtwork,
         onQueryChange = onQueryChange,
         onGenreSelected = onGenreSelected,
         onToggleFavorites = onToggleFavorites,
@@ -261,6 +272,8 @@ private fun ReiAnixLibraryPresentationScreen(
     visibleAnimes: List<ReiAnixAnimeUiModel>,
     genres: List<ReiAnixGenreUiModel>,
     isRefreshing: Boolean = false,
+    missingArtworkRetryState: ReiAnixMissingArtworkRetryUiState = ReiAnixMissingArtworkRetryUiState(),
+    onRetryMissingArtwork: () -> Unit = {},
     onQueryChange: (String) -> Unit,
     onGenreSelected: (String?) -> Unit,
     onToggleFavorites: () -> Unit,
@@ -300,6 +313,8 @@ private fun ReiAnixLibraryPresentationScreen(
                 visibleAnimes = visibleAnimes,
                 genres = genres,
                 isRefreshing = isRefreshing,
+                missingArtworkRetryState = missingArtworkRetryState,
+                onRetryMissingArtwork = onRetryMissingArtwork,
                 onQueryChange = onQueryChange,
                 onGenreSelected = onGenreSelected,
                 onToggleFavorites = onToggleFavorites,
@@ -473,6 +488,8 @@ private fun ColumnScope.LibraryReadyContent(
     visibleAnimes: List<ReiAnixAnimeUiModel>,
     genres: List<ReiAnixGenreUiModel>,
     isRefreshing: Boolean,
+    missingArtworkRetryState: ReiAnixMissingArtworkRetryUiState,
+    onRetryMissingArtwork: () -> Unit,
     onQueryChange: (String) -> Unit,
     onGenreSelected: (String?) -> Unit,
     onToggleFavorites: () -> Unit,
@@ -730,6 +747,19 @@ private fun ColumnScope.LibraryReadyContent(
                         }
                     }
 
+                    ReiAnixChip(
+                        text = if (missingArtworkRetryState.isRunning) {
+                            "Buscando capas..."
+                        } else {
+                            "Baixar capas que faltam"
+                        },
+                        enabled = !missingArtworkRetryState.isRunning,
+                        onClick = onRetryMissingArtwork,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Baixar capas que faltam"
+                        },
+                    )
+                    Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
                     Box {
                         ReiAnixChip(
                             text = "Ordenar",
@@ -766,6 +796,27 @@ private fun ColumnScope.LibraryReadyContent(
                             }
                         }
                     }
+                }
+            }
+
+            if (!missingArtworkRetryState.message.isNullOrBlank()) {
+                item(
+                    key = "library-missing-artwork-retry-status",
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = "library-missing-artwork-retry-status",
+                ) {
+                    Text(
+                        text = missingArtworkRetryState.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (missingArtworkRetryState.isError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = ReiAnixTokens.Spacing.xs),
+                    )
                 }
             }
 

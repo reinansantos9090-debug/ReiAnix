@@ -193,6 +193,35 @@ class ReiAnixLibraryInstrumentedTest {
     }
 
     @Test
+    fun missingArtworkRetryActionIsAlwaysVisibleAndInvokesCallback() {
+        var requested = false
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixLibraryScreen(
+                    state = readyState(),
+                    filters = ReiAnixLibraryFilters(),
+                    visibleAnimes = listOf(anime(21L, "Without Poster", artwork = null)),
+                    genres = emptyList(),
+                    onQueryChange = {},
+                    onGenreSelected = {},
+                    onToggleFavorites = {},
+                    onToggleWatching = {},
+                    onToggleCompleted = {},
+                    onClearFilters = {},
+                    onRefresh = {},
+                    onOpenDetails = {},
+                    onRetryMissingArtwork = { requested = true },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Baixar capas que faltam")
+            .assertIsDisplayed()
+            .performClick()
+        assertTrue(requested)
+    }
+
+    @Test
     fun searchButtonUsesProvidedNavigationAction() {
         var opened = false
         composeRule.setContent {

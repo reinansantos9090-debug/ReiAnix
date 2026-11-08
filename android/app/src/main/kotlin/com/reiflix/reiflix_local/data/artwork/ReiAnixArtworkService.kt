@@ -137,6 +137,19 @@ internal fun invalidGeneratedThumbnailPaths(
     .distinct()
     .filterNot(isUsable)
 
+internal const val MISSING_POSTER_BATCH_SIZE = 12
+
+/** Lazily deduplicates valid IDs and emits bounded batches without copying the whole library. */
+internal fun boundedMissingPosterBatches(
+    animeIds: Sequence<Long>,
+    batchSize: Int = MISSING_POSTER_BATCH_SIZE,
+): Sequence<List<Long>> {
+    require(batchSize in 1..MISSING_POSTER_BATCH_SIZE) {
+        "Missing-poster batch size must be between 1 and $MISSING_POSTER_BATCH_SIZE."
+    }
+    return animeIds.filter { it > 0L }.distinct().chunked(batchSize)
+}
+
 internal const val PERMANENT_ARTWORK_RETRY_DELAY_SECONDS = 24L * 60L * 60L
 internal const val BASE_ARTWORK_RETRY_BACKOFF_SECONDS = 60L
 internal const val MAX_ARTWORK_RETRY_BACKOFF_SECONDS = 6L * 60L * 60L
@@ -224,6 +237,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val candidateFollowUpRequests = ConcurrentHashMap<Long, List<ReiAnixArtworkCandidate>>()
     private val permits = Semaphore(2)
     private val backfillRunning = AtomicBoolean(false)
+    private val missingPosterBackfillRunning = AtomicBoolean(false)
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
 
@@ -293,6 +307,62 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             .toList()
         if (usable.isEmpty()) return false
         return requestAnimeArtworkInternal(animeId, force, usable)
+    }
+
+    /**
+     * Recovers missing posters through the canonical pipeline in small, awaited batches.
+     * The existing artwork pipeline allows two simultaneous downloads; enqueueing an
+     * entire library at once would still create an unbounded number of waiting coroutines.
+     */
+    fun requestMissingPosterArtwork(animeIds: List<Long>, forceRetry: Boolean = false): Boolean {
+        if (cacheClearInProgress.get() ||
+            !missingPosterBackfillRunning.compareAndSet(false, true)
+        ) return false
+
+        if (animeIds.none { it > 0L }) {
+            missingPosterBackfillRunning.set(false)
+            return false
+        }
+
+        scope.launch {
+            try {
+                for (batch in boundedMissingPosterBatches(animeIds.asSequence())) {
+                    currentCoroutineContext().ensureActive()
+                    if (cacheClearInProgress.get()) break
+
+                    val activeJobs = ArrayList<Job>(batch.size)
+                    for (animeId in batch) {
+                        currentCoroutineContext().ensureActive()
+                        if (cacheClearInProgress.get()) break
+                        val anime = loadAnime(animeId) ?: continue
+                        val entityType = if (anime.kind.equals("movie", ignoreCase = true)) "movie" else "anime"
+                        if (hasUsablePersistedPoster(animeId, entityType)) continue
+
+                        // Reuse an already-running canonical request instead of creating a
+                        // forced follow-up. This keeps retries idempotent per anime.
+                        val existingJob = synchronized(jobs) {
+                            jobs[animeId]?.takeIf { it.isActive }
+                        }
+                        if (existingJob == null) {
+                            requestAnimeArtwork(animeId, force = forceRetry)
+                        }
+                        synchronized(jobs) {
+                            jobs[animeId]?.takeIf { it.isActive }
+                        }?.let(activeJobs::add)
+                    }
+
+                    // At most one small batch can wait for the two existing download permits.
+                    activeJobs.distinct().joinAll()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "Missing-poster artwork recovery failed", error)
+            } finally {
+                missingPosterBackfillRunning.set(false)
+            }
+        }
+        return true
     }
 
     private fun requestAnimeArtworkInternal(

@@ -14,11 +14,13 @@ import com.reiflix.reiflix_local.data.sqlite.mergeExternalCatalogMetadata
 import com.reiflix.reiflix_local.data.sqlite.saveExternalCatalogIds
 import com.reiflix.reiflix_local.data.sqlite.setExternalCatalogCursor
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.io.File
 
@@ -40,16 +42,101 @@ class ReiAnixExternalCatalogIntegrationService(
     )
 
     /**
+     * Returns anime IDs without a usable local poster. This deliberately reads only the
+     * anime/artwork tables: loading the full catalog snapshot here would also materialize
+     * every episode, thumbnail and genre just to discover a list of missing poster IDs.
+     */
+    suspend fun missingPosterAnimeIds(): List<Long> = withContext(Dispatchers.IO) {
+        library.database.read { db ->
+            db.rawQuery(
+                """
+                SELECT a.id, art.local_path
+                FROM anime a
+                LEFT JOIN artwork art
+                  ON art.entity_id=CAST(a.id AS TEXT)
+                 AND art.entity_type IN ('anime','movie')
+                 AND art.artwork_type='poster'
+                 AND LOWER(COALESCE(art.status,''))='ready'
+                 AND TRIM(COALESCE(art.local_path,''))!=''
+                ORDER BY a.id, art.priority DESC, art.updated_at DESC, art.id DESC
+                """.trimIndent(),
+                null,
+            ).use { cursor ->
+                val missingAnimeIds = ArrayList<Long>()
+                var currentAnimeId: Long? = null
+                var hasUsablePoster = false
+
+                fun finishCurrentAnime() {
+                    val completedId = currentAnimeId ?: return
+                    if (!hasUsablePoster) missingAnimeIds += completedId
+                }
+
+                while (cursor.moveToNext()) {
+                    val animeId = cursor.getLong(0)
+                    if (currentAnimeId != animeId) {
+                        finishCurrentAnime()
+                        currentAnimeId = animeId
+                        hasUsablePoster = false
+                    }
+                    if (!hasUsablePoster) {
+                        val path = cursor.getString(1)?.trim().orEmpty()
+                        if (path.isNotEmpty()) {
+                            val file = File(path)
+                            if (file.isFile && file.length() > 0L && file.canRead()) {
+                                val options = android.graphics.BitmapFactory.Options().apply {
+                                    inJustDecodeBounds = true
+                                }
+                                hasUsablePoster = runCatching {
+                                    android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+                                }.isSuccess && options.outWidth > 0 && options.outHeight > 0
+                            }
+                        }
+                    }
+                }
+                finishCurrentAnime()
+                missingAnimeIds
+            }
+        }
+    }
+
+    /**
      * Traverses every eligible anime with bounded SQLite keyset pages. Provider calls and
      * artwork materialization remain sequential per anime and use the existing shared services.
      */
     suspend fun enrichLibraryGaps(
         batchSize: Int = DEFAULT_BATCH_SIZE,
         restartFromLibraryScan: Boolean = false,
+        forceRetry: Boolean = false,
     ): Int = enrichmentPassMutex.withLock {
         require(batchSize in 1..MAX_BATCH_SIZE)
         if (restartFromLibraryScan) library.setExternalCatalogCursor(0L)
-        runEnrichmentPass(batchSize)
+        runEnrichmentPass(batchSize, forceRetry)
+    }
+
+    /**
+     * Rechecks only the supplied anime for missing poster artwork. Unlike a folder-scan
+     * enrichment pass, this never rewinds or drains the full catalog cursor and never
+     * updates identity/metadata; supplemental candidates are artwork-only.
+     */
+    suspend fun enrichMissingArtworkForAnime(
+        animeIds: List<Long>,
+        maxRecords: Int = 12,
+        forceRetry: Boolean = false,
+    ): Int = enrichmentPassMutex.withLock {
+        require(maxRecords in 1..24)
+        var enriched = 0
+        val selectedIds = animeIds.asSequence()
+            .filter { it > 0L }
+            .distinct()
+            .take(maxRecords)
+            .toList()
+        for (animeId in selectedIds) {
+            currentCoroutineContext().ensureActive()
+            val anime = library.getAnime(animeId) ?: continue
+            if (hasValidArtwork(animeId, "poster")) continue
+            if (enrichOne(anime, forceRetry, artworkOnly = true)) enriched++
+        }
+        enriched
     }
 
     /**
@@ -59,7 +146,7 @@ class ReiAnixExternalCatalogIntegrationService(
      * A completed cursor is deliberately not wrapped: foreground resumes do not rescan
      * completed records. A confirmed library scan explicitly rewinds the same cursor.
      */
-    private suspend fun runEnrichmentPass(batchSize: Int): Int {
+    private suspend fun runEnrichmentPass(batchSize: Int, forceRetry: Boolean): Int {
         require(batchSize in 1..MAX_BATCH_SIZE)
         var cursor = library.externalCatalogCursor()
         var enriched = 0
@@ -71,7 +158,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             for (row in rows) {
                 currentCoroutineContext().ensureActive()
-                if (isEligible(row) && enrichOne(row)) enriched++
+                if (isEligible(row) && enrichOne(row, forceRetry)) enriched++
                 // Commit progress per row. If an exception/cancellation happens before
                 // this write, the same row is retried; later rows are never skipped.
                 library.setExternalCatalogCursor(row.id)
@@ -114,7 +201,11 @@ class ReiAnixExternalCatalogIntegrationService(
             anime.year == null ||
             anime.score == null
 
-    private suspend fun enrichOne(initial: ReiAnixAnimeRecord): Boolean {
+    private suspend fun enrichOne(
+        initial: ReiAnixAnimeRecord,
+        forceRetry: Boolean,
+        artworkOnly: Boolean = false,
+    ): Boolean {
         var anime = library.getAnime(initial.id) ?: return false
         val identity = anime.toExternalCatalogIdentity()
         val posterReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "poster")
@@ -122,7 +213,7 @@ class ReiAnixExternalCatalogIntegrationService(
         val hasMissingAniListArtworkCandidate =
             (!posterReadyBeforeAniListArtwork && !anime.coverUrl.isNullOrBlank()) ||
                 (!backdropReadyBeforeAniListArtwork && !anime.bannerUrl.isNullOrBlank())
-        if (hasMissingAniListArtworkCandidate) {
+        if (!artworkOnly && hasMissingAniListArtworkCandidate) {
             // Try the already-persisted AniList candidate first, including a backdrop-only gap.
             // The canonical artwork service reuses validated poster bytes and does not redownload them.
             // The current artwork pipeline owns asynchronous downloads and publication.
@@ -135,61 +226,63 @@ class ReiAnixExternalCatalogIntegrationService(
 
         // AniMap is an identifier crosswalk only. Never search it by title or consume its images.
         // Existing AniList/Kitsu/MAL/AniDB IDs are the only permitted lookup keys.
-        identifierResolver?.takeIf { ids.hasAnyId }?.let { resolver ->
-            val mappingResult = try {
-                resolver.resolveIds(ids)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                record(ReiAnixCatalogSource.ANIMAP, "IDENTIFIER_LOOKUP_FAILED", anime.id, error)
-                null
-            }
-            when (mappingResult) {
-                is ReiAnixCatalogResult.Success -> {
-                    val mapping = mappingResult.value
-                    if (mapping != null) {
-                        val mappingEvaluation = ReiAnixCatalogIdentityMatcher.evaluateMapping(
-                            anime.id, identity, mapping, ids,
-                        )
-                        val mappingMatch = mappingEvaluation.value
-                        if (mappingMatch == null) {
-                            val result = if (mappingEvaluation.decision == ReiAnixCatalogIdentityDecision.PROBABLE) {
-                                "PROBABLE_CROSSWALK_REQUIRES_CONFIRMATION"
-                            } else {
-                                "IDENTITY_MISMATCH_REJECTED"
-                            }
-                            record(ReiAnixCatalogSource.ANIMAP, result, anime.id)
-                        } else {
-                            try {
-                                ids = library.saveExternalCatalogIds(mappingMatch)
-                                changed = true
-                                record(ReiAnixCatalogSource.ANIMAP, "VERIFIED_CROSSWALK_PERSISTED", anime.id)
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                record(ReiAnixCatalogSource.ANIMAP, "CROSSWALK_NOT_PERSISTED", anime.id, error)
-                            }
-                        }
-                    } else {
-                        record(ReiAnixCatalogSource.ANIMAP, "NO_CROSSWALK_FOUND", anime.id)
-                    }
+        if (!artworkOnly) {
+            identifierResolver?.takeIf { ids.hasAnyId }?.let { resolver ->
+                val mappingResult = try {
+                    resolver.resolveIds(ids)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    record(ReiAnixCatalogSource.ANIMAP, "IDENTIFIER_LOOKUP_FAILED", anime.id, error)
+                    null
                 }
-                is ReiAnixCatalogResult.Failure ->
-                    record(ReiAnixCatalogSource.ANIMAP, "IDENTIFIER_LOOKUP_FAILED", anime.id)
-                null -> Unit
+                when (mappingResult) {
+                    is ReiAnixCatalogResult.Success -> {
+                        val mapping = mappingResult.value
+                        if (mapping != null) {
+                            val mappingEvaluation = ReiAnixCatalogIdentityMatcher.evaluateMapping(
+                                anime.id, identity, mapping, ids,
+                            )
+                            val mappingMatch = mappingEvaluation.value
+                            if (mappingMatch == null) {
+                                val result = if (mappingEvaluation.decision == ReiAnixCatalogIdentityDecision.PROBABLE) {
+                                    "PROBABLE_CROSSWALK_REQUIRES_CONFIRMATION"
+                                } else {
+                                    "IDENTITY_MISMATCH_REJECTED"
+                                }
+                                record(ReiAnixCatalogSource.ANIMAP, result, anime.id)
+                            } else {
+                                try {
+                                    ids = library.saveExternalCatalogIds(mappingMatch)
+                                    changed = true
+                                    record(ReiAnixCatalogSource.ANIMAP, "VERIFIED_CROSSWALK_PERSISTED", anime.id)
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    record(ReiAnixCatalogSource.ANIMAP, "CROSSWALK_NOT_PERSISTED", anime.id, error)
+                                }
+                            }
+                        } else {
+                            record(ReiAnixCatalogSource.ANIMAP, "NO_CROSSWALK_FOUND", anime.id)
+                        }
+                    }
+                    is ReiAnixCatalogResult.Failure ->
+                        record(ReiAnixCatalogSource.ANIMAP, "IDENTIFIER_LOOKUP_FAILED", anime.id)
+                    null -> Unit
+                }
             }
         }
 
         for (source in SUPPLEMENTAL_SOURCES) {
             currentCoroutineContext().ensureActive()
-            val needsMetadata = !hasManualCatalogOwnership(anime) && hasMetadataGap(anime)
+            val needsMetadata = !artworkOnly && !hasManualCatalogOwnership(anime) && hasMetadataGap(anime)
             val needsPoster = !hasValidArtwork(anime.id, "poster")
-            val needsBackdrop = !hasValidArtwork(anime.id, "backdrop")
+            val needsBackdrop = !artworkOnly && !hasValidArtwork(anime.id, "backdrop")
             if (!needsMetadata && !needsPoster && !needsBackdrop) break
 
             val previousAttempt = library.externalCatalogAttemptAt(anime.id, source.key)
             val knownId = ids.idFor(source)
-            if (knownId == null && previousAttempt != null &&
+            if (!forceRetry && knownId == null && previousAttempt != null &&
                 System.currentTimeMillis() / 1_000.0 - previousAttempt < SOURCE_RETRY_COOLDOWN_SECONDS
             ) continue
 
@@ -206,7 +299,7 @@ class ReiAnixExternalCatalogIntegrationService(
             library.markExternalCatalogAttempt(anime.id, source.key)
             val resolved = resolution ?: continue
             val verified = resolved.verified
-            if (verified != null) {
+            if (verified != null && !artworkOnly) {
                 // Only CONFIRMED identity is allowed to persist supplemental IDs or metadata.
                 // A persistence error must not discard an independently usable artwork URL.
                 val savedIds = try {
@@ -247,6 +340,7 @@ class ReiAnixExternalCatalogIntegrationService(
             // and local artwork and publishes the existing Compose refresh signal.
             val pendingArtwork = remoteArtworkCandidates
                 .flatMap { it.artworkCandidates() }
+                .filter { !artworkOnly || it.type == ReiAnixCatalogArtworkType.POSTER }
                 .distinctBy { "${it.source.key}|${it.externalRecordId}|${it.type.key}|${it.url}" }
                 .mapNotNull { candidate ->
                     val artworkType = when (candidate.type) {
