@@ -72,6 +72,10 @@ internal fun shouldHonorTraceMoeSuccessfulCooldown(
     return nowSeconds - previous < cooldownSeconds
 }
 
+/** Incomplete runs resume; completed runs start fresh when the user retries manually. */
+internal fun shouldResumeTraceMoeSession(persistedCompleted: Boolean): Boolean =
+    !persistedCompleted
+
 private const val MAX_ARTWORK_CANDIDATES = 5
 
 /**
@@ -459,13 +463,13 @@ class ReiAnixAniListIntegrationService(
         // be allowed to re-query with fresh API data. Incomplete sessions (for example,
         // cancellation or a recoverable failure before three valid responses) resume
         // from their persisted evidence to avoid duplicate uploads after process death.
-        var matchesByEpisode = if (persisted.completed) {
+        var matchesByEpisode = if (!shouldResumeTraceMoeSession(persisted.completed)) {
             linkedMapOf()
         } else {
             latestTraceMoeEpisodeMatches(persisted.matchesByEpisode)
         }
         val successfulApiEpisodeIds = linkedSetOf<Long>()
-        if (!persisted.completed) {
+        if (shouldResumeTraceMoeSession(persisted.completed)) {
             if (persisted.hasSuccessfulApiEpisodeMetadata) {
                 successfulApiEpisodeIds.addAll(persisted.successfulApiEpisodeIds)
             } else {
