@@ -254,8 +254,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val forceFollowUpIds = ConcurrentHashMap.newKeySet<Long>()
     private val candidateFollowUpRequests = ConcurrentHashMap<Long, List<ReiAnixArtworkCandidate>>()
     private val permits = Semaphore(2)
-    // Foreground/startup triggers are coalesced. A trigger received while a pass is
-    // running schedules one immediate follow-up instead of being silently discarded.
+    // Foreground/startup triggers are coalesced while a pass runs. Only scan completion
+    // can request one follow-up because it may add new local records behind the cursor.
     private val backfillGuard = Any()
     private var backfillRunning = false
     private var backfillRerunRequested = false
@@ -558,8 +558,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     /**
      * Replays persisted artwork work through the same two-permit materializer used
-     * during normal library loading. Calls made while a pass is active are coalesced
-     * into one immediate follow-up pass.
+     * during normal library loading. Repeated foreground calls are coalesced; a completed
+     * scan may request one follow-up to include newly inserted local records.
      */
     fun requestPendingArtwork(trigger: String = "unspecified"): Boolean {
         val normalizedTrigger = trigger.trim().take(64).ifBlank { "unspecified" }
@@ -642,7 +642,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val pendingPosterIds = database.read { db ->
                 db.rawQuery(
                     "SELECT a.id FROM anime a WHERE a.id>? AND (" +
-                        "(TRIM(COALESCE(a.cover_url,''))!='' AND TRIM(COALESCE(a.cover_cache,''))='') OR " +
+                        "(TRIM(COALESCE(a.cover_url,''))!='' AND TRIM(COALESCE(a.cover_cache,''))='' " +
+                        "AND NOT EXISTS (SELECT 1 FROM artwork ready WHERE ready.entity_type IN ('anime','movie') " +
+                        "AND ready.entity_id=CAST(a.id AS TEXT) AND ready.artwork_type='poster' " +
+                        "AND ready.status='ready' AND TRIM(COALESCE(ready.local_path,''))!='')) OR " +
                         "EXISTS (SELECT 1 FROM artwork art WHERE art.entity_id=CAST(a.id AS TEXT) " +
                         "AND art.entity_type IN ('anime','movie') AND art.artwork_type='poster' " +
                         "AND COALESCE(art.manual,0)=0 AND LOWER(COALESCE(art.source,'')) IN ('anilist','cache','kitsu','anipub') " +
