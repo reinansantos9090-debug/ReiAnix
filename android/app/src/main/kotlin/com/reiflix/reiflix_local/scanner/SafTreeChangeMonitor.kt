@@ -66,7 +66,11 @@ object SafTreeChangeMonitor {
     val changes: SharedFlow<String> = mutableChanges.asSharedFlow()
 
     /** Reconcile process-scoped observers with the canonical SQLite SAF roots. */
-    fun synchronize(context: Context, treeReferences: Collection<String>) {
+    fun synchronize(
+        context: Context,
+        treeReferences: Collection<String>,
+        forceInventoryCheck: Boolean = false,
+    ) {
         val appContext = context.applicationContext
         val desired = treeReferences.asSequence()
             .map(String::trim)
@@ -89,7 +93,8 @@ object SafTreeChangeMonitor {
                 debounceTasks.remove(reference)?.let(mainHandler::removeCallbacks)
             }
 
-            (desired - observers.keys).forEach { reference ->
+            val newlyObserved = desired - observers.keys
+            newlyObserved.forEach { reference ->
                 val treeUri = runCatching { Uri.parse(reference) }.getOrNull() ?: return@forEach
                 val identity = runCatching { SafScanner.treeIdentity(treeUri) }.getOrNull() ?: return@forEach
                 val rootDocumentUri = runCatching {
@@ -104,13 +109,18 @@ object SafTreeChangeMonitor {
                     appContext.contentResolver.registerContentObserver(rootDocumentUri, true, observer)
                     observers[reference] = observer
                     Log.i(TAG, "SAF_TREE_OBSERVER_REGISTERED treeHash=" + reference.hashCode())
-                    // First registration after a process restart compares a lightweight
-                    // video-document inventory with the last acknowledged snapshot.
-                    // The first-ever registration only seeds a baseline; it never scans.
-                    scope.launch { reconcilePersistedInventory(appContext, reference, treeUri) }
                 } catch (error: Exception) {
                     Log.w(TAG, "Could not register SAF tree observer treeHash=" + reference.hashCode(), error)
                 }
+            }
+
+            // The first registration (including the first ever baseline) and explicit
+            // volume-remount verification use the same silent inventory comparison.
+            // A baseline only seeds state; it never scans by itself.
+            val inventoryChecks = if (forceInventoryCheck) desired else newlyObserved
+            inventoryChecks.forEach { reference ->
+                val treeUri = runCatching { Uri.parse(reference) }.getOrNull() ?: return@forEach
+                scope.launch { reconcilePersistedInventory(appContext, reference, treeUri) }
             }
 
             removePendingForUnconfiguredTrees(appContext, desired)
