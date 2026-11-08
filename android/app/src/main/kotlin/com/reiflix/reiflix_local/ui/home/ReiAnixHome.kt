@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -74,6 +75,8 @@ import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeader
+import com.reiflix.reiflix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
 import com.reiflix.reiflix_local.ui.discovery.ReiAnixDurationAnomalyDialog
 import com.reiflix.reiflix_local.ui.discovery.ReiAnixTimelineDialog
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
@@ -189,34 +192,40 @@ private fun ReiAnixHomeObservedScreen(
     onOpenDurationAnomalies: () -> Unit,
 ) {
     ReiAnixResponsiveRoot {
+    val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .nestedScroll(scrollHeaderState.nestedScrollConnection)
             .background(MaterialTheme.colorScheme.background),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        HomeHeader(
-            onOpenCollector = onOpenCollector,
-            onSearch = onSearch,
-            onRefresh = onRefresh,
-        )
+        ReiAnixScrollAwareHeader(state = scrollHeaderState) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                HomeHeader(
+                    onOpenCollector = onOpenCollector,
+                    onSearch = onSearch,
+                    onRefresh = onRefresh,
+                )
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-        ) {
-            ReiAnixSecondaryButton(
-                text = "Linha do tempo",
-                onClick = onOpenTimeline,
-                modifier = Modifier.weight(1f),
-            )
-            ReiAnixSecondaryButton(
-                text = "Durações incomuns",
-                onClick = onOpenDurationAnomalies,
-                modifier = Modifier.weight(1f),
-            )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                ) {
+                    ReiAnixSecondaryButton(
+                        text = "Linha do tempo",
+                        onClick = onOpenTimeline,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ReiAnixSecondaryButton(
+                        text = "Durações incomuns",
+                        onClick = onOpenDurationAnomalies,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
 
         if (!personalListMutationError.isNullOrBlank()) {
