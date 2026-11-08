@@ -4211,8 +4211,6 @@ class MainActivity : ComponentActivity() {
             }
             _nativeStorageOnboardingState.value = result
             Log.i(tag, "NATIVE_STORAGE_ONBOARDING_REVALIDATED origin=" + origin + " phase=" + result.phase)
-            if (result.phase == NativeStorageOnboardingState.PHASE_NEEDS_FOLDER) {
-                }
         }
     }
 
