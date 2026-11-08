@@ -587,6 +587,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onSaveUserTags = onSaveUserTags,
                 traceMoeState = traceMoeState,
                 onIdentifyWithTraceMoe = onIdentifyWithTraceMoe,
+                onCancelTraceMoe = onCancelTraceMoe,
             )
         }
 
@@ -809,6 +810,7 @@ private fun DetailsHero(
     onSaveUserTags: suspend (Long, List<String>) -> List<String>,
     traceMoeState: ReiAnixTraceMoeIdentificationUiState,
     onIdentifyWithTraceMoe: (Long) -> Unit,
+    onCancelTraceMoe: (Long) -> Unit,
 ) {
     val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
     var showNoteEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
