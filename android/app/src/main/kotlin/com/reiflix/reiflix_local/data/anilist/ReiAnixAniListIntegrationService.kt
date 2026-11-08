@@ -460,10 +460,12 @@ class ReiAnixAniListIntegrationService(
             successfulApiEpisodeIds.addAll(persisted.successfulApiEpisodeIds)
         } else {
             // Legacy non-empty result arrays prove a successful API response;
-            // legacy empty arrays are ambiguous and are deliberately retried.
-            successfulApiEpisodeIds.addAll(
-                persisted.matchesByEpisode.filterValues { it.isNotEmpty() }.keys,
-            )
+            // legacy empty arrays are ambiguous and must be queried again.
+            val provenSuccessfulIds = persisted.matchesByEpisode
+                .filterValues { it.isNotEmpty() }
+                .keys
+            successfulApiEpisodeIds.addAll(provenSuccessfulIds)
+            matchesByEpisode = LinkedHashMap(matchesByEpisode.filterKeys { it in provenSuccessfulIds })
         }
         successfulApiEpisodeIds.addAll(matchesByEpisode.keys)
         var successfulResponses = successfulApiEpisodeIds.size
@@ -495,6 +497,13 @@ class ReiAnixAniListIntegrationService(
                     validResponses = successfulResponses.coerceAtMost(MAX_TRACE_MOE_EPISODE_SAMPLES),
                     message = message,
                 ),
+            )
+        }
+
+        if (successfulResponses > 0) {
+            report(
+                TraceMoeIdentificationProgressPhase.VERIFYING_IDENTITY,
+                message = "Reutilizando $successfulResponses respostas válidas já salvas; nenhuma thumbnail já consultada será reenviada.",
             )
         }
 
