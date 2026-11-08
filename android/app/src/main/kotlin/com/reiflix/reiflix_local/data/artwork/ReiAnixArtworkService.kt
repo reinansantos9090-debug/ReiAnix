@@ -306,10 +306,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         animeIds.asSequence().filter { it > 0L }.distinct().forEach { animeId ->
             val anime = loadAnime(animeId) ?: return@forEach
             val entityType = if (anime.kind.equals("movie", ignoreCase = true)) "movie" else "anime"
-            if (!hasUsablePersistedPoster(animeId, entityType) &&
-                requestAnimeArtwork(animeId, force = forceRetry)
-            ) {
-                queued++
+            if (!hasUsablePersistedPoster(animeId, entityType)) {
+                // Do not force a second follow-up when the canonical job already owns this ID.
+                val alreadyInFlight = synchronized(jobs) { jobs[animeId]?.isActive == true }
+                if (requestAnimeArtwork(animeId, force = forceRetry && !alreadyInFlight)) {
+                    queued++
+                }
             }
         }
         return queued
