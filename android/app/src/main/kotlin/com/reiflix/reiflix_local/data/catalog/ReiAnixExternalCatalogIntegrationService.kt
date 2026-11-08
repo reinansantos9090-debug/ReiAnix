@@ -14,6 +14,7 @@ import com.reiflix.reiflix_local.data.sqlite.mergeExternalCatalogMetadata
 import com.reiflix.reiflix_local.data.sqlite.saveExternalCatalogIds
 import com.reiflix.reiflix_local.data.sqlite.setExternalCatalogCursor
 import com.reiflix.reiflix_local.data.sqlite.toExternalCatalogIdentity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
