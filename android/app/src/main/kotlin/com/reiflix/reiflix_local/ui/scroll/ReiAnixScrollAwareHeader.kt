@@ -52,8 +52,8 @@ class ReiAnixScrollAwareHeaderState internal constructor() {
             val previousHeight = visibleHeightPx
             val boundedHeight = (previousHeight + available.y).coerceIn(0f, totalHeight)
             val nextHeight = when {
-                boundedHeight <= 0.5f -> 0f
-                totalHeight - boundedHeight <= 0.5f -> totalHeight
+                boundedHeight <= 1f -> 0f
+                totalHeight - boundedHeight <= 1f -> totalHeight
                 else -> boundedHeight
             }
             val consumedY = nextHeight - previousHeight
