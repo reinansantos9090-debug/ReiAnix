@@ -38,6 +38,13 @@ import java.util.zip.GZIPOutputStream
  * persisted as pending work. The pending URI/timestamp survives Activity recreation
  * and process death while a scan is running.
  */
+internal fun hasNewOrChangedVideoDocuments(
+    previous: Map<String, String>,
+    current: Map<String, String>,
+): Boolean = current.any { (documentId, fingerprint) ->
+    previous[documentId] != fingerprint
+}
+
 object SafTreeChangeMonitor {
     private const val TAG = "[REIFLIX][SAF_CHANGE]"
     private const val PREFS_NAME = "reianix_saf_change_monitor"
@@ -118,18 +125,31 @@ object SafTreeChangeMonitor {
         changedUri: Uri?,
     ) {
         scope.launch {
-            val relevant = runCatching {
-                SafScanner.containsPotentialVideoChange(context, treeUri, changedUri)
-            }.onFailure { error ->
-                Log.w(TAG, "SAF change inspection failed; keeping a conservative pending signal.", error)
-            }.getOrDefault(true)
+            val current = readVideoInventory(context, treeUri)
+            val previous = loadVideoInventory(context, reference)
+            val relevant = when {
+                current != null && previous != null ->
+                    hasNewOrChangedVideoDocuments(previous, current)
+                // Before the first durable snapshot exists, accept only a directly
+                // identified video document. A null/root notification must not scan
+                // merely because the library already contains some videos.
+                current != null && previous == null && changedUri != null &&
+                    DocumentsContract.isDocumentUri(context, changedUri) ->
+                    runCatching {
+                        SafScanner.containsPotentialVideoChange(context, treeUri, changedUri)
+                    }.getOrDefault(false)
+                current == null && changedUri != null &&
+                    DocumentsContract.isDocumentUri(context, changedUri) ->
+                    runCatching {
+                        SafScanner.containsPotentialVideoChange(context, treeUri, changedUri)
+                    }.getOrDefault(false)
+                else -> false
+            }
 
             // Persist the pending event before advancing the snapshot. A process death
             // between these writes can therefore never acknowledge an unscanned video.
             if (relevant) markPendingChange(context, reference)
-
-            val inventory = readVideoInventory(context, treeUri)
-            if (inventory != null) saveVideoInventory(context, reference, inventory)
+            if (current != null) saveVideoInventory(context, reference, current)
             if (relevant) debouncePendingDispatch(context, reference)
         }
     }
@@ -181,10 +201,7 @@ object SafTreeChangeMonitor {
             return
         }
 
-        val hasNewOrChangedVideo = current.any { (documentId, fingerprint) ->
-            previous[documentId] != fingerprint
-        }
-        if (hasNewOrChangedVideo) {
+        if (hasNewOrChangedVideoDocuments(previous, current)) {
             // Save a durable pending scan before acknowledging the new snapshot.
             markPendingChange(context, reference)
             Log.i(
@@ -286,10 +303,13 @@ object SafTreeChangeMonitor {
         val bytes = ByteArrayOutputStream()
         GZIPOutputStream(bytes).use { gzip -> gzip.write(json.toString().toByteArray(Charsets.UTF_8)) }
         val encoded = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
-        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val saved = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(inventoryPreferenceKey(reference), encoded)
-            .apply()
+            .commit()
+        if (!saved) {
+            Log.w(TAG, "SAF video inventory snapshot could not be persisted.")
+        }
     }
 
     private fun loadVideoInventory(context: Context, reference: String): Map<String, String>? {
