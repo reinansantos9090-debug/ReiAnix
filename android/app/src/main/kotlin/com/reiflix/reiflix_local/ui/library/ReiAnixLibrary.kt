@@ -747,6 +747,19 @@ private fun ColumnScope.LibraryReadyContent(
                         }
                     }
 
+                    ReiAnixChip(
+                        text = if (missingArtworkRetryState.isRunning) {
+                            "Buscando capas..."
+                        } else {
+                            "Baixar capas que faltam"
+                        },
+                        enabled = !missingArtworkRetryState.isRunning,
+                        onClick = onRetryMissingArtwork,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Baixar capas que faltam"
+                        },
+                    )
+                    Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
                     Box {
                         ReiAnixChip(
                             text = "Ordenar",
@@ -783,31 +796,6 @@ private fun ColumnScope.LibraryReadyContent(
                             }
                         }
                     }
-                }
-            }
-
-            item(
-                key = "library-missing-artwork-retry",
-                span = { GridItemSpan(maxLineSpan) },
-                contentType = "library-missing-artwork-retry",
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ReiAnixChip(
-                        text = if (missingArtworkRetryState.isRunning) {
-                            "Buscando capas..."
-                        } else {
-                            "Baixar capas que faltam"
-                        },
-                        enabled = !missingArtworkRetryState.isRunning,
-                        onClick = onRetryMissingArtwork,
-                        modifier = Modifier.semantics {
-                            contentDescription = "Baixar capas que faltam"
-                        },
-                    )
                 }
             }
 
