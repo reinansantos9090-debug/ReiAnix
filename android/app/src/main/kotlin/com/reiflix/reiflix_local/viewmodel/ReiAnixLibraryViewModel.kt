@@ -1488,15 +1488,35 @@ class ReiAnixLibraryViewModel(
                 }
             } catch (error: TraceMoeApiException) {
                 Log.w(TAG, "Manual Trace.moe identification stopped: ${error.kind}", error)
+                val failureMessage = when (error.kind) {
+                    TraceMoeFailureKind.QUOTA_EXHAUSTED -> {
+                        val used = error.quotaUsed
+                        val quota = error.quota
+                        if (used != null && quota != null) {
+                            "A quota pública do Trace.moe desta conexão foi esgotada ($used/$quota pesquisas nas últimas 24 horas). Aguarde a liberação da janela de 24 horas para tentar novamente."
+                        } else {
+                            "A quota pública do Trace.moe desta conexão foi esgotada. Aguarde a liberação da janela de 24 horas para tentar novamente."
+                        }
+                    }
+                    TraceMoeFailureKind.CONCURRENCY_LIMIT ->
+                        "O Trace.moe está ocupado ou atingiu o limite de pesquisas simultâneas. Nenhuma outra thumbnail será enviada nesta tentativa."
+                    TraceMoeFailureKind.ACCOUNT_STATUS_UNAVAILABLE,
+                    TraceMoeFailureKind.PAYMENT_REQUIRED_UNCLASSIFIED ->
+                        "O Trace.moe recusou a pesquisa (HTTP 402), mas não foi possível confirmar se foi quota ou concorrência. A quota não foi considerada esgotada sem essa confirmação."
+                    TraceMoeFailureKind.AUTHENTICATION ->
+                        "O Trace.moe recusou a autenticação da API. Verifique a chave configurada."
+                    TraceMoeFailureKind.FORBIDDEN ->
+                        "O Trace.moe não permitiu esta consulta."
+                    TraceMoeFailureKind.RATE_LIMITED ->
+                        "O Trace.moe limitou temporariamente as consultas. Tente novamente em instantes."
+                    else ->
+                        "A API Trace.moe não respondeu corretamente (${error.kind}${error.httpStatus?.let { " HTTP $it" }.orEmpty()}). Tente novamente."
+                }
                 publishTraceMoeIdentificationState(
                     animeId,
                     ReiAnixTraceMoeIdentificationUiState(
                         status = ReiAnixTraceMoeIdentificationStatus.FAILED,
-                        message = if (error.kind == TraceMoeFailureKind.QUOTA_EXHAUSTED) {
-                            "A quota do Trace.moe está indisponível no momento. Tente novamente mais tarde."
-                        } else {
-                            "A API Trace.moe não respondeu corretamente. Tente novamente."
-                        },
+                        message = failureMessage,
                         validResponses = _traceMoeIdentificationStates.value[animeId]?.validResponses ?: 0,
                     ),
                 )
