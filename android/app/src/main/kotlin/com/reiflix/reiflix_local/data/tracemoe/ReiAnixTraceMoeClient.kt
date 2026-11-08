@@ -632,7 +632,8 @@ internal fun shouldCompleteTraceMoeIdentification(
 ): Boolean {
     require(successfulResponses >= 0)
     require(maximumResponses > 0)
-    return successfulResponses >= maximumResponses || !hadUnreplacedFailure
+    return successfulResponses >= maximumResponses ||
+        (successfulResponses > 0 && !hadUnreplacedFailure)
 }
 
 /**
