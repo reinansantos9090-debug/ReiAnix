@@ -623,7 +623,8 @@ class ReiAnixAniListIntegrationService(
                 successfulApiEpisodeIds = successfulApiEpisodeIds,
             )
             if (!canMarkCompleted) {
-                throw checkNotNull(lastEpisodeFailure)
+                lastEpisodeFailure?.let { throw it }
+                return false
             }
             writeTraceMoeAttemptAt(animeId, System.currentTimeMillis() / 1000.0, correction)
             return false
