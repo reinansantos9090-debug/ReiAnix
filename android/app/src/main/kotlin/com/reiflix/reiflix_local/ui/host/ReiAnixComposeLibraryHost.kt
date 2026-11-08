@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -148,7 +150,7 @@ class ReiAnixComposeLibraryHost(
                                     error::class.java.simpleName,
                             )
                         }
-                        runCatching { dependencies.artworkService.requestPendingArtwork() }
+                        runCatching { dependencies.artworkService.requestPendingArtwork("scan_complete") }
                             .onFailure { error ->
                                 android.util.Log.w(
                                     TAG,
@@ -175,10 +177,11 @@ class ReiAnixComposeLibraryHost(
                     }
             }
 
-            // Resume durable poster/backdrop work as soon as the canonical database is
-            // ready. Do this independently from remote metadata discovery and library
-            // size changes so a quick app close cannot strand queued image downloads.
-            LaunchedEffect(
+            // Retry the durable artwork queue on every foreground entry, not only
+            // once when bootstrap becomes READY. This covers an app that stayed in
+            // background for hours and a process that was recreated by Android.
+            DisposableEffect(
+                activity,
                 libraryViewModel,
                 bootstrapState.phase,
                 bootstrapState.persistenceStatus,
@@ -186,17 +189,55 @@ class ReiAnixComposeLibraryHost(
                 if (
                     bootstrapState.phase != ReiAnixBootstrapPhase.READY ||
                     bootstrapState.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY
-                ) return@LaunchedEffect
+                ) {
+                    return@DisposableEffect onDispose { }
+                }
 
-                val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
-                runCatching { dependencies.artworkService.requestPendingArtwork() }
-                    .onFailure { error ->
+                val artworkService = runCatching {
+                    ReiAnixAppDependencies.from(activity.applicationContext).artworkService
+                }.getOrElse { error ->
+                    android.util.Log.w(
+                        TAG,
+                        "Native artwork foreground recovery is unavailable. errorType=" +
+                            error::class.java.simpleName,
+                    )
+                    return@DisposableEffect onDispose { }
+                }
+                var startEventDelivered = false
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_START) {
+                        startEventDelivered = true
+                        runCatching {
+                            artworkService.requestPendingArtwork("activity_on_start")
+                        }.onFailure { error ->
+                            android.util.Log.w(
+                                TAG,
+                                "Native artwork foreground recovery failed. errorType=" +
+                                    error::class.java.simpleName,
+                            )
+                        }
+                    }
+                }
+                activity.lifecycle.addObserver(observer)
+                // LifecycleRegistry synchronizes a newly-added observer to the current
+                // state. Keep this fallback for hosts attached after ON_START already ran.
+                if (
+                    activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                    !startEventDelivered
+                ) {
+                    runCatching {
+                        artworkService.requestPendingArtwork("host_attached_while_started")
+                    }.onFailure { error ->
                         android.util.Log.w(
                             TAG,
-                            "Native artwork startup recovery failed. errorType=" +
+                            "Native artwork attach recovery failed. errorType=" +
                                 error::class.java.simpleName,
                         )
                     }
+                }
+                onDispose {
+                    activity.lifecycle.removeObserver(observer)
+                }
             }
 
             // Recover missing metadata after the durable local artwork queue has
@@ -237,6 +278,19 @@ class ReiAnixComposeLibraryHost(
                     android.util.Log.w(
                         TAG,
                         "Supplemental catalog startup enrichment failed. errorType=" +
+                            error::class.java.simpleName,
+                    )
+                }
+
+                // Metadata discovery can publish additional image candidates after
+                // the foreground pass has already started. Coalesce one follow-up so
+                // those URLs join the same native downloader without delaying startup.
+                runCatching {
+                    dependencies.artworkService.requestPendingArtwork("metadata_recovery_complete")
+                }.onFailure { error ->
+                    android.util.Log.w(
+                        TAG,
+                        "Native artwork post-metadata recovery failed. errorType=" +
                             error::class.java.simpleName,
                     )
                 }
