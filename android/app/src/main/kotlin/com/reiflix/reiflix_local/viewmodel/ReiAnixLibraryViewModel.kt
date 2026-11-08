@@ -32,6 +32,7 @@ import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
 import com.reiflix.reiflix_local.storage.SafFileOperations
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeFailureKind
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentificationProgress
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -1492,7 +1493,7 @@ class ReiAnixLibraryViewModel(
                     ReiAnixTraceMoeIdentificationUiState(
                         status = ReiAnixTraceMoeIdentificationStatus.FAILED,
                         message = when (error.kind) {
-                            com.reiflix.reiflix_local.data.tracemoe.TraceMoeFailureKind.QUOTA_EXHAUSTED ->
+                            TraceMoeFailureKind.QUOTA_EXHAUSTED ->
                                 "A quota do Trace.moe está indisponível no momento. Tente novamente mais tarde."
                             else -> "A API Trace.moe não respondeu corretamente. Tente novamente.",
                         },
