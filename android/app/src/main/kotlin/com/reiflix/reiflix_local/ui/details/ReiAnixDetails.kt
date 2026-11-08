@@ -265,6 +265,7 @@ fun ReiAnixDetailsRoute(
         onSetEpisodeIdentification = viewModel::setEpisodeManualIdentificationNative,
         traceMoeState = traceMoeState,
         onIdentifyWithTraceMoe = viewModel::identifyAnimeWithTraceMoe,
+        onCancelTraceMoe = viewModel::cancelTraceMoeIdentification,
     )
     if (showAniListDialog) {
         AniListAssociationDialog(
@@ -305,6 +306,7 @@ fun ReiAnixDetailsScreen(
     onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit = { _, _, _, _, _ -> },
     traceMoeState: ReiAnixTraceMoeIdentificationUiState = ReiAnixTraceMoeIdentificationUiState(),
     onIdentifyWithTraceMoe: (Long) -> Unit = {},
+    onCancelTraceMoe: (Long) -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -333,6 +335,7 @@ fun ReiAnixDetailsScreen(
                         onSetEpisodeIdentification = onSetEpisodeIdentification,
                         traceMoeState = traceMoeState,
                         onIdentifyWithTraceMoe = onIdentifyWithTraceMoe,
+                        onCancelTraceMoe = onCancelTraceMoe,
                     )
                 } ?: ReiAnixRecoverableErrorState(
                     title = "Detalhes indisponíveis",
@@ -492,6 +495,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit,
     traceMoeState: ReiAnixTraceMoeIdentificationUiState,
     onIdentifyWithTraceMoe: (Long) -> Unit,
+    onCancelTraceMoe: (Long) -> Unit,
 ) {
     val firstSeasonKey = anime.seasons.firstOrNull()?.stableKey
     var savedSeasonKey by rememberSaveable(anime.id) {
@@ -1002,27 +1006,70 @@ private fun DetailsHero(
                 ),
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
         ) {
+            val isTraceMoeRunning = traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING
             val identifyButtonLabel = when (traceMoeState.status) {
-                ReiAnixTraceMoeIdentificationStatus.RUNNING -> "Identificando capa..."
+                ReiAnixTraceMoeIdentificationStatus.RUNNING -> "Cancelar identificação"
                 ReiAnixTraceMoeIdentificationStatus.SUCCESS -> "Identificar novamente com Trace.moe"
                 ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
-                ReiAnixTraceMoeIdentificationStatus.FAILED -> "Tentar novamente com Trace.moe"
+                ReiAnixTraceMoeIdentificationStatus.FAILED,
+                ReiAnixTraceMoeIdentificationStatus.CANCELLED -> "Tentar novamente com Trace.moe"
                 ReiAnixTraceMoeIdentificationStatus.IDLE -> "Identificar capa com Trace.moe"
             }
             ReiAnixSecondaryButton(
                 text = identifyButtonLabel,
-                onClick = { onIdentifyWithTraceMoe(anime.id) },
-                enabled = traceMoeState.status != ReiAnixTraceMoeIdentificationStatus.RUNNING,
+                onClick = {
+                    if (isTraceMoeRunning) onCancelTraceMoe(anime.id)
+                    else onIdentifyWithTraceMoe(anime.id)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("details-tracemoe-identify-button"),
             )
+            if (isTraceMoeRunning && !traceMoeState.currentThumbnailPath.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = ReiAnixTokens.Spacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(104.dp)
+                            .aspectRatio(16f / 9f)
+                            .clip(ReiAnixTokens.Shapes.small),
+                    ) {
+                        ReiAnixEpisodeThumbnail(
+                            localPath = traceMoeState.currentThumbnailPath,
+                            contentDescription = traceMoeState.currentEpisodeLabel ?: "Thumbnail em análise",
+                            modifier = Modifier.fillMaxSize(),
+                            identity = "${anime.stableKey}:trace-moe:${traceMoeState.currentEpisodeId}",
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                    ) {
+                        Text(
+                            text = traceMoeState.currentEpisodeLabel ?: "Thumbnail atual",
+                            style = ReiAnixTokens.TypographyTokens.itemTitle,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "${traceMoeState.validResponses.coerceIn(0, 3)} de 3 respostas válidas",
+                            style = ReiAnixTokens.TypographyTokens.metadata,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
             val identifyFeedback = when (traceMoeState.status) {
                 ReiAnixTraceMoeIdentificationStatus.RUNNING ->
-                    traceMoeState.message ?: "Analisando as miniaturas locais..."
+                    traceMoeState.message ?: "Preparando a próxima thumbnail..."
                 ReiAnixTraceMoeIdentificationStatus.SUCCESS,
                 ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
-                ReiAnixTraceMoeIdentificationStatus.FAILED -> traceMoeState.message
+                ReiAnixTraceMoeIdentificationStatus.FAILED,
+                ReiAnixTraceMoeIdentificationStatus.CANCELLED -> traceMoeState.message
                 ReiAnixTraceMoeIdentificationStatus.IDLE -> null
             }
             identifyFeedback?.let { message ->
