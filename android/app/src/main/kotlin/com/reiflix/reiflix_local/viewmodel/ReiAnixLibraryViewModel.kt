@@ -1487,13 +1487,15 @@ class ReiAnixLibraryViewModel(
                 // but let this explicit user action bypass old lookup/source cooldowns.
                 withContext(Dispatchers.IO) {
                     dependencies.aniListIntegrationService.recoverMissingArtworkMetadata(
-                        maxRecords = 24,
+                        maxRecords = 12,
                         forceRetry = true,
+                        targetAnimeIds = missingAnimeIds,
                     )
                 }
                 withContext(Dispatchers.IO) {
-                    dependencies.externalCatalogIntegrationService.enrichLibraryGaps(
-                        restartFromLibraryScan = true,
+                    dependencies.externalCatalogIntegrationService.enrichMissingArtworkForAnime(
+                        animeIds = missingAnimeIds,
+                        maxRecords = 12,
                         forceRetry = true,
                     )
                 }
