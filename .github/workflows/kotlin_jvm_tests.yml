@@ -7,6 +7,8 @@ on:
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/catalog/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/tracemoe/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/**"
+      - "android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/ui/details/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/tracemoe/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteAniListAssociation.kt"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
@@ -99,4 +101,5 @@ jobs:
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
+            :app:assembleDebugAndroidTest \
             :app:compileReleaseKotlin

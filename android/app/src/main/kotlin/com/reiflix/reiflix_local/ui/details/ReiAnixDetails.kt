@@ -115,6 +115,8 @@ import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationStatus
+import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModelFactory
@@ -149,6 +151,8 @@ fun ReiAnixDetailsRoute(
     val state by detailsStateFlow.collectAsStateWithLifecycle(
         initialValue = ReiAnixDetailsUiState(),
     )
+    val traceMoeStates by viewModel.traceMoeIdentificationStates.collectAsStateWithLifecycle()
+    val traceMoeState = traceMoeStates[canonicalId] ?: ReiAnixTraceMoeIdentificationUiState()
     val aniListViewModel: ReiAnixAniListViewModel = composeViewModel(
         factory = ReiAnixAniListViewModelFactory(LocalContext.current),
     )
@@ -259,6 +263,9 @@ fun ReiAnixDetailsRoute(
         onSavePersonalNote = viewModel::saveAnimePersonalNoteNative,
         onSaveUserTags = viewModel::saveAnimeUserTagsNative,
         onSetEpisodeIdentification = viewModel::setEpisodeManualIdentificationNative,
+        traceMoeState = traceMoeState,
+        onIdentifyWithTraceMoe = viewModel::identifyAnimeWithTraceMoe,
+        onCancelTraceMoe = viewModel::cancelTraceMoeIdentification,
     )
     if (showAniListDialog) {
         AniListAssociationDialog(
@@ -297,6 +304,9 @@ fun ReiAnixDetailsScreen(
     onSavePersonalNote: suspend (Long, String?) -> String? = { _, note -> note?.trim()?.takeIf { it.isNotEmpty() } },
     onSaveUserTags: suspend (Long, List<String>) -> List<String> = { _, tags -> tags },
     onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit = { _, _, _, _, _ -> },
+    traceMoeState: ReiAnixTraceMoeIdentificationUiState = ReiAnixTraceMoeIdentificationUiState(),
+    onIdentifyWithTraceMoe: (Long) -> Unit = {},
+    onCancelTraceMoe: (Long) -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -323,6 +333,9 @@ fun ReiAnixDetailsScreen(
                         onSavePersonalNote = onSavePersonalNote,
                         onSaveUserTags = onSaveUserTags,
                         onSetEpisodeIdentification = onSetEpisodeIdentification,
+                        traceMoeState = traceMoeState,
+                        onIdentifyWithTraceMoe = onIdentifyWithTraceMoe,
+                        onCancelTraceMoe = onCancelTraceMoe,
                     )
                 } ?: ReiAnixRecoverableErrorState(
                     title = "Detalhes indisponíveis",
@@ -480,6 +493,9 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onSavePersonalNote: suspend (Long, String?) -> String?,
     onSaveUserTags: suspend (Long, List<String>) -> List<String>,
     onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit,
+    traceMoeState: ReiAnixTraceMoeIdentificationUiState,
+    onIdentifyWithTraceMoe: (Long) -> Unit,
+    onCancelTraceMoe: (Long) -> Unit,
 ) {
     val firstSeasonKey = anime.seasons.firstOrNull()?.stableKey
     var savedSeasonKey by rememberSaveable(anime.id) {
@@ -569,6 +585,9 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onTogglePinned = onTogglePinned,
                 onSavePersonalNote = onSavePersonalNote,
                 onSaveUserTags = onSaveUserTags,
+                traceMoeState = traceMoeState,
+                onIdentifyWithTraceMoe = onIdentifyWithTraceMoe,
+                onCancelTraceMoe = onCancelTraceMoe,
             )
         }
 
@@ -789,6 +808,9 @@ private fun DetailsHero(
     onTogglePinned: suspend (Long) -> Boolean,
     onSavePersonalNote: suspend (Long, String?) -> String?,
     onSaveUserTags: suspend (Long, List<String>) -> List<String>,
+    traceMoeState: ReiAnixTraceMoeIdentificationUiState,
+    onIdentifyWithTraceMoe: (Long) -> Unit,
+    onCancelTraceMoe: (Long) -> Unit,
 ) {
     val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
     var showNoteEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
@@ -974,6 +996,91 @@ private fun DetailsHero(
             Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = responsive.horizontalPadding),
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
                 anime.genres.forEach { genre -> ReiAnixBadge(text = genre.name, tone = ReiAnixBadgeTone.Primary) }
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = responsive.horizontalPadding,
+                    top = ReiAnixTokens.Spacing.md,
+                    end = responsive.horizontalPadding,
+                ),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+        ) {
+            val isTraceMoeRunning = traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING
+            val identifyButtonLabel = when (traceMoeState.status) {
+                ReiAnixTraceMoeIdentificationStatus.RUNNING -> "Cancelar identificação"
+                ReiAnixTraceMoeIdentificationStatus.SUCCESS -> "Identificar novamente com Trace.moe"
+                ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
+                ReiAnixTraceMoeIdentificationStatus.FAILED,
+                ReiAnixTraceMoeIdentificationStatus.CANCELLED -> "Tentar novamente com Trace.moe"
+                ReiAnixTraceMoeIdentificationStatus.IDLE -> "Identificar capa com Trace.moe"
+            }
+            ReiAnixSecondaryButton(
+                text = identifyButtonLabel,
+                onClick = {
+                    if (isTraceMoeRunning) onCancelTraceMoe(anime.id)
+                    else onIdentifyWithTraceMoe(anime.id)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("details-tracemoe-identify-button"),
+            )
+            if (isTraceMoeRunning && !traceMoeState.currentThumbnailPath.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = ReiAnixTokens.Spacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(104.dp)
+                            .aspectRatio(16f / 9f)
+                            .clip(ReiAnixTokens.Shapes.small),
+                    ) {
+                        ReiAnixEpisodeThumbnail(
+                            localPath = traceMoeState.currentThumbnailPath,
+                            contentDescription = traceMoeState.currentEpisodeLabel ?: "Thumbnail em análise",
+                            modifier = Modifier.fillMaxSize(),
+                            identity = "${anime.stableKey}:trace-moe:${traceMoeState.currentEpisodeId}",
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                    ) {
+                        Text(
+                            text = traceMoeState.currentEpisodeLabel ?: "Thumbnail atual",
+                            style = ReiAnixTokens.TypographyTokens.itemTitle,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "${traceMoeState.validResponses.coerceIn(0, 3)} de 3 respostas válidas",
+                            style = ReiAnixTokens.TypographyTokens.metadata,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+            val identifyFeedback = when (traceMoeState.status) {
+                ReiAnixTraceMoeIdentificationStatus.RUNNING ->
+                    traceMoeState.message ?: "Preparando a próxima thumbnail..."
+                ReiAnixTraceMoeIdentificationStatus.SUCCESS,
+                ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
+                ReiAnixTraceMoeIdentificationStatus.FAILED,
+                ReiAnixTraceMoeIdentificationStatus.CANCELLED -> traceMoeState.message
+                ReiAnixTraceMoeIdentificationStatus.IDLE -> null
+            }
+            identifyFeedback?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
         if (overallProgress > 0f) {

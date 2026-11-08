@@ -24,6 +24,8 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationStatus
+import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationUiState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -84,6 +86,93 @@ class ReiAnixDetailsInstrumentedTest {
         assertEquals(71L, watchedEpisodeId)
         assertEquals(42L, favoriteAnimeId)
         assertEquals(1, backCount)
+    }
+
+    @Test
+    fun traceMoeIdentificationButtonDispatchesTheCurrentAnimeId() {
+        var requestedAnimeId: Long? = null
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    onIdentifyWithTraceMoe = { requestedAnimeId = it },
+                )
+            }
+        }
+
+        val identifyButton = composeRule.onNodeWithTag("details-tracemoe-identify-button")
+        identifyButton.assertIsDisplayed()
+        identifyButton.performClick()
+        assertEquals(700L, requestedAnimeId)
+    }
+
+    @Test
+    fun traceMoeRunningStateShowsCurrentEpisodeAndValidResponseCount() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val artworkFile = File(context.cacheDir, "reianix-tracemoe-progress-test.png")
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        artworkFile.outputStream().use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+        }
+        bitmap.recycle()
+
+        try {
+            composeRule.setContent {
+                ReiAnixComposeRoot {
+                    ReiAnixDetailsScreen(
+                        state = detailsStateWithEpisodes(1),
+                        onBack = {},
+                        onRetry = {},
+                        onWatch = {},
+                        onToggleFavorite = {},
+                        traceMoeState = ReiAnixTraceMoeIdentificationUiState(
+                            status = ReiAnixTraceMoeIdentificationStatus.RUNNING,
+                            message = "Aguardando a resposta do Trace.moe...",
+                            currentEpisodeId = 1L,
+                            currentEpisodeLabel = "Episódio 1",
+                            currentThumbnailPath = artworkFile.absolutePath,
+                            validResponses = 1,
+                        ),
+                    )
+                }
+            }
+
+            composeRule.onNodeWithText("Episódio 1").assertIsDisplayed()
+            composeRule.onNodeWithText("1 de 3 respostas válidas").assertIsDisplayed()
+            composeRule.onNodeWithText("Aguardando a resposta do Trace.moe...").assertIsDisplayed()
+        } finally {
+            artworkFile.delete()
+        }
+    }
+
+    @Test
+    fun traceMoeRunningButtonCancelsTheCurrentAnimeIdentification() {
+        var cancelledAnimeId: Long? = null
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    traceMoeState = ReiAnixTraceMoeIdentificationUiState(
+                        status = ReiAnixTraceMoeIdentificationStatus.RUNNING,
+                        message = "Enviando thumbnail ao Trace.moe...",
+                    ),
+                    onCancelTraceMoe = { cancelledAnimeId = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Cancelar identificação").assertIsDisplayed().performClick()
+        assertEquals(700L, cancelledAnimeId)
     }
 
     @Test
