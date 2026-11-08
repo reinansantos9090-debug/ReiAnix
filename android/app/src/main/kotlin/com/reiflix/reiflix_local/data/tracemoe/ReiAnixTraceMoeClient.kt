@@ -6,6 +6,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -284,8 +285,7 @@ class ReiAnixTraceMoeClient(
     ): TraceMoeAccountStatus {
         onQuotaWait()
         val deadline = System.currentTimeMillis() + MAX_QUOTA_WAIT_MILLIS
-        var status = refreshAccountStatusLocked(forceRefresh = true)
-        while (status == null || status.quotaRemaining <= 0) {
+        while (true) {
             val remaining = deadline - System.currentTimeMillis()
             if (remaining <= 0L) {
                 throw TraceMoeApiException(
@@ -293,10 +293,17 @@ class ReiAnixTraceMoeClient(
                     "Trace.moe quota did not become available within the bounded wait.",
                 )
             }
-            delay(minOf(QUOTA_POLL_INTERVAL_MILLIS, remaining))
-            status = refreshAccountStatusLocked(forceRefresh = true)
+            // Bound the /me network call itself as well as the polling delay so
+            // repeated slow account responses cannot extend the user-visible wait.
+            val status = withTimeoutOrNull(remaining) {
+                refreshAccountStatusLocked(forceRefresh = true)
+            }
+            if (status != null && status.quotaRemaining > 0) return status
+
+            val pause = deadline - System.currentTimeMillis()
+            if (pause <= 0L) continue
+            delay(minOf(QUOTA_POLL_INTERVAL_MILLIS, pause))
         }
-        return status
     }
 
     /** Refreshes /me at most once per five minutes; a temporary /me failure is non-fatal. */
