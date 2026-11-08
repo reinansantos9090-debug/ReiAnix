@@ -11,6 +11,7 @@ import com.reiflix.reiflix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeFailureKind
+import com.reiflix.reiflix_local.data.tracemoe.TraceMoeRequestProgressStage
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeSearchMatch
 import com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentificationProgress
@@ -538,18 +539,31 @@ class ReiAnixAniListIntegrationService(
                 continue
             }
 
-            report(
-                TraceMoeIdentificationProgressPhase.SENDING_TO_API,
-                sample,
-                "Enviando thumbnail ao Trace.moe (${successfulResponses.coerceAtMost(MAX_TRACE_MOE_EPISODE_SAMPLES)}/$MAX_TRACE_MOE_EPISODE_SAMPLES respostas válidas)...",
-            )
-            report(
-                TraceMoeIdentificationProgressPhase.WAITING_FOR_API,
-                sample,
-                "Aguardando a resposta do Trace.moe...",
-            )
             val matches = try {
-                traceMoeClient.search(imageFile = sample.imageFile)
+                traceMoeClient.search(imageFile = sample.imageFile) { requestStage ->
+                    when (requestStage) {
+                        TraceMoeRequestProgressStage.CHECKING_QUOTA -> report(
+                            TraceMoeIdentificationProgressPhase.CHECKING_QUOTA,
+                            sample,
+                            "Consultando quota e limite de concorrência do Trace.moe antes de enviar a thumbnail...",
+                        )
+                        TraceMoeRequestProgressStage.UPLOADING_IMAGE -> report(
+                            TraceMoeIdentificationProgressPhase.SENDING_TO_API,
+                            sample,
+                            "Enviando thumbnail ao Trace.moe (${successfulResponses.coerceAtMost(MAX_TRACE_MOE_EPISODE_SAMPLES)}/$MAX_TRACE_MOE_EPISODE_SAMPLES respostas válidas)...",
+                        )
+                        TraceMoeRequestProgressStage.WAITING_FOR_RESPONSE -> report(
+                            TraceMoeIdentificationProgressPhase.WAITING_FOR_API,
+                            sample,
+                            "Thumbnail enviada. Aguardando a resposta do Trace.moe...",
+                        )
+                        TraceMoeRequestProgressStage.RETRYING_REQUEST -> report(
+                            TraceMoeIdentificationProgressPhase.RETRYING_REQUEST,
+                            sample,
+                            "A API recusou ou não concluiu esta chamada; fazendo a retentativa limitada...",
+                        )
+                    }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: TraceMoeApiException) {
