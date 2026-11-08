@@ -46,7 +46,7 @@ class ReiAnixExternalCatalogIntegrationService(
      * every episode, thumbnail and genre just to discover a list of missing poster IDs.
      */
     suspend fun missingPosterAnimeIds(): List<Long> = withContext(Dispatchers.IO) {
-        val posterPathsByAnime = library.database.read { db ->
+        library.database.read { db ->
             db.rawQuery(
                 """
                 SELECT a.id, art.local_path
@@ -61,31 +61,40 @@ class ReiAnixExternalCatalogIntegrationService(
                 """.trimIndent(),
                 null,
             ).use { cursor ->
-                buildMap<Long, MutableList<String>> {
-                    while (cursor.moveToNext()) {
-                        val animeId = cursor.getLong(0)
-                        val paths = getOrPut(animeId) { mutableListOf() }
-                        cursor.getString(1)?.trim()?.takeIf(String::isNotEmpty)?.let(paths::add)
-                    }
-                }
-            }
-        }
+                val missingAnimeIds = ArrayList<Long>()
+                var currentAnimeId: Long? = null
+                var hasUsablePoster = false
 
-        posterPathsByAnime.mapNotNull { (animeId, paths) ->
-            val hasUsablePoster = paths.any { path ->
-                val file = File(path)
-                if (!file.isFile || file.length() <= 0L || !file.canRead()) {
-                    false
-                } else {
-                    val options = android.graphics.BitmapFactory.Options().apply {
-                        inJustDecodeBounds = true
-                    }
-                    runCatching {
-                        android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
-                    }.isSuccess && options.outWidth > 0 && options.outHeight > 0
+                fun finishCurrentAnime() {
+                    val completedId = currentAnimeId ?: return
+                    if (!hasUsablePoster) missingAnimeIds += completedId
                 }
+
+                while (cursor.moveToNext()) {
+                    val animeId = cursor.getLong(0)
+                    if (currentAnimeId != animeId) {
+                        finishCurrentAnime()
+                        currentAnimeId = animeId
+                        hasUsablePoster = false
+                    }
+                    if (!hasUsablePoster) {
+                        val path = cursor.getString(1)?.trim().orEmpty()
+                        if (path.isNotEmpty()) {
+                            val file = File(path)
+                            if (file.isFile && file.length() > 0L && file.canRead()) {
+                                val options = android.graphics.BitmapFactory.Options().apply {
+                                    inJustDecodeBounds = true
+                                }
+                                hasUsablePoster = runCatching {
+                                    android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+                                }.isSuccess && options.outWidth > 0 && options.outHeight > 0
+                            }
+                        }
+                    }
+                }
+                finishCurrentAnime()
+                missingAnimeIds
             }
-            animeId.takeIf { it > 0L && !hasUsablePoster }
         }
     }
 
