@@ -78,6 +78,11 @@ internal fun shouldResumeTraceMoeSession(persistedCompleted: Boolean): Boolean =
 
 private const val MAX_ARTWORK_CANDIDATES = 5
 
+internal data class ArtworkCandidateDiscovery(
+    val candidates: List<AniListAnime>,
+    val hadSuccessfulResponse: Boolean,
+)
+
 /**
  * Artwork lookup preserves provider/query order and checks only whether a candidate has an image.
  * Identity scoring remains available to the separate metadata auto-match path.
@@ -1011,7 +1016,7 @@ class ReiAnixAniListIntegrationService(
      * is not consulted when deciding which returned images may be published.
      * A failed alias request does not discard results already obtained from other aliases.
      */
-    private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): List<AniListAnime> {
+    private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): ArtworkCandidateDiscovery {
         val titleCandidates = buildList {
             add(local.title)
             add(local.lookupTitle)
@@ -1027,8 +1032,9 @@ class ReiAnixAniListIntegrationService(
             }
         }
         val terms = boundedAniListSearchTerms(titleCandidates, limit = 6)
-        if (terms.isEmpty()) return emptyList()
+        if (terms.isEmpty()) return ArtworkCandidateDiscovery(emptyList(), hadSuccessfulResponse = false)
         val candidatesById = linkedMapOf<Int, AniListAnime>()
+        var hadSuccessfulResponse = false
         for (term in terms) {
             currentCoroutineContext().ensureActive()
             when (val result = try {
@@ -1039,8 +1045,11 @@ class ReiAnixAniListIntegrationService(
                 Log.w(TAG, "AniList artwork search failed for animeId=" + local.id + " title=" + term, error)
                 continue
             }) {
-                is AniListResult.Success -> result.value.forEach { remote ->
-                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
+                is AniListResult.Success -> {
+                    hadSuccessfulResponse = true
+                    result.value.forEach { remote ->
+                        if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
+                    }
                 }
                 is AniListResult.Failure -> Log.w(
                     TAG,
@@ -1048,12 +1057,13 @@ class ReiAnixAniListIntegrationService(
                 )
             }
         }
-        if (candidatesById.isEmpty()) return emptyList()
         // Do not use identity confidence, exact-title checks, or metadata similarity to
         // decide which AniList images can be published. Keep the provider's result order.
-        return usableAniListArtworkCandidates(candidatesById.values)
+        return ArtworkCandidateDiscovery(
+            candidates = usableAniListArtworkCandidates(candidatesById.values),
+            hadSuccessfulResponse = hadSuccessfulResponse,
+        )
     }
-
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
         library.database.read { connection ->
             connection.rawQuery(
@@ -1184,6 +1194,7 @@ class ReiAnixAniListIntegrationService(
 
                 examined++
                 try {
+                    var lookupCompleted = false
                     val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
                     if (remoteId != null) {
                         val remote = when (val result = client.getAnime(remoteId.toInt())) {
@@ -1194,7 +1205,9 @@ class ReiAnixAniListIntegrationService(
                             }
                         }
                         if (remote == null) {
-                            if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                            val discovery = discoverArtworkCandidates(local)
+                            if (publishArtworkCandidates(local.id, discovery.candidates)) recovered++
+                            lookupCompleted = discovery.hadSuccessfulResponse
                         } else {
                             val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
                             when (val applied = applyRemote(
@@ -1206,27 +1219,40 @@ class ReiAnixAniListIntegrationService(
                                 margin = local.anilistMatchMargin,
                             )) {
                                 is AniListResult.Success -> {
+                                    lookupCompleted = true
                                     if (!remotePosterUrl.isNullOrBlank() && applied.value.coverUrl == remotePosterUrl) {
                                         recovered++
-                                    } else if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) {
-                                        recovered++
+                                    } else {
+                                        val discovery = discoverArtworkCandidates(local)
+                                        if (publishArtworkCandidates(local.id, discovery.candidates)) recovered++
+                                        lookupCompleted = lookupCompleted || discovery.hadSuccessfulResponse
                                     }
                                 }
                                 is AniListResult.Failure -> {
                                     Log.w(TAG, "Missing-artwork metadata update failed for animeId=" + local.id + ": " + applied.error)
-                                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                                    val discovery = discoverArtworkCandidates(local)
+                                    if (publishArtworkCandidates(local.id, discovery.candidates)) recovered++
+                                    lookupCompleted = discovery.hadSuccessfulResponse
                                 }
                             }
                         }
                     } else {
                         // Artwork-only search never creates or changes a local AniList ID.
-                        if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                        val discovery = discoverArtworkCandidates(local)
+                        if (publishArtworkCandidates(local.id, discovery.candidates)) recovered++
+                        lookupCompleted = discovery.hadSuccessfulResponse
                     }
 
-                    val completedAt = System.currentTimeMillis() / 1000.0
-                    writeArtworkDiscoveryAttemptAt(local.id, completedAt)
-                    persistedAttemptTimes[local.id] = completedAt
-                    missingArtworkLookupAttempts[local.id] = completedAt.toLong()
+                    if (lookupCompleted) {
+                        val completedAt = System.currentTimeMillis() / 1000.0
+                        writeArtworkDiscoveryAttemptAt(local.id, completedAt)
+                        persistedAttemptTimes[local.id] = completedAt
+                        missingArtworkLookupAttempts[local.id] = completedAt.toLong()
+                    } else {
+                        // A transport/API failure is not a completed discovery. Do not write
+                        // a cooldown; the next foreground entry is allowed to retry it.
+                        missingArtworkLookupAttempts.remove(local.id, attemptAt)
+                    }
                     if (examined % batchSize == 0) kotlinx.coroutines.yield()
                 } catch (cancelled: CancellationException) {
                     // Leave this item pending so the next foreground can resume it immediately.

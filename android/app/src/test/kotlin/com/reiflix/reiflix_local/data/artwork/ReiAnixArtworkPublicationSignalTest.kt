@@ -532,6 +532,14 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun failedAniListSearchDoesNotCountAsACompletedDiscovery() {
+        val failed = ArtworkCandidateDiscovery(emptyList(), hadSuccessfulResponse = false)
+        val emptyButSuccessful = ArtworkCandidateDiscovery(emptyList(), hadSuccessfulResponse = true)
+        assertFalse(failed.hadSuccessfulResponse)
+        assertTrue(emptyButSuccessful.hadSuccessfulResponse)
+    }
+
+    @Test
     fun interruptedArtworkDiscoveryWithoutACompletionTimestampIsImmediatelyEligibleAgain() {
         assertFalse(shouldDeferArtworkDiscoveryAttempt(null, 100_000.0))
     }

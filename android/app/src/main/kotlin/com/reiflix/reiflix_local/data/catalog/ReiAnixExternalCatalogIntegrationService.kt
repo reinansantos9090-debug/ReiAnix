@@ -218,6 +218,12 @@ class ReiAnixExternalCatalogIntegrationService(
 
             library.markExternalCatalogAttempt(anime.id, source.key)
             val resolved = resolution ?: continue
+            // Do not turn a failed provider request into a six-hour completed-search
+            // cooldown. Partial image results can still be queued, but a failed search
+            // with no candidates remains eligible on the next foreground.
+            if (!resolved.incompleteSearch || resolved.artworkCandidates.isNotEmpty()) {
+                library.markExternalCatalogAttempt(anime.id, source.key)
+            }
             val verified = resolved.verified
             if (verified != null) {
                 // Only CONFIRMED identity is allowed to persist supplemental IDs or metadata.
@@ -294,6 +300,7 @@ class ReiAnixExternalCatalogIntegrationService(
         val decision: ReiAnixCatalogIdentityDecision,
         val verified: VerifiedRemote? = null,
         val artworkCandidates: List<ReiAnixCatalogAnime> = emptyList(),
+        val incompleteSearch: Boolean = false,
     )
 
     private suspend fun resolve(
@@ -307,10 +314,16 @@ class ReiAnixExternalCatalogIntegrationService(
             return when (val result = provider.getAnime(knownId)) {
                 is ReiAnixCatalogResult.Failure -> {
                     record(provider.source, "DETAIL_REQUEST_FAILED", anime.id)
-                    Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
+                    Resolution(
+                        decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
+                        incompleteSearch = true,
+                    )
                 }
                 is ReiAnixCatalogResult.Success -> {
-                    val remote = result.value ?: return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
+                    val remote = result.value ?: return Resolution(
+                        decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
+                        incompleteSearch = true,
+                    )
                     val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
                     val artworkCandidates = usableCatalogArtworkCandidates(listOf(remote))
                     val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
@@ -356,6 +369,7 @@ class ReiAnixExternalCatalogIntegrationService(
             return Resolution(
                 decision = ReiAnixCatalogIdentityDecision.UNRESOLVED,
                 artworkCandidates = artworkCandidates,
+                incompleteSearch = true,
             )
         }
 
