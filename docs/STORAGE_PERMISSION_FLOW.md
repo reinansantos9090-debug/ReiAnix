@@ -75,13 +75,14 @@ and lifecycle state. Ordinary `onResume`, player return and background/foregroun
 transitions do not trigger a library scan.
 
 Configured SAF roots are observed with a process-scoped `ContentObserver` on the
-tree document URI. Descendant notifications are inspected on IO; video documents
-and changed directories containing video documents are debounced and persisted as
-per-tree pending work. Only those pending tree references start `SAF_CHANGE`
-scans. The pending change is removed after that tree reaches a terminal scan state;
-a notification arriving during the scan keeps a newer timestamp and schedules a
-follow-up scan. The observer remains registered while the Activity is stopped, and
-the pending marker survives Activity/process recreation while a scan is in progress.
+tree document URI. A compressed per-tree inventory of video document IDs and
+metadata is persisted. On process recreation, only new or changed video entries
+create pending `SAF_CHANGE` work; an initial inventory baseline, deletions alone,
+images, subtitles and NFO files do not start scans. Provider notifications update
+the inventory and persist a pending request before acknowledging the snapshot.
+The observer remains registered while the Activity is stopped. A pending request
+survives Activity/process recreation and is consumed only after a `SUCCEEDED`
+scan; partial, cancelled and failed scans retain it for a later retry.
 
 NativeMailbox remains the transport boundary. ScanCoordinator remains the single
 logical scan coordinator.
