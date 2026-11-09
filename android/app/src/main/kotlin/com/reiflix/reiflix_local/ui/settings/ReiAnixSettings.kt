@@ -240,6 +240,7 @@ fun ReiAnixSettingsRoute(
     // Restore saved navigation from APKs that still had these intermediate pages.
     val destination = when (selectedDestination) {
         "Conta" -> null
+        "appearance_theme" -> "Aparência"
         "general_behavior", "general_privacy" -> "Geral"
         "library_storage", "library_scan", "library_organization" -> "Biblioteca"
         "player_advanced" -> "Player"
@@ -826,7 +827,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
 
-                "appearance_theme" -> {
+                "Aparência" -> {
                     item(key = "setting:appearance.theme") {
                         ChoiceSettingRow(
                             keyName = "appearance.theme",
