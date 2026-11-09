@@ -3932,7 +3932,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         .put("playbackSpeed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
         .put("audioTrackCount", if (::player.isInitialized) player.currentTracks.groups.count { it.type == C.TRACK_TYPE_AUDIO && it.isSupported } else 0)
         .put("subtitleTrackCount", if (::player.isInitialized) player.currentTracks.groups.count { it.type == C.TRACK_TYPE_TEXT && it.isSupported } else 0)
-.put("durationMs", if (::player.isInitialized) player.duration.coerceAtLeast(0L) else 0L)
+.put("durationMs", if (::player.isInitialized) ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: JSONObject.NULL else JSONObject.NULL)
+        .put("durationKnown", if (::player.isInitialized) ReiAnixPlayerSeekPolicy.validDuration(player.duration) != null else false)
+        .put("seekable", if (::player.isInitialized) player.isCurrentMediaItemSeekable else false)
+        .put("seekCommandAvailable", if (::player.isInitialized) player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) else false)
         .put("firstFrameRendered", firstFrameRenderedForTesting)
         .put("sessionState", sessionState.name)
         .put("transitionPhase", transitionPhase.name)
@@ -6937,8 +6940,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         PlayerGesturePolicy.Direction.HORIZONTAL -> {
-                            val durationMs = if (::player.isInitialized) player.duration else 0L
-                            if (!PlayerGesturePolicy.canSeekHorizontally(
+                            val durationMs = if (::player.isInitialized) {
+                                ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: 0L
+                            } else 0L
+                            val seekCapability = canSeekCurrentMedia("gesture_horizontal", logIgnored = false)
+                            if (!seekCapability || !PlayerGesturePolicy.canSeekHorizontally(
                                     enabled = horizontalSeekEnabled,
                                     durationMs = durationMs,
                                     episodeChangePending = episodeChangePending,
@@ -6955,7 +6961,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                     gestureMode = GestureMode.IDLE
                                     cancelGestureDetector(event)
                                     restoreLongPressSpeed()
-                                    logPlayer("GESTURE_HORIZONTAL_SEEK_IGNORED reason=duration_or_transition requestId=" + requestId.ifEmpty { "-" })
+                                    logPlayer(
+                                        "GESTURE_HORIZONTAL_SEEK_IGNORED reason=" + when {
+                                            episodeChangePending -> "episode_transition"
+                                            !horizontalSeekEnabled -> "disabled"
+                                            !player.isCurrentMediaItemSeekable -> "media_not_seekable"
+                                            durationMs <= 0L -> "duration_unknown"
+                                            else -> "seek_command_unavailable"
+                                        } + " requestId=" + requestId.ifEmpty { "-" },
+                                    )
                                 }
                             } else {
                                 gestureConsumed = true
@@ -7006,13 +7020,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         GestureMode.HORIZONTAL_SEEK -> {
-                            if (::player.isInitialized && !episodeChangePending && player.duration > 0L) {
-                                val target = horizontalSeekTargetMs.coerceIn(0L, player.duration)
+                            val duration = if (::player.isInitialized) {
+                                ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+                            } else null
+                            if (canSeekCurrentMedia("gesture_horizontal_commit", logIgnored = true) && duration != null) {
+                                val target = horizontalSeekTargetMs.coerceIn(0L, duration)
                                 player.seekTo(target)
-                                saveProgress("player_progress")
+                                saveProgress("player_progress", force = true)
                                 showFeedback("Ir para " + formatTime(target))
                                 logPlayer("GESTURE_END type=horizontal_seek positionMs=" + target + " requestId=" + requestId.ifEmpty { "-" })
                                 touchControls()
+                            } else {
+                                logPlayer("PLAYER_COMMAND_IGNORED command=horizontal_seek reason=capability_or_duration_changed")
                             }
                             resetTransientState()
                             return true
@@ -7051,12 +7070,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 y > height - gestureSafeBottom
 
         private fun updateHorizontalSeekPreview(deltaX: Float) {
-            if (!::player.isInitialized || player.duration <= 0L || width <= 0) return
+            val duration = if (::player.isInitialized) {
+                ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+            } else null
+            if (!canSeekCurrentMedia("gesture_horizontal_preview", logIgnored = false) ||
+                duration == null || width <= 0
+            ) return
             horizontalSeekTargetMs = PlayerGesturePolicy.horizontalSeekTarget(
                 startPositionMs = horizontalSeekStartPositionMs,
                 deltaX = deltaX,
                 viewportWidth = width.toFloat(),
-                durationMs = player.duration,
+                durationMs = duration,
             )
             val now = android.os.SystemClock.uptimeMillis()
             if (now - lastSeekPreviewAtMs >= SEEK_PREVIEW_INTERVAL_MS) {
