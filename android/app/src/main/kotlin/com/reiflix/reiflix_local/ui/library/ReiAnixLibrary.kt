@@ -64,7 +64,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import androidx.navigation.navOptions
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import kotlinx.coroutines.flow.collect
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -91,6 +90,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.ui.navigation.navigateToStorage
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -144,23 +144,13 @@ fun ReiAnixLibraryRoute(
         onClearFilters = viewModel::clearLibraryFilters,
         onRefresh = viewModel::refresh,
         onSelectSource = {
-            navController.navigate(
-                ReiAnixRoutes.STORAGE,
-                navOptions {
-                    launchSingleTop = true
-                },
-            )
+            navController.navigateToStorage()
         },
         onSearch = {
             navController.navigateToTopLevel(ReiAnixRoutes.SEARCH)
         },
         onOpenStorage = {
-            navController.navigate(
-                ReiAnixRoutes.STORAGE,
-                navOptions {
-                    launchSingleTop = true
-                },
-            )
+            navController.navigateToStorage()
         },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
