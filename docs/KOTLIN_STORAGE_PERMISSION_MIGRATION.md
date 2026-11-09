@@ -4,7 +4,7 @@
 
 A MainActivity continua sendo uma FlutterFragmentActivity porque o APK oficial ainda usa o host Android gerado pelo Flet. Esta etapa não remove esse runtime. O seletor SAF, a persistência/inspeção da concessão, as solicitações de permissão do MediaStore, a navegação para configurações de acesso amplo e a revalidação após o retorno já eram nativos.
 
-A lacuna corrigida nesta etapa era a decisão da sobreposição de onboarding em Compose: seu estado vinha de libraryState.storage, uma projeção híbrida. O host Compose agora observa NativeStorageOnboardingState, que é recalculado em Kotlin usando as pastas SAF registradas no SQLite canônico e as concessões verificadas no ContentResolver. A interface não presume que uma string de URI armazenada equivale a uma autorização válida.
+A lacuna corrigida nesta etapa era a decisão de apresentar o onboarding como uma camada sobre Início/Biblioteca. O host Compose agora observa NativeStorageOnboardingState e, quando a configuração/recuperação é necessária, navega para a rota real de Armazenamento em vez de desenhar outra tela sobre a atual. O estado é recalculado em Kotlin usando as pastas SAF registradas no SQLite canônico e a inspeção da concessão/provedor no Android; a interface não presume que uma string de URI armazenada equivale a uma autorização válida.
 
 ## Estratégia de permissões
 
@@ -25,7 +25,7 @@ MainActivity.refreshNativeStorageOnboardingState() executa a consulta às pastas
 - Ao retornar de Configurações, o app consulta de novo BroadStorageScanner.hasAccess() e MediaStoreScanner.accessLevel(); o código do resultado de atividade ou o simples retorno nunca é tratado como concessão.
 - A seleção bem-sucedida só muda o onboarding para ready depois que a concessão SAF foi verificada e a pasta foi gravada no repositório SQLite canônico.
 - A dispensa do cartão é uma preferência de interface separada; não marca o armazenamento como pronto nem substitui a URI/permissão.
-- A decisão de exibir a sobreposição deixou de usar o estado de onboarding projetado pelo Python. Ações e eventos de mailbox continuam onde consumidores legados precisam deles, mas não são a fonte de verdade da autorização.
+- A decisão de abrir o gerenciador deixou de usar o estado de onboarding projetado pelo Python. O host navega para uma única rota de Armazenamento, sem sobrepor Início/Biblioteca. Ações e eventos de mailbox continuam onde consumidores legados precisam deles, mas não são a fonte de verdade da autorização.
 
 ## Manifesto e arquitetura preservada
 
@@ -50,10 +50,10 @@ O acesso real por provedor SAF/MediaStore, inclusive estados de revogação de p
 
 ## Seleção manual da pasta no primeiro início
 
-Quando o bootstrap liberar o uso normal e a tabela canônica `folders` não contiver uma raiz SAF, o ReiAnix apresenta a escolha de onboarding, mas **não abre o seletor Android automaticamente**. O seletor `ACTION_OPEN_DOCUMENT_TREE` só é iniciado depois de uma ação explícita em **Escolher pasta**, seja no cartão inicial ou na tela de armazenamento.
+Quando o bootstrap liberar o uso normal e a tabela canônica `folders` não contiver uma raiz SAF, o ReiAnix abre a rota única de Armazenamento, mas **não abre o seletor Android automaticamente**. O seletor `ACTION_OPEN_DOCUMENT_TREE` só é iniciado depois de uma ação explícita em **Selecionar pasta** nessa tela.
 
-- **Cancelar** dispensa a sobreposição e permite entrar/navegar pelo aplicativo sem configurar uma pasta. Essa decisão de apresentação é persistida e não equivale a uma concessão SAF nem a um estado `ready`.
-- A sobreposição permanece oculta enquanto a validação SAF está em andamento (`checking`). Depois da validação, só aparece quando há uma ação necessária: nenhuma pasta configurada, seletor aberto ou erro de recuperação ainda não dispensado.
+- **Voltar** ao sair da tela de Armazenamento dispensa somente a orientação de onboarding e permite navegar sem configurar uma pasta. Essa decisão de apresentação é persistida e não equivale a uma concessão SAF nem a um estado `ready`.
+- A rota Armazenamento só é aberta automaticamente quando a validação termina e identifica uma ação necessária: nenhuma pasta configurada ou erro de recuperação ainda não dispensado. Não há painel de onboarding desenhado sobre outra tela.
 - A dispensa permanece válida entre aberturas enquanto não houver uma nova seleção explícita. Uma seleção manual reabre o fluxo; a autorização só é marcada como pronta depois da validação da concessão e do registro no SQLite canônico.
 - Cancelar o seletor Android retorna à escolha de onboarding, mas nunca relança o seletor automaticamente. O usuário pode tentar novamente pelo botão ou escolher uma pasta mais tarde na tela de armazenamento.
 - A mera presença de permissão MediaStore/Broad Storage não equivale a uma raiz SAF. O app não dispara scan geral sem uma fonte autorizada; scan de uma nova raiz começa somente após seleção, validação e persistência bem-sucedidas.
