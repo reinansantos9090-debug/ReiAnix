@@ -113,25 +113,6 @@ data class ReiAnixSettingsCategoryUiModel(
 }
 
 
-private val NativeManagedSettingsCategories = setOf(
-    "Conta",
-    "Geral",
-    "Aparência",
-    "Biblioteca",
-    "Player",
-    "Gestos",
-    "Áudio e Legendas",
-    "Metadata",
-    "Artwork",
-    "Armazenamento",
-    "Dados e Cache",
-    "Backup e Restauração",
-    "Privacidade",
-    "Varredura",
-    "Diagnóstico",
-    "Sobre",
-)
-
 private data class SettingChoice(
     val value: String,
     val label: String,
@@ -1574,9 +1555,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
                 "about_diagnostics" -> {
                     val diagnosticStorage = state.storage
-                    val latestDiagnosticOperation = state.operations.values
-                        .filter { it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" }
-                        .maxByOrNull { it.timestampMs }
                     item(key = "data-cache:info") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1701,7 +1679,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "about_reports" -> {
-                    val diagnosticStorage = state.storage
                     val latestDiagnosticOperation = state.operations.values
                         .filter { it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" }
                         .maxByOrNull { it.timestampMs }
