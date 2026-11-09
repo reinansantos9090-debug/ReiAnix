@@ -19,9 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Gesture
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -78,8 +76,6 @@ fun ReiAnixNativePlayerOptionsPanel(
     resetSignal: Int,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    onAudio: () -> Unit,
-    onSubtitles: () -> Unit,
     onPlaybackSpeed: () -> Unit,
     onRestart: () -> Unit,
     onHistory: () -> Unit,
@@ -105,7 +101,7 @@ fun ReiAnixNativePlayerOptionsPanel(
             .clip(panelShape)
             .background(Color(0xE61B1B1D))
             .verticalScroll(rememberScrollState())
-            .padding(vertical = 8.dp),
+            .padding(vertical = 5.dp),
     ) {
         when (page) {
             PlayerOptionsPage.MAIN -> {
@@ -122,20 +118,6 @@ fun ReiAnixNativePlayerOptionsPanel(
                     onCheckedChange = onAutoplayChanged,
                 )
                 PlayerOptionActionRow(
-                    icon = Icons.Filled.GraphicEq,
-                    label = "Áudio",
-                    value = state.audioTrackLabel,
-                    enabled = state.audioTrackSelectionEnabled && !state.episodeTransitionInProgress,
-                    onClick = onAudio,
-                )
-                PlayerOptionActionRow(
-                    icon = Icons.Filled.ClosedCaption,
-                    label = "Legendas",
-                    value = state.subtitleTrackLabel,
-                    enabled = state.subtitleTrackSelectionEnabled && !state.episodeTransitionInProgress,
-                    onClick = onSubtitles,
-                )
-                PlayerOptionActionRow(
                     icon = Icons.Filled.Speed,
                     label = "Velocidade",
                     value = String.format(Locale.US, "%.1fx", state.playbackSpeed),
@@ -143,22 +125,21 @@ fun ReiAnixNativePlayerOptionsPanel(
                     onClick = onPlaybackSpeed,
                 )
                 PlayerOptionActionRow(
-                    icon = Icons.Filled.Replay,
-                    label = "Reiniciar",
-                    enabled = !state.episodeTransitionInProgress,
-                    showChevron = false,
-                    onClick = onRestart,
-                )
-                PlayerOptionActionRow(
                     icon = Icons.Filled.Gesture,
                     label = "Gestos",
-                    trailing = "Configurar",
                     onClick = { page = PlayerOptionsPage.GESTURES },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.MoreHoriz,
                     label = "Outras opções",
                     onClick = { page = PlayerOptionsPage.OTHER },
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Replay,
+                    label = "Reiniciar",
+                    enabled = !state.episodeTransitionInProgress,
+                    showChevron = false,
+                    onClick = onRestart,
                 )
                 if (showPictureInPicture) {
                     PlayerOptionActionRow(
@@ -350,9 +331,9 @@ private fun PlayerOptionActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 50.dp)
+            .heightIn(min = 46.dp)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 14.dp, vertical = 2.dp)
             .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
@@ -405,8 +386,8 @@ private fun PlayerOptionToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 50.dp)
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .heightIn(min = 46.dp)
+            .padding(horizontal = 14.dp, vertical = 2.dp)
             .semantics { contentDescription = description },
         verticalAlignment = Alignment.CenterVertically,
     ) {
