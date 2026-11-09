@@ -4378,9 +4378,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             sessionState != SessionState.ACTIVE ||
             videoFreezeRecoveryGeneration != playerGeneration ||
             !::player.isInitialized ||
-            errorVisible ||
-            !player.isPlaying ||
-            !hasSelectedVideoTrack()
+            errorVisible
         ) {
             logPlayer("VIDEO_FREEZE_WATCHDOG_CANCELLED reason=playback_or_generation_changed")
             videoFreezeWatchdog.resolve()
