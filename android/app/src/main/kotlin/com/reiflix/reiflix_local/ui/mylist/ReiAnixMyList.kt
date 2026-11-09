@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import androidx.navigation.navOptions
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -175,7 +176,12 @@ fun ReiAnixMyListRoute(
                         "Atualizar"
                     },
                     onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        viewModel::selectSafTree
+                        {
+                            navController.navigate(
+                                ReiAnixRoutes.STORAGE,
+                                navOptions { launchSingleTop = true },
+                            )
+                        }
                     } else {
                         viewModel::refresh
                     },
