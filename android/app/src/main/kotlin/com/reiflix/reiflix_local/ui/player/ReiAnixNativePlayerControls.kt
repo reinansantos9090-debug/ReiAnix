@@ -68,6 +68,9 @@ data class ReiAnixNativePlayerUiState(
     val durationStatus: String = "Carregando duração",
     val durationFromDatabase: Boolean = false,
     val canSeek: Boolean = false,
+    val canSeekBackward: Boolean = false,
+    val canSeekForward: Boolean = false,
+    val canPlayPause: Boolean = false,
     val canSeekToPosition: Boolean = false,
     val timelinePreviewBitmap: android.graphics.Bitmap? = null,
     val timelinePreviewPositionMs: Long? = null,
@@ -225,7 +228,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = seekSeconds,
                     description = "Voltar $seekSeconds segundos",
                     forward = false,
-                    enabled = state.canSeek && !state.episodeTransitionInProgress,
+                    enabled = state.canSeekBackward && !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
                 )
             }
@@ -240,7 +243,7 @@ fun ReiAnixNativePlayerCenterControls(
                 ) {
                     IconButton(
                         onClick = onPlayPause,
-                        enabled = !state.episodeTransitionInProgress,
+                        enabled = state.canPlayPause && !state.episodeTransitionInProgress,
                         modifier = Modifier
                             .size(ReiAnixTokens.PlayerDimensions.centerButtonSize)
                             .semantics {
@@ -265,7 +268,7 @@ fun ReiAnixNativePlayerCenterControls(
                                 Icon(
                                     imageVector = Icons.Filled.Replay,
                                     contentDescription = null,
-                                    tint = if (state.episodeTransitionInProgress) {
+                                    tint = if (!state.canPlayPause || state.episodeTransitionInProgress) {
                                         ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f)
                                     } else {
                                         ReiAnixTokens.Colors.playerControl
@@ -311,7 +314,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = seekSeconds,
                     description = "Avançar $seekSeconds segundos",
                     forward = true,
-                    enabled = state.canSeek && !state.episodeTransitionInProgress,
+                    enabled = state.canSeekForward && !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
                 )
             }
