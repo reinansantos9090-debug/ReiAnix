@@ -60,6 +60,15 @@ class PlayerMediaPolicyTest {
     }
 
     @Test
+    fun seekRequiresKnownDurationSeekableItemAndAvailableCommand() {
+        assertTrue(PlayerMediaPolicy.isSeekAllowed(60_000L, true, true))
+        assertFalse(PlayerMediaPolicy.isSeekAllowed(0L, true, true))
+        assertFalse(PlayerMediaPolicy.isSeekAllowed(-1L, true, true))
+        assertFalse(PlayerMediaPolicy.isSeekAllowed(60_000L, false, true))
+        assertFalse(PlayerMediaPolicy.isSeekAllowed(60_000L, true, false))
+    }
+
+    @Test
     fun resumePositionIsAlwaysSafe() {
         assertEquals(0L, PlayerMediaPolicy.safeResumePosition(-1L, 3_000L))
         assertEquals(0L, PlayerMediaPolicy.safeResumePosition(0L, 3_000L))
