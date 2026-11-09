@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.data.anilist.AniListAnime
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.ReiAnixSurface
@@ -184,7 +185,12 @@ fun ReiAnixSearchRoute(
         },
         onBack = { navController.popBackStack() },
         onRefresh = viewModel::refresh,
-        onSelectSource = viewModel::selectSafTree,
+        onSelectSource = {
+            navController.navigate(
+                ReiAnixRoutes.STORAGE,
+                navOptions { launchSingleTop = true },
+            )
+        },
         onOpenFilters = { showFilterSheet = true },
         onClearFilters = viewModel::clearSearchFilters,
         onSourceSelected = { selected ->
@@ -412,7 +418,7 @@ fun ReiAnixSearchScreen(
                                     "A fonte local configurada não está disponível agora."
                                 },
                                 actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                                    "Selecionar pasta"
+                                    "Gerenciar armazenamento"
                                 } else {
                                     "Atualizar"
                                 },
@@ -432,7 +438,7 @@ fun ReiAnixSearchScreen(
                                     "Nenhum conteúdo local disponível para pesquisa."
                                 },
                                 actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                                    "Selecionar pasta"
+                                    "Gerenciar armazenamento"
                                 } else {
                                     "Atualizar"
                                 },
@@ -473,7 +479,7 @@ fun ReiAnixSearchScreen(
                             "A fonte local configurada não está disponível agora."
                         },
                         actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                            "Selecionar pasta"
+                            "Gerenciar armazenamento"
                         } else {
                             "Atualizar"
                         },
@@ -493,7 +499,7 @@ fun ReiAnixSearchScreen(
                             "Nenhum conteúdo local disponível para pesquisa."
                         },
                         actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                            "Selecionar pasta"
+                            "Gerenciar armazenamento"
                         } else {
                             "Atualizar"
                         },
