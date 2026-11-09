@@ -1853,6 +1853,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         override fun onEvents(player: Player, events: Player.Events) {
             if (!isCurrent()) return
             if (events.contains(Player.EVENT_RENDERED_FIRST_FRAME)) {
+                noteVideoFrameRendered("player_event_first_frame")
                 firstFrameRenderedForTesting = true
                 cancelFirstFrameDiagnostics("first_frame")
                 if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
@@ -1989,6 +1990,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onRenderedFirstFrame() {
             if (!isCurrent()) return
+            noteVideoFrameRendered("player_listener_first_frame")
             logPlayer(
                 "FIRST_FRAME_CALLBACK requestId=" + requestId.ifEmpty { "-" } +
                     " generation=" + playerGeneration +
@@ -2019,6 +2021,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
 
+        override fun onTimelineChanged(
+            timeline: androidx.media3.common.Timeline,
+            reason: Int,
+        ) {
+            if (!isCurrent()) return
+            val presentation = currentDisplayDuration()
+            logPlayer(
+                "PLAYER_DURATION_UPDATE episodeId=${currentEpisodeId()} " +
+                    "actualDurationMs=${ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: -1L} " +
+                    "databaseDurationMs=${savedDurationMsForDisplay ?: -1L} " +
+                    "displayDurationMs=${presentation.durationMs} fromDatabase=${presentation.fromDatabase} " +
+                    "seekable=${player.isCurrentMediaItemSeekable} reason=$reason",
+            )
+            updateSeekControlsEnabled()
+            updateProgressUi()
+        }
+
         override fun onPlaybackStateChanged(state: Int) {
             if (!isCurrent()) return
             val label = when (state) {
@@ -2030,6 +2049,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             logPlayer("PLAYBACK_STATE=" + label + " requestId=" + requestId.ifEmpty { "-" } +
                 " positionMs=" + if (::player.isInitialized) player.currentPosition else 0L)
+            updateSeekControlsEnabled()
+            updateProgressUi()
             when (state) {
                 Player.STATE_READY -> {
                     val readyAtMs = System.currentTimeMillis()
@@ -2239,8 +2260,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ) {
                 logPlayer(
                     "PLAYER_SEEK requestId=" + requestId.ifEmpty { "-" } +
-                        " positionMs=" + newPosition.positionMs,
+                        " positionMs=" + newPosition.positionMs +
+                        " seekable=${player.isCurrentMediaItemSeekable} " +
+                        "seekCommand=${player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)}",
                 )
+                startVideoFreezeWatchdog(newPosition.positionMs, "media3_discontinuity")
                 saveProgress("player_progress", force = true)
             }
             updateProgressUi()
@@ -3258,8 +3282,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun syncComposePlayerUiState() {
         if (!composeControlsEnabled) return
-        val currentDuration = if (::player.isInitialized) player.duration else 0L
+        val durationPresentation = currentDisplayDuration()
+        val actualDuration = if (::player.isInitialized) {
+            ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+        } else null
+        val currentDuration = durationPresentation.durationMs
         val currentPosition = if (::player.isInitialized) player.currentPosition else 0L
+        val durationStatus = when {
+            durationPresentation.known -> ""
+            ::player.isInitialized && player.playbackState in setOf(Player.STATE_IDLE, Player.STATE_BUFFERING) -> "Carregando duração"
+            else -> "Duração indisponível"
+        }
+        val seekAvailable = canSeekCurrentMedia("compose_ui_state", logIgnored = false)
         val videoSize = if (::player.isInitialized) player.videoSize else null
         val resolution = videoSize
             ?.takeIf { it.width > 0 && it.height > 0 }
@@ -3285,8 +3319,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
             technicalLine = buildPlayerTechnicalLine(),
             positionMs = currentPosition.coerceAtLeast(0L),
             durationMs = currentDuration.coerceAtLeast(0L),
-            bufferedPositionMs = if (::player.isInitialized && currentDuration > 0L) {
-                player.bufferedPosition.coerceIn(0L, currentDuration)
+            durationStatus = durationStatus,
+            durationFromDatabase = durationPresentation.fromDatabase,
+            canSeek = seekAvailable,
+            timelinePreviewBitmap = timelinePreviewBitmap,
+            timelinePreviewPositionMs = timelinePreviewPositionMs,
+            bufferedPositionMs = if (::player.isInitialized && actualDuration != null) {
+                player.bufferedPosition.coerceIn(0L, actualDuration)
             } else {
                 0L
             },
@@ -3547,21 +3586,30 @@ override fun onCreate(savedInstanceState: Bundle?) {
             syncComposePlayerUiState()
             return
         }
-        val duration = player.duration
+        val durationPresentation = currentDisplayDuration()
+        val actualDuration = ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+        val displayDuration = durationPresentation.durationMs
         val position = player.currentPosition.coerceAtLeast(0L)
-        if (::seekBar.isInitialized && duration > 0L) {
-            seekBar.progress = ((position.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
+        if (::seekBar.isInitialized && durationPresentation.known && displayDuration > 0L) {
+            seekBar.progress = ((position.toDouble() / displayDuration.toDouble()) * SEEK_PROGRESS_MAX)
                 .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
-            seekBar.secondaryProgress = ((player.bufferedPosition.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
-                .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
+            seekBar.secondaryProgress = if (actualDuration != null) {
+                ((player.bufferedPosition.toDouble() / actualDuration.toDouble()) * SEEK_PROGRESS_MAX)
+                    .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
+            } else 0
         } else if (::seekBar.isInitialized) {
             seekBar.progress = 0
             seekBar.secondaryProgress = 0
         }
         if (::positionLabel.isInitialized) positionLabel.text = formatTime(position)
         if (::durationLabel.isInitialized) {
-            durationLabel.text = if (duration > 0L) formatTime(duration) else "--:--"
+            durationLabel.text = when {
+                durationPresentation.known -> formatTime(displayDuration)
+                player.playbackState in setOf(Player.STATE_IDLE, Player.STATE_BUFFERING) -> "Carregando"
+                else -> "--:--"
+            }
         }
+        updateSeekControlsEnabled()
         updateMetadataControls(position)
         syncComposePlayerUiState()
     }
