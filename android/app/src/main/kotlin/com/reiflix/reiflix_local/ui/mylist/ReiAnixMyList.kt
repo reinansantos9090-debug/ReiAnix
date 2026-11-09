@@ -171,7 +171,7 @@ fun ReiAnixMyListRoute(
                         "A fonte local configurada não está disponível agora."
                     },
                     actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Selecionar pasta"
+                        "Gerenciar armazenamento"
                     } else {
                         "Atualizar"
                     },
