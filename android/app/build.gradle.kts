@@ -17,6 +17,14 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+    packaging {
+        resources {
+            // Java multi-release JAR metadata is not consumed by Android.
+            // Two transitive dependencies ship the same OSGi manifest path.
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.reiflix.reiflix_local"
         minSdk = 24
