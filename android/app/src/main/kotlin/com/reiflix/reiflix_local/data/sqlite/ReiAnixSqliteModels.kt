@@ -223,6 +223,12 @@ data class ReiAnixPlaybackProgressUpdate(
     val duration: Double? = null,
     val watched: Boolean? = null,
     val playedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
+    /**
+     * Whether the previous database duration may clamp this progress when the
+     * current file's duration is unknown. Player checkpoints disable this:
+     * their stored duration is historical display metadata, not a seek bound.
+     */
+    val clampToStoredDurationWhenUnknown: Boolean = true,
 ) {
     init {
         require(episodeId > 0L) { "episodeId must be a positive persisted ID." }
