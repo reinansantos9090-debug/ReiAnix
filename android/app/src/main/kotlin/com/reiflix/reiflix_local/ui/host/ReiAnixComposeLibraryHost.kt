@@ -27,6 +27,7 @@ import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.ui.navigation.navigateToStorage
 import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.navigation.navigateToCollector
 import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeRoute
@@ -289,14 +290,7 @@ class ReiAnixComposeLibraryHost(
                                         handleBack()
                                     }
                                 },
-                                onOpenStorage = {
-                                    navController.navigate(
-                                        ReiAnixRoutes.STORAGE,
-                                        navOptions {
-                                            launchSingleTop = true
-                                        },
-                                    )
-                                },
+                                onOpenStorage = { navController.navigateToStorage() },
                                 onOpenSettings = {
                                     navController.navigate(
                                         ReiAnixRoutes.SETTINGS,
@@ -333,14 +327,7 @@ class ReiAnixComposeLibraryHost(
                                         "Ignoring unsupported Compose Settings category=" + label,
                                     )
                                 },
-                                onOpenStorage = {
-                                    navController.navigate(
-                                        ReiAnixRoutes.STORAGE,
-                                        navOptions {
-                                            launchSingleTop = true
-                                        },
-                                    )
-                                },
+                                onOpenStorage = { navController.navigateToStorage() },
                                 scanInProgress = libraryState.scanInProgress,
                                 scanState = libraryState.scanState,
                                 lastScanStatus = libraryState.lastScanStatus,
