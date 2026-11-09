@@ -261,41 +261,75 @@ fun ReiAnixStorageScreen(
 
             if (configuredSafSources.isEmpty()) {
                 item(key = "library-empty") {
-                    ReiAnixSettingsSurface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-            
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+                    when (nativeFolders.status) {
+                        ReiAnixNativeFoldersStatus.IDLE,
+                        ReiAnixNativeFoldersStatus.LOADING -> ReiAnixLoadingState(
+                            title = "Verificando pastas cadastradas",
+                            message = "Conferindo a lista operacional e os registros salvos antes de oferecer uma nova seleção.",
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+
+                        ReiAnixNativeFoldersStatus.ERROR,
+                        ReiAnixNativeFoldersStatus.NOT_FOUND -> ReiAnixSettingsSurface(
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Info,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column(
+                                modifier = Modifier.padding(ReiAnixTokens.Spacing.md),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                            ) {
                                 Text(
-                                    text = "Nenhuma pasta configurada",
+                                    text = "Não foi possível confirmar as pastas cadastradas.",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = "Escolha uma pasta local para alimentar a biblioteca.",
+                                    text = "A tela não vai assumir que a biblioteca está vazia enquanto a consulta nativa não for concluída.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                            }
+                                ReiAnixSecondaryButton(
+                                    text = "Tentar novamente",
+                                    onClick = onCheckAccess,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
-                        ReiAnixPrimaryButton(
-                            text = "Selecionar pasta",
-                            onClick = onSelectSaf,
-                            enabled = !selectionBusy,
-                            leadingIcon = Icons.Filled.Info,
+
+                        ReiAnixNativeFoldersStatus.READY,
+                        ReiAnixNativeFoldersStatus.EMPTY -> ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
-                        )
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Nenhuma pasta configurada",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = "A consulta às fontes terminou e não encontrou uma pasta SAF cadastrada para a biblioteca.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
+                            ReiAnixPrimaryButton(
+                                text = "Selecionar pasta",
+                                onClick = onSelectSaf,
+                                enabled = !selectionBusy,
+                                leadingIcon = Icons.Filled.Info,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             } else {
