@@ -2490,6 +2490,27 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
 
+            override fun onVideoFrameProcessingOffset(
+                eventTime: AnalyticsListener.EventTime,
+                totalProcessingOffsetUs: Long,
+                frameCount: Int,
+            ) {
+                if (!isCurrent() || frameCount <= 0) return
+                lastVideoFrameProcessingOffsetUs = totalProcessingOffsetUs / frameCount
+                videoFrameProcessingCount += frameCount.toLong()
+                videoFrameSerial += frameCount.toLong()
+                val elapsedAfterSeek = if (lastSeekStartedAtMs > 0L) {
+                    (SystemClock.uptimeMillis() - lastSeekStartedAtMs).coerceAtLeast(0L)
+                } else -1L
+                logPlayer(
+                    "VIDEO_FRAME_PROCESSING_OFFSET generation=$generation " +
+                        "totalOffsetUs=$totalProcessingOffsetUs averageOffsetUs=$lastVideoFrameProcessingOffsetUs " +
+                        "frameCount=$frameCount totalFramesSinceStart=$videoFrameProcessingCount " +
+                        "elapsedAfterSeekMs=$elapsedAfterSeek positionMs=${player.currentPosition}",
+                )
+                confirmVideoFrameProgress("analytics_processing_offset")
+            }
+
         override fun onVideoCodecError(
             eventTime: AnalyticsListener.EventTime,
             videoCodecError: Exception,
@@ -4139,9 +4160,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun noteVideoFrameRendered(source: String) {
         videoFrameSerial += 1L
+        confirmVideoFrameProgress(source)
+    }
+
+    private fun confirmVideoFrameProgress(source: String) {
         if (!videoFreezeWatchdog.isActive()) return
         val elapsed = (SystemClock.uptimeMillis() - lastSeekStartedAtMs).coerceAtLeast(0L)
         val recoveryWasActive = videoFreezeRecoveryInProgress
+        val resolvedStep = videoFreezeRecoveryStepLabel()
         logPlayer(
             "VIDEO_FRAME_AFTER_SEEK source=$source elapsedMs=$elapsed " +
                 "targetMs=$lastSeekTargetMs currentMs=${player.currentPosition} " +
@@ -4151,7 +4177,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.removeCallbacks(videoFreezeWatchdogRunnable)
         if (recoveryWasActive) {
             logPlayer(
-                "VIDEO_FROZEN_RECOVERY_RESULT success=true step=${videoFreezeRecoveryStepLabel()} " +
+                "VIDEO_FROZEN_RECOVERY_RESULT success=true step=$resolvedStep " +
                     "elapsedSinceSeekMs=$elapsed decoder=${decoderManager?.activeVideoMode ?: "unknown"}",
             )
             ReiAnixDiagnosticTimeline.record(
@@ -4162,7 +4188,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 sessionId = playerSessionId,
                 context = mapOf(
                     "elapsed_since_seek_ms" to elapsed,
-                    "recovery_step" to videoFreezeRecoveryStepLabel(),
+                    "recovery_step" to resolvedStep,
                     "decoder_mode" to (decoderManager?.activeVideoMode?.name ?: "unknown"),
                 ),
             )
