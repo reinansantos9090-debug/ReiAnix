@@ -1126,7 +1126,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handoffDispatchedAtMs = newIntent.getLongExtra("handoffDispatchedAtMs", 0L)
         activityStartedAtMs = System.currentTimeMillis()
         sessionState = SessionState.ACTIVE
-        lastSavedPosition = -1L
+        progressCheckpointGate.reset()
         errorPublishedForGeneration = false
         restoredPositionMs = null
         initialSeekApplied = false
@@ -2545,7 +2545,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         lastLoadErrorMessage = ""
         openedReported = false
         playerReadyAtMs = 0L
-        lastSavedPosition = -1L
+        progressCheckpointGate.reset()
         lastProgressPersistAt = System.currentTimeMillis()
         val generation = playerGeneration
         activePlayerListener = createPlayerListener(generation)
@@ -4511,8 +4511,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         exitReported = true
         suppressExitEvent = true
-        val rawDuration = if (::player.isInitialized) player.duration else 0L
-        val currentDuration = if (rawDuration > 0L) rawDuration else 0L
+        val rawDuration = if (::player.isInitialized) player.duration else C.TIME_UNSET
+        val currentDuration = ReiAnixPlayerSeekPolicy.validDuration(rawDuration) ?: 0L
         val rawPosition = if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L
         val currentPosition = if (currentDuration > 0L) rawPosition.coerceAtMost(currentDuration) else rawPosition
         val exitCapturedAt = nextPlayerEventCreatedAt()
@@ -4567,7 +4567,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             )
                         }
                         persistedNatively = true
+                        progressCheckpointGate.markPersisted(exitPositionMs)
                         payload.put("nativeProgressPersisted", true)
+                        logPlayer(
+                            "PLAYER_EXIT_PROGRESS_RESULT success=true episodeId=$canonicalEpisodeId " +
+                                "positionMs=$exitPositionMs durationMs=$exitDurationMs",
+                        )
                         com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService.publishCommittedProgress(
                             episodeId = canonicalEpisodeId,
                             eventType = "player_exited",
@@ -4577,9 +4582,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             eventCreatedAtEpochMs = exitCapturedAt,
                         )
                     } catch (error: Exception) {
+                        progressCheckpointGate.markFailed(exitPositionMs)
                         logPlayer(
-                            "NATIVE_EXIT_PROGRESS_PERSIST_FAILED episodeId=" + canonicalEpisodeId +
-                                " playerSessionId=" + playerSessionId,
+                            "PLAYER_EXIT_PROGRESS_RESULT success=false episodeId=$canonicalEpisodeId " +
+                                "positionMs=$exitPositionMs durationMs=$exitDurationMs",
                             error,
                         )
                     }
@@ -5380,17 +5386,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             return null
         }
-        val rawDuration = player.duration
-        val duration = if (rawDuration > 0L) rawDuration else 0L
+        val duration = ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: 0L
         val rawPosition = player.currentPosition.coerceAtLeast(0L)
         val position = if (duration > 0L) rawPosition.coerceAtMost(duration) else rawPosition
-        if (!force && lastSavedPosition >= 0L && abs(position - lastSavedPosition) < PROGRESS_INTERVAL_MS) return null
-        if (force && position == lastSavedPosition &&
-            eventType != "player_completed" && eventType != "player_exited"
-        ) {
-            return null
-        }
-        lastSavedPosition = position
+        if (!progressCheckpointGate.shouldQueue(position, force, eventType)) return null
+        progressCheckpointGate.markQueued(position)
+        logPlayer(
+            "PLAYER_PROGRESS_CHECKPOINT_QUEUED event=$eventType episodeId=$episodeId " +
+                "positionMs=$position durationMs=$duration force=$force",
+        )
         return JSONObject()
             .put("type", eventType)
             .put("requestId", requestId)
@@ -5446,14 +5450,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             )
                         }
                         persistedNatively = true
+                        progressCheckpointGate.markPersisted(positionMs)
+                        logPlayer(
+                            "PLAYER_PROGRESS_PERSISTED event=$eventType episodeId=$episodeId " +
+                                "positionMs=$positionMs durationMs=${durationMs.takeIf { it > 0L } ?: -1L}",
+                        )
                     } catch (error: Exception) {
+                        progressCheckpointGate.markFailed(positionMs)
                         logPlayer(
                             "NATIVE_PROGRESS_PERSIST_FAILED event=" + eventType +
                                 " episodeId=" + episodeId +
+                                " positionMs=" + positionMs +
                                 " playerSessionId=" + payload?.optString("playerSessionId").orEmpty(),
                             error,
                         )
                     }
+                } else {
+                    if (positionMs >= 0L) progressCheckpointGate.markFailed(positionMs)
+                    logPlayer("PLAYER_PROGRESS_PERSIST_SKIPPED event=$eventType episodeId=${episodeId ?: "-"} positionMs=$positionMs")
                 }
                 // Exactly one writer per event: Python validates the same event and
                 // publishes UI state, but skips the mutation after a native commit.
@@ -5502,6 +5516,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
             }
         } catch (error: java.util.concurrent.RejectedExecutionException) {
+            event.optJSONObject("payload")?.optLong("positionMs", -1L)
+                ?.takeIf { it >= 0L }
+                ?.let(progressCheckpointGate::markFailed)
             logPlayer("PROGRESS_PUBLISH_REJECTED event=" + eventType, error)
         }
     }
