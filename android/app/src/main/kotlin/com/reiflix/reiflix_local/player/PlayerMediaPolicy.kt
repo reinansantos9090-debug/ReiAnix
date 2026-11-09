@@ -41,12 +41,9 @@ internal object PlayerMediaPolicy {
         if (provider.startsWith("video/")) {
             return provider
         }
-        if (provider.isNotBlank() &&
-            provider !in setOf("application/octet-stream", "binary/octet-stream", "application/binary")
-        ) {
-            return provider.takeIf { it.startsWith("video/") }
-        }
-
+        // Some SAF providers report container types as application/* rather
+        // than video/*. Only a video/* MIME is authoritative; otherwise keep
+        // checking the display-name extension before leaving detection to Media3.
         val extension = displayName
             ?.substringAfterLast('.', "")
             ?.trim()
