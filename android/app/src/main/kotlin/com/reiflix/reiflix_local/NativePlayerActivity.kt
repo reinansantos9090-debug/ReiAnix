@@ -4405,7 +4405,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             "videoTrackReady=$videoTrackReady playWhenReady=${player.playWhenReady}",
                     )
                     videoFreezeWatchdog.markRecoveryAttemptFailed()
-                    handler.post(videoFreezeWatchdogRunnable)
+                    val retryPosition = player.currentPosition.coerceAtLeast(0L)
+                    val nextStep = videoFreezeWatchdog.nextRecoveryStep(
+                        now,
+                        retryPosition,
+                        videoFrameSerial,
+                    )
+                    if (nextStep == null) {
+                        logPlayer("VIDEO_FROZEN_RECOVERY_RESULT success=false reason=all_recovery_steps_exhausted")
+                        videoFreezeWatchdog.resolve()
+                        videoFreezeRecoveryInProgress = false
+                        videoFreezeRecoveryStepStartedAtMs = 0L
+                    } else {
+                        logPlayer(
+                            "VIDEO_FROZEN_RECOVERY_ADVANCED_AFTER_TIMEOUT " +
+                                "nextStep=$nextStep positionMs=$retryPosition",
+                        )
+                        startVideoFreezeRecoveryStep(nextStep, now, retryPosition)
+                    }
                 } else {
                     handler.postDelayed(
                         videoFreezeWatchdogRunnable,
@@ -4480,13 +4497,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
 
+        startVideoFreezeRecoveryStep(step, now, position)
+    }
+
+    private fun startVideoFreezeRecoveryStep(step: Int, nowMs: Long, positionMs: Long) {
         videoFreezeRecoveryInProgress = true
-        videoFreezeRecoveryStepStartedAtMs = now
-        videoFreezeRecoveryPositionMs = position
+        videoFreezeRecoveryStepStartedAtMs = nowMs
+        videoFreezeRecoveryPositionMs = positionMs.coerceAtLeast(0L)
         val resumeWhenReady = player.playWhenReady
         logPlayer(
             "VIDEO_FROZEN_RECOVERY_STEP step=$step label=${videoFreezeRecoveryStepLabel()} " +
-                "positionMs=$position decoder=${decoderManager?.activeVideoMode ?: "unknown"}",
+                "positionMs=$positionMs decoder=${decoderManager?.activeVideoMode ?: "unknown"}",
         )
         ReiAnixDiagnosticTimeline.record(
             name = "VIDEO_FROZEN_RECOVERY_STEP",
@@ -4494,17 +4515,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
             source = "NativePlayerActivity",
             result = videoFreezeRecoveryStepLabel(),
             sessionId = playerSessionId,
-            context = mapOf("step" to step, "position_ms" to position),
+            context = mapOf("step" to step, "position_ms" to positionMs),
         )
         try {
             when (step) {
                 1 -> {
                     if (canSeekCurrentMedia("freeze_recovery_repeat", logIgnored = false)) {
-                        player.seekTo(position)
+                        player.seekTo(positionMs)
                     }
                 }
                 2 -> {
-                    pendingRendererRestartPositionMs = position
+                    pendingRendererRestartPositionMs = positionMs
                     pendingRendererRestartPlayWhenReady = resumeWhenReady
                     player.stop()
                     player.prepare()
@@ -4514,16 +4535,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     prepareCurrentMedia(
                         reason = "video_frozen_media_reload",
                         playWhenReadyOverride = resumeWhenReady,
-                        startPositionOverrideMs = position,
+                        startPositionOverrideMs = positionMs,
                     )
                     videoFreezeRecoveryGeneration = playerGeneration
                 }
                 4 -> {
                     decoderManager?.selectVideoDecoder(DecoderMode.FFMPEG)
+                    // Recreate renderers with the selected software decoder and
+                    // restore the seek only after Media3 reports READY.
+                    pendingRendererRestartPositionMs = positionMs
+                    pendingRendererRestartPlayWhenReady = resumeWhenReady
+                    player.stop()
                     player.prepare()
-                    if (canSeekCurrentMedia("freeze_recovery_software_decoder", logIgnored = false)) {
-                        player.seekTo(position)
-                    }
                     player.playWhenReady = resumeWhenReady
                     videoFreezeRecoveryGeneration = playerGeneration
                     logPlayer("VIDEO_FREEZE_SOFTWARE_DECODER_SELECTED activeMode=${decoderManager?.activeVideoMode ?: "pending"}")
@@ -4531,6 +4554,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         } catch (error: Exception) {
             logPlayer("VIDEO_FROZEN_RECOVERY_STEP_FAILED step=$step", error)
+            videoFreezeWatchdog.markRecoveryAttemptFailed()
         }
         handler.postDelayed(videoFreezeWatchdogRunnable, VIDEO_FREEZE_CHECK_INTERVAL_MS)
     }
