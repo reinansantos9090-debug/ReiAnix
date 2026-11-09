@@ -65,6 +65,7 @@ import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerTopControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerCenterControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerBottomControls
+import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerOptionsPanel
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerUiState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -2800,171 +2801,95 @@ override fun onCreate(savedInstanceState: Bundle?) {
         markerRow.addView(skipEnding, weightParams(150))
         bottomBar.addView(markerRow)
 
-        val morePanel = LinearLayout(this).apply {
+        val morePanel = ComposeView(this).apply {
             tag = "reiflix_more_panel"
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                setColor(0xDA050608.toInt())
-                cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), 0x36FFFFFF.toInt())
-            }
-            elevation = dp(14).toFloat()
-            clipToPadding = false
-            visibility = View.GONE
-        }
-        fun addMoreRow(vararg buttons: View) {
-            val row = LinearLayout(this@NativePlayerActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
-            buttons.forEach { button ->
-                (button as? TextView)?.apply {
-                    val surface = android.graphics.drawable.GradientDrawable().apply {
-                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                        setColor(0x16000000.toInt())
-                        cornerRadius = dp(9).toFloat()
-                        setStroke(dp(1), 0x24FFFFFF.toInt())
-                    }
-                    background = android.graphics.drawable.RippleDrawable(
-                        ColorStateList.valueOf(0x2EFFFFFF.toInt()),
-                        surface,
-                        null,
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ReiAnixComposeTheme {
+                    ReiAnixNativePlayerOptionsPanel(
+                        state = composePlayerUiState.value,
+                        showPictureInPicture = canEnterPictureInPicture(),
+                        onPrevious = {
+                            if (!episodeChangePending && intent.getBooleanExtra("canPrevious", false)) {
+                                requestEpisode("player_previous_request")
+                            }
+                        },
+                        onNext = {
+                            if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
+                                requestEpisode("player_next_request")
+                            }
+                        },
+                        onAudio = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Áudio") },
+                        onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Legendas") },
+                        onPlaybackSpeed = {
+                            showSpeedSelection(TextView(this@NativePlayerActivity))
+                        },
+                        onRestart = {
+                            if (::player.isInitialized && !episodeChangePending) {
+                                player.seekTo(0L)
+                                saveProgress("player_progress", force = true)
+                                showFeedback("00:00")
+                            }
+                        },
+                        onMarkers = { showLocalMetadataEditor() },
+                        onAutoplayChanged = { enabled ->
+                            autoplayNext = enabled
+                            persistCanonicalPlayerSetting("player.autoplay_next", enabled.toString())
+                            showFeedback(if (enabled) "Autoplay ligado" else "Autoplay desligado")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onGesturesChanged = { enabled ->
+                            horizontalSeekEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.horizontal_seek", enabled.toString())
+                            showFeedback(if (enabled) "Gestos horizontais ligados" else "Gestos horizontais desligados")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onVolumeGestureChanged = { enabled ->
+                            volumeGesturesEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.volume", enabled.toString())
+                            showFeedback(if (enabled) "Gesto de volume ligado" else "Gesto de volume desligado")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onBrightnessGestureChanged = { enabled ->
+                            brightnessGesturesEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.brightness", enabled.toString())
+                            showFeedback(if (enabled) "Gesto de brilho ligado" else "Gesto de brilho desligado")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onDoubleTapChanged = { enabled ->
+                            doubleTapEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.double_tap", enabled.toString())
+                            showFeedback(if (enabled) "Double tap ligado" else "Double tap desligado")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onLongPressChanged = { enabled ->
+                            longPressEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.long_press", enabled.toString())
+                            showFeedback(if (enabled) "Pressão longa ligada" else "Pressão longa desligada")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onPictureInPicture = { requestPictureInPicture() },
+                        onInformation = { showTechnicalInfo() },
                     )
-                    setTextColor(0xFFF4F4F5.toInt())
-                    textSize = 11f
-                    setPadding(dp(6), dp(2), dp(6), dp(2))
                 }
-                row.addView(
-                    button,
-                    LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                        marginStart = dp(3)
-                        marginEnd = dp(3)
-                    },
-                )
-            }
-            morePanel.addView(row)
-        }
-        val previousEpisode = actionButton("Anterior", 92) {
-            if (intent.getBooleanExtra("canPrevious", false)) requestEpisode("player_previous_request")
-        }.apply {
-            tag = "reiflix_previous_episode"
-            isEnabled = intent.getBooleanExtra("canPrevious", false)
-        }
-        val nextEpisode = actionButton("Próximo", 92) {
-            if (intent.getBooleanExtra("canNext", false)) requestEpisode("player_next_request")
-        }.apply {
-            tag = "reiflix_next_episode"
-            isEnabled = intent.getBooleanExtra("canNext", false)
-        }
-        val audio = actionButton("Áudio", 92) { showTrackSelection(C.TRACK_TYPE_AUDIO, "Áudio") }.apply {
-            tag = "reiflix_audio_button"
-        }
-        val subtitle = actionButton("Legenda", 92) { showTrackSelection(C.TRACK_TYPE_TEXT, "Legendas") }.apply {
-            tag = "reiflix_subtitle_button"
-        }
-        val speed = actionButton("1.0x", 92) { button -> showSpeedSelection(button) }.apply {
-            tag = "reiflix_speed_button"
-            contentDescription = "Velocidade de reprodução"
-        }
-        val horizontalSeekButton = actionButton(gestureSettingLabel("Gestos", horizontalSeekEnabled), 92) { button ->
-            horizontalSeekEnabled = !horizontalSeekEnabled
-            persistCanonicalPlayerSetting("gestures.horizontal_seek", horizontalSeekEnabled.toString())
-            button.text = gestureSettingLabel("Gestos", horizontalSeekEnabled)
-            button.isSelected = horizontalSeekEnabled
-            showFeedback(if (horizontalSeekEnabled) "Gestos horizontais ligados" else "Gestos horizontais desligados")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_horizontal_seek"
-            contentDescription = "Ativar ou desativar gestos horizontais de busca temporal"
-            isSelected = horizontalSeekEnabled
-        }
-        val markers = actionButton("Marcadores", 92) {
-            showLocalMetadataEditor()
-        }.apply {
-            tag = "reiflix_markers_button"
-            contentDescription = "Marcadores e notas locais"
-        }
-        val restartButton = actionButton("Reiniciar", 92) {
-            if (::player.isInitialized) {
-                player.seekTo(0L)
-                saveProgress("player_progress", force = true)
-                showFeedback("00:00")
             }
         }
-        addMoreRow(previousEpisode, nextEpisode)
-        addMoreRow(audio, subtitle)
-        addMoreRow(speed, restartButton)
-        addMoreRow(markers)
-        addMoreRow(horizontalSeekButton, actionButton("Autoplay", 92) { button ->
-            autoplayNext = !autoplayNext
-            button.text = "Autoplay " + if (autoplayNext) "ON" else "OFF"
-            persistCanonicalPlayerSetting("player.autoplay_next", autoplayNext.toString())
-            showFeedback(if (autoplayNext) "Autoplay ligado" else "Autoplay desligado")
-        })
-
-        val volumeGestureButton = actionButton(gestureSettingLabel("Volume", volumeGesturesEnabled), 120) { button ->
-            volumeGesturesEnabled = !volumeGesturesEnabled
-            persistCanonicalPlayerSetting("gestures.volume", volumeGesturesEnabled.toString())
-            button.text = gestureSettingLabel("Volume", volumeGesturesEnabled)
-            showFeedback(if (volumeGesturesEnabled) "Gesto de volume ligado" else "Gesto de volume desligado")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_volume"
-            contentDescription = "Configurar gesto de volume"
-        }
-        val brightnessGestureButton = actionButton(gestureSettingLabel("Brilho", brightnessGesturesEnabled), 120) { button ->
-            brightnessGesturesEnabled = !brightnessGesturesEnabled
-            persistCanonicalPlayerSetting("gestures.brightness", brightnessGesturesEnabled.toString())
-            button.text = gestureSettingLabel("Brilho", brightnessGesturesEnabled)
-            showFeedback(if (brightnessGesturesEnabled) "Gesto de brilho ligado" else "Gesto de brilho desligado")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_brightness"
-            contentDescription = "Configurar gesto de brilho"
-        }
-        val doubleTapButton = actionButton(gestureSettingLabel("Double tap", doubleTapEnabled), 120) { button ->
-            doubleTapEnabled = !doubleTapEnabled
-            persistCanonicalPlayerSetting("gestures.double_tap", doubleTapEnabled.toString())
-            button.text = gestureSettingLabel("Double tap", doubleTapEnabled)
-            button.isSelected = doubleTapEnabled
-            showFeedback(if (doubleTapEnabled) "Double tap ligado" else "Double tap desligado")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_double_tap"
-            contentDescription = "Configurar double tap"
-            isSelected = doubleTapEnabled
-        }
-        val longPressButton = actionButton(gestureSettingLabel("Pressão", longPressEnabled), 120) { button ->
-            longPressEnabled = !longPressEnabled
-            persistCanonicalPlayerSetting("gestures.long_press", longPressEnabled.toString())
-            button.text = gestureSettingLabel("Pressão", longPressEnabled)
-            showFeedback(if (longPressEnabled) "Pressão longa ligada" else "Pressão longa desligada")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_long_press"
-            contentDescription = "Configurar pressão longa"
-        }
-        addMoreRow(volumeGestureButton, brightnessGestureButton)
-        addMoreRow(doubleTapButton, longPressButton)
-        if (canEnterPictureInPicture()) {
-            val pip = actionButton("PIP", 92) { requestPictureInPicture() }
-            pip.contentDescription = "Picture in Picture"
-            addMoreRow(pip)
-        }
-        addMoreRow(actionButton("Informações", 92) { showTechnicalInfo() }.apply {
-            tag = "reiflix_technical_info"
-            contentDescription = "Informações técnicas"
-        })
+        val availablePanelWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(240))
+        val panelWidth = minOf(dp(380), availablePanelWidth)
         controls.addView(morePanel, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
+            panelWidth,
+            FrameLayout.LayoutParams.MATCH_PARENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.END
             topMargin = dp(56)
             rightMargin = dp(8)
+            bottomMargin = dp(8)
         })
 
         // Compose owns the primary playback controls. Keep the existing View tree
@@ -3151,6 +3076,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             episodeTransitionInProgress = episodeChangePending,
             aspectLabel = aspectModeLabel,
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
+            autoplayNext = autoplayNext,
+            horizontalSeekEnabled = horizontalSeekEnabled,
+            volumeGesturesEnabled = volumeGesturesEnabled,
+            brightnessGesturesEnabled = brightnessGesturesEnabled,
+            doubleTapEnabled = doubleTapEnabled,
+            longPressEnabled = longPressEnabled,
             safeTopPx = gestureSafeTop,
             safeBottomPx = gestureSafeBottom,
         )
