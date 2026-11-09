@@ -2325,6 +2325,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (isPlaying) {
                 PerformanceDiagnostics.markPlayer(this@NativePlayerActivity, "playing",
                     requestId, commandCreatedAtMs, reused = false)
+                rearmVideoFreezeWatchdogAfterPlaybackStarts()
             }
             logPlayer(
                 "IS_PLAYING_CHANGED=" + isPlaying +
@@ -4320,7 +4321,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // does not silently skip the post-seek first-frame watchdog.
         if (!::player.isInitialized ||
             errorVisible ||
-            !player.playWhenReady ||
             !hasCurrentMediaItem() ||
             !hasSelectedVideoTrack()
         ) return
@@ -4338,6 +4338,27 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 "frameSerial=$videoFrameSerial generation=$playerGeneration",
         )
         handler.postDelayed(videoFreezeWatchdogRunnable, VIDEO_FREEZE_CHECK_INTERVAL_MS)
+    }
+
+    private fun rearmVideoFreezeWatchdogAfterPlaybackStarts() {
+        if (!videoFreezeWatchdog.isActive() || videoFreezeRecoveryInProgress || !::player.isInitialized) return
+        val now = SystemClock.uptimeMillis()
+        val position = player.currentPosition.coerceAtLeast(0L)
+        // A seek made while paused, or a seek that spent time in BUFFERING,
+        // gets a fresh audio/playback-progress window when playback truly resumes.
+        videoFreezeWatchdog.begin(position, now, videoFrameSerial)
+        lastSeekStartedAtMs = now
+        lastSeekTargetMs = position
+        videoFreezeRecoveryGeneration = playerGeneration
+        videoFreezeRecoveryPositionMs = position
+        videoFreezeRecoveryPlayWhenReady = player.playWhenReady
+        videoFreezeDetectionLogged = false
+        handler.removeCallbacks(videoFreezeWatchdogRunnable)
+        handler.postDelayed(videoFreezeWatchdogRunnable, VIDEO_FREEZE_CHECK_INTERVAL_MS)
+        logPlayer(
+            "VIDEO_FREEZE_WATCHDOG_REARMED source=playback_resumed_after_seek " +
+                "positionMs=$position frameSerial=$videoFrameSerial generation=$playerGeneration",
+        )
     }
 
     private fun noteVideoFrameRendered(source: String) {
@@ -4404,6 +4425,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val videoTrackReady = hasSelectedVideoTrack()
         val playbackActuallyRunning = player.isPlaying && videoTrackReady
         if (!playbackActuallyRunning) {
+            if (!videoFreezeRecoveryInProgress && !player.playWhenReady) {
+                // Keep the pending seek identity while the user deliberately
+                // pauses. onIsPlayingChanged(true) will re-anchor the watchdog.
+                logPlayer(
+                    "VIDEO_FREEZE_WATCHDOG_PAUSED_WAITING_FOR_RESUME " +
+                        "positionMs=${player.currentPosition.coerceAtLeast(0L)}",
+                )
+                return
+            }
             if (!videoFreezeRecoveryInProgress &&
                 player.playWhenReady &&
                 player.playbackState in setOf(Player.STATE_BUFFERING, Player.STATE_READY)
