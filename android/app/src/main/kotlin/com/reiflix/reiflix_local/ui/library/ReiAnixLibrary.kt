@@ -400,7 +400,7 @@ private fun ReiAnixLibraryPresentationScreen(
                         "A fonte local configurada não está disponível agora."
                     },
                     actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Selecionar pasta"
+                        "Gerenciar armazenamento"
                     } else {
                         "Atualizar"
                     },
@@ -422,8 +422,8 @@ private fun ReiAnixLibraryPresentationScreen(
                         "Adicione uma pasta de mídia para começar."
                     },
                     actionLabel = when {
-                        state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> "Selecionar pasta"
-                        onOpenStorage != null -> "Adicionar pasta"
+                        state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> "Gerenciar armazenamento"
+                        onOpenStorage != null -> "Gerenciar armazenamento"
                         else -> "Atualizar biblioteca"
                     },
                     onAction = when {
