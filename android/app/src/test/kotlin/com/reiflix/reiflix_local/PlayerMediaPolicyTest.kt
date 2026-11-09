@@ -68,6 +68,15 @@ class PlayerMediaPolicyTest {
     }
 
     @Test
+    fun media3DurationTakesPrecedenceOverLocalMetadataFallback() {
+        assertEquals(12_000L, PlayerMediaPolicy.resolveDurationMs(12_000L, 10_000L))
+        assertEquals(10_000L, PlayerMediaPolicy.resolveDurationMs(0L, 10_000L))
+        assertEquals(10_000L, PlayerMediaPolicy.resolveDurationMs(-1L, 10_000L))
+        assertEquals(0L, PlayerMediaPolicy.resolveDurationMs(0L, null))
+        assertEquals(0L, PlayerMediaPolicy.resolveDurationMs(-1L, 0L))
+    }
+
+    @Test
     fun seekTargetIsClampedOnlyWhenDurationIsKnown() {
         assertEquals(0L, PlayerMediaPolicy.clampSeekPosition(-500L, 60_000L))
         assertEquals(60_000L, PlayerMediaPolicy.clampSeekPosition(70_000L, 60_000L))
