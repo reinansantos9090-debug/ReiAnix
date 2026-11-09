@@ -19,9 +19,9 @@ internal data class SettingsDestination(
 internal data class SettingsSearchResult(val destination: SettingsDestination, val entry: SettingsEntry)
 
 internal val SettingsRootCategories = listOf(
-    ReiAnixSettingsCategoryUiModel("Geral", "Comportamento e privacidade", Icons.Filled.Settings),
+    ReiAnixSettingsCategoryUiModel("Geral", "Preferências gerais", Icons.Filled.Settings),
     ReiAnixSettingsCategoryUiModel("Aparência", "Tema, Home e Biblioteca", Icons.Filled.Palette),
-    ReiAnixSettingsCategoryUiModel("Biblioteca", "Organização, pastas e varredura", Icons.Filled.LibraryBooks),
+    ReiAnixSettingsCategoryUiModel("Biblioteca", "Organização e pastas da biblioteca", Icons.Filled.LibraryBooks),
     ReiAnixSettingsCategoryUiModel("Player", "Reprodução, controles, áudio e tela", Icons.Filled.PlayArrow),
     ReiAnixSettingsCategoryUiModel("Metadados e Capas", "Identificação, capas e miniaturas", Icons.Filled.Image),
     ReiAnixSettingsCategoryUiModel("Dados e Backup", "Configurações, cache e restauração", Icons.Filled.Backup),
@@ -29,11 +29,26 @@ internal val SettingsRootCategories = listOf(
 )
 
 internal val SettingsDestinations = listOf(
-    SettingsDestination("general_behavior", "Comportamento", "Geral", listOf(
+    SettingsDestination("Geral", "Geral", "", listOf(
         SettingsEntry("setting:app.confirm_destructive", "Confirmar ações destrutivas"),
     )),
-    SettingsDestination("general_privacy", "Privacidade e conectividade", "Geral", listOf(
-        SettingsEntry("privacy:connectivity", "Conectividade", "Conectividade Google Login é opcional; a biblioteca local e o player não dependem de conectividade. Offline-first"),
+    SettingsDestination("Player", "Player", "", listOf(
+        SettingsEntry("setting:player.reset", "Restaurar configurações do player", "Restaurar configurações do player Restaura somente as preferências do Player aos padrões existentes. Restaurar"),
+    )),
+    SettingsDestination("Metadados e Capas", "Metadados e Capas", "", listOf(
+        SettingsEntry("setting:metadata.anilist_enabled", "Usar AniList"),
+        SettingsEntry("setting:metadata.auto_match", "Identificar automaticamente pelo AniList"),
+        SettingsEntry("setting:artwork.enabled", "Baixar capas pela internet"),
+        SettingsEntry("setting:artwork.cache_limit_mb", "Limite do cache de capas"),
+    )),
+    SettingsDestination("Dados e Backup", "Dados e Backup", "", listOf(
+        SettingsEntry("data-cache:artwork-cache", "Limpar cache de capas", "miniaturas imagens cache artwork"),
+    )),
+    SettingsDestination("Sobre e Diagnóstico", "Sobre e Diagnóstico", "", listOf(
+        SettingsEntry("about:app", "Versão e informações do aplicativo", "ReiAnix versão"),
+    )),
+    SettingsDestination("Biblioteca", "Biblioteca", "", listOf(
+        SettingsEntry("folders", "Selecionar pasta", "pastas armazenamento fontes remover pasta"),
     )),
     SettingsDestination("appearance_theme", "Tema", "Aparência", listOf(
         SettingsEntry("setting:appearance.theme", "Tema"),
@@ -49,15 +64,6 @@ internal val SettingsDestinations = listOf(
     SettingsDestination("library_organization", "Organização", "Biblioteca", listOf(
         SettingsEntry("setting:library.sort_default", "Ordenação padrão"),
         SettingsEntry("setting:library.page_size", "Itens por página"),
-    )),
-    SettingsDestination("library_storage", "Pastas e armazenamento", "Biblioteca", listOf(
-        SettingsEntry("privacy:local", "Biblioteca local", "Biblioteca local Biblioteca, histórico e caminhos locais permanecem no dispositivo. Local"),
-        SettingsEntry("storage:status", "Estado real do armazenamento", "Estado real do armazenamento Seleção de pasta em andamento"),
-        SettingsEntry("storage:actions", "Gerenciar fontes e atualização", "Gerenciar fontes e atualização adicionar pasta selecionar pasta remover pasta"),
-    )),
-    SettingsDestination("library_scan", "Varredura", "Biblioteca", listOf(
-        SettingsEntry("scan:existing", "Estado e última varredura", "scanner indexação"),
-        SettingsEntry("scan:refresh", "Acesso ao armazenamento e fontes", "atualização pastas"),
     )),
     SettingsDestination("player_playback", "Reprodução", "Player", listOf(
         SettingsEntry("setting:player.autoplay_next", "Reprodução automática do próximo episódio"),
@@ -95,28 +101,11 @@ internal val SettingsDestinations = listOf(
         SettingsEntry("setting:player.pip", "Picture-in-Picture", "Picture-in-Picture PIP janela flutuante"),
         SettingsEntry("setting:player.auto_hide_seconds", "Ocultar controles automaticamente"),
     )),
-    SettingsDestination("player_advanced", "Avançado", "Player", listOf(
-        SettingsEntry("setting:player.reset", "Restaurar configurações do player", "Restaurar configurações do player Restaura somente as preferências do Player aos padrões existentes. Restaurar"),
-    )),
-    SettingsDestination("metadata_identification", "Identificação dos animes", "Metadados e Capas", listOf(
-        SettingsEntry("setting:metadata.anilist_enabled", "Usar AniList"),
-        SettingsEntry("setting:metadata.auto_match", "Identificar automaticamente pelo AniList"),
-    )),
-    SettingsDestination("metadata_artwork", "Capas e miniaturas", "Metadados e Capas", listOf(
-        SettingsEntry("setting:artwork.enabled", "Baixar capas pela internet"),
-        SettingsEntry("setting:artwork.cache_limit_mb", "Limite do cache de capas"),
-    )),
     SettingsDestination("data_settings", "Configurações locais", "Dados e Backup", listOf(
         SettingsEntry("data-cache:actions", "Exportar configurações", "Exportar configurações Importar configurações Restaurar configurações"),
     )),
-    SettingsDestination("data_cache", "Cache", "Dados e Backup", listOf(
-        SettingsEntry("data-cache:artwork-cache", "Limpar cache de capas", "miniaturas imagens cache artwork"),
-    )),
     SettingsDestination("data_backup", "Backup e restauração", "Dados e Backup", listOf(
         SettingsEntry("backup:actions", "Fazer backup", "Fazer backup Restaurar backup Verificar integridade Reconciliar arquivos"),
-    )),
-    SettingsDestination("about_app", "Sobre o ReiAnix", "Sobre e Diagnóstico", listOf(
-        SettingsEntry("about:app", "Versão e informações do aplicativo", "ReiAnix versão"),
     )),
     SettingsDestination("about_diagnostics", "Diagnóstico técnico", "Sobre e Diagnóstico", listOf(
         SettingsEntry("data-cache:info", "Informações do armazenamento de preferências", "SettingsStore dados locais"),

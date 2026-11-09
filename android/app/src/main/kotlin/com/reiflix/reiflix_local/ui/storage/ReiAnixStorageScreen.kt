@@ -64,6 +64,8 @@ fun ReiAnixStorageRoute(
     onRequestMediaAccess: () -> Unit,
     onOpenBroadSettings: () -> Unit,
     onCheckAccess: () -> Unit,
+    title: String = "Armazenamento",
+    leadingContent: @Composable () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val nativeFolders by viewModel.nativeFoldersState.collectAsStateWithLifecycle()
@@ -72,6 +74,8 @@ fun ReiAnixStorageRoute(
     }
     ReiAnixStorageScreen(
         state = state,
+        title = title,
+        leadingContent = leadingContent,
         nativeFolders = nativeFolders,
         onRefreshNativeFolders = viewModel::refreshNativeFolders,
         onBack = onBack,
@@ -99,6 +103,8 @@ fun ReiAnixStorageScreen(
     onRefreshLibrary: () -> Unit,
     nativeFolders: ReiAnixNativeFoldersUiState = ReiAnixNativeFoldersUiState(),
     onRefreshNativeFolders: () -> Unit = {},
+    title: String = "Armazenamento",
+    leadingContent: @Composable () -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     val storage = state.storage
@@ -137,12 +143,14 @@ fun ReiAnixStorageScreen(
         ) {
             item(key = "header") {
                 SettingsHeader(
-                    title = "Armazenamento",
+                    title = title,
                     subtitle = "Pastas da biblioteca e acessos locais",
                     onBack = onBack,
                     backContentDescription = "Voltar do armazenamento",
                 )
             }
+
+            item(key = "leading-content") { leadingContent() }
 
             if (nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING) {
                 item(key = "checking") {

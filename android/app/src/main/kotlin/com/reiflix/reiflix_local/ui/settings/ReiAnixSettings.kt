@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -92,7 +93,6 @@ data class ReiAnixSettingsCategoryUiModel(
 ) {
     companion object {
         fun defaultCategories(): List<ReiAnixSettingsCategoryUiModel> = listOf(
-            ReiAnixSettingsCategoryUiModel("Conta", "Conta Google e sessão", Icons.Filled.AccountCircle),
             ReiAnixSettingsCategoryUiModel("Geral", "Preferências gerais do aplicativo", Icons.Filled.Settings),
             ReiAnixSettingsCategoryUiModel("Aparência", "Tema, cores e densidade visual", Icons.Filled.Palette),
             ReiAnixSettingsCategoryUiModel("Biblioteca", "Organização, ordenação e progresso", Icons.Filled.LibraryBooks),
@@ -227,6 +227,7 @@ fun ReiAnixSettingsRoute(
     onBack: () -> Unit,
     onOpenCategory: (String) -> Unit,
     onOpenStorage: () -> Unit = {},
+    libraryFolders: (@Composable (() -> Unit, @Composable () -> Unit) -> Unit)? = null,
     scanInProgress: Boolean = false,
     scanState: String = "IDLE",
     lastScanStatus: String? = null,
@@ -238,30 +239,27 @@ fun ReiAnixSettingsRoute(
     val rootStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     fun goBack() {
-        selectedDestination = settingsDestination(selectedDestination)?.parent
+        selectedDestination = settingsDestination(selectedDestination)?.parent?.takeIf { it.isNotBlank() }
         selectedItemIndex = 0
     }
     BackHandler(enabled = selectedDestination != null) { goBack() }
     val destination = selectedDestination
-    val parentCategory = SettingsRootCategories.firstOrNull { it.label == destination }
     when {
-        parentCategory != null -> SettingsSubmenuScreen(
-            category = parentCategory,
-            onBack = ::goBack,
-            onOpen = {
-                selectedDestination = it
-                selectedItemIndex = 0
-            },
-        )
+        destination == "Biblioteca" && libraryFolders != null -> libraryFolders(::goBack) {
+            SettingsFlatCategoryRow(
+                category = ReiAnixSettingsCategoryUiModel("Organização", "Ordenação padrão · Itens por página", Icons.Filled.LibraryBooks),
+                onClick = { selectedDestination = "library_organization" },
+            )
+        }
         destination != null -> androidx.compose.runtime.key(destination, selectedItemIndex) {
             ReiAnixComposeSettingsCategoryScreen(
                 category = destination,
                 initialItemIndex = selectedItemIndex,
+                onOpenSubmenu = { selectedDestination = it; selectedItemIndex = 0 },
                 state = state,
                 onBack = ::goBack,
                 onUpdateSetting = viewModel::setSetting,
-                onAccountAction = viewModel::requestAccountAction,
-                onAction = viewModel::requestAction,
+                    onAction = viewModel::requestAction,
                 onOpenStorage = onOpenStorage,
                 scanInProgress = scanInProgress,
                 scanState = scanState,
@@ -279,10 +277,10 @@ fun ReiAnixSettingsRoute(
                     val route = label.substringBefore('#')
                     val itemKey = label.substringAfter('#', "")
                     val submenu = settingsDestination(route)
-                    if (route == "Conta" || submenu != null || SettingsRootCategories.any { it.label == route }) {
+                    if (submenu != null || SettingsRootCategories.any { it.label == route }) {
                         selectedDestination = route
                         selectedItemIndex = submenu?.entries?.indexOfFirst { it.key == itemKey }
-                            ?.takeIf { it >= 0 }?.plus(2) ?: 0
+                            ?.takeIf { it >= 0 }?.let { it + 2 + SettingsDestinations.count { child -> child.parent == route } } ?: 0
                     } else {
                         onOpenCategory(label)
                     }
@@ -358,16 +356,6 @@ fun ReiAnixSettingsScreen(
                                 applyResponsiveHorizontalPadding = false,
                             )
                         }
-                        item(key = "settings:account-profile") {
-                            SettingsProfileRow(
-                                state = state,
-                                onClick = {
-                                    if (state.categories.any { it.label == "Conta" }) {
-                                        onOpenCategory("Conta")
-                                    }
-                                },
-                            )
-                        }
 
                         item(key = "settings:search") {
                             ReiAnixTextField(
@@ -389,8 +377,8 @@ fun ReiAnixSettingsScreen(
                                 SettingsFlatCategoryRow(
                                     category = ReiAnixSettingsCategoryUiModel(
                                         result.entry.title,
-                                        "${result.destination.parent} → ${result.destination.title}",
-                                        SettingsRootCategories.first { it.label == result.destination.parent }.icon,
+                                        result.destination.parent.takeIf { it.isNotBlank() }?.let { "$it → ${result.destination.title}" } ?: result.destination.title,
+                                        SettingsRootCategories.first { it.label == result.destination.parent.ifBlank { result.destination.title } }.icon,
                                     ),
                                     onClick = { onOpenCategory("${result.destination.id}#${result.entry.key}") },
                                 )
@@ -427,112 +415,6 @@ fun ReiAnixSettingsScreen(
 }
 
 @Composable
-private fun SettingsSubmenuScreen(
-    category: ReiAnixSettingsCategoryUiModel,
-    onBack: () -> Unit,
-    onOpen: (String) -> Unit,
-) {
-    ReiAnixResponsiveRoot {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            LazyColumn(
-                modifier = Modifier
-                    .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(
-                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                    vertical = ReiAnixTokens.Spacing.sm,
-                ),
-            ) {
-                item(key = "header") {
-                    SettingsHeader(title = category.label, subtitle = category.description, onBack = onBack)
-                }
-                items(SettingsDestinations.filter { it.parent == category.label }, key = { it.id }) { destination ->
-                    SettingsFlatCategoryRow(
-                        category = ReiAnixSettingsCategoryUiModel(
-                            label = destination.title,
-                            description = destination.entries.joinToString(" · ") { it.title },
-                            icon = category.icon,
-                        ),
-                        onClick = { onOpen(destination.id) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsProfileRow(
-    state: ReiAnixSettingsUiState,
-    onClick: () -> Unit,
-) {
-    val identity = state.account.name.trim().ifBlank { state.account.email.trim() }
-    val title = identity.ifBlank { "ReiAnix" }
-    val subtitle = when {
-        state.account.connected -> state.account.email.trim().takeIf { it.isNotBlank() } ?: "Conta conectada"
-        state.account.integrationAvailable -> "Conta Google não conectada"
-        else -> "Conta local"
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
-            .clickable(
-                enabled = state.categories.any { it.label == "Conta" },
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .semantics {
-                contentDescription = "Conta. ${title}. ${subtitle}"
-            }
-            .padding(
-                horizontal = ReiAnixTokens.Spacing.xs,
-                vertical = ReiAnixTokens.Spacing.xs,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-    ) {
-        Box(
-            modifier = Modifier.size(ReiAnixTokens.Dimensions.settingsIconContainerSize),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.AccountCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-        ) {
-            Text(
-                text = title,
-                style = ReiAnixTokens.TypographyTokens.settingsCategory,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = subtitle,
-                style = ReiAnixTokens.TypographyTokens.settingsDescription,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Icon(
-            imageVector = Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
-        )
-    }
-}
-
-@Composable
 private fun SettingsFlatCategoryRow(
     category: ReiAnixSettingsCategoryUiModel,
     onClick: () -> Unit,
@@ -542,6 +424,8 @@ private fun SettingsFlatCategoryRow(
         title = category.label,
         description = category.description,
         onClick = onClick,
+        modifier = Modifier.padding(vertical = ReiAnixTokens.Spacing.xs).clip(ReiAnixTokens.Shapes.card)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow),
         showDivider = false,
     ) {
         Icon(
@@ -557,10 +441,10 @@ private fun SettingsFlatCategoryRow(
 private fun ReiAnixComposeSettingsCategoryScreen(
     category: String,
     initialItemIndex: Int = 0,
+    onOpenSubmenu: (String) -> Unit,
     state: ReiAnixSettingsUiState,
     onBack: () -> Unit,
     onUpdateSetting: (String, String) -> Unit,
-    onAccountAction: (String) -> Unit,
     onAction: (String) -> Unit,
     onOpenStorage: () -> Unit,
     scanInProgress: Boolean = false,
@@ -684,7 +568,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             item(key = "header:" + category) {
                 SettingsHeader(
                     title = settingsDestination(category)?.title ?: category,
-                    subtitle = settingsDestination(category)?.parent ?: settingsCategoryDescription(category),
+                    subtitle = settingsDestination(category)?.parent?.takeIf { it.isNotBlank() } ?: settingsCategoryDescription(category),
                     onBack = onBack,
                 )
             }
@@ -731,16 +615,14 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     )
                 }
             } else {
-                when (category) {
-                "Conta" -> {
-                    item(key = "account:profile") {
-                        ReiAnixSettingsAccountContent(
-                            state = state.account,
-                            onAction = onAccountAction,
-                        )
-                    }
+                items(SettingsDestinations.filter { it.parent == category }, key = { "submenu:" + it.id }) { submenu ->
+                    SettingsFlatCategoryRow(
+                        category = ReiAnixSettingsCategoryUiModel(submenu.title, submenu.entries.joinToString(" · ") { it.title }, SettingsRootCategories.first { it.label == category }.icon),
+                        onClick = { onOpenSubmenu(submenu.id) },
+                    )
                 }
-                "general_behavior" -> {
+                when (category) {
+                "Geral" -> {
                     item(key = "setting:app.confirm_destructive") {
                         BooleanSettingRow(
                             keyName = "app.confirm_destructive",
@@ -751,8 +633,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                 }
-                "general_privacy" -> {
-                    item(key = "privacy:connectivity") {
+
+                "Player" -> {
+                    item(key = "setting:player.reset") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -763,20 +646,143 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
                                 Text(
-                                    text = "Conectividade",
+                                    text = "Restaurar configurações do player",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = "Google Login é opcional; a biblioteca local e o player não dependem de conectividade.",
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    text = "Restaura somente as preferências do Player aos padrões existentes.",
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
-                                ReiAnixBadge(text = "Funciona offline", tone = ReiAnixBadgeTone.Neutral)
+                                ReiAnixSecondaryButton(
+                                    text = "Restaurar",
+                                    onClick = { requestDestructiveAction("reset_player") },
+                                    enabled = !actionBusy("reset_player"),
+                                    modifier = Modifier.align(Alignment.End),
+                                )
                             }
                         }
                     }
                 }
+
+                "Metadados e Capas" -> {
+                    item(key = "setting:metadata.anilist_enabled") {
+                        BooleanSettingRow(
+                            keyName = "metadata.anilist_enabled",
+                            title = "Usar AniList",
+                            description = "Permite ou bloqueia chamadas remotas do cliente AniList.",
+                            checked = state.settings["metadata.anilist_enabled"] == "true",
+                            onCheckedChange = { onUpdateSetting("metadata.anilist_enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:metadata.auto_match") {
+                        BooleanSettingRow(
+                            keyName = "metadata.auto_match",
+                            title = "Identificar automaticamente pelo AniList",
+                            description = "Controla a associação automática de novos itens.",
+                            checked = state.settings["metadata.auto_match"] == "true",
+                            onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:artwork.enabled") {
+                        BooleanSettingRow(
+                            keyName = "artwork.enabled",
+                            title = "Baixar capas pela internet",
+                            description = "Permite downloads remotos de capas pelo Artwork Engine existente.",
+                            checked = state.settings["artwork.enabled"] == "true",
+                            onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:artwork.cache_limit_mb") {
+                        ChoiceSettingRow(
+                            keyName = "artwork.cache_limit_mb",
+                            title = "Limite do cache de capas",
+                            description = "Limite persistido aplicado ao único Artwork Engine.",
+                            selectedValue = state.settings["artwork.cache_limit_mb"],
+                            choices = listOf(
+                                SettingChoice("64", "64 MB"),
+                                SettingChoice("128", "128 MB"),
+                                SettingChoice("256", "256 MB"),
+                                SettingChoice("512", "512 MB"),
+                            ),
+                            onSelected = { onUpdateSetting("artwork.cache_limit_mb", it) },
+                        )
+                    }
+                }
+
+                "Dados e Backup" -> {
+                    item(key = "data-cache:artwork-cache") {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Cache de capas e miniaturas",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Remove as capas e miniaturas temporárias do aplicativo.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Limpar cache de capas",
+                                    onClick = { requestDestructiveAction("clear_anilist_cache") },
+                                    enabled = !actionBusy("clear_anilist_cache"),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                "Sobre e Diagnóstico" -> {
+                    item(key = "about:app") {
+                        ReiAnixSettingsSurface(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "ReiAnix",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Aplicativo local para organização e reprodução de mídia.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(
+                                    text = BuildConfig.VERSION_NAME,
+                                    tone = ReiAnixBadgeTone.Neutral,
+                                )
+                                Text(
+                                    text = "Player: Media3 / NativePlayer existente.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "Armazenamento: MediaStore / SAF / scanners nativos existentes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 "appearance_theme" -> {
                     item(key = "setting:appearance.theme") {
                         ChoiceSettingRow(
@@ -885,199 +891,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             ),
                             onSelected = { onUpdateSetting("library.page_size", it) },
                         )
-                    }
-                }
-                "library_storage" -> {
-                    val storage = state.storage
-                    item(key = "privacy:local") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Biblioteca local",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Biblioteca, histórico e caminhos locais permanecem no dispositivo.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixBadge(text = "Local", tone = ReiAnixBadgeTone.Neutral)
-                            }
-                        }
-                    }
-                    item(key = "storage:status") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Estado real do armazenamento",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Vídeos: ${storageMediaAccessLabel(storage.mediaReadState)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Armazenamento amplo: ${storageBroadAccessLabel(storage.broadStorageState)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "SAF autorizadas: ${storage.safRootCount} • volumes removíveis: ${storage.removableVolumeCount}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                storage.api?.let {
-                                    Text(
-                                        text = "API Android: $it • ciclo: ${storage.lifecycleState}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                if (storage.safSelectionPending) {
-                                    ReiAnixBadge(
-                                        text = "Seleção de pasta em andamento",
-                                        tone = ReiAnixBadgeTone.Info,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    item(key = "storage:actions") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                ReiAnixSecondaryButton(
-                                    text = "Gerenciar fontes e atualização",
-                                    onClick = onOpenStorage,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
-                    }
-                }
-                "library_scan" -> {
-                    val normalizedScanState = scanState.trim().uppercase().ifBlank { "IDLE" }
-                    val scanStateLabel = when (normalizedScanState) {
-                        "IDLE" -> "Ociosa"
-                        "QUEUED" -> "Na fila"
-                        "CHECKING" -> "Verificando fontes"
-                        "RUNNING", "SCANNING" -> "Em andamento"
-                        "CANCELLING" -> "Cancelando"
-                        "WAITING_FOR_MEDIASTORE" -> "Aguardando MediaStore"
-                        "COMPLETED", "SUCCESS" -> "Concluída"
-                        "PARTIAL" -> "Concluída parcialmente"
-                        "CANCELLED" -> "Cancelada"
-                        "FAILED", "ERROR" -> "Falhou"
-                        "BLOCKED" -> "Bloqueada"
-                        "UNKNOWN" -> "Desconhecida"
-                        else -> normalizedScanState
-                    }
-                    val normalizedLastScan = lastScanStatus?.trim()?.uppercase().orEmpty()
-                    val lastScanLabel = when (normalizedLastScan) {
-                        "" -> "Nenhuma"
-                        "COMPLETED", "SUCCESS" -> "Concluída"
-                        "PARTIAL" -> "Concluída parcialmente"
-                        "CANCELLED" -> "Cancelada"
-                        "FAILED", "ERROR" -> "Falhou"
-                        "BLOCKED" -> "Bloqueada"
-                        else -> normalizedLastScan
-                    }
-
-                    item(key = "scan:existing") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Varredura em andamento",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = if (scanInProgress) {
-                                        "Uma varredura está sendo executada."
-                                    } else {
-                                        "Nenhuma varredura está em andamento."
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = "Estado: $scanStateLabel",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    ReiAnixBadge(
-                                        text = if (scanInProgress) "Ativa" else "Inativa",
-                                        tone = ReiAnixBadgeTone.Neutral,
-                                    )
-                                }
-                                Text(
-                                    text = "Última varredura: $lastScanLabel",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = "A varredura consulta as fontes configuradas da biblioteca.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    item(key = "scan:refresh") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Atualização",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Gerencie as pastas usadas para localizar os episódios da biblioteca.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "Ver armazenamento e fontes",
-                                    onClick = onOpenStorage,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
                     }
                 }
                 "player_playback" -> {
@@ -1337,85 +1150,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                 }
-                "player_advanced" -> {
-                    item(key = "setting:player.reset") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Restaurar configurações do player",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Restaura somente as preferências do Player aos padrões existentes.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "Restaurar",
-                                    onClick = { requestDestructiveAction("reset_player") },
-                                    enabled = !actionBusy("reset_player"),
-                                    modifier = Modifier.align(Alignment.End),
-                                )
-                            }
-                        }
-                    }
-                }
-                "metadata_identification" -> {
-                    item(key = "setting:metadata.anilist_enabled") {
-                        BooleanSettingRow(
-                            keyName = "metadata.anilist_enabled",
-                            title = "Usar AniList",
-                            description = "Permite ou bloqueia chamadas remotas do cliente AniList.",
-                            checked = state.settings["metadata.anilist_enabled"] == "true",
-                            onCheckedChange = { onUpdateSetting("metadata.anilist_enabled", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:metadata.auto_match") {
-                        BooleanSettingRow(
-                            keyName = "metadata.auto_match",
-                            title = "Identificar automaticamente pelo AniList",
-                            description = "Controla a associação automática de novos itens.",
-                            checked = state.settings["metadata.auto_match"] == "true",
-                            onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
-                        )
-                    }
-                }
-                "metadata_artwork" -> {
-                    item(key = "setting:artwork.enabled") {
-                        BooleanSettingRow(
-                            keyName = "artwork.enabled",
-                            title = "Baixar capas pela internet",
-                            description = "Permite downloads remotos de capas pelo Artwork Engine existente.",
-                            checked = state.settings["artwork.enabled"] == "true",
-                            onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:artwork.cache_limit_mb") {
-                        ChoiceSettingRow(
-                            keyName = "artwork.cache_limit_mb",
-                            title = "Limite do cache de capas",
-                            description = "Limite persistido aplicado ao único Artwork Engine.",
-                            selectedValue = state.settings["artwork.cache_limit_mb"],
-                            choices = listOf(
-                                SettingChoice("64", "64 MB"),
-                                SettingChoice("128", "128 MB"),
-                                SettingChoice("256", "256 MB"),
-                                SettingChoice("512", "512 MB"),
-                            ),
-                            onSelected = { onUpdateSetting("artwork.cache_limit_mb", it) },
-                        )
-                    }
-                }
                 "data_settings" -> {
                     item(key = "data-cache:actions") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
@@ -1442,35 +1176,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     text = "Restaurar configurações",
                                     onClick = { requestDestructiveAction("reset_all_settings") },
                                     enabled = !actionBusy("reset_all_settings"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
-                    }
-                }
-                "data_cache" -> {
-                    item(key = "data-cache:artwork-cache") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Cache de capas e miniaturas",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Remove as capas e miniaturas temporárias do aplicativo.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "Limpar cache de capas",
-                                    onClick = { requestDestructiveAction("clear_anilist_cache") },
-                                    enabled = !actionBusy("clear_anilist_cache"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -1509,45 +1214,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     onClick = { onAction("backup_reconcile") },
                                     enabled = !actionBusy("backup_reconcile"),
                                     modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
-                    }
-                }
-                "about_app" -> {
-                    item(key = "about:app") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "ReiAnix",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Aplicativo local para organização e reprodução de mídia.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixBadge(
-                                    text = BuildConfig.VERSION_NAME,
-                                    tone = ReiAnixBadgeTone.Neutral,
-                                )
-                                Text(
-                                    text = "Player: Media3 / NativePlayer existente.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = "Armazenamento: MediaStore / SAF / scanners nativos existentes.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -2254,193 +1920,6 @@ private fun ChoiceSettingRow(
             }
         }
 
-    }
-}
-
-@Composable
-private fun ReiAnixSettingsAccountContent(
-    state: com.reiflix.reiflix_local.ui.model.ReiAnixSettingsAccountUiState,
-    onAction: (String) -> Unit,
-) {
-    val busy = state.state in setOf("connecting", "awaiting_google", "disconnecting")
-    val name = state.name.trim()
-    val email = state.email.trim()
-    val title = name.ifBlank { email.ifBlank { "Conta Google" } }
-    val status = when (state.state) {
-        "connected" -> "Conta conectada"
-        "connecting" -> "Conectando com o Google…"
-        "awaiting_google" -> "Aguardando a escolha da conta Google…"
-        "disconnecting" -> "Encerrando a sessão…"
-        "configuration_required" -> "Configuração necessária"
-        "error" -> "Não foi possível concluir a operação Google."
-        else -> "Não conectado"
-    }
-    val statusTone = when {
-        state.state == "connected" -> ReiAnixBadgeTone.Success
-        state.state == "error" -> ReiAnixBadgeTone.Error
-        state.state in setOf("connecting", "awaiting_google", "disconnecting") -> ReiAnixBadgeTone.Info
-        state.state == "configuration_required" -> ReiAnixBadgeTone.Warning
-        else -> ReiAnixBadgeTone.Neutral
-    }
-    val retryAction = if (state.connected) "logout" else "login"
-
-    ReiAnixSettingsSurface(
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(ReiAnixTokens.Spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-            ) {
-                Box(
-                    modifier = Modifier.size(ReiAnixTokens.Dimensions.settingsIconContainerSize),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AccountCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Conta Google",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (state.connected && email.isNotBlank()) {
-                        Text(
-                            text = email,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-
-            ReiAnixBadge(
-                text = status,
-                tone = statusTone,
-            )
-
-            if (state.state == "error") {
-                Text(
-                    text = if (state.connected) {
-                        "A conta continua conectada. Você pode tentar encerrar a sessão novamente."
-                    } else {
-                        "A conta não foi conectada. Você pode tentar entrar novamente."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            } else if (state.state == "configuration_required") {
-                Text(
-                    text = "Este APK precisa de um Web Client ID Google público configurado para iniciar a autenticação.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Text(
-                text = "A biblioteca local, o scanner e o player continuam disponíveis sem login e sem conectividade.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (busy) {
-                    com.reiflix.reiflix_local.ui.ReiAnixLoadingIndicator(
-                        modifier = Modifier.semantics {
-                            contentDescription = "Operação da conta Google em andamento"
-                        },
-                    )
-                } else if (state.state == "error") {
-                    ReiAnixPrimaryButton(
-                        text = "Tentar novamente",
-                        onClick = { onAction(retryAction) },
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = Icons.Filled.Refresh,
-                    )
-                } else if (state.connected) {
-                    ReiAnixPrimaryButton(
-                        text = "Trocar conta",
-                        onClick = { onAction("switch") },
-                        modifier = Modifier.weight(1f),
-                        leadingIcon = Icons.Filled.AccountCircle,
-                    )
-                    ReiAnixSecondaryButton(
-                        text = "Sair",
-                        onClick = { onAction("logout") },
-                        modifier = Modifier.weight(1f),
-                    )
-                } else if (state.integrationAvailable) {
-                    ReiAnixPrimaryButton(
-                        text = "Entrar com Google",
-                        onClick = { onAction("login") },
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = Icons.Filled.AccountCircle,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReiAnixSettingsAccountCard(
-    state: com.reiflix.reiflix_local.ui.model.ReiAnixSettingsAccountUiState,
-    onClick: () -> Unit,
-) {
-    val identity = state.name.trim().ifBlank { state.email.trim() }
-    val description = when {
-        !state.integrationAvailable -> "Não disponível"
-        state.connected && identity.isNotBlank() -> identity +
-            state.email.takeIf { state.name.isNotBlank() && it.isNotBlank() }?.let { " • $it" }.orEmpty()
-        state.state == "connecting" -> "Conectando…"
-        state.state == "configuration_required" -> "Configuração necessária"
-        state.state == "error" -> "Erro ao conectar"
-        else -> "Não conectado"
-    }
-
-    ReiAnixSettingsRow(
-        icon = Icons.Filled.AccountCircle,
-        title = "Conta",
-        description = description,
-        onClick = onClick,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.ArrowBack,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .size(ReiAnixTokens.Dimensions.iconMedium)
-                .rotate(180f),
-        )
     }
 }
 

@@ -333,6 +333,18 @@ class ReiAnixComposeLibraryHost(
                                         "Ignoring unsupported Compose Settings category=" + label,
                                     )
                                 },
+                                libraryFolders = { back, organization ->
+                                    ReiAnixStorageRoute(
+                                        viewModel = libraryViewModel,
+                                        title = "Biblioteca",
+                                        leadingContent = organization,
+                                        onBack = back,
+                                        onRemoveSaf = libraryViewModel::removeSafTree,
+                                        onRequestMediaAccess = { activity.requestNativeStorageAction("request_media_access") },
+                                        onOpenBroadSettings = { activity.requestNativeStorageAction("open_broad_storage_settings") },
+                                        onCheckAccess = { activity.requestNativeStorageAction("check_storage_access") },
+                                    )
+                                },
                                 onOpenStorage = {
                                     navController.navigate(
                                         ReiAnixRoutes.STORAGE,
