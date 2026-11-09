@@ -62,12 +62,9 @@ class PlayerMediaPolicyTest {
     @Test
     fun seekUsesMedia3CommandAvailabilityAsTheAuthoritativeContract() {
         assertTrue("Unknown duration must not block a seek Media3 explicitly allows",
-            PlayerMediaPolicy.isSeekAllowed(true, true))
-        assertTrue("An inconsistent seekable flag must not override an available seek command",
-            PlayerMediaPolicy.isSeekAllowed(false, true))
+            PlayerMediaPolicy.isSeekAllowed(true))
         assertFalse("Never call seekTo when Media3 does not expose the seek command",
-            PlayerMediaPolicy.isSeekAllowed(true, false))
-        assertFalse(PlayerMediaPolicy.isSeekAllowed(false, false))
+            PlayerMediaPolicy.isSeekAllowed(false))
     }
 
     @Test
