@@ -146,6 +146,7 @@ fun ReiAnixNativePlayerOptionsPanel(
                     icon = Icons.Filled.Replay,
                     label = "Reiniciar",
                     enabled = !state.episodeTransitionInProgress,
+                    showChevron = false,
                     onClick = onRestart,
                 )
                 PlayerOptionActionRow(
@@ -163,6 +164,7 @@ fun ReiAnixNativePlayerOptionsPanel(
                     PlayerOptionActionRow(
                         icon = Icons.Filled.PictureInPictureAlt,
                         label = "PIP",
+                        showChevron = false,
                         onClick = onPictureInPicture,
                     )
                 }
@@ -217,16 +219,19 @@ fun ReiAnixNativePlayerOptionsPanel(
                 PlayerOptionActionRow(
                     icon = Icons.Filled.History,
                     label = "Histórico",
+                    showChevron = false,
                     onClick = onHistory,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.BookmarkBorder,
                     label = "Marcadores",
+                    showChevron = false,
                     onClick = onMarkers,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Info,
                     label = "Informações",
+                    showChevron = false,
                     onClick = onInformation,
                 )
             }
@@ -338,6 +343,7 @@ private fun PlayerOptionActionRow(
     value: String? = null,
     trailing: String? = null,
     enabled: Boolean = true,
+    showChevron: Boolean = true,
     onClick: () -> Unit,
 ) {
     val contentAlpha = if (enabled) 1f else 0.42f
@@ -377,12 +383,14 @@ private fun PlayerOptionActionRow(
             )
             Spacer(modifier = Modifier.width(8.dp))
         }
-        Icon(
-            imageVector = Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = Color(0xFFC8C8C8).copy(alpha = contentAlpha),
-            modifier = Modifier.size(20.dp),
-        )
+        if (showChevron) {
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = Color(0xFFC8C8C8).copy(alpha = contentAlpha),
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
