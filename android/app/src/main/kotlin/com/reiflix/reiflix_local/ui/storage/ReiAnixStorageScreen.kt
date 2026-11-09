@@ -383,6 +383,13 @@ fun ReiAnixStorageScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
+                            if (!storageCapabilitiesUnverified) {
+                                ReiAnixSecondaryButton(
+                                    text = "Tentar novamente",
+                                    onClick = onCheckAccess,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                 }
