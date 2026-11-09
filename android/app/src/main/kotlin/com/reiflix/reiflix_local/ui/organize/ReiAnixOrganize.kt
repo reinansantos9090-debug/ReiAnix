@@ -93,10 +93,7 @@ fun ReiAnixOrganizeRoute(
     navController: NavHostController,
     viewModel: ReiAnixLibraryViewModel,
     onBack: () -> Unit,
-    onOpenStorageAccess: () -> Unit,
-    onRequestMediaAccess: () -> Unit,
-    onAddFolder: () -> Unit,
-    onRemoveFolder: (String) -> Unit,
+    onOpenStorage: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     var showSafFileManager by rememberSaveable { mutableStateOf(false) }
@@ -123,10 +120,7 @@ fun ReiAnixOrganizeRoute(
         genres = genres,
         isRefreshing = isRefreshing,
         onBack = onBack,
-        onOpenStorageAccess = onOpenStorageAccess,
-        onRequestMediaAccess = onRequestMediaAccess,
-        onAddFolder = onAddFolder,
-        onRemoveFolder = onRemoveFolder,
+        onOpenStorage = onOpenStorage,
         onOpenSettings = onOpenSettings,
         onOpenOverview = viewModel::openOrganizeOverview,
         onQueryChange = viewModel::setOrganizeQuery,
@@ -159,10 +153,7 @@ fun ReiAnixOrganizeScreen(
     genres: List<ReiAnixGenreUiModel>,
     isRefreshing: Boolean,
     onBack: () -> Unit,
-    onOpenStorageAccess: () -> Unit,
-    onRequestMediaAccess: () -> Unit,
-    onAddFolder: () -> Unit,
-    onRemoveFolder: (String) -> Unit,
+    onOpenStorage: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenOverview: () -> Unit,
     onQueryChange: (String) -> Unit,
@@ -179,8 +170,6 @@ fun ReiAnixOrganizeScreen(
     isClassifyingLocalGenres: Boolean = false,
     isOrganizerGenreOperationError: Boolean = false,
 ) {
-    var pendingSourceRemoval by rememberSaveable { mutableStateOf<String?>(null) }
-
     ReiAnixResponsiveRoot {
     Column(
         modifier = Modifier
@@ -192,7 +181,6 @@ fun ReiAnixOrganizeScreen(
             sourceAvailable = state.sourceAvailable,
             isRefreshing = isRefreshing,
             onBack = onBack,
-            onOpenStorageAccess = onOpenStorageAccess,
             onRefresh = onRefresh,
             onOpenSettings = onOpenSettings,
         )
@@ -200,8 +188,7 @@ fun ReiAnixOrganizeScreen(
         OrganizeSourcesAndScanPanel(
             state = state,
             isRefreshing = isRefreshing,
-            onAddFolder = onAddFolder,
-            onRemoveFolder = { pendingSourceRemoval = it },
+            onOpenStorage = onOpenStorage,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
@@ -278,7 +265,7 @@ fun ReiAnixOrganizeScreen(
                     title = "Biblioteca local indisponível",
                     message = "O acesso configurado ao armazenamento não está disponível agora. Isso não significa que a biblioteca esteja vazia.",
                     actionLabel = "Gerenciar armazenamento",
-                    onAction = onOpenStorageAccess,
+                    onAction = onOpenStorage,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             }
@@ -315,9 +302,7 @@ fun ReiAnixOrganizeScreen(
 
             ReiAnixLibraryLoadStatus.EMPTY -> {
                 EmptyOrganizeContent(
-                    onRequestMediaAccess = onRequestMediaAccess,
-                    onOpenStorageAccess = onOpenStorageAccess,
-                    onAddFolder = onAddFolder,
+                    onOpenStorage = onOpenStorage,
                     onRefresh = onRefresh,
                     onOpenSettings = onOpenSettings,
                     modifier = Modifier
@@ -360,42 +345,6 @@ fun ReiAnixOrganizeScreen(
         }
     }
 
-        pendingSourceRemoval?.let { reference ->
-            val sourceName = state.storage.configuredSources
-                .firstOrNull { it.reference == reference }
-                ?.name
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?: "esta pasta"
-            AlertDialog(
-                onDismissRequest = { pendingSourceRemoval = null },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                title = { Text("Remover fonte da biblioteca?") },
-                text = {
-                    Text(
-                        "“$sourceName” será removida somente da configuração da Biblioteca. " +
-                            "Os arquivos e vídeos físicos não serão apagados. " +
-                            "Se houver outra fonte contendo o mesmo conteúdo, ele continuará disponível."
-                    )
-                },
-                confirmButton = {
-                    ReiAnixCompactButton(
-                        text = "Remover",
-                        onClick = {
-                            pendingSourceRemoval = null
-                            onRemoveFolder(reference)
-                        },
-                    )
-                },
-                dismissButton = {
-                    ReiAnixCompactButton(
-                        text = "Cancelar",
-                        onClick = { pendingSourceRemoval = null },
-                    )
-                },
-            )
-        }
-
     }
 }
 
@@ -403,11 +352,9 @@ fun ReiAnixOrganizeScreen(
 private fun OrganizeSourcesAndScanPanel(
     state: ReiAnixLibraryUiState,
     isRefreshing: Boolean,
-    onAddFolder: () -> Unit,
-    onRemoveFolder: (String) -> Unit,
+    onOpenStorage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val sources = state.storage.configuredSources
     val availableEpisodes = state.animes.sumOf { it.availableContentCount }
     val scanStatus = organizeScanStatus(state)
 
@@ -427,42 +374,20 @@ private fun OrganizeSourcesAndScanPanel(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Fontes",
+                        text = "Fontes e armazenamento",
                         style = ReiAnixTokens.TypographyTokens.itemTitle,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = when (sources.size) {
-                            0 -> "Nenhuma pasta configurada"
-                            1 -> "1 pasta configurada"
-                            else -> sources.size.toString() + " pastas configuradas"
-                        },
+                        text = "Pastas e permissões são gerenciadas em uma única tela.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Surface(
-                    onClick = onAddFolder,
-                    enabled = !state.storage.safSelectionPending,
-                    shape = ReiAnixTokens.Shapes.button,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.semantics {
-                        contentDescription = "Adicionar pasta"
-                        role = Role.Button
-                    },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(
-                            horizontal = ReiAnixTokens.Spacing.md,
-                            vertical = ReiAnixTokens.Spacing.sm,
-                        ),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                    ) {
-                        Icon(Icons.Filled.Info, contentDescription = null)
-                        Text("Adicionar pasta", style = MaterialTheme.typography.labelLarge)
-                    }
-                }
+                ReiAnixSecondaryButton(
+                    text = "Gerenciar",
+                    onClick = onOpenStorage,
+                )
             }
 
             Surface(
@@ -512,48 +437,6 @@ private fun OrganizeSourcesAndScanPanel(
                     }
                     ReiAnixBadge(text = scanStatus.badge, tone = scanStatus.tone)
                 }
-            }
-
-            HorizontalDivider(
-                thickness = ReiAnixTokens.Dimensions.dividerHeight,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-            )
-
-            if (sources.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = ReiAnixTokens.Dimensions.organizeFilterMaxHeight),
-                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                    contentPadding = PaddingValues(vertical = ReiAnixTokens.Spacing.xs),
-                ) {
-                    sources.forEach { source ->
-                        item(
-                            key = source.stableKey,
-                            contentType = "organize-source-row",
-                        ) {
-                            val sourceState = state.storage.sourceState(source)
-                            OrganizeSourceRow(
-                                sourceName = sourceDisplayName(source.name, source.reference),
-                                location = source.reference,
-                                stateLabel = organizeSourceStateLabel(sourceState),
-                                stateTone = organizeSourceStateTone(sourceState),
-                                available = sourceState in setOf("available", "granted", "full"),
-                                removeEnabled = !state.scanInProgress &&
-                                    !state.storage.safSelectionPending &&
-                                    !state.lastCommandAction.equals("remove_saf", ignoreCase = true),
-                                onReauthorize = onAddFolder,
-                                onRemove = { onRemoveFolder(source.reference) },
-                            )
-                        }
-                    }
-                }
-            } else {
-                Text(
-                    text = "Adicione uma pasta para alimentar a Biblioteca. A tela permanece disponível enquanto a varredura é executada.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }
@@ -696,7 +579,6 @@ private fun OrganizeTopBar(
     sourceAvailable: Boolean,
     isRefreshing: Boolean,
     onBack: () -> Unit,
-    onOpenStorageAccess: () -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -706,11 +588,6 @@ private fun OrganizeTopBar(
         navigationContentDescription = "Voltar",
         onNavigationClick = onBack,
         actions = {
-            ReiAnixIconActionButton(
-                icon = Icons.Filled.Info,
-                contentDescription = "Gerenciar acesso ao armazenamento",
-                onClick = onOpenStorageAccess,
-            )
             IconButton(
                 onClick = onRefresh,
                 enabled = !isRefreshing,
@@ -1205,9 +1082,7 @@ private fun OrganizeCollectionContent(
 
 @Composable
 private fun EmptyOrganizeContent(
-    onRequestMediaAccess: () -> Unit,
-    onOpenStorageAccess: () -> Unit,
-    onAddFolder: () -> Unit,
+    onOpenStorage: () -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1220,28 +1095,11 @@ private fun EmptyOrganizeContent(
     ) {
         ReiAnixEmptyLibraryState(
             title = "Seu catálogo está vazio",
-            message = "Nenhum conteúdo local está disponível neste momento. Isso é diferente de uma falha de acesso.",
-            actionLabel = "Selecionar pasta",
-            onAction = onAddFolder,
+            message = "Nenhum conteúdo local está disponível neste momento. Confira as pastas e permissões na tela de armazenamento.",
+            actionLabel = "Gerenciar armazenamento",
+            onAction = onOpenStorage,
             modifier = Modifier.weight(1f),
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-        ) {
-            EmptyAction(
-                label = "Permitir vídeos",
-                onClick = onRequestMediaAccess,
-                icon = Icons.Filled.Info,
-                modifier = Modifier.weight(1f),
-            )
-            EmptyAction(
-                label = "Acesso amplo",
-                onClick = onOpenStorageAccess,
-                icon = Icons.Filled.Info,
-                modifier = Modifier.weight(1f),
-            )
-        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
