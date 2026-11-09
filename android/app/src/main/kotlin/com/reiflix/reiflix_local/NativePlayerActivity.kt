@@ -1378,6 +1378,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun updateSeekControlsEnabled() {
+        val canSeekAbsolute = canSeekCurrentMedia(
+            "controls_refresh_absolute",
+            logIgnored = false,
+        )
         val canSeekBackward = canSeekCurrentMedia(
             "controls_refresh_backward",
             relativeDeltaMs = -10_000L,
@@ -1393,7 +1397,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val currentItemAvailable = hasCurrentMediaItem()
         val actualDurationKnown = currentItemAvailable &&
             ReiAnixPlayerSeekPolicy.validDuration(player.duration) != null
-        if (::seekBar.isInitialized) seekBar.isEnabled = canSeek && actualDurationKnown
+        if (::seekBar.isInitialized) seekBar.isEnabled = canSeekAbsolute && actualDurationKnown
         if (::player.isInitialized) {
             val display = currentDisplayDuration()
             val actualSeekable = currentItemAvailable && player.isCurrentMediaItemSeekable
