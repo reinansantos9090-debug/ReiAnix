@@ -2805,7 +2805,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(0xE614141A.toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                setColor(0xDA050608.toInt())
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), 0x36FFFFFF.toInt())
+            }
+            elevation = dp(14).toFloat()
+            clipToPadding = false
             visibility = View.GONE
         }
         fun addMoreRow(vararg buttons: View) {
@@ -2813,7 +2820,31 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
             }
-            buttons.forEach { row.addView(it, weightParams(96)) }
+            buttons.forEach { button ->
+                (button as? TextView)?.apply {
+                    val surface = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                        setColor(0x16000000.toInt())
+                        cornerRadius = dp(9).toFloat()
+                        setStroke(dp(1), 0x24FFFFFF.toInt())
+                    }
+                    background = android.graphics.drawable.RippleDrawable(
+                        ColorStateList.valueOf(0x2EFFFFFF.toInt()),
+                        surface,
+                        null,
+                    )
+                    setTextColor(0xFFF4F4F5.toInt())
+                    textSize = 11f
+                    setPadding(dp(6), dp(2), dp(6), dp(2))
+                }
+                row.addView(
+                    button,
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                        marginStart = dp(3)
+                        marginEnd = dp(3)
+                    },
+                )
+            }
             morePanel.addView(row)
         }
         val previousEpisode = actionButton("Anterior", 92) {
