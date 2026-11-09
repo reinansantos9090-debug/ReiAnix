@@ -34,7 +34,6 @@ import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeRoute
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
 import com.reiflix.reiflix_local.ui.recovery.ReiAnixRecoveryRoute
-import com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFolderOnboarding
 import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
@@ -263,11 +262,19 @@ class ReiAnixComposeLibraryHost(
                             lastHomeBackAtElapsedRealtimeMs = 0L
                         }
                     }
-                    val onboardingAllowed =
-                        currentRoute?.destination?.route in setOf(
-                            ReiAnixRoutes.HOME,
-                            ReiAnixRoutes.LIBRARY,
-                        )
+                    LaunchedEffect(
+                        currentRoute?.destination?.route,
+                        nativeOnboarding.phase,
+                        nativeOnboarding.dismissed,
+                    ) {
+                        val route = currentRoute?.destination?.route
+                        if (
+                            route in setOf(ReiAnixRoutes.HOME, ReiAnixRoutes.LIBRARY) &&
+                            nativeOnboarding.isPromptVisible
+                        ) {
+                            navController.navigateToStorage()
+                        }
+                    }
 
                     Box(modifier = Modifier.fillMaxSize()) {
                     CompositionLocalProvider(LocalReiAnixPosterSize provides appearancePosterSize) {
@@ -343,6 +350,9 @@ class ReiAnixComposeLibraryHost(
                             ReiAnixStorageRoute(
                                 viewModel = libraryViewModel,
                                 onBack = {
+                                    if (nativeOnboarding.isPromptVisible) {
+                                        activity.dismissNativeStorageOnboarding()
+                                    }
                                     if (!navController.popBackStack()) {
                                         handleBack()
                                     }
@@ -362,17 +372,6 @@ class ReiAnixComposeLibraryHost(
                             navController.navigateToCollector()
                         },
                     )
-                    if (onboardingAllowed && nativeOnboarding.isPromptVisible) {
-                        ReiAnixLibraryFolderOnboarding(
-                            state = nativeOnboarding.phase,
-                            message = nativeOnboarding.message,
-                            error = nativeOnboarding.error,
-                            onCancel = activity::dismissNativeStorageOnboarding,
-                            onSelectFolder = {
-                                activity.requestNativeStorageAction("select_tree")
-                            },
-                        )
-                    }
                     }
                 }
                 }
