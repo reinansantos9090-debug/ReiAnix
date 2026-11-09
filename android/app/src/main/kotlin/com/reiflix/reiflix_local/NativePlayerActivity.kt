@@ -2315,7 +2315,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         " seekable=${player.isCurrentMediaItemSeekable} " +
                         "seekCommand=${player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)}",
                 )
-                startVideoFreezeWatchdog(newPosition.positionMs, "media3_discontinuity")
+                if (videoFreezeRecoveryInProgress) {
+                    logPlayer(
+                        "PLAYER_SEEK_RECOVERY_DISCONTINUITY positionMs=${newPosition.positionMs} " +
+                            "recoveryStep=${videoFreezeRecoveryStepLabel()}",
+                    )
+                } else {
+                    startVideoFreezeWatchdog(newPosition.positionMs, "media3_discontinuity")
+                }
                 saveProgress("player_progress", force = true)
             }
             updateProgressUi()
