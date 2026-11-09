@@ -1341,9 +1341,11 @@ class ReiAnixSqliteLibraryRepository(
 
             val currentDuration = current.duration?.takeIf { it.isFinite() && it > 0.0 }
             val incomingDuration = update.duration?.takeIf { it.isFinite() && it > 0.0 }
-            val duration = incomingDuration ?: currentDuration
-            val boundedProgress = if (duration != null) update.progress.coerceAtMost(duration)
-                else update.progress
+            val progressBound = incomingDuration ?: currentDuration?.takeIf {
+                update.clampToStoredDurationWhenUnknown
+            }
+            val boundedProgress = progressBound?.let(update.progress::coerceAtMost)
+                ?: update.progress
             val values = ContentValues().apply {
                 put("progress", boundedProgress)
                 if (incomingDuration != null) put("duration", incomingDuration)
