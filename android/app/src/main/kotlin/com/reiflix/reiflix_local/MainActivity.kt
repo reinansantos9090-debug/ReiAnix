@@ -1158,6 +1158,7 @@ class MainActivity : ComponentActivity() {
                         status = SafScanner.STATUS_FAILED, treeUri = uri)
                     return@launch
                 }
+                libraryViewModel.refreshNativeFolders()
                 synchronizeSafTreeChangeObservers()
                 getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
                     .edit()

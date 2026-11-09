@@ -104,14 +104,9 @@ fun ReiAnixStorageScreen(
     val storage = state.storage
     var pendingRemoval by remember { mutableStateOf<ReiAnixStorageSourceUiModel?>(null) }
 
-    val configuredSafSources = storage.configuredSources
-        .filter { it.kind.equals("saf", ignoreCase = true) }
-        .sortedBy { it.stableKey }
-
-    val otherSources = storage.configuredSources
-        .filterNot { it.kind.equals("saf", ignoreCase = true) }
-        .sortedBy { it.stableKey }
-
+    val configuredSafSources = nativeFolders.folders
+        .filter { android.provider.DocumentsContract.isTreeUri(android.net.Uri.parse(it.path)) }
+        .map { ReiAnixStorageSourceUiModel(reference = it.path, name = it.name.orEmpty(), kind = "saf") }
     val selectionBusy =
         storage.safSelectionPending ||
             (
@@ -121,11 +116,6 @@ fun ReiAnixStorageScreen(
     val removeBusy =
         state.lastCommandAction.equals("remove_saf", ignoreCase = true) &&
             state.lastCommandStatus?.uppercase() in setOf("QUEUED", "RUNNING")
-
-    val mediaState = storage.mediaReadState.lowercase()
-    val broadState = storage.broadStorageState.lowercase()
-    val mediaNeedsAction = mediaState != "full"
-    val broadNeedsAction = broadState != "available"
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -154,11 +144,11 @@ fun ReiAnixStorageScreen(
                 )
             }
 
-            if (storage.lifecycleState == "unknown" || storage.api == null) {
+            if (nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING) {
                 item(key = "checking") {
                     ReiAnixLoadingState(
                         title = "Verificando armazenamento",
-                        message = "Consultando as permissões e fontes locais…",
+                        message = "Consultando as pastas da biblioteca…",
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -181,146 +171,29 @@ fun ReiAnixStorageScreen(
                 )
             }
 
-            if (configuredSafSources.isEmpty()) {
-                item(key = "library-empty") {
-                    ReiAnixSettingsSurface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-            
+            item(key = "select-folder") {
+                ReiAnixPrimaryButton(
+                    text = "Selecionar pasta",
+                    onClick = onSelectSaf,
+                    enabled = !selectionBusy && !removeBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            items(configuredSafSources, key = { it.reference }) { source ->
+                val name = friendlySourceName(source.name).ifBlank { source.reference }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.IconButton(
+                        onClick = { pendingRemoval = source },
+                        enabled = !removeBusy && !selectionBusy,
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Info,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Nenhuma pasta configurada",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Escolha uma pasta local para alimentar a biblioteca.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                if (storage.safRoots.isNotEmpty()) {
-                                    Text(
-                                        text = persistedGrantMessage(storage.safRoots.size),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
-                        ReiAnixPrimaryButton(
-                            text = "Selecionar pasta",
-                            onClick = onSelectSaf,
-                            enabled = !selectionBusy,
-                            leadingIcon = Icons.Filled.Info,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        Icon(Icons.Filled.Delete, contentDescription = "Remover $name")
                     }
                 }
-            } else {
-                items(
-                    items = configuredSafSources,
-                    key = { "saf-source:" + it.stableKey },
-                ) { source ->
-                    SafSourceCard(
-                        source = source,
-                        state = storage.sourceState(source),
-                        selectionBusy = selectionBusy,
-                        removeBusy = removeBusy,
-                        onReauthorize = onSelectSaf,
-                        onRemove = { pendingRemoval = source },
-                    )
-                }
-
-                item(key = "library-add") {
-                    ReiAnixSecondaryButton(
-                        text = "Adicionar ou alterar pasta",
-                        onClick = onSelectSaf,
-                        enabled = !selectionBusy,
-                        leadingIcon = Icons.Filled.Info,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
             }
-
-            item(key = "device-access-section") {
-                StorageSectionTitle(
-                    title = "Acessos do dispositivo",
-                    description = "Esses acessos são capacidades do Android e não substituem a pasta configurada para a biblioteca.",
-                )
-            }
-
-            item(key = "media-access") {
-                DeviceAccessCard(
-                    title = "Vídeos do dispositivo",
-                    description = "Permissão de leitura usada para descobrir vídeos que o Android já indexou.",
-                    stateLabel = mediaAccessLabel(mediaState),
-                    stateTone = accessBadgeTone(mediaState, "full"),
-                    icon = Icons.Filled.Info,
-                    actionLabel = if (mediaNeedsAction) "Conceder acesso" else null,
-                    onAction = if (mediaNeedsAction) onRequestMediaAccess else null,
-                )
-            }
-
-            item(key = "broad-access") {
-                DeviceAccessCard(
-                    title = "Acesso amplo ao dispositivo",
-                    description = "Permissão especial do Android, usada somente quando já foi concedida nas configurações.",
-                    stateLabel = if (broadState == "available") "Acesso concedido" else "Acesso necessário",
-                    stateTone = if (broadState == "available") ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
-                    icon = Icons.Filled.Settings,
-                    actionLabel = if (broadNeedsAction) "Abrir configurações" else null,
-                    onAction = if (broadNeedsAction) onOpenBroadSettings else null,
-                )
-            }
-
-            item(key = "native-sqlite-folders") {
-                NativeSqliteFoldersSection(
-                    state = nativeFolders,
-                    onRetry = onRefreshNativeFolders,
-                )
-            }
-
-            if (otherSources.isNotEmpty()) {
-                item(key = "other-sources-section") {
-                    StorageSectionTitle(
-                        title = "Outras fontes configuradas",
-                        description = "Fontes adicionais já existentes na configuração atual; esta tela não cria uma segunda fonte de dados.",
-                    )
-                }
-
-                items(
-                    items = otherSources,
-                    key = { "configured-source:" + it.stableKey },
-                ) { source ->
-                    ConfiguredSourceCard(
-                        source = source,
-                        state = storage.sourceState(source),
-                        onAction = when (source.kind.lowercase()) {
-                            "mediastore", "media" -> onRequestMediaAccess
-                            "broad-storage", "broad" -> onOpenBroadSettings
-                            else -> null
-                        },
-                    )
-                }
-            }
-
-            item(key = "scan") {
-                StorageScanCard(
-                    state = state,
-                    onCheckAccess = onCheckAccess,
-                    onRefreshLibrary = onRefreshLibrary,
-                )
+            if (nativeFolders.status == ReiAnixNativeFoldersStatus.ERROR ||
+                nativeFolders.status == ReiAnixNativeFoldersStatus.NOT_FOUND) {
+                item { ReiAnixSecondaryButton(text = "Tentar novamente", onClick = onRefreshNativeFolders) }
             }
         }
     }
