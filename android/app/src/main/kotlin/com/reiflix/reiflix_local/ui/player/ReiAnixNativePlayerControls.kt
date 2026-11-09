@@ -508,7 +508,6 @@ fun ReiAnixNativePlayerBottomControls(
                         }
                         userDragging = false
                     },
-                    enabled = duration > 0L && !state.episodeTransitionInProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics {
