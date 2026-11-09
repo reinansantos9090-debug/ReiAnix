@@ -76,6 +76,8 @@ data class ReiAnixNativePlayerUiState(
     val playbackSpeed: Float = 1f,
     val audioTrackLabel: String = "Automático",
     val subtitleTrackLabel: String = "Off",
+    val audioTrackSelectionEnabled: Boolean = false,
+    val subtitleTrackSelectionEnabled: Boolean = false,
     val autoplayNext: Boolean = true,
     val horizontalSeekEnabled: Boolean = true,
     val volumeGesturesEnabled: Boolean = true,
