@@ -5410,7 +5410,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val durationMs = player.duration
         val seekable = player.isCurrentMediaItemSeekable
         val seekCommandAvailable = player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
-        if (!PlayerMediaPolicy.isSeekAllowed(seekable, seekCommandAvailable)) {
+        if (!PlayerMediaPolicy.isSeekAllowed(seekCommandAvailable)) {
             logPlayer(
                 "MEDIA3_SEEK_REJECTED reason=" + reason +
                     " durationMs=" + durationMs +
