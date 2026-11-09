@@ -215,6 +215,7 @@ class NativePlayerActivity : ComponentActivity() {
     private var videoFreezeRecoveryPositionMs = 0L
     private var videoFreezeRecoveryPlayWhenReady = false
     private var videoFreezeRecoveryInProgress = false
+    private var videoFreezeRecoveryStepStartedAtMs = 0L
     private var pendingRendererRestartPositionMs: Long? = null
     private var pendingRendererRestartPlayWhenReady = true
     private val videoFreezeWatchdogRunnable = object : Runnable {
@@ -3714,6 +3715,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
             }
             player.isPlaying -> {
+                handler.removeCallbacks(videoFreezeWatchdogRunnable)
+                if (videoFreezeWatchdog.isActive()) {
+                    logPlayer("VIDEO_FREEZE_WATCHDOG_CANCELLED reason=user_paused")
+                    videoFreezeWatchdog.resolve()
+                }
+                videoFreezeRecoveryInProgress = false
+                videoFreezeRecoveryStepStartedAtMs = 0L
                 player.pause()
                 logPlayer("PLAYER_PAUSE requestId=" + requestId.ifEmpty { "-" })
                 saveProgress("player_paused", force = true)
@@ -4300,6 +4308,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
         videoFreezeRecoveryInProgress = false
+        videoFreezeRecoveryStepStartedAtMs = 0L
     }
 
     private fun videoFreezeRecoveryStepLabel(): String = when (videoFreezeWatchdog.currentStep()) {
@@ -4326,12 +4335,42 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
         val now = SystemClock.uptimeMillis()
+        val videoTrackReady = hasSelectedVideoTrack()
+        val playbackActuallyRunning = player.isPlaying && videoTrackReady
+        if (!playbackActuallyRunning) {
+            if (videoFreezeRecoveryInProgress && player.playWhenReady) {
+                val recoveryWaitMs = (now - videoFreezeRecoveryStepStartedAtMs).coerceAtLeast(0L)
+                if (recoveryWaitMs >= VIDEO_FREEZE_RECOVERY_STEP_TIMEOUT_MS) {
+                    logPlayer(
+                        "VIDEO_FROZEN_RECOVERY_STEP_TIMEOUT step=${videoFreezeRecoveryStepLabel()} " +
+                            "waitMs=$recoveryWaitMs playbackState=${player.playbackStateLabel()} " +
+                            "videoTrackReady=$videoTrackReady playWhenReady=${player.playWhenReady}",
+                    )
+                    videoFreezeWatchdog.markRecoveryAttemptFailed()
+                    handler.post(videoFreezeWatchdogRunnable)
+                } else {
+                    handler.postDelayed(
+                        videoFreezeWatchdogRunnable,
+                        minOf(1_000L, VIDEO_FREEZE_RECOVERY_STEP_TIMEOUT_MS - recoveryWaitMs),
+                    )
+                }
+                return
+            }
+            logPlayer(
+                "VIDEO_FREEZE_WATCHDOG_CANCELLED reason=playback_not_running " +
+                    "playWhenReady=${player.playWhenReady} videoTrackReady=$videoTrackReady",
+            )
+            videoFreezeWatchdog.resolve()
+            videoFreezeRecoveryInProgress = false
+            videoFreezeRecoveryStepStartedAtMs = 0L
+            return
+        }
         val detected = videoFreezeWatchdog.shouldDetect(
             nowMs = now,
             currentPositionMs = player.currentPosition,
             frameSerial = videoFrameSerial,
             isPlaying = player.isPlaying,
-            isVideoTrackSelected = hasSelectedVideoTrack(),
+            isVideoTrackSelected = videoTrackReady,
         )
         if (!detected) {
             if (videoFreezeWatchdog.isActive()) {
@@ -4384,6 +4423,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         videoFreezeRecoveryInProgress = true
+        videoFreezeRecoveryStepStartedAtMs = now
         videoFreezeRecoveryPositionMs = position
         val resumeWhenReady = player.playWhenReady
         logPlayer(
@@ -7656,6 +7696,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private const val PLAYER_PREFERENCES = "reianix_player_preferences"
         private const val PLAYER_DECODER_PREFERENCE = "decoder_preference"
         private const val VIDEO_FREEZE_CHECK_INTERVAL_MS = 3_500L
+        private const val VIDEO_FREEZE_RECOVERY_STEP_TIMEOUT_MS = 15_000L
         private const val PROGRESS_INTERVAL_MS = 250L
         private const val PROGRESS_PERSIST_INTERVAL_MS = 15_000L
         private const val CONTROL_TIMEOUT_MS = 3_500L
