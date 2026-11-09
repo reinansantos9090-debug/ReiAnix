@@ -6257,7 +6257,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun isCurrentMediaSeekAvailable(): Boolean =
         ::player.isInitialized &&
-            player.isCurrentMediaItemSeekable &&
             player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
 
     private fun displayNameForUri(context: Context, localUri: Uri): String? =
