@@ -78,16 +78,8 @@ internal object PlayerMediaPolicy {
      * is being resolved; rejecting every seek in that state is unnecessarily
      * restrictive. The UI still treats unknown duration as unavailable.
      */
-    fun isSeekAllowed(
-        isCurrentMediaItemSeekable: Boolean,
-        seekCommandAvailable: Boolean,
-    ): Boolean {
-        // Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM is the API contract for
-        // seekTo(). Do not reject a seek solely because a timeline's seekable
-        // flag is temporarily inconsistent while a local duration is known.
-        // The command must still be available; we never call seekTo without it.
-        return seekCommandAvailable
-    }
+    fun isSeekAllowed(seekCommandAvailable: Boolean): Boolean =
+        seekCommandAvailable
 
     /**
      * Prefer Media3's timeline duration. Fall back to a duration extracted from
