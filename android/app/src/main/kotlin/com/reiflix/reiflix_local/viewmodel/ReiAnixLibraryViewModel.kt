@@ -582,9 +582,7 @@ class ReiAnixLibraryViewModel(
                                     SafAccessLevel.AVAILABLE -> {
                                         val treeUri = runCatching { Uri.parse(folder.path) }.getOrNull()
                                         val inspection = treeUri?.let {
-                                            runCatching {
-                                                SafScanner.inspectTree(appContext, it, requirePersisted = true)
-                                            }.getOrNull()
+                                            SafScanner.inspectTree(appContext, it, requirePersisted = true)
                                         }
                                         when (inspection?.optString("status")) {
                                             SafScanner.STATUS_COMPLETED,
