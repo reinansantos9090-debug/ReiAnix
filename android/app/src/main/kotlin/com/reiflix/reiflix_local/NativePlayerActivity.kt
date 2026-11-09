@@ -6062,6 +6062,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         durationMs = durationMs,
                         playedAtEpochSeconds = playedAtEpochSeconds,
                         completed = completed,
+                        useStoredDurationWhenActualUnknown = false,
                     )
                 }
                 if (attempt > 1) {
