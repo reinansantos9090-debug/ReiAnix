@@ -1651,7 +1651,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     !completedByActualDuration &&
                     !completedByStoredDuration &&
                     !savedPositionBeyondStoredDuration &&
-                    (actualDurationMs != null && durationMismatch || !storedWatched)
+                    (actualDurationMs != null || !storedWatched)
 
                 logPlayer(
                     "PLAYER_SQLITE_RESUME_DECISION episodeId=${canonicalEpisodeId ?: "-"} " +
@@ -1670,6 +1670,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             completedByActualDuration -> "actual_duration_completion_threshold"
                             completedByStoredDuration -> "stored_duration_completion_threshold_file_duration_unknown"
                             savedPositionBeyondStoredDuration -> "position_beyond_stored_duration_file_duration_unknown"
+                            storedWatched && actualDurationMs != null -> "watched_flag_revalidated_against_actual_file_duration"
                             storedWatched && !durationMismatch -> "persisted_watched_flag_confirmed"
                             storedWatched && durationMismatch -> "watched_flag_overridden_by_actual_file_duration"
                             else -> "valid_saved_position"
