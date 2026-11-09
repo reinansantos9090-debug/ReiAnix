@@ -1659,6 +1659,28 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun playerCheckpointDoesNotClampToStaleStoredDurationWhenActualDurationIsUnknown() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val service = ReiAnixConsumptionService(repository)
+
+        // The fixture's 1,200-second duration is historical. The current local
+        // media duration is unknown, so a later valid position must not be cut.
+        service.saveProgress(
+            episodeId = 7L,
+            positionMs = 1_800_000L,
+            durationMs = null,
+            playedAtEpochSeconds = 2_000.0,
+            useStoredDurationWhenActualUnknown = false,
+        )
+
+        val persisted = repository.getEpisode(7L)!!
+        assertEquals(1_800.0, persisted.progress!!, 0.0)
+        assertEquals(1_200.0, persisted.duration!!, 0.0)
+        assertFalse(persisted.watched == true)
+    }
+
+    @Test
     fun nativeSearchReportsDatabaseFailureSeparatelyFromNoMatches() = runBlocking {
         assertFalse(databaseFile.exists())
         val result = ReiAnixLibraryQueryService(context).searchAnime("missing title")
