@@ -122,6 +122,7 @@ class NativePlayerActivity : ComponentActivity() {
     private lateinit var composeCenterView: ComposeView
     private lateinit var composeBottomView: ComposeView
     private val composePlayerUiState = mutableStateOf(ReiAnixNativePlayerUiState())
+    private val optionsPanelResetSignal = mutableStateOf(0)
     private var composeControlsEnabled = false
     private lateinit var uri: Uri
     private lateinit var playerView: PlayerView
@@ -2809,6 +2810,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerOptionsPanel(
                         state = composePlayerUiState.value,
                         showPictureInPicture = canEnterPictureInPicture(),
+                        resetSignal = optionsPanelResetSignal.value,
                         onPrevious = {
                             if (!episodeChangePending && intent.getBooleanExtra("canPrevious", false)) {
                                 requestEpisode("player_previous_request")
@@ -3080,6 +3082,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
             audioTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_AUDIO),
             subtitleTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_TEXT),
+            audioTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_AUDIO) > 1,
+            subtitleTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_TEXT) > 0,
             autoplayNext = autoplayNext,
             horizontalSeekEnabled = horizontalSeekEnabled,
             volumeGesturesEnabled = volumeGesturesEnabled,
@@ -3127,6 +3131,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val panel = findViewByTag<View>("reiflix_more_panel")
         panel?.visibility = if (moreVisible) View.VISIBLE else View.GONE
         if (moreVisible) {
+            optionsPanelResetSignal.value += 1
             panel?.bringToFront()
         }
         controls.bringToFront()
@@ -3304,15 +3309,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
         syncComposePlayerUiState()
     }
 
+    private fun supportedTrackCount(type: Int): Int {
+        if (!::player.isInitialized) return 0
+        return player.currentTracks.groups
+            .filter { it.type == type && it.isSupported }
+            .sumOf { group ->
+                (0 until group.length).count { group.isTrackSupported(it) }
+            }
+    }
+
     private fun updateTrackButtons() {
         if (!::player.isInitialized) return
-
-        fun supportedTrackCount(type: Int): Int =
-            player.currentTracks.groups
-                .filter { it.type == type && it.isSupported }
-                .sumOf { group ->
-                    (0 until group.length).count { group.isTrackSupported(it) }
-                }
 
         val audioCount = supportedTrackCount(C.TRACK_TYPE_AUDIO)
         val subtitleCount = supportedTrackCount(C.TRACK_TYPE_TEXT)
@@ -3802,6 +3809,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     player.trackSelectionParameters = builder.build()
                     updateTrackButtons()
                     captureTrackFormatSummaries()
+                    syncComposePlayerUiState()
                     logPlayer(
                         "TRACK_SELECTION_APPLIED type=" + trackType + " index=" +
                             option.trackIndex + " label=" + option.title,
