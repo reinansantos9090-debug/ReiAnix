@@ -26,6 +26,16 @@ internal object ReiAnixPlayerSeekPolicy {
         return DisplayDuration(0L, fromDatabase = false, known = false)
     }
 
+    /**
+     * A successor transition blocks interaction only until the new item has
+     * reached READY in the current player generation. First-frame rendering
+     * commits navigation visually, but must not be required for controls.
+     */
+    fun transitionBlocksCommands(
+        transitionPending: Boolean,
+        transitionReadyForCurrentGeneration: Boolean,
+    ): Boolean = transitionPending && !transitionReadyForCurrentGeneration
+
     fun canSeek(
         isCurrentMediaItemSeekable: Boolean,
         seekCommandAvailable: Boolean,
