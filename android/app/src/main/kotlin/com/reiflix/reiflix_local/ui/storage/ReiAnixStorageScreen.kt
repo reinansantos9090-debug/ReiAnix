@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.ui.storage
 
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -176,7 +177,8 @@ fun ReiAnixStorageScreen(
     val storageCheckInProgress =
         storageCapabilitiesUnverified && nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING
     val mediaNeedsAction = !storageCapabilitiesUnverified && mediaState != "full"
-    val broadNeedsAction = !storageCapabilitiesUnverified && broadState == "unavailable"
+    val broadStorageSupported = (nativeFolders.api ?: 0) >= Build.VERSION_CODES.R
+    val broadNeedsAction = !storageCapabilitiesUnverified && broadStorageSupported && broadState != "available"
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -231,11 +233,6 @@ fun ReiAnixStorageScreen(
                                 text = "Não foi possível confirmar as permissões do Android agora. As pastas salvas continuam preservadas; tente verificar novamente.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            ReiAnixSecondaryButton(
-                                text = "Verificar novamente",
-                                onClick = onCheckAccess,
-                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }
@@ -359,10 +356,25 @@ fun ReiAnixStorageScreen(
             }
 
             item(key = "device-access-section") {
-                StorageSectionTitle(
-                    title = "Acessos do dispositivo",
-                    description = "Esses acessos são capacidades do Android e não substituem a pasta configurada para a biblioteca.",
-                )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                ) {
+                    StorageSectionTitle(
+                        title = "Acessos do dispositivo",
+                        description = "Esses acessos são capacidades do Android e não substituem a pasta configurada para a biblioteca.",
+                    )
+                    ReiAnixSecondaryButton(
+                        text = if (nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING) {
+                            "Verificando permissões…"
+                        } else {
+                            "Verificar permissões"
+                        },
+                        onClick = onCheckAccess,
+                        enabled = nativeFolders.status != ReiAnixNativeFoldersStatus.LOADING,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             item(key = "media-access") {
@@ -391,11 +403,12 @@ fun ReiAnixStorageScreen(
                     description = "Permissão especial do Android, usada somente quando já foi concedida nas configurações.",
                     stateLabel = when {
                         storageCapabilitiesUnverified -> "Não verificado"
+                        !broadStorageSupported -> "Não disponível nesta versão do Android"
                         broadState == "available" -> "Acesso concedido"
-                        else -> "Acesso necessário"
+                        else -> "Não concedido (opcional)"
                     },
                     stateTone = when {
-                        storageCapabilitiesUnverified -> ReiAnixBadgeTone.Neutral
+                        storageCapabilitiesUnverified || !broadStorageSupported -> ReiAnixBadgeTone.Neutral
                         broadState == "available" -> ReiAnixBadgeTone.Success
                         else -> ReiAnixBadgeTone.Warning
                     },
@@ -417,13 +430,6 @@ fun ReiAnixStorageScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
-                            if (!storageCapabilitiesUnverified) {
-                                ReiAnixSecondaryButton(
-                                    text = "Tentar novamente",
-                                    onClick = onCheckAccess,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
                         }
                     }
                 }
