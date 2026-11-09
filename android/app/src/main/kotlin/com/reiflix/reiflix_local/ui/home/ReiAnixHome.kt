@@ -65,7 +65,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.collect
 import androidx.navigation.NavHostController
-import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
@@ -98,6 +97,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.ui.navigation.navigateToStorage
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
@@ -157,10 +157,7 @@ fun ReiAnixHomeRoute(
         onOpenLibrary = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) },
         onRefresh = viewModel::refresh,
         onSelectSource = {
-            navController.navigate(
-                ReiAnixRoutes.STORAGE,
-                navOptions { launchSingleTop = true },
-            )
+            navController.navigateToStorage()
         },
         onOpenTimeline = { activeDiscoveryDialog = "timeline" },
         onOpenDurationAnomalies = { activeDiscoveryDialog = "duration" },
