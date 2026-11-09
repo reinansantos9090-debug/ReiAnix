@@ -9,6 +9,7 @@ import com.reiflix.reiflix_local.player.LocalSubtitleResolver
 import com.reiflix.reiflix_local.player.NativePlayerRequest
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import com.reiflix.reiflix_local.player.PlayerMediaPolicy
+import com.reiflix.reiflix_local.player.ReiAnixMedia3PlayerFactory
 import com.reiflix.reiflix_local.player.PlayerStartupMetrics
 import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import com.reiflix.reiflix_local.player.SystemUiController
@@ -885,7 +886,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         try {
             logPlayer("EXOPLAYER_CREATE requestId=" + requestId.ifEmpty { "-" })
             logPlayer("MEDIA3_PLAYER_CREATE_START requestId=" + requestId.ifEmpty { "-" })
-            player = ExoPlayer.Builder(this).build()
+            player = ReiAnixMedia3PlayerFactory.create(this)
             PerformanceDiagnostics.markPlayer(this, "player_created", requestId,
                 commandCreatedAtMs, reused = false)
             player.setAudioAttributes(
@@ -1488,15 +1489,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     initialPositionMsForGeneration = startupPositionMs.coerceAtLeast(0L)
 
                     val subtitleTracks = deferredSubtitleCache[localUri.toString()].orEmpty()
+                    val mimeHint = PlayerMediaPolicy.resolveVideoMimeType(
+                        contentMimeType,
+                        mediaDisplayName ?: localUri.lastPathSegment,
+                    )
                     val mediaItem = buildMediaItem(
                         mediaUri = localUri,
-                        mimeType = null,
+                        mimeType = mimeHint,
                         subtitleTracks = subtitleTracks,
                     )
                     logPlayer(
                         "MEDIA_ITEM requestId=" + requestId.ifEmpty { "-" } +
                             " uri=" + mediaItem.localConfiguration?.uri +
-                            " mime=auto subtitleCount=" + subtitleTracks.size +
+                            " mime=" + (mimeHint ?: "auto") +
+                            " displayName=" + (mediaDisplayName ?: "-") +
+                            " subtitleCount=" + subtitleTracks.size +
                             " reason=" + reason,
                     )
 
@@ -2249,6 +2256,84 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 "DROPPED_VIDEO_FRAMES generation=" + generation +
                     " droppedFrames=" + droppedFrames +
                     " elapsedMs=" + elapsedMs +
+                    " positionMs=" + player.currentPosition,
+            )
+        }
+
+        override fun onVideoFrameProcessingOffset(
+            eventTime: AnalyticsListener.EventTime,
+            totalProcessingOffsetUs: Long,
+            frameCount: Int,
+        ) {
+            if (!isCurrent() || frameCount <= 0) return
+            val averageOffsetUs = totalProcessingOffsetUs / frameCount
+            logPlayer(
+                "VIDEO_FRAME_PROCESSING_OFFSET generation=" + generation +
+                    " totalOffsetUs=" + totalProcessingOffsetUs +
+                    " frameCount=" + frameCount +
+                    " averageOffsetUs=" + averageOffsetUs +
+                    " positionMs=" + player.currentPosition,
+            )
+        }
+
+        override fun onVideoInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+        ) {
+            if (!isCurrent()) return
+            logPlayer(
+                "VIDEO_INPUT_FORMAT generation=" + generation +
+                    " mime=" + format.sampleMimeType.orEmpty() +
+                    " codecs=" + format.codecs.orEmpty() +
+                    " size=" + format.width + "x" + format.height +
+                    " frameRate=" + format.frameRate +
+                    " bitrate=" + format.bitrate,
+            )
+        }
+
+        override fun onAudioInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+        ) {
+            if (!isCurrent()) return
+            logPlayer(
+                "AUDIO_INPUT_FORMAT generation=" + generation +
+                    " mime=" + format.sampleMimeType.orEmpty() +
+                    " codecs=" + format.codecs.orEmpty() +
+                    " sampleRate=" + format.sampleRate +
+                    " channels=" + format.channelCount +
+                    " bitrate=" + format.bitrate,
+            )
+        }
+
+        override fun onAudioSinkError(
+            eventTime: AnalyticsListener.EventTime,
+            audioSinkError: Exception,
+        ) {
+            if (!isCurrent()) return
+            logPlayer(
+                "AUDIO_SINK_ERROR generation=" + generation +
+                    " errorClass=" + audioSinkError::class.java.simpleName +
+                    " error=" + audioSinkError.message.orEmpty(),
+                audioSinkError,
+            )
+        }
+
+        override fun onTimelineChanged(
+            eventTime: AnalyticsListener.EventTime,
+            reason: Int,
+        ) {
+            if (!isCurrent()) return
+            val durationMs = player.duration
+            logPlayer(
+                "MEDIA_TIMELINE_CHANGED generation=" + generation +
+                    " reason=" + reason +
+                    " durationMs=" + durationMs +
+                    " durationKnown=" + (durationMs > 0L && durationMs != C.TIME_UNSET) +
+                    " seekable=" + player.isCurrentMediaItemSeekable +
+                    " seekCommand=" + player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) +
                     " positionMs=" + player.currentPosition,
             )
         }
