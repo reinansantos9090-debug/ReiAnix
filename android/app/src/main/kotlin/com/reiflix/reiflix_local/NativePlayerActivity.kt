@@ -4315,7 +4315,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
     private fun startVideoFreezeWatchdog(positionMs: Long, source: String) {
-        if (!::player.isInitialized || errorVisible || !player.isPlaying || !hasSelectedVideoTrack()) return
+        // A seek can move Media3 into BUFFERING before playback resumes. Arm
+        // against playWhenReady rather than isPlaying so that this transition
+        // does not silently skip the post-seek first-frame watchdog.
+        if (!::player.isInitialized ||
+            errorVisible ||
+            !player.playWhenReady ||
+            !hasCurrentMediaItem() ||
+            !hasSelectedVideoTrack()
+        ) return
         handler.removeCallbacks(videoFreezeWatchdogRunnable)
         videoFreezeWatchdog.begin(positionMs, SystemClock.uptimeMillis(), videoFrameSerial)
         lastSeekStartedAtMs = SystemClock.uptimeMillis()
@@ -4396,6 +4404,31 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val videoTrackReady = hasSelectedVideoTrack()
         val playbackActuallyRunning = player.isPlaying && videoTrackReady
         if (!playbackActuallyRunning) {
+            if (!videoFreezeRecoveryInProgress &&
+                player.playWhenReady &&
+                player.playbackState in setOf(Player.STATE_BUFFERING, Player.STATE_READY)
+            ) {
+                // Initial seek buffering is not evidence of a frozen renderer:
+                // there is no advancing playback clock to measure yet. Keep the
+                // watchdog armed until Media3 resumes or the bounded wait expires.
+                val resumeWaitMs = (now - lastSeekStartedAtMs).coerceAtLeast(0L)
+                if (resumeWaitMs >= VIDEO_FREEZE_RECOVERY_STEP_TIMEOUT_MS) {
+                    logPlayer(
+                        "VIDEO_FREEZE_WATCHDOG_CANCELLED reason=seek_playback_did_not_resume " +
+                            "waitMs=$resumeWaitMs playbackState=${player.playbackStateLabel()} " +
+                            "playWhenReady=${player.playWhenReady}",
+                    )
+                    videoFreezeWatchdog.resolve()
+                    videoFreezeRecoveryInProgress = false
+                    videoFreezeRecoveryStepStartedAtMs = 0L
+                } else {
+                    handler.postDelayed(
+                        videoFreezeWatchdogRunnable,
+                        minOf(1_000L, VIDEO_FREEZE_RECOVERY_STEP_TIMEOUT_MS - resumeWaitMs),
+                    )
+                }
+                return
+            }
             if (videoFreezeRecoveryInProgress && player.playWhenReady) {
                 val recoveryWaitMs = (now - videoFreezeRecoveryStepStartedAtMs).coerceAtLeast(0L)
                 if (recoveryWaitMs >= VIDEO_FREEZE_RECOVERY_STEP_TIMEOUT_MS) {
