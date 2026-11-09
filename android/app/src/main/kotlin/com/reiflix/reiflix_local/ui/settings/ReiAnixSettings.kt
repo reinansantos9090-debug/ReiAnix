@@ -166,14 +166,14 @@ private val aspectRatioChoices = listOf(
 
 private val immersiveChoices = listOf(
     SettingChoice("always", "Sempre"),
-    SettingChoice("landscape", "Somente landscape"),
+    SettingChoice("landscape", "Somente em paisagem"),
     SettingChoice("never", "Nunca"),
 )
 
 private val rotationChoices = listOf(
     SettingChoice("auto", "Automática"),
-    SettingChoice("portrait", "Portrait"),
-    SettingChoice("landscape", "Landscape"),
+    SettingChoice("portrait", "Retrato"),
+    SettingChoice("landscape", "Paisagem"),
 )
 
 private val autoHideChoices = listOf(
@@ -251,44 +251,64 @@ fun ReiAnixSettingsRoute(
     lastScanStatus: String? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var selectedCategory by androidx.compose.runtime.saveable.rememberSaveable {
-        androidx.compose.runtime.mutableStateOf<String?>(null)
-    }
+    var selectedDestination by rememberSaveable { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var selectedItemIndex by rememberSaveable { androidx.compose.runtime.mutableStateOf(0) }
     val rootListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
-
-    BackHandler(enabled = selectedCategory != null) {
-        selectedCategory = null
+    val rootStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    fun goBack() {
+        selectedDestination = settingsDestination(selectedDestination)?.parent
+        selectedItemIndex = 0
     }
-
-    val activeCategory = selectedCategory
-    if (activeCategory != null) {
-        ReiAnixComposeSettingsCategoryScreen(
-            category = activeCategory,
-            state = state,
-            onBack = { selectedCategory = null },
-            onUpdateSetting = viewModel::setSetting,
-            onAccountAction = viewModel::requestAccountAction,
-            onAction = viewModel::requestAction,
-            onOpenStorage = onOpenStorage,
-            scanInProgress = scanInProgress,
-            scanState = scanState,
-            lastScanStatus = lastScanStatus,
-            onRetry = viewModel::refresh,
-        )
-    } else {
-        ReiAnixSettingsScreen(
-            state = state,
-            listState = rootListState,
-            onBack = onBack,
-            onOpenCategory = { label ->
-                if (label in NativeManagedSettingsCategories) {
-                    selectedCategory = label
-                } else {
-                    onOpenCategory(label)
-                }
+    BackHandler(enabled = selectedDestination != null) { goBack() }
+    val destination = selectedDestination
+    val parentCategory = SettingsRootCategories.firstOrNull { it.label == destination }
+    when {
+        parentCategory != null -> SettingsSubmenuScreen(
+            category = parentCategory,
+            onBack = ::goBack,
+            onOpen = {
+                selectedDestination = it
+                selectedItemIndex = 0
             },
-            onRetry = viewModel::refresh,
         )
+        destination != null -> androidx.compose.runtime.key(destination, selectedItemIndex) {
+            ReiAnixComposeSettingsCategoryScreen(
+                category = destination,
+                initialItemIndex = selectedItemIndex,
+                state = state,
+                onBack = ::goBack,
+                onUpdateSetting = viewModel::setSetting,
+                onAccountAction = viewModel::requestAccountAction,
+                onAction = viewModel::requestAction,
+                onOpenStorage = onOpenStorage,
+                scanInProgress = scanInProgress,
+                scanState = scanState,
+                lastScanStatus = lastScanStatus,
+                onRetry = viewModel::refresh,
+            )
+        }
+        else -> rootStateHolder.SaveableStateProvider("settings-root") {
+            ReiAnixSettingsScreen(
+                state = state,
+                listState = rootListState,
+                onBack = onBack,
+                onOpenCategory = { label ->
+                    keyboard?.hide()
+                    val route = label.substringBefore('#')
+                    val itemKey = label.substringAfter('#', "")
+                    val submenu = settingsDestination(route)
+                    if (route == "Conta" || submenu != null || SettingsRootCategories.any { it.label == route }) {
+                        selectedDestination = route
+                        selectedItemIndex = submenu?.entries?.indexOfFirst { it.key == itemKey }
+                            ?.takeIf { it >= 0 }?.plus(2) ?: 0
+                    } else {
+                        onOpenCategory(label)
+                    }
+                },
+                onRetry = viewModel::refresh,
+            )
+        }
     }
 }
 
@@ -300,6 +320,8 @@ fun ReiAnixSettingsScreen(
     onOpenCategory: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
+    var searchQuery by rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+    val searchResults = searchSettings(searchQuery)
     ReiAnixResponsiveRoot {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -366,14 +388,32 @@ fun ReiAnixSettingsScreen(
                             )
                         }
 
-                        items(
-                            items = state.categories.filter { it.label != "Conta" },
-                            key = { category -> "settings-flat:${category.label}" },
-                        ) { category ->
-                            SettingsFlatCategoryRow(
-                                category = category,
-                                onClick = { onOpenCategory(category.label) },
+                        item(key = "settings:search") {
+                            ReiAnixTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                label = { Text("Pesquisar configurações") },
+                                modifier = Modifier.padding(vertical = ReiAnixTokens.Spacing.sm),
                             )
+                        }
+                        if (searchQuery.isBlank()) {
+                            items(SettingsRootCategories, key = { "settings-category:${it.label}" }) { category ->
+                                SettingsFlatCategoryRow(category = category, onClick = { onOpenCategory(category.label) })
+                            }
+                        } else {
+                            if (searchResults.isEmpty()) {
+                                item(key = "settings:no-results") { Text("Nenhuma configuração encontrada.") }
+                            }
+                            items(searchResults, key = { "settings-search:${it.destination.id}:${it.entry.key}" }) { result ->
+                                SettingsFlatCategoryRow(
+                                    category = ReiAnixSettingsCategoryUiModel(
+                                        result.entry.title,
+                                        "${result.destination.parent} → ${result.destination.title}",
+                                        SettingsRootCategories.first { it.label == result.destination.parent }.icon,
+                                    ),
+                                    onClick = { onOpenCategory("${result.destination.id}#${result.entry.key}") },
+                                )
+                            }
                         }
 
                         item(key = "settings:footer") {
@@ -399,6 +439,41 @@ fun ReiAnixSettingsScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSubmenuScreen(
+    category: ReiAnixSettingsCategoryUiModel,
+    onBack: () -> Unit,
+    onOpen: (String) -> Unit,
+) {
+    ReiAnixResponsiveRoot {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            LazyColumn(
+                modifier = Modifier
+                    .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(
+                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                    vertical = ReiAnixTokens.Spacing.sm,
+                ),
+            ) {
+                item(key = "header") {
+                    SettingsHeader(title = category.label, subtitle = category.description, onBack = onBack)
+                }
+                items(SettingsDestinations.filter { it.parent == category.label }, key = { it.id }) { destination ->
+                    SettingsFlatCategoryRow(
+                        category = ReiAnixSettingsCategoryUiModel(
+                            label = destination.title,
+                            description = destination.entries.joinToString(" · ") { it.title },
+                            icon = category.icon,
+                        ),
+                        onClick = { onOpen(destination.id) },
+                    )
                 }
             }
         }
@@ -500,6 +575,7 @@ private fun SettingsFlatCategoryRow(
 @Composable
 private fun ReiAnixComposeSettingsCategoryScreen(
     category: String,
+    initialItemIndex: Int = 0,
     state: ReiAnixSettingsUiState,
     onBack: () -> Unit,
     onUpdateSetting: (String, String) -> Unit,
@@ -559,7 +635,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
         pendingConfirmationAction?.let { action ->
             val (title, message, confirmLabel) = when (action) {
                 "clear_anilist_cache" -> Triple(
-                    "Limpar cache de artwork?",
+                    "Limpar cache de capas?",
                     "A biblioteca, progresso, favoritos, notas, pins e arquivos não serão apagados.",
                     "Limpar",
                 )
@@ -614,7 +690,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
         }
 
         LazyColumn(
-            state = rememberSaveable(saver = LazyListState.Saver) { LazyListState() },
+            state = rememberSaveable(category, initialItemIndex, saver = LazyListState.Saver) { LazyListState(initialItemIndex) },
             modifier = Modifier
                 .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
                 .fillMaxWidth(),
@@ -626,8 +702,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
         ) {
             item(key = "header:" + category) {
                 SettingsHeader(
-                    title = category,
-                    subtitle = settingsCategoryDescription(category),
+                    title = settingsDestination(category)?.title ?: category,
+                    subtitle = settingsDestination(category)?.parent ?: settingsCategoryDescription(category),
                     onBack = onBack,
                 )
             }
@@ -683,9 +759,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                 }
-
-                "Geral" -> {
-                    item(key = "section:general:behavior") { SettingsSectionLabel("Comportamento") }
+                "general_behavior" -> {
                     item(key = "setting:app.confirm_destructive") {
                         BooleanSettingRow(
                             keyName = "app.confirm_destructive",
@@ -696,8 +770,33 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                 }
-                "Aparência" -> {
-                    item(key = "section:appearance:visual") { SettingsSectionLabel("Visual") }
+                "general_privacy" -> {
+                    item(key = "privacy:connectivity") {
+                        ReiAnixSettingsSurface(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Conectividade",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Google Login é opcional; a biblioteca local e o player não dependem de conectividade.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(text = "Funciona offline", tone = ReiAnixBadgeTone.Neutral)
+                            }
+                        }
+                    }
+                }
+                "appearance_theme" -> {
                     item(key = "setting:appearance.theme") {
                         ChoiceSettingRow(
                             keyName = "appearance.theme",
@@ -708,6 +807,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("appearance.theme", it) },
                         )
                     }
+                }
+                "appearance_library" -> {
                     item(key = "setting:appearance.card_size") {
                         ChoiceSettingRow(
                             keyName = "appearance.card_size",
@@ -716,6 +817,20 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             selectedValue = state.settings["appearance.card_size"],
                             choices = cardSizeChoices,
                             onSelected = { onUpdateSetting("appearance.card_size", it) },
+                        )
+                    }
+                    item(key = "setting:library.grid_density") {
+                        ChoiceSettingRow(
+                            keyName = "library.grid_density",
+                            title = "Densidade da grade",
+                            description = "Controla a largura efetiva dos cards.",
+                            selectedValue = state.settings["library.grid_density"],
+                            choices = listOf(
+                                SettingChoice("small", "Menos cards"),
+                                SettingChoice("medium", "Equilibrada"),
+                                SettingChoice("large", "Mais cards"),
+                            ),
+                            onSelected = { onUpdateSetting("library.grid_density", it) },
                         )
                     }
                     item(key = "setting:appearance.poster_size") {
@@ -733,10 +848,32 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("appearance.show_thumbnails", it.toString()) },
                         )
                     }
+                    item(key = "setting:library.continue_watching") {
+                        BooleanSettingRow(
+                            keyName = "library.continue_watching",
+                            title = "Continuar assistindo",
+                            description = "Controla a preferência global dessa seção.",
+                            checked = state.settings["library.continue_watching"] == "true",
+                            onCheckedChange = { onUpdateSetting("library.continue_watching", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:library.continue_watching_limit") {
+                        ChoiceSettingRow(
+                            keyName = "library.continue_watching_limit",
+                            title = "Limite de continuar assistindo",
+                            description = "Quantidade persistida de itens na seção.",
+                            selectedValue = state.settings["library.continue_watching_limit"],
+                            choices = listOf(
+                                SettingChoice("5", "5"),
+                                SettingChoice("10", "10"),
+                                SettingChoice("15", "15"),
+                                SettingChoice("20", "20"),
+                            ),
+                            onSelected = { onUpdateSetting("library.continue_watching_limit", it) },
+                        )
+                    }
                 }
-
-                "Biblioteca" -> {
-                    item(key = "section:library:organization") { SettingsSectionLabel("Organização") }
+                "library_organization" -> {
                     item(key = "setting:library.sort_default") {
                         ChoiceSettingRow(
                             keyName = "library.sort_default",
@@ -750,20 +887,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 SettingChoice("recently_watched", "Assistidos recentemente"),
                             ),
                             onSelected = { onUpdateSetting("library.sort_default", it) },
-                        )
-                    }
-                    item(key = "setting:library.grid_density") {
-                        ChoiceSettingRow(
-                            keyName = "library.grid_density",
-                            title = "Densidade da grade",
-                            description = "Controla a largura efetiva dos cards.",
-                            selectedValue = state.settings["library.grid_density"],
-                            choices = listOf(
-                                SettingChoice("small", "Menos cards"),
-                                SettingChoice("medium", "Equilibrada"),
-                                SettingChoice("large", "Mais cards"),
-                            ),
-                            onSelected = { onUpdateSetting("library.grid_density", it) },
                         )
                     }
                     item(key = "setting:library.page_size") {
@@ -782,184 +905,10 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("library.page_size", it) },
                         )
                     }
-                    item(key = "setting:library.continue_watching") {
-                        BooleanSettingRow(
-                            keyName = "library.continue_watching",
-                            title = "Continue Watching",
-                            description = "Controla a preferência global dessa seção.",
-                            checked = state.settings["library.continue_watching"] == "true",
-                            onCheckedChange = { onUpdateSetting("library.continue_watching", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:library.continue_watching_limit") {
-                        ChoiceSettingRow(
-                            keyName = "library.continue_watching_limit",
-                            title = "Limite de Continue Watching",
-                            description = "Quantidade persistida de itens na seção.",
-                            selectedValue = state.settings["library.continue_watching_limit"],
-                            choices = listOf(
-                                SettingChoice("5", "5"),
-                                SettingChoice("10", "10"),
-                                SettingChoice("15", "15"),
-                                SettingChoice("20", "20"),
-                            ),
-                            onSelected = { onUpdateSetting("library.continue_watching_limit", it) },
-                        )
-                    }
                 }
-
-                "Player" -> {
-                    item(key = "section:player:playback") { SettingsSectionLabel("Reprodução") }
-                    item(key = "setting:player.autoplay_next") {
-                        BooleanSettingRow(
-                            keyName = "player.autoplay_next",
-                            title = "Autoplay do próximo episódio",
-                            description = "Permite o avanço automático no player local.",
-                            checked = state.settings["player.autoplay_next"] == "true",
-                            onCheckedChange = { onUpdateSetting("player.autoplay_next", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:player.resume") {
-                        BooleanSettingRow(
-                            keyName = "player.resume",
-                            title = "Continuar reprodução",
-                            description = "Usa a posição de progresso já salva; desligar não apaga o progresso.",
-                            checked = state.settings["player.resume"] == "true",
-                            onCheckedChange = { onUpdateSetting("player.resume", it.toString()) },
-                        )
-                    }
-                    item(key = "section:player:video") { SettingsSectionLabel("Vídeo") }
-                    item(key = "setting:player.default_speed") {
-                        ChoiceSettingRow(
-                            keyName = "player.default_speed",
-                            title = "Velocidade padrão",
-                            description = "Aplicada quando um episódio é aberto.",
-                            selectedValue = state.settings["player.default_speed"],
-                            choices = defaultSpeedChoices,
-                            onSelected = { onUpdateSetting("player.default_speed", it) },
-                        )
-                    }
-                    item(key = "setting:player.aspect_ratio") {
-                        ChoiceSettingRow(
-                            keyName = "player.aspect_ratio",
-                            title = "Modo de vídeo",
-                            description = "Ajustar preserva toda a imagem; Preencher ocupa a tela cortando somente o excedente.",
-                            selectedValue = state.settings["player.aspect_ratio"],
-                            choices = aspectRatioChoices,
-                            onSelected = { onUpdateSetting("player.aspect_ratio", it) },
-                        )
-                    }
-                    item(key = "section:player:controls") { SettingsSectionLabel("Controles") }
-                    item(key = "setting:player.zoom_enabled") {
-                        BooleanSettingRow(
-                            keyName = "player.zoom_enabled",
-                            title = "Zoom por gesto",
-                            description = "Permite ampliar e mover o vídeo com gesto de pinça.",
-                            checked = state.settings["player.zoom_enabled"] == "true",
-                            onCheckedChange = { onUpdateSetting("player.zoom_enabled", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:player.lock_mode") {
-                        BooleanSettingRow(
-                            keyName = "player.lock_mode",
-                            title = "Bloqueio dos controles",
-                            description = "Define o estado persistido de bloqueio dos controles ao abrir o player.",
-                            checked = state.settings["player.lock_mode"] == "true",
-                            onCheckedChange = { onUpdateSetting("player.lock_mode", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:player.double_tap_seek_seconds") {
-                        ChoiceSettingRow(
-                            keyName = "player.double_tap_seek_seconds",
-                            title = "Salto no double tap",
-                            description = "Define quantos segundos são avançados ou retrocedidos pelo double tap.",
-                            selectedValue = state.settings["player.double_tap_seek_seconds"],
-                            choices = doubleTapSeekChoices,
-                            onSelected = { onUpdateSetting("player.double_tap_seek_seconds", it) },
-                        )
-                    }
-                    item(key = "setting:player.long_press_speed") {
-                        ChoiceSettingRow(
-                            keyName = "player.long_press_speed",
-                            title = "Velocidade da pressão longa",
-                            description = "Velocidade temporária aplicada enquanto a pressão longa estiver ativa.",
-                            selectedValue = state.settings["player.long_press_speed"],
-                            choices = longPressSpeedChoices,
-                            onSelected = { onUpdateSetting("player.long_press_speed", it) },
-                        )
-                    }
-                    item(key = "setting:player.max_video_resolution") {
-                        ChoiceSettingRow(
-                            keyName = "player.max_video_resolution",
-                            title = "Resolução máxima",
-                            description = "Limita a faixa de vídeo selecionada pelo Media3 quando o arquivo oferece múltiplas tracks.",
-                            selectedValue = state.settings["player.max_video_resolution"],
-                            choices = maxVideoResolutionChoices,
-                            onSelected = { onUpdateSetting("player.max_video_resolution", it) },
-                        )
-                    }
-                    item(key = "setting:player.max_video_frame_rate") {
-                        ChoiceSettingRow(
-                            keyName = "player.max_video_frame_rate",
-                            title = "FPS máximo",
-                            description = "Limita a taxa de frames da track de vídeo selecionada.",
-                            selectedValue = state.settings["player.max_video_frame_rate"],
-                            choices = maxVideoFrameRateChoices,
-                            onSelected = { onUpdateSetting("player.max_video_frame_rate", it) },
-                        )
-                    }
-                    item(key = "setting:player.max_audio_channels") {
-                        ChoiceSettingRow(
-                            keyName = "player.max_audio_channels",
-                            title = "Canais de áudio máximos",
-                            description = "Limita a seleção de áudio sem criar um mixer ou decoder alternativo.",
-                            selectedValue = state.settings["player.max_audio_channels"],
-                            choices = maxAudioChannelsChoices,
-                            onSelected = { onUpdateSetting("player.max_audio_channels", it) },
-                        )
-                    }
-                    item(key = "section:player:display") { SettingsSectionLabel("Tela") }
-                    item(key = "setting:player.immersive") {
-                        ChoiceSettingRow(
-                            keyName = "player.immersive",
-                            title = "Modo imersivo",
-                            description = "Controla as barras do sistema somente no player.",
-                            selectedValue = state.settings["player.immersive"],
-                            choices = immersiveChoices,
-                            onSelected = { onUpdateSetting("player.immersive", it) },
-                        )
-                    }
-                    item(key = "setting:player.rotation") {
-                        ChoiceSettingRow(
-                            keyName = "player.rotation",
-                            title = "Rotação",
-                            description = "Define a orientação do player sem forçar o aplicativo inteiro.",
-                            selectedValue = state.settings["player.rotation"],
-                            choices = rotationChoices,
-                            onSelected = { onUpdateSetting("player.rotation", it) },
-                        )
-                    }
-                    item(key = "setting:player.pip") {
-                        BooleanSettingRow(
-                            keyName = "player.pip",
-                            title = "Picture-in-Picture",
-                            description = "Permite PiP quando suportado pelo Android.",
-                            checked = state.settings["player.pip"] == "true",
-                            onCheckedChange = { onUpdateSetting("player.pip", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:player.auto_hide_seconds") {
-                        ChoiceSettingRow(
-                            keyName = "player.auto_hide_seconds",
-                            title = "Auto-hide dos controles",
-                            description = "0 significa nunca.",
-                            selectedValue = state.settings["player.auto_hide_seconds"],
-                            choices = autoHideChoices,
-                            onSelected = { onUpdateSetting("player.auto_hide_seconds", it) },
-                        )
-                    }
-
-                    item(key = "setting:player.reset") {
+                "library_storage" -> {
+                    val storage = state.storage
+                    item(key = "privacy:local") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -970,127 +919,19 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
                                 Text(
-                                    text = "Restaurar Player",
+                                    text = "Biblioteca local",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = "Restaura somente as preferências do Player aos padrões existentes.",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    text = "Biblioteca, histórico e caminhos locais permanecem no dispositivo.",
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis,
                                 )
-                                ReiAnixSecondaryButton(
-                                    text = "Restaurar",
-                                    onClick = { requestDestructiveAction("reset_player") },
-                                    enabled = !actionBusy("reset_player"),
-                                    modifier = Modifier.align(Alignment.End),
-                                )
+                                ReiAnixBadge(text = "Local", tone = ReiAnixBadgeTone.Neutral)
                             }
                         }
                     }
-                }
-                "Gestos" -> {
-                    item(key = "section:gestures:gestures") { SettingsSectionLabel("Gestos") }
-                    item(key = "setting:gestures.volume") {
-                        BooleanSettingRow(
-                            keyName = "gestures.volume",
-                            title = "Gestos de volume",
-                            description = "Swipe vertical no lado direito ajusta o volume quando ativado.",
-                            checked = state.settings["gestures.volume"] == "true",
-                            onCheckedChange = { onUpdateSetting("gestures.volume", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:gestures.brightness") {
-                        BooleanSettingRow(
-                            keyName = "gestures.brightness",
-                            title = "Gestos de brilho",
-                            description = "Swipe vertical no lado esquerdo ajusta o brilho quando ativado.",
-                            checked = state.settings["gestures.brightness"] == "true",
-                            onCheckedChange = { onUpdateSetting("gestures.brightness", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:gestures.horizontal_seek") {
-                        BooleanSettingRow(
-                            keyName = "gestures.horizontal_seek",
-                            title = "Gestos horizontais",
-                            description = "Permite avançar ou retroceder no vídeo deslizando horizontalmente.",
-                            checked = state.settings["gestures.horizontal_seek"] == "true",
-                            onCheckedChange = { onUpdateSetting("gestures.horizontal_seek", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:gestures.double_tap") {
-                        BooleanSettingRow(
-                            keyName = "gestures.double_tap",
-                            title = "Double tap para seek",
-                            description = "Controla o double tap existente.",
-                            checked = state.settings["gestures.double_tap"]?.toBooleanStrictOrNull() ?: true,
-                            onCheckedChange = { onUpdateSetting("gestures.double_tap", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:gestures.long_press") {
-                        BooleanSettingRow(
-                            keyName = "gestures.long_press",
-                            title = "Pressão longa",
-                            description = "Controla a ação de long press existente.",
-                            checked = state.settings["gestures.long_press"] == "true",
-                            onCheckedChange = { onUpdateSetting("gestures.long_press", it.toString()) },
-                        )
-                    }
-                }
-                "Metadata" -> {
-                    item(key = "section:metadata:matching") { SettingsSectionLabel("AniList") }
-                    item(key = "setting:metadata.anilist_enabled") {
-                        BooleanSettingRow(
-                            keyName = "metadata.anilist_enabled",
-                            title = "Usar AniList",
-                            description = "Permite ou bloqueia chamadas remotas do cliente AniList.",
-                            checked = state.settings["metadata.anilist_enabled"] == "true",
-                            onCheckedChange = { onUpdateSetting("metadata.anilist_enabled", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:metadata.auto_match") {
-                        BooleanSettingRow(
-                            keyName = "metadata.auto_match",
-                            title = "Auto-match AniList",
-                            description = "Controla a associação automática de novos itens.",
-                            checked = state.settings["metadata.auto_match"] == "true",
-                            onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
-                        )
-                    }
-                }
-
-                "Artwork" -> {
-                    item(key = "setting:artwork.enabled") {
-                        BooleanSettingRow(
-                            keyName = "artwork.enabled",
-                            title = "Artwork remoto",
-                            description = "Permite downloads remotos de capas pelo Artwork Engine existente.",
-                            checked = state.settings["artwork.enabled"] == "true",
-                            onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:artwork.cache_limit_mb") {
-                        ChoiceSettingRow(
-                            keyName = "artwork.cache_limit_mb",
-                            title = "Limite do cache de artwork",
-                            description = "Limite persistido aplicado ao único Artwork Engine.",
-                            selectedValue = state.settings["artwork.cache_limit_mb"],
-                            choices = listOf(
-                                SettingChoice("64", "64 MB"),
-                                SettingChoice("128", "128 MB"),
-                                SettingChoice("256", "256 MB"),
-                                SettingChoice("512", "512 MB"),
-                            ),
-                            onSelected = { onUpdateSetting("artwork.cache_limit_mb", it) },
-                        )
-                    }
-                }
-
-                "Armazenamento" -> {
-                    val storage = state.storage
-                    item(key = "section:storage:access") { SettingsSectionLabel("Acesso") }
                     item(key = "storage:status") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1152,10 +993,35 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         }
                     }
                 }
+                "library_scan" -> {
+                    val normalizedScanState = scanState.trim().uppercase().ifBlank { "IDLE" }
+                    val scanStateLabel = when (normalizedScanState) {
+                        "IDLE" -> "Ociosa"
+                        "QUEUED" -> "Na fila"
+                        "CHECKING" -> "Verificando fontes"
+                        "RUNNING", "SCANNING" -> "Em andamento"
+                        "CANCELLING" -> "Cancelando"
+                        "WAITING_FOR_MEDIASTORE" -> "Aguardando MediaStore"
+                        "COMPLETED", "SUCCESS" -> "Concluída"
+                        "PARTIAL" -> "Concluída parcialmente"
+                        "CANCELLED" -> "Cancelada"
+                        "FAILED", "ERROR" -> "Falhou"
+                        "BLOCKED" -> "Bloqueada"
+                        "UNKNOWN" -> "Desconhecida"
+                        else -> normalizedScanState
+                    }
+                    val normalizedLastScan = lastScanStatus?.trim()?.uppercase().orEmpty()
+                    val lastScanLabel = when (normalizedLastScan) {
+                        "" -> "Nenhuma"
+                        "COMPLETED", "SUCCESS" -> "Concluída"
+                        "PARTIAL" -> "Concluída parcialmente"
+                        "CANCELLED" -> "Cancelada"
+                        "FAILED", "ERROR" -> "Falhou"
+                        "BLOCKED" -> "Bloqueada"
+                        else -> normalizedLastScan
+                    }
 
-                "Dados e Cache" -> {
-                    item(key = "section:data:maintenance") { SettingsSectionLabel("Dados locais") }
-                    item(key = "data-cache:info") {
+                    item(key = "scan:existing") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1164,22 +1030,412 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
                                 Text(
-                                    text = "Dados locais",
+                                    text = "Varredura em andamento",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = "As preferências continuam persistidas pelo SettingsStore existente.",
+                                    text = if (scanInProgress) {
+                                        "Uma varredura está sendo executada."
+                                    } else {
+                                        "Nenhuma varredura está em andamento."
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                ReiAnixBadge(
-                                    text = "Fonte única: SettingsStore",
-                                    tone = ReiAnixBadgeTone.Neutral,
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "Estado: $scanStateLabel",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    ReiAnixBadge(
+                                        text = if (scanInProgress) "Ativa" else "Inativa",
+                                        tone = ReiAnixBadgeTone.Neutral,
+                                    )
+                                }
+                                Text(
+                                    text = "Última varredura: $lastScanLabel",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "A varredura consulta as fontes configuradas da biblioteca.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
                     }
+                    item(key = "scan:refresh") {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Atualização",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Gerencie as pastas usadas para localizar os episódios da biblioteca.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Ver armazenamento e fontes",
+                                    onClick = onOpenStorage,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
+                "player_playback" -> {
+                    item(key = "setting:player.autoplay_next") {
+                        BooleanSettingRow(
+                            keyName = "player.autoplay_next",
+                            title = "Reprodução automática do próximo episódio",
+                            description = "Permite o avanço automático no player local.",
+                            checked = state.settings["player.autoplay_next"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.autoplay_next", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.resume") {
+                        BooleanSettingRow(
+                            keyName = "player.resume",
+                            title = "Continuar reprodução",
+                            description = "Usa a posição de progresso já salva; desligar não apaga o progresso.",
+                            checked = state.settings["player.resume"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.resume", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.default_speed") {
+                        ChoiceSettingRow(
+                            keyName = "player.default_speed",
+                            title = "Velocidade padrão",
+                            description = "Aplicada quando um episódio é aberto.",
+                            selectedValue = state.settings["player.default_speed"],
+                            choices = defaultSpeedChoices,
+                            onSelected = { onUpdateSetting("player.default_speed", it) },
+                        )
+                    }
+                }
+                "player_video" -> {
+                    item(key = "setting:player.aspect_ratio") {
+                        ChoiceSettingRow(
+                            keyName = "player.aspect_ratio",
+                            title = "Modo de vídeo",
+                            description = "Ajustar preserva toda a imagem; Preencher ocupa a tela cortando somente o excedente.",
+                            selectedValue = state.settings["player.aspect_ratio"],
+                            choices = aspectRatioChoices,
+                            onSelected = { onUpdateSetting("player.aspect_ratio", it) },
+                        )
+                    }
+                    item(key = "setting:player.max_video_resolution") {
+                        ChoiceSettingRow(
+                            keyName = "player.max_video_resolution",
+                            title = "Resolução máxima",
+                            description = "Limita a faixa de vídeo selecionada pelo Media3 quando o arquivo oferece múltiplas tracks.",
+                            selectedValue = state.settings["player.max_video_resolution"],
+                            choices = maxVideoResolutionChoices,
+                            onSelected = { onUpdateSetting("player.max_video_resolution", it) },
+                        )
+                    }
+                    item(key = "setting:player.max_video_frame_rate") {
+                        ChoiceSettingRow(
+                            keyName = "player.max_video_frame_rate",
+                            title = "FPS máximo",
+                            description = "Limita a taxa de frames da track de vídeo selecionada.",
+                            selectedValue = state.settings["player.max_video_frame_rate"],
+                            choices = maxVideoFrameRateChoices,
+                            onSelected = { onUpdateSetting("player.max_video_frame_rate", it) },
+                        )
+                    }
+                }
+                "player_controls" -> {
+                    item(key = "setting:player.zoom_enabled") {
+                        BooleanSettingRow(
+                            keyName = "player.zoom_enabled",
+                            title = "Zoom por gesto",
+                            description = "Permite ampliar e mover o vídeo com gesto de pinça.",
+                            checked = state.settings["player.zoom_enabled"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.zoom_enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.lock_mode") {
+                        BooleanSettingRow(
+                            keyName = "player.lock_mode",
+                            title = "Bloqueio dos controles",
+                            description = "Define o estado persistido de bloqueio dos controles ao abrir o player.",
+                            checked = state.settings["player.lock_mode"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.lock_mode", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.double_tap_seek_seconds") {
+                        ChoiceSettingRow(
+                            keyName = "player.double_tap_seek_seconds",
+                            title = "Salto com toque duplo",
+                            description = "Define quantos segundos são avançados ou retrocedidos pelo double tap.",
+                            selectedValue = state.settings["player.double_tap_seek_seconds"],
+                            choices = doubleTapSeekChoices,
+                            onSelected = { onUpdateSetting("player.double_tap_seek_seconds", it) },
+                        )
+                    }
+                    item(key = "setting:player.long_press_speed") {
+                        ChoiceSettingRow(
+                            keyName = "player.long_press_speed",
+                            title = "Velocidade da pressão longa",
+                            description = "Velocidade temporária aplicada enquanto a pressão longa estiver ativa.",
+                            selectedValue = state.settings["player.long_press_speed"],
+                            choices = longPressSpeedChoices,
+                            onSelected = { onUpdateSetting("player.long_press_speed", it) },
+                        )
+                    }
+                    item(key = "setting:gestures.volume") {
+                        BooleanSettingRow(
+                            keyName = "gestures.volume",
+                            title = "Gestos de volume",
+                            description = "Swipe vertical no lado direito ajusta o volume quando ativado.",
+                            checked = state.settings["gestures.volume"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.volume", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:gestures.brightness") {
+                        BooleanSettingRow(
+                            keyName = "gestures.brightness",
+                            title = "Gestos de brilho",
+                            description = "Swipe vertical no lado esquerdo ajusta o brilho quando ativado.",
+                            checked = state.settings["gestures.brightness"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.brightness", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:gestures.horizontal_seek") {
+                        BooleanSettingRow(
+                            keyName = "gestures.horizontal_seek",
+                            title = "Gestos horizontais",
+                            description = "Permite avançar ou retroceder no vídeo deslizando horizontalmente.",
+                            checked = state.settings["gestures.horizontal_seek"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.horizontal_seek", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:gestures.double_tap") {
+                        BooleanSettingRow(
+                            keyName = "gestures.double_tap",
+                            title = "Toque duplo para avançar ou retroceder",
+                            description = "Controla o double tap existente.",
+                            checked = state.settings["gestures.double_tap"]?.toBooleanStrictOrNull() ?: true,
+                            onCheckedChange = { onUpdateSetting("gestures.double_tap", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:gestures.long_press") {
+                        BooleanSettingRow(
+                            keyName = "gestures.long_press",
+                            title = "Ativar pressão longa",
+                            description = "Controla a ação de long press existente.",
+                            checked = state.settings["gestures.long_press"] == "true",
+                            onCheckedChange = { onUpdateSetting("gestures.long_press", it.toString()) },
+                        )
+                    }
+                }
+                "player_audio" -> {
+                    item(key = "setting:player.max_audio_channels") {
+                        ChoiceSettingRow(
+                            keyName = "player.max_audio_channels",
+                            title = "Canais de áudio máximos",
+                            description = "Limita a seleção de áudio sem criar um mixer ou decoder alternativo.",
+                            selectedValue = state.settings["player.max_audio_channels"],
+                            choices = maxAudioChannelsChoices,
+                            onSelected = { onUpdateSetting("player.max_audio_channels", it) },
+                        )
+                    }
+                    item(key = "setting:audio.preferred_language") {
+                        LanguageSettingRow(
+                            keyName = "audio.preferred_language",
+                            title = "Idioma de áudio",
+                            description = "Use uma tag BCP-47 como pt-BR, en ou ja. O Media3 usa fallback seguro se não existir.",
+                            selectedValue = state.settings["audio.preferred_language"].orEmpty(),
+                            onSave = { onUpdateSetting("audio.preferred_language", it) },
+                        )
+                    }
+                    item(key = "setting:audio.preferred_subtitle_language") {
+                        LanguageSettingRow(
+                            keyName = "audio.preferred_subtitle_language",
+                            title = "Idioma da legenda",
+                            description = "Use uma tag BCP-47. A seleção ocorre somente entre tracks existentes no arquivo.",
+                            selectedValue = state.settings["audio.preferred_subtitle_language"].orEmpty(),
+                            onSave = { onUpdateSetting("audio.preferred_subtitle_language", it) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitle_scale") {
+                        ChoiceSettingRow(
+                            keyName = "audio.subtitle_scale",
+                            title = "Escala da legenda",
+                            description = "Aplica o tamanho relativo usando o SubtitleView do Media3.",
+                            selectedValue = state.settings["audio.subtitle_scale"],
+                            choices = subtitleScaleChoices,
+                            onSelected = { onUpdateSetting("audio.subtitle_scale", it) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitle_bottom_padding") {
+                        ChoiceSettingRow(
+                            keyName = "audio.subtitle_bottom_padding",
+                            title = "Margem inferior da legenda",
+                            description = "Controla a margem inferior quando a cue não especifica uma linha fixa.",
+                            selectedValue = state.settings["audio.subtitle_bottom_padding"],
+                            choices = subtitlePaddingChoices,
+                            onSelected = { onUpdateSetting("audio.subtitle_bottom_padding", it) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitle_embedded_style") {
+                        BooleanSettingRow(
+                            keyName = "audio.subtitle_embedded_style",
+                            title = "Estilo embutido da legenda",
+                            description = "Permite que o estilo declarado pela própria faixa seja aplicado.",
+                            checked = state.settings["audio.subtitle_embedded_style"] == "true",
+                            onCheckedChange = { onUpdateSetting("audio.subtitle_embedded_style", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitles") {
+                        ChoiceSettingRow(
+                            keyName = "audio.subtitles",
+                            title = "Legendas",
+                            description = "Automático respeita as preferências do arquivo; Sempre tenta selecionar uma legenda; Nunca desativa a track de texto.",
+                            selectedValue = state.settings["audio.subtitles"],
+                            choices = subtitleModeChoices,
+                            onSelected = { onUpdateSetting("audio.subtitles", it) },
+                        )
+                    }
+                }
+                "player_display" -> {
+                    item(key = "setting:player.immersive") {
+                        ChoiceSettingRow(
+                            keyName = "player.immersive",
+                            title = "Modo imersivo",
+                            description = "Controla as barras do sistema somente no player.",
+                            selectedValue = state.settings["player.immersive"],
+                            choices = immersiveChoices,
+                            onSelected = { onUpdateSetting("player.immersive", it) },
+                        )
+                    }
+                    item(key = "setting:player.rotation") {
+                        ChoiceSettingRow(
+                            keyName = "player.rotation",
+                            title = "Rotação",
+                            description = "Define a orientação do player sem forçar o aplicativo inteiro.",
+                            selectedValue = state.settings["player.rotation"],
+                            choices = rotationChoices,
+                            onSelected = { onUpdateSetting("player.rotation", it) },
+                        )
+                    }
+                    item(key = "setting:player.pip") {
+                        BooleanSettingRow(
+                            keyName = "player.pip",
+                            title = "Picture-in-Picture",
+                            description = "Permite PiP quando suportado pelo Android.",
+                            checked = state.settings["player.pip"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.pip", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.auto_hide_seconds") {
+                        ChoiceSettingRow(
+                            keyName = "player.auto_hide_seconds",
+                            title = "Ocultar controles automaticamente",
+                            description = "0 significa nunca.",
+                            selectedValue = state.settings["player.auto_hide_seconds"],
+                            choices = autoHideChoices,
+                            onSelected = { onUpdateSetting("player.auto_hide_seconds", it) },
+                        )
+                    }
+                }
+                "player_advanced" -> {
+                    item(key = "setting:player.reset") {
+                        ReiAnixSettingsSurface(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Restaurar configurações do player",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Restaura somente as preferências do Player aos padrões existentes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                ReiAnixSecondaryButton(
+                                    text = "Restaurar",
+                                    onClick = { requestDestructiveAction("reset_player") },
+                                    enabled = !actionBusy("reset_player"),
+                                    modifier = Modifier.align(Alignment.End),
+                                )
+                            }
+                        }
+                    }
+                }
+                "metadata_identification" -> {
+                    item(key = "setting:metadata.anilist_enabled") {
+                        BooleanSettingRow(
+                            keyName = "metadata.anilist_enabled",
+                            title = "Usar AniList",
+                            description = "Permite ou bloqueia chamadas remotas do cliente AniList.",
+                            checked = state.settings["metadata.anilist_enabled"] == "true",
+                            onCheckedChange = { onUpdateSetting("metadata.anilist_enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:metadata.auto_match") {
+                        BooleanSettingRow(
+                            keyName = "metadata.auto_match",
+                            title = "Identificar automaticamente pelo AniList",
+                            description = "Controla a associação automática de novos itens.",
+                            checked = state.settings["metadata.auto_match"] == "true",
+                            onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
+                        )
+                    }
+                }
+                "metadata_artwork" -> {
+                    item(key = "setting:artwork.enabled") {
+                        BooleanSettingRow(
+                            keyName = "artwork.enabled",
+                            title = "Baixar capas pela internet",
+                            description = "Permite downloads remotos de capas pelo Artwork Engine existente.",
+                            checked = state.settings["artwork.enabled"] == "true",
+                            onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:artwork.cache_limit_mb") {
+                        ChoiceSettingRow(
+                            keyName = "artwork.cache_limit_mb",
+                            title = "Limite do cache de capas",
+                            description = "Limite persistido aplicado ao único Artwork Engine.",
+                            selectedValue = state.settings["artwork.cache_limit_mb"],
+                            choices = listOf(
+                                SettingChoice("64", "64 MB"),
+                                SettingChoice("128", "128 MB"),
+                                SettingChoice("256", "256 MB"),
+                                SettingChoice("512", "512 MB"),
+                            ),
+                            onSelected = { onUpdateSetting("artwork.cache_limit_mb", it) },
+                        )
+                    }
+                }
+                "data_settings" -> {
                     item(key = "data-cache:actions") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1210,9 +1466,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
-                    item(key = "section:data:cache") {
-                        SettingsSectionLabel("Cache")
-                    }
+                }
+                "data_cache" -> {
                     item(key = "data-cache:artwork-cache") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1222,17 +1477,17 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
                                 Text(
-                                    text = "Cache de artwork",
+                                    text = "Cache de capas e miniaturas",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = "Remove somente capas e miniaturas temporárias gerenciadas pelo Artwork Engine. Não apaga arquivos de vídeo, biblioteca nem progresso.",
+                                    text = "Remove as capas e miniaturas temporárias do aplicativo.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 ReiAnixSecondaryButton(
-                                    text = "Limpar cache de artwork",
+                                    text = "Limpar cache de capas",
                                     onClick = { requestDestructiveAction("clear_anilist_cache") },
                                     enabled = !actionBusy("clear_anilist_cache"),
                                     modifier = Modifier.fillMaxWidth(),
@@ -1241,30 +1496,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         }
                     }
                 }
-
-                "Backup e Restauração" -> {
-                    item(key = "section:backup:operations") { SettingsSectionLabel("Backup") }
-                    item(key = "backup:info") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Backup e restauração",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Utiliza o BackupService e o schema SQLite existentes. Nenhum banco paralelo é criado.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
+                "data_backup" -> {
                     item(key = "backup:actions") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1301,13 +1533,96 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         }
                     }
                 }
-
-                "Diagnóstico" -> {
+                "about_app" -> {
+                    item(key = "about:app") {
+                        ReiAnixSettingsSurface(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "ReiAnix",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "Aplicativo local para organização e reprodução de mídia.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(
+                                    text = BuildConfig.VERSION_NAME,
+                                    tone = ReiAnixBadgeTone.Neutral,
+                                )
+                                Text(
+                                    text = "Player: Media3 / NativePlayer existente.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "Armazenamento: MediaStore / SAF / scanners nativos existentes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+                "about_diagnostics" -> {
                     val diagnosticStorage = state.storage
                     val latestDiagnosticOperation = state.operations.values
                         .filter { it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" }
                         .maxByOrNull { it.timestampMs }
-                    item(key = "section:diagnostic:technical") { SettingsSectionLabel("Técnico") }
+                    item(key = "data-cache:info") {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Dados locais",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "As preferências continuam persistidas pelo SettingsStore existente.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                ReiAnixBadge(
+                                    text = "Fonte única: SettingsStore",
+                                    tone = ReiAnixBadgeTone.Neutral,
+                                )
+                            }
+                        }
+                    }
+                    item(key = "backup:info") {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
+                                Text(
+                                    text = "Backup e restauração",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "O backup reúne os dados locais e as configurações do aplicativo.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
                     item(key = "diagnostic:info") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -1381,12 +1696,23 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
-                                ReiAnixSecondaryButton(
-                                    text = "Verificar integridade (checagem estrita existente)",
-                                    onClick = { onAction("backup_integrity") },
-                                    enabled = !diagnosticWorkRunning && !actionBusy("backup_integrity"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+                            }
+                        }
+                    }
+                }
+                "about_reports" -> {
+                    val diagnosticStorage = state.storage
+                    val latestDiagnosticOperation = state.operations.values
+                        .filter { it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" }
+                        .maxByOrNull { it.timestampMs }
+                    item(key = "diagnostic:reports") {
+                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(ReiAnixTokens.Spacing.lg),
+                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                            ) {
                                 ReiAnixSecondaryButton(
                                     text = "Importar logcat (ADB)",
                                     onClick = { onAction("diagnostic_import_logcat") },
@@ -1515,272 +1841,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             }
                         }
                     }
+
                 }
-
-                "Áudio e Legendas" -> {
-                    item(key = "section:audio:subtitles") { SettingsSectionLabel("Legendas") }
-                    item(key = "setting:audio.subtitle_scale") {
-                        ChoiceSettingRow(
-                            keyName = "audio.subtitle_scale",
-                            title = "Escala da legenda",
-                            description = "Aplica o tamanho relativo usando o SubtitleView do Media3.",
-                            selectedValue = state.settings["audio.subtitle_scale"],
-                            choices = subtitleScaleChoices,
-                            onSelected = { onUpdateSetting("audio.subtitle_scale", it) },
-                        )
-                    }
-                    item(key = "setting:audio.subtitle_bottom_padding") {
-                        ChoiceSettingRow(
-                            keyName = "audio.subtitle_bottom_padding",
-                            title = "Margem inferior da legenda",
-                            description = "Controla a margem inferior quando a cue não especifica uma linha fixa.",
-                            selectedValue = state.settings["audio.subtitle_bottom_padding"],
-                            choices = subtitlePaddingChoices,
-                            onSelected = { onUpdateSetting("audio.subtitle_bottom_padding", it) },
-                        )
-                    }
-                    item(key = "setting:audio.subtitle_embedded_style") {
-                        BooleanSettingRow(
-                            keyName = "audio.subtitle_embedded_style",
-                            title = "Estilo embutido da legenda",
-                            description = "Permite que o estilo declarado pela própria faixa seja aplicado.",
-                            checked = state.settings["audio.subtitle_embedded_style"] == "true",
-                            onCheckedChange = { onUpdateSetting("audio.subtitle_embedded_style", it.toString()) },
-                        )
-                    }
-                    item(key = "section:audio:languages") { SettingsSectionLabel("Idiomas") }
-                    item(key = "setting:audio.preferred_language") {
-                        LanguageSettingRow(
-                            keyName = "audio.preferred_language",
-                            title = "Idioma de áudio",
-                            description = "Use uma tag BCP-47 como pt-BR, en ou ja. O Media3 usa fallback seguro se não existir.",
-                            selectedValue = state.settings["audio.preferred_language"].orEmpty(),
-                            onSave = { onUpdateSetting("audio.preferred_language", it) },
-                        )
-                    }
-                    item(key = "setting:audio.preferred_subtitle_language") {
-                        LanguageSettingRow(
-                            keyName = "audio.preferred_subtitle_language",
-                            title = "Idioma da legenda",
-                            description = "Use uma tag BCP-47. A seleção ocorre somente entre tracks existentes no arquivo.",
-                            selectedValue = state.settings["audio.preferred_subtitle_language"].orEmpty(),
-                            onSave = { onUpdateSetting("audio.preferred_subtitle_language", it) },
-                        )
-                    }
-                    item(key = "section:audio:behavior") { SettingsSectionLabel("Comportamento") }
-                    item(key = "setting:audio.subtitles") {
-                        ChoiceSettingRow(
-                            keyName = "audio.subtitles",
-                            title = "Legendas",
-                            description = "Automático respeita as preferências do arquivo; Sempre tenta selecionar uma legenda; Nunca desativa a track de texto.",
-                            selectedValue = state.settings["audio.subtitles"],
-                            choices = subtitleModeChoices,
-                            onSelected = { onUpdateSetting("audio.subtitles", it) },
-                        )
-                    }
-                }
-
-                "Sobre" -> {
-                    item(key = "section:about:identity") { SettingsSectionLabel("ReiAnix") }
-                    item(key = "about:app") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "ReiAnix",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Aplicativo local para organização e reprodução de mídia.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixBadge(
-                                    text = BuildConfig.VERSION_NAME,
-                                    tone = ReiAnixBadgeTone.Neutral,
-                                )
-                                Text(
-                                    text = "Player: Media3 / NativePlayer existente.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = "Armazenamento: MediaStore / SAF / scanners nativos existentes.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                "Varredura" -> {
-                    val normalizedScanState = scanState.trim().uppercase().ifBlank { "IDLE" }
-                    val scanStateLabel = when (normalizedScanState) {
-                        "IDLE" -> "Ociosa"
-                        "QUEUED" -> "Na fila"
-                        "CHECKING" -> "Verificando fontes"
-                        "RUNNING", "SCANNING" -> "Em andamento"
-                        "CANCELLING" -> "Cancelando"
-                        "WAITING_FOR_MEDIASTORE" -> "Aguardando MediaStore"
-                        "COMPLETED", "SUCCESS" -> "Concluída"
-                        "PARTIAL" -> "Concluída parcialmente"
-                        "CANCELLED" -> "Cancelada"
-                        "FAILED", "ERROR" -> "Falhou"
-                        "BLOCKED" -> "Bloqueada"
-                        "UNKNOWN" -> "Desconhecida"
-                        else -> normalizedScanState
-                    }
-                    val normalizedLastScan = lastScanStatus?.trim()?.uppercase().orEmpty()
-                    val lastScanLabel = when (normalizedLastScan) {
-                        "" -> "Nenhuma"
-                        "COMPLETED", "SUCCESS" -> "Concluída"
-                        "PARTIAL" -> "Concluída parcialmente"
-                        "CANCELLED" -> "Cancelada"
-                        "FAILED", "ERROR" -> "Falhou"
-                        "BLOCKED" -> "Bloqueada"
-                        else -> normalizedLastScan
-                    }
-
-                    item(key = "section:scan:state") { SettingsSectionLabel("Scanner") }
-                    item(key = "scan:existing") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Varredura em andamento",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = if (scanInProgress) {
-                                        "Uma varredura está sendo executada."
-                                    } else {
-                                        "Nenhuma varredura está em andamento."
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = "Estado: $scanStateLabel",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    ReiAnixBadge(
-                                        text = if (scanInProgress) "Ativa" else "Inativa",
-                                        tone = ReiAnixBadgeTone.Neutral,
-                                    )
-                                }
-                                Text(
-                                    text = "Última varredura: $lastScanLabel",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = "MediaStore, SAF e broad storage continuam sob o ScanCoordinator e os scanners existentes.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    item(key = "scan:refresh") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Atualização",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "A atualização da biblioteca continua no fluxo existente; Settings não cria nem inicia um scanner paralelo.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "Ver armazenamento e fontes",
-                                    onClick = onOpenStorage,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
-                    }
-                }
-
-                "Privacidade" -> {
-                    item(key = "section:privacy:local") { SettingsSectionLabel("Privacidade") }
-                    item(key = "privacy:local") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Biblioteca local",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Biblioteca, histórico e caminhos locais permanecem no dispositivo.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixBadge(text = "Local", tone = ReiAnixBadgeTone.Neutral)
-                            }
-                        }
-                    }
-                    item(key = "privacy:connectivity") {
-                        ReiAnixSettingsSurface(
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Conectividade",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Google Login é opcional; a biblioteca local e o player não dependem de conectividade.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixBadge(text = "Offline-first", tone = ReiAnixBadgeTone.Neutral)
-                            }
-                        }
-                    }
-                }
-
 
                 }
             }
@@ -2449,7 +2511,7 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
         }
         "Biblioteca" -> listOfNotNull(
             settings["library.page_size"]?.takeIf { it.isNotBlank() }?.let { "$it itens/página" },
-            if (settings["library.continue_watching"] == "true") "Continue Watching" else null,
+            if (settings["library.continue_watching"] == "true") "Continuar assistindo" else null,
         ).joinToString(" • ")
         "Player" -> listOfNotNull(
             if (settings["player.autoplay_next"] == "true") "Autoplay" else null,
@@ -2466,7 +2528,7 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
             ?.takeIf { it.isNotBlank() }
             ?: "Padrão"
         "Metadata" -> if (settings["metadata.anilist_enabled"] == "true") "AniList ativo" else "AniList desativado"
-        "Artwork" -> if (settings["artwork.enabled"] == "true") "Artwork remoto ativo" else "Artwork remoto desativado"
+        "Artwork" -> if (settings["artwork.enabled"] == "true") "Baixar capas pela internet ativo" else "Baixar capas pela internet desativado"
         "Privacidade" -> "Dados locais"
         "Varredura" -> "ScanCoordinator existente"
         "Dados e Cache" -> "Preferências locais"
