@@ -143,7 +143,14 @@ fun ReiAnixLibraryRoute(
         onSortSelected = viewModel::setLibrarySort,
         onClearFilters = viewModel::clearLibraryFilters,
         onRefresh = viewModel::refresh,
-        onSelectSource = viewModel::selectSafTree,
+        onSelectSource = {
+            navController.navigate(
+                ReiAnixRoutes.STORAGE,
+                navOptions {
+                    launchSingleTop = true
+                },
+            )
+        },
         onSearch = {
             navController.navigateToTopLevel(ReiAnixRoutes.SEARCH)
         },
