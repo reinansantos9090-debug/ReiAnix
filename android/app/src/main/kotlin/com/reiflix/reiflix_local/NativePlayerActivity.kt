@@ -5394,7 +5394,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         seekOutputWatchdogPending = true
         seekOutputWatchdogRecoveryAttempted = false
         seekOutputWatchdogStartedAtElapsedMs = SystemClock.elapsedRealtime()
-        seekOutputWatchdogStartPositionMs = player.currentPosition
+        // The player may publish the requested position immediately after
+        // seekTo(); use the requested target as the baseline, not the old
+        // pre-seek position, or a large seek jump looks like clock progress.
+        seekOutputWatchdogStartPositionMs = targetMs.coerceAtLeast(0L)
         logPlayer(
             "SEEK_VIDEO_OUTPUT_WATCHDOG_ARMED reason=" + reason +
                 " targetMs=" + targetMs +
@@ -5422,8 +5425,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return null
         }
         val safeTargetMs = PlayerMediaPolicy.clampSeekPosition(targetMs, effectiveDurationMs())
-        armSeekOutputWatchdog(safeTargetMs, reason)
         player.seekTo(safeTargetMs)
+        armSeekOutputWatchdog(safeTargetMs, reason)
         logPlayer(
             "MEDIA3_SEEK_DISPATCHED reason=" + reason +
                 " targetMs=" + safeTargetMs +
