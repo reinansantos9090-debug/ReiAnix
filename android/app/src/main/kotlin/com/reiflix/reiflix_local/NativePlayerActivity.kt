@@ -1320,8 +1320,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
 
+    private fun hasCurrentMediaItem(): Boolean =
+        ::player.isInitialized &&
+            player.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
+
     private fun currentDisplayDuration(): ReiAnixPlayerSeekPolicy.DisplayDuration {
-        val playerDuration = if (::player.isInitialized) player.duration else C.TIME_UNSET
+        val playerDuration = if (hasCurrentMediaItem()) player.duration else C.TIME_UNSET
         return ReiAnixPlayerSeekPolicy.displayDuration(playerDuration, savedDurationMsForDisplay)
     }
 
@@ -1334,8 +1338,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (logIgnored) logPlayer("PLAYER_COMMAND_IGNORED command=seek source=$source reason=player_uninitialized")
             return false
         }
-        val seekable = player.isCurrentMediaItemSeekable
-        val inItemCommand = player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+        val currentItemAvailable = player.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
+        val seekable = currentItemAvailable && player.isCurrentMediaItemSeekable
+        val inItemCommand = currentItemAvailable &&
+            player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
         val directionCommand = when {
             relativeDeltaMs == null -> true
             relativeDeltaMs < 0L -> player.isCommandAvailable(Player.COMMAND_SEEK_BACK)
@@ -1358,7 +1364,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer(
                 "PLAYER_COMMAND_IGNORED command=seek source=$source reason=$reason " +
                     "seekable=$seekable seekInItem=$inItemCommand directionCommand=$directionCommand " +
-                    "durationMs=${player.duration} playbackState=${player.playbackStateLabel()}",
+                    "durationMs=${if (currentItemAvailable) player.duration else -1L} " +
+                    "currentItemAvailable=$currentItemAvailable playbackState=${player.playbackStateLabel()}",
             )
         }
         return allowed
@@ -1368,15 +1375,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val canSeek = canSeekCurrentMedia("controls_refresh", logIgnored = false)
         findViewByTag<View>("reiflix_seek_back")?.isEnabled = canSeek
         findViewByTag<View>("reiflix_seek_forward")?.isEnabled = canSeek
-        val actualDurationKnown = ::player.isInitialized &&
+        val currentItemAvailable = hasCurrentMediaItem()
+        val actualDurationKnown = currentItemAvailable &&
             ReiAnixPlayerSeekPolicy.validDuration(player.duration) != null
         if (::seekBar.isInitialized) seekBar.isEnabled = canSeek && actualDurationKnown
         if (::player.isInitialized) {
             val display = currentDisplayDuration()
+            val actualSeekable = currentItemAvailable && player.isCurrentMediaItemSeekable
+            val seekCommand = currentItemAvailable &&
+                player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
             logPlayer(
-                "PLAYER_SEEK_CAPABILITY seekable=${player.isCurrentMediaItemSeekable} " +
-                    "command=${player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)} " +
-                    "actualDurationMs=${ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: -1L} " +
+                "PLAYER_SEEK_CAPABILITY seekable=$actualSeekable " +
+                    "command=$seekCommand currentItemAvailable=$currentItemAvailable " +
+                    "actualDurationMs=${if (actualDurationKnown) player.duration else -1L} " +
                     "displayDurationMs=${display.durationMs} durationFromDatabase=${display.fromDatabase}",
             )
         }
