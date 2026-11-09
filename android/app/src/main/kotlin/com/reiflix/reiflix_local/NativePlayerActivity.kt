@@ -195,6 +195,79 @@ class NativePlayerActivity : ComponentActivity() {
     private var subtitleEmbeddedStyle = true
 
     private val handler = Handler(Looper.getMainLooper())
+    private var seekOutputWatchdogPending = false
+    private var seekOutputWatchdogRecoveryAttempted = false
+    private var seekOutputWatchdogStartedAtElapsedMs = 0L
+    private var seekOutputWatchdogStartPositionMs = 0L
+    private var lastVideoFrameProcessingElapsedMs = 0L
+    private val seekOutputWatchdog = object : Runnable {
+        override fun run() {
+            if (!seekOutputWatchdogPending ||
+                !::player.isInitialized ||
+                sessionState != SessionState.ACTIVE
+            ) {
+                seekOutputWatchdogPending = false
+                return
+            }
+
+            val now = SystemClock.elapsedRealtime()
+            if (!player.isPlaying) {
+                // A paused player is not expected to produce frames. Restart the
+                // observation window when playback actually resumes.
+                seekOutputWatchdogStartedAtElapsedMs = now
+                seekOutputWatchdogStartPositionMs = player.currentPosition
+                handler.postDelayed(this, 500L)
+                return
+            }
+
+            if (lastVideoFrameProcessingElapsedMs >= seekOutputWatchdogStartedAtElapsedMs) {
+                seekOutputWatchdogPending = false
+                logPlayer(
+                    "SEEK_VIDEO_OUTPUT_RECOVERED positionMs=" + player.currentPosition +
+                        " recoveryAttempted=" + seekOutputWatchdogRecoveryAttempted,
+                )
+                return
+            }
+
+            val elapsedMs = now - seekOutputWatchdogStartedAtElapsedMs
+            val advancedMs = (player.currentPosition - seekOutputWatchdogStartPositionMs)
+                .coerceAtLeast(0L)
+            if (elapsedMs < 3_500L || advancedMs < 1_200L) {
+                handler.postDelayed(this, 500L)
+                return
+            }
+
+            if (!seekOutputWatchdogRecoveryAttempted &&
+                player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+            ) {
+                seekOutputWatchdogRecoveryAttempted = true
+                val recoveryPositionMs = player.currentPosition.coerceAtLeast(0L)
+                seekOutputWatchdogStartedAtElapsedMs = now
+                seekOutputWatchdogStartPositionMs = recoveryPositionMs
+                logPlayer(
+                    "SEEK_VIDEO_OUTPUT_WATCHDOG_RECOVERY action=single_renderer_reset" +
+                        " targetMs=" + recoveryPositionMs +
+                        " elapsedMs=" + elapsedMs +
+                        " audioPositionAdvanceMs=" + advancedMs,
+                )
+                // Media3 does not expose a public "restart video codec only" API.
+                // A bounded seek to the current audio-clock position is the
+                // supported renderer reset path; audio/video remain owned by Media3.
+                player.seekTo(recoveryPositionMs)
+                handler.postDelayed(this, 500L)
+                return
+            }
+
+            seekOutputWatchdogPending = false
+            player.pause()
+            logPlayer(
+                "SEEK_VIDEO_OUTPUT_WATCHDOG_FAILED action=paused_to_prevent_audio_only" +
+                    " positionMs=" + player.currentPosition +
+                    " recoveryAttempted=" + seekOutputWatchdogRecoveryAttempted,
+            )
+            showFeedback("Vídeo pausado: não foi possível recuperar a imagem", 2_400L)
+        }
+    }
     private var lastSavedPosition = -1L
     private var lastProgressPersistAt = 0L
     private var suppressExitEvent = false
@@ -1823,6 +1896,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onRenderedFirstFrame() {
             if (!isCurrent()) return
+            markVideoOutputAfterSeek("rendered_first_frame")
             logPlayer(
                 "FIRST_FRAME_CALLBACK requestId=" + requestId.ifEmpty { "-" } +
                     " generation=" + playerGeneration +
@@ -2279,6 +2353,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         ) {
             if (!isCurrent() || frameCount <= 0) return
             val averageOffsetUs = totalProcessingOffsetUs / frameCount
+            markVideoOutputAfterSeek("video_frame_processing")
             logPlayer(
                 "VIDEO_FRAME_PROCESSING_OFFSET generation=" + generation +
                     " totalOffsetUs=" + totalProcessingOffsetUs +
@@ -2436,6 +2511,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun beginPlayerGeneration(reason: String) {
         if (!::player.isInitialized || sessionState == SessionState.DESTROYED) return
         cancelFirstFrameDiagnostics("new_generation")
+        handler.removeCallbacks(seekOutputWatchdog)
+        seekOutputWatchdogPending = false
+        seekOutputWatchdogRecoveryAttempted = false
         activePlayerListener?.let { player.removeListener(it) }
         activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }
         activePlayerListener = null
@@ -5272,6 +5350,42 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
+    private fun markVideoOutputAfterSeek(source: String) {
+        val now = SystemClock.elapsedRealtime()
+        lastVideoFrameProcessingElapsedMs = now
+        if (seekOutputWatchdogPending && now >= seekOutputWatchdogStartedAtElapsedMs) {
+            seekOutputWatchdogPending = false
+            handler.removeCallbacks(seekOutputWatchdog)
+            logPlayer(
+                "SEEK_VIDEO_OUTPUT_CONFIRMED source=" + source +
+                    " positionMs=" + if (::player.isInitialized) player.currentPosition else 0L +
+                    " recoveryAttempted=" + seekOutputWatchdogRecoveryAttempted,
+            )
+        }
+    }
+
+    private fun armSeekOutputWatchdog(targetMs: Long, reason: String) {
+        if (!::player.isInitialized ||
+            player.videoSize.width <= 0 ||
+            player.videoSize.height <= 0
+        ) {
+            return
+        }
+        handler.removeCallbacks(seekOutputWatchdog)
+        seekOutputWatchdogPending = true
+        seekOutputWatchdogRecoveryAttempted = false
+        seekOutputWatchdogStartedAtElapsedMs = SystemClock.elapsedRealtime()
+        seekOutputWatchdogStartPositionMs = player.currentPosition
+        logPlayer(
+            "SEEK_VIDEO_OUTPUT_WATCHDOG_ARMED reason=" + reason +
+                " targetMs=" + targetMs +
+                " positionMs=" + seekOutputWatchdogStartPositionMs +
+                " seekable=" + player.isCurrentMediaItemSeekable +
+                " seekCommandAvailable=" + player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
+        )
+        handler.postDelayed(seekOutputWatchdog, 500L)
+    }
+
     private fun seekCurrentMediaTo(targetMs: Long, reason: String): Long? {
         if (!::player.isInitialized || sessionState != SessionState.ACTIVE) return null
         val durationMs = player.duration
@@ -5289,6 +5403,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return null
         }
         val safeTargetMs = PlayerMediaPolicy.clampSeekPosition(targetMs, effectiveDurationMs())
+        armSeekOutputWatchdog(safeTargetMs, reason)
         player.seekTo(safeTargetMs)
         logPlayer(
             "MEDIA3_SEEK_DISPATCHED reason=" + reason +
@@ -5649,6 +5764,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.resetZoomToFit()
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.dispose()
         handler.removeCallbacks(progressReporter)
+        handler.removeCallbacks(seekOutputWatchdog)
+        seekOutputWatchdogPending = false
         handler.removeCallbacks(controlsHider)
         handler.removeCallbacks(lockAffordanceHider)
         handler.removeCallbacks(feedbackHider)
