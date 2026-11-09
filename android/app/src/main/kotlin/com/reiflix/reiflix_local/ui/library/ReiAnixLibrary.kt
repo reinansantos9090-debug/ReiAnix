@@ -64,6 +64,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import androidx.navigation.navOptions
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import kotlinx.coroutines.flow.collect
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -147,7 +148,12 @@ fun ReiAnixLibraryRoute(
             navController.navigateToTopLevel(ReiAnixRoutes.SEARCH)
         },
         onOpenStorage = {
-            navController.navigateToTopLevel(ReiAnixRoutes.SETTINGS)
+            navController.navigate(
+                ReiAnixRoutes.STORAGE,
+                navOptions {
+                    launchSingleTop = true
+                },
+            )
         },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(

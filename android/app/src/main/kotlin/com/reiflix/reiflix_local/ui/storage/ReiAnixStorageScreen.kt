@@ -69,6 +69,7 @@ fun ReiAnixStorageRoute(
     val nativeFolders by viewModel.nativeFoldersState.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel) {
         viewModel.refreshNativeFolders()
+        onCheckAccess()
     }
     ReiAnixStorageScreen(
         state = state,
@@ -124,8 +125,11 @@ fun ReiAnixStorageScreen(
 
     val mediaState = storage.mediaReadState.lowercase()
     val broadState = storage.broadStorageState.lowercase()
-    val mediaNeedsAction = mediaState != "full"
-    val broadNeedsAction = broadState != "available"
+    val storageCapabilitiesUnverified =
+        storage.lifecycleState == "unknown" || storage.api == null
+    val storageCheckInProgress = storage.lifecycleState == "checking"
+    val mediaNeedsAction = !storageCapabilitiesUnverified && mediaState != "full"
+    val broadNeedsAction = !storageCapabilitiesUnverified && broadState != "available"
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -154,13 +158,40 @@ fun ReiAnixStorageScreen(
                 )
             }
 
-            if (storage.lifecycleState == "unknown" || storage.api == null) {
+            if (storageCheckInProgress) {
                 item(key = "checking") {
                     ReiAnixLoadingState(
                         title = "Verificando armazenamento",
                         message = "Consultando as permissões e fontes locais…",
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
+            } else if (storageCapabilitiesUnverified) {
+                item(key = "storage-unverified") {
+                    ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(ReiAnixTokens.Spacing.lg),
+                            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                        ) {
+                            Text(
+                                text = "Estado do armazenamento não confirmado",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = "O Android ainda não publicou os dados atuais de permissões e fontes locais. As pastas e autorizações já configuradas foram preservadas.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            ReiAnixSecondaryButton(
+                                text = "Verificar novamente",
+                                onClick = onCheckAccess,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
             }
 
@@ -264,11 +295,27 @@ fun ReiAnixStorageScreen(
                 DeviceAccessCard(
                     title = "Vídeos do dispositivo",
                     description = "Permissão de leitura usada para descobrir vídeos que o Android já indexou.",
-                    stateLabel = mediaAccessLabel(mediaState),
-                    stateTone = accessBadgeTone(mediaState, "full"),
+                    stateLabel = if (storageCapabilitiesUnverified) {
+                        "Não verificado"
+                    } else {
+                        mediaAccessLabel(mediaState)
+                    },
+                    stateTone = if (storageCapabilitiesUnverified) {
+                        ReiAnixBadgeTone.Neutral
+                    } else {
+                        accessBadgeTone(mediaState, "full")
+                    },
                     icon = Icons.Filled.Info,
-                    actionLabel = if (mediaNeedsAction) "Conceder acesso" else null,
-                    onAction = if (mediaNeedsAction) onRequestMediaAccess else null,
+                    actionLabel = when {
+                        storageCapabilitiesUnverified -> "Verificar"
+                        mediaNeedsAction -> "Conceder acesso"
+                        else -> null
+                    },
+                    onAction = when {
+                        storageCapabilitiesUnverified -> onCheckAccess
+                        mediaNeedsAction -> onRequestMediaAccess
+                        else -> null
+                    },
                 )
             }
 
@@ -276,11 +323,27 @@ fun ReiAnixStorageScreen(
                 DeviceAccessCard(
                     title = "Acesso amplo ao dispositivo",
                     description = "Permissão especial do Android, usada somente quando já foi concedida nas configurações.",
-                    stateLabel = if (broadState == "available") "Acesso concedido" else "Acesso necessário",
-                    stateTone = if (broadState == "available") ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
+                    stateLabel = when {
+                        storageCapabilitiesUnverified -> "Não verificado"
+                        broadState == "available" -> "Acesso concedido"
+                        else -> "Acesso necessário"
+                    },
+                    stateTone = when {
+                        storageCapabilitiesUnverified -> ReiAnixBadgeTone.Neutral
+                        broadState == "available" -> ReiAnixBadgeTone.Success
+                        else -> ReiAnixBadgeTone.Warning
+                    },
                     icon = Icons.Filled.Settings,
-                    actionLabel = if (broadNeedsAction) "Abrir configurações" else null,
-                    onAction = if (broadNeedsAction) onOpenBroadSettings else null,
+                    actionLabel = when {
+                        storageCapabilitiesUnverified -> "Verificar"
+                        broadNeedsAction -> "Abrir configurações"
+                        else -> null
+                    },
+                    onAction = when {
+                        storageCapabilitiesUnverified -> onCheckAccess
+                        broadNeedsAction -> onOpenBroadSettings
+                        else -> null
+                    },
                 )
             }
 
