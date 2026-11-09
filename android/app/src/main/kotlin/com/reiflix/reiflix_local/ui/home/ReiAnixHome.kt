@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.collect
 import androidx.navigation.NavHostController
+import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
 import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
@@ -155,7 +156,12 @@ fun ReiAnixHomeRoute(
         onOpenMyList = { navController.navigateToMyList() },
         onOpenLibrary = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) },
         onRefresh = viewModel::refresh,
-        onSelectSource = viewModel::selectSafTree,
+        onSelectSource = {
+            navController.navigate(
+                ReiAnixRoutes.STORAGE,
+                navOptions { launchSingleTop = true },
+            )
+        },
         onOpenTimeline = { activeDiscoveryDialog = "timeline" },
         onOpenDurationAnomalies = { activeDiscoveryDialog = "duration" },
     )
