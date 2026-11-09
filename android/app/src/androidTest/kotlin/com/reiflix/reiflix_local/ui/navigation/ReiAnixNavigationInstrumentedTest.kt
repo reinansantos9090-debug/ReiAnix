@@ -59,7 +59,6 @@ class ReiAnixNavigationInstrumentedTest {
                     myList = { NavigationTestScreen("Minha Lista") },
                     search = { NavigationTestScreen("Buscar") },
                     settings = { NavigationTestScreen("Ajustes") },
-                    storage = { NavigationTestScreen("Armazenamento") },
                     details = { args ->
                         Column {
                             Text("Details")
@@ -126,52 +125,6 @@ class ReiAnixNavigationInstrumentedTest {
                 )
             }
         }
-    }
-
-    @Test
-    fun storageNavigationReusesExistingDestinationInsteadOfStackingCopies() {
-        navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY)
-        navController.navigateToStorage()
-        composeRule.waitForIdle()
-
-        assertEquals(
-            ReiAnixRoutes.STORAGE,
-            navController.currentBackStackEntry?.destination?.route,
-        )
-        composeRule.onNodeWithText("Armazenamento").assertIsDisplayed()
-
-        navController.navigateToDetails("42", ReiAnixRoutes.STORAGE)
-        composeRule.waitForIdle()
-        assertEquals(
-            ReiAnixRoutes.DETAILS,
-            navController.currentBackStackEntry?.destination?.route,
-        )
-
-        navController.navigateToStorage()
-        composeRule.waitForIdle()
-
-        assertEquals(
-            ReiAnixRoutes.STORAGE,
-            navController.currentBackStackEntry?.destination?.route,
-        )
-        assertEquals(
-            ReiAnixRoutes.HOME,
-            navController.previousBackStackEntry?.destination?.route,
-        )
-
-        navController.navigateToStorage()
-        composeRule.waitForIdle()
-        assertEquals(
-            ReiAnixRoutes.HOME,
-            navController.previousBackStackEntry?.destination?.route,
-        )
-
-        composeRule.activity.onBackPressedDispatcher.onBackPressed()
-        composeRule.waitForIdle()
-        assertEquals(
-            ReiAnixRoutes.HOME,
-            navController.currentBackStackEntry?.destination?.route,
-        )
     }
 
     @Test
