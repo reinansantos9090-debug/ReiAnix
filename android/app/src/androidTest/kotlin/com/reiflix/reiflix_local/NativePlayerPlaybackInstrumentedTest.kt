@@ -475,11 +475,11 @@ class NativePlayerPlaybackInstrumentedTest {
         }
         assertTrue(
             "Media3 must report the local MP4 item as seekable",
-            player.isCurrentMediaItemSeekable,
+            onMain { player.isCurrentMediaItemSeekable },
         )
         assertTrue(
             "Media3 must expose the current-item seek command",
-            player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
+            onMain { player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) },
         )
         assertFalse("Player should initially remain paused for deterministic interaction", onMain { player.isPlaying })
         assertTrue("Native player Activity must remain alive after READY", !activity!!.isFinishing)
