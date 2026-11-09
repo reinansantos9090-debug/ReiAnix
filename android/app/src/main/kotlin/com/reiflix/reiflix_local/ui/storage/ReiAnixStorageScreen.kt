@@ -179,10 +179,35 @@ fun ReiAnixStorageScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+            if (nativeFolders.status == ReiAnixNativeFoldersStatus.READY ||
+                nativeFolders.status == ReiAnixNativeFoldersStatus.EMPTY) {
+                item(key = "folder-count") {
+                    val count = configuredSafSources.size
+                    Text(
+                        text = if (count == 1) "1 pasta cadastrada" else "$count pastas cadastradas",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
             items(configuredSafSources, key = { it.reference }) { source ->
                 val name = friendlySourceName(source.name).ifBlank { source.reference }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(name, modifier = Modifier.weight(1f))
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                    ) {
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = source.reference,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     androidx.compose.material3.IconButton(
                         onClick = { pendingRemoval = source },
                         enabled = !removeBusy && !selectionBusy,
