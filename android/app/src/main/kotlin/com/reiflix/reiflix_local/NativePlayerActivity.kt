@@ -2850,11 +2850,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
 
                 override fun onStopTrackingTouch(bar: SeekBar?) {
-                    if (!::player.isInitialized || player.duration <= 0L) return
+                    if (!::player.isInitialized) return
                     val target = player.duration * seekBar.progress.toLong() / SEEK_PROGRESS_MAX
-                    player.seekTo(target.coerceIn(0L, player.duration))
+                    val appliedTarget = seekCurrentMediaTo(target, "seekbar") ?: return
                     saveProgress("player_progress", force = true)
-                    showFeedback(formatTime(target))
+                    showFeedback(formatTime(appliedTarget))
                     scheduleControlsHide()
                 }
             })
@@ -2910,8 +2910,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             showSpeedSelection(TextView(this@NativePlayerActivity))
                         },
                         onRestart = {
-                            if (::player.isInitialized && !episodeChangePending) {
-                                player.seekTo(0L)
+                            if (!episodeChangePending && seekCurrentMediaTo(0L, "restart") != null) {
                                 saveProgress("player_progress", force = true)
                                 showFeedback("00:00")
                             }
@@ -3030,12 +3029,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
                         onSeekTo = { targetMs ->
-                            if (::player.isInitialized && player.duration > 0L && !episodeChangePending) {
-                                val safeTarget = targetMs.coerceIn(0L, player.duration)
-                                player.seekTo(safeTarget)
-                                saveProgress("player_progress", force = true)
-                                showFeedback(formatTime(safeTarget))
-                                touchControls()
+                            if (!episodeChangePending) {
+                                val safeTarget = seekCurrentMediaTo(targetMs, "timeline")
+                                if (safeTarget != null) {
+                                    saveProgress("player_progress", force = true)
+                                    showFeedback(formatTime(safeTarget))
+                                    touchControls()
+                                }
                             }
                         },
                         onToggleLock = { setLocked(!locked) },
@@ -3361,9 +3361,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             player.playbackState == Player.STATE_ENDED -> {
                 // The UI exposes a replay affordance for an ended item, so tapping
                 // it must explicitly rewind before playback.
-                player.seekTo(0L)
-                player.play()
-                logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
+                if (seekCurrentMediaTo(0L, "replay") != null) {
+                    player.play()
+                    logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
+                }
             }
             player.isPlaying -> {
                 player.pause()
@@ -3908,7 +3909,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun seekBy(deltaMs: Long, feedbackText: String) {
-        if (!::player.isInitialized || player.duration <= 0L) return
+        if (!::player.isInitialized) return
         if (episodeChangePending) {
             logPlayer("PLAYER_COMMAND_IGNORED command=seek reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
             return
@@ -3918,7 +3919,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             deltaMs = deltaMs,
             durationMs = player.duration,
         )
-        player.seekTo(target)
+        if (seekCurrentMediaTo(target, "relative_gesture") == null) return
         // Relative seek gestures are frequent; the authoritative checkpoints remain
         // pause/completion/exit plus the periodic progress reporter.
         saveProgress("player_progress")
@@ -5234,12 +5235,43 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
+    private fun seekCurrentMediaTo(targetMs: Long, reason: String): Long? {
+        if (!::player.isInitialized || sessionState != SessionState.ACTIVE) return null
+        val durationMs = player.duration
+        val seekable = player.isCurrentMediaItemSeekable
+        val seekCommandAvailable = player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+        if (!PlayerMediaPolicy.isSeekAllowed(durationMs, seekable, seekCommandAvailable)) {
+            logPlayer(
+                "MEDIA3_SEEK_REJECTED reason=" + reason +
+                    " durationMs=" + durationMs +
+                    " seekable=" + seekable +
+                    " seekCommandAvailable=" + seekCommandAvailable +
+                    " playbackState=" + player.playbackState +
+                    " requestId=" + requestId.ifEmpty { "-" },
+            )
+            return null
+        }
+        val safeTargetMs = targetMs.coerceIn(0L, durationMs)
+        player.seekTo(safeTargetMs)
+        logPlayer(
+            "MEDIA3_SEEK_DISPATCHED reason=" + reason +
+                " targetMs=" + safeTargetMs +
+                " durationMs=" + durationMs +
+                " requestId=" + requestId.ifEmpty { "-" },
+        )
+        return safeTargetMs
+    }
+
     private fun seekToSavedPosition(savedPositionMs: Long): Long {
         if (!::player.isInitialized) return 0L
         val normalizedRequested = savedPositionMs.coerceAtLeast(0L)
         val safePosition = PlayerMediaPolicy.safeResumePosition(normalizedRequested, player.duration)
-        if (safePosition > 0L && player.duration > 0L) {
-            player.seekTo(safePosition)
+        if (safePosition > 0L) {
+            val appliedPosition = seekCurrentMediaTo(safePosition, "resume")
+            if (appliedPosition == null) {
+                logPlayer("RESUME_DEFERRED reason=media_not_seekable positionMs=" + safePosition)
+                return 0L
+            }
             logPlayer(
                 "RESUME_APPLIED positionMs=" + safePosition +
                     " requestedMs=" + normalizedRequested +
@@ -5716,9 +5748,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun seekToMarker(targetMs: Long, feedbackText: String) {
-        if (!::player.isInitialized || player.duration <= 0L) return
-        val safeTarget = targetMs.coerceIn(0L, player.duration)
-        player.seekTo(safeTarget)
+        if (!::player.isInitialized) return
+        val safeTarget = seekCurrentMediaTo(targetMs, "marker") ?: return
         saveProgress("player_progress", force = true)
         showFeedback(feedbackText)
         touchControls()
@@ -6495,13 +6526,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         GestureMode.HORIZONTAL_SEEK -> {
-                            if (::player.isInitialized && !episodeChangePending && player.duration > 0L) {
-                                val target = horizontalSeekTargetMs.coerceIn(0L, player.duration)
-                                player.seekTo(target)
+                            if (::player.isInitialized && !episodeChangePending) {
+                                val target = seekCurrentMediaTo(horizontalSeekTargetMs, "horizontal_gesture")
+                                if (target != null) {
                                 saveProgress("player_progress")
                                 showFeedback("Ir para " + formatTime(target))
                                 logPlayer("GESTURE_END type=horizontal_seek positionMs=" + target + " requestId=" + requestId.ifEmpty { "-" })
                                 touchControls()
+                                }
                             }
                             resetTransientState()
                             return true
