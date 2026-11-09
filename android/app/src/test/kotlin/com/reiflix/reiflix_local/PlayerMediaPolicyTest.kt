@@ -24,6 +24,22 @@ class PlayerMediaPolicyTest {
     }
 
     @Test
+    fun normalizesCommonApplicationContainerMimeTypes() {
+        assertEquals(
+            "video/x-matroska",
+            PlayerMediaPolicy.resolveVideoMimeType("application/x-matroska", "episode.mkv"),
+        )
+        assertEquals(
+            "video/webm",
+            PlayerMediaPolicy.resolveVideoMimeType("application/webm", "episode.webm"),
+        )
+        assertEquals(
+            "video/mp4",
+            PlayerMediaPolicy.resolveVideoMimeType("application/mp4", "episode.mp4"),
+        )
+    }
+
+    @Test
     fun preservesValidProviderVideoMime() {
         assertEquals(
             "video/mp4",
