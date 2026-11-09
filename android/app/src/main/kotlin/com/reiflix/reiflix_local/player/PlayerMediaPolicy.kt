@@ -71,6 +71,12 @@ internal object PlayerMediaPolicy {
         }
     }
 
+    fun isSeekAllowed(
+        durationMs: Long,
+        isCurrentMediaItemSeekable: Boolean,
+        seekCommandAvailable: Boolean,
+    ): Boolean = durationMs > 0L && isCurrentMediaItemSeekable && seekCommandAvailable
+
     fun safeResumePosition(requestedMs: Long, durationMs: Long): Long {
         if (requestedMs <= 0L || durationMs <= 0L) return 0L
         val lastPlayable = (durationMs - 1L).coerceAtLeast(0L)
