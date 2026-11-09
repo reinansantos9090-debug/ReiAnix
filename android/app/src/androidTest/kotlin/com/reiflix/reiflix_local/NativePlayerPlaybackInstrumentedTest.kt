@@ -465,9 +465,21 @@ class NativePlayerPlaybackInstrumentedTest {
             tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.isSupported } &&
                 tracks.groups.any { it.type == C.TRACK_TYPE_AUDIO && it.isSupported }
         }
+        await("1080p H.264 fixture must expose its decoded video size") {
+            val size = onMain { player.videoSize }
+            size.width == 1920 && size.height == 1080
+        }
+        await("MP4 timeline must expose its finite 12-second duration") {
+            val duration = onMain { player.duration }
+            duration in 11_000L..13_000L
+        }
         assertTrue(
-            "H.264 fixture must expose a decoded video size",
-            onMain { player.videoSize.width > 0 && player.videoSize.height > 0 },
+            "Media3 must report the local MP4 item as seekable",
+            onMain { player.isCurrentMediaItemSeekable },
+        )
+        assertTrue(
+            "Media3 must expose the current-item seek command",
+            onMain { player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) },
         )
         assertFalse("Player should initially remain paused for deterministic interaction", onMain { player.isPlaying })
         assertTrue("Native player Activity must remain alive after READY", !activity!!.isFinishing)
@@ -533,6 +545,20 @@ class NativePlayerPlaybackInstrumentedTest {
         await("Pause button must pause playback") { !player.isPlaying }
         assertTrue("Play button must resume playback", onMain { playPause.performClick() })
         await("Second click must resume playback") { player.isPlaying }
+
+        // Exercise repeated seeks while playback is active. This is the
+        // regression shape reported for some local files: audio may continue
+        // while the video renderer stops presenting frames after a seek.
+        for (targetMs in listOf(6_000L, 1_500L, 8_000L, 3_000L)) {
+            onMain { player.seekTo(targetMs) }
+            await("Repeated seek must settle near ${targetMs}ms") {
+                val position = onMain { player.currentPosition }
+                kotlin.math.abs(position - targetMs) <= 700L
+            }
+            await("Playback must remain active after seek to ${targetMs}ms") {
+                onMain { player.isPlaying && player.playbackState == Player.STATE_READY }
+            }
+        }
 
         await("Native player should keep system bars hidden") {
             val insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity!!.window.decorView)
