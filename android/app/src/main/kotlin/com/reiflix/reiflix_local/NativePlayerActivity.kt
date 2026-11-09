@@ -2821,8 +2821,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                 requestEpisode("player_next_request")
                             }
                         },
-                        onAudio = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Áudio") },
-                        onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Legendas") },
                         onPlaybackSpeed = {
                             showSpeedSelection(TextView(this@NativePlayerActivity))
                         },
@@ -2884,9 +2882,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
         val availablePanelWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(240))
-        val panelWidth = minOf(dp(470), availablePanelWidth)
+        val panelWidth = minOf(dp(410), availablePanelWidth)
         val availablePanelHeight = (resources.displayMetrics.heightPixels - dp(72)).coerceAtLeast(dp(220))
-        val panelHeight = minOf(dp(450), availablePanelHeight)
+        val panelHeight = minOf(dp(380), availablePanelHeight)
         controls.addView(morePanel, FrameLayout.LayoutParams(
             panelWidth,
             panelHeight,
