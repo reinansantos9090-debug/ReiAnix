@@ -175,7 +175,7 @@ fun ReiAnixStorageScreen(
         nativeFolders.lifecycleState != "revalidated" || nativeFolders.api == null
     val storageCheckInProgress =
         storageCapabilitiesUnverified && nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING
-    val mediaNeedsAction = !storageCapabilitiesUnverified && mediaState == "denied"
+    val mediaNeedsAction = !storageCapabilitiesUnverified && mediaState != "full"
     val broadNeedsAction = !storageCapabilitiesUnverified && broadState == "unavailable"
 
     Surface(
@@ -223,12 +223,12 @@ fun ReiAnixStorageScreen(
                             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                         ) {
                             Text(
-                                text = "Estado do armazenamento não confirmado",
+                                text = "Estado de acesso não confirmado",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = "O Android ainda não publicou os dados atuais de permissões e fontes locais. As pastas e autorizações já configuradas foram preservadas.",
+                                text = "Não foi possível confirmar as permissões do Android agora. As pastas salvas continuam preservadas; tente verificar novamente.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -383,11 +383,6 @@ fun ReiAnixStorageScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
-                            ReiAnixSecondaryButton(
-                                text = "Tentar novamente",
-                                onClick = onCheckAccess,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
                         }
                     }
                 }
@@ -420,7 +415,6 @@ fun ReiAnixStorageScreen(
             item(key = "scan") {
                 StorageScanCard(
                     state = state,
-                    onCheckAccess = onCheckAccess,
                     onRefreshLibrary = onRefreshLibrary,
                 )
             }
@@ -696,7 +690,6 @@ private fun ConfiguredSourceCard(
 @Composable
 private fun StorageScanCard(
     state: ReiAnixLibraryUiState,
-    onCheckAccess: () -> Unit,
     onRefreshLibrary: () -> Unit,
 ) {
     val scanLabel = scanStateLabel(state.scanState, state.scanInProgress)
@@ -724,24 +717,13 @@ private fun StorageScanCard(
 
         Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
 
-        Row(
+        ReiAnixPrimaryButton(
+            text = "Atualizar biblioteca",
+            onClick = onRefreshLibrary,
+            enabled = !state.scanInProgress,
+            leadingIcon = Icons.Filled.Refresh,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-        ) {
-            ReiAnixSecondaryButton(
-                text = "Verificar acesso",
-                onClick = onCheckAccess,
-                enabled = !state.scanInProgress,
-                modifier = Modifier.weight(1f),
-            )
-            ReiAnixPrimaryButton(
-                text = "Atualizar biblioteca",
-                onClick = onRefreshLibrary,
-                enabled = !state.scanInProgress,
-                leadingIcon = Icons.Filled.Refresh,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        )
     }
 }
 
