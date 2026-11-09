@@ -61,7 +61,6 @@ class PlayerMediaPolicyTest {
 
     @Test
     fun seekRequiresMedia3SeekabilityAndAvailableCommandNotKnownDuration() {
-        assertTrue(PlayerMediaPolicy.isSeekAllowed(true, true))
         assertTrue("Unknown duration must not block a seek Media3 explicitly allows",
             PlayerMediaPolicy.isSeekAllowed(true, true))
         assertFalse(PlayerMediaPolicy.isSeekAllowed(false, true))
