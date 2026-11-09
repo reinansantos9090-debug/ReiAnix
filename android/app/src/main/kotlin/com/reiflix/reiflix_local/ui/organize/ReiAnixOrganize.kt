@@ -303,7 +303,6 @@ fun ReiAnixOrganizeScreen(
 
             ReiAnixLibraryLoadStatus.EMPTY -> {
                 EmptyOrganizeContent(
-                    onOpenStorage = onOpenStorage,
                     onRefresh = onRefresh,
                     onOpenSettings = onOpenSettings,
                     modifier = Modifier
@@ -1083,7 +1082,6 @@ private fun OrganizeCollectionContent(
 
 @Composable
 private fun EmptyOrganizeContent(
-    onOpenStorage: () -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1097,8 +1095,6 @@ private fun EmptyOrganizeContent(
         ReiAnixEmptyLibraryState(
             title = "Seu catálogo está vazio",
             message = "Nenhum conteúdo local está disponível neste momento. Confira as pastas e permissões na tela de armazenamento.",
-            actionLabel = "Gerenciar armazenamento",
-            onAction = onOpenStorage,
             modifier = Modifier.weight(1f),
         )
         Row(
