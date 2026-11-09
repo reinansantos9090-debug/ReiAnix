@@ -15,6 +15,7 @@ import com.reiflix.reiflix_local.player.ReiAnixPlayerSeekPolicy
 import com.reiflix.reiflix_local.player.ReiAnixProgressCheckpointGate
 import com.reiflix.reiflix_local.player.ReiAnixTimelinePreviewGenerator
 import com.reiflix.reiflix_local.player.ReiAnixVideoFreezeWatchdog
+import com.reiflix.reiflix_local.player.NativePlaybackResumePolicy
 import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import com.reiflix.reiflix_local.player.SystemUiController
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
@@ -1654,20 +1655,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val storedProgressRatio = if (
                     savedPositionMs != null && savedDurationMs != null && savedDurationMs > 0L
                 ) savedPositionMs.toDouble() / savedDurationMs.toDouble() else null
-                val completedByActualDuration = actualProgressRatio?.let { it >= 0.90 } ?: false
+                val storedWatched = savedEpisode?.watched == true
                 val completedByStoredDuration = actualDurationMs == null &&
                     storedProgressRatio?.let { it >= 0.90 } == true
-                val storedWatched = savedEpisode?.watched == true
                 val savedPositionBeyondStoredDuration = actualDurationMs == null &&
                     savedPositionMs != null && savedDurationMs != null &&
                     savedPositionMs > savedDurationMs
-                val shouldResumeFromSqlite = !progressRowInvalid &&
-                    savedPositionMs != null &&
-                    savedPositionMs > 0L &&
-                    !completedByActualDuration &&
-                    !completedByStoredDuration &&
-                    !savedPositionBeyondStoredDuration &&
-                    (actualDurationMs != null || !storedWatched)
+                val resumeDecision = NativePlaybackResumePolicy.decide(
+                    progressMs = savedPositionMs,
+                    actualDurationMs = actualDurationMs,
+                    watched = storedWatched,
+                    progressInvalid = progressRowInvalid,
+                )
+                val shouldResumeFromSqlite = resumeDecision.shouldResume
 
                 logPlayer(
                     "PLAYER_SQLITE_RESUME_DECISION episodeId=${canonicalEpisodeId ?: "-"} " +
@@ -1678,19 +1678,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         "resumeLookupAllowed=$allowNativeResumeLookup shouldResume=$shouldResumeFromSqlite",
                 )
                 logPlayer(
-                    "PLAYER_SQLITE_RESUME_REASON episodeId=${canonicalEpisodeId ?: "-"} reason=" +
-                        when {
-                            !allowNativeResumeLookup -> "explicit_or_restored_position"
-                            progressRowInvalid -> "invalid_numeric_progress"
-                            savedPositionMs == null || savedPositionMs <= 0L -> "no_saved_position"
-                            completedByActualDuration -> "actual_duration_completion_threshold"
-                            completedByStoredDuration -> "stored_duration_completion_threshold_file_duration_unknown"
-                            savedPositionBeyondStoredDuration -> "position_beyond_stored_duration_file_duration_unknown"
-                            storedWatched && actualDurationMs != null -> "watched_flag_revalidated_against_actual_file_duration"
-                            storedWatched && !durationMismatch -> "persisted_watched_flag_confirmed"
-                            storedWatched && durationMismatch -> "watched_flag_overridden_by_actual_file_duration"
-                            else -> "valid_saved_position"
-                        },
+                    "PLAYER_SQLITE_RESUME_REASON episodeId=${canonicalEpisodeId ?: "-"} " +
+                        "reason=${if (allowNativeResumeLookup) resumeDecision.reason else "explicit_or_restored_position"} " +
+                        "storedRatioWouldComplete=$completedByStoredDuration " +
+                        "positionBeyondStoredDuration=$savedPositionBeyondStoredDuration",
                 )
                 if (allowNativeResumeLookup && shouldResumeFromSqlite) {
                     // Do not clamp to the stale database duration. Only the file's
