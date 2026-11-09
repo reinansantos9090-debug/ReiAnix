@@ -3078,6 +3078,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             episodeTransitionInProgress = episodeChangePending,
             aspectLabel = aspectModeLabel,
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
+            audioTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_AUDIO),
+            subtitleTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_TEXT),
             autoplayNext = autoplayNext,
             horizontalSeekEnabled = horizontalSeekEnabled,
             volumeGesturesEnabled = volumeGesturesEnabled,
@@ -3351,6 +3353,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun startProgressReporting() {
         handler.removeCallbacks(progressReporter)
         handler.post(progressReporter)
+    }
+
+    private fun selectedPlayerTrackLabel(trackType: Int): String {
+        if (!::player.isInitialized) return "Selecionar"
+        val parameters = player.trackSelectionParameters
+        if (trackType == C.TRACK_TYPE_TEXT && parameters.disabledTrackTypes.contains(trackType)) {
+            return "Off"
+        }
+        val selectedFormat = player.currentTracks.groups
+            .filter { it.type == trackType && it.isSupported }
+            .flatMap { group ->
+                (0 until group.length)
+                    .filter { group.isTrackSupported(it) && group.isTrackSelected(it) }
+                    .map { group.getTrackFormat(it) }
+            }
+            .firstOrNull()
+        return selectedFormat?.label?.takeIf { it.isNotBlank() }
+            ?: selectedFormat?.language?.takeIf { it.isNotBlank() }
+            ?: if (trackType == C.TRACK_TYPE_TEXT) "Off" else "Automático"
     }
 
     private fun showSpeedSelection(button: TextView) {
