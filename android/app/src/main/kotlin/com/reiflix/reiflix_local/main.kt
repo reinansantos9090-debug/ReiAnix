@@ -64,9 +64,13 @@ import java.util.Locale
 import java.security.MessageDigest
 
 /**
- * Port of the persisted-progress validation performed by legacy main.py before
- * the native player handoff. Unknown duration keeps any finite non-negative
- * resume position; known duration rejects persisted progress beyond the media.
+ * Validates only the numeric integrity of persisted progress before handing the
+ * episode to NativePlayerActivity. The database duration can be stale after a file
+ * replacement, so it must never be used here to reject or clamp a positive position.
+ *
+ * When the row is marked watched, or its progress exceeds its stored duration,
+ * omit the explicit position and let NativePlayerActivity compare the raw SQLite
+ * row with the actual local-file duration before deciding whether to resume.
  */
 internal data class NativePlaybackStartPosition(
     val positionSeconds: Double,
@@ -81,21 +85,24 @@ internal fun resolveNativePlaybackStartPosition(
     resumeEnabled: Boolean,
 ): NativePlaybackStartPosition {
     val rawProgress = progressSeconds ?: 0.0
-    // Python's max(0.0, duration) treats null/negative/NaN durations as unknown,
-    // while positive infinity remains a positive duration just as in the legacy path.
-    val knownDuration = durationSeconds?.takeIf { it > 0.0 } ?: 0.0
     val invalid = resumeEnabled && (
         !rawProgress.isFinite() ||
             rawProgress < 0.0 ||
-            (knownDuration > 0.0 && rawProgress > knownDuration)
+            rawProgress > Long.MAX_VALUE.toDouble() / 1_000.0
         )
-    val forceStartAtZero = !resumeEnabled || invalid || watched == true
+    val knownStoredDuration = durationSeconds?.takeIf { it.isFinite() && it > 0.0 }
+    val requiresFileDurationValidation = !invalid &&
+        rawProgress > 0.0 &&
+        (watched == true || (knownStoredDuration != null && rawProgress > knownStoredDuration))
+    val forceStartAtZero = !resumeEnabled || invalid
     val position = if (forceStartAtZero) 0.0 else rawProgress.coerceAtLeast(0.0)
-    // Legacy start_native_player omitted position_ms for a valid zero-progress
-    // episode, allowing the native player to consult its canonical progress row.
-    // It explicitly sent zero only for disabled resume, invalid progress or watched episodes.
+
+    // A null override intentionally lets NativePlayerActivity read the raw SQLite
+    // row and compare it with the real file duration. A stale watched flag or old
+    // stored duration must not erase a valid in-progress position.
     val positionOverride = when {
         forceStartAtZero -> 0L
+        requiresFileDurationValidation -> null
         position > 0.0 -> (position * 1_000.0).toLong().coerceAtLeast(0L)
         else -> null
     }
