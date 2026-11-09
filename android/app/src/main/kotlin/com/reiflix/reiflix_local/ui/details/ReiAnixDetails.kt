@@ -359,7 +359,7 @@ fun ReiAnixDetailsScreen(
                     "Nenhum anime local está disponível."
                 },
                 actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Selecionar pasta"
+                    "Gerenciar armazenamento"
                 } else {
                     "Atualizar"
                 },
@@ -379,7 +379,7 @@ fun ReiAnixDetailsScreen(
                     "A fonte local não está disponível agora."
                 },
                 actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Selecionar pasta"
+                    "Gerenciar armazenamento"
                 } else {
                     "Atualizar"
                 },
