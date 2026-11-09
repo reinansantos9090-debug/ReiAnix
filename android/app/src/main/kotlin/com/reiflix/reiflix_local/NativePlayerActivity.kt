@@ -1896,7 +1896,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onRenderedFirstFrame() {
             if (!isCurrent()) return
-            markVideoOutputAfterSeek("rendered_first_frame")
             logPlayer(
                 "FIRST_FRAME_CALLBACK requestId=" + requestId.ifEmpty { "-" } +
                     " generation=" + playerGeneration +
@@ -2346,6 +2345,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
 
+        override fun onRenderedFirstFrame(
+            eventTime: AnalyticsListener.EventTime,
+            output: Any,
+            renderTimeMs: Long,
+        ) {
+            if (!isCurrent()) return
+            markVideoOutputAfterSeek("analytics_rendered_first_frame", renderTimeMs)
+        }
+
         override fun onVideoFrameProcessingOffset(
             eventTime: AnalyticsListener.EventTime,
             totalProcessingOffsetUs: Long,
@@ -2353,7 +2361,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         ) {
             if (!isCurrent() || frameCount <= 0) return
             val averageOffsetUs = totalProcessingOffsetUs / frameCount
-            markVideoOutputAfterSeek("video_frame_processing")
+            markVideoOutputAfterSeek("video_frame_processing", eventTime.realtimeMs)
             logPlayer(
                 "VIDEO_FRAME_PROCESSING_OFFSET generation=" + generation +
                     " totalOffsetUs=" + totalProcessingOffsetUs +
@@ -5350,10 +5358,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
-    private fun markVideoOutputAfterSeek(source: String) {
-        val now = SystemClock.elapsedRealtime()
-        lastVideoFrameProcessingElapsedMs = now
-        if (seekOutputWatchdogPending && now >= seekOutputWatchdogStartedAtElapsedMs) {
+    private fun markVideoOutputAfterSeek(
+        source: String,
+        outputElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ) {
+        // Use the renderer's event timestamp, not callback delivery time, so a
+        // queued pre-seek callback cannot falsely satisfy the new seek watchdog.
+        lastVideoFrameProcessingElapsedMs = max(lastVideoFrameProcessingElapsedMs, outputElapsedMs)
+        if (seekOutputWatchdogPending && outputElapsedMs >= seekOutputWatchdogStartedAtElapsedMs) {
             seekOutputWatchdogPending = false
             handler.removeCallbacks(seekOutputWatchdog)
             logPlayer(
