@@ -281,10 +281,10 @@ fun ReiAnixSettingsRoute(
             listState = rootListState,
             onBack = onBack,
             onOpenCategory = { label ->
-                if (label in NativeManagedSettingsCategories) {
-                    selectedCategory = label
-                } else {
-                    onOpenCategory(label)
+                when {
+                    label == "Armazenamento" -> onOpenStorage()
+                    label in NativeManagedSettingsCategories -> selectedCategory = label
+                    else -> onOpenCategory(label)
                 }
             },
             onRetry = viewModel::refresh,
