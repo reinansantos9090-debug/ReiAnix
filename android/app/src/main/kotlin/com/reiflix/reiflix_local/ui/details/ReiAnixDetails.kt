@@ -78,6 +78,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
@@ -107,6 +108,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
 import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
+import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
 import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveBreakpoints
@@ -256,7 +258,12 @@ fun ReiAnixDetailsRoute(
         },
         onToggleFavorite = viewModel::toggleFavorite,
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
-        onSelectSource = viewModel::selectSafTree,
+        onSelectSource = {
+            navController.navigate(
+                ReiAnixRoutes.STORAGE,
+                navOptions { launchSingleTop = true },
+            )
+        },
         onManageAniList = { showAniListDialog = true },
         onOpenMarathon = { showMarathonDialog = true },
         onTogglePinned = viewModel::toggleAnimePinnedNative,
