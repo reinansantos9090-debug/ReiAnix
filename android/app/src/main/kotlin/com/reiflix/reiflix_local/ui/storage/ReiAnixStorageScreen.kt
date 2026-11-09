@@ -545,7 +545,12 @@ private fun SafSourceCard(
     val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
     val available = state == "available"
     val stateLabel = safStateLabel(state)
-    val actionLabel = if (available) "Alterar pasta" else "Reautorizar"
+    val actionLabel = when (state) {
+        "available" -> "Alterar pasta"
+        "revoked" -> "Reautorizar"
+        "unavailable" -> "Escolher outra pasta"
+        else -> null
+    }
 
     ReiAnixSettingsSurface(
         modifier = Modifier
@@ -584,8 +589,8 @@ private fun SafSourceCard(
                         title = stateLabel,
                         message = when (state) {
                             "revoked" -> "A autorização desta pasta não está mais disponível no Android."
-                            "unavailable" -> "O provedor desta pasta está indisponível no momento."
-                            else -> "Não foi possível confirmar o acesso desta pasta."
+                            "unavailable" -> "A autorização está salva, mas o provedor não conseguiu abrir a pasta agora."
+                            else -> "O acesso ainda não foi confirmado. Use a verificação única na seção de acessos do dispositivo."
                         },
                         actionLabel = null,
                         onAction = null,
@@ -595,30 +600,44 @@ private fun SafSourceCard(
             }
             ReiAnixBadge(
                 text = stateLabel,
-                tone = if (available) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
+                tone = when (state) {
+                    "available" -> ReiAnixBadgeTone.Success
+                    "unknown" -> ReiAnixBadgeTone.Neutral
+                    else -> ReiAnixBadgeTone.Warning
+                },
             )
         }
 
         Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-        ) {
-            ReiAnixSecondaryButton(
-                text = actionLabel,
-                onClick = onReauthorize,
-                enabled = !selectionBusy,
-                leadingIcon = Icons.Filled.Refresh,
-                modifier = Modifier.weight(1f),
-            )
+        if (actionLabel == null) {
             ReiAnixSecondaryButton(
                 text = "Remover",
                 onClick = onRemove,
                 enabled = !removeBusy && !selectionBusy,
                 leadingIcon = Icons.Filled.Delete,
-                modifier = Modifier.weight(0.78f),
+                modifier = Modifier.fillMaxWidth(),
             )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+            ) {
+                ReiAnixSecondaryButton(
+                    text = actionLabel,
+                    onClick = onReauthorize,
+                    enabled = !selectionBusy,
+                    leadingIcon = Icons.Filled.Refresh,
+                    modifier = Modifier.weight(1f),
+                )
+                ReiAnixSecondaryButton(
+                    text = "Remover",
+                    onClick = onRemove,
+                    enabled = !removeBusy && !selectionBusy,
+                    leadingIcon = Icons.Filled.Delete,
+                    modifier = Modifier.weight(0.78f),
+                )
+            }
         }
     }
 }
@@ -798,7 +817,7 @@ private fun safStateLabel(state: String): String = when (state.lowercase()) {
     "revoked" -> "Acesso perdido"
     "unavailable", "error" -> "Acesso indisponível"
     "partial" -> "Acesso parcial"
-    "unknown" -> "Verificando acesso"
+    "unknown" -> "Não verificado"
     else -> "Acesso necessário"
 }
 
