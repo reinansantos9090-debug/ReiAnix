@@ -2881,15 +2881,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
         val availablePanelWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(240))
-        val panelWidth = minOf(dp(380), availablePanelWidth)
+        val panelWidth = minOf(dp(340), availablePanelWidth)
+        val availablePanelHeight = (resources.displayMetrics.heightPixels - dp(72)).coerceAtLeast(dp(220))
+        val panelHeight = minOf(dp(440), (availablePanelHeight * 0.88f).toInt())
         controls.addView(morePanel, FrameLayout.LayoutParams(
             panelWidth,
-            FrameLayout.LayoutParams.MATCH_PARENT,
+            panelHeight,
         ).apply {
             gravity = Gravity.TOP or Gravity.END
             topMargin = dp(56)
             rightMargin = dp(8)
-            bottomMargin = dp(8)
         })
 
         // Compose owns the primary playback controls. Keep the existing View tree
