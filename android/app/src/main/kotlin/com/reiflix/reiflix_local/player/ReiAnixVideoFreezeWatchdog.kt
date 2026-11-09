@@ -53,11 +53,21 @@ internal class ReiAnixVideoFreezeWatchdog(
     }
 
     @Synchronized
-    fun nextRecoveryStep(): Int? {
+    fun nextRecoveryStep(
+        nowMs: Long,
+        currentPositionMs: Long,
+        frameSerial: Long,
+    ): Int? {
         val snapshot = active ?: return null
         if (!snapshot.detected || snapshot.recoveryStep >= maximumRecoverySteps) return null
         val next = snapshot.recoveryStep + 1
-        active = snapshot.copy(recoveryStep = next)
+        active = snapshot.copy(
+            seekPositionMs = currentPositionMs.coerceAtLeast(0L),
+            startedAtMs = nowMs,
+            initialFrameSerial = frameSerial,
+            recoveryStep = next,
+            detected = false,
+        )
         return next
     }
 
