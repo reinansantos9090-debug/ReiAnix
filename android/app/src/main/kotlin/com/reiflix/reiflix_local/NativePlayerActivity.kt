@@ -5377,7 +5377,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             handler.removeCallbacks(seekOutputWatchdog)
             logPlayer(
                 "SEEK_VIDEO_OUTPUT_CONFIRMED source=" + source +
-                    " positionMs=" + if (::player.isInitialized) player.currentPosition else 0L +
+                    " positionMs=" + (if (::player.isInitialized) player.currentPosition else 0L) +
                     " recoveryAttempted=" + seekOutputWatchdogRecoveryAttempted,
             )
         }
