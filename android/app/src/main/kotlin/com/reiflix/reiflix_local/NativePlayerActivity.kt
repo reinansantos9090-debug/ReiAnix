@@ -3436,11 +3436,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun syncComposePlayerUiState() {
         if (!composeControlsEnabled) return
         val durationPresentation = currentDisplayDuration()
-        val actualDuration = if (::player.isInitialized) {
+        val currentItemAvailable = hasCurrentMediaItem()
+        val actualDuration = if (currentItemAvailable) {
             ReiAnixPlayerSeekPolicy.validDuration(player.duration)
         } else null
         val currentDuration = durationPresentation.durationMs
-        val currentPosition = if (::player.isInitialized) player.currentPosition else 0L
+        val currentPosition = if (currentItemAvailable) player.currentPosition else 0L
         val durationStatus = when {
             durationPresentation.known -> ""
             ::player.isInitialized && player.playbackState in setOf(Player.STATE_IDLE, Player.STATE_BUFFERING) -> "Carregando duração"
@@ -3478,7 +3479,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             canSeekToPosition = seekAvailable && actualDuration != null,
             timelinePreviewBitmap = timelinePreviewBitmap,
             timelinePreviewPositionMs = timelinePreviewPositionMs,
-            bufferedPositionMs = if (::player.isInitialized && actualDuration != null) {
+            bufferedPositionMs = if (currentItemAvailable && actualDuration != null) {
                 player.bufferedPosition.coerceIn(0L, actualDuration)
             } else {
                 0L
@@ -3677,6 +3678,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer("PLAYER_COMMAND_IGNORED command=play_pause reason=player_uninitialized")
             return
         }
+        if (!player.isCommandAvailable(Player.COMMAND_PLAY_PAUSE)) {
+            logPlayer(
+                "PLAYER_COMMAND_IGNORED command=play_pause reason=play_pause_command_unavailable " +
+                    "playbackState=${player.playbackStateLabel()} currentItemAvailable=${hasCurrentMediaItem()}",
+            )
+            return
+        }
         if (errorVisible || playbackErrorForGeneration) {
             logPlayer(
                 "PLAYER_COMMAND_IGNORED command=play_pause reason=error_visible " +
@@ -3747,6 +3755,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun updateProgressUi() {
         if (!::player.isInitialized) {
+            syncComposePlayerUiState()
+            return
+        }
+        if (!hasCurrentMediaItem()) {
+            if (::seekBar.isInitialized) {
+                seekBar.progress = 0
+                seekBar.secondaryProgress = 0
+            }
+            if (::positionLabel.isInitialized) positionLabel.text = "00:00"
+            if (::durationLabel.isInitialized) {
+                val display = currentDisplayDuration()
+                durationLabel.text = if (display.known) formatTime(display.durationMs) else "Carregando"
+            }
+            updateSeekControlsEnabled()
             syncComposePlayerUiState()
             return
         }
@@ -5777,7 +5799,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun seekToSavedPosition(savedPositionMs: Long): Long {
-        if (!::player.isInitialized) return 0L
+        if (!hasCurrentMediaItem()) {
+            logPlayer("RESUME_SEEK_SKIPPED reason=current_media_item_unavailable requestedMs=$savedPositionMs")
+            return 0L
+        }
         val normalizedRequested = savedPositionMs.coerceAtLeast(0L)
         val actualDuration = ReiAnixPlayerSeekPolicy.validDuration(player.duration)
         if (!player.isCurrentMediaItemSeekable ||
