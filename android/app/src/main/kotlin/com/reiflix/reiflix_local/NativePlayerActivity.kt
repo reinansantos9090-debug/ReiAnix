@@ -335,6 +335,11 @@ class NativePlayerActivity : ComponentActivity() {
                 " transitionGeneration=" + transitionGeneration +
                 " active=true direction=" + direction,
         )
+        // A stalled episode handoff must not leave episodeChangePending true
+        // forever, otherwise play/pause and seeking remain blocked.
+        invalidateTransition("episode_change_timeout")
+        updateSeekControlsEnabled()
+        showFeedback("A troca de episódio demorou demais. Os controles foram liberados.", 2_200L)
     }
     private var retryCount = 0
     internal var firstFrameRenderedForTesting = false
@@ -2322,6 +2327,34 @@ override fun onCreate(savedInstanceState: Bundle?) {
             currentErrorCategory = classification.legacyCategory
             currentFailureKind = classification.kind
             currentFailureRetryable = classification.retryable
+
+            val decoderFallbackEligible = classification.kind in setOf(
+                PlayerMediaPolicy.PlaybackFailureKind.DECODER,
+                PlayerMediaPolicy.PlaybackFailureKind.CODEC,
+                PlayerMediaPolicy.PlaybackFailureKind.RENDERER,
+            ) && !softwareFallbackAttempted && decoderPreference != "ffmpeg" && decoderManager != null
+            if (decoderFallbackEligible) {
+                val recoveryPositionMs = player.currentPosition.coerceAtLeast(0L)
+                val resumeAfterFallback = player.playWhenReady
+                try {
+                    softwareFallbackAttempted = true
+                    logPlayer(
+                        "MEDIA3_DECODER_FALLBACK_START kind=${classification.kind} " +
+                            "positionMs=$recoveryPositionMs fromMode=${decoderManager?.activeVideoMode ?: "unknown"}",
+                    )
+                    decoderManager?.selectVideoDecoder(DecoderMode.FFMPEG)
+                    if (player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)) {
+                        player.seekTo(recoveryPositionMs)
+                    }
+                    player.playWhenReady = resumeAfterFallback
+                    player.prepare()
+                    logPlayer("MEDIA3_DECODER_FALLBACK_DISPATCHED targetMode=FFMPEG")
+                    return
+                } catch (fallbackError: Exception) {
+                    logPlayer("MEDIA3_DECODER_FALLBACK_FAILED targetMode=FFMPEG", fallbackError)
+                }
+            }
+
             playbackErrorForGeneration = true
             cancelFirstFrameDiagnostics("player_error")
 
@@ -2535,6 +2568,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         playerGeneration += 1L
         errorPublishedForGeneration = false
         playbackErrorForGeneration = false
+        if (reason != "video_frozen_media_reload") {
+            handler.removeCallbacks(videoFreezeWatchdogRunnable)
+            videoFreezeWatchdog.reset()
+            videoFreezeRecoveryInProgress = false
+            videoFreezeDetectionLogged = false
+        }
+        softwareFallbackAttempted = false
         currentFailureKind = PlayerMediaPolicy.PlaybackFailureKind.UNKNOWN
         currentFailureRetryable = false
         lastMediaPeriodId = ""
