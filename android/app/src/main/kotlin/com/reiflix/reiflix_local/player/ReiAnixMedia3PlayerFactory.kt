@@ -1,7 +1,7 @@
 package com.reiflix.reiflix_local.player
 
 import android.content.Context
-import androidx.media3.common.SeekParameters
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -43,8 +43,7 @@ internal object ReiAnixMedia3PlayerFactory {
         }
 
         val extractorsFactory = ReiAnixExtractorsFactory()
-        val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setExtractorsFactory(extractorsFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(context, extractorsFactory)
         val preferences = context.getSharedPreferences("reianix_player_preferences", Context.MODE_PRIVATE)
         val maxBufferMs = preferences.getInt("max_buffer_ms", 30_000)
             .coerceIn(15_000, 120_000)
