@@ -1599,17 +1599,32 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 )
 
                 val canonicalEpisodeId = currentEpisodeId().toLongOrNull()
-                val savedProgress = if (canonicalEpisodeId != null && canonicalEpisodeId > 0L) {
+                // Read the raw episode row. ConsumptionService's UI projection clamps
+                // progress to the stored duration, which would erase valid positions
+                // when an episode file was replaced by a longer cut.
+                val savedEpisode = if (canonicalEpisodeId != null && canonicalEpisodeId > 0L) {
                     runCatching {
                         kotlinx.coroutines.runBlocking {
-                            consumptionService.getProgress(canonicalEpisodeId)
+                            ReiAnixAppDependencies.from(applicationContext)
+                                .sqliteLibraryRepository.getEpisode(canonicalEpisodeId)
                         }
                     }.onFailure { error ->
                         logPlayer("RESUME_FROM_NATIVE_SQLITE_FAILED episodeId=$canonicalEpisodeId", error)
                     }.getOrNull()
                 } else null
-                val savedPositionMs = savedProgress?.positionMs?.takeIf { it >= 0L }
-                val savedDurationMs = savedProgress?.durationMs?.takeIf { it > 0L }
+                fun secondsToMs(value: Double?): Long? {
+                    val milliseconds = value?.takeIf { it.isFinite() && it >= 0.0 }
+                        ?.times(1_000.0)
+                    return milliseconds
+                        ?.takeIf { it.isFinite() && it <= Long.MAX_VALUE.toDouble() }
+                        ?.toLong()
+                }
+                val rawProgressSeconds = savedEpisode?.progress
+                val savedPositionMs = secondsToMs(rawProgressSeconds)
+                val savedDurationMs = secondsToMs(savedEpisode?.duration?.takeIf { it > 0.0 })
+                val progressRowInvalid = rawProgressSeconds != null &&
+                    (!rawProgressSeconds.isFinite() || rawProgressSeconds < 0.0 ||
+                        rawProgressSeconds > Long.MAX_VALUE.toDouble() / 1_000.0)
                 val resolvedMedia = resolveLocalMediaMetadata(localUri)
                 var startupPositionMs = requestedStartPositionMs
 
@@ -1620,28 +1635,43 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val actualProgressRatio = if (
                     savedPositionMs != null && actualDurationMs != null && actualDurationMs > 0L
                 ) savedPositionMs.toDouble() / actualDurationMs.toDouble() else null
+                val storedProgressRatio = if (
+                    savedPositionMs != null && savedDurationMs != null && savedDurationMs > 0L
+                ) savedPositionMs.toDouble() / savedDurationMs.toDouble() else null
                 val completedByActualDuration = actualProgressRatio?.let { it >= 0.90 } ?: false
-                val storedWatched = savedProgress?.watched == true
-                val shouldResumeFromSqlite = savedPositionMs != null &&
+                val completedByStoredDuration = actualDurationMs == null &&
+                    storedProgressRatio?.let { it >= 0.90 } == true
+                val storedWatched = savedEpisode?.watched == true
+                val savedPositionBeyondStoredDuration = actualDurationMs == null &&
+                    savedPositionMs != null && savedDurationMs != null &&
+                    savedPositionMs > savedDurationMs
+                val shouldResumeFromSqlite = !progressRowInvalid &&
+                    savedPositionMs != null &&
                     savedPositionMs > 0L &&
                     !completedByActualDuration &&
-                    (!storedWatched || durationMismatch)
+                    !completedByStoredDuration &&
+                    !savedPositionBeyondStoredDuration &&
+                    (actualDurationMs != null && durationMismatch || !storedWatched)
 
                 logPlayer(
                     "PLAYER_SQLITE_RESUME_DECISION episodeId=${canonicalEpisodeId ?: "-"} " +
                         "progressMs=${savedPositionMs ?: -1L} savedDurationMs=${savedDurationMs ?: -1L} " +
                         "actualDurationMs=${actualDurationMs ?: -1L} watched=$storedWatched " +
                         "durationMismatch=$durationMismatch ratioActual=${actualProgressRatio ?: -1.0} " +
+                        "ratioStored=${storedProgressRatio ?: -1.0} progressRowInvalid=$progressRowInvalid " +
                         "resumeLookupAllowed=$allowNativeResumeLookup shouldResume=$shouldResumeFromSqlite",
                 )
                 logPlayer(
                     "PLAYER_SQLITE_RESUME_REASON episodeId=${canonicalEpisodeId ?: "-"} reason=" +
                         when {
                             !allowNativeResumeLookup -> "explicit_or_restored_position"
+                            progressRowInvalid -> "invalid_numeric_progress"
                             savedPositionMs == null || savedPositionMs <= 0L -> "no_saved_position"
                             completedByActualDuration -> "actual_duration_completion_threshold"
-                            storedWatched && !durationMismatch -> "persisted_watched_flag"
-                            storedWatched && durationMismatch -> "duration_mismatch_revalidated_against_file"
+                            completedByStoredDuration -> "stored_duration_completion_threshold_file_duration_unknown"
+                            savedPositionBeyondStoredDuration -> "position_beyond_stored_duration_file_duration_unknown"
+                            storedWatched && !durationMismatch -> "persisted_watched_flag_confirmed"
+                            storedWatched && durationMismatch -> "watched_flag_overridden_by_actual_file_duration"
                             else -> "valid_saved_position"
                         },
                 )
