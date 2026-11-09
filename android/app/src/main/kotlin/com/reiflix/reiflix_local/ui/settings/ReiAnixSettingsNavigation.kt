@@ -48,6 +48,8 @@ internal val SettingsDestinations = listOf(
         SettingsEntry("about:app", "Versão e informações do aplicativo", "ReiAnix versão"),
     )),
     SettingsDestination("Biblioteca", "Biblioteca", "", listOf(
+        SettingsEntry("setting:library.sort_default", "Ordenação padrão"),
+        SettingsEntry("setting:library.page_size", "Itens por página"),
         SettingsEntry("folders", "Selecionar pasta", "pastas armazenamento fontes remover pasta"),
     )),
     SettingsDestination("appearance_theme", "Tema", "Aparência", listOf(
@@ -60,10 +62,6 @@ internal val SettingsDestinations = listOf(
         SettingsEntry("setting:appearance.show_thumbnails", "Mostrar miniaturas"),
         SettingsEntry("setting:library.continue_watching", "Continuar assistindo"),
         SettingsEntry("setting:library.continue_watching_limit", "Limite de continuar assistindo"),
-    )),
-    SettingsDestination("library_organization", "Organização", "Biblioteca", listOf(
-        SettingsEntry("setting:library.sort_default", "Ordenação padrão"),
-        SettingsEntry("setting:library.page_size", "Itens por página"),
     )),
     SettingsDestination("player_playback", "Reprodução", "Player", listOf(
         SettingsEntry("setting:player.autoplay_next", "Reprodução automática do próximo episódio"),
