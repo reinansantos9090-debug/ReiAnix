@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -262,6 +264,12 @@ class ReiAnixComposeLibraryHost(
                             lastHomeBackAtElapsedRealtimeMs = 0L
                         }
                     }
+                    val onboardingRedirected = remember { mutableStateOf(false) }
+                    LaunchedEffect(nativeOnboarding.isPromptVisible) {
+                        if (!nativeOnboarding.isPromptVisible) {
+                            onboardingRedirected.value = false
+                        }
+                    }
                     LaunchedEffect(
                         currentRoute?.destination?.route,
                         nativeOnboarding.phase,
@@ -270,8 +278,10 @@ class ReiAnixComposeLibraryHost(
                         val route = currentRoute?.destination?.route
                         if (
                             route in setOf(ReiAnixRoutes.HOME, ReiAnixRoutes.LIBRARY) &&
-                            nativeOnboarding.isPromptVisible
+                            nativeOnboarding.isPromptVisible &&
+                            !onboardingRedirected.value
                         ) {
+                            onboardingRedirected.value = true
                             navController.navigateToStorage()
                         }
                     }
