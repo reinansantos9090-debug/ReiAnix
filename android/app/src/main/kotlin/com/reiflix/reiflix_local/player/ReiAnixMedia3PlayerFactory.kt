@@ -28,7 +28,8 @@ internal object ReiAnixMedia3PlayerFactory {
     ): CreatedPlayer {
         val initialVideoMode = when (decoderPreference.trim().lowercase()) {
             "hardware" -> DecoderMode.HARDWARE
-            "software", "ffmpeg" -> DecoderMode.FFMPEG
+            "software" -> DecoderMode.SOFTWARE
+            "ffmpeg" -> DecoderMode.FFMPEG
             else -> DecoderMode.AUTO
         }
         val decoderManager = DecoderManager(
@@ -44,11 +45,14 @@ internal object ReiAnixMedia3PlayerFactory {
         val extractorsFactory = ReiAnixExtractorsFactory()
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setExtractorsFactory(extractorsFactory)
+        val preferences = context.getSharedPreferences("reianix_player_preferences", Context.MODE_PRIVATE)
+        val maxBufferMs = preferences.getInt("max_buffer_ms", 30_000)
+            .coerceIn(15_000, 120_000)
         val loadControl = DefaultLoadControl.Builder()
-            // Local SAF/MediaStore reads benefit from a moderate forward buffer.
+            // Tunable for local SAF/MediaStore storage; never inherit network/HLS buffering.
             .setBufferDurationsMs(
                 5_000,
-                30_000,
+                maxBufferMs,
                 1_000,
                 3_000,
             )
