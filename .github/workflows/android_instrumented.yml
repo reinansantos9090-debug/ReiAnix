@@ -73,9 +73,15 @@ jobs:
           ffmpeg -hide_banner -loglevel error -y \
             -f lavfi -i "color=c=black:s=640x360:r=30" \
             -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
-            -t 12 -shortest -c:v mpeg4 -q:v 5 -c:a aac -movflags +faststart \
+            -t 12 -shortest -c:v libx264 -preset ultrafast -profile:v baseline \
+            -pix_fmt yuv420p -crf 23 -c:a aac -movflags +faststart \
             "$assets/player_fixture.mp4"
           test -s "$assets/player_fixture.mp4"
+          codecs="$(ffprobe -v error -show_entries stream=codec_name -of csv=p=0 "$assets/player_fixture.mp4")"
+          printf '%s\n' "$codecs" | grep -qx 'h264'
+          printf '%s\n' "$codecs" | grep -qx 'aac'
+          duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$assets/player_fixture.mp4")"
+          awk -v duration="$duration" 'BEGIN { exit !(duration > 0) }'
 
           contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
           gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"
