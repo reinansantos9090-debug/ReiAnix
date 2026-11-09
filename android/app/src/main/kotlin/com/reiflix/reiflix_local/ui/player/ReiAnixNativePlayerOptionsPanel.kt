@@ -94,6 +94,9 @@ fun ReiAnixNativePlayerOptionsPanel(
     onInformation: () -> Unit,
 ) {
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
+    LaunchedEffect(resetSignal) {
+        page = PlayerOptionsPage.MAIN
+    }
     val panelShape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier
