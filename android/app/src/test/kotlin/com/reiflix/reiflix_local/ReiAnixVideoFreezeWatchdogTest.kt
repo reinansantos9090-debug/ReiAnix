@@ -10,13 +10,14 @@ import org.junit.Test
 class ReiAnixVideoFreezeWatchdogTest {
     @Test
     fun detectsOnlyWhenAudioProgressesWithoutNewVideoFrames() {
-        val watchdog = ReiAnixVideoFreezeWatchdog(timeoutMs = 3_000L, minimumAudioAdvanceMs = 500L)
-        watchdog.begin(positionMs = 10_000L, nowMs = 1_000L, frameSerial = 7L)
+        fun watchdog(): ReiAnixVideoFreezeWatchdog =
+            ReiAnixVideoFreezeWatchdog(timeoutMs = 3_000L, minimumAudioAdvanceMs = 500L)
+                .also { it.begin(positionMs = 10_000L, nowMs = 1_000L, frameSerial = 7L) }
 
-        assertFalse(watchdog.shouldDetect(4_100L, 10_100L, 7L, true, true))
-        assertFalse(watchdog.shouldDetect(4_100L, 11_000L, 7L, false, true))
-        assertFalse(watchdog.shouldDetect(4_100L, 11_000L, 8L, true, true))
-        assertTrue(watchdog.shouldDetect(4_100L, 11_000L, 7L, true, true))
+        assertFalse(watchdog().shouldDetect(4_100L, 10_100L, 7L, true, true))
+        assertFalse(watchdog().shouldDetect(4_100L, 11_000L, 7L, false, true))
+        assertFalse(watchdog().shouldDetect(4_100L, 11_000L, 8L, true, true))
+        assertTrue(watchdog().shouldDetect(4_100L, 11_000L, 7L, true, true))
     }
 
     @Test
@@ -36,11 +37,17 @@ class ReiAnixVideoFreezeWatchdogTest {
         val watchdog = ReiAnixVideoFreezeWatchdog(timeoutMs = 10L, minimumAudioAdvanceMs = 1L)
         watchdog.begin(100L, 0L, 0L)
         assertTrue(watchdog.shouldDetect(10L, 102L, 0L, true, true))
-        assertEquals(1, watchdog.nextRecoveryStep(20L, 102L, 0L))
-        assertEquals(2, watchdog.nextRecoveryStep(30L, 103L, 0L))
-        assertEquals(3, watchdog.nextRecoveryStep(40L, 104L, 0L))
-        assertEquals(4, watchdog.nextRecoveryStep(50L, 105L, 0L))
-        assertNull(watchdog.nextRecoveryStep(60L, 106L, 0L))
+
+        assertEquals(1, watchdog.nextRecoveryStep(10L, 102L, 0L))
+        watchdog.markRecoveryAttemptFailed()
+        assertEquals(2, watchdog.nextRecoveryStep(20L, 103L, 0L))
+        watchdog.markRecoveryAttemptFailed()
+        assertEquals(3, watchdog.nextRecoveryStep(30L, 104L, 0L))
+        watchdog.markRecoveryAttemptFailed()
+        assertEquals(4, watchdog.nextRecoveryStep(40L, 105L, 0L))
+        watchdog.markRecoveryAttemptFailed()
+        assertNull(watchdog.nextRecoveryStep(50L, 106L, 0L))
+
         watchdog.resolve()
         assertFalse(watchdog.isActive())
     }
