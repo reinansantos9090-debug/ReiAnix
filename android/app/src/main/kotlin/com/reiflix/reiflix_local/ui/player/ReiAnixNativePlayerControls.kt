@@ -1,5 +1,6 @@
 package com.reiflix.reiflix_local.ui.player
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
@@ -45,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -61,6 +65,11 @@ data class ReiAnixNativePlayerUiState(
     val technicalLine: String = "",
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    val durationStatus: String = "Carregando duração",
+    val durationFromDatabase: Boolean = false,
+    val canSeek: Boolean = false,
+    val timelinePreviewBitmap: android.graphics.Bitmap? = null,
+    val timelinePreviewPositionMs: Long? = null,
     val bufferedPositionMs: Long = 0L,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
@@ -90,6 +99,7 @@ fun ReiAnixNativePlayerControls(
     onPlayPause: () -> Unit,
     onSeekRelative: (Long) -> Unit,
     onSeekTo: (Long) -> Unit,
+    onPreviewPosition: (Long?) -> Unit = {},
     onToggleLock: () -> Unit,
     onResize: () -> Unit,
     onSource: () -> Unit,
@@ -213,7 +223,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = seekSeconds,
                     description = "Voltar $seekSeconds segundos",
                     forward = false,
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = state.canSeek && !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
                 )
             }
@@ -299,7 +309,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = seekSeconds,
                     description = "Avançar $seekSeconds segundos",
                     forward = true,
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = state.canSeek && !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
                 )
             }
@@ -480,14 +490,38 @@ fun ReiAnixNativePlayerBottomControls(
                         )
                     }
                 }
+                if (userDragging && state.timelinePreviewBitmap != null) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = (-78).dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Image(
+                            bitmap = state.timelinePreviewBitmap!!.asImageBitmap(),
+                            contentDescription = "Prévia do vídeo em " +
+                                PlayerTimeFormatter.format(state.timelinePreviewPositionMs ?: displayPosition),
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(132.dp, 74.dp),
+                        )
+                        Text(
+                            text = PlayerTimeFormatter.format(state.timelinePreviewPositionMs ?: displayPosition),
+                            color = ReiAnixTokens.Colors.playerControl,
+                            style = ReiAnixTokens.TypographyTokens.playerTime,
+                        )
+                    }
+                }
                 Slider(
                     value = sliderFraction,
                     onValueChange = {
                         userDragging = true
                         sliderFraction = it.coerceIn(0f, 1f)
+                        if (duration > 0L) {
+                            onPreviewPosition((sliderFraction * duration.toFloat()).toLong().coerceIn(0L, duration))
+                        }
                     },
                     onValueChangeFinished = {
-                        if (duration > 0L && !state.episodeTransitionInProgress) {
+                        if (duration > 0L && state.canSeek && !state.episodeTransitionInProgress) {
                             onSeekTo(
                                 (sliderFraction * duration.toFloat())
                                     .toLong()
@@ -495,17 +529,19 @@ fun ReiAnixNativePlayerBottomControls(
                             )
                         }
                         userDragging = false
+                        onPreviewPosition(null)
                     },
-                    enabled = duration > 0L && !state.episodeTransitionInProgress,
+                    enabled = duration > 0L && state.canSeek && !state.episodeTransitionInProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics {
                             contentDescription = "Barra de progresso do vídeo"
                             stateDescription = if (duration > 0L) {
                                 PlayerTimeFormatter.format(displayPosition) +
-                                    " de " + PlayerTimeFormatter.format(duration)
+                                    " de " + PlayerTimeFormatter.format(duration) +
+                                    if (state.durationFromDatabase) " (duração salva no histórico)" else ""
                             } else {
-                                "Duração indisponível"
+                                state.durationStatus
                             }
                         },
                     colors = SliderDefaults.colors(
@@ -517,7 +553,7 @@ fun ReiAnixNativePlayerBottomControls(
                 )
             }
             Text(
-                text = if (duration > 0L) PlayerTimeFormatter.format(duration) else "--:--",
+                text = if (duration > 0L) PlayerTimeFormatter.format(duration) else state.durationStatus,
                 style = ReiAnixTokens.TypographyTokens.playerTime,
                 color = ReiAnixTokens.Colors.playerControl,
                 modifier = Modifier.widthIn(min = ReiAnixTokens.PlayerDimensions.timelineTimeWidth),
