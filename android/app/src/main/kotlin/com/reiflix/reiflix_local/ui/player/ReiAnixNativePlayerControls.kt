@@ -68,6 +68,7 @@ data class ReiAnixNativePlayerUiState(
     val durationStatus: String = "Carregando duração",
     val durationFromDatabase: Boolean = false,
     val canSeek: Boolean = false,
+    val canSeekToPosition: Boolean = false,
     val timelinePreviewBitmap: android.graphics.Bitmap? = null,
     val timelinePreviewPositionMs: Long? = null,
     val bufferedPositionMs: Long = 0L,
@@ -523,7 +524,7 @@ fun ReiAnixNativePlayerBottomControls(
                         }
                     },
                     onValueChangeFinished = {
-                        if (duration > 0L && state.canSeek && !state.episodeTransitionInProgress) {
+                        if (duration > 0L && state.canSeekToPosition && !state.episodeTransitionInProgress) {
                             onSeekTo(
                                 (sliderFraction * duration.toFloat())
                                     .toLong()
@@ -533,7 +534,7 @@ fun ReiAnixNativePlayerBottomControls(
                         userDragging = false
                         onPreviewPosition(null)
                     },
-                    enabled = duration > 0L && state.canSeek && !state.episodeTransitionInProgress,
+                    enabled = duration > 0L && state.canSeekToPosition && !state.episodeTransitionInProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics {
