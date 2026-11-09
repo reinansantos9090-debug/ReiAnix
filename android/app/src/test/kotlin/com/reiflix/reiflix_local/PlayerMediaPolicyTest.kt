@@ -60,12 +60,20 @@ class PlayerMediaPolicyTest {
     }
 
     @Test
-    fun seekRequiresKnownDurationSeekableItemAndAvailableCommand() {
-        assertTrue(PlayerMediaPolicy.isSeekAllowed(60_000L, true, true))
-        assertFalse(PlayerMediaPolicy.isSeekAllowed(0L, true, true))
-        assertFalse(PlayerMediaPolicy.isSeekAllowed(-1L, true, true))
-        assertFalse(PlayerMediaPolicy.isSeekAllowed(60_000L, false, true))
-        assertFalse(PlayerMediaPolicy.isSeekAllowed(60_000L, true, false))
+    fun seekRequiresMedia3SeekabilityAndAvailableCommandNotKnownDuration() {
+        assertTrue(PlayerMediaPolicy.isSeekAllowed(true, true))
+        assertTrue("Unknown duration must not block a seek Media3 explicitly allows",
+            PlayerMediaPolicy.isSeekAllowed(true, true))
+        assertFalse(PlayerMediaPolicy.isSeekAllowed(false, true))
+        assertFalse(PlayerMediaPolicy.isSeekAllowed(true, false))
+    }
+
+    @Test
+    fun seekTargetIsClampedOnlyWhenDurationIsKnown() {
+        assertEquals(0L, PlayerMediaPolicy.clampSeekPosition(-500L, 60_000L))
+        assertEquals(60_000L, PlayerMediaPolicy.clampSeekPosition(70_000L, 60_000L))
+        assertEquals(3_000L, PlayerMediaPolicy.clampSeekPosition(3_000L, 0L))
+        assertEquals(3_000L, PlayerMediaPolicy.clampSeekPosition(3_000L, -1L))
     }
 
     @Test
