@@ -5261,7 +5261,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val durationMs = player.duration
         val seekable = player.isCurrentMediaItemSeekable
         val seekCommandAvailable = player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
-        if (!PlayerMediaPolicy.isSeekAllowed(durationMs, seekable, seekCommandAvailable)) {
+        if (!PlayerMediaPolicy.isSeekAllowed(seekable, seekCommandAvailable)) {
             logPlayer(
                 "MEDIA3_SEEK_REJECTED reason=" + reason +
                     " durationMs=" + durationMs +
@@ -5272,7 +5272,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             return null
         }
-        val safeTargetMs = targetMs.coerceIn(0L, durationMs)
+        val safeTargetMs = PlayerMediaPolicy.clampSeekPosition(targetMs, durationMs)
         player.seekTo(safeTargetMs)
         logPlayer(
             "MEDIA3_SEEK_DISPATCHED reason=" + reason +
