@@ -4287,7 +4287,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun requestTimelinePreview(positionMs: Long?) {
         if (positionMs == null) {
             timelinePreviewGenerator?.cancel()
-            timelinePreviewBitmap?.recycle()
+            // Compose may still be drawing the last immutable UI snapshot. Drop
+            // the reference and let Bitmap GC reclaim it instead of recycling it
+            // while a previous frame could still be using the native pixel buffer.
             timelinePreviewBitmap = null
             timelinePreviewPositionMs = null
             syncComposePlayerUiState()
@@ -4298,10 +4300,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             timelinePreviewGenerator = ReiAnixTimelinePreviewGenerator(applicationContext)
         }
         timelinePreviewGenerator?.request(uri, positionMs) { bitmap, resolvedPosition ->
-            val previous = timelinePreviewBitmap
+            // Compose can retain the previous Bitmap in a pending draw. Replace
+            // the state reference without recycling the old pixel buffer in-place;
+            // the old Bitmap becomes collectible once that draw snapshot is gone.
             timelinePreviewBitmap = bitmap
             timelinePreviewPositionMs = resolvedPosition
-            if (previous != null && previous !== bitmap && !previous.isRecycled) previous.recycle()
             syncComposePlayerUiState()
         }
     }
@@ -6282,7 +6285,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         videoFreezeWatchdog.reset()
         timelinePreviewGenerator?.release()
         timelinePreviewGenerator = null
-        timelinePreviewBitmap?.recycle()
+        // Do not recycle here: Compose may still own a draw snapshot during
+        // lifecycle teardown. Clearing the reference is sufficient for GC.
         timelinePreviewBitmap = null
         restoreSystemUiBeforeExit()
         pendingPreparation?.cancel(true)
