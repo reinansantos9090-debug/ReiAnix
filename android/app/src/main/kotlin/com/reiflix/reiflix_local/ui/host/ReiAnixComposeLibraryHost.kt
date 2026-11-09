@@ -412,6 +412,13 @@ class ReiAnixComposeLibraryHost(
         lastBackAtElapsedRealtimeMs = now
         val route = controller.currentBackStackEntry?.destination?.route
 
+        if (
+            route == ReiAnixRoutes.STORAGE &&
+            activity.nativeStorageOnboardingState.value.isPromptVisible
+        ) {
+            activity.dismissNativeStorageOnboarding()
+        }
+
         if (route != ReiAnixRoutes.HOME && route != ReiAnixRoutes.RECOVERY) {
             lastHomeBackAtElapsedRealtimeMs = 0L
         }
