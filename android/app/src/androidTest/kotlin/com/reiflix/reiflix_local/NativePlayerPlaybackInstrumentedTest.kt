@@ -27,7 +27,6 @@ import androidx.test.uiautomator.UiDevice
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -92,6 +91,7 @@ class NativePlayerPlaybackInstrumentedTest {
         val playerView = awaitView<PlayerView>("reiflix_player_view")
         val player = onMain { requireNotNull(playerView.player) }
         await("PiP player must reach READY") { player.playbackState == Player.STATE_READY }
+        onMain { player.repeatMode = Player.REPEAT_MODE_ONE }
         await("PiP player must be playing before media-session controls are exercised") {
             player.isPlaying
         }
@@ -126,10 +126,13 @@ class NativePlayerPlaybackInstrumentedTest {
         )
         val controls = awaitView<View>("reiflix_controls_root")
         assertFalse("Player controls must be hidden while in PiP", onMain { controls.isShown })
+        await("Video playback must continue without a pause during PiP entry") {
+            player.isPlaying
+        }
 
         await("Media session must publish its PiP pause action") {
             val actions = mediaController.playbackState?.actions ?: 0L
-            actions and PlaybackState.ACTION_PAUSE != 0L
+            (actions and PlaybackState.ACTION_PAUSE) != 0L
         }
         onMain { mediaController.transportControls.pause() }
         await("PiP pause action must pause the original ExoPlayer") {
@@ -138,7 +141,7 @@ class NativePlayerPlaybackInstrumentedTest {
 
         await("Media session must publish its PiP play action after pause") {
             val actions = mediaController.playbackState?.actions ?: 0L
-            actions and PlaybackState.ACTION_PLAY != 0L
+            (actions and PlaybackState.ACTION_PLAY) != 0L
         }
         onMain { mediaController.transportControls.play() }
         await("PiP play action must resume the original ExoPlayer") {
