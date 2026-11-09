@@ -20,6 +20,18 @@ class ReiAnixVideoFreezeWatchdogTest {
     }
 
     @Test
+    fun failedRecoveryAttemptAdvancesToTheNextStep() {
+        val watchdog = ReiAnixVideoFreezeWatchdog(timeoutMs = 10L, minimumAudioAdvanceMs = 1L)
+        watchdog.begin(100L, 0L, 0L)
+        assertTrue(watchdog.shouldDetect(10L, 102L, 0L, true, true))
+        assertEquals(1, watchdog.nextRecoveryStep(10L, 102L, 0L))
+
+        watchdog.markRecoveryAttemptFailed()
+        assertEquals(2, watchdog.nextRecoveryStep(20L, 105L, 0L))
+        assertEquals(2, watchdog.currentStep())
+    }
+
+    @Test
     fun exposesFourEscalatingRecoveryStepsAndCanResolve() {
         val watchdog = ReiAnixVideoFreezeWatchdog(timeoutMs = 10L, minimumAudioAdvanceMs = 1L)
         watchdog.begin(100L, 0L, 0L)
