@@ -42,7 +42,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import androidx.navigation.navOptions
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -61,6 +60,7 @@ import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
 import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.ui.navigation.navigateToStorage
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -177,10 +177,7 @@ fun ReiAnixMyListRoute(
                     },
                     onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                         {
-                            navController.navigate(
-                                ReiAnixRoutes.STORAGE,
-                                navOptions { launchSingleTop = true },
-                            )
+                            navController.navigateToStorage()
                         }
                     } else {
                         viewModel::refresh
