@@ -38,13 +38,18 @@ internal object PlayerMediaPolicy {
 
     fun resolveVideoMimeType(providerMime: String?, displayName: String?): String? {
         val provider = providerMime?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        when (provider) {
+            "application/x-matroska" -> return "video/x-matroska"
+            "application/webm" -> return "video/webm"
+            "application/mp4" -> return "video/mp4"
+        }
         if (provider.startsWith("video/")) {
             return provider
         }
         if (provider.isNotBlank() &&
             provider !in setOf("application/octet-stream", "binary/octet-stream", "application/binary")
         ) {
-            return provider.takeIf { it.startsWith("video/") }
+            return null
         }
 
         val extension = displayName
