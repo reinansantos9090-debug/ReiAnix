@@ -39,11 +39,17 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
 import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
+import com.reiflix.reiflix_local.scanner.MediaStoreScanner
+import com.reiflix.reiflix_local.scanner.BroadStorageScanner
+import com.reiflix.reiflix_local.storage.StorageAuthorization
+import com.reiflix.reiflix_local.storage.SafAccessLevel
 import com.reiflix.reiflix_local.scanner.ScanLifecycleState
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
 import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
 import java.io.File
 import java.util.Locale
 import java.util.UUID
@@ -183,11 +189,19 @@ data class ReiAnixMissingArtworkRetryUiState(
 data class ReiAnixNativeFolderUiModel(
     val name: String?,
     val path: String,
+    val kind: String? = null,
+    val authorization: String? = null,
+    val safIdentity: String? = null,
+    val accessState: String = "unknown",
 )
 
 data class ReiAnixNativeFoldersUiState(
     val status: ReiAnixNativeFoldersStatus = ReiAnixNativeFoldersStatus.IDLE,
     val folders: List<ReiAnixNativeFolderUiModel> = emptyList(),
+    val mediaReadState: String = "unknown",
+    val broadStorageState: String = "unknown",
+    val lifecycleState: String = "unknown",
+    val api: Int? = null,
 )
 
 /**
@@ -520,28 +534,70 @@ class ReiAnixLibraryViewModel(
     val nativeFoldersState: StateFlow<ReiAnixNativeFoldersUiState> = _nativeFoldersState.asStateFlow()
     private var nativeFoldersJob: Job? = null
 
-    /** Refreshes the read-only SQLite folder view without changing folder ownership or SAF grants. */
+    /**
+     * Refreshes the read-only SQLite folder view and reads the current Android
+     * grants directly from their platform authorities. This is presentation
+     * state only: folder mutations and scanner dispatch keep their existing owners.
+     */
     fun refreshNativeFolders() {
         nativeFoldersJob?.cancel()
-        _nativeFoldersState.value = ReiAnixNativeFoldersUiState(
-            status = ReiAnixNativeFoldersStatus.LOADING,
-        )
         nativeFoldersJob = viewModelScope.launch {
+            val mediaState = runCatching { MediaStoreScanner.accessLevel(appContext) }
+                .getOrDefault("unknown")
+            val broadState = runCatching { BroadStorageScanner.accessLevel(appContext).name.lowercase(Locale.ROOT) }
+                .getOrDefault("unknown")
+            val apiLevel = Build.VERSION.SDK_INT
+            val persistedSafUris = runCatching {
+                appContext.contentResolver.persistedUriPermissions
+                    .asSequence()
+                    .filter { permission ->
+                        permission.isReadPermission &&
+                            runCatching { DocumentsContract.isTreeUri(permission.uri) }.getOrDefault(false)
+                    }
+                    .map { permission -> permission.uri.toString() }
+                    .toList()
+            }.getOrDefault(emptyList())
+
+            val capabilityState = ReiAnixNativeFoldersUiState(
+                status = ReiAnixNativeFoldersStatus.LOADING,
+                mediaReadState = mediaState,
+                broadStorageState = broadState,
+                lifecycleState = if (mediaState != "unknown" && broadState != "unknown") "revalidated" else "unknown",
+                api = apiLevel,
+            )
+            _nativeFoldersState.value = capabilityState
+
             val result = queryNativeFolders()
             _nativeFoldersState.value = when (result) {
-                is ReiAnixLibraryQueryResult.Success -> ReiAnixNativeFoldersUiState(
+                is ReiAnixLibraryQueryResult.Success -> capabilityState.copy(
                     status = ReiAnixNativeFoldersStatus.READY,
                     folders = result.value.map { folder ->
-                        ReiAnixNativeFolderUiModel(name = folder.name, path = folder.path)
+                        val accessState = if (folder.kind.equals("saf", ignoreCase = true)) {
+                            when (StorageAuthorization.safAccess(folder.path, persistedSafUris)) {
+                                SafAccessLevel.AVAILABLE -> "available"
+                                SafAccessLevel.REVOKED -> "revoked"
+                                SafAccessLevel.UNKNOWN -> "unknown"
+                            }
+                        } else {
+                            "unknown"
+                        }
+                        ReiAnixNativeFolderUiModel(
+                            name = folder.name,
+                            path = folder.path,
+                            kind = folder.kind,
+                            authorization = folder.authorization,
+                            safIdentity = folder.safIdentity,
+                            accessState = accessState,
+                        )
                     },
                 )
-                is ReiAnixLibraryQueryResult.Empty -> ReiAnixNativeFoldersUiState(
+                is ReiAnixLibraryQueryResult.Empty -> capabilityState.copy(
                     status = ReiAnixNativeFoldersStatus.EMPTY,
                 )
-                is ReiAnixLibraryQueryResult.NotFound -> ReiAnixNativeFoldersUiState(
+                is ReiAnixLibraryQueryResult.NotFound -> capabilityState.copy(
                     status = ReiAnixNativeFoldersStatus.NOT_FOUND,
                 )
-                is ReiAnixLibraryQueryResult.Failure -> ReiAnixNativeFoldersUiState(
+                is ReiAnixLibraryQueryResult.Failure -> capabilityState.copy(
                     status = ReiAnixNativeFoldersStatus.ERROR,
                 )
             }
