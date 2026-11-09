@@ -35,7 +35,7 @@ O código usa o repositório existente ReiAnixSqliteLibraryRepository.listFolder
 
 ## Compatibilidade Python/Flet restante
 
-core/storage_access.py, core/android_bridge.py, NativeMailbox e os handlers Python permanecem para telas Flet/integrações legadas ainda ativas e para projeções compatíveis. Nesta etapa, a decisão do onboarding da sobreposição Compose e suas ações de seleção/dispensa são nativas. Isso não equivale a remover globalmente Python/Flet/Flutter nem a migrar todo o ScanCoordinator.
+core/storage_access.py, core/android_bridge.py, NativeMailbox e os handlers Python permanecem para telas Flet/integrações legadas ainda ativas e para projeções compatíveis. Nesta etapa, a decisão nativa de encaminhar o onboarding para a rota de Armazenamento e suas ações de seleção/dispensa ficam no host Compose. Isso não equivale a remover globalmente Python/Flet/Flutter nem a migrar todo o ScanCoordinator.
 
 ## Tratamento de falhas e preservação de dados
 
