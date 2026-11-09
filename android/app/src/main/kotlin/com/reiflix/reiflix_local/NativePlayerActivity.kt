@@ -2875,15 +2875,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             syncComposePlayerUiState()
                         },
                         onPictureInPicture = { requestPictureInPicture() },
+                        onHistory = { showPlaybackHistory() },
                         onInformation = { showTechnicalInfo() },
                     )
                 }
             }
         }
         val availablePanelWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(240))
-        val panelWidth = minOf(dp(340), availablePanelWidth)
+        val panelWidth = minOf(dp(470), availablePanelWidth)
         val availablePanelHeight = (resources.displayMetrics.heightPixels - dp(72)).coerceAtLeast(dp(220))
-        val panelHeight = minOf(dp(440), (availablePanelHeight * 0.88f).toInt())
+        val panelHeight = minOf(dp(450), availablePanelHeight)
         controls.addView(morePanel, FrameLayout.LayoutParams(
             panelWidth,
             panelHeight,
@@ -3611,6 +3612,63 @@ override fun onCreate(savedInstanceState: Bundle?) {
             append("Áudio: ").append(audioFormatSummary ?: "nenhuma faixa detectada").append('\n')
             append("Legenda selecionada: ").append(subtitleFormatSummary ?: "nenhuma").append('\n')
             append("Legendas disponíveis: ").append(player.currentTracks.groups.count { it.type == C.TRACK_TYPE_TEXT && it.isSupported })
+        }
+    }
+
+    private fun showPlaybackHistory() {
+        touchControls()
+        val loadingDialog = AlertDialog.Builder(this)
+            .setTitle("Histórico")
+            .setMessage("Carregando histórico…")
+            .setNegativeButton("Fechar", null)
+            .create()
+        loadingDialog.show()
+
+        lifecycleScope.launch {
+            try {
+                val historyItems = withContext(Dispatchers.IO) {
+                    val dependencies = ReiAnixAppDependencies.from(this@NativePlayerActivity)
+                    dependencies.consumptionService.playbackHistory(limit = 36).mapNotNull { progress ->
+                        val episode = dependencies.sqliteLibraryRepository.getEpisode(progress.episodeId)
+                            ?: return@mapNotNull null
+                        val anime = dependencies.sqliteLibraryRepository.getAnime(episode.animeId)
+                        val animeTitle = anime?.title?.takeIf { it.isNotBlank() }
+                            ?: episode.fileName
+                        val episodeTitle = episode.episodeTitle?.takeIf { it.isNotBlank() }
+                            ?: episode.number?.let { number ->
+                                val numberLabel = if (number % 1.0 == 0.0) {
+                                    number.toInt().toString()
+                                } else {
+                                    number.toString()
+                                }
+                                "Episódio " + numberLabel
+                            }
+                            ?: episode.fileName
+                        animeTitle + " • " + episodeTitle
+                    }.distinct()
+                }
+
+                if (loadingDialog.isShowing) loadingDialog.dismiss()
+                if (isFinishing || isDestroyed) return@launch
+                if (historyItems.isEmpty()) {
+                    showFeedback("Nenhum histórico de reprodução encontrado")
+                    return@launch
+                }
+                AlertDialog.Builder(this@NativePlayerActivity)
+                    .setTitle("Histórico")
+                    .setItems(historyItems.toTypedArray(), null)
+                    .setNegativeButton("Fechar", null)
+                    .show()
+            } catch (cancelled: CancellationException) {
+                if (loadingDialog.isShowing) loadingDialog.dismiss()
+                throw cancelled
+            } catch (exception: Exception) {
+                if (loadingDialog.isShowing) loadingDialog.dismiss()
+                logPlayer("PLAYER_HISTORY_LOAD_FAILED", exception)
+                if (!isFinishing && !isDestroyed) {
+                    showFeedback("Não foi possível carregar o histórico")
+                }
+            }
         }
     }
 
