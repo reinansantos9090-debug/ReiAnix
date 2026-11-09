@@ -339,7 +339,7 @@ private fun ReiAnixHomeObservedScreen(
                     ReiAnixSourceUnavailableState(
                         title = "Biblioteca local indisponível",
                         message = "A fonte local configurada não está disponível agora.",
-                        actionLabel = "Selecionar pasta",
+                        actionLabel = "Gerenciar armazenamento",
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -349,14 +349,14 @@ private fun ReiAnixHomeObservedScreen(
                 if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                     ReiAnixEmptyLibraryState(
                         message = "Configure uma pasta da biblioteca para começar a usar a Home.",
-                        actionLabel = "Selecionar pasta",
+                        actionLabel = "Gerenciar armazenamento",
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
                     ReiAnixEmptyLibraryState(
                         message = "Nenhum vídeo compatível foi encontrado nas fontes configuradas.",
-                        actionLabel = "Selecionar pasta",
+                        actionLabel = "Gerenciar armazenamento",
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -487,7 +487,7 @@ fun ReiAnixHomeScreen(
                     HomeMessage(
                         title = "Biblioteca local indisponível",
                         message = "A fonte local configurada não está disponível agora.",
-                        actionLabel = "Selecionar pasta",
+                        actionLabel = "Gerenciar armazenamento",
                         onAction = onSelectSource,
                     )
                 }
