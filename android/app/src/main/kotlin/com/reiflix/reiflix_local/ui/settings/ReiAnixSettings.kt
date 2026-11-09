@@ -2112,4 +2112,3 @@ private fun PosterSizeSettingRow(
         }
     }
 }
-
