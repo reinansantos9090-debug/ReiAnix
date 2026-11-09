@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +36,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
 import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
@@ -64,24 +68,34 @@ fun ReiAnixStorageRoute(
     onRemoveSaf: (String) -> Unit,
     onRequestMediaAccess: () -> Unit,
     onOpenBroadSettings: () -> Unit,
-    onCheckAccess: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val nativeFolders by viewModel.nativeFoldersState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     LaunchedEffect(viewModel) {
         viewModel.refreshNativeFolders()
-        onCheckAccess()
     }
+
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshNativeFolders()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     ReiAnixStorageScreen(
         state = state,
         nativeFolders = nativeFolders,
-        onRefreshNativeFolders = viewModel::refreshNativeFolders,
         onBack = onBack,
         onSelectSaf = viewModel::selectSafTree,
         onRemoveSaf = onRemoveSaf,
         onRequestMediaAccess = onRequestMediaAccess,
         onOpenBroadSettings = onOpenBroadSettings,
-        onCheckAccess = onCheckAccess,
+        onCheckAccess = viewModel::refreshNativeFolders,
         onRefreshLibrary = {
             viewModel.refresh()
             viewModel.refreshNativeFolders()
@@ -100,18 +114,49 @@ fun ReiAnixStorageScreen(
     onCheckAccess: () -> Unit,
     onRefreshLibrary: () -> Unit,
     nativeFolders: ReiAnixNativeFoldersUiState = ReiAnixNativeFoldersUiState(),
-    onRefreshNativeFolders: () -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     val storage = state.storage
     var pendingRemoval by remember { mutableStateOf<ReiAnixStorageSourceUiModel?>(null) }
 
-    val configuredSafSources = storage.configuredSources
+    val projectedSafSources = storage.configuredSources
         .filter { it.kind.equals("saf", ignoreCase = true) }
+    val nativeSafSources = nativeFolders.folders
+        .filter { it.kind.equals("saf", ignoreCase = true) }
+        .map { folder ->
+            ReiAnixStorageSourceUiModel(
+                reference = folder.path,
+                name = folder.name.orEmpty(),
+                kind = "saf",
+                authorization = folder.authorization.orEmpty(),
+                status = folder.accessState,
+                safIdentity = folder.safIdentity,
+            )
+        }
+    val projectedSafReferences = projectedSafSources.map { it.reference }.toSet()
+    val projectedSafIdentities = projectedSafSources.mapNotNull { it.safIdentity?.takeIf(String::isNotBlank) }.toSet()
+    val databaseOnlySafSources = nativeSafSources.filter { source ->
+        source.reference !in projectedSafReferences &&
+            (source.safIdentity.isNullOrBlank() || source.safIdentity !in projectedSafIdentities)
+    }
+    val configuredSafSources = (projectedSafSources + databaseOnlySafSources)
+        .distinctBy { it.safIdentity?.takeIf(String::isNotBlank) ?: it.reference }
         .sortedBy { it.stableKey }
+    val nativeSafByReference = nativeSafSources.associateBy { it.reference }
+    val nativeSafByIdentity = nativeSafSources.mapNotNull { source ->
+        source.safIdentity?.takeIf(String::isNotBlank)?.let { it to source }
+    }.toMap()
+    fun sourceState(source: ReiAnixStorageSourceUiModel): String {
+        val liveSource = source.safIdentity?.let(nativeSafByIdentity::get)
+            ?: nativeSafByReference[source.reference]
+        return liveSource?.accessState?.takeIf { it != "unknown" }
+            ?: storage.sourceState(source)
+    }
 
     val otherSources = storage.configuredSources
-        .filterNot { it.kind.equals("saf", ignoreCase = true) }
+        .filterNot {
+            it.kind.lowercase() in setOf("saf", "mediastore", "media", "broad-storage", "broad")
+        }
         .sortedBy { it.stableKey }
 
     val selectionBusy =
@@ -124,13 +169,14 @@ fun ReiAnixStorageScreen(
         state.lastCommandAction.equals("remove_saf", ignoreCase = true) &&
             state.lastCommandStatus?.uppercase() in setOf("QUEUED", "RUNNING")
 
-    val mediaState = storage.mediaReadState.lowercase()
-    val broadState = storage.broadStorageState.lowercase()
+    val mediaState = nativeFolders.mediaReadState.lowercase()
+    val broadState = nativeFolders.broadStorageState.lowercase()
     val storageCapabilitiesUnverified =
-        storage.lifecycleState == "unknown" || storage.api == null
-    val storageCheckInProgress = storage.lifecycleState == "checking"
-    val mediaNeedsAction = !storageCapabilitiesUnverified && mediaState != "full"
-    val broadNeedsAction = !storageCapabilitiesUnverified && broadState != "available"
+        nativeFolders.lifecycleState != "revalidated" || nativeFolders.api == null
+    val storageCheckInProgress =
+        storageCapabilitiesUnverified && nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING
+    val mediaNeedsAction = !storageCapabilitiesUnverified && mediaState == "denied"
+    val broadNeedsAction = !storageCapabilitiesUnverified && broadState == "unavailable"
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -240,14 +286,7 @@ fun ReiAnixStorageScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                if (storage.safRoots.isNotEmpty()) {
-                                    Text(
-                                        text = persistedGrantMessage(storage.safRoots.size),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
+                                            }
                         }
                         Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
                         ReiAnixPrimaryButton(
@@ -266,7 +305,7 @@ fun ReiAnixStorageScreen(
                 ) { source ->
                     SafSourceCard(
                         source = source,
-                        state = storage.sourceState(source),
+                        state = sourceState(source),
                         selectionBusy = selectionBusy,
                         removeBusy = removeBusy,
                         onReauthorize = onSelectSaf,
@@ -307,16 +346,8 @@ fun ReiAnixStorageScreen(
                         accessBadgeTone(mediaState, "full")
                     },
                     icon = Icons.Filled.Info,
-                    actionLabel = when {
-                        storageCapabilitiesUnverified -> "Verificar"
-                        mediaNeedsAction -> "Conceder acesso"
-                        else -> null
-                    },
-                    onAction = when {
-                        storageCapabilitiesUnverified -> onCheckAccess
-                        mediaNeedsAction -> onRequestMediaAccess
-                        else -> null
-                    },
+                    actionLabel = if (mediaNeedsAction) "Conceder acesso" else null,
+                    onAction = if (mediaNeedsAction) onRequestMediaAccess else null,
                 )
             }
 
@@ -335,24 +366,31 @@ fun ReiAnixStorageScreen(
                         else -> ReiAnixBadgeTone.Warning
                     },
                     icon = Icons.Filled.Settings,
-                    actionLabel = when {
-                        storageCapabilitiesUnverified -> "Verificar"
-                        broadNeedsAction -> "Abrir configurações"
-                        else -> null
-                    },
-                    onAction = when {
-                        storageCapabilitiesUnverified -> onCheckAccess
-                        broadNeedsAction -> onOpenBroadSettings
-                        else -> null
-                    },
+                    actionLabel = if (broadNeedsAction) "Abrir configurações" else null,
+                    onAction = if (broadNeedsAction) onOpenBroadSettings else null,
                 )
             }
 
-            item(key = "native-sqlite-folders") {
-                NativeSqliteFoldersSection(
-                    state = nativeFolders,
-                    onRetry = onRefreshNativeFolders,
-                )
+            if (nativeFolders.status == ReiAnixNativeFoldersStatus.ERROR) {
+                item(key = "native-folder-read-error") {
+                    ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(ReiAnixTokens.Spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                        ) {
+                            Text(
+                                text = "Não foi possível conferir todos os registros locais agora.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            ReiAnixSecondaryButton(
+                                text = "Tentar novamente",
+                                onClick = onCheckAccess,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
             }
 
             if (otherSources.isNotEmpty()) {
@@ -424,82 +462,6 @@ fun ReiAnixStorageScreen(
     }
 
     }
-    }
-}
-
-@Composable
-private fun NativeSqliteFoldersSection(
-    state: ReiAnixNativeFoldersUiState,
-    onRetry: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-    ) {
-        StorageSectionTitle(
-            title = "Registros persistidos no SQLite",
-            description = "Consulta somente leitura do banco canônico. As permissões e alterações de pastas continuam sendo gerenciadas pelo fluxo atual.",
-        )
-        when (state.status) {
-            ReiAnixNativeFoldersStatus.IDLE -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "A consulta nativa ainda não foi executada.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            ReiAnixNativeFoldersStatus.LOADING -> ReiAnixLoadingState(
-                title = "Consultando pastas persistidas",
-                message = "Lendo os registros locais do SQLite…",
-                modifier = Modifier.fillMaxWidth(),
-            )
-            ReiAnixNativeFoldersStatus.READY -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                    Text(
-                        text = "${state.folders.size} registro(s) de pasta no SQLite",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    state.folders.forEach { folder ->
-                        Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
-                            Text(
-                                text = folder.name?.takeIf { it.isNotBlank() } ?: folder.path,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = folder.path,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-            ReiAnixNativeFoldersStatus.EMPTY -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Nenhuma pasta registrada no banco SQLite.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            ReiAnixNativeFoldersStatus.NOT_FOUND -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "A consulta nativa retornou uma referência inexistente.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                ReiAnixSecondaryButton(text = "Consultar novamente", onClick = onRetry)
-            }
-            ReiAnixNativeFoldersStatus.ERROR -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Não foi possível consultar as pastas persistidas. Os registros configurados continuam preservados.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                ReiAnixSecondaryButton(text = "Tentar novamente", onClick = onRetry)
-            }
-        }
     }
 }
 
