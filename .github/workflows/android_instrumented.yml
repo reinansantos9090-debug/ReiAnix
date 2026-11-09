@@ -1,17 +1,8 @@
 name: ReiAnix Android Instrumented Runtime Tests
 
 on:
+  # Runtime instrumentation is intentionally manual: it requires an emulator/device runtime.
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
-      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/**"
-      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/player/**"
-      - "android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/NativePlayerPlaybackInstrumentedTest.kt"
-      - "android/app/build.gradle.kts"
-      - "scripts/run_android_instrumented.sh"
-      - ".github/workflows/android_instrumented.yml"
 
 concurrency:
   group: reianix-android-instrumented-${{ github.event.pull_request.number || github.ref }}
