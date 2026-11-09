@@ -1353,14 +1353,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
             relativeDeltaMs < 0L -> player.isCommandAvailable(Player.COMMAND_SEEK_BACK)
             else -> player.isCommandAvailable(Player.COMMAND_SEEK_FORWARD)
         }
+        val transitionReadyForCurrentGeneration =
+            transitionReadyGeneration == playerGeneration &&
+                player.playbackState == Player.STATE_READY
+        val transitionBlocksCommands = ReiAnixPlayerSeekPolicy.transitionBlocksCommands(
+            transitionPending = episodeChangePending,
+            transitionReadyForCurrentGeneration = transitionReadyForCurrentGeneration,
+        )
         val allowed = ReiAnixPlayerSeekPolicy.canSeek(
             isCurrentMediaItemSeekable = seekable,
             seekCommandAvailable = inItemCommand && directionCommand,
-            transitionPending = episodeChangePending,
+            transitionPending = transitionBlocksCommands,
         )
         if (!allowed && logIgnored) {
             val reason = when {
-                episodeChangePending -> "episode_transition"
+                transitionBlocksCommands -> "episode_transition_not_ready"
                 !seekable -> "media_not_seekable"
                 !inItemCommand -> "seek_in_current_media_item_unavailable"
                 !directionCommand && relativeDeltaMs != null && relativeDeltaMs < 0L -> "seek_back_unavailable"
@@ -3753,8 +3760,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             return
         }
-        if (episodeChangePending) {
-            logPlayer("PLAYER_COMMAND_IGNORED command=play_pause reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
+        val transitionReadyForCurrentGeneration =
+            transitionReadyGeneration == playerGeneration &&
+                player.playbackState == Player.STATE_READY
+        if (ReiAnixPlayerSeekPolicy.transitionBlocksCommands(
+                transitionPending = episodeChangePending,
+                transitionReadyForCurrentGeneration = transitionReadyForCurrentGeneration,
+            )
+        ) {
+            logPlayer(
+                "PLAYER_COMMAND_IGNORED command=play_pause reason=episode_transition_not_ready " +
+                    "playbackState=${player.playbackStateLabel()} generation=$playerGeneration " +
+                    "transitionReadyGeneration=$transitionReadyGeneration",
+            )
             return
         }
         when {
