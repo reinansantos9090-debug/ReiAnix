@@ -1089,9 +1089,10 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Armazenamento" -> {
-                    val storage = state.storage
-                    item(key = "section:storage:access") { SettingsSectionLabel("Acesso") }
-                    item(key = "storage:status") {
+                    item(key = "section:storage:management") {
+                        SettingsSectionLabel("Armazenamento local")
+                    }
+                    item(key = "storage:summary") {
                         ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier
@@ -1100,82 +1101,20 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
                                 Text(
-                                    text = "Estado real do armazenamento",
+                                    text = "Pastas da biblioteca e permissões do Android",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = "Vídeos: ${storageMediaAccessLabel(storage.mediaReadState)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Armazenamento amplo: ${storageBroadAccessLabel(storage.broadStorageState)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "SAF autorizadas: ${storage.safRootCount} • volumes removíveis: ${storage.removableVolumeCount}",
+                                    text = "A configuração de fontes, a verificação de acesso e as permissões locais ficam reunidas no gerenciador de armazenamento. Esta categoria não mantém ações duplicadas.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                storage.api?.let {
-                                    Text(
-                                        text = "API Android: $it • ciclo: ${storage.lifecycleState}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                if (storage.safSelectionPending) {
-                                    ReiAnixBadge(
-                                        text = "Seleção de pasta em andamento",
-                                        tone = ReiAnixBadgeTone.Info,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    item(key = "storage:actions") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
                                 ReiAnixSecondaryButton(
-                                    text = "Gerenciar fontes e atualização",
+                                    text = "Gerenciar armazenamento",
                                     onClick = onOpenStorage,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixPrimaryButton(
-                                    text = "Adicionar pasta",
-                                    onClick = { onAction("select_saf") },
-                                    enabled = !actionBusy("select_saf"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "Verificar acesso",
-                                    onClick = { onAction("check_storage_access") },
-                                    enabled = !actionBusy("check_storage_access"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                if (storage.mediaReadState != "full") {
-                                    ReiAnixSecondaryButton(
-                                        text = "Solicitar acesso aos vídeos",
-                                        onClick = { onAction("request_media_access") },
-                                        enabled = !actionBusy("request_media_access"),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                                if (storage.broadStorageState != "available") {
-                                    ReiAnixSecondaryButton(
-                                        text = "Armazenamento amplo",
-                                        onClick = { onAction("open_broad_storage_settings") },
-                                        enabled = !actionBusy("open_broad_storage_settings"),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
                             }
                         }
                     }
@@ -2526,21 +2465,8 @@ private fun storageApiLabel(api: Int?): String = api?.toString() ?: "desconhecid
 private fun com.reiflix.reiflix_local.ui.model.ReiAnixSettingsStorageUiState.lifecycleStateLabel(): String =
     lifecycleState.ifBlank { "desconhecido" }
 
-private fun storageSummary(state: ReiAnixSettingsUiState): String {
-    val storage = state.storage
-    if (!storage.known) return "Verificando permissões"
-    val media = when (storage.mediaReadState) {
-        "full" -> "Vídeos permitidos"
-        "partial" -> "Acesso parcial"
-        "denied" -> "Vídeos sem permissão"
-        else -> "Estado de vídeos desconhecido"
-    }
-    return buildString {
-        append(media)
-        if (storage.safRootCount > 0) append(" • " + storage.safRootCount + " SAF")
-        if (storage.safSelectionPending) append(" • Seleção em andamento")
-    }
-}
+private fun storageSummary(state: ReiAnixSettingsUiState): String =
+    "Gerencie pastas e permissões locais"
 
 
 @Composable
