@@ -212,11 +212,12 @@ class NativePlayerActivity : ComponentActivity() {
 
             val now = SystemClock.elapsedRealtime()
             if (!player.isPlaying) {
-                // A paused player is not expected to produce frames. Restart the
-                // observation window when playback actually resumes.
-                seekOutputWatchdogStartedAtElapsedMs = now
-                seekOutputWatchdogStartPositionMs = player.currentPosition
-                handler.postDelayed(this, 500L)
+                // Buffering can resolve without a new user action; keep observing
+                // only in that state. A user pause/suppression waits for the next
+                // onIsPlayingChanged(true) instead of polling forever.
+                if (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING) {
+                    handler.postDelayed(this, 500L)
+                }
                 return
             }
 
@@ -2110,6 +2111,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (!isCurrent()) return
+            if (isPlaying && seekOutputWatchdogPending) {
+                seekOutputWatchdogStartedAtElapsedMs = SystemClock.elapsedRealtime()
+                seekOutputWatchdogStartPositionMs = player.currentPosition
+                handler.removeCallbacks(seekOutputWatchdog)
+                handler.postDelayed(seekOutputWatchdog, 500L)
+            }
             if (isPlaying) {
                 PerformanceDiagnostics.markPlayer(this@NativePlayerActivity, "playing",
                     requestId, commandCreatedAtMs, reused = false)
