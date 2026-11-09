@@ -10,6 +10,11 @@ import com.reiflix.reiflix_local.player.NativePlayerRequest
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import com.reiflix.reiflix_local.player.PlayerMediaPolicy
 import com.reiflix.reiflix_local.player.PlayerStartupMetrics
+import com.reiflix.reiflix_local.player.ReiAnixMedia3PlayerFactory
+import com.reiflix.reiflix_local.player.ReiAnixPlayerSeekPolicy
+import com.reiflix.reiflix_local.player.ReiAnixProgressCheckpointGate
+import com.reiflix.reiflix_local.player.ReiAnixTimelinePreviewGenerator
+import com.reiflix.reiflix_local.player.ReiAnixVideoFreezeWatchdog
 import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import com.reiflix.reiflix_local.player.SystemUiController
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
@@ -25,6 +30,7 @@ import android.view.KeyEvent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
@@ -97,6 +103,8 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderManager
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
@@ -117,6 +125,7 @@ class NativePlayerActivity : ComponentActivity() {
     private val traceId = UUID.randomUUID().toString()
     private val activityInstanceId = UUID.randomUUID().toString()
     private lateinit var player: ExoPlayer
+    private var decoderManager: DecoderManager? = null
     private lateinit var composeTopView: ComposeView
     private lateinit var composeCenterView: ComposeView
     private lateinit var composeBottomView: ComposeView
@@ -189,9 +198,25 @@ class NativePlayerActivity : ComponentActivity() {
     private var subtitleScale = 1f
     private var subtitleBottomPaddingPercent = 8
     private var subtitleEmbeddedStyle = true
+    private var decoderPreference = "auto"
 
     private val handler = Handler(Looper.getMainLooper())
-    private var lastSavedPosition = -1L
+    private val progressCheckpointGate = ReiAnixProgressCheckpointGate(PROGRESS_INTERVAL_MS)
+    private var savedDurationMsForDisplay: Long? = null
+    private var timelinePreviewGenerator: ReiAnixTimelinePreviewGenerator? = null
+    private var timelinePreviewBitmap: Bitmap? = null
+    private var timelinePreviewPositionMs: Long? = null
+    private val videoFreezeWatchdog = ReiAnixVideoFreezeWatchdog()
+    private var videoFrameSerial = 0L
+    private var lastVideoFrameProcessingOffsetUs = 0L
+    private var videoFrameProcessingCount = 0L
+    private var videoFreezeRecoveryGeneration = 0L
+    private var videoFreezeRecoveryPositionMs = 0L
+    private var videoFreezeRecoveryPlayWhenReady = false
+    private var videoFreezeRecoveryInProgress = false
+    private val videoFreezeWatchdogRunnable = object : Runnable {
+        override fun run() = checkVideoFreezeAfterSeek()
+    }
     private var lastProgressPersistAt = 0L
     private var suppressExitEvent = false
     private var exitReported = false
@@ -883,7 +908,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
         try {
             logPlayer("EXOPLAYER_CREATE requestId=" + requestId.ifEmpty { "-" })
             logPlayer("MEDIA3_PLAYER_CREATE_START requestId=" + requestId.ifEmpty { "-" })
-            player = ExoPlayer.Builder(this).build()
+            decoderPreference = intent.getStringExtra("setting_player_decoder_preference")
+                ?.trim()?.lowercase(Locale.ROOT)
+                ?.takeIf { it in setOf("auto", "hardware", "software", "ffmpeg") }
+                ?: getSharedPreferences(PLAYER_PREFERENCES, MODE_PRIVATE)
+                    .getString(PLAYER_DECODER_PREFERENCE, "auto").orEmpty()
+            val createdPlayer = ReiAnixMedia3PlayerFactory.create(this, decoderPreference)
+            player = createdPlayer.player
+            decoderManager = createdPlayer.decoderManager
+            logPlayer("MEDIA3_DECODER_POLICY preference=$decoderPreference fallback=enabled")
             PerformanceDiagnostics.markPlayer(this, "player_created", requestId,
                 commandCreatedAtMs, reused = false)
             player.setAudioAttributes(
@@ -5451,7 +5484,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.removeCallbacks(lockAffordanceHider)
         handler.removeCallbacks(feedbackHider)
         handler.removeCallbacks(episodeChangeTimeout)
+        handler.removeCallbacks(videoFreezeWatchdogRunnable)
         cancelFirstFrameDiagnostics("destroy")
+        videoFreezeWatchdog.reset()
+        timelinePreviewGenerator?.release()
+        timelinePreviewGenerator = null
+        timelinePreviewBitmap?.recycle()
+        timelinePreviewBitmap = null
         restoreSystemUiBeforeExit()
         pendingPreparation?.cancel(true)
         playbackWorker.shutdown()
@@ -5468,6 +5507,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 playerView.player = null
                 logPlayer("PLAYER_VIEW_DETACHED requestId=" + requestId.ifEmpty { "-" })
             }
+            decoderManager?.detach()
+            decoderManager = null
             player.release()
             logPlayer("player.release requestId=" + requestId.ifEmpty { "-" })
         } else if (shouldReportExit) {
@@ -6888,6 +6929,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private val PLAYER_EVENT_CLOCK_MS = AtomicLong(0L)
 
         private const val TAG = "[REIFLIX][PLAYER]"
+        private const val PLAYER_PREFERENCES = "reianix_player_preferences"
+        private const val PLAYER_DECODER_PREFERENCE = "decoder_preference"
+        private const val VIDEO_FREEZE_CHECK_INTERVAL_MS = 3_500L
         private const val PROGRESS_INTERVAL_MS = 250L
         private const val PROGRESS_PERSIST_INTERVAL_MS = 15_000L
         private const val CONTROL_TIMEOUT_MS = 3_500L
