@@ -74,6 +74,12 @@ data class ReiAnixNativePlayerUiState(
     val episodeTransitionInProgress: Boolean = false,
     val aspectLabel: String = "Ajustar",
     val playbackSpeed: Float = 1f,
+    val autoplayNext: Boolean = true,
+    val horizontalSeekEnabled: Boolean = true,
+    val volumeGesturesEnabled: Boolean = true,
+    val brightnessGesturesEnabled: Boolean = true,
+    val doubleTapEnabled: Boolean = true,
+    val longPressEnabled: Boolean = true,
     val safeTopPx: Int = 0,
     val safeBottomPx: Int = 0,
 )
