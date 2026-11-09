@@ -5639,14 +5639,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
                 val resumeEnabled = preferenceValue("player.resume")
                     .toBooleanStrictOrNull() ?: true
-                val targetProgress = target.progress
-                    ?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
-                val targetPositionMs: Long? = when {
-                    !resumeEnabled || target.watched == true -> 0L
-                    targetProgress > 0.0 ->
-                        (targetProgress * 1_000.0).toLong().coerceAtLeast(0L)
-                    else -> null
-                }
+                val targetPlaybackStart = resolveNativePlaybackStartPosition(
+                    progressSeconds = target.progress,
+                    durationSeconds = target.duration?.toDouble(),
+                    watched = target.watched,
+                    resumeEnabled = resumeEnabled,
+                )
+                val targetPositionMs: Long? = targetPlaybackStart.positionMsOverride
+                logPlayer(
+                    "PLAYER_NEXT_PREVIOUS_RESUME_DECISION targetEpisodeId=${target.id} " +
+                        "progressSeconds=${target.progress ?: -1.0} durationSeconds=${target.duration ?: -1} " +
+                        "watched=${target.watched == true} resumeEnabled=$resumeEnabled " +
+                        "positionOverrideMs=${targetPositionMs ?: -1L} " +
+                        "requiresFileValidation=${!targetPlaybackStart.progressInvalid && target.progress?.let { it > 0.0 } == true && targetPositionMs == null}",
+                )
 
                 val rawTarget = target.path.trim()
                 val parsedTarget = Uri.parse(rawTarget)
