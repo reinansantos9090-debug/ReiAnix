@@ -61,6 +61,7 @@ data class ReiAnixNativePlayerUiState(
     val technicalLine: String = "",
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    val canSeek: Boolean = false,
     val bufferedPositionMs: Long = 0L,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
@@ -223,7 +224,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = seekSeconds,
                     description = "Voltar $seekSeconds segundos",
                     forward = false,
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = state.canSeek && !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
                 )
             }
@@ -309,7 +310,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = seekSeconds,
                     description = "Avançar $seekSeconds segundos",
                     forward = true,
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = state.canSeek && !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
                 )
             }
@@ -492,12 +493,13 @@ fun ReiAnixNativePlayerBottomControls(
                 }
                 Slider(
                     value = sliderFraction,
+                    enabled = state.canSeek && !state.episodeTransitionInProgress,
                     onValueChange = {
                         userDragging = true
                         sliderFraction = it.coerceIn(0f, 1f)
                     },
                     onValueChangeFinished = {
-                        if (duration > 0L && !state.episodeTransitionInProgress) {
+                        if (state.canSeek && duration > 0L && !state.episodeTransitionInProgress) {
                             onSeekTo(
                                 (sliderFraction * duration.toFloat())
                                     .toLong()
@@ -506,7 +508,6 @@ fun ReiAnixNativePlayerBottomControls(
                         }
                         userDragging = false
                     },
-                    enabled = duration > 0L && !state.episodeTransitionInProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics {

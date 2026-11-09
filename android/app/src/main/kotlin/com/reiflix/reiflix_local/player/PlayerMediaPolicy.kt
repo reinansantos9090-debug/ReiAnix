@@ -38,13 +38,18 @@ internal object PlayerMediaPolicy {
 
     fun resolveVideoMimeType(providerMime: String?, displayName: String?): String? {
         val provider = providerMime?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        when (provider) {
+            "application/x-matroska" -> return "video/x-matroska"
+            "application/webm" -> return "video/webm"
+            "application/mp4" -> return "video/mp4"
+        }
         if (provider.startsWith("video/")) {
             return provider
         }
         if (provider.isNotBlank() &&
             provider !in setOf("application/octet-stream", "binary/octet-stream", "application/binary")
         ) {
-            return provider.takeIf { it.startsWith("video/") }
+            return null
         }
 
         val extension = displayName
@@ -63,6 +68,35 @@ internal object PlayerMediaPolicy {
             "3gp", "3gpp" -> "video/3gpp"
             "flv" -> "video/x-flv"
             else -> null
+        }
+    }
+
+    /**
+     * Duration is not a prerequisite for a seek when Media3 explicitly reports
+     * that the current item is seekable and exposes the seek command. Some
+     * progressive files temporarily report TIME_UNSET/0 while their timeline
+     * is being resolved; rejecting every seek in that state is unnecessarily
+     * restrictive. The UI still treats unknown duration as unavailable.
+     */
+    fun isSeekAllowed(seekCommandAvailable: Boolean): Boolean =
+        seekCommandAvailable
+
+    /**
+     * Prefer Media3's timeline duration. Fall back to a duration extracted from
+     * the local container only when Media3 has not exposed a finite duration yet.
+     */
+    fun resolveDurationMs(media3DurationMs: Long, metadataDurationMs: Long?): Long =
+        media3DurationMs.takeIf { it > 0L }
+            ?: metadataDurationMs?.takeIf { it > 0L }
+            ?: 0L
+
+    /** Clamp only when the timeline supplies a valid finite duration. */
+    fun clampSeekPosition(targetMs: Long, durationMs: Long): Long {
+        val nonNegativeTarget = targetMs.coerceAtLeast(0L)
+        return if (durationMs > 0L) {
+            nonNegativeTarget.coerceAtMost(durationMs)
+        } else {
+            nonNegativeTarget
         }
     }
 

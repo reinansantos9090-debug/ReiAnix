@@ -24,6 +24,22 @@ class PlayerMediaPolicyTest {
     }
 
     @Test
+    fun normalizesCommonApplicationContainerMimeTypes() {
+        assertEquals(
+            "video/x-matroska",
+            PlayerMediaPolicy.resolveVideoMimeType("application/x-matroska", "episode.mkv"),
+        )
+        assertEquals(
+            "video/webm",
+            PlayerMediaPolicy.resolveVideoMimeType("application/webm", "episode.webm"),
+        )
+        assertEquals(
+            "video/mp4",
+            PlayerMediaPolicy.resolveVideoMimeType("application/mp4", "episode.mp4"),
+        )
+    }
+
+    @Test
     fun preservesValidProviderVideoMime() {
         assertEquals(
             "video/mp4",
@@ -41,6 +57,31 @@ class PlayerMediaPolicyTest {
             null,
             PlayerMediaPolicy.resolveVideoMimeType(null, "episode.xyz"),
         )
+    }
+
+    @Test
+    fun seekUsesMedia3CommandAvailabilityAsTheAuthoritativeContract() {
+        assertTrue("Unknown duration must not block a seek Media3 explicitly allows",
+            PlayerMediaPolicy.isSeekAllowed(true))
+        assertFalse("Never call seekTo when Media3 does not expose the seek command",
+            PlayerMediaPolicy.isSeekAllowed(false))
+    }
+
+    @Test
+    fun media3DurationTakesPrecedenceOverLocalMetadataFallback() {
+        assertEquals(12_000L, PlayerMediaPolicy.resolveDurationMs(12_000L, 10_000L))
+        assertEquals(10_000L, PlayerMediaPolicy.resolveDurationMs(0L, 10_000L))
+        assertEquals(10_000L, PlayerMediaPolicy.resolveDurationMs(-1L, 10_000L))
+        assertEquals(0L, PlayerMediaPolicy.resolveDurationMs(0L, null))
+        assertEquals(0L, PlayerMediaPolicy.resolveDurationMs(-1L, 0L))
+    }
+
+    @Test
+    fun seekTargetIsClampedOnlyWhenDurationIsKnown() {
+        assertEquals(0L, PlayerMediaPolicy.clampSeekPosition(-500L, 60_000L))
+        assertEquals(60_000L, PlayerMediaPolicy.clampSeekPosition(70_000L, 60_000L))
+        assertEquals(3_000L, PlayerMediaPolicy.clampSeekPosition(3_000L, 0L))
+        assertEquals(3_000L, PlayerMediaPolicy.clampSeekPosition(3_000L, -1L))
     }
 
     @Test

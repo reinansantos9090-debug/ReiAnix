@@ -71,11 +71,20 @@ jobs:
           assets="android/app/src/androidTest/assets"
           mkdir -p "$assets"
           ffmpeg -hide_banner -loglevel error -y \
-            -f lavfi -i "color=c=black:s=640x360:r=30" \
-            -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
-            -t 12 -shortest -c:v mpeg4 -q:v 5 -c:a aac -movflags +faststart \
+            -f lavfi -i "testsrc2=size=1920x1080:rate=30" \
+            -f lavfi -i "sine=frequency=440:sample_rate=48000" \
+            -t 12 -shortest -c:v libx264 -preset ultrafast -profile:v high \
+            -pix_fmt yuv420p -crf 23 -c:a aac -b:a 128k -ac 2 \
             "$assets/player_fixture.mp4"
           test -s "$assets/player_fixture.mp4"
+          ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height \
+            -of json "$assets/player_fixture.mp4" | \
+            jq -e '.streams[0].codec_name == "h264" and .streams[0].width == 1920 and .streams[0].height == 1080' >/dev/null
+          ffprobe -v error -select_streams a:0 -show_entries stream=codec_name,channels \
+            -of json "$assets/player_fixture.mp4" | \
+            jq -e '.streams[0].codec_name == "aac" and .streams[0].channels == 2' >/dev/null
+          duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$assets/player_fixture.mp4")"
+          awk -v duration="$duration" 'BEGIN { exit !(duration > 0) }'
 
           contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
           gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"

@@ -9,6 +9,7 @@ import com.reiflix.reiflix_local.player.LocalSubtitleResolver
 import com.reiflix.reiflix_local.player.NativePlayerRequest
 import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
 import com.reiflix.reiflix_local.player.PlayerMediaPolicy
+import com.reiflix.reiflix_local.player.ReiAnixMedia3PlayerFactory
 import com.reiflix.reiflix_local.player.PlayerStartupMetrics
 import com.reiflix.reiflix_local.player.PlayerTimeFormatter
 import com.reiflix.reiflix_local.player.SystemUiController
@@ -32,6 +33,7 @@ import android.util.Rational
 import android.util.Log
 import android.graphics.Typeface
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -193,6 +195,80 @@ class NativePlayerActivity : ComponentActivity() {
     private var subtitleEmbeddedStyle = true
 
     private val handler = Handler(Looper.getMainLooper())
+    private var seekOutputWatchdogPending = false
+    private var seekOutputWatchdogRecoveryAttempted = false
+    private var seekOutputWatchdogStartedAtElapsedMs = 0L
+    private var seekOutputWatchdogStartPositionMs = 0L
+    private var lastVideoFrameProcessingElapsedMs = 0L
+    private val seekOutputWatchdog = object : Runnable {
+        override fun run() {
+            if (!seekOutputWatchdogPending ||
+                !::player.isInitialized ||
+                sessionState != SessionState.ACTIVE
+            ) {
+                seekOutputWatchdogPending = false
+                return
+            }
+
+            val now = SystemClock.elapsedRealtime()
+            if (!player.isPlaying) {
+                // Buffering can resolve without a new user action; keep observing
+                // only in that state. A user pause/suppression waits for the next
+                // onIsPlayingChanged(true) instead of polling forever.
+                if (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING) {
+                    handler.postDelayed(this, 500L)
+                }
+                return
+            }
+
+            if (lastVideoFrameProcessingElapsedMs >= seekOutputWatchdogStartedAtElapsedMs) {
+                seekOutputWatchdogPending = false
+                logPlayer(
+                    "SEEK_VIDEO_OUTPUT_RECOVERED positionMs=" + player.currentPosition +
+                        " recoveryAttempted=" + seekOutputWatchdogRecoveryAttempted,
+                )
+                return
+            }
+
+            val elapsedMs = now - seekOutputWatchdogStartedAtElapsedMs
+            val advancedMs = (player.currentPosition - seekOutputWatchdogStartPositionMs)
+                .coerceAtLeast(0L)
+            if (elapsedMs < 3_500L || advancedMs < 1_200L) {
+                handler.postDelayed(this, 500L)
+                return
+            }
+
+            if (!seekOutputWatchdogRecoveryAttempted &&
+                player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+            ) {
+                seekOutputWatchdogRecoveryAttempted = true
+                val recoveryPositionMs = player.currentPosition.coerceAtLeast(0L)
+                seekOutputWatchdogStartedAtElapsedMs = now
+                seekOutputWatchdogStartPositionMs = recoveryPositionMs
+                logPlayer(
+                    "SEEK_VIDEO_OUTPUT_WATCHDOG_RECOVERY action=single_renderer_reset" +
+                        " targetMs=" + recoveryPositionMs +
+                        " elapsedMs=" + elapsedMs +
+                        " audioPositionAdvanceMs=" + advancedMs,
+                )
+                // Media3 does not expose a public "restart video codec only" API.
+                // A bounded seek to the current audio-clock position is the
+                // supported renderer reset path; audio/video remain owned by Media3.
+                player.seekTo(recoveryPositionMs)
+                handler.postDelayed(this, 500L)
+                return
+            }
+
+            seekOutputWatchdogPending = false
+            player.pause()
+            logPlayer(
+                "SEEK_VIDEO_OUTPUT_WATCHDOG_FAILED action=paused_to_prevent_audio_only" +
+                    " positionMs=" + player.currentPosition +
+                    " recoveryAttempted=" + seekOutputWatchdogRecoveryAttempted,
+            )
+            showFeedback("Vídeo pausado: não foi possível recuperar a imagem", 2_400L)
+        }
+    }
     private var lastSavedPosition = -1L
     private var lastProgressPersistAt = 0L
     private var suppressExitEvent = false
@@ -325,6 +401,7 @@ class NativePlayerActivity : ComponentActivity() {
     private var contentMimeType: String? = null
     private var mediaDisplayName: String? = null
     private var mediaSizeBytes: Long? = null
+    private var metadataDurationMs: Long? = null
     private var decoderVideoName: String? = null
     private var decoderAudioName: String? = null
     private var videoFormatSummary: String? = null
@@ -885,7 +962,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         try {
             logPlayer("EXOPLAYER_CREATE requestId=" + requestId.ifEmpty { "-" })
             logPlayer("MEDIA3_PLAYER_CREATE_START requestId=" + requestId.ifEmpty { "-" })
-            player = ExoPlayer.Builder(this).build()
+            player = ReiAnixMedia3PlayerFactory.create(this)
             PerformanceDiagnostics.markPlayer(this, "player_created", requestId,
                 commandCreatedAtMs, reused = false)
             player.setAudioAttributes(
@@ -1346,6 +1423,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         contentMimeType = null
         mediaDisplayName = null
         mediaSizeBytes = null
+        metadataDurationMs = null
         decoderVideoName = null
         decoderAudioName = null
         videoFormatSummary = null
@@ -1488,15 +1566,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     initialPositionMsForGeneration = startupPositionMs.coerceAtLeast(0L)
 
                     val subtitleTracks = deferredSubtitleCache[localUri.toString()].orEmpty()
+                    val mimeHint = PlayerMediaPolicy.resolveVideoMimeType(
+                        contentMimeType,
+                        mediaDisplayName ?: localUri.lastPathSegment,
+                    )
                     val mediaItem = buildMediaItem(
                         mediaUri = localUri,
-                        mimeType = null,
+                        mimeType = mimeHint,
                         subtitleTracks = subtitleTracks,
                     )
                     logPlayer(
                         "MEDIA_ITEM requestId=" + requestId.ifEmpty { "-" } +
                             " uri=" + mediaItem.localConfiguration?.uri +
-                            " mime=auto subtitleCount=" + subtitleTracks.size +
+                            " mime=" + (mimeHint ?: "auto") +
+                            " displayName=" + (mediaDisplayName ?: "-") +
+                            " subtitleCount=" + subtitleTracks.size +
                             " reason=" + reason,
                     )
 
@@ -1612,6 +1696,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val providerMime = runCatching { appContext.contentResolver.getType(localUri) }.getOrNull()
                 val resolvedMime = PlayerMediaPolicy.resolveVideoMimeType(providerMime, displayName)
                 val sizeBytes = localSizeBytes(appContext, localUri)
+                val extractedDurationMs = extractLocalDurationMs(appContext, localUri)
                 val subtitleTracks = runCatching {
                     LocalSubtitleResolver.resolve(appContext, localUri)
                 }.getOrElse { error ->
@@ -1637,6 +1722,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     contentMimeType = resolvedMime
                     mediaDisplayName = displayName
                     mediaSizeBytes = sizeBytes
+                    metadataDurationMs = extractedDurationMs
                     logPlayer(
                         "MEDIA_METADATA_DEFERRED_READY requestId=" +
                             requestId.ifEmpty { "-" } +
@@ -1644,8 +1730,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             " displayName=" + displayName.orEmpty() +
                             " mime=" + resolvedMime.orEmpty() +
                             " sizeBytes=" + (sizeBytes ?: -1L) +
+                            " metadataDurationMs=" + (extractedDurationMs ?: -1L) +
                             " subtitleCount=" + subtitleTracks.size,
                     )
+                    updateProgressUi()
                     if (sizeBytes == 0L && !errorVisible && !firstFrameRenderedForTesting) {
                         showPlayerError(
                             "Este arquivo está vazio e não contém dados de vídeo.",
@@ -2023,6 +2111,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (!isCurrent()) return
+            if (isPlaying && seekOutputWatchdogPending) {
+                seekOutputWatchdogStartedAtElapsedMs = SystemClock.elapsedRealtime()
+                seekOutputWatchdogStartPositionMs = player.currentPosition
+                handler.removeCallbacks(seekOutputWatchdog)
+                handler.postDelayed(seekOutputWatchdog, 500L)
+            }
             if (isPlaying) {
                 PerformanceDiagnostics.markPlayer(this@NativePlayerActivity, "playing",
                     requestId, commandCreatedAtMs, reused = false)
@@ -2059,7 +2153,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ) {
                 logPlayer(
                     "PLAYER_SEEK requestId=" + requestId.ifEmpty { "-" } +
-                        " positionMs=" + newPosition.positionMs,
+                        " oldPositionMs=" + oldPosition.positionMs +
+                        " newPositionMs=" + newPosition.positionMs +
+                        " durationMs=" + effectiveDurationMs() +
+                        " seekable=" + player.isCurrentMediaItemSeekable +
+                        " seekCommandAvailable=" + player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) +
+                        " reason=" + reason,
                 )
                 saveProgress("player_progress", force = true)
             }
@@ -2253,6 +2352,110 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
 
+        override fun onRenderedFirstFrame(
+            eventTime: AnalyticsListener.EventTime,
+            output: Any,
+            renderTimeMs: Long,
+        ) {
+            if (!isCurrent()) return
+            markVideoOutputAfterSeek("analytics_rendered_first_frame", renderTimeMs)
+        }
+
+        override fun onVideoFrameProcessingOffset(
+            eventTime: AnalyticsListener.EventTime,
+            totalProcessingOffsetUs: Long,
+            frameCount: Int,
+        ) {
+            if (!isCurrent() || frameCount <= 0) return
+            val averageOffsetUs = totalProcessingOffsetUs / frameCount
+            markVideoOutputAfterSeek("video_frame_processing", eventTime.realtimeMs)
+            logPlayer(
+                "VIDEO_FRAME_PROCESSING_OFFSET generation=" + generation +
+                    " totalOffsetUs=" + totalProcessingOffsetUs +
+                    " frameCount=" + frameCount +
+                    " averageOffsetUs=" + averageOffsetUs +
+                    " positionMs=" + player.currentPosition,
+            )
+        }
+
+        override fun onVideoInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+        ) {
+            if (!isCurrent()) return
+            logPlayer(
+                "VIDEO_INPUT_FORMAT generation=" + generation +
+                    " mime=" + format.sampleMimeType.orEmpty() +
+                    " codecs=" + format.codecs.orEmpty() +
+                    " size=" + format.width + "x" + format.height +
+                    " frameRate=" + format.frameRate +
+                    " bitrate=" + format.bitrate,
+            )
+        }
+
+        override fun onAudioInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+        ) {
+            if (!isCurrent()) return
+            logPlayer(
+                "AUDIO_INPUT_FORMAT generation=" + generation +
+                    " mime=" + format.sampleMimeType.orEmpty() +
+                    " codecs=" + format.codecs.orEmpty() +
+                    " sampleRate=" + format.sampleRate +
+                    " channels=" + format.channelCount +
+                    " bitrate=" + format.bitrate,
+            )
+        }
+
+        override fun onAudioUnderrun(
+            eventTime: AnalyticsListener.EventTime,
+            bufferSize: Int,
+            bufferSizeMs: Long,
+            elapsedSinceLastFeedMs: Long,
+        ) {
+            if (!isCurrent()) return
+            logPlayer(
+                "AUDIO_UNDERRUN generation=" + generation +
+                    " bufferSize=" + bufferSize +
+                    " bufferSizeMs=" + bufferSizeMs +
+                    " elapsedSinceLastFeedMs=" + elapsedSinceLastFeedMs +
+                    " positionMs=" + player.currentPosition,
+            )
+        }
+
+        override fun onAudioSinkError(
+            eventTime: AnalyticsListener.EventTime,
+            audioSinkError: Exception,
+        ) {
+            if (!isCurrent()) return
+            logPlayer(
+                "AUDIO_SINK_ERROR generation=" + generation +
+                    " errorClass=" + audioSinkError::class.java.simpleName +
+                    " error=" + audioSinkError.message.orEmpty(),
+                audioSinkError,
+            )
+        }
+
+        override fun onTimelineChanged(
+            eventTime: AnalyticsListener.EventTime,
+            reason: Int,
+        ) {
+            if (!isCurrent()) return
+            val durationMs = player.duration
+            logPlayer(
+                "MEDIA_TIMELINE_CHANGED generation=" + generation +
+                    " reason=" + reason +
+                    " durationMs=" + durationMs +
+                    " durationKnown=" + (durationMs > 0L && durationMs != C.TIME_UNSET) +
+                    " seekable=" + player.isCurrentMediaItemSeekable +
+                    " seekCommand=" + player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) +
+                    " positionMs=" + player.currentPosition,
+            )
+        }
+
         override fun onVideoCodecError(
             eventTime: AnalyticsListener.EventTime,
             videoCodecError: Exception,
@@ -2323,6 +2526,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun beginPlayerGeneration(reason: String) {
         if (!::player.isInitialized || sessionState == SessionState.DESTROYED) return
         cancelFirstFrameDiagnostics("new_generation")
+        handler.removeCallbacks(seekOutputWatchdog)
+        seekOutputWatchdogPending = false
+        seekOutputWatchdogRecoveryAttempted = false
         activePlayerListener?.let { player.removeListener(it) }
         activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }
         activePlayerListener = null
@@ -2754,8 +2960,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             tag = "reiflix_seekbar"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (fromUser && ::player.isInitialized && player.duration > 0L) {
-                        val target = player.duration * progress.toLong() / SEEK_PROGRESS_MAX
+                    val duration = effectiveDurationMs()
+                    if (fromUser && ::player.isInitialized && duration > 0L) {
+                        val target = duration * progress.toLong() / SEEK_PROGRESS_MAX
                         positionLabel.text = formatTime(target)
                     }
                 }
@@ -2765,11 +2972,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
 
                 override fun onStopTrackingTouch(bar: SeekBar?) {
-                    if (!::player.isInitialized || player.duration <= 0L) return
-                    val target = player.duration * seekBar.progress.toLong() / SEEK_PROGRESS_MAX
-                    player.seekTo(target.coerceIn(0L, player.duration))
+                    if (!::player.isInitialized) return
+                    val duration = effectiveDurationMs()
+                    if (duration <= 0L) return
+                    val target = duration * seekBar.progress.toLong() / SEEK_PROGRESS_MAX
+                    val appliedTarget = seekCurrentMediaTo(target, "seekbar") ?: return
                     saveProgress("player_progress", force = true)
-                    showFeedback(formatTime(target))
+                    showFeedback(formatTime(appliedTarget))
                     scheduleControlsHide()
                 }
             })
@@ -2825,8 +3034,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             showSpeedSelection(TextView(this@NativePlayerActivity))
                         },
                         onRestart = {
-                            if (::player.isInitialized && !episodeChangePending) {
-                                player.seekTo(0L)
+                            if (!episodeChangePending && seekCurrentMediaTo(0L, "restart") != null) {
                                 saveProgress("player_progress", force = true)
                                 showFeedback("00:00")
                             }
@@ -2945,12 +3153,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
                         onSeekTo = { targetMs ->
-                            if (::player.isInitialized && player.duration > 0L && !episodeChangePending) {
-                                val safeTarget = targetMs.coerceIn(0L, player.duration)
-                                player.seekTo(safeTarget)
-                                saveProgress("player_progress", force = true)
-                                showFeedback(formatTime(safeTarget))
-                                touchControls()
+                            if (!episodeChangePending) {
+                                val safeTarget = seekCurrentMediaTo(targetMs, "timeline")
+                                if (safeTarget != null) {
+                                    saveProgress("player_progress", force = true)
+                                    showFeedback(formatTime(safeTarget))
+                                    touchControls()
+                                }
                             }
                         },
                         onToggleLock = { setLocked(!locked) },
@@ -3034,7 +3243,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun syncComposePlayerUiState() {
         if (!composeControlsEnabled) return
-        val currentDuration = if (::player.isInitialized) player.duration else 0L
+        val currentDuration = effectiveDurationMs()
         val currentPosition = if (::player.isInitialized) player.currentPosition else 0L
         val videoSize = if (::player.isInitialized) player.videoSize else null
         val resolution = videoSize
@@ -3061,6 +3270,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             technicalLine = buildPlayerTechnicalLine(),
             positionMs = currentPosition.coerceAtLeast(0L),
             durationMs = currentDuration.coerceAtLeast(0L),
+            canSeek = currentDuration > 0L && isCurrentMediaSeekAvailable(),
             bufferedPositionMs = if (::player.isInitialized && currentDuration > 0L) {
                 player.bufferedPosition.coerceIn(0L, currentDuration)
             } else {
@@ -3276,9 +3486,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             player.playbackState == Player.STATE_ENDED -> {
                 // The UI exposes a replay affordance for an ended item, so tapping
                 // it must explicitly rewind before playback.
-                player.seekTo(0L)
-                player.play()
-                logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
+                if (seekCurrentMediaTo(0L, "replay") != null) {
+                    player.play()
+                    logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
+                }
             }
             player.isPlaying -> {
                 player.pause()
@@ -3336,16 +3547,22 @@ override fun onCreate(savedInstanceState: Bundle?) {
             syncComposePlayerUiState()
             return
         }
-        val duration = player.duration
+        val duration = effectiveDurationMs()
+        val media3Duration = player.duration
+        val seekAvailable = isCurrentMediaSeekAvailable()
         val position = player.currentPosition.coerceAtLeast(0L)
         if (::seekBar.isInitialized && duration > 0L) {
             seekBar.progress = ((position.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
                 .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
-            seekBar.secondaryProgress = ((player.bufferedPosition.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
-                .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
+            seekBar.secondaryProgress = if (media3Duration > 0L) {
+                ((player.bufferedPosition.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
+                    .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
+            } else 0
+            seekBar.isEnabled = seekAvailable && duration > 0L
         } else if (::seekBar.isInitialized) {
             seekBar.progress = 0
             seekBar.secondaryProgress = 0
+            seekBar.isEnabled = false
         }
         if (::positionLabel.isInitialized) positionLabel.text = formatTime(position)
         if (::durationLabel.isInitialized) {
@@ -3581,7 +3798,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         .put("playbackSpeed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
         .put("audioTrackCount", if (::player.isInitialized) player.currentTracks.groups.count { it.type == C.TRACK_TYPE_AUDIO && it.isSupported } else 0)
         .put("subtitleTrackCount", if (::player.isInitialized) player.currentTracks.groups.count { it.type == C.TRACK_TYPE_TEXT && it.isSupported } else 0)
-.put("durationMs", if (::player.isInitialized) player.duration.coerceAtLeast(0L) else 0L)
+.put("durationMs", effectiveDurationMs())
         .put("firstFrameRendered", firstFrameRenderedForTesting)
         .put("sessionState", sessionState.name)
         .put("transitionPhase", transitionPhase.name)
@@ -3630,7 +3847,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             append("Arquivo: ").append(mediaDisplayName ?: uri.lastPathSegment.orEmpty().ifBlank { "desconhecido" }).append('\n')
             append("MIME: ").append(contentMimeType ?: "não informado").append('\n')
             mediaSizeBytes?.let { append("Tamanho: ").append(it).append(" bytes").append('\n') }
-            append("Duração: ").append(formatTime(player.duration.coerceAtLeast(0L))).append('\n')
+            append("Duração: ").append(formatTime(effectiveDurationMs())).append('\n')
             append("Velocidade: ").append(String.format(Locale.US, "%.2fx", player.playbackParameters.speed)).append('\n')
             append("Decodificador vídeo: ").append(decoderVideoName ?: "não informado").append('\n')
             append("Decodificador áudio: ").append(decoderAudioName ?: "não informado").append('\n')
@@ -3823,7 +4040,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun seekBy(deltaMs: Long, feedbackText: String) {
-        if (!::player.isInitialized || player.duration <= 0L) return
+        if (!::player.isInitialized) return
         if (episodeChangePending) {
             logPlayer("PLAYER_COMMAND_IGNORED command=seek reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
             return
@@ -3831,9 +4048,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val target = PlayerGesturePolicy.seekTarget(
             currentPositionMs = player.currentPosition,
             deltaMs = deltaMs,
-            durationMs = player.duration,
+            durationMs = effectiveDurationMs(),
         )
-        player.seekTo(target)
+        if (seekCurrentMediaTo(target, "relative_gesture") == null) return
         // Relative seek gestures are frequent; the authoritative checkpoints remain
         // pause/completion/exit plus the periodic progress reporter.
         saveProgress("player_progress")
@@ -4330,8 +4547,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         exitReported = true
         suppressExitEvent = true
-        val rawDuration = if (::player.isInitialized) player.duration else 0L
-        val currentDuration = if (rawDuration > 0L) rawDuration else 0L
+        val currentDuration = effectiveDurationMs()
         val rawPosition = if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L
         val currentPosition = if (currentDuration > 0L) rawPosition.coerceAtMost(currentDuration) else rawPosition
         val exitCapturedAt = nextPlayerEventCreatedAt()
@@ -4721,7 +4937,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("episodeId", currentEpisodeId())
             .put("animeId", intent.getStringExtra("animeId").orEmpty())
             .put("positionMs", player.currentPosition.coerceAtLeast(0L))
-            .put("durationMs", player.duration.coerceAtLeast(0L))
+            .put("durationMs", effectiveDurationMs())
             .put("createdAt", startedAtMs)
             .put("buttonPressedAtMs", startedAtMs)
             .put("monotonicNs", monotonicNs)
@@ -5149,22 +5365,97 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
+    private fun markVideoOutputAfterSeek(
+        source: String,
+        outputElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ) {
+        // Use the renderer's event timestamp, not callback delivery time, so a
+        // queued pre-seek callback cannot falsely satisfy the new seek watchdog.
+        lastVideoFrameProcessingElapsedMs = max(lastVideoFrameProcessingElapsedMs, outputElapsedMs)
+        if (seekOutputWatchdogPending && outputElapsedMs >= seekOutputWatchdogStartedAtElapsedMs) {
+            seekOutputWatchdogPending = false
+            handler.removeCallbacks(seekOutputWatchdog)
+            logPlayer(
+                "SEEK_VIDEO_OUTPUT_CONFIRMED source=" + source +
+                    " positionMs=" + (if (::player.isInitialized) player.currentPosition else 0L) +
+                    " recoveryAttempted=" + seekOutputWatchdogRecoveryAttempted,
+            )
+        }
+    }
+
+    private fun armSeekOutputWatchdog(targetMs: Long, reason: String) {
+        if (!::player.isInitialized ||
+            player.videoSize.width <= 0 ||
+            player.videoSize.height <= 0
+        ) {
+            return
+        }
+        handler.removeCallbacks(seekOutputWatchdog)
+        seekOutputWatchdogPending = true
+        seekOutputWatchdogRecoveryAttempted = false
+        seekOutputWatchdogStartedAtElapsedMs = SystemClock.elapsedRealtime()
+        // The player may publish the requested position immediately after
+        // seekTo(); use the requested target as the baseline, not the old
+        // pre-seek position, or a large seek jump looks like clock progress.
+        seekOutputWatchdogStartPositionMs = targetMs.coerceAtLeast(0L)
+        logPlayer(
+            "SEEK_VIDEO_OUTPUT_WATCHDOG_ARMED reason=" + reason +
+                " targetMs=" + targetMs +
+                " positionMs=" + seekOutputWatchdogStartPositionMs +
+                " seekable=" + player.isCurrentMediaItemSeekable +
+                " seekCommandAvailable=" + player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
+        )
+        handler.postDelayed(seekOutputWatchdog, 500L)
+    }
+
+    private fun seekCurrentMediaTo(targetMs: Long, reason: String): Long? {
+        if (!::player.isInitialized || sessionState != SessionState.ACTIVE) return null
+        val durationMs = player.duration
+        val seekable = player.isCurrentMediaItemSeekable
+        val seekCommandAvailable = player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+        if (!PlayerMediaPolicy.isSeekAllowed(seekCommandAvailable)) {
+            logPlayer(
+                "MEDIA3_SEEK_REJECTED reason=" + reason +
+                    " durationMs=" + durationMs +
+                    " seekable=" + seekable +
+                    " seekCommandAvailable=" + seekCommandAvailable +
+                    " playbackState=" + player.playbackState +
+                    " requestId=" + requestId.ifEmpty { "-" },
+            )
+            return null
+        }
+        val safeTargetMs = PlayerMediaPolicy.clampSeekPosition(targetMs, effectiveDurationMs())
+        player.seekTo(safeTargetMs)
+        armSeekOutputWatchdog(safeTargetMs, reason)
+        logPlayer(
+            "MEDIA3_SEEK_DISPATCHED reason=" + reason +
+                " targetMs=" + safeTargetMs +
+                " durationMs=" + durationMs +
+                " requestId=" + requestId.ifEmpty { "-" },
+        )
+        return safeTargetMs
+    }
+
     private fun seekToSavedPosition(savedPositionMs: Long): Long {
         if (!::player.isInitialized) return 0L
         val normalizedRequested = savedPositionMs.coerceAtLeast(0L)
-        val safePosition = PlayerMediaPolicy.safeResumePosition(normalizedRequested, player.duration)
-        if (safePosition > 0L && player.duration > 0L) {
-            player.seekTo(safePosition)
+        val safePosition = PlayerMediaPolicy.safeResumePosition(normalizedRequested, effectiveDurationMs())
+        if (safePosition > 0L) {
+            val appliedPosition = seekCurrentMediaTo(safePosition, "resume")
+            if (appliedPosition == null) {
+                logPlayer("RESUME_DEFERRED reason=media_not_seekable positionMs=" + safePosition)
+                return 0L
+            }
             logPlayer(
                 "RESUME_APPLIED positionMs=" + safePosition +
                     " requestedMs=" + normalizedRequested +
-                    " durationMs=" + player.duration +
+                    " durationMs=" + effectiveDurationMs() +
                     " requestId=" + requestId.ifEmpty { "-" },
             )
         } else if (normalizedRequested > 0L) {
             logPlayer(
                 "RESUME_CLAMPED requestedMs=" + normalizedRequested +
-                    " durationMs=" + player.duration +
+                    " durationMs=" + effectiveDurationMs() +
                     " requestId=" + requestId.ifEmpty { "-" },
             )
         }
@@ -5199,8 +5490,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             return null
         }
-        val rawDuration = player.duration
-        val duration = if (rawDuration > 0L) rawDuration else 0L
+        val duration = effectiveDurationMs()
         val rawPosition = player.currentPosition.coerceAtLeast(0L)
         val position = if (duration > 0L) rawPosition.coerceAtMost(duration) else rawPosition
         if (!force && lastSavedPosition >= 0L && abs(position - lastSavedPosition) < PROGRESS_INTERVAL_MS) return null
@@ -5465,7 +5755,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             outState.putString("session_request_id", requestId)
             outState.putString("session_uri", if (::uri.isInitialized) uri.toString() else intent.getStringExtra("uri").orEmpty())
             outState.putLong("position_ms", player.currentPosition.coerceAtLeast(0L))
-            outState.putLong("duration_ms", player.duration.coerceAtLeast(0L))
+            outState.putLong("duration_ms", effectiveDurationMs())
             outState.putFloat("playback_speed", player.playbackParameters.speed)
             outState.putBoolean("play_when_ready", player.playWhenReady)
             outState.putBundle("track_selection_parameters", player.trackSelectionParameters.toBundle())
@@ -5496,6 +5786,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.resetZoomToFit()
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.dispose()
         handler.removeCallbacks(progressReporter)
+        handler.removeCallbacks(seekOutputWatchdog)
+        seekOutputWatchdogPending = false
         handler.removeCallbacks(controlsHider)
         handler.removeCallbacks(lockAffordanceHider)
         handler.removeCallbacks(feedbackHider)
@@ -5621,7 +5913,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun updateMetadataControls(positionMs: Long) {
         if (!::root.isInitialized) return
         val position = positionMs.coerceAtLeast(0L)
-        val duration = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
+        val duration = effectiveDurationMs().takeIf { it > 0L }
         val opening = localMetadata.opening?.takeIf { duration == null || it.endMs <= duration }
         val ending = localMetadata.ending?.takeIf { duration == null || it.endMs <= duration }
         findViewByTag<TextView>("reiflix_skip_opening")?.visibility =
@@ -5631,9 +5923,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun seekToMarker(targetMs: Long, feedbackText: String) {
-        if (!::player.isInitialized || player.duration <= 0L) return
-        val safeTarget = targetMs.coerceIn(0L, player.duration)
-        player.seekTo(safeTarget)
+        if (!::player.isInitialized) return
+        val safeTarget = seekCurrentMediaTo(targetMs, "marker") ?: return
         saveProgress("player_progress", force = true)
         showFeedback(feedbackText)
         touchControls()
@@ -5707,7 +5998,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val openingEndMs = parseTimestampMs(openingEnd.text?.toString())
                 val endingStartMs = parseTimestampMs(endingStart.text?.toString())
                 val endingEndMs = parseTimestampMs(endingEnd.text?.toString())
-                val durationMs = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
+                val durationMs = effectiveDurationMs().takeIf { it > 0L }
                 val fields = listOf(openingStart, openingEnd, endingStart, endingEnd)
                 val parsed = listOf(openingStartMs, openingEndMs, endingStartMs, endingEndMs)
                 if (fields.zip(parsed).any { (field, value) -> !field.text.isNullOrBlank() && value == null } ||
@@ -5951,6 +6242,44 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         return result
     }
+
+    /**
+     * Android's platform extractor is used only as a metadata fallback when
+     * Media3 has not published a finite timeline duration. This runs on the
+     * existing background metadata worker and never blocks player preparation.
+     */
+    private fun extractLocalDurationMs(context: Context, localUri: Uri): Long? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            when (localUri.scheme?.lowercase(Locale.ROOT)) {
+                "file" -> retriever.setDataSource(localUri.path ?: return null)
+                "content" -> retriever.setDataSource(context, localUri)
+                else -> return null
+            }
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?.takeIf { it > 0L }
+        } catch (error: Exception) {
+            logPlayer(
+                "MEDIA_METADATA_DURATION_UNAVAILABLE scheme=" +
+                    localUri.scheme.orEmpty() +
+                    " reason=" + error::class.java.simpleName,
+                error,
+            )
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun effectiveDurationMs(): Long {
+        val media3Duration = if (::player.isInitialized) player.duration else 0L
+        return PlayerMediaPolicy.resolveDurationMs(media3Duration, metadataDurationMs)
+    }
+
+    private fun isCurrentMediaSeekAvailable(): Boolean =
+        ::player.isInitialized &&
+            player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
 
     private fun displayNameForUri(context: Context, localUri: Uri): String? =
         when (localUri.scheme?.lowercase(Locale.ROOT)) {
@@ -6341,7 +6670,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         PlayerGesturePolicy.Direction.HORIZONTAL -> {
-                            val durationMs = if (::player.isInitialized) player.duration else 0L
+                            val durationMs = effectiveDurationMs()
                             if (!PlayerGesturePolicy.canSeekHorizontally(
                                     enabled = horizontalSeekEnabled,
                                     durationMs = durationMs,
@@ -6364,7 +6693,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             } else {
                                 gestureConsumed = true
                                 gestureMode = GestureMode.HORIZONTAL_SEEK
-                                horizontalSeekStartPositionMs = player.currentPosition.coerceIn(0L, player.duration)
+                                horizontalSeekStartPositionMs = player.currentPosition.coerceIn(0L, effectiveDurationMs())
                                 horizontalSeekTargetMs = horizontalSeekStartPositionMs
                                 cancelGestureDetector(event)
                                 restoreLongPressSpeed()
@@ -6410,13 +6739,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         GestureMode.HORIZONTAL_SEEK -> {
-                            if (::player.isInitialized && !episodeChangePending && player.duration > 0L) {
-                                val target = horizontalSeekTargetMs.coerceIn(0L, player.duration)
-                                player.seekTo(target)
-                                saveProgress("player_progress")
-                                showFeedback("Ir para " + formatTime(target))
-                                logPlayer("GESTURE_END type=horizontal_seek positionMs=" + target + " requestId=" + requestId.ifEmpty { "-" })
-                                touchControls()
+                            if (::player.isInitialized && !episodeChangePending) {
+                                val target = seekCurrentMediaTo(horizontalSeekTargetMs, "horizontal_gesture")
+                                if (target != null) {
+                                    saveProgress("player_progress")
+                                    showFeedback("Ir para " + formatTime(target))
+                                    logPlayer("GESTURE_END type=horizontal_seek positionMs=" + target + " requestId=" + requestId.ifEmpty { "-" })
+                                    touchControls()
+                                }
                             }
                             resetTransientState()
                             return true
@@ -6455,12 +6785,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 y > height - gestureSafeBottom
 
         private fun updateHorizontalSeekPreview(deltaX: Float) {
-            if (!::player.isInitialized || player.duration <= 0L || width <= 0) return
+            val duration = effectiveDurationMs()
+            if (!::player.isInitialized || duration <= 0L || width <= 0) return
             horizontalSeekTargetMs = PlayerGesturePolicy.horizontalSeekTarget(
                 startPositionMs = horizontalSeekStartPositionMs,
                 deltaX = deltaX,
                 viewportWidth = width.toFloat(),
-                durationMs = player.duration,
+                durationMs = effectiveDurationMs(),
             )
             val now = android.os.SystemClock.uptimeMillis()
             if (now - lastSeekPreviewAtMs >= SEEK_PREVIEW_INTERVAL_MS) {

@@ -17,6 +17,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.TextView
 import androidx.core.view.WindowInsetsCompat
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -317,7 +318,7 @@ class NativePlayerPlaybackInstrumentedTest {
         }
         assertFalse("Resume instrumentation must not autoplay", onMain { player.isPlaying })
         await("Resume position must be applied after READY") {
-            val position = onMain { player.currentPosition }
+            val position = player.currentPosition
             position in 900L..2_100L
         }
         assertTrue(
@@ -459,6 +460,27 @@ class NativePlayerPlaybackInstrumentedTest {
         await("Media3 must reach READY before interaction") {
             player.playbackState == Player.STATE_READY
         }
+        await("H.264 video and AAC audio tracks must both be supported") {
+            val tracks = player.currentTracks
+            tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.isSupported } &&
+                tracks.groups.any { it.type == C.TRACK_TYPE_AUDIO && it.isSupported }
+        }
+        await("1080p H.264 fixture must expose its decoded video size") {
+            val size = player.videoSize
+            size.width == 1920 && size.height == 1080
+        }
+        await("MP4 timeline must expose its finite 12-second duration") {
+            val duration = player.duration
+            duration in 11_000L..13_000L
+        }
+        assertTrue(
+            "Media3 must report the local MP4 item as seekable",
+            onMain { player.isCurrentMediaItemSeekable },
+        )
+        assertTrue(
+            "Media3 must expose the current-item seek command",
+            onMain { player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) },
+        )
         assertFalse("Player should initially remain paused for deterministic interaction", onMain { player.isPlaying })
         assertTrue("Native player Activity must remain alive after READY", !activity!!.isFinishing)
 
@@ -523,6 +545,20 @@ class NativePlayerPlaybackInstrumentedTest {
         await("Pause button must pause playback") { !player.isPlaying }
         assertTrue("Play button must resume playback", onMain { playPause.performClick() })
         await("Second click must resume playback") { player.isPlaying }
+
+        // Exercise repeated seeks while playback is active. This is the
+        // regression shape reported for some local files: audio may continue
+        // while the video renderer stops presenting frames after a seek.
+        for (targetMs in listOf(6_000L, 1_500L, 8_000L, 3_000L)) {
+            onMain { player.seekTo(targetMs) }
+            await("Repeated seek must settle near ${targetMs}ms") {
+                val position = onMain { player.currentPosition }
+                kotlin.math.abs(position - targetMs) <= 700L
+            }
+            await("Playback must remain active after seek to ${targetMs}ms") {
+                player.isPlaying && player.playbackState == Player.STATE_READY
+            }
+        }
 
         await("Native player should keep system bars hidden") {
             val insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity!!.window.decorView)

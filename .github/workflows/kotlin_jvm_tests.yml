@@ -23,6 +23,9 @@ on:
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/catalog/**"
       - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/NativePlayerActivity.kt"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/player/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/PlayerMediaPolicyTest.kt"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/**"
@@ -110,6 +113,7 @@ jobs:
               --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
               --tests com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
               --tests com.reiflix.reiflix_local.storage.NativeStorageOnboardingStateTest \
+              --tests com.reiflix.reiflix_local.PlayerMediaPolicyTest \
               --tests com.reiflix.reiflix_local.scanner.SafTreeChangeDetectionTest \
             :app:assembleDebugAndroidTest \
             :app:compileReleaseKotlin
