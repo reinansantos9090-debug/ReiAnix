@@ -40,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,6 +75,7 @@ private enum class PlayerOptionsPage {
 fun ReiAnixNativePlayerOptionsPanel(
     state: ReiAnixNativePlayerUiState,
     showPictureInPicture: Boolean,
+    resetSignal: Int,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onAudio: () -> Unit,
@@ -120,14 +122,14 @@ fun ReiAnixNativePlayerOptionsPanel(
                     icon = Icons.Filled.GraphicEq,
                     label = "Áudio",
                     value = state.audioTrackLabel,
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = state.audioTrackSelectionEnabled && !state.episodeTransitionInProgress,
                     onClick = onAudio,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.ClosedCaption,
                     label = "Legendas",
                     value = state.subtitleTrackLabel,
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = state.subtitleTrackSelectionEnabled && !state.episodeTransitionInProgress,
                     onClick = onSubtitles,
                 )
                 PlayerOptionActionRow(
