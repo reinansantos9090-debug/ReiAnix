@@ -3367,6 +3367,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 button.isSelected = true
                 showFeedback(labels[which])
                 touchControls()
+                syncComposePlayerUiState()
                 dialog.dismiss()
             }
             .setNegativeButton("Cancelar", null)
