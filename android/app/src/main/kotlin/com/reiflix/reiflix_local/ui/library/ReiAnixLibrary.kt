@@ -147,7 +147,7 @@ fun ReiAnixLibraryRoute(
             navController.navigateToTopLevel(ReiAnixRoutes.SEARCH)
         },
         onOpenStorage = {
-            navController.navigateToTopLevel(ReiAnixRoutes.SETTINGS)
+            navController.navigate(ReiAnixRoutes.STORAGE) { launchSingleTop = true }
         },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
@@ -316,7 +316,6 @@ private fun ReiAnixLibraryPresentationScreen(
                 onSearch = onSearch,
                 onRefresh = onRefresh,
                 isRefreshing = isRefreshing,
-                onOpenStorage = onOpenStorage,
             )
         }
 
@@ -330,6 +329,7 @@ private fun ReiAnixLibraryPresentationScreen(
                 isRefreshing = isRefreshing,
                 missingArtworkRetryState = missingArtworkRetryState,
                 onRetryMissingArtwork = onRetryMissingArtwork,
+                onOpenStorage = onOpenStorage,
                 onQueryChange = onQueryChange,
                 onGenreSelected = onGenreSelected,
                 onToggleFavorites = onToggleFavorites,
@@ -436,7 +436,6 @@ private fun LibraryHeader(
     onSearch: (() -> Unit)?,
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
-    onOpenStorage: (() -> Unit)?,
 ) {
     var actionsExpanded by rememberSaveable { mutableStateOf(false) }
     ReiAnixTopBar(
@@ -478,15 +477,7 @@ private fun LibraryHeader(
                             )
                         },
                     )
-                    if (onOpenStorage != null) {
-                        DropdownMenuItem(
-                            text = { Text("Adicionar ou alterar pasta") },
-                            onClick = {
-                                actionsExpanded = false
-                                onOpenStorage()
-                            },
-                        )
-                    }
+
                 }
             }
         },
@@ -504,6 +495,7 @@ private fun ColumnScope.LibraryReadyContent(
     genres: List<ReiAnixGenreUiModel>,
     isRefreshing: Boolean,
     missingArtworkRetryState: ReiAnixMissingArtworkRetryUiState,
+    onOpenStorage: (() -> Unit)?,
     onRetryMissingArtwork: () -> Unit,
     onQueryChange: (String) -> Unit,
     onGenreSelected: (String?) -> Unit,
@@ -749,6 +741,44 @@ private fun ColumnScope.LibraryReadyContent(
                                 }
                             }
                         }
+                        item(key = "sort") {
+                            Box {
+                                ReiAnixChip(
+                                    text = "Ordenar",
+                                    selected = filters.sort != ReiAnixLibrarySort.DEFAULT.label,
+                                    onClick = { sortMenuExpanded = true },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Ordenar. Opção atual: " + filters.sort
+                                    },
+                                )
+                                DropdownMenu(
+                                    expanded = sortMenuExpanded,
+                                    onDismissRequest = { sortMenuExpanded = false },
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                ) {
+                                    ReiAnixLibrarySort.OPTIONS.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option.label) },
+                                            onClick = {
+                                                sortMenuExpanded = false
+                                                onSortSelected(option.label)
+                                            },
+                                            trailingIcon = if (filters.sort == option.label) {
+                                                {
+                                                    Text(
+                                                        text = "✓",
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                    )
+                                                }
+                                            } else {
+                                                null
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         item(key = "filter-favorite") {
                             LibraryFilterChip(
                                 text = "Favoritos",
@@ -785,41 +815,8 @@ private fun ColumnScope.LibraryReadyContent(
                         },
                     )
                     Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
-                    Box {
-                        ReiAnixChip(
-                            text = "Ordenar",
-                            selected = filters.sort != ReiAnixLibrarySort.DEFAULT.label,
-                            onClick = { sortMenuExpanded = true },
-                            modifier = Modifier.semantics {
-                                contentDescription = "Ordenar. Opção atual: " + filters.sort
-                            },
-                        )
-                        DropdownMenu(
-                            expanded = sortMenuExpanded,
-                            onDismissRequest = { sortMenuExpanded = false },
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        ) {
-                            ReiAnixLibrarySort.OPTIONS.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option.label) },
-                                    onClick = {
-                                        sortMenuExpanded = false
-                                        onSortSelected(option.label)
-                                    },
-                                    trailingIcon = if (filters.sort == option.label) {
-                                        {
-                                            Text(
-                                                text = "✓",
-                                                color = MaterialTheme.colorScheme.primary,
-                                                style = MaterialTheme.typography.labelLarge,
-                                            )
-                                        }
-                                    } else {
-                                        null
-                                    },
-                                )
-                            }
-                        }
+                    if (onOpenStorage != null) {
+                        ReiAnixChip(text = "Adicionar pasta", onClick = onOpenStorage)
                     }
                 }
             }
