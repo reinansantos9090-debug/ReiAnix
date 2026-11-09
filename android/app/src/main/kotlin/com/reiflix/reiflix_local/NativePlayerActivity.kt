@@ -1461,7 +1461,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         isCurrentPreparation(generation, localUri, transitionGeneration)
 
 
-    private fun prepareCurrentMedia(reason: String, playWhenReadyOverride: Boolean? = null) {
+    private fun prepareCurrentMedia(
+        reason: String,
+        playWhenReadyOverride: Boolean? = null,
+        startPositionOverrideMs: Long? = null,
+    ) {
         if (!::player.isInitialized || sessionState == SessionState.DESTROYED) return
         beginPlayerGeneration(reason)
         if (episodeChangePending) {
@@ -1480,6 +1484,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         initialSeekApplied = false
         completionReported = false
         firstFrameRenderedForTesting = false
+        errorVisible = false
+        if (::errorPanel.isInitialized) errorPanel.visibility = View.GONE
+        savedDurationMsForDisplay = null
         contentMimeType = null
         mediaDisplayName = null
         mediaSizeBytes = null
@@ -1507,9 +1514,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         episodeTapAtMs = commandCreatedAtMs.takeIf { it > 0L }
             ?: activityStartedAtMs.takeIf { it > 0L }
             ?: System.currentTimeMillis()
-        initialPositionMsForGeneration = (restoredPositionMs
-            ?: intent.getLongExtra("positionMs", 0L))
-            .coerceAtLeast(0L)
+        initialPositionMsForGeneration = (
+            startPositionOverrideMs
+                ?: restoredPositionMs
+                ?: intent.getLongExtra("positionMs", 0L)
+        ).coerceAtLeast(0L)
         // Media3 receives the saved position atomically with the MediaItem, so no
         // post-READY seek cycle is required on the normal startup path.
         initialSeekApplied = true
@@ -1533,8 +1542,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
 
         val requestedStartPositionMs = initialPositionMsForGeneration
-        val allowNativeResumeLookup = restoredPositionMs == null &&
-                    !intent.getBooleanExtra("positionMsSpecified", intent.hasExtra("positionMs"))
+        val allowNativeResumeLookup = startPositionOverrideMs == null &&
+            restoredPositionMs == null &&
+            !intent.getBooleanExtra("positionMsSpecified", intent.hasExtra("positionMs"))
         pendingPreparation = playbackWorker.submit {
             try {
                 preflightStartedAtMs = System.currentTimeMillis()
@@ -1579,62 +1589,95 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         " latencyMs=" + metricDelta(preflightStartedAtMs, preflightCompletedAtMs),
                 )
 
-                // Recover progress only when neither saved Activity state nor an
-                // explicit caller position exists; the persisted episode ID is authoritative.
-                var startupPositionMs = requestedStartPositionMs
-                if (allowNativeResumeLookup) {
-                    val canonicalEpisodeId = currentEpisodeId().toLongOrNull()
-                    if (canonicalEpisodeId != null && canonicalEpisodeId > 0L) {
-                        try {
-                            val savedProgress = kotlinx.coroutines.runBlocking {
-                                consumptionService.getProgress(canonicalEpisodeId)
-                            }
-                            val savedPositionMs = savedProgress?.positionMs?.takeIf { it >= 0L }
-                            val savedDurationMs = savedProgress?.durationMs?.takeIf { it > 0L }
-                            if (savedProgress?.isInProgress == true &&
-                                savedProgress.hasSavedPosition &&
-                                savedPositionMs != null
-                            ) {
-                                // Legacy rows may have escaped current position validation.
-                                // Bound only when duration is known; never invent unknown duration.
-                                startupPositionMs = savedDurationMs?.let(savedPositionMs::coerceAtMost)
-                                    ?: savedPositionMs
-                                logPlayer(
-                                    "RESUME_FROM_NATIVE_SQLITE episodeId=" + canonicalEpisodeId +
-                                        " positionMs=" + startupPositionMs +
-                                        " durationMs=" + (savedDurationMs ?: -1L) +
-                                        " requestId=" + requestId.ifEmpty { "-" },
-                                )
-                            }
-                        } catch (error: Exception) {
-                            logPlayer("RESUME_FROM_NATIVE_SQLITE_FAILED episodeId=" + canonicalEpisodeId, error)
+                val canonicalEpisodeId = currentEpisodeId().toLongOrNull()
+                val savedProgress = if (canonicalEpisodeId != null && canonicalEpisodeId > 0L) {
+                    runCatching {
+                        kotlinx.coroutines.runBlocking {
+                            consumptionService.getProgress(canonicalEpisodeId)
                         }
-                    }
+                    }.onFailure { error ->
+                        logPlayer("RESUME_FROM_NATIVE_SQLITE_FAILED episodeId=$canonicalEpisodeId", error)
+                    }.getOrNull()
+                } else null
+                val savedPositionMs = savedProgress?.positionMs?.takeIf { it >= 0L }
+                val savedDurationMs = savedProgress?.durationMs?.takeIf { it > 0L }
+                val resolvedMedia = resolveLocalMediaMetadata(localUri)
+                var startupPositionMs = requestedStartPositionMs
+
+                val actualDurationMs = resolvedMedia.retrieverDurationMs
+                val durationMismatch = savedDurationMs != null && actualDurationMs != null &&
+                    kotlin.math.abs(savedDurationMs - actualDurationMs) >
+                    maxOf(2_000L, (actualDurationMs * 0.05).toLong())
+                val actualProgressRatio = if (
+                    savedPositionMs != null && actualDurationMs != null && actualDurationMs > 0L
+                ) savedPositionMs.toDouble() / actualDurationMs.toDouble() else null
+                val completedByActualDuration = actualProgressRatio?.let { it >= 0.90 } ?: false
+                val storedWatched = savedProgress?.watched == true
+                val shouldResumeFromSqlite = savedPositionMs != null &&
+                    savedPositionMs > 0L &&
+                    !completedByActualDuration &&
+                    (!storedWatched || durationMismatch)
+
+                logPlayer(
+                    "PLAYER_SQLITE_RESUME_DECISION episodeId=${canonicalEpisodeId ?: "-"} " +
+                        "progressMs=${savedPositionMs ?: -1L} savedDurationMs=${savedDurationMs ?: -1L} " +
+                        "actualDurationMs=${actualDurationMs ?: -1L} watched=$storedWatched " +
+                        "durationMismatch=$durationMismatch ratioActual=${actualProgressRatio ?: -1.0} " +
+                        "resumeLookupAllowed=$allowNativeResumeLookup shouldResume=$shouldResumeFromSqlite",
+                )
+                logPlayer(
+                    "PLAYER_SQLITE_RESUME_REASON episodeId=${canonicalEpisodeId ?: "-"} reason=" +
+                        when {
+                            !allowNativeResumeLookup -> "explicit_or_restored_position"
+                            savedPositionMs == null || savedPositionMs <= 0L -> "no_saved_position"
+                            completedByActualDuration -> "actual_duration_completion_threshold"
+                            storedWatched && !durationMismatch -> "persisted_watched_flag"
+                            storedWatched && durationMismatch -> "duration_mismatch_revalidated_against_file"
+                            else -> "valid_saved_position"
+                        },
+                )
+                if (allowNativeResumeLookup && shouldResumeFromSqlite) {
+                    // Do not clamp to the stale database duration. Only the file's
+                    // independently discovered duration may bound the initial seek.
+                    startupPositionMs = actualDurationMs?.takeIf { it > 0L }
+                        ?.let { savedPositionMs!!.coerceAtMost((it - 1L).coerceAtLeast(0L)) }
+                        ?: savedPositionMs!!
+                    logPlayer(
+                        "RESUME_FROM_NATIVE_SQLITE episodeId=${canonicalEpisodeId ?: "-"} " +
+                            "positionMs=$startupPositionMs savedDurationMs=${savedDurationMs ?: -1L} " +
+                            "actualDurationMs=${actualDurationMs ?: -1L} durationMismatch=$durationMismatch",
+                    )
+                }
+                if (savedPositionMs != null && actualDurationMs != null &&
+                    savedPositionMs >= actualDurationMs
+                ) {
+                    logPlayer(
+                        "PLAYER_SQLITE_PROGRESS_DURATION_DIVERGENCE episodeId=${canonicalEpisodeId ?: "-"} " +
+                            "positionMs=$savedPositionMs actualDurationMs=$actualDurationMs",
+                    )
                 }
 
-                // Optional MIME/display-name/size/subtitle discovery starts in parallel
-                // but is never awaited by the playback path.
-                hydrateLocalMediaReferencesAsync(
-                    generation = generation,
-                    localUri = localUri,
-                    expectedTransitionGeneration = preparationTransitionGeneration,
-                )
-
+                deferredSubtitleCache[localUri.toString()] = resolvedMedia.subtitleTracks
                 handler.post {
                     if (!isCurrentPreparation(generation, localUri, preparationTransitionGeneration)) return@post
                     initialPositionMsForGeneration = startupPositionMs.coerceAtLeast(0L)
+                    savedDurationMsForDisplay = savedDurationMs
+                    contentMimeType = resolvedMedia.mimeType
+                    mediaDisplayName = resolvedMedia.displayName
+                    mediaSizeBytes = resolvedMedia.sizeBytes
 
-                    val subtitleTracks = deferredSubtitleCache[localUri.toString()].orEmpty()
                     val mediaItem = buildMediaItem(
                         mediaUri = localUri,
-                        mimeType = null,
-                        subtitleTracks = subtitleTracks,
+                        mimeType = resolvedMedia.mimeType,
+                        subtitleTracks = resolvedMedia.subtitleTracks,
                     )
                     logPlayer(
                         "MEDIA_ITEM requestId=" + requestId.ifEmpty { "-" } +
                             " uri=" + mediaItem.localConfiguration?.uri +
-                            " mime=auto subtitleCount=" + subtitleTracks.size +
-                            " reason=" + reason,
+                            " mime=${mediaItem.localConfiguration?.mimeType ?: "auto"} " +
+                            "subtitleCount=${resolvedMedia.subtitleTracks.size} " +
+                            "durationFromRetrieverMs=${resolvedMedia.retrieverDurationMs ?: -1L} " +
+                            "durationFromDatabaseMs=${savedDurationMs ?: -1L} reason=$reason",
                     )
 
                     // The initial PlayerView is already attached to this ExoPlayer.
