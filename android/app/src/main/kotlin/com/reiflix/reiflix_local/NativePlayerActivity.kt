@@ -5170,17 +5170,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val exitDurationMs = payload.optLong("durationMs", 0L)
                 var persistedNatively = false
                 if (canonicalEpisodeId != null && canonicalEpisodeId > 0L && exitPositionMs >= 0L) {
-                    try {
-                        kotlinx.coroutines.runBlocking {
-                            consumptionService.saveProgress(
-                                episodeId = canonicalEpisodeId,
-                                positionMs = exitPositionMs,
-                                durationMs = exitDurationMs.takeIf { it > 0L },
-                                playedAtEpochSeconds = exitCapturedAt / 1000.0,
-                                completed = payload.optBoolean("completion", false),
-                            )
-                        }
-                        persistedNatively = true
+                    persistedNatively = persistNativeProgressWithRetry(
+                        episodeId = canonicalEpisodeId,
+                        positionMs = exitPositionMs,
+                        durationMs = exitDurationMs.takeIf { it > 0L },
+                        playedAtEpochSeconds = exitCapturedAt / 1000.0,
+                        completed = payload.optBoolean("completion", false),
+                        eventType = "player_exited",
+                    )
+                    if (persistedNatively) {
                         progressCheckpointGate.markPersisted(exitPositionMs)
                         payload.put("nativeProgressPersisted", true)
                         logPlayer(
@@ -5195,12 +5193,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             transitionGeneration = transitionGeneration,
                             eventCreatedAtEpochMs = exitCapturedAt,
                         )
-                    } catch (error: Exception) {
+                    } else {
                         progressCheckpointGate.markFailed(exitPositionMs)
                         logPlayer(
                             "PLAYER_EXIT_PROGRESS_RESULT success=false episodeId=$canonicalEpisodeId " +
-                                "positionMs=$exitPositionMs durationMs=$exitDurationMs",
-                            error,
+                                "positionMs=$exitPositionMs durationMs=$exitDurationMs retryExhausted=true",
                         )
                     }
                 }
@@ -6046,6 +6043,68 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
     }
 
+    private fun persistNativeProgressWithRetry(
+        episodeId: Long,
+        positionMs: Long,
+        durationMs: Long?,
+        playedAtEpochSeconds: Double,
+        completed: Boolean,
+        eventType: String,
+    ): Boolean {
+        val maximumAttempts = 2
+        var lastFailure: Exception? = null
+        for (attempt in 1..maximumAttempts) {
+            try {
+                kotlinx.coroutines.runBlocking {
+                    consumptionService.saveProgress(
+                        episodeId = episodeId,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        playedAtEpochSeconds = playedAtEpochSeconds,
+                        completed = completed,
+                    )
+                }
+                if (attempt > 1) {
+                    logPlayer(
+                        "PLAYER_PROGRESS_PERSIST_RETRY_SUCCEEDED event=$eventType " +
+                            "episodeId=$episodeId attempt=$attempt positionMs=$positionMs",
+                    )
+                }
+                return true
+            } catch (error: Exception) {
+                lastFailure = error
+                logPlayer(
+                    "PLAYER_PROGRESS_PERSIST_ATTEMPT_FAILED event=$eventType " +
+                        "episodeId=$episodeId attempt=$attempt maxAttempts=$maximumAttempts " +
+                        "positionMs=$positionMs",
+                    error,
+                )
+                if (attempt < maximumAttempts) {
+                    try {
+                        // This function only runs on progressWorker, never the UI thread.
+                        Thread.sleep(200L)
+                    } catch (interrupted: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        logPlayer(
+                            "PLAYER_PROGRESS_PERSIST_RETRY_INTERRUPTED event=$eventType " +
+                                "episodeId=$episodeId positionMs=$positionMs",
+                            interrupted,
+                        )
+                        return false
+                    }
+                }
+            }
+        }
+        val message = "PLAYER_PROGRESS_PERSIST_RETRY_EXHAUSTED event=$eventType " +
+            "episodeId=$episodeId attempts=$maximumAttempts positionMs=$positionMs"
+        if (lastFailure != null) {
+            logPlayer(message, lastFailure)
+        } else {
+            logPlayer(message)
+        }
+        return false
+    }
+
     private fun saveProgress(
         eventType: String,
         force: Boolean = false,
@@ -6061,34 +6120,32 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val durationMs = payload?.optLong("durationMs", 0L) ?: 0L
                 var persistedNatively = false
                 if (episodeId != null && episodeId > 0L && positionMs >= 0L) {
-                    try {
-                        // The event snapshot is created on the current Media3 generation;
-                        // its canonical episode ID is the only write key.
-                        kotlinx.coroutines.runBlocking {
-                            consumptionService.saveProgress(
-                                episodeId = episodeId,
-                                positionMs = positionMs,
-                                durationMs = durationMs.takeIf { it > 0L },
-                                playedAtEpochSeconds = event.optLong("createdAt", 0L)
-                                    .takeIf { it > 0L }?.div(1000.0)
-                                    ?: System.currentTimeMillis() / 1000.0,
-                                completed = eventType == "player_completed",
-                            )
-                        }
-                        persistedNatively = true
+                    // The event snapshot is created on the current Media3 generation;
+                    // its canonical episode ID is the only write key. A bounded retry
+                    // preserves the final pause/completion checkpoint on transient SQLite errors.
+                    persistedNatively = persistNativeProgressWithRetry(
+                        episodeId = episodeId,
+                        positionMs = positionMs,
+                        durationMs = durationMs.takeIf { it > 0L },
+                        playedAtEpochSeconds = event.optLong("createdAt", 0L)
+                            .takeIf { it > 0L }?.div(1000.0)
+                            ?: System.currentTimeMillis() / 1000.0,
+                        completed = eventType == "player_completed",
+                        eventType = eventType,
+                    )
+                    if (persistedNatively) {
                         progressCheckpointGate.markPersisted(positionMs)
                         logPlayer(
                             "PLAYER_PROGRESS_PERSISTED event=$eventType episodeId=$episodeId " +
                                 "positionMs=$positionMs durationMs=${durationMs.takeIf { it > 0L } ?: -1L}",
                         )
-                    } catch (error: Exception) {
+                    } else {
                         progressCheckpointGate.markFailed(positionMs)
                         logPlayer(
-                            "NATIVE_PROGRESS_PERSIST_FAILED event=" + eventType +
-                                " episodeId=" + episodeId +
-                                " positionMs=" + positionMs +
-                                " playerSessionId=" + payload?.optString("playerSessionId").orEmpty(),
-                            error,
+                            "NATIVE_PROGRESS_PERSIST_FAILED event=$eventType episodeId=$episodeId " +
+                                "positionMs=$positionMs playerSessionId=" +
+                                payload?.optString("playerSessionId").orEmpty() +
+                                " retryExhausted=true",
                         )
                     }
                 } else {
