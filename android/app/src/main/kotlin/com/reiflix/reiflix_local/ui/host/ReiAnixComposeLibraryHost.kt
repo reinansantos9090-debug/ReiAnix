@@ -355,6 +355,7 @@ class ReiAnixComposeLibraryHost(
                         storage = {
                             ReiAnixStorageRoute(
                                 viewModel = libraryViewModel,
+                                title = "Pasta da biblioteca",
                                 onBack = {
                                     if (!navController.popBackStack()) {
                                         handleBack()
