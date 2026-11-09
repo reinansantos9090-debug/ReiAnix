@@ -1148,34 +1148,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     onClick = onOpenStorage,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixPrimaryButton(
-                                    text = "Adicionar pasta",
-                                    onClick = { onAction("select_saf") },
-                                    enabled = !actionBusy("select_saf"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "Verificar acesso",
-                                    onClick = { onAction("check_storage_access") },
-                                    enabled = !actionBusy("check_storage_access"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                if (storage.mediaReadState != "full") {
-                                    ReiAnixSecondaryButton(
-                                        text = "Solicitar acesso aos vídeos",
-                                        onClick = { onAction("request_media_access") },
-                                        enabled = !actionBusy("request_media_access"),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                                if (storage.broadStorageState != "available") {
-                                    ReiAnixSecondaryButton(
-                                        text = "Armazenamento amplo",
-                                        onClick = { onAction("open_broad_storage_settings") },
-                                        enabled = !actionBusy("open_broad_storage_settings"),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
                             }
                         }
                     }
