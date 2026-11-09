@@ -227,7 +227,6 @@ fun ReiAnixSettingsRoute(
     onBack: () -> Unit,
     onOpenCategory: (String) -> Unit,
     onOpenStorage: () -> Unit = {},
-    libraryFolders: (@Composable (() -> Unit, @Composable () -> Unit) -> Unit)? = null,
     scanInProgress: Boolean = false,
     scanState: String = "IDLE",
     lastScanStatus: String? = null,
@@ -255,11 +254,6 @@ fun ReiAnixSettingsRoute(
     }
     BackHandler(enabled = destination != null) { goBack() }
     when {
-        destination == "Biblioteca" && libraryFolders != null -> libraryFolders(::goBack) {
-            Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                LibraryOrganizationSettings(state = state, onUpdateSetting = viewModel::setSetting)
-            }
-        }
         destination != null -> androidx.compose.runtime.key(destination, selectedItemIndex) {
             ReiAnixComposeSettingsCategoryScreen(
                 category = destination,
@@ -631,6 +625,46 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     )
                 }
                 when (category) {
+                "Biblioteca" -> {
+                    item(key = "setting:library.sort_default") {
+                        ChoiceSettingRow(
+                            keyName = "library.sort_default",
+                            title = "Ordenação padrão",
+                            description = "Define a ordenação inicial quando outra ordenação não foi salva.",
+                            selectedValue = state.settings["library.sort_default"],
+                            choices = listOf(
+                                SettingChoice("added_desc", "Mais recentes"),
+                                SettingChoice("title_asc", "Nome A–Z"),
+                                SettingChoice("title_desc", "Nome Z–A"),
+                                SettingChoice("recently_watched", "Assistidos recentemente"),
+                            ),
+                            onSelected = { onUpdateSetting("library.sort_default", it) },
+                        )
+                    }
+                    item(key = "setting:library.page_size") {
+                        ChoiceSettingRow(
+                            keyName = "library.page_size",
+                            title = "Itens por página",
+                            description = "Define quantos animes são exibidos; Tudo mostra a biblioteca completa.",
+                            selectedValue = state.settings["library.page_size"],
+                            choices = listOf(
+                                SettingChoice("0", "Tudo"),
+                                SettingChoice("24", "24"),
+                                SettingChoice("36", "36"),
+                                SettingChoice("48", "48"),
+                                SettingChoice("72", "72"),
+                            ),
+                            onSelected = { onUpdateSetting("library.page_size", it) },
+                        )
+                    }
+                    item(key = "folders") {
+                        ReiAnixSecondaryButton(
+                            text = "Adicionar ou alterar pasta",
+                            onClick = onOpenStorage,
+                            modifier = Modifier.fillMaxWidth().padding(top = ReiAnixTokens.Spacing.md),
+                        )
+                    }
+                }
                 "Geral" -> {
                     item(key = "setting:app.confirm_destructive") {
                         BooleanSettingRow(
@@ -2079,36 +2113,3 @@ private fun PosterSizeSettingRow(
     }
 }
 
-@Composable
-private fun LibraryOrganizationSettings(
-    state: ReiAnixSettingsUiState,
-    onUpdateSetting: (String, String) -> Unit,
-) {
-    ChoiceSettingRow(
-        keyName = "library.sort_default",
-        title = "Ordenação padrão",
-        description = "Define a ordenação inicial quando outra ordenação não foi salva.",
-        selectedValue = state.settings["library.sort_default"],
-        choices = listOf(
-            SettingChoice("added_desc", "Mais recentes"),
-            SettingChoice("title_asc", "Nome A–Z"),
-            SettingChoice("title_desc", "Nome Z–A"),
-            SettingChoice("recently_watched", "Assistidos recentemente"),
-        ),
-        onSelected = { onUpdateSetting("library.sort_default", it) },
-    )
-    ChoiceSettingRow(
-        keyName = "library.page_size",
-        title = "Itens por página",
-        description = "Define quantos animes são exibidos; Tudo mostra a biblioteca completa.",
-        selectedValue = state.settings["library.page_size"],
-        choices = listOf(
-            SettingChoice("0", "Tudo"),
-            SettingChoice("24", "24"),
-            SettingChoice("36", "36"),
-            SettingChoice("48", "48"),
-            SettingChoice("72", "72"),
-        ),
-        onSelected = { onUpdateSetting("library.page_size", it) },
-    )
-}
