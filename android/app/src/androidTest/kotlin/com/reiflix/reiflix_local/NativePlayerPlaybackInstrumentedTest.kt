@@ -17,6 +17,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.TextView
 import androidx.core.view.WindowInsetsCompat
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -459,6 +460,15 @@ class NativePlayerPlaybackInstrumentedTest {
         await("Media3 must reach READY before interaction") {
             player.playbackState == Player.STATE_READY
         }
+        await("H.264 video and AAC audio tracks must both be supported") {
+            val tracks = onMain { player.currentTracks }
+            tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.isSupported } &&
+                tracks.groups.any { it.type == C.TRACK_TYPE_AUDIO && it.isSupported }
+        }
+        assertTrue(
+            "H.264 fixture must expose a decoded video size",
+            onMain { player.videoSize.width > 0 && player.videoSize.height > 0 },
+        )
         assertFalse("Player should initially remain paused for deterministic interaction", onMain { player.isPlaying })
         assertTrue("Native player Activity must remain alive after READY", !activity!!.isFinishing)
 
