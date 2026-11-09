@@ -58,7 +58,6 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigation.NavHostController
-import androidx.navigation.navOptions
 import com.reiflix.reiflix_local.data.anilist.AniListAnime
 import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
 import com.reiflix.reiflix_local.ui.ReiAnixSurface
@@ -83,6 +82,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reiflix.reiflix_local.ui.model.ReiAnixSearchFilters
 import com.reiflix.reiflix_local.ui.model.ReiAnixSearchUiState
 import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reiflix.reiflix_local.ui.navigation.navigateToStorage
 import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.widthIn
@@ -186,10 +186,7 @@ fun ReiAnixSearchRoute(
         onBack = { navController.popBackStack() },
         onRefresh = viewModel::refresh,
         onSelectSource = {
-            navController.navigate(
-                ReiAnixRoutes.STORAGE,
-                navOptions { launchSingleTop = true },
-            )
+            navController.navigateToStorage()
         },
         onOpenFilters = { showFilterSheet = true },
         onClearFilters = viewModel::clearSearchFilters,
