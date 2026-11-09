@@ -238,12 +238,22 @@ fun ReiAnixSettingsRoute(
     val rootListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val rootStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // Restore saved navigation from APKs that still had these intermediate pages.
+    val destination = when (selectedDestination) {
+        "Conta" -> null
+        "general_behavior", "general_privacy" -> "Geral"
+        "library_storage", "library_scan" -> "Biblioteca"
+        "player_advanced" -> "Player"
+        "metadata_identification", "metadata_artwork" -> "Metadados e Capas"
+        "data_cache" -> "Dados e Backup"
+        "about_app" -> "Sobre e Diagnóstico"
+        else -> selectedDestination
+    }
     fun goBack() {
-        selectedDestination = settingsDestination(selectedDestination)?.parent?.takeIf { it.isNotBlank() }
+        selectedDestination = settingsDestination(destination)?.parent?.takeIf { it.isNotBlank() }
         selectedItemIndex = 0
     }
-    BackHandler(enabled = selectedDestination != null) { goBack() }
-    val destination = selectedDestination
+    BackHandler(enabled = destination != null) { goBack() }
     when {
         destination == "Biblioteca" && libraryFolders != null -> libraryFolders(::goBack) {
             SettingsFlatCategoryRow(
