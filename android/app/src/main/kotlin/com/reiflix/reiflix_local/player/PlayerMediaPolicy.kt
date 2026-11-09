@@ -83,6 +83,15 @@ internal object PlayerMediaPolicy {
         seekCommandAvailable: Boolean,
     ): Boolean = isCurrentMediaItemSeekable && seekCommandAvailable
 
+    /**
+     * Prefer Media3's timeline duration. Fall back to a duration extracted from
+     * the local container only when Media3 has not exposed a finite duration yet.
+     */
+    fun resolveDurationMs(media3DurationMs: Long, metadataDurationMs: Long?): Long =
+        media3DurationMs.takeIf { it > 0L }
+            ?: metadataDurationMs?.takeIf { it > 0L }
+            ?: 0L
+
     /** Clamp only when the timeline supplies a valid finite duration. */
     fun clampSeekPosition(targetMs: Long, durationMs: Long): Long {
         val nonNegativeTarget = targetMs.coerceAtLeast(0L)
