@@ -1378,9 +1378,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun updateSeekControlsEnabled() {
-        val canSeek = canSeekCurrentMedia("controls_refresh", logIgnored = false)
-        findViewByTag<View>("reiflix_seek_back")?.isEnabled = canSeek
-        findViewByTag<View>("reiflix_seek_forward")?.isEnabled = canSeek
+        val canSeekBackward = canSeekCurrentMedia(
+            "controls_refresh_backward",
+            relativeDeltaMs = -10_000L,
+            logIgnored = false,
+        )
+        val canSeekForward = canSeekCurrentMedia(
+            "controls_refresh_forward",
+            relativeDeltaMs = 10_000L,
+            logIgnored = false,
+        )
+        findViewByTag<View>("reiflix_seek_back")?.isEnabled = canSeekBackward
+        findViewByTag<View>("reiflix_seek_forward")?.isEnabled = canSeekForward
         val currentItemAvailable = hasCurrentMediaItem()
         val actualDurationKnown = currentItemAvailable &&
             ReiAnixPlayerSeekPolicy.validDuration(player.duration) != null
@@ -1897,6 +1906,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
             generation == playerGeneration &&
                 sessionState == SessionState.ACTIVE &&
                 !playbackErrorForGeneration
+        override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
+            if (!isCurrent()) return
+            val currentItemAvailable = availableCommands.contains(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
+            val playPauseAvailable = availableCommands.contains(Player.COMMAND_PLAY_PAUSE)
+            val seekInItemAvailable = availableCommands.contains(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+            val seekBackAvailable = availableCommands.contains(Player.COMMAND_SEEK_BACK)
+            val seekForwardAvailable = availableCommands.contains(Player.COMMAND_SEEK_FORWARD)
+            logPlayer(
+                "PLAYER_COMMAND_CAPABILITIES_CHANGED generation=$generation " +
+                    "currentItem=$currentItemAvailable playPause=$playPauseAvailable " +
+                    "seekInItem=$seekInItemAvailable seekBack=$seekBackAvailable " +
+                    "seekForward=$seekForwardAvailable transitionPending=$episodeChangePending",
+            )
+            updateSeekControlsEnabled()
+            updatePlayPauseButton()
+            updateProgressUi()
+        }
+
         override fun onEvents(player: Player, events: Player.Events) {
             if (!isCurrent()) return
             if (events.contains(Player.EVENT_RENDERED_FIRST_FRAME)) {
@@ -2109,7 +2136,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 Player.STATE_READY -> {
                     pendingRendererRestartPositionMs?.let { restorePosition ->
                         pendingRendererRestartPositionMs = null
-                        if (player.isCurrentMediaItemSeekable &&
+                        if (hasCurrentMediaItem() &&
+                            player.isCurrentMediaItemSeekable &&
                             player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
                         ) {
                             player.seekTo(restorePosition)
@@ -2415,8 +2443,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             "positionMs=$recoveryPositionMs fromMode=${decoderManager?.activeVideoMode ?: "unknown"}",
                     )
                     decoderManager?.selectVideoDecoder(DecoderMode.FFMPEG)
-                    if (player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)) {
+                    if (canSeekCurrentMedia("decoder_error_fallback", logIgnored = true)) {
                         player.seekTo(recoveryPositionMs)
+                    } else {
+                        logPlayer(
+                            "MEDIA3_DECODER_FALLBACK_SEEK_SKIPPED " +
+                                "reason=current_media_item_not_seekable positionMs=$recoveryPositionMs",
+                        )
                     }
                     player.playWhenReady = resumeAfterFallback
                     player.prepare()
@@ -3455,6 +3488,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
             else -> "Duração indisponível"
         }
         val seekAvailable = canSeekCurrentMedia("compose_ui_state", logIgnored = false)
+        val seekBackwardAvailable = canSeekCurrentMedia(
+            "compose_ui_backward",
+            relativeDeltaMs = -10_000L,
+            logIgnored = false,
+        )
+        val seekForwardAvailable = canSeekCurrentMedia(
+            "compose_ui_forward",
+            relativeDeltaMs = 10_000L,
+            logIgnored = false,
+        )
+        val playPauseAvailable = ::player.isInitialized &&
+            player.isCommandAvailable(Player.COMMAND_PLAY_PAUSE)
         val videoSize = if (::player.isInitialized) player.videoSize else null
         val resolution = videoSize
             ?.takeIf { it.width > 0 && it.height > 0 }
@@ -3483,6 +3528,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             durationStatus = durationStatus,
             durationFromDatabase = durationPresentation.fromDatabase,
             canSeek = seekAvailable,
+            canSeekBackward = seekBackwardAvailable,
+            canSeekForward = seekForwardAvailable,
+            canPlayPause = playPauseAvailable && !errorVisible,
             canSeekToPosition = seekAvailable && actualDuration != null,
             timelinePreviewBitmap = timelinePreviewBitmap,
             timelinePreviewPositionMs = timelinePreviewPositionMs,
