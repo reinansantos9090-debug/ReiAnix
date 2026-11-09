@@ -59,6 +59,7 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
         episodeId: Long, positionMs: Long, durationMs: Long? = null,
         playedAtEpochSeconds: Double = System.currentTimeMillis() / 1000.0,
         completed: Boolean = false,
+        useStoredDurationWhenActualUnknown: Boolean = true,
     ): Progress {
         require(episodeId > 0L) { "episodeId must be a positive persisted ID." }
         require(positionMs >= 0L) { "positionMs cannot be negative." }
@@ -69,7 +70,9 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
         val existing = library.getEpisode(episodeId)
             ?: throw NoSuchElementException("Episode ID does not exist: $episodeId")
         val durationSeconds = durationMs?.toDouble()?.div(1_000.0)
-            ?: existing.duration?.takeIf { it.isFinite() && it > 0.0 }
+            ?: existing.duration?.takeIf {
+                useStoredDurationWhenActualUnknown && it.isFinite() && it > 0.0
+            }
         val positionSeconds = positionMs.toDouble() / 1_000.0
         val boundedPosition = durationSeconds?.let(positionSeconds::coerceAtMost) ?: positionSeconds
         val reachedCompletionThreshold = durationSeconds != null && durationSeconds > 0.0 &&
@@ -82,6 +85,7 @@ class ReiAnixConsumptionService(private val library: ReiAnixSqliteLibraryReposit
                 episodeId = episodeId, progress = finalPosition, duration = durationSeconds,
                 watched = if (completed || reachedCompletionThreshold) true else existing.watched,
                 playedAtEpochSeconds = playedAtEpochSeconds,
+                clampToStoredDurationWhenUnknown = useStoredDurationWhenActualUnknown,
             ),
         ).toConsumptionProgress()
     }
