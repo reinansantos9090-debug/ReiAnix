@@ -547,7 +547,7 @@ class ReiAnixLibraryViewModel(
             val broadState = runCatching { BroadStorageScanner.accessLevel(appContext).name.lowercase(Locale.ROOT) }
                 .getOrDefault("unknown")
             val apiLevel = Build.VERSION.SDK_INT
-            val persistedSafUris = runCatching {
+            val persistedSafUrisResult = runCatching {
                 appContext.contentResolver.persistedUriPermissions
                     .asSequence()
                     .filter { permission ->
@@ -556,7 +556,8 @@ class ReiAnixLibraryViewModel(
                     }
                     .map { permission -> permission.uri.toString() }
                     .toList()
-            }.getOrDefault(emptyList())
+            }
+            val persistedSafUris = persistedSafUrisResult.getOrDefault(emptyList())
 
             val capabilityState = ReiAnixNativeFoldersUiState(
                 status = ReiAnixNativeFoldersStatus.LOADING,
@@ -572,7 +573,9 @@ class ReiAnixLibraryViewModel(
                 is ReiAnixLibraryQueryResult.Success -> capabilityState.copy(
                     status = ReiAnixNativeFoldersStatus.READY,
                     folders = result.value.map { folder ->
-                        val accessState = if (folder.kind.equals("saf", ignoreCase = true)) {
+                        val accessState = if (
+                            folder.kind.equals("saf", ignoreCase = true) && persistedSafUrisResult.isSuccess
+                        ) {
                             when (StorageAuthorization.safAccess(folder.path, persistedSafUris)) {
                                 SafAccessLevel.AVAILABLE -> "available"
                                 SafAccessLevel.REVOKED -> "revoked"
