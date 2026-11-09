@@ -2075,7 +2075,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     "PLAYER_SEEK requestId=" + requestId.ifEmpty { "-" } +
                         " oldPositionMs=" + oldPosition.positionMs +
                         " newPositionMs=" + newPosition.positionMs +
-                        " durationMs=" + player.duration +
+                        " durationMs=" + effectiveDurationMs() +
                         " seekable=" + player.isCurrentMediaItemSeekable +
                         " seekCommandAvailable=" + player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) +
                         " reason=" + reason,
@@ -5287,7 +5287,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             return null
         }
-        val safeTargetMs = PlayerMediaPolicy.clampSeekPosition(targetMs, durationMs)
+        val safeTargetMs = PlayerMediaPolicy.clampSeekPosition(targetMs, effectiveDurationMs())
         player.seekTo(safeTargetMs)
         logPlayer(
             "MEDIA3_SEEK_DISPATCHED reason=" + reason +
@@ -5301,7 +5301,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun seekToSavedPosition(savedPositionMs: Long): Long {
         if (!::player.isInitialized) return 0L
         val normalizedRequested = savedPositionMs.coerceAtLeast(0L)
-        val safePosition = PlayerMediaPolicy.safeResumePosition(normalizedRequested, player.duration)
+        val safePosition = PlayerMediaPolicy.safeResumePosition(normalizedRequested, effectiveDurationMs())
         if (safePosition > 0L) {
             val appliedPosition = seekCurrentMediaTo(safePosition, "resume")
             if (appliedPosition == null) {
@@ -5311,7 +5311,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer(
                 "RESUME_APPLIED positionMs=" + safePosition +
                     " requestedMs=" + normalizedRequested +
-                    " durationMs=" + player.duration +
+                    " durationMs=" + effectiveDurationMs() +
                     " requestId=" + requestId.ifEmpty { "-" },
             )
         } else if (normalizedRequested > 0L) {
@@ -5617,7 +5617,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             outState.putString("session_request_id", requestId)
             outState.putString("session_uri", if (::uri.isInitialized) uri.toString() else intent.getStringExtra("uri").orEmpty())
             outState.putLong("position_ms", player.currentPosition.coerceAtLeast(0L))
-            outState.putLong("duration_ms", player.duration.coerceAtLeast(0L))
+            outState.putLong("duration_ms", effectiveDurationMs())
             outState.putFloat("playback_speed", player.playbackParameters.speed)
             outState.putBoolean("play_when_ready", player.playWhenReady)
             outState.putBundle("track_selection_parameters", player.trackSelectionParameters.toBundle())
@@ -5858,7 +5858,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val openingEndMs = parseTimestampMs(openingEnd.text?.toString())
                 val endingStartMs = parseTimestampMs(endingStart.text?.toString())
                 val endingEndMs = parseTimestampMs(endingEnd.text?.toString())
-                val durationMs = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
+                val durationMs = effectiveDurationMs().takeIf { it > 0L }
                 val fields = listOf(openingStart, openingEnd, endingStart, endingEnd)
                 val parsed = listOf(openingStartMs, openingEndMs, endingStartMs, endingEndMs)
                 if (fields.zip(parsed).any { (field, value) -> !field.text.isNullOrBlank() && value == null } ||
@@ -6531,7 +6531,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         PlayerGesturePolicy.Direction.HORIZONTAL -> {
-                            val durationMs = if (::player.isInitialized) player.duration else 0L
+                            val durationMs = effectiveDurationMs()
                             if (!PlayerGesturePolicy.canSeekHorizontally(
                                     enabled = horizontalSeekEnabled,
                                     durationMs = durationMs,
@@ -6554,7 +6554,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             } else {
                                 gestureConsumed = true
                                 gestureMode = GestureMode.HORIZONTAL_SEEK
-                                horizontalSeekStartPositionMs = player.currentPosition.coerceIn(0L, player.duration)
+                                horizontalSeekStartPositionMs = player.currentPosition.coerceIn(0L, effectiveDurationMs())
                                 horizontalSeekTargetMs = horizontalSeekStartPositionMs
                                 cancelGestureDetector(event)
                                 restoreLongPressSpeed()
