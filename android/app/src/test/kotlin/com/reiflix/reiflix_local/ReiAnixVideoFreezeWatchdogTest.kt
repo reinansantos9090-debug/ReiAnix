@@ -21,6 +21,21 @@ class ReiAnixVideoFreezeWatchdogTest {
     }
 
     @Test
+    fun pausedSeekKeepsWatchdogActiveUntilPlaybackIsReanchored() {
+        val watchdog = ReiAnixVideoFreezeWatchdog(timeoutMs = 3_000L, minimumAudioAdvanceMs = 500L)
+        watchdog.begin(positionMs = 10_000L, nowMs = 1_000L, frameSerial = 7L)
+
+        // A seek while paused must not consume the pending watchdog identity.
+        assertFalse(watchdog.shouldDetect(5_000L, 10_000L, 7L, false, true))
+        assertTrue(watchdog.isActive())
+
+        // The Activity re-anchors the window when playback actually resumes.
+        watchdog.begin(positionMs = 10_000L, nowMs = 5_000L, frameSerial = 7L)
+        assertFalse(watchdog.shouldDetect(7_900L, 10_400L, 7L, true, true))
+        assertTrue(watchdog.shouldDetect(8_100L, 10_700L, 7L, true, true))
+    }
+
+    @Test
     fun failedRecoveryAttemptAdvancesToTheNextStep() {
         val watchdog = ReiAnixVideoFreezeWatchdog(timeoutMs = 10L, minimumAudioAdvanceMs = 1L)
         watchdog.begin(100L, 0L, 0L)
