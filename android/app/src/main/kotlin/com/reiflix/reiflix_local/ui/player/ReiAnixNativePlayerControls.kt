@@ -61,6 +61,7 @@ data class ReiAnixNativePlayerUiState(
     val technicalLine: String = "",
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    val canSeek: Boolean = false,
     val bufferedPositionMs: Long = 0L,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
@@ -492,12 +493,13 @@ fun ReiAnixNativePlayerBottomControls(
                 }
                 Slider(
                     value = sliderFraction,
+                    enabled = state.canSeek && !state.episodeTransitionInProgress,
                     onValueChange = {
                         userDragging = true
                         sliderFraction = it.coerceIn(0f, 1f)
                     },
                     onValueChangeFinished = {
-                        if (duration > 0L && !state.episodeTransitionInProgress) {
+                        if (state.canSeek && duration > 0L && !state.episodeTransitionInProgress) {
                             onSeekTo(
                                 (sliderFraction * duration.toFloat())
                                     .toLong()
