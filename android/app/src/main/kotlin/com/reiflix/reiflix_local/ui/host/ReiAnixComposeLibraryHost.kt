@@ -289,14 +289,14 @@ class ReiAnixComposeLibraryHost(
                                         handleBack()
                                     }
                                 },
-                                onOpenStorageAccess = {
-                                    activity.requestNativeStorageAction("open_broad_storage_settings")
+                                onOpenStorage = {
+                                    navController.navigate(
+                                        ReiAnixRoutes.STORAGE,
+                                        navOptions {
+                                            launchSingleTop = true
+                                        },
+                                    )
                                 },
-                                onRequestMediaAccess = {
-                                    activity.requestNativeStorageAction("request_media_access")
-                                },
-                                onAddFolder = libraryViewModel::selectSafTree,
-                                onRemoveFolder = libraryViewModel::removeSafTree,
                                 onOpenSettings = {
                                     navController.navigate(
                                         ReiAnixRoutes.SETTINGS,
@@ -366,9 +366,6 @@ class ReiAnixComposeLibraryHost(
                                 },
                                 onOpenBroadSettings = {
                                     activity.requestNativeStorageAction("open_broad_storage_settings")
-                                },
-                                onCheckAccess = {
-                                    activity.requestNativeStorageAction("check_storage_access")
                                 },
                             )
                         },
