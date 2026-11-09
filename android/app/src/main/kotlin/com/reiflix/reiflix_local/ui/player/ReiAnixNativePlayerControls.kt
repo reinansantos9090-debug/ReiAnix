@@ -74,6 +74,8 @@ data class ReiAnixNativePlayerUiState(
     val episodeTransitionInProgress: Boolean = false,
     val aspectLabel: String = "Ajustar",
     val playbackSpeed: Float = 1f,
+    val audioTrackLabel: String = "Automático",
+    val subtitleTrackLabel: String = "Off",
     val autoplayNext: Boolean = true,
     val horizontalSeekEnabled: Boolean = true,
     val volumeGesturesEnabled: Boolean = true,
