@@ -37,8 +37,7 @@ internal object ReiAnixMedia3PlayerFactory {
             initialAudioMode = DecoderMode.AUTO,
         )
         val renderersFactory = NextRenderersFactory(context).apply {
-            // setDecoderManager also enables fallback and extension renderers.
-            setEnableDecoderFallback(true)
+            // NextLib's setDecoderManager enables MediaCodec fallback and FFmpeg extension renderers.
             setDecoderManager(decoderManager)
         }
 
