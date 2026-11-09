@@ -224,7 +224,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = seekSeconds,
                     description = "Voltar $seekSeconds segundos",
                     forward = false,
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = state.canSeek && !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
                 )
             }
@@ -310,7 +310,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = seekSeconds,
                     description = "Avançar $seekSeconds segundos",
                     forward = true,
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = state.canSeek && !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
                 )
             }
