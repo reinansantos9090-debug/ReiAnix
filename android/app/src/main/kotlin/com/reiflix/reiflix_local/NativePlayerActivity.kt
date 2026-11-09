@@ -2066,7 +2066,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ) {
                 logPlayer(
                     "PLAYER_SEEK requestId=" + requestId.ifEmpty { "-" } +
-                        " positionMs=" + newPosition.positionMs,
+                        " oldPositionMs=" + oldPosition.positionMs +
+                        " newPositionMs=" + newPosition.positionMs +
+                        " durationMs=" + player.duration +
+                        " seekable=" + player.isCurrentMediaItemSeekable +
+                        " seekCommandAvailable=" + player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM) +
+                        " reason=" + reason,
                 )
                 saveProgress("player_progress", force = true)
             }
@@ -2305,6 +2310,22 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     " sampleRate=" + format.sampleRate +
                     " channels=" + format.channelCount +
                     " bitrate=" + format.bitrate,
+            )
+        }
+
+        override fun onAudioUnderrun(
+            eventTime: AnalyticsListener.EventTime,
+            bufferSize: Int,
+            bufferSizeMs: Long,
+            elapsedSinceLastFeedMs: Long,
+        ) {
+            if (!isCurrent()) return
+            logPlayer(
+                "AUDIO_UNDERRUN generation=" + generation +
+                    " bufferSize=" + bufferSize +
+                    " bufferSizeMs=" + bufferSizeMs +
+                    " elapsedSinceLastFeedMs=" + elapsedSinceLastFeedMs +
+                    " positionMs=" + player.currentPosition,
             )
         }
 
@@ -6529,10 +6550,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             if (::player.isInitialized && !episodeChangePending) {
                                 val target = seekCurrentMediaTo(horizontalSeekTargetMs, "horizontal_gesture")
                                 if (target != null) {
-                                saveProgress("player_progress")
-                                showFeedback("Ir para " + formatTime(target))
-                                logPlayer("GESTURE_END type=horizontal_seek positionMs=" + target + " requestId=" + requestId.ifEmpty { "-" })
-                                touchControls()
+                                    saveProgress("player_progress")
+                                    showFeedback("Ir para " + formatTime(target))
+                                    logPlayer("GESTURE_END type=horizontal_seek positionMs=" + target + " requestId=" + requestId.ifEmpty { "-" })
+                                    touchControls()
                                 }
                             }
                             resetTransientState()
