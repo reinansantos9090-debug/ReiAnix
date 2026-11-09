@@ -216,6 +216,10 @@ class NativePlayerActivity : ComponentActivity() {
     private var videoFreezeRecoveryPlayWhenReady = false
     private var videoFreezeRecoveryInProgress = false
     private var videoFreezeRecoveryStepStartedAtMs = 0L
+    private var videoFreezeDetectionLogged = false
+    private var lastSeekStartedAtMs = 0L
+    private var lastSeekTargetMs = 0L
+    private var softwareFallbackAttempted = false
     private var pendingRendererRestartPositionMs: Long? = null
     private var pendingRendererRestartPlayWhenReady = true
     private val videoFreezeWatchdogRunnable = object : Runnable {
