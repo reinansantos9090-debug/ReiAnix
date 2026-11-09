@@ -2447,17 +2447,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             "positionMs=$recoveryPositionMs fromMode=${decoderManager?.activeVideoMode ?: "unknown"}",
                     )
                     decoderManager?.selectVideoDecoder(DecoderMode.FFMPEG)
-                    if (canSeekCurrentMedia("decoder_error_fallback", logIgnored = true)) {
-                        player.seekTo(recoveryPositionMs)
-                    } else {
-                        logPlayer(
-                            "MEDIA3_DECODER_FALLBACK_SEEK_SKIPPED " +
-                                "reason=current_media_item_not_seekable positionMs=$recoveryPositionMs",
-                        )
-                    }
-                    player.playWhenReady = resumeAfterFallback
+                    // Renderer recovery runs through READY so a seek is never
+                    // dispatched against an errored/idle player or stale commands.
+                    pendingRendererRestartPositionMs = recoveryPositionMs
+                    pendingRendererRestartPlayWhenReady = resumeAfterFallback
+                    player.stop()
                     player.prepare()
-                    logPlayer("MEDIA3_DECODER_FALLBACK_DISPATCHED targetMode=FFMPEG")
+                    player.playWhenReady = resumeAfterFallback
+                    logPlayer(
+                        "MEDIA3_DECODER_FALLBACK_DISPATCHED targetMode=FFMPEG " +
+                            "restorePositionMs=$recoveryPositionMs",
+                    )
                     return
                 } catch (fallbackError: Exception) {
                     logPlayer("MEDIA3_DECODER_FALLBACK_FAILED targetMode=FFMPEG", fallbackError)
