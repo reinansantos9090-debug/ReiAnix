@@ -71,6 +71,15 @@ internal class ReiAnixVideoFreezeWatchdog(
         return next
     }
 
+    /** Marks the current recovery attempt as failed so the caller can advance. */
+    @Synchronized
+    fun markRecoveryAttemptFailed() {
+        val snapshot = active ?: return
+        if (snapshot.recoveryStep > 0) {
+            active = snapshot.copy(detected = true)
+        }
+    }
+
     @Synchronized
     fun isActive(): Boolean = active != null
 
