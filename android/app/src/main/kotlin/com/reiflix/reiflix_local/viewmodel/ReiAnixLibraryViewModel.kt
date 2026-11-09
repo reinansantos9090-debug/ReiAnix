@@ -41,6 +41,7 @@ import com.reiflix.reiflix_local.bridge.NativeMailbox
 import com.reiflix.reiflix_local.scanner.NativeScanController
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
+import com.reiflix.reiflix_local.scanner.SafScanner
 import com.reiflix.reiflix_local.storage.StorageAuthorization
 import com.reiflix.reiflix_local.storage.SafAccessLevel
 import com.reiflix.reiflix_local.scanner.ScanLifecycleState
@@ -572,26 +573,43 @@ class ReiAnixLibraryViewModel(
             _nativeFoldersState.value = when (result) {
                 is ReiAnixLibraryQueryResult.Success -> capabilityState.copy(
                     status = ReiAnixNativeFoldersStatus.READY,
-                    folders = result.value.map { folder ->
-                        val accessState = if (
-                            folder.kind.equals("saf", ignoreCase = true) && persistedSafUrisResult.isSuccess
-                        ) {
-                            when (StorageAuthorization.safAccess(folder.path, persistedSafUris)) {
-                                SafAccessLevel.AVAILABLE -> "available"
-                                SafAccessLevel.REVOKED -> "revoked"
-                                SafAccessLevel.UNKNOWN -> "unknown"
+                    folders = withContext(Dispatchers.IO) {
+                        result.value.map { folder ->
+                            val accessState = if (
+                                folder.kind.equals("saf", ignoreCase = true) && persistedSafUrisResult.isSuccess
+                            ) {
+                                when (StorageAuthorization.safAccess(folder.path, persistedSafUris)) {
+                                    SafAccessLevel.AVAILABLE -> {
+                                        val treeUri = runCatching { Uri.parse(folder.path) }.getOrNull()
+                                        val inspection = treeUri?.let {
+                                            runCatching {
+                                                SafScanner.inspectTree(appContext, it, requirePersisted = true)
+                                            }.getOrNull()
+                                        }
+                                        when (inspection?.optString("status")) {
+                                            SafScanner.STATUS_COMPLETED,
+                                            SafScanner.STATUS_EMPTY_COMPLETE -> "available"
+                                            SafScanner.STATUS_REVOKED -> "revoked"
+                                            SafScanner.STATUS_UNAVAILABLE,
+                                            SafScanner.STATUS_FAILED -> "unavailable"
+                                            else -> "unknown"
+                                        }
+                                    }
+                                    SafAccessLevel.REVOKED -> "revoked"
+                                    SafAccessLevel.UNKNOWN -> "unknown"
+                                }
+                            } else {
+                                "unknown"
                             }
-                        } else {
-                            "unknown"
+                            ReiAnixNativeFolderUiModel(
+                                name = folder.name,
+                                path = folder.path,
+                                kind = folder.kind,
+                                authorization = folder.authorization,
+                                safIdentity = folder.safIdentity,
+                                accessState = accessState,
+                            )
                         }
-                        ReiAnixNativeFolderUiModel(
-                            name = folder.name,
-                            path = folder.path,
-                            kind = folder.kind,
-                            authorization = folder.authorization,
-                            safIdentity = folder.safIdentity,
-                            accessState = accessState,
-                        )
                     },
                 )
                 is ReiAnixLibraryQueryResult.Empty -> capabilityState.copy(
