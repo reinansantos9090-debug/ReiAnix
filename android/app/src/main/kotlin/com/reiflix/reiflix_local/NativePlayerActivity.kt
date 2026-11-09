@@ -215,6 +215,8 @@ class NativePlayerActivity : ComponentActivity() {
     private var videoFreezeRecoveryPositionMs = 0L
     private var videoFreezeRecoveryPlayWhenReady = false
     private var videoFreezeRecoveryInProgress = false
+    private var pendingRendererRestartPositionMs: Long? = null
+    private var pendingRendererRestartPlayWhenReady = true
     private val videoFreezeWatchdogRunnable = object : Runnable {
         override fun run() = checkVideoFreezeAfterSeek()
     }
@@ -2058,6 +2060,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
             updateProgressUi()
             when (state) {
                 Player.STATE_READY -> {
+                    pendingRendererRestartPositionMs?.let { restorePosition ->
+                        pendingRendererRestartPositionMs = null
+                        if (player.isCurrentMediaItemSeekable &&
+                            player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                        ) {
+                            player.seekTo(restorePosition)
+                            logPlayer("VIDEO_FROZEN_RENDERER_RESTART_SEEK positionMs=$restorePosition")
+                        } else {
+                            logPlayer("VIDEO_FROZEN_RENDERER_RESTART_SEEK_SKIPPED reason=not_seekable")
+                        }
+                        player.playWhenReady = pendingRendererRestartPlayWhenReady
+                    }
                     val readyAtMs = System.currentTimeMillis()
                     val firstReadyForGeneration = playerReadyAtMs == 0L
                     if (firstReadyForGeneration) {
@@ -3133,7 +3147,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             contentDescription = "Marcadores e notas locais"
         }
         val restartButton = actionButton("Reiniciar", 92) {
-            if (::player.isInitialized) {
+            if (canSeekCurrentMedia("restart")) {
                 player.seekTo(0L)
                 saveProgress("player_progress", force = true)
                 showFeedback("00:00")
@@ -3147,8 +3161,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             tag = "reiflix_decoder_preference"
             contentDescription = "Selecionar decodificação de vídeo"
         }
+        val bufferButton = actionButton("Buffer", 92) {
+            showBufferSelection()
+        }.apply {
+            tag = "reiflix_buffer_preference"
+            contentDescription = "Configurar buffer de reprodução local"
+        }
         addMoreRow(speed, restartButton)
-        addMoreRow(decoderButton, markers)
+        addMoreRow(decoderButton, bufferButton)
+        addMoreRow(markers)
         addMoreRow(horizontalSeekButton, actionButton("Autoplay", 92) { button ->
             autoplayNext = !autoplayNext
             button.text = "Autoplay " + if (autoplayNext) "ON" else "OFF"
@@ -3618,8 +3639,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         when {
             player.playbackState == Player.STATE_ENDED -> {
-                // The UI exposes a replay affordance for an ended item, so tapping
-                // it must explicitly rewind before playback.
+                if (!canSeekCurrentMedia("replay")) return
                 player.seekTo(0L)
                 player.play()
                 logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
@@ -4300,11 +4320,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     }
                 }
                 2 -> {
+                    pendingRendererRestartPositionMs = position
+                    pendingRendererRestartPlayWhenReady = resumeWhenReady
                     player.stop()
                     player.prepare()
-                    if (canSeekCurrentMedia("freeze_recovery_renderer_restart", logIgnored = false)) {
-                        player.seekTo(position)
-                    }
                     player.playWhenReady = resumeWhenReady
                 }
                 3 -> {
@@ -4332,9 +4351,33 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.postDelayed(videoFreezeWatchdogRunnable, VIDEO_FREEZE_CHECK_INTERVAL_MS)
     }
 
+    private fun showBufferSelection() {
+        val valuesMs = intArrayOf(15_000, 30_000, 60_000, 120_000)
+        val labels = arrayOf("15 segundos", "30 segundos", "60 segundos", "120 segundos")
+        val preferences = getSharedPreferences(PLAYER_PREFERENCES, MODE_PRIVATE)
+        val current = preferences.getInt("max_buffer_ms", 30_000)
+        val selected = valuesMs.indices.minByOrNull { kotlin.math.abs(valuesMs[it] - current) } ?: 1
+        AlertDialog.Builder(this)
+            .setTitle("Buffer máximo (arquivos locais)")
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                val value = valuesMs.getOrNull(which) ?: 30_000
+                preferences.edit().putInt("max_buffer_ms", value).apply()
+                showFeedback("Buffer definido: " + labels[which] + ". Reabra o vídeo para aplicar.")
+                logPlayer("PLAYER_BUFFER_PREFERENCE_CHANGED maxBufferMs=$value appliesToNextPlayer=true")
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     private fun showDecoderSelection() {
-        val options = arrayOf("Automático (hardware com fallback)", "Somente hardware", "FFmpeg/software")
-        val values = arrayOf("auto", "hardware", "ffmpeg")
+        val options = arrayOf(
+            "Automático (hardware → software → FFmpeg)",
+            "Somente hardware",
+            "Software MediaCodec",
+            "FFmpeg",
+        )
+        val values = arrayOf("auto", "hardware", "software", "ffmpeg")
         val selected = values.indexOf(decoderPreference).coerceAtLeast(0)
         AlertDialog.Builder(this)
             .setTitle("Decodificação de vídeo")
@@ -4342,6 +4385,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val preference = values.getOrNull(which) ?: "auto"
                 val mode = when (preference) {
                     "hardware" -> DecoderMode.HARDWARE
+                    "software" -> DecoderMode.SOFTWARE
                     "ffmpeg" -> DecoderMode.FFMPEG
                     else -> DecoderMode.AUTO
                 }
@@ -5680,21 +5724,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun seekToSavedPosition(savedPositionMs: Long): Long {
         if (!::player.isInitialized) return 0L
         val normalizedRequested = savedPositionMs.coerceAtLeast(0L)
-        val safePosition = PlayerMediaPolicy.safeResumePosition(normalizedRequested, player.duration)
-        if (safePosition > 0L && player.duration > 0L) {
+        val actualDuration = ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+        if (!player.isCurrentMediaItemSeekable ||
+            !player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+        ) {
+            logPlayer("RESUME_SEEK_SKIPPED reason=media_not_seekable requestedMs=$normalizedRequested")
+            return 0L
+        }
+        val safePosition = actualDuration?.let {
+            normalizedRequested.coerceIn(0L, (it - 1L).coerceAtLeast(0L))
+        } ?: normalizedRequested
+        if (safePosition > 0L) {
             player.seekTo(safePosition)
-            logPlayer(
-                "RESUME_APPLIED positionMs=" + safePosition +
-                    " requestedMs=" + normalizedRequested +
-                    " durationMs=" + player.duration +
-                    " requestId=" + requestId.ifEmpty { "-" },
-            )
+            logPlayer("RESUME_APPLIED positionMs=$safePosition requestedMs=$normalizedRequested actualDurationMs=${actualDuration ?: -1L}")
         } else if (normalizedRequested > 0L) {
-            logPlayer(
-                "RESUME_CLAMPED requestedMs=" + normalizedRequested +
-                    " durationMs=" + player.duration +
-                    " requestId=" + requestId.ifEmpty { "-" },
-            )
+            logPlayer("RESUME_CLAMPED requestedMs=$normalizedRequested actualDurationMs=${actualDuration ?: -1L}")
         }
         return safePosition
     }
@@ -6178,8 +6222,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun seekToMarker(targetMs: Long, feedbackText: String) {
-        if (!::player.isInitialized || player.duration <= 0L) return
-        val safeTarget = targetMs.coerceIn(0L, player.duration)
+        if (!canSeekCurrentMedia("marker_seek")) return
+        val duration = ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+        if (duration == null) {
+            logPlayer("PLAYER_COMMAND_IGNORED command=marker_seek reason=duration_unknown")
+            return
+        }
+        val safeTarget = targetMs.coerceIn(0L, duration)
         player.seekTo(safeTarget)
         saveProgress("player_progress", force = true)
         showFeedback(feedbackText)
