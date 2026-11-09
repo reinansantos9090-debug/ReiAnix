@@ -27,6 +27,8 @@ class PlayerMediaControls(
 ) {
     private val appContext = context.applicationContext
     private val mediaSession: MediaSession
+    internal val platformToken: android.media.session.MediaSession.Token
+        get() = mediaSession.platformToken
     private val notificationManager: PlayerNotificationManager
     private var released = false
 

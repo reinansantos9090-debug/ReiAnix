@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.graphics.Matrix
 import android.app.PictureInPictureParams
 import android.content.Intent
+import android.media.session.MediaController
+import android.media.session.PlaybackState
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -25,6 +27,7 @@ import androidx.test.uiautomator.UiDevice
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -62,25 +65,48 @@ class NativePlayerPlaybackInstrumentedTest {
     }
 
     @Test
-    fun pictureInPicture_entersAndReturnsToMainActivityWithImmersivePolicy() {
+    fun pictureInPicture_mediaSessionControlsWorkAndPlayerCanReopenAfterDismissal() {
         launchMainActivityForPlayer()
         val uri = insertFixtureIntoMediaStore()
         fixtureUri = uri
-        val intent = Intent(target, NativePlayerActivity::class.java)
-            .putExtra("requestId", "instrumented-player-pip")
-            .putExtra("uri", uri.toString())
-            .putExtra("title", "Fixture local PiP")
-            .putExtra("positionMs", 0L)
-            .putExtra("autoplay", false)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent) as NativePlayerActivity
-        val player = awaitView<PlayerView>("reiflix_player_view").let { view ->
-            onMain { requireNotNull(view.player) }
+
+        sendPlayDeepLink(
+            requestId = "instrumented-player-pip",
+            uri = uri.toString(),
+            playerSessionId = "instrumented-pip-session",
+            autoplay = true,
+        )
+        await("MainActivity must dispatch the native player for PiP testing") {
+            val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                .getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                .firstOrNull { it is NativePlayerActivity } as? NativePlayerActivity
+            if (resumed != null) {
+                activity = resumed
+                true
+            } else {
+                false
+            }
         }
+
+        val playerView = awaitView<PlayerView>("reiflix_player_view")
+        val player = onMain { requireNotNull(playerView.player) }
         await("PiP player must reach READY") { player.playbackState == Player.STATE_READY }
+        await("PiP player must be playing before media-session controls are exercised") {
+            player.isPlaying
+        }
+
         val pipSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             target.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
         assertTrue("CI emulator must expose Picture-in-Picture when the app advertises the optional feature", pipSupported)
+
+        val platformToken = onMain {
+            requireNotNull(activity!!.mediaSessionPlatformTokenForTesting()) {
+                "Native player must publish the active Media3 session token"
+            }
+        }
+        val mediaController = onMain { MediaController(target, platformToken) }
+
         assertTrue(
             "Player must successfully enter Picture-in-Picture",
             onMain {
@@ -90,21 +116,71 @@ class NativePlayerPlaybackInstrumentedTest {
         await("Player must actually enter Picture-in-Picture") {
             activity!!.isInPictureInPictureMode
         }
+        assertTrue(
+            "PiP entry must preserve the original Activity instead of recreating the player",
+            onMain { !activity!!.isDestroyed },
+        )
+        assertTrue(
+            "The original ExoPlayer instance must remain attached after PiP entry",
+            onMain { playerView.player === player },
+        )
         val controls = awaitView<View>("reiflix_controls_root")
         assertFalse("Player controls must be hidden while in PiP", onMain { controls.isShown })
 
-        val mainIntent = Intent(target, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        target.startActivity(mainIntent)
+        await("Media session must publish its PiP pause action") {
+            val actions = mediaController.playbackState?.actions ?: 0L
+            actions and PlaybackState.ACTION_PAUSE != 0L
+        }
+        onMain { mediaController.transportControls.pause() }
+        await("PiP pause action must pause the original ExoPlayer") {
+            !player.playWhenReady && !player.isPlaying
+        }
+
+        await("Media session must publish its PiP play action after pause") {
+            val actions = mediaController.playbackState?.actions ?: 0L
+            actions and PlaybackState.ACTION_PLAY != 0L
+        }
+        onMain { mediaController.transportControls.play() }
+        await("PiP play action must resume the original ExoPlayer") {
+            player.playWhenReady && player.isPlaying
+        }
+
+        logStage("PIP_DISMISS_AND_REOPEN")
+        val dismissedActivity = activity!!
+        onMain { dismissedActivity.finish() }
+        await("Dismissing PiP must destroy only the player Activity") {
+            dismissedActivity.isDestroyed
+        }
         waitForReiAnixMainActivityForeground()
-        await("Bringing ReiAnix to foreground must exit the player from PiP") {
-            !activity!!.isInPictureInPictureMode
+
+        sendPlayDeepLink(
+            requestId = "instrumented-player-pip-reopen",
+            uri = uri.toString(),
+            playerSessionId = "instrumented-pip-reopen-session",
+            autoplay = false,
+        )
+        await("A fresh episode handoff must open a new player after PiP dismissal") {
+            val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                .getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                .firstOrNull { it is NativePlayerActivity } as? NativePlayerActivity
+            if (resumed != null && resumed !== dismissedActivity) {
+                activity = resumed
+                true
+            } else {
+                false
+            }
         }
-        assertTrue("Native Player Activity must remain alive after PiP exit", !activity!!.isDestroyed)
-        await("PiP exit must re-apply the configured immersive policy") {
-            val insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity!!.window.decorView)
-            insets != null && !insets.isVisible(WindowInsetsCompat.Type.systemBars())
+        val reopenedPlayerView = awaitView<PlayerView>("reiflix_player_view")
+        val reopenedPlayer = onMain { requireNotNull(reopenedPlayerView.player) }
+        await("Reopened player must reach READY after PiP dismissal") {
+            reopenedPlayer.playbackState == Player.STATE_READY
         }
+        assertTrue(
+            "Reopened player Activity must remain valid after the PiP lifecycle has completed",
+            onMain { !activity!!.isFinishing && !activity!!.isDestroyed },
+        )
+        logStage("PIP_DISMISS_REOPEN_OK")
     }
 
     @Test
@@ -815,7 +891,12 @@ class NativePlayerPlaybackInstrumentedTest {
                 .orEmpty()
         }
 
-    private fun sendPlayDeepLink(requestId: String, uri: String) {
+    private fun sendPlayDeepLink(
+        requestId: String,
+        uri: String,
+        playerSessionId: String = "instrumented-assist-session",
+        autoplay: Boolean = false,
+    ) {
         val commandUri = android.net.Uri.Builder()
             .scheme("reiflix")
             .authority("native")
@@ -823,13 +904,13 @@ class NativePlayerPlaybackInstrumentedTest {
             .appendQueryParameter("request_id", requestId)
             .appendQueryParameter("protocol_version", "2")
             .appendQueryParameter("created_at", System.currentTimeMillis().toString())
-            .appendQueryParameter("player_session_id", "instrumented-assist-session")
+            .appendQueryParameter("player_session_id", playerSessionId)
             .appendQueryParameter("uri", uri)
             .appendQueryParameter("title", requestId)
             .appendQueryParameter("position_ms", "0")
             .appendQueryParameter("can_next", "false")
             .appendQueryParameter("can_previous", "false")
-            .appendQueryParameter("autoplay", "false")
+            .appendQueryParameter("autoplay", autoplay.toString())
             .build()
         InstrumentationRegistry.getInstrumentation().startActivitySync(
             Intent(target, MainActivity::class.java)

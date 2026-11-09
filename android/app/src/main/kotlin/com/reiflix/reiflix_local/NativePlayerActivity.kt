@@ -315,6 +315,9 @@ class NativePlayerActivity : ComponentActivity() {
     private var retryCount = 0
     internal var firstFrameRenderedForTesting = false
         private set
+
+    internal fun mediaSessionPlatformTokenForTesting(): android.media.session.MediaSession.Token? =
+        mediaControls?.platformToken
     private var feedbackHideAt = 0L
     private var feedbackSessionId = ""
     private var feedbackRequestId = ""
