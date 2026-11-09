@@ -2078,12 +2078,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
         ) {
             if (!isCurrent()) return
             val presentation = currentDisplayDuration()
+            val currentItemAvailable = hasCurrentMediaItem()
+            val actualDuration = if (currentItemAvailable) {
+                ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: -1L
+            } else -1L
+            val seekable = currentItemAvailable && player.isCurrentMediaItemSeekable
             logPlayer(
                 "PLAYER_DURATION_UPDATE episodeId=${currentEpisodeId()} " +
-                    "actualDurationMs=${ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: -1L} " +
+                    "actualDurationMs=$actualDuration " +
                     "databaseDurationMs=${savedDurationMsForDisplay ?: -1L} " +
                     "displayDurationMs=${presentation.durationMs} fromDatabase=${presentation.fromDatabase} " +
-                    "seekable=${player.isCurrentMediaItemSeekable} reason=$reason",
+                    "currentItemAvailable=$currentItemAvailable seekable=$seekable reason=$reason",
             )
             updateSeekControlsEnabled()
             updateProgressUi()
@@ -2321,11 +2326,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
             ) {
+                val currentItemAvailable = hasCurrentMediaItem()
+                val seekable = currentItemAvailable && player.isCurrentMediaItemSeekable
+                val seekCommand = currentItemAvailable &&
+                    player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
                 logPlayer(
                     "PLAYER_SEEK requestId=" + requestId.ifEmpty { "-" } +
                         " positionMs=" + newPosition.positionMs +
-                        " seekable=${player.isCurrentMediaItemSeekable} " +
-                        "seekCommand=${player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)}",
+                        " currentItemAvailable=$currentItemAvailable seekable=$seekable " +
+                        "seekCommand=$seekCommand",
                 )
                 if (videoFreezeRecoveryInProgress) {
                     logPlayer(
@@ -4973,9 +4982,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         exitReported = true
         suppressExitEvent = true
-        val rawDuration = if (::player.isInitialized) player.duration else C.TIME_UNSET
+        val currentItemAvailable = hasCurrentMediaItem()
+        val rawDuration = if (currentItemAvailable) player.duration else C.TIME_UNSET
         val currentDuration = ReiAnixPlayerSeekPolicy.validDuration(rawDuration) ?: 0L
-        val rawPosition = if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L
+        val rawPosition = if (currentItemAvailable) player.currentPosition.coerceAtLeast(0L) else 0L
         val currentPosition = if (currentDuration > 0L) rawPosition.coerceAtMost(currentDuration) else rawPosition
         val exitCapturedAt = nextPlayerEventCreatedAt()
         val payload = JSONObject()
@@ -5837,7 +5847,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun buildProgressEvent(eventType: String, force: Boolean): JSONObject? {
-        if (!::player.isInitialized) return null
+        if (!hasCurrentMediaItem()) {
+            logPlayer("PROGRESS_EVENT_SKIPPED reason=current_media_item_unavailable event=$eventType")
+            return null
+        }
         val episodeId = currentEpisodeId()
         val mediaId = currentMediaId()
         val sessionId = playerSessionId.trim()
@@ -6124,11 +6137,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         outState.putBoolean("next_transition_active", nextTransitionActive)
         outState.putBoolean("previous_transition_active", previousTransitionActive)
         if (::uri.isInitialized) outState.putString("session_uri", uri.toString())
-        if (::player.isInitialized) {
+        if (hasCurrentMediaItem()) {
             outState.putString("session_request_id", requestId)
             outState.putString("session_uri", if (::uri.isInitialized) uri.toString() else intent.getStringExtra("uri").orEmpty())
             outState.putLong("position_ms", player.currentPosition.coerceAtLeast(0L))
-            outState.putLong("duration_ms", player.duration.coerceAtLeast(0L))
+            outState.putLong("duration_ms", ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: 0L)
             outState.putFloat("playback_speed", player.playbackParameters.speed)
             outState.putBoolean("play_when_ready", player.playWhenReady)
             outState.putBundle("track_selection_parameters", player.trackSelectionParameters.toBundle())
