@@ -162,6 +162,17 @@ fun NavHostController.navigateToTopLevel(route: String) {
     )
 }
 
+/**
+ * Single entry point for the storage manager. launchSingleTop prevents repeated
+ * taps or shortcuts from stacking duplicate Storage destinations.
+ */
+fun NavHostController.navigateToStorage() {
+    navigate(
+        ReiAnixRoutes.STORAGE,
+        navOptions { launchSingleTop = true },
+    )
+}
+
 fun NavHostController.navigateToCollector() {
     navigate(
         ReiAnixRoutes.COLLECTOR,
