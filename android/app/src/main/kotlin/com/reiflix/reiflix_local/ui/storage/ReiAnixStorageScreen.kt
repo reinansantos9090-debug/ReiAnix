@@ -150,8 +150,7 @@ fun ReiAnixStorageScreen(
     fun sourceState(source: ReiAnixStorageSourceUiModel): String {
         val liveSource = source.safIdentity?.let(nativeSafByIdentity::get)
             ?: nativeSafByReference[source.reference]
-        return liveSource?.accessState?.takeIf { it != "unknown" }
-            ?: storage.sourceState(source)
+        return liveSource?.accessState ?: storage.sourceState(source)
     }
 
     val otherSources = storage.configuredSources
