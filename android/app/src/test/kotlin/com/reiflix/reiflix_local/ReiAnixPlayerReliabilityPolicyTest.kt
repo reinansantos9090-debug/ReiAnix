@@ -22,6 +22,28 @@ class ReiAnixPlayerReliabilityPolicyTest {
     }
 
     @Test
+    fun episodeTransitionStopsBlockingCommandsAfterCurrentItemIsReady() {
+        assertTrue(
+            ReiAnixPlayerSeekPolicy.transitionBlocksCommands(
+                transitionPending = true,
+                transitionReadyForCurrentGeneration = false,
+            )
+        )
+        assertFalse(
+            ReiAnixPlayerSeekPolicy.transitionBlocksCommands(
+                transitionPending = true,
+                transitionReadyForCurrentGeneration = true,
+            )
+        )
+        assertFalse(
+            ReiAnixPlayerSeekPolicy.transitionBlocksCommands(
+                transitionPending = false,
+                transitionReadyForCurrentGeneration = false,
+            )
+        )
+    }
+
+    @Test
     fun seekRequiresBothSeekabilityAndMedia3SeekCommand() {
         assertTrue(ReiAnixPlayerSeekPolicy.canSeek(true, true, false))
         assertFalse(ReiAnixPlayerSeekPolicy.canSeek(false, true, false))
