@@ -88,7 +88,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
     // NextLib is aligned with Media3 1.11.1 and supplies FFmpeg fallback renderers.
-    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.1-0.16.0")
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.1-0.17.0")
     implementation("androidx.credentials:credentials:1.6.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
