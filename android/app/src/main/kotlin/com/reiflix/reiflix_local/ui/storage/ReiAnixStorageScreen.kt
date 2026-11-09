@@ -150,7 +150,9 @@ fun ReiAnixStorageScreen(
     fun sourceState(source: ReiAnixStorageSourceUiModel): String {
         val liveSource = source.safIdentity?.let(nativeSafByIdentity::get)
             ?: nativeSafByReference[source.reference]
-        return liveSource?.status ?: storage.sourceState(source)
+        // A projected status can be stale after Android revokes a persisted grant.
+        // Never display a SAF source as available without a live platform check.
+        return liveSource?.status ?: "unknown"
     }
 
     val otherSources = storage.configuredSources
