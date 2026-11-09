@@ -1368,7 +1368,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val canSeek = canSeekCurrentMedia("controls_refresh", logIgnored = false)
         findViewByTag<View>("reiflix_seek_back")?.isEnabled = canSeek
         findViewByTag<View>("reiflix_seek_forward")?.isEnabled = canSeek
-        if (::seekBar.isInitialized) seekBar.isEnabled = canSeek && currentDisplayDuration().known
+        val actualDurationKnown = ::player.isInitialized &&
+            ReiAnixPlayerSeekPolicy.validDuration(player.duration) != null
+        if (::seekBar.isInitialized) seekBar.isEnabled = canSeek && actualDurationKnown
         if (::player.isInitialized) {
             val display = currentDisplayDuration()
             logPlayer(
@@ -3424,6 +3426,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             durationStatus = durationStatus,
             durationFromDatabase = durationPresentation.fromDatabase,
             canSeek = seekAvailable,
+            canSeekToPosition = seekAvailable && actualDuration != null,
             timelinePreviewBitmap = timelinePreviewBitmap,
             timelinePreviewPositionMs = timelinePreviewPositionMs,
             bufferedPositionMs = if (::player.isInitialized && actualDuration != null) {
