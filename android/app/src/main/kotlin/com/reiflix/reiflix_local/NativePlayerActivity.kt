@@ -4555,6 +4555,26 @@ override fun onCreate(savedInstanceState: Bundle?) {
         } catch (error: Exception) {
             logPlayer("VIDEO_FROZEN_RECOVERY_STEP_FAILED step=$step", error)
             videoFreezeWatchdog.markRecoveryAttemptFailed()
+            val retryAt = SystemClock.uptimeMillis()
+            val retryPosition = player.currentPosition.coerceAtLeast(0L)
+            val nextStep = videoFreezeWatchdog.nextRecoveryStep(
+                retryAt,
+                retryPosition,
+                videoFrameSerial,
+            )
+            if (nextStep == null) {
+                logPlayer("VIDEO_FROZEN_RECOVERY_RESULT success=false reason=recovery_step_exception_exhausted")
+                videoFreezeWatchdog.resolve()
+                videoFreezeRecoveryInProgress = false
+                videoFreezeRecoveryStepStartedAtMs = 0L
+            } else {
+                logPlayer(
+                    "VIDEO_FROZEN_RECOVERY_ADVANCED_AFTER_EXCEPTION " +
+                        "failedStep=$step nextStep=$nextStep positionMs=$retryPosition",
+                )
+                startVideoFreezeRecoveryStep(nextStep, retryAt, retryPosition)
+            }
+            return
         }
         handler.postDelayed(videoFreezeWatchdogRunnable, VIDEO_FREEZE_CHECK_INTERVAL_MS)
     }
