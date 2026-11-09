@@ -5,19 +5,20 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorsFactory
+import androidx.media3.extractor.mkv.MatroskaExtractor
+import androidx.media3.extractor.mkv.ReiAnixMatroskaExtractor
 import androidx.media3.extractor.mp4.FragmentedMp4Extractor
+import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 
 /**
- * Progressive-file extractor policy for the local library.
+ * Progressive local-file extractor policy aligned with CloudStream's player strategy.
  *
- * Media3 1.11.1 already contains the Matroska SeekHead/Cues logic (including
- * locating Cues after the first Cluster), so ReiAnix deliberately uses that
- * maintained implementation instead of vendoring an older fork. With no usable
- * Cues index, Media3 reports the source as unseekable; the UI must not pretend
- * that a guessed duration makes it seekable.
+ * Media3 1.11.1 handles ordinary Matroska Cues and a direct SeekHead reference. ReiAnix's
+ * Matroska extractor extends that path to traverse chained SeekHead entries, find Cues
+ * stored after clusters, build the seek map, and restore the original input position.
  *
- * Fragmented MP4 is configured to merge multiple SIDX boxes. Media3 1.11.1's
- * DefaultExtractorsFactory enables mfra-based seeking by default.
+ * Fragmented MP4 keeps Media3's SIDX merge and MFRA seek-map support. All other formats
+ * continue to use the maintained Media3 DefaultExtractorsFactory implementation.
  */
 @UnstableApi
 internal class ReiAnixExtractorsFactory : ExtractorsFactory {
@@ -27,10 +28,21 @@ internal class ReiAnixExtractorsFactory : ExtractorsFactory {
                 FragmentedMp4Extractor.FLAG_READ_MFRA_FOR_SEEK_MAP,
         )
 
-    override fun createExtractors(): Array<Extractor> = delegate.createExtractors()
+    override fun createExtractors(): Array<Extractor> =
+        replaceMatroska(delegate.createExtractors())
 
     override fun createExtractors(
         uri: Uri,
         responseHeaders: Map<String, List<String>>,
-    ): Array<Extractor> = delegate.createExtractors(uri, responseHeaders)
+    ): Array<Extractor> =
+        replaceMatroska(delegate.createExtractors(uri, responseHeaders))
+
+    private fun replaceMatroska(extractors: Array<Extractor>): Array<Extractor> =
+        extractors.map { extractor ->
+            if (extractor is MatroskaExtractor) {
+                ReiAnixMatroskaExtractor(DefaultSubtitleParserFactory())
+            } else {
+                extractor
+            }
+        }.toTypedArray()
 }
