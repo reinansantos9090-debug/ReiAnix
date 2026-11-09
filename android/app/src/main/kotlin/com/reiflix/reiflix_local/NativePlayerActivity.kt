@@ -38,6 +38,7 @@ import android.util.Rational
 import android.util.Log
 import android.graphics.Typeface
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -1309,6 +1310,111 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val episodeId = currentEpisodeId()
         if (episodeId.isNotBlank()) return "episode:$episodeId"
         return if (::uri.isInitialized) uri.toString() else intent.getStringExtra("mediaId").orEmpty()
+    }
+
+
+    private fun currentDisplayDuration(): ReiAnixPlayerSeekPolicy.DisplayDuration {
+        val playerDuration = if (::player.isInitialized) player.duration else C.TIME_UNSET
+        return ReiAnixPlayerSeekPolicy.displayDuration(playerDuration, savedDurationMsForDisplay)
+    }
+
+    private fun canSeekCurrentMedia(
+        source: String,
+        relativeDeltaMs: Long? = null,
+        logIgnored: Boolean = true,
+    ): Boolean {
+        if (!::player.isInitialized) {
+            if (logIgnored) logPlayer("PLAYER_COMMAND_IGNORED command=seek source=$source reason=player_uninitialized")
+            return false
+        }
+        val seekable = player.isCurrentMediaItemSeekable
+        val inItemCommand = player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+        val directionCommand = when {
+            relativeDeltaMs == null -> true
+            relativeDeltaMs < 0L -> player.isCommandAvailable(Player.COMMAND_SEEK_BACK)
+            else -> player.isCommandAvailable(Player.COMMAND_SEEK_FORWARD)
+        }
+        val allowed = ReiAnixPlayerSeekPolicy.canSeek(
+            isCurrentMediaItemSeekable = seekable,
+            seekCommandAvailable = inItemCommand && directionCommand,
+            transitionPending = episodeChangePending,
+        )
+        if (!allowed && logIgnored) {
+            val reason = when {
+                episodeChangePending -> "episode_transition"
+                !seekable -> "media_not_seekable"
+                !inItemCommand -> "seek_in_current_media_item_unavailable"
+                !directionCommand && relativeDeltaMs != null && relativeDeltaMs < 0L -> "seek_back_unavailable"
+                !directionCommand -> "seek_forward_unavailable"
+                else -> "unknown"
+            }
+            logPlayer(
+                "PLAYER_COMMAND_IGNORED command=seek source=$source reason=$reason " +
+                    "seekable=$seekable seekInItem=$inItemCommand directionCommand=$directionCommand " +
+                    "durationMs=${player.duration} playbackState=${player.playbackStateLabel()}",
+            )
+        }
+        return allowed
+    }
+
+    private fun updateSeekControlsEnabled() {
+        val canSeek = canSeekCurrentMedia("controls_refresh", logIgnored = false)
+        findViewByTag<View>("reiflix_seek_back")?.isEnabled = canSeek
+        findViewByTag<View>("reiflix_seek_forward")?.isEnabled = canSeek
+        if (::seekBar.isInitialized) seekBar.isEnabled = canSeek && currentDisplayDuration().known
+        if (::player.isInitialized) {
+            val display = currentDisplayDuration()
+            logPlayer(
+                "PLAYER_SEEK_CAPABILITY seekable=${player.isCurrentMediaItemSeekable} " +
+                    "command=${player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)} " +
+                    "actualDurationMs=${ReiAnixPlayerSeekPolicy.validDuration(player.duration) ?: -1L} " +
+                    "displayDurationMs=${display.durationMs} durationFromDatabase=${display.fromDatabase}",
+            )
+        }
+    }
+
+    private data class ResolvedLocalMediaMetadata(
+        val displayName: String?,
+        val mimeType: String?,
+        val sizeBytes: Long?,
+        val subtitleTracks: List<LocalSubtitleResolver.SubtitleTrack>,
+        val retrieverDurationMs: Long?,
+    )
+
+    private fun resolveLocalMediaMetadata(localUri: Uri): ResolvedLocalMediaMetadata {
+        val displayName = displayNameForUri(applicationContext, localUri)
+        val providerMime = runCatching { contentResolver.getType(localUri) }.getOrNull()
+        val resolvedMime = PlayerMediaPolicy.resolveVideoMimeType(providerMime, displayName)
+        val sizeBytes = localSizeBytes(applicationContext, localUri)
+        val subtitleTracks = runCatching {
+            LocalSubtitleResolver.resolve(applicationContext, localUri)
+        }.getOrElse { error ->
+            logPlayer("SUBTITLE_RESOLVE_FAILED uri=$localUri", error)
+            emptyList()
+        }
+        val retriever = MediaMetadataRetriever()
+        val duration = try {
+            retriever.setDataSource(applicationContext, localUri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?.takeIf { it > 0L }
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+        logPlayer(
+            "MEDIA_MIME_RESOLVED uri=$localUri providerMime=${providerMime ?: "-"} " +
+                "displayName=${displayName ?: "-"} resolvedMime=${resolvedMime ?: "auto"} " +
+                "sizeBytes=${sizeBytes ?: -1L} retrieverDurationMs=${duration ?: -1L}",
+        )
+        return ResolvedLocalMediaMetadata(
+            displayName = displayName,
+            mimeType = resolvedMime,
+            sizeBytes = sizeBytes,
+            subtitleTracks = subtitleTracks,
+            retrieverDurationMs = duration,
+        )
     }
 
     private fun buildMediaItem(
