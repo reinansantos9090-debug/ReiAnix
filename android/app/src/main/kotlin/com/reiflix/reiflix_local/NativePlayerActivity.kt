@@ -2958,9 +2958,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             tag = "reiflix_seekbar"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (fromUser && ::player.isInitialized && player.duration > 0L) {
-                        val target = player.duration * progress.toLong() / SEEK_PROGRESS_MAX
-                        positionLabel.text = formatTime(target)
+                    if (fromUser && ::player.isInitialized) {
+                        val duration = currentDisplayDuration()
+                        if (duration.known && duration.durationMs > 0L) {
+                            val target = duration.durationMs * progress.toLong() / SEEK_PROGRESS_MAX
+                            positionLabel.text = formatTime(target)
+                        }
                     }
                 }
 
@@ -2969,9 +2972,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
 
                 override fun onStopTrackingTouch(bar: SeekBar?) {
-                    if (!::player.isInitialized || player.duration <= 0L) return
-                    val target = player.duration * seekBar.progress.toLong() / SEEK_PROGRESS_MAX
-                    player.seekTo(target.coerceIn(0L, player.duration))
+                    if (!canSeekCurrentMedia("seekbar_absolute")) return
+                    val actualDuration = ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+                    if (actualDuration == null) {
+                        logPlayer("PLAYER_COMMAND_IGNORED command=seek source=seekbar_absolute reason=duration_unknown")
+                        updateProgressUi()
+                        return
+                    }
+                    val target = actualDuration * seekBar.progress.toLong() / SEEK_PROGRESS_MAX
+                    player.seekTo(target.coerceIn(0L, actualDuration))
                     saveProgress("player_progress", force = true)
                     showFeedback(formatTime(target))
                     scheduleControlsHide()
@@ -3071,8 +3080,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         addMoreRow(previousEpisode, nextEpisode)
         addMoreRow(audio, subtitle)
+        val decoderButton = actionButton("Decodificador", 112) {
+            showDecoderSelection()
+        }.apply {
+            tag = "reiflix_decoder_preference"
+            contentDescription = "Selecionar decodificação de vídeo"
+        }
         addMoreRow(speed, restartButton)
-        addMoreRow(markers)
+        addMoreRow(decoderButton, markers)
         addMoreRow(horizontalSeekButton, actionButton("Autoplay", 92) { button ->
             autoplayNext = !autoplayNext
             button.text = "Autoplay " + if (autoplayNext) "ON" else "OFF"
@@ -3193,14 +3208,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
                         onSeekTo = { targetMs ->
-                            if (::player.isInitialized && player.duration > 0L && !episodeChangePending) {
-                                val safeTarget = targetMs.coerceIn(0L, player.duration)
-                                player.seekTo(safeTarget)
-                                saveProgress("player_progress", force = true)
-                                showFeedback(formatTime(safeTarget))
-                                touchControls()
+                            if (!canSeekCurrentMedia("timeline_absolute")) return@ReiAnixNativePlayerBottomControls
+                            val actualDuration = ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+                            if (actualDuration == null) {
+                                logPlayer("PLAYER_COMMAND_IGNORED command=seek source=timeline_absolute reason=duration_unknown")
+                                return@ReiAnixNativePlayerBottomControls
                             }
+                            val safeTarget = targetMs.coerceIn(0L, actualDuration)
+                            player.seekTo(safeTarget)
+                            saveProgress("player_progress", force = true)
+                            showFeedback(formatTime(safeTarget))
+                            touchControls()
                         },
+                        onPreviewPosition = { requestTimelinePreview(it) },
                         onToggleLock = { setLocked(!locked) },
                         onResize = { toggleAspectMode() },
                         onSource = { toggleMorePanel() },
@@ -3519,7 +3539,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun togglePlayPause() {
-        if (!::player.isInitialized || errorVisible) return
+        if (!::player.isInitialized) {
+            logPlayer("PLAYER_COMMAND_IGNORED command=play_pause reason=player_uninitialized")
+            return
+        }
+        if (errorVisible || playbackErrorForGeneration) {
+            logPlayer(
+                "PLAYER_COMMAND_IGNORED command=play_pause reason=error_visible " +
+                    "errorVisible=$errorVisible playbackError=$playbackErrorForGeneration " +
+                    "failureKind=$currentFailureKind",
+            )
+            return
+        }
         if (episodeChangePending) {
             logPlayer("PLAYER_COMMAND_IGNORED command=play_pause reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
             return
@@ -4004,22 +4035,266 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun seekBy(deltaMs: Long, feedbackText: String) {
-        if (!::player.isInitialized || player.duration <= 0L) return
-        if (episodeChangePending) {
-            logPlayer("PLAYER_COMMAND_IGNORED command=seek reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
-            return
-        }
-        val target = PlayerGesturePolicy.seekTarget(
+        if (!canSeekCurrentMedia("relative_seek", relativeDeltaMs = deltaMs)) return
+        val actualDuration = ReiAnixPlayerSeekPolicy.validDuration(player.duration)
+        val target = ReiAnixPlayerSeekPolicy.relativeTarget(
             currentPositionMs = player.currentPosition,
             deltaMs = deltaMs,
-            durationMs = player.duration,
+            knownDurationMs = actualDuration,
+        )
+        logPlayer(
+            "PLAYER_SEEK_REQUEST source=relative deltaMs=$deltaMs targetMs=$target " +
+                "actualDurationMs=${actualDuration ?: -1L} seekable=${player.isCurrentMediaItemSeekable}",
         )
         player.seekTo(target)
-        // Relative seek gestures are frequent; the authoritative checkpoints remain
-        // pause/completion/exit plus the periodic progress reporter.
         saveProgress("player_progress")
         showFeedback(feedbackText)
         touchControls()
+    }
+
+    private fun requestTimelinePreview(positionMs: Long?) {
+        if (positionMs == null) {
+            timelinePreviewGenerator?.cancel()
+            timelinePreviewBitmap?.recycle()
+            timelinePreviewBitmap = null
+            timelinePreviewPositionMs = null
+            syncComposePlayerUiState()
+            return
+        }
+        if (!::uri.isInitialized || !canSeekCurrentMedia("timeline_preview", logIgnored = false)) return
+        if (timelinePreviewGenerator == null) {
+            timelinePreviewGenerator = ReiAnixTimelinePreviewGenerator(applicationContext)
+        }
+        timelinePreviewGenerator?.request(uri, positionMs) { bitmap, resolvedPosition ->
+            val previous = timelinePreviewBitmap
+            timelinePreviewBitmap = bitmap
+            timelinePreviewPositionMs = resolvedPosition
+            if (previous != null && previous !== bitmap && !previous.isRecycled) previous.recycle()
+            syncComposePlayerUiState()
+        }
+    }
+
+    private fun hasSelectedVideoTrack(): Boolean =
+        ::player.isInitialized && player.currentTracks.groups.any { group ->
+            group.type == C.TRACK_TYPE_VIDEO && group.isSupported && group.isSelected
+        }
+
+    private fun startVideoFreezeWatchdog(positionMs: Long, source: String) {
+        if (!::player.isInitialized || errorVisible || !player.isPlaying || !hasSelectedVideoTrack()) return
+        handler.removeCallbacks(videoFreezeWatchdogRunnable)
+        videoFreezeWatchdog.begin(positionMs, SystemClock.uptimeMillis(), videoFrameSerial)
+        lastSeekStartedAtMs = SystemClock.uptimeMillis()
+        lastSeekTargetMs = positionMs.coerceAtLeast(0L)
+        videoFreezeRecoveryGeneration = playerGeneration
+        videoFreezeRecoveryPositionMs = positionMs.coerceAtLeast(0L)
+        videoFreezeRecoveryPlayWhenReady = player.playWhenReady
+        videoFreezeRecoveryInProgress = false
+        videoFreezeDetectionLogged = false
+        logPlayer(
+            "VIDEO_FREEZE_WATCHDOG_ARMED source=$source targetMs=$positionMs " +
+                "frameSerial=$videoFrameSerial generation=$playerGeneration",
+        )
+        handler.postDelayed(videoFreezeWatchdogRunnable, VIDEO_FREEZE_CHECK_INTERVAL_MS)
+    }
+
+    private fun noteVideoFrameRendered(source: String) {
+        videoFrameSerial += 1L
+        if (!videoFreezeWatchdog.isActive()) return
+        val elapsed = (SystemClock.uptimeMillis() - lastSeekStartedAtMs).coerceAtLeast(0L)
+        val recoveryWasActive = videoFreezeRecoveryInProgress
+        logPlayer(
+            "VIDEO_FRAME_AFTER_SEEK source=$source elapsedMs=$elapsed " +
+                "targetMs=$lastSeekTargetMs currentMs=${player.currentPosition} " +
+                "frameSerial=$videoFrameSerial processingOffsetUs=$lastVideoFrameProcessingOffsetUs",
+        )
+        videoFreezeWatchdog.resolve()
+        handler.removeCallbacks(videoFreezeWatchdogRunnable)
+        if (recoveryWasActive) {
+            logPlayer(
+                "VIDEO_FROZEN_RECOVERY_RESULT success=true step=${videoFreezeRecoveryStepLabel()} " +
+                    "elapsedSinceSeekMs=$elapsed decoder=${decoderManager?.activeVideoMode ?: "unknown"}",
+            )
+            ReiAnixDiagnosticTimeline.record(
+                name = "VIDEO_FROZEN_RECOVERY_RESULT",
+                severity = "INFO",
+                source = "NativePlayerActivity",
+                result = "SUCCESS",
+                sessionId = playerSessionId,
+                context = mapOf(
+                    "elapsed_since_seek_ms" to elapsed,
+                    "recovery_step" to videoFreezeRecoveryStepLabel(),
+                    "decoder_mode" to (decoderManager?.activeVideoMode?.name ?: "unknown"),
+                ),
+            )
+        }
+        videoFreezeRecoveryInProgress = false
+    }
+
+    private fun videoFreezeRecoveryStepLabel(): String = when (videoFreezeWatchdog.currentStep()) {
+        1 -> "repeat_seek"
+        2 -> "renderer_restart"
+        3 -> "media_reload"
+        4 -> "software_decoder"
+        else -> "none"
+    }
+
+    private fun checkVideoFreezeAfterSeek() {
+        if (!videoFreezeWatchdog.isActive()) return
+        if (
+            sessionState != SessionState.ACTIVE ||
+            videoFreezeRecoveryGeneration != playerGeneration ||
+            !::player.isInitialized ||
+            errorVisible ||
+            !player.isPlaying ||
+            !hasSelectedVideoTrack()
+        ) {
+            logPlayer("VIDEO_FREEZE_WATCHDOG_CANCELLED reason=playback_or_generation_changed")
+            videoFreezeWatchdog.resolve()
+            videoFreezeRecoveryInProgress = false
+            return
+        }
+        val now = SystemClock.uptimeMillis()
+        val detected = videoFreezeWatchdog.shouldDetect(
+            nowMs = now,
+            currentPositionMs = player.currentPosition,
+            frameSerial = videoFrameSerial,
+            isPlaying = player.isPlaying,
+            isVideoTrackSelected = hasSelectedVideoTrack(),
+        )
+        if (!detected) {
+            if (videoFreezeWatchdog.isActive()) {
+                handler.postDelayed(videoFreezeWatchdogRunnable, VIDEO_FREEZE_CHECK_INTERVAL_MS)
+            }
+            return
+        }
+
+        if (!videoFreezeDetectionLogged) {
+            videoFreezeDetectionLogged = true
+            val elapsed = (now - lastSeekStartedAtMs).coerceAtLeast(0L)
+            logPlayer(
+                "VIDEO_FROZEN_AFTER_SEEK_DETECTED targetMs=$lastSeekTargetMs " +
+                    "positionMs=${player.currentPosition} elapsedMs=$elapsed " +
+                    "frameSerial=$videoFrameSerial processingOffsetUs=$lastVideoFrameProcessingOffsetUs " +
+                    "decoder=${decoderManager?.activeVideoMode ?: "unknown"}",
+            )
+            ReiAnixDiagnosticTimeline.record(
+                name = "VIDEO_FROZEN_AFTER_SEEK_DETECTED",
+                severity = "WARN",
+                source = "NativePlayerActivity",
+                result = "NO_VIDEO_FRAME_WHILE_AUDIO_ADVANCED",
+                sessionId = playerSessionId,
+                context = mapOf(
+                    "target_position_ms" to lastSeekTargetMs,
+                    "current_position_ms" to player.currentPosition,
+                    "elapsed_since_seek_ms" to elapsed,
+                    "video_frame_serial" to videoFrameSerial,
+                    "video_processing_offset_us" to lastVideoFrameProcessingOffsetUs,
+                    "decoder_mode" to (decoderManager?.activeVideoMode?.name ?: "unknown"),
+                ),
+            )
+        }
+
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val step = videoFreezeWatchdog.nextRecoveryStep(now, position, videoFrameSerial)
+        if (step == null) {
+            logPlayer("VIDEO_FROZEN_RECOVERY_RESULT success=false reason=all_recovery_steps_exhausted")
+            ReiAnixDiagnosticTimeline.record(
+                name = "VIDEO_FROZEN_RECOVERY_RESULT",
+                severity = "ERROR",
+                source = "NativePlayerActivity",
+                result = "FAILED",
+                sessionId = playerSessionId,
+                context = mapOf("recovery_steps_exhausted" to true, "current_position_ms" to position),
+            )
+            videoFreezeWatchdog.resolve()
+            videoFreezeRecoveryInProgress = false
+            return
+        }
+
+        videoFreezeRecoveryInProgress = true
+        videoFreezeRecoveryPositionMs = position
+        val resumeWhenReady = player.playWhenReady
+        logPlayer(
+            "VIDEO_FROZEN_RECOVERY_STEP step=$step label=${videoFreezeRecoveryStepLabel()} " +
+                "positionMs=$position decoder=${decoderManager?.activeVideoMode ?: "unknown"}",
+        )
+        ReiAnixDiagnosticTimeline.record(
+            name = "VIDEO_FROZEN_RECOVERY_STEP",
+            severity = "WARN",
+            source = "NativePlayerActivity",
+            result = videoFreezeRecoveryStepLabel(),
+            sessionId = playerSessionId,
+            context = mapOf("step" to step, "position_ms" to position),
+        )
+        try {
+            when (step) {
+                1 -> {
+                    if (canSeekCurrentMedia("freeze_recovery_repeat", logIgnored = false)) {
+                        player.seekTo(position)
+                    }
+                }
+                2 -> {
+                    player.stop()
+                    player.prepare()
+                    if (canSeekCurrentMedia("freeze_recovery_renderer_restart", logIgnored = false)) {
+                        player.seekTo(position)
+                    }
+                    player.playWhenReady = resumeWhenReady
+                }
+                3 -> {
+                    prepareCurrentMedia(
+                        reason = "video_frozen_media_reload",
+                        playWhenReadyOverride = resumeWhenReady,
+                        startPositionOverrideMs = position,
+                    )
+                    videoFreezeRecoveryGeneration = playerGeneration
+                }
+                4 -> {
+                    decoderManager?.selectVideoDecoder(DecoderMode.FFMPEG)
+                    player.prepare()
+                    if (canSeekCurrentMedia("freeze_recovery_software_decoder", logIgnored = false)) {
+                        player.seekTo(position)
+                    }
+                    player.playWhenReady = resumeWhenReady
+                    videoFreezeRecoveryGeneration = playerGeneration
+                    logPlayer("VIDEO_FREEZE_SOFTWARE_DECODER_SELECTED activeMode=${decoderManager?.activeVideoMode ?: "pending"}")
+                }
+            }
+        } catch (error: Exception) {
+            logPlayer("VIDEO_FROZEN_RECOVERY_STEP_FAILED step=$step", error)
+        }
+        handler.postDelayed(videoFreezeWatchdogRunnable, VIDEO_FREEZE_CHECK_INTERVAL_MS)
+    }
+
+    private fun showDecoderSelection() {
+        val options = arrayOf("Automático (hardware com fallback)", "Somente hardware", "FFmpeg/software")
+        val values = arrayOf("auto", "hardware", "ffmpeg")
+        val selected = values.indexOf(decoderPreference).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("Decodificação de vídeo")
+            .setSingleChoiceItems(options, selected) { dialog, which ->
+                val preference = values.getOrNull(which) ?: "auto"
+                val mode = when (preference) {
+                    "hardware" -> DecoderMode.HARDWARE
+                    "ffmpeg" -> DecoderMode.FFMPEG
+                    else -> DecoderMode.AUTO
+                }
+                try {
+                    decoderManager?.selectVideoDecoder(mode)
+                    decoderPreference = preference
+                    getSharedPreferences(PLAYER_PREFERENCES, MODE_PRIVATE).edit()
+                        .putString(PLAYER_DECODER_PREFERENCE, preference)
+                        .apply()
+                    showFeedback("Decodificação: " + options[which])
+                    logPlayer("PLAYER_DECODER_PREFERENCE_CHANGED preference=$preference activeMode=${decoderManager?.activeVideoMode ?: "pending"}")
+                } catch (error: Exception) {
+                    logPlayer("PLAYER_DECODER_PREFERENCE_FAILED preference=$preference", error)
+                    showFeedback("Não foi possível alterar o decodificador")
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private fun showFeedback(message: String, durationMs: Long = 900L) {
