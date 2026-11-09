@@ -3704,7 +3704,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         .put("playbackSpeed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
         .put("audioTrackCount", if (::player.isInitialized) player.currentTracks.groups.count { it.type == C.TRACK_TYPE_AUDIO && it.isSupported } else 0)
         .put("subtitleTrackCount", if (::player.isInitialized) player.currentTracks.groups.count { it.type == C.TRACK_TYPE_TEXT && it.isSupported } else 0)
-.put("durationMs", if (::player.isInitialized) player.duration.coerceAtLeast(0L) else 0L)
+.put("durationMs", effectiveDurationMs())
         .put("firstFrameRendered", firstFrameRenderedForTesting)
         .put("sessionState", sessionState.name)
         .put("transitionPhase", transitionPhase.name)
@@ -3753,7 +3753,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             append("Arquivo: ").append(mediaDisplayName ?: uri.lastPathSegment.orEmpty().ifBlank { "desconhecido" }).append('\n')
             append("MIME: ").append(contentMimeType ?: "não informado").append('\n')
             mediaSizeBytes?.let { append("Tamanho: ").append(it).append(" bytes").append('\n') }
-            append("Duração: ").append(formatTime(player.duration.coerceAtLeast(0L))).append('\n')
+            append("Duração: ").append(formatTime(effectiveDurationMs())).append('\n')
             append("Velocidade: ").append(String.format(Locale.US, "%.2fx", player.playbackParameters.speed)).append('\n')
             append("Decodificador vídeo: ").append(decoderVideoName ?: "não informado").append('\n')
             append("Decodificador áudio: ").append(decoderAudioName ?: "não informado").append('\n')
@@ -5317,7 +5317,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         } else if (normalizedRequested > 0L) {
             logPlayer(
                 "RESUME_CLAMPED requestedMs=" + normalizedRequested +
-                    " durationMs=" + player.duration +
+                    " durationMs=" + effectiveDurationMs() +
                     " requestId=" + requestId.ifEmpty { "-" },
             )
         }
