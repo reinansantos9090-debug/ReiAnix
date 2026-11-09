@@ -28,6 +28,24 @@ class PlayerMediaPolicyMimeTest {
     }
 
     @Test
+    fun fallsBackToKnownExtensionWhenProviderReportsApplicationContainerMime() {
+        assertEquals(
+            "video/x-matroska",
+            PlayerMediaPolicy.resolveVideoMimeType(
+                providerMime = "application/x-matroska",
+                displayName = "episode.mkv",
+            ),
+        )
+        assertEquals(
+            "video/mp4",
+            PlayerMediaPolicy.resolveVideoMimeType(
+                providerMime = "application/mp4",
+                displayName = "episode.mp4",
+            ),
+        )
+    }
+
+    @Test
     fun resolvesCommonLocalVideoExtensionsWithoutProviderMime() {
         assertEquals("video/mp4", PlayerMediaPolicy.resolveVideoMimeType(null, "episode.mp4"))
         assertEquals("video/webm", PlayerMediaPolicy.resolveVideoMimeType(null, "episode.webm"))
