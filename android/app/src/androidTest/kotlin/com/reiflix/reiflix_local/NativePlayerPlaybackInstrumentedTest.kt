@@ -24,6 +24,8 @@ import androidx.media3.ui.PlayerView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Until
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -150,7 +152,22 @@ class NativePlayerPlaybackInstrumentedTest {
 
         logStage("PIP_DISMISS_AND_REOPEN")
         val dismissedActivity = activity!!
-        onMain { dismissedActivity.finish() }
+        // Exercise the system close button. Calling Activity.finish() here hid
+        // the retained/stopped PiP lifecycle bug seen on physical devices.
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val pipWindow = requireNotNull(device.wait(Until.findObject(By.pkg(target.packageName)), 5_000L)) {
+            "The system must expose the app's PiP window"
+        }
+        val pipBounds = pipWindow.visibleBounds
+        device.click(pipBounds.centerX(), pipBounds.centerY())
+        val dismiss = device.wait(
+            Until.findObject(By.res("com.android.systemui", "dismiss")),
+            3_000L,
+        ) ?: device.wait(
+            Until.findObject(By.desc(java.util.regex.Pattern.compile("(?i).*(close|dismiss|fechar).*"))),
+            3_000L,
+        )
+        requireNotNull(dismiss) { "The PiP system close control must be available" }.click()
         await("Dismissing PiP must destroy only the player Activity") {
             dismissedActivity.isDestroyed
         }

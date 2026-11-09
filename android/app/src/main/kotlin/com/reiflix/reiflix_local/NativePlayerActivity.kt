@@ -148,6 +148,9 @@ class NativePlayerActivity : ComponentActivity() {
 
     private var locked = false
     private var inPictureInPicture = false
+    // Keep this until a fullscreen resume: some systems report PiP=false before
+    // onStop when the user dismisses the floating window.
+    private var pictureInPictureSession = false
     @Volatile
     private var sessionState = SessionState.ACTIVE
     private var playerGeneration = 0L
@@ -5337,6 +5340,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     override fun onResume() {
         super.onResume()
+        if (!isPictureInPictureActive()) pictureInPictureSession = false
         publishPlayerLifecycle("onResume")
         logPlayer("onResume requestId=" + requestId.ifEmpty { "-" })
         if (!inPictureInPicture) applyImmersiveAfterLayout()
@@ -5373,6 +5377,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
     override fun onStop() {
         publishPlayerLifecycle("onStop")
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        val screenInteractive = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
+        val screenLocked = (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked
+        if (pictureInPictureSession && !isChangingConfigurations && screenInteractive && !screenLocked) {
+            // A visible PiP is PAUSED, not STOPPED. Android can retain the
+            // dismissed Activity without destroying it, leaving its session
+            // registered and causing MainActivity to reject the next handoff.
+            // Use the normal exit path now, including progress and identity
+            // invalidation, rather than waiting for a possibly delayed destroy.
+            finishPlayer("pip_dismissed")
+        }
         if (isFinishing && !isChangingConfigurations) {
             invalidateTransition("onStop_finishing")
         }
@@ -5412,6 +5426,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         inPictureInPicture = isInPictureInPictureMode
         updatePictureInPictureParams()
         if (isInPictureInPictureMode) {
+            pictureInPictureSession = true
             handler.removeCallbacks(controlsHider)
             findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
             setControlsVisible(false)
