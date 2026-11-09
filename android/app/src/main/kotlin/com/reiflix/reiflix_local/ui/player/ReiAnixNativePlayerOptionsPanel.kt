@@ -1,6 +1,5 @@
 package com.reiflix.reiflix_local.ui.player
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -93,10 +92,6 @@ fun ReiAnixNativePlayerOptionsPanel(
     onInformation: () -> Unit,
 ) {
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
-    BackHandler(enabled = page != PlayerOptionsPage.MAIN) {
-        page = PlayerOptionsPage.MAIN
-    }
-
     val panelShape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier
@@ -124,21 +119,21 @@ fun ReiAnixNativePlayerOptionsPanel(
                 PlayerOptionActionRow(
                     icon = Icons.Filled.GraphicEq,
                     label = "Áudio",
-                    value = "Selecionar",
+                    value = state.audioTrackLabel,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = onAudio,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.ClosedCaption,
                     label = "Legendas",
-                    value = "Selecionar",
+                    value = state.subtitleTrackLabel,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = onSubtitles,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Speed,
                     label = "Velocidade",
-                    value = String.format(Locale.US, "%.2fx", state.playbackSpeed),
+                    value = String.format(Locale.US, "%.1fx", state.playbackSpeed),
                     enabled = !state.episodeTransitionInProgress,
                     onClick = onPlaybackSpeed,
                 )
