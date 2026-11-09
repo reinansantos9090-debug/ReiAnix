@@ -894,6 +894,12 @@ fun ReiAnixEpisodeCard(
     showThumbnail: Boolean = true,
 ) {
     val playable = episode.isPlayable && onPlay != null
+    val availabilityMessage = when (episode.media.sourceAvailabilityState?.lowercase()) {
+        "scope_removed" -> "Pasta removida. Adicione a pasta novamente para recuperar o acesso."
+        "scope_unavailable" -> "Sem acesso à pasta. Verifique a autorização em Armazenamento."
+        "volume_unavailable" -> "Armazenamento desconectado. Reconecte-o para assistir."
+        else -> if (episode.isPlayable) "Episódio local" else "Arquivo indisponível"
+    }
     val episodeAccessibilityLabel = buildList {
         episode.number?.let { number ->
             add(
@@ -923,7 +929,7 @@ fun ReiAnixEpisodeCard(
             add("Em andamento")
         }
         if (!episode.isPlayable) {
-            add("Mídia indisponível")
+            add(availabilityMessage)
         }
         add(episode.playbackActionLabel)
     }.distinct().joinToString(", ")
@@ -1087,15 +1093,13 @@ fun ReiAnixEpisodeCard(
                     announceProgress = false,
                 )
                 Text(
-                    text = if (episode.isPlayable) "Episódio local" else "Arquivo indisponível",
+                    text = availabilityMessage,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (episode.isPlayable) {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     } else {
                         MaterialTheme.colorScheme.error
                     },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Box(
