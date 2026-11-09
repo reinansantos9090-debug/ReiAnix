@@ -551,6 +551,14 @@ fun ReiAnixNativePlayerBottomControls(
                 active = state.aspectLabel == "Preencher",
             )
             PlayerBottomAction(
+                icon = Icons.Filled.SkipNext,
+                label = "Próximo episódio",
+                showLabel = !landscape,
+                contentDescription = "Próximo episódio",
+                onClick = onNext,
+                enabled = state.canNext && !state.episodeTransitionInProgress,
+            )
+            PlayerBottomAction(
                 icon = Icons.Filled.MoreVert,
                 label = "Opções",
                 showLabel = !landscape,
@@ -568,14 +576,6 @@ fun ReiAnixNativePlayerBottomControls(
                 },
                 onClick = onSource,
                 enabled = !state.episodeTransitionInProgress,
-            )
-            PlayerBottomAction(
-                icon = Icons.Filled.SkipNext,
-                label = "Próximo episódio",
-                showLabel = !landscape,
-                contentDescription = "Próximo episódio",
-                onClick = onNext,
-                enabled = state.canNext && !state.episodeTransitionInProgress,
             )
         }
     }
