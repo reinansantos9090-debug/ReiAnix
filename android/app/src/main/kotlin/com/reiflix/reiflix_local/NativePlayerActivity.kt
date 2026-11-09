@@ -65,6 +65,7 @@ import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerTopControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerCenterControls
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerBottomControls
+import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerOptionsPanel
 import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerUiState
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
@@ -121,6 +122,7 @@ class NativePlayerActivity : ComponentActivity() {
     private lateinit var composeCenterView: ComposeView
     private lateinit var composeBottomView: ComposeView
     private val composePlayerUiState = mutableStateOf(ReiAnixNativePlayerUiState())
+    private val optionsPanelResetSignal = mutableStateOf(0)
     private var composeControlsEnabled = false
     private lateinit var uri: Uri
     private lateinit var playerView: PlayerView
@@ -2800,136 +2802,92 @@ override fun onCreate(savedInstanceState: Bundle?) {
         markerRow.addView(skipEnding, weightParams(150))
         bottomBar.addView(markerRow)
 
-        val morePanel = LinearLayout(this).apply {
+        val morePanel = ComposeView(this).apply {
             tag = "reiflix_more_panel"
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(0xE614141A.toInt())
-            visibility = View.GONE
-        }
-        fun addMoreRow(vararg buttons: View) {
-            val row = LinearLayout(this@NativePlayerActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ReiAnixComposeTheme {
+                    ReiAnixNativePlayerOptionsPanel(
+                        state = composePlayerUiState.value,
+                        showPictureInPicture = canEnterPictureInPicture(),
+                        resetSignal = optionsPanelResetSignal.value,
+                        onPrevious = {
+                            if (!episodeChangePending && intent.getBooleanExtra("canPrevious", false)) {
+                                requestEpisode("player_previous_request")
+                            }
+                        },
+                        onNext = {
+                            if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
+                                requestEpisode("player_next_request")
+                            }
+                        },
+                        onPlaybackSpeed = {
+                            showSpeedSelection(TextView(this@NativePlayerActivity))
+                        },
+                        onRestart = {
+                            if (::player.isInitialized && !episodeChangePending) {
+                                player.seekTo(0L)
+                                saveProgress("player_progress", force = true)
+                                showFeedback("00:00")
+                            }
+                        },
+                        onMarkers = { showLocalMetadataEditor() },
+                        onAutoplayChanged = { enabled ->
+                            autoplayNext = enabled
+                            persistCanonicalPlayerSetting("player.autoplay_next", enabled.toString())
+                            showFeedback(if (enabled) "Autoplay ligado" else "Autoplay desligado")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onGesturesChanged = { enabled ->
+                            horizontalSeekEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.horizontal_seek", enabled.toString())
+                            showFeedback(if (enabled) "Gestos horizontais ligados" else "Gestos horizontais desligados")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onVolumeGestureChanged = { enabled ->
+                            volumeGesturesEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.volume", enabled.toString())
+                            showFeedback(if (enabled) "Gesto de volume ligado" else "Gesto de volume desligado")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onBrightnessGestureChanged = { enabled ->
+                            brightnessGesturesEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.brightness", enabled.toString())
+                            showFeedback(if (enabled) "Gesto de brilho ligado" else "Gesto de brilho desligado")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onDoubleTapChanged = { enabled ->
+                            doubleTapEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.double_tap", enabled.toString())
+                            showFeedback(if (enabled) "Double tap ligado" else "Double tap desligado")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onLongPressChanged = { enabled ->
+                            longPressEnabled = enabled
+                            persistCanonicalPlayerSetting("gestures.long_press", enabled.toString())
+                            showFeedback(if (enabled) "Pressão longa ligada" else "Pressão longa desligada")
+                            touchControls()
+                            syncComposePlayerUiState()
+                        },
+                        onPictureInPicture = { requestPictureInPicture() },
+                        onHistory = { showPlaybackHistory() },
+                        onInformation = { showTechnicalInfo() },
+                    )
+                }
             }
-            buttons.forEach { row.addView(it, weightParams(96)) }
-            morePanel.addView(row)
         }
-        val previousEpisode = actionButton("Anterior", 92) {
-            if (intent.getBooleanExtra("canPrevious", false)) requestEpisode("player_previous_request")
-        }.apply {
-            tag = "reiflix_previous_episode"
-            isEnabled = intent.getBooleanExtra("canPrevious", false)
-        }
-        val nextEpisode = actionButton("Próximo", 92) {
-            if (intent.getBooleanExtra("canNext", false)) requestEpisode("player_next_request")
-        }.apply {
-            tag = "reiflix_next_episode"
-            isEnabled = intent.getBooleanExtra("canNext", false)
-        }
-        val audio = actionButton("Áudio", 92) { showTrackSelection(C.TRACK_TYPE_AUDIO, "Áudio") }.apply {
-            tag = "reiflix_audio_button"
-        }
-        val subtitle = actionButton("Legenda", 92) { showTrackSelection(C.TRACK_TYPE_TEXT, "Legendas") }.apply {
-            tag = "reiflix_subtitle_button"
-        }
-        val speed = actionButton("1.0x", 92) { button -> showSpeedSelection(button) }.apply {
-            tag = "reiflix_speed_button"
-            contentDescription = "Velocidade de reprodução"
-        }
-        val horizontalSeekButton = actionButton(gestureSettingLabel("Gestos", horizontalSeekEnabled), 92) { button ->
-            horizontalSeekEnabled = !horizontalSeekEnabled
-            persistCanonicalPlayerSetting("gestures.horizontal_seek", horizontalSeekEnabled.toString())
-            button.text = gestureSettingLabel("Gestos", horizontalSeekEnabled)
-            button.isSelected = horizontalSeekEnabled
-            showFeedback(if (horizontalSeekEnabled) "Gestos horizontais ligados" else "Gestos horizontais desligados")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_horizontal_seek"
-            contentDescription = "Ativar ou desativar gestos horizontais de busca temporal"
-            isSelected = horizontalSeekEnabled
-        }
-        val markers = actionButton("Marcadores", 92) {
-            showLocalMetadataEditor()
-        }.apply {
-            tag = "reiflix_markers_button"
-            contentDescription = "Marcadores e notas locais"
-        }
-        val restartButton = actionButton("Reiniciar", 92) {
-            if (::player.isInitialized) {
-                player.seekTo(0L)
-                saveProgress("player_progress", force = true)
-                showFeedback("00:00")
-            }
-        }
-        addMoreRow(previousEpisode, nextEpisode)
-        addMoreRow(audio, subtitle)
-        addMoreRow(speed, restartButton)
-        addMoreRow(markers)
-        addMoreRow(horizontalSeekButton, actionButton("Autoplay", 92) { button ->
-            autoplayNext = !autoplayNext
-            button.text = "Autoplay " + if (autoplayNext) "ON" else "OFF"
-            persistCanonicalPlayerSetting("player.autoplay_next", autoplayNext.toString())
-            showFeedback(if (autoplayNext) "Autoplay ligado" else "Autoplay desligado")
-        })
-
-        val volumeGestureButton = actionButton(gestureSettingLabel("Volume", volumeGesturesEnabled), 120) { button ->
-            volumeGesturesEnabled = !volumeGesturesEnabled
-            persistCanonicalPlayerSetting("gestures.volume", volumeGesturesEnabled.toString())
-            button.text = gestureSettingLabel("Volume", volumeGesturesEnabled)
-            showFeedback(if (volumeGesturesEnabled) "Gesto de volume ligado" else "Gesto de volume desligado")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_volume"
-            contentDescription = "Configurar gesto de volume"
-        }
-        val brightnessGestureButton = actionButton(gestureSettingLabel("Brilho", brightnessGesturesEnabled), 120) { button ->
-            brightnessGesturesEnabled = !brightnessGesturesEnabled
-            persistCanonicalPlayerSetting("gestures.brightness", brightnessGesturesEnabled.toString())
-            button.text = gestureSettingLabel("Brilho", brightnessGesturesEnabled)
-            showFeedback(if (brightnessGesturesEnabled) "Gesto de brilho ligado" else "Gesto de brilho desligado")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_brightness"
-            contentDescription = "Configurar gesto de brilho"
-        }
-        val doubleTapButton = actionButton(gestureSettingLabel("Double tap", doubleTapEnabled), 120) { button ->
-            doubleTapEnabled = !doubleTapEnabled
-            persistCanonicalPlayerSetting("gestures.double_tap", doubleTapEnabled.toString())
-            button.text = gestureSettingLabel("Double tap", doubleTapEnabled)
-            button.isSelected = doubleTapEnabled
-            showFeedback(if (doubleTapEnabled) "Double tap ligado" else "Double tap desligado")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_double_tap"
-            contentDescription = "Configurar double tap"
-            isSelected = doubleTapEnabled
-        }
-        val longPressButton = actionButton(gestureSettingLabel("Pressão", longPressEnabled), 120) { button ->
-            longPressEnabled = !longPressEnabled
-            persistCanonicalPlayerSetting("gestures.long_press", longPressEnabled.toString())
-            button.text = gestureSettingLabel("Pressão", longPressEnabled)
-            showFeedback(if (longPressEnabled) "Pressão longa ligada" else "Pressão longa desligada")
-            touchControls()
-        }.apply {
-            tag = "reiflix_gesture_long_press"
-            contentDescription = "Configurar pressão longa"
-        }
-        addMoreRow(volumeGestureButton, brightnessGestureButton)
-        addMoreRow(doubleTapButton, longPressButton)
-        if (canEnterPictureInPicture()) {
-            val pip = actionButton("PIP", 92) { requestPictureInPicture() }
-            pip.contentDescription = "Picture in Picture"
-            addMoreRow(pip)
-        }
-        addMoreRow(actionButton("Informações", 92) { showTechnicalInfo() }.apply {
-            tag = "reiflix_technical_info"
-            contentDescription = "Informações técnicas"
-        })
+        val availablePanelWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(240))
+        val panelWidth = minOf(dp(410), availablePanelWidth)
+        val availablePanelHeight = (resources.displayMetrics.heightPixels - dp(72)).coerceAtLeast(dp(220))
+        val panelHeight = minOf(dp(380), availablePanelHeight)
         controls.addView(morePanel, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
+            panelWidth,
+            panelHeight,
         ).apply {
             gravity = Gravity.TOP or Gravity.END
             topMargin = dp(56)
@@ -3120,6 +3078,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
             episodeTransitionInProgress = episodeChangePending,
             aspectLabel = aspectModeLabel,
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
+            audioTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_AUDIO),
+            subtitleTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_TEXT),
+            audioTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_AUDIO) > 1,
+            subtitleTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_TEXT) > 0,
+            autoplayNext = autoplayNext,
+            horizontalSeekEnabled = horizontalSeekEnabled,
+            volumeGesturesEnabled = volumeGesturesEnabled,
+            brightnessGesturesEnabled = brightnessGesturesEnabled,
+            doubleTapEnabled = doubleTapEnabled,
+            longPressEnabled = longPressEnabled,
             safeTopPx = gestureSafeTop,
             safeBottomPx = gestureSafeBottom,
         )
@@ -3161,6 +3129,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val panel = findViewByTag<View>("reiflix_more_panel")
         panel?.visibility = if (moreVisible) View.VISIBLE else View.GONE
         if (moreVisible) {
+            optionsPanelResetSignal.value += 1
             panel?.bringToFront()
         }
         controls.bringToFront()
@@ -3338,15 +3307,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
         syncComposePlayerUiState()
     }
 
+    private fun supportedTrackCount(type: Int): Int {
+        if (!::player.isInitialized) return 0
+        return player.currentTracks.groups
+            .filter { it.type == type && it.isSupported }
+            .sumOf { group ->
+                (0 until group.length).count { group.isTrackSupported(it) }
+            }
+    }
+
     private fun updateTrackButtons() {
         if (!::player.isInitialized) return
-
-        fun supportedTrackCount(type: Int): Int =
-            player.currentTracks.groups
-                .filter { it.type == type && it.isSupported }
-                .sumOf { group ->
-                    (0 until group.length).count { group.isTrackSupported(it) }
-                }
 
         val audioCount = supportedTrackCount(C.TRACK_TYPE_AUDIO)
         val subtitleCount = supportedTrackCount(C.TRACK_TYPE_TEXT)
@@ -3389,6 +3360,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.post(progressReporter)
     }
 
+    private fun selectedPlayerTrackLabel(trackType: Int): String {
+        if (!::player.isInitialized) return "Selecionar"
+        val parameters = player.trackSelectionParameters
+        if (trackType == C.TRACK_TYPE_TEXT && parameters.disabledTrackTypes.contains(trackType)) {
+            return "Off"
+        }
+        val selectedFormat = player.currentTracks.groups
+            .filter { it.type == trackType && it.isSupported }
+            .flatMap { group ->
+                (0 until group.length)
+                    .filter { group.isTrackSupported(it) && group.isTrackSelected(it) }
+                    .map { group.getTrackFormat(it) }
+            }
+            .firstOrNull()
+        return selectedFormat?.label?.takeIf { it.isNotBlank() }
+            ?: selectedFormat?.language?.takeIf { it.isNotBlank() }
+            ?: if (trackType == C.TRACK_TYPE_TEXT) "Off" else "Automático"
+    }
+
     private fun showSpeedSelection(button: TextView) {
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
         if (!::player.isInitialized) return
@@ -3405,6 +3395,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 button.isSelected = true
                 showFeedback(labels[which])
                 touchControls()
+                syncComposePlayerUiState()
                 dialog.dismiss()
             }
             .setNegativeButton("Cancelar", null)
@@ -3650,6 +3641,63 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
+    private fun showPlaybackHistory() {
+        touchControls()
+        val loadingDialog = AlertDialog.Builder(this)
+            .setTitle("Histórico")
+            .setMessage("Carregando histórico…")
+            .setNegativeButton("Fechar", null)
+            .create()
+        loadingDialog.show()
+
+        lifecycleScope.launch {
+            try {
+                val historyItems = withContext(Dispatchers.IO) {
+                    val dependencies = ReiAnixAppDependencies.from(this@NativePlayerActivity)
+                    dependencies.consumptionService.playbackHistory(limit = 36).mapNotNull { progress ->
+                        val episode = dependencies.sqliteLibraryRepository.getEpisode(progress.episodeId)
+                            ?: return@mapNotNull null
+                        val anime = dependencies.sqliteLibraryRepository.getAnime(episode.animeId)
+                        val animeTitle = anime?.title?.takeIf { it.isNotBlank() }
+                            ?: episode.fileName
+                        val episodeTitle = episode.episodeTitle?.takeIf { it.isNotBlank() }
+                            ?: episode.number?.let { number ->
+                                val numberLabel = if (number % 1.0 == 0.0) {
+                                    number.toInt().toString()
+                                } else {
+                                    number.toString()
+                                }
+                                "Episódio " + numberLabel
+                            }
+                            ?: episode.fileName
+                        animeTitle + " • " + episodeTitle
+                    }.distinct()
+                }
+
+                if (loadingDialog.isShowing) loadingDialog.dismiss()
+                if (isFinishing || isDestroyed) return@launch
+                if (historyItems.isEmpty()) {
+                    showFeedback("Nenhum histórico de reprodução encontrado")
+                    return@launch
+                }
+                AlertDialog.Builder(this@NativePlayerActivity)
+                    .setTitle("Histórico")
+                    .setItems(historyItems.toTypedArray(), null)
+                    .setNegativeButton("Fechar", null)
+                    .show()
+            } catch (cancelled: CancellationException) {
+                if (loadingDialog.isShowing) loadingDialog.dismiss()
+                throw cancelled
+            } catch (exception: Exception) {
+                if (loadingDialog.isShowing) loadingDialog.dismiss()
+                logPlayer("PLAYER_HISTORY_LOAD_FAILED", exception)
+                if (!isFinishing && !isDestroyed) {
+                    showFeedback("Não foi possível carregar o histórico")
+                }
+            }
+        }
+    }
+
     private fun showTechnicalInfo() {
         if (!::player.isInitialized) return
         touchControls()
@@ -3759,6 +3807,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     player.trackSelectionParameters = builder.build()
                     updateTrackButtons()
                     captureTrackFormatSummaries()
+                    syncComposePlayerUiState()
                     logPlayer(
                         "TRACK_SELECTION_APPLIED type=" + trackType + " index=" +
                             option.trackIndex + " label=" + option.title,

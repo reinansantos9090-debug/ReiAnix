@@ -74,6 +74,16 @@ data class ReiAnixNativePlayerUiState(
     val episodeTransitionInProgress: Boolean = false,
     val aspectLabel: String = "Ajustar",
     val playbackSpeed: Float = 1f,
+    val audioTrackLabel: String = "Automático",
+    val subtitleTrackLabel: String = "Off",
+    val audioTrackSelectionEnabled: Boolean = false,
+    val subtitleTrackSelectionEnabled: Boolean = false,
+    val autoplayNext: Boolean = true,
+    val horizontalSeekEnabled: Boolean = true,
+    val volumeGesturesEnabled: Boolean = true,
+    val brightnessGesturesEnabled: Boolean = true,
+    val doubleTapEnabled: Boolean = true,
+    val longPressEnabled: Boolean = true,
     val safeTopPx: Int = 0,
     val safeBottomPx: Int = 0,
 )
@@ -551,6 +561,14 @@ fun ReiAnixNativePlayerBottomControls(
                 active = state.aspectLabel == "Preencher",
             )
             PlayerBottomAction(
+                icon = Icons.Filled.SkipNext,
+                label = "Próximo episódio",
+                showLabel = !landscape,
+                contentDescription = "Próximo episódio",
+                onClick = onNext,
+                enabled = state.canNext && !state.episodeTransitionInProgress,
+            )
+            PlayerBottomAction(
                 icon = Icons.Filled.MoreVert,
                 label = "Opções",
                 showLabel = !landscape,
@@ -568,14 +586,6 @@ fun ReiAnixNativePlayerBottomControls(
                 },
                 onClick = onSource,
                 enabled = !state.episodeTransitionInProgress,
-            )
-            PlayerBottomAction(
-                icon = Icons.Filled.SkipNext,
-                label = "Próximo episódio",
-                showLabel = !landscape,
-                contentDescription = "Próximo episódio",
-                onClick = onNext,
-                enabled = state.canNext && !state.episodeTransitionInProgress,
             )
         }
     }
