@@ -3177,6 +3177,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             technicalLine = buildPlayerTechnicalLine(),
             positionMs = currentPosition.coerceAtLeast(0L),
             durationMs = currentDuration.coerceAtLeast(0L),
+            canSeek = currentDuration > 0L && isCurrentMediaSeekAvailable(),
             bufferedPositionMs = if (::player.isInitialized && currentDuration > 0L) {
                 player.bufferedPosition.coerceIn(0L, currentDuration)
             } else {
@@ -3464,11 +3465,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ((player.bufferedPosition.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
                     .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
             } else 0
-            seekBar.isEnabled = seekAvailable
+            seekBar.isEnabled = seekAvailable && duration > 0L
         } else if (::seekBar.isInitialized) {
             seekBar.progress = 0
             seekBar.secondaryProgress = 0
-            seekBar.isEnabled = seekAvailable
+            seekBar.isEnabled = false
         }
         if (::positionLabel.isInitialized) positionLabel.text = formatTime(position)
         if (::durationLabel.isInitialized) {
