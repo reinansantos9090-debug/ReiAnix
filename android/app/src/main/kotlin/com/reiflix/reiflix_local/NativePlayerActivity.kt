@@ -1330,6 +1330,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
         ::player.isInitialized &&
             player.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
 
+    private fun isTransitionReadyForCurrentGeneration(): Boolean =
+        ::player.isInitialized &&
+            transitionReadyGeneration == playerGeneration &&
+            player.playbackState == Player.STATE_READY
+
+    private fun isTransitionBlockingPlayerCommands(): Boolean =
+        ReiAnixPlayerSeekPolicy.transitionBlocksCommands(
+            transitionPending = episodeChangePending,
+            transitionReadyForCurrentGeneration = isTransitionReadyForCurrentGeneration(),
+        )
+
     private fun currentDisplayDuration(): ReiAnixPlayerSeekPolicy.DisplayDuration {
         val playerDuration = if (hasCurrentMediaItem()) player.duration else C.TIME_UNSET
         return ReiAnixPlayerSeekPolicy.displayDuration(playerDuration, savedDurationMsForDisplay)
@@ -1353,13 +1364,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             relativeDeltaMs < 0L -> player.isCommandAvailable(Player.COMMAND_SEEK_BACK)
             else -> player.isCommandAvailable(Player.COMMAND_SEEK_FORWARD)
         }
-        val transitionReadyForCurrentGeneration =
-            transitionReadyGeneration == playerGeneration &&
-                player.playbackState == Player.STATE_READY
-        val transitionBlocksCommands = ReiAnixPlayerSeekPolicy.transitionBlocksCommands(
-            transitionPending = episodeChangePending,
-            transitionReadyForCurrentGeneration = transitionReadyForCurrentGeneration,
-        )
+        val transitionBlocksCommands = isTransitionBlockingPlayerCommands()
         val allowed = ReiAnixPlayerSeekPolicy.canSeek(
             isCurrentMediaItemSeekable = seekable,
             seekCommandAvailable = inItemCommand && directionCommand,
@@ -3558,9 +3563,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             errorVisible = errorVisible,
             controlsVisible = controlsVisible,
             locked = locked,
-            canNext = intent.getBooleanExtra("canNext", false),
-            canPrevious = intent.getBooleanExtra("canPrevious", false),
-            episodeTransitionInProgress = episodeChangePending,
+            // Do not let a slow/missed first-frame callback freeze every Compose
+            // control after the current media generation is already READY.
+            // Next/Previous stay guarded until the transition has actually committed.
+            canNext = !episodeChangePending && intent.getBooleanExtra("canNext", false),
+            canPrevious = !episodeChangePending && intent.getBooleanExtra("canPrevious", false),
+            episodeTransitionInProgress = isTransitionBlockingPlayerCommands(),
             aspectLabel = aspectModeLabel,
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
             safeTopPx = gestureSafeTop,
@@ -3760,14 +3768,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             return
         }
-        val transitionReadyForCurrentGeneration =
-            transitionReadyGeneration == playerGeneration &&
-                player.playbackState == Player.STATE_READY
-        if (ReiAnixPlayerSeekPolicy.transitionBlocksCommands(
-                transitionPending = episodeChangePending,
-                transitionReadyForCurrentGeneration = transitionReadyForCurrentGeneration,
-            )
-        ) {
+        if (isTransitionBlockingPlayerCommands()) {
             logPlayer(
                 "PLAYER_COMMAND_IGNORED command=play_pause reason=episode_transition_not_ready " +
                     "playbackState=${player.playbackStateLabel()} generation=$playerGeneration " +
