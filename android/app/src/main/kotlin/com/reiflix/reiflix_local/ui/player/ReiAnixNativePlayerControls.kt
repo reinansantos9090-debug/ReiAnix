@@ -122,6 +122,7 @@ fun ReiAnixNativePlayerControls(
         ReiAnixNativePlayerBottomControls(
             state = state,
             onSeekTo = onSeekTo,
+            onPreviewPosition = onPreviewPosition,
             onToggleLock = onToggleLock,
             onResize = onResize,
             onSource = onSource,
@@ -362,6 +363,7 @@ private fun PlayerSeekIconButton(
 fun ReiAnixNativePlayerBottomControls(
     state: ReiAnixNativePlayerUiState,
     onSeekTo: (Long) -> Unit,
+    onPreviewPosition: (Long?) -> Unit = {},
     onToggleLock: () -> Unit,
     onResize: () -> Unit,
     onSource: () -> Unit,
