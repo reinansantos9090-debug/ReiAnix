@@ -75,9 +75,9 @@ fun ReiAnixNativePlayerOptionsPanel(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Color(0xC06F6F6F))
             .verticalScroll(rememberScrollState())
-            .padding(vertical = 6.dp),
+            .padding(vertical = 2.dp),
     ) {
         PlayerOptionActionRow(
             icon = Icons.Filled.SkipPrevious,
@@ -190,9 +190,9 @@ private fun PlayerOptionActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 54.dp)
+            .heightIn(min = 48.dp)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 14.dp, vertical = 2.dp)
             .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
@@ -201,13 +201,13 @@ private fun PlayerOptionActionRow(
             imageVector = icon,
             contentDescription = null,
             tint = ReiAnixTokens.Colors.playerControl.copy(alpha = contentAlpha),
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(20.dp),
         )
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = label,
             color = ReiAnixTokens.Colors.playerControl.copy(alpha = contentAlpha),
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -225,7 +225,7 @@ private fun PlayerOptionActionRow(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = null,
                 tint = ReiAnixTokens.Colors.textMuted.copy(alpha = contentAlpha),
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
             )
         }
     }
@@ -242,8 +242,8 @@ private fun PlayerOptionToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 54.dp)
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 14.dp, vertical = 2.dp)
             .semantics { contentDescription = description },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -251,13 +251,13 @@ private fun PlayerOptionToggleRow(
             imageVector = icon,
             contentDescription = null,
             tint = ReiAnixTokens.Colors.playerControl,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(20.dp),
         )
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = label,
             color = ReiAnixTokens.Colors.playerControl,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
