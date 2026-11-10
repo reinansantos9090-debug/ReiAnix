@@ -1412,6 +1412,11 @@ class ReiAnixLibraryViewModel(
         repository.refresh()
     }
 
+    /** Close only the manual-refresh indicator when its native scan finishes. */
+    fun reportNativeScanRefreshCompletion(requestId: String?, status: String) {
+        repository.reportNativeRefreshCompletion(requestId, status)
+    }
+
     /**
      * Reloads the canonical SQLite projection without requesting another filesystem scan.
      * Use after a completed local mutation, player checkpoint, permission-state update,
