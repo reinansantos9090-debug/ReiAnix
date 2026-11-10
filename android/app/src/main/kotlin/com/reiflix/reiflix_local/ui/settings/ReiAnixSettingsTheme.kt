@@ -4,6 +4,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import com.reiflix.reiflix_local.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -15,7 +17,7 @@ import androidx.compose.ui.unit.sp
  * and custom_preference_material.xml (16dp vertical preference padding).
  */
 private fun preferenceText(size: Int, lineHeight: Int) = TextStyle(
-    fontFamily = FontFamily.SansSerif,
+    fontFamily = FontFamily(Font(R.font.reianix_settings_sans)),
     fontWeight = FontWeight.Normal,
     fontSize = size.sp,
     lineHeight = lineHeight.sp,

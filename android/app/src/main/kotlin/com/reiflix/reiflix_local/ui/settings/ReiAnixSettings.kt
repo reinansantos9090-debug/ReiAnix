@@ -2029,10 +2029,10 @@ private fun PosterSizeSettingRow(
             onValueChangeFinished = {
                 onSelected(sliderValue.toInt().coerceIn(0, 16))
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(start = 40.dp),
         )
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(start = 40.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
@@ -2059,7 +2059,7 @@ private fun SettingsActionRow(
     Row(
         modifier.fillMaxWidth().heightIn(min = 50.dp)
             .settingsClickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 14.dp)
+            .padding(horizontal = 4.dp, vertical = 14.dp)
             .semantics { stateDescription = if (enabled) "Habilitado" else "Desabilitado" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
