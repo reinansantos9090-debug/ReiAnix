@@ -26,8 +26,9 @@ import org.json.JSONObject
 
 /** Account credentials and outbound receipts only; SQLite remains the local progress authority. */
 class ReiAnixAniListAccountService(context: Context, private val library: ReiAnixSqliteLibraryRepository) {
-    data class State(val connected: Boolean = false, val name: String = "", val autoSync: Boolean = false,
-        val message: String = "", val configured: Boolean = BuildConfig.ANILIST_CLIENT_ID.isNotBlank())
+    data class State(val connected: Boolean = false, val name: String = "", val autoSync: Boolean = true,
+        val message: String = "", val configured: Boolean = BuildConfig.ANILIST_CLIENT_ID.isNotBlank(),
+        val avatarUrl: String = "")
     private val prefs = context.applicationContext.getSharedPreferences("anilist_account_v1", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -38,7 +39,13 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
 
     init {
         scope.launch {
-            mutex.withLock { refresh() }
+            mutex.withLock {
+                // Automatic progress is the app default, including existing connections.
+                // No credential is created here; all sends still require a connected account
+                // and a manually confirmed anime association.
+                prefs.edit().putBoolean("enabled", true).commit()
+                refresh()
+            }
             wake.trySend(Unit)
             for (signal in wake) {
                 for (attempt in 0..2) {
@@ -92,16 +99,37 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
         prefs.edit().remove("oauth_state").remove("oauth_started").commit()
         val token = values.getQueryParameter("access_token")?.takeIf { it.length in 16..8192 }
             ?: run { refresh("Conexão cancelada ou não autorizada."); return@withLock false }
-        val viewer = request("query { Viewer { id name } }", JSONObject(), token).getJSONObject("Viewer")
+        val viewer = request("query { Viewer { id name avatar { large } } }", JSONObject(), token).getJSONObject("Viewer")
         val id = viewer.getLong("id")
         require(id > 0L)
         val encrypted = encrypt(token)
         if (prefs.getLong("user_id", 0L) != id) prefs.edit().clear().commit()
-        // New connections always require a separate explicit opt-in for automatic writes.
+        // Connecting authorizes the automatic episode updates requested by the app flow.
         prefs.edit().putString("token", encrypted).putLong("user_id", id)
-            .putString("name", viewer.getString("name")).putBoolean("enabled", false).commit()
+            .putString("name", viewer.getString("name"))
+            .putString("avatar_url", viewer.optJSONObject("avatar")?.optString("large").orEmpty())
+            .putBoolean("enabled", true).commit()
         refresh("Conta conectada.")
+        wake.trySend(Unit)
         true
+    } }
+
+    /** Refreshes profile presentation for accounts connected before avatars were stored. */
+    suspend fun refreshProfile() = withContext(Dispatchers.IO) { mutex.withLock {
+        if (!prefs.contains("token")) return@withLock
+        try {
+            val token = decrypt(prefs.getString("token", "").orEmpty())
+            val viewer = request("query { Viewer { id name avatar { large } } }", JSONObject(), token)
+                .getJSONObject("Viewer")
+            // Never attach another profile's presentation to the persisted credential.
+            if (viewer.getLong("id") != prefs.getLong("user_id", 0L)) return@withLock
+            prefs.edit().putString("name", viewer.getString("name"))
+                .putString("avatar_url", viewer.optJSONObject("avatar")?.optString("large").orEmpty()).apply()
+            refresh()
+        } catch (cancelled: CancellationException) { throw cancelled
+        } catch (_: Exception) {
+            // Offline profile refresh keeps the cached name/avatar and the active login.
+        }
     } }
 
     suspend fun setAutoSync(enabled: Boolean) = withContext(Dispatchers.IO) { mutex.withLock {
@@ -190,8 +218,13 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
         edit.commit()
     }
     private fun refresh(message: String = "") {
-        mutableState.value = State(prefs.contains("token"), prefs.getString("name", "").orEmpty(),
-            prefs.getBoolean("enabled", false), message)
+        mutableState.value = State(
+            connected = prefs.contains("token"),
+            name = prefs.getString("name", "").orEmpty(),
+            autoSync = prefs.getBoolean("enabled", true),
+            message = message,
+            avatarUrl = prefs.getString("avatar_url", "").orEmpty(),
+        )
     }
     private class AccountFailure(val code: Int, val retryAfterMs: Long = 0L) : Exception()
     private fun request(query: String, variables: JSONObject, token: String): JSONObject {

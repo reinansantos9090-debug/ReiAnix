@@ -1,4 +1,4 @@
-# Conta e sincronização AniList
+# Contas — AniList
 
 ## Cadastro necessário para publicar o login
 
@@ -14,17 +14,23 @@ Os workflows existentes não foram alterados. Para os builds oficiais usarem o I
 
 ## Fluxo do usuário
 
-Configurações → Contas e sincronização → AniList. Conectar abre o navegador oficial. O callback dedicado valida nonce, prazo de 15 minutos e URI; seu token nunca passa pelo player, logs ou mailbox. O token é cifrado com AES-GCM usando chave não exportável no Android Keystore; backups Android já estão desativados no manifesto.
+Configurações → Contas → AniList. Conectar abre o navegador oficial. O callback dedicado valida nonce, prazo de 15 minutos e URI; seu token nunca passa pelo player, logs ou mailbox. O token é cifrado com AES-GCM usando chave não exportável no Android Keystore; backups Android já estão desativados no manifesto.
 
-A sincronização fica desligada após conectar. Ao ativar, um checkpoint local confirmado em pelo menos 80% do episódio pode alimentar a fila da conta. A reprodução e o salvamento SQLite não aguardam rede.
+A atualização automática fica ativada por padrão, inclusive nas contas já conectadas, sem interruptor na interface. Um checkpoint local confirmado em pelo menos 80% do episódio pode alimentar a fila da conta. A reprodução e o salvamento SQLite não aguardam rede.
 
 Para evitar alterações no perfil baseadas em capas possivelmente incorretas, somente associações ao AniList confirmadas manualmente nos detalhes são enviadas. O ID persistido é revalidado antes do envio. Especiais e episódios fracionários são excluídos; temporadas posteriores exigem numeração absoluta. O cadastro não interfere em capas, thumbnails ou buscas públicas.
 
 A fila guarda o maior progresso pendente por anime e recibos por conta. Não reduz progresso remoto, preserva Completed/Repeating e só conclui quando o total remoto é conhecido. Falhas de rede ficam pendentes; há três tentativas com espera e respeito ao Retry-After, com novo processamento ao receber checkpoints ou reabrir a tela da conta. Ao reconectar outra conta/desconectar, as pendências da conta anterior são descartadas. Desativar limpa pendências não enviadas. Uma requisição já aceita pelo servidor não pode ser desfeita por desconectar.
 
+## Apresentação da conta
+
+A tela Contas mostra somente a linha AniList, com logo e nome. Sem conexão, tocar abre o OAuth existente no navegador. Com conexão, a mesma linha mantém um ícone de confirmação; tocar abre um painel com avatar e nome do Viewer, identificação AniList e ações Trocar conta/Sair. Trocar conta abre nova autorização e preserva a conexão atual caso o usuário cancele no navegador; credenciais e pendências são substituídas somente após callback válido de outra conta. A sessão do navegador pertence ao AniList; a escolha de outro usuário ocorre na página oficial. Sair limpa a conta e as pendências neste aparelho, sem alterar o progresso SQLite.
+
+O avatar usa `Viewer.avatar.large` e o componente de imagem de conta existente, com fallback local se estiver indisponível. Contas antigas atualizam nome e avatar ao abrir a tela; uma falha de rede preserva o perfil salvo. A URL de autorização, validação de nonce, Keystore e regras de envio permanecem as mesmas. Não há dependências novas.
+
 ## Validação necessária
 
-Além do build oficial, validar com o cadastro real: consentimento/negação, retorno ao app, nonce inválido/repetido, token revogado, ativação/desativação, 79%/80%, repetição de checkpoints, progresso remoto maior, último episódio, numeração incompatível, offline/reconexão, troca de conta e proteção do progresso local em falha de rede. Os testes JVM permanecem manuais.
+Além do build oficial, validar com o cadastro real: consentimento/negação, retorno ao app, nonce inválido/repetido, token revogado, atualização automática após conectar, 79%/80%, repetição de checkpoints, progresso remoto maior, último episódio, numeração incompatível, offline/reconexão, troca de conta e proteção do progresso local em falha de rede. Os testes JVM permanecem manuais.
 
 ## Regras verificáveis de sincronização
 
@@ -45,4 +51,4 @@ A partir desta correção, `AniListOAuthRequest.authorizationUrl()` monta o ende
 - mantém verificação obrigatória do `state` recebido, prazo de 15 minutos e a validação do token por `Viewer` antes de salvar a conta;
 - não usa `client_secret`, não solicita senha pelo ReiAnix e não altera as regras de sincronização.
 
-**Validação pendente em dispositivo real:** instalar o APK desta branch, entrar em Configurações → Contas e sincronização → AniList → Conectar ao AniList, autorizar no navegador e confirmar que volta ao aplicativo como conectado. Depois ativar a sincronização e testar um episódio que tenha associação AniList confirmada manualmente. Se o navegador continuar exibindo `unsupported_grant_type`, o AniList pode estar recusando o próprio fluxo `response_type=token`; nesse caso, não mudar para `code` sem fluxo seguro de troca de código, nem enviar o Client Secret para o APK. Os testes locais de URL e a compilação não provam a aceitação pelo servidor.
+**Validação pendente em dispositivo real:** instalar o APK desta branch, entrar em Configurações → Contas → tocar na linha AniList, autorizar no navegador e confirmar que volta ao aplicativo como conectado. Depois testar um episódio que tenha associação AniList confirmada manualmente. Se o navegador continuar exibindo `unsupported_grant_type`, o AniList pode estar recusando o próprio fluxo `response_type=token`; nesse caso, não mudar para `code` sem fluxo seguro de troca de código, nem enviar o Client Secret para o APK. Os testes locais de URL e a compilação não provam a aceitação pelo servidor.
