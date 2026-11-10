@@ -48,12 +48,12 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixNativeFoldersUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixNativeFoldersStatus
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsSurface
+import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoot
 import com.reiflix.reiflix_local.ui.settings.SettingsHeader
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
 @Composable
@@ -103,7 +103,7 @@ fun ReiAnixStorageScreen(
     onRefreshNativeFolders: () -> Unit = {},
     title: String = "Armazenamento",
 ) {
-    ReiAnixResponsiveRoot {
+    ReiAnixSettingsRoot {
     val storage = state.storage
     var pendingRemoval by remember { mutableStateOf<ReiAnixStorageSourceUiModel?>(null) }
 

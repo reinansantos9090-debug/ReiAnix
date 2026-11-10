@@ -27,6 +27,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar
+import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsTheme
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -39,7 +40,7 @@ class AniListAccountActivity : ComponentActivity() {
         account.retryPending()
         lifecycleScope.launch { account.refreshProfile() }
         setContent {
-            ReiAnixComposeTheme {
+            ReiAnixComposeTheme { ReiAnixSettingsTheme {
                 val state by account.state.collectAsStateWithLifecycle()
                 val scope = rememberCoroutineScope()
                 var busy by remember { mutableStateOf(false) }
@@ -71,6 +72,7 @@ class AniListAccountActivity : ComponentActivity() {
                     ) {
                         ReiAnixTopBar(
                             title = "Contas",
+                            titleStyle = MaterialTheme.typography.titleLarge,
                             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
                             onNavigationClick = { finish() },
                             applyResponsiveHorizontalPadding = false,
@@ -87,13 +89,13 @@ class AniListAccountActivity : ComponentActivity() {
                                 .semantics {
                                     stateDescription = if (state.connected) "Conta conectada" else "Conta não conectada"
                                 }
-                                .heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 16.dp),
+                                .heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(24.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(painterResource(R.drawable.ic_anilist), contentDescription = null,
                                 modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurface)
-                            Text("AniList", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                            Text("AniList", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                             if (state.connected) Icon(Icons.Filled.CheckCircle, contentDescription = "Conta conectada",
                                 tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                         }
@@ -144,6 +146,7 @@ class AniListAccountActivity : ComponentActivity() {
                     }
                 }
             }
+            }
         }
     }
 }
@@ -152,10 +155,10 @@ class AniListAccountActivity : ComponentActivity() {
 private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .heightIn(min = 72.dp).padding(vertical = 20.dp),
+            .heightIn(min = 56.dp).padding(vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
             modifier = Modifier.size(28.dp))
     }
@@ -169,7 +172,7 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
         // Clear the credential-bearing URI immediately; never log or save it in instance state.
         intent.data = null
         setContent {
-            ReiAnixComposeTheme {
+            ReiAnixComposeTheme { ReiAnixSettingsTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -177,6 +180,7 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
                         CircularProgressIndicator()
                     }
                 }
+            }
             }
         }
         lifecycleScope.launch {
