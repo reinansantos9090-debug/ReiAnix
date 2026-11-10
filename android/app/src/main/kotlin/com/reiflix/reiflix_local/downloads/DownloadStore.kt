@@ -76,6 +76,23 @@ class DownloadStore(context: Context) {
             if (it.moveToFirst()) DownloadItem(JSONObject(it.getString(0))) else null
         }
     }
+    /** SQLite row IDs may be reused after a user deletes a library item. Never let a
+     * retained download record target another episode's playback or progress. */
+    fun projectLinks(rows: List<DownloadItem>): List<DownloadItem> = db.read { connection ->
+        val matches=mutableMapOf<Long,Pair<String,String>>()
+        rows.map { it.episodeId }.filter { it>0 }.distinct().chunked(500).forEach { ids ->
+            connection.rawQuery("SELECT id,path,media_identity FROM episodes WHERE id IN (${ids.joinToString(",") { "?" }})",ids.map { it.toString() }.toTypedArray()).use { c ->
+                while(c.moveToNext()) matches[c.getLong(0)]=c.getString(1) to c.getString(2).orEmpty()
+            }
+        }
+        rows.map { item ->
+            val linked=matches[item.episodeId]
+            val reference=if(item.state=="COMPLETE") item.output else item.virtualUri.toString()
+            if(item.episodeId>0 && (linked==null || (linked.first!=reference && linked.second!="download:${item.id}"))) {
+                DownloadItem(JSONObject(item.json.toString()).put("episodeId",0).put("animeId",0))
+            } else item
+        }
+    }
     fun mutate(id: String, change: (JSONObject) -> Unit): DownloadItem = db.transaction { connection ->
         val data = connection.rawQuery("SELECT data FROM native_downloads WHERE id=?", arrayOf(id)).use {
             check(it.moveToFirst()) { "Download não encontrado" }; JSONObject(it.getString(0))
@@ -161,7 +178,7 @@ class DownloadStore(context: Context) {
         get(id)?.takeIf { it.episodeId > 0 }?.let { item ->
             db.transaction { c -> c.update("episodes", ContentValues().apply {
                 put("missing", if(available) 0 else 1); put("availability_state", if(available) "available" else "unavailable")
-            }, "id=?", arrayOf(item.episodeId.toString())) }
+            }, "id=? AND (media_identity=? OR path=?)", arrayOf(item.episodeId.toString(),"download:$id",item.virtualUri.toString())) }
             DownloadEvents.catalog.tryEmit(Unit)
         }
     }
@@ -178,7 +195,7 @@ class DownloadStore(context: Context) {
             if(data.optLong("episodeId")>0) connection.update("episodes", ContentValues().apply {
                 put("path", output.toString()); actualName?.takeIf { it.isNotBlank() }?.let { put("file_name",it) }; put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
                 put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
-            }, "id=?", arrayOf(data.getLong("episodeId").toString()))
+            }, "id=? AND (media_identity=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri")))
         }
         DownloadEvents.catalog.tryEmit(Unit)
     }

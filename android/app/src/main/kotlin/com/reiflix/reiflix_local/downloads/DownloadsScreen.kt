@@ -36,7 +36,7 @@ import org.json.JSONObject
 
 object DownloadSnapshots {
     val items=MutableStateFlow<List<DownloadItem>>(emptyList())
-    fun refresh(context: Context) { runCatching { items.value=DownloadStore(context).all() } }
+    fun refresh(context: Context) { runCatching { val store=DownloadStore(context); items.value=store.projectLinks(store.all()) } }
 }
 
 class DownloadsActivity: ComponentActivity() {
@@ -139,10 +139,10 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                             if(item.state in setOf("CORRUPT","CANCELLED")) TextButton(onClick={ action(item,"restart") }) { Text("Baixar novamente") }
                             if(item.state !in setOf("COMPLETE","CANCELLED","SAVING")) IconButton(onClick={ action(item,"cancel") }) { Icon(Icons.Filled.Close,"Cancelar") }
                             if(item.state in setOf("ERROR","PAUSED")) IconButton(onClick={ edit=item; add=true }) { Icon(Icons.Filled.Edit,"Atualizar link ou autenticação") }
-                            if(item.episodeId>0 && item.bytes>128*1024 && item.state !in setOf("CANCELLED","ERROR","CORRUPT")) TextButton(onClick={
+                            if(item.mime.startsWith("video/") && item.bytes>128*1024 && item.state !in setOf("CANCELLED","ERROR","CORRUPT")) TextButton(onClick={
                                 val uri=if(item.state=="COMPLETE") Uri.parse(item.output) else item.virtualUri
                                 context.startActivity(Intent(context,NativePlayerActivity::class.java).putExtra("uri",uri.toString())
-                                    .putExtra("episodeId",item.episodeId.toString()).putExtra("animeId",item.animeId.toString())
+                                    .putExtra("episodeId",item.episodeId.takeIf { it>0 }?.toString().orEmpty()).putExtra("animeId",item.animeId.takeIf { it>0 }?.toString().orEmpty())
                                     .putExtra("title",item.name).putExtra("autoplay",true))
                             }) { Text("Assistir") }
                             if(item.state in setOf("COMPLETE","CANCELLED","CORRUPT") && (item.state=="COMPLETE" || item.output.isBlank())) IconButton(onClick={ action(item,"forget") }) { Icon(Icons.Filled.DeleteOutline,"Remover da lista; manter arquivo concluído") }
