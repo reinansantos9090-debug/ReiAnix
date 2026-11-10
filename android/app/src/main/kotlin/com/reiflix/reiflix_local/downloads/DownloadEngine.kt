@@ -65,7 +65,7 @@ class DownloadEngine(private val context: Context) {
             val file=store.partial(id)
             if(item.json.optBoolean("restart")) {
                 RandomAccessFile(file,"rw").use { it.setLength(0) }
-                item=store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1).put("restart",false).remove("validator"); it.remove("serverHash") }
+                item=store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1).put("restart",false).remove("validator"); it.remove("serverHash"); it.put("hlsIndex",0); it.remove("hlsFingerprint") }
             }
             // A crash can leave uncommitted bytes. Only persisted, fsynced bytes are reusable.
             val offset=minOf(item.bytes,file.length())
@@ -127,7 +127,7 @@ class DownloadEngine(private val context: Context) {
                 }
                 it.put("total",total).put("validator",newValidator ?: "")
                 if(contentType.startsWith("video/")) it.put("mime",contentType)
-                if(resume==0L) { it.remove("serverHash"); it.remove("serverHashType") }
+                if(resume==0L) { it.remove("serverHash"); it.remove("serverHashType"); it.put("hlsIndex",0); it.remove("hlsFingerprint") }
                 if(serverHash!=null) it.put("serverHash",serverHash.first).put("serverHashType",serverHash.second)
             }
             try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
