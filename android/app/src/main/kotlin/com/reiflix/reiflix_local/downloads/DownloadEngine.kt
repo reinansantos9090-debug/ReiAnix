@@ -79,7 +79,7 @@ class DownloadEngine(private val context: Context) {
             store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","DOWNLOADING").put("message","") }
             if(!isDownloading(id)) return
             if(hls) {
-                if(DownloadHls(context,store).receive(id,secret.getString("url"),requestHeaders,file)) verifyAndSave(id,file)
+                if(receiveHls(id,secret.getString("url"),requestHeaders,file)) verifyAndSave(id,file)
                 return
             }
             // Fully received files interrupted during verification/export need no redownload.
@@ -111,7 +111,7 @@ class DownloadEngine(private val context: Context) {
             if(contentType.contains("mpegurl",true)) {
                 connection.disconnect(); connection=null
                 restart(id,file); store.mutate(id){it.put("hls",true)}
-                if(DownloadHls(context,store).receive(id,secret.getString("url"),requestHeaders,file)) verifyAndSave(id,file)
+                if(receiveHls(id,secret.getString("url"),requestHeaders,file)) verifyAndSave(id,file)
                 return
             }
             if(contentType.contains("dash+xml",true)) throw PermanentFailure("Esta playlist DASH exige montagem de faixas ainda não suportada. Abra o site e escolha uma versão de arquivo ou HLS compatível.")
@@ -207,6 +207,10 @@ class DownloadEngine(private val context: Context) {
             }
         } finally { connection?.disconnect() }
     }
+    private suspend fun receiveHls(id: String,url: String,headers: Map<String,String>,file: File): Boolean = try {
+        DownloadHls(context,store).receive(id,url,headers,file)
+    } catch(error: IllegalArgumentException) { throw PermanentFailure(error.message ?: "Playlist HLS incompatível") }
+    catch(error: IllegalStateException) { throw PermanentFailure(error.message ?: "Playlist HLS incompatível") }
     private fun isDownloading(id: String)=store.get(id)?.state=="DOWNLOADING"
     private fun restart(id: String,file: File) {
         RandomAccessFile(file,"rw").use { it.setLength(0); it.fd.sync() }

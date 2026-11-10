@@ -72,7 +72,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             val playlist=parse(text,manifest)
             val fingerprint=DownloadStore.digest(text.toByteArray())
             var item=store.get(id) ?: return false
-            if(item.json.optString("hlsFingerprint")!=fingerprint) {
+            if(item.bytes>file.length() || item.json.optString("hlsFingerprint")!=fingerprint) {
                 RandomAccessFile(file,"rw").use {it.setLength(0);it.fd.sync()}
                 item=store.mutate(id) { it.put("bytes",0).put("hlsIndex",0).put("generation",it.optLong("generation")+1).put("hlsFingerprint",fingerprint) }
             }

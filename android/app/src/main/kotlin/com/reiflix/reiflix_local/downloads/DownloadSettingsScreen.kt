@@ -86,7 +86,9 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
                     store.saveProfile(url.trim(),data)
                     store.all().filter { it.state in setOf("ERROR","PAUSED") }.forEach { item ->
                         if(runCatching { store.secret(item).getString("url")==url.trim() }.getOrDefault(false)) {
-                            store.updateSource(item.id,url.trim(),downloadProfileHeaders(data),hash.trim(),kind,item.json.optString("destination"))
+                            val old=store.secret(item).optJSONObject("headers") ?: JSONObject()
+                            val headers=old.keys().asSequence().filter {it.lowercase() !in setOf("authorization","cookie","referer")}.associateWith {old.getString(it)}+downloadProfileHeaders(data)
+                            store.updateSource(item.id,url.trim(),headers,hash.trim(),kind,item.json.optString("destination"))
                         }
                     }
                 }; DownloadScheduling.schedule(context); message="Opções salvas" }
