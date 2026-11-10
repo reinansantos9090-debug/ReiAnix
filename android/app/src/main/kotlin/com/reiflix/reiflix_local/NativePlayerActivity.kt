@@ -6129,8 +6129,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         return false
                     }
                     zoomAnimator?.cancel()
-                    if (playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) zoomScale = fillZoomLimit()
-                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    if (!zoomTransformActive) {
+                        zoomScale = if (playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) fillZoomLimit() else 1f
+                    }
+                    zoomTransformActive = true
+                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     pinchActive = true
                     gestureMode = GestureMode.PINCH
                     gestureConsumed = true
@@ -6154,7 +6157,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val effectiveRawFactor = rawFactor.coerceIn(MIN_SCALE_FACTOR, MAX_SCALE_FACTOR)
                     val previousScale = zoomScale
                     val nextScale = PlayerGesturePolicy.clampZoom(
-                        previousScale * (1f + (effectiveRawFactor - 1f) * 0.8f),
+                        previousScale * effectiveRawFactor,
                         MIN_ZOOM,
                         fillZoomLimit(),
                     )
@@ -6183,24 +6186,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     zoomTranslationX = 0f
                     zoomTranslationY = 0f
 
-                    // Manual zoom always uses FIT as its base. FILL remains an
-                    // independent aspect preference and is restored when zoom resets.
-                    if (playerView.resizeMode != AspectRatioFrameLayout.RESIZE_MODE_FIT) {
-                        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
+                    // Use a fill-sized surface so enlarging pixels cannot stay clipped
+                    // inside the old FIT rectangle. The scale is relative to FIT.
+                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     applyZoomTransform()
                     updateAspectButtonFromZoom()
 
-                    val now = android.os.SystemClock.uptimeMillis()
-                    if (now - lastZoomFeedbackAtMs >= ZOOM_FEEDBACK_INTERVAL_MS) {
-                        lastZoomFeedbackAtMs = now
-                        val label = if (zoomScale <= ZOOM_SNAP_THRESHOLD) {
-                            "FIT"
-                        } else {
-                            "ZOOM " + String.format(java.util.Locale.US, "%.2fx", zoomScale)
-                        }
-                        showFeedback(label, 300L)
-                    }
                     return true
                 }
 
@@ -6276,12 +6267,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private var lastSeekPreviewAtMs = 0L
         private var lastPanX: Float? = null
         private var lastPanY: Float? = null
+        private var zoomTransformActive = false
         private var zoomScale = 1f
         private var zoomTranslationX = 0f
         private var zoomTranslationY = 0f
         private var zoomAnimator: ValueAnimator? = null
         private var lastZoomFeedbackAtMs = 0L
         private val zoomMatrix = Matrix()
+        init {
+            playerView.videoSurfaceView?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (zoomTransformActive) applyZoomTransform()
+            }
+        }
+
         private var longPressActive = false
         private var previousSpeedForLongPress = 1f
         private var gestureMode = GestureMode.IDLE
@@ -6604,15 +6602,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 zoomTranslationX = 0f
                 zoomTranslationY = 0f
                 val video = playerView.videoSurfaceView
-                if (video is TextureView) {
-                    video.setTransform(Matrix())
-                } else {
-                    video?.apply {
-                        scaleX = 1f
-                        scaleY = 1f
-                        translationX = 0f
-                        translationY = 0f
-                    }
+                video?.apply {
+                    scaleX = 1f
+                    scaleY = 1f
+                    translationX = 0f
+                    translationY = 0f
                 }
             }
         }
@@ -6637,6 +6631,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         fun resetZoomToFit() {
+            zoomTransformActive = false
             zoomAnimator?.cancel()
             zoomAnimator = null
             zoomScale = 1f
@@ -6672,13 +6667,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (zoomScale <= ZOOM_SNAP_THRESHOLD) {
                     animateZoomToFit()
                 } else {
-                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     updateAspectButtonFromZoom()
                     applyZoomTransform()
-                    showFeedback(
-                        "ZOOM " + String.format(java.util.Locale.US, "%.2fx", zoomScale),
-                        900L,
-                    )
                 }
                 touchControls()
             } else {
@@ -6694,7 +6685,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 zoomTranslationY = 0f
                 restoreConfiguredAspectMode()
                 applyZoomTransform()
-                showFeedback("FIT", 900L)
                 zoomAnimator = null
                 return
             }
@@ -6718,7 +6708,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         zoomTranslationY = 0f
                         restoreConfiguredAspectMode()
                         applyZoomTransform()
-                        showFeedback("FIT", 900L)
                         zoomAnimator = null
                     }
                 })
@@ -6819,6 +6808,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         private fun restoreConfiguredAspectMode() {
+            zoomTransformActive = false
+            playerView.videoSurfaceView?.apply { scaleX = 1f; scaleY = 1f; translationX = 0f; translationY = 0f }
             val value = "fit"
             val label = aspectLabelFromSetting(value)
             playerView.resizeMode = resizeModeFromSetting(value)
@@ -6839,42 +6830,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         private fun applyZoomTransform() {
             val video = playerView.videoSurfaceView ?: return
-            val bounds = calculatePanBounds()
-            val clamped = PlayerGesturePolicy.clampTranslation(
-                zoomTranslationX,
-                zoomTranslationY,
-                bounds,
-            )
-            zoomTranslationX = clamped.first
-            zoomTranslationY = clamped.second
-
-            if (video is TextureView) {
-                zoomMatrix.reset()
-                if (video.width > 1 && video.height > 1 && width > 1 && height > 1) {
-                    zoomMatrix.setScale(
-                        zoomScale,
-                        zoomScale,
-                        video.width * 0.5f,
-                        video.height * 0.5f,
-                    )
-                    zoomMatrix.postTranslate(zoomTranslationX, zoomTranslationY)
-                }
-                video.isOpaque = false
-                video.setTransform(zoomMatrix)
-            } else {
-                if (video.width <= 1 || video.height <= 1 || width <= 1 || height <= 1) {
-                    video.post { applyZoomTransform() }
-                    return
-                }
-                video.pivotX = video.width * 0.5f
-                video.pivotY = video.height * 0.5f
-                video.scaleX = zoomScale
-                video.scaleY = zoomScale
-                video.translationX = zoomTranslationX
-                video.translationY = zoomTranslationY
-            }
+            val limit = fillZoomLimit()
+            zoomScale = zoomScale.coerceIn(1f, limit)
+            // CloudStream uses a ZOOM-sized surface and a View scale corrected
+            // for its implicit fill factor. Never scale TextureView pixels inside FIT.
+            val fillSurface = zoomTransformActive || zoomScale > 1f
+            val mode = if (fillSurface) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            if (playerView.resizeMode != mode) playerView.resizeMode = mode
+            val surfaceScale = if (fillSurface) zoomScale / limit else 1f
+            video.pivotX = video.width * .5f
+            video.pivotY = video.height * .5f
+            video.scaleX = surfaceScale
+            video.scaleY = surfaceScale
+            video.translationX = 0f
+            video.translationY = 0f
             video.invalidate()
         }
+
     }
 
     internal object PlayerGesturePolicy {

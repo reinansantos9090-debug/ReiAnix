@@ -28,20 +28,21 @@ fun ReiAnixEpisodePlaylist(
         if (index >= 0) listState.scrollToItem(index)
     }
     Surface(Modifier.fillMaxSize(), shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
-        color = Color(0xF0161820)) {
+        color = Color(0xFF161616), contentColor = Color.White) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Episódios", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = onClose) { Text("Fechar") }
+                TextButton(onClick = onClose) { Text("Fechar", color = Color.White) }
             }
             Text("${episodes.size} episódios", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                color = Color(0xFFCCCCCC))
             Spacer(Modifier.height(12.dp))
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(episodes, key = { it.id }) { episode ->
                     val selected = episode.id == currentId
                     Surface(shape = RoundedCornerShape(12.dp),
-                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.White.copy(alpha = .04f)) {
+                        color = if (selected) Color(0xFF20283A) else Color(0xFF161616),
+                        contentColor = Color.White) {
                         Row(Modifier.fillMaxWidth().clickable(enabled = episode.isPlayable) { onSelect(episode.id) }
                             .padding(10.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
