@@ -6054,7 +6054,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     "AUTH_CHECK scheme=content authority=" + localUri.authority.orEmpty() +
                         " saf=" + safAuthorized + " mediastore=" + mediaStoreAuthorized,
                 )
-                if (!safAuthorized && !mediaStoreAuthorized) {
+                if (!safAuthorized && !mediaStoreAuthorized && !intent.getBooleanExtra("externalVideo", false)) {
                     if (localUri.authority == MediaStore.AUTHORITY &&
                         !MediaStoreScanner.hasReadPermission(this)
                     ) {
@@ -6116,11 +6116,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         "A referência local não aponta para um arquivo.",
                         "MEDIA_URI_INVALID",
                     )
-                    !hasBroadAccess -> SourceValidationFailure(
+                    !hasBroadAccess && !intent.getBooleanExtra("externalVideo", false) -> SourceValidationFailure(
                         "O acesso amplo ao armazenamento não está disponível para este arquivo.",
                         "STORAGE_PERMISSION_MISSING",
                     )
-                    !authorized -> SourceValidationFailure(
+                    !authorized && !intent.getBooleanExtra("externalVideo", false) -> SourceValidationFailure(
                         "Este arquivo não pertence a uma pasta autorizada pelo ReiAnix.",
                         "STORAGE_PERMISSION_MISSING",
                     )
