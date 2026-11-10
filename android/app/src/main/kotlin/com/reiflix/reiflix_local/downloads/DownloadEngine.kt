@@ -242,7 +242,14 @@ class DownloadEngine(private val context: Context) {
         }
         if(target.scheme=="file") RandomAccessFile(File(target.path!!),"rw").use { it.fd.sync() }
         if(tree.isNotBlank()) {
-            val renamed=DocumentsContract.renameDocument(context.contentResolver,target,item.name) ?: throw PermanentFailure("Não foi possível concluir o nome do arquivo")
+            val parent=DocumentFile.fromTreeUri(context,Uri.parse(tree)) ?: throw PermanentFailure("Pasta de destino indisponível")
+            var finalName=item.name; var suffix=1
+            val stem=item.name.substringBeforeLast('.',item.name); val extension=item.name.substringAfterLast('.',"")
+            while(parent.findFile(finalName)!=null) {
+                finalName="$stem (${suffix++})"+(if(extension.isBlank()) "" else ".$extension")
+                if(suffix>1000) throw PermanentFailure("Há muitos arquivos com esse nome; escolha outro nome")
+            }
+            val renamed=DocumentsContract.renameDocument(context.contentResolver,target,finalName) ?: throw PermanentFailure("Não foi possível concluir o nome do arquivo")
             store.mutate(id) { it.put("output",renamed.toString()) }
             return renamed
         }

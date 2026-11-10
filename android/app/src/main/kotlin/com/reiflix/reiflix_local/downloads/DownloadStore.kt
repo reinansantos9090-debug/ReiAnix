@@ -164,12 +164,17 @@ class DownloadStore(context: Context) {
         }
     }
     fun complete(id: String, output: Uri) {
+        val actualName=runCatching {
+            if(output.scheme=="file") File(output.path!!).name else context.contentResolver.query(output,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null }
+        }.getOrNull()
         db.transaction { connection ->
             val data = connection.rawQuery("SELECT data FROM native_downloads WHERE id=?", arrayOf(id)).use { it.moveToFirst(); JSONObject(it.getString(0)) }
+            check(data.optString("state")=="SAVING") { "O download não está na etapa de publicação" }
             data.put("state", "COMPLETE").put("output", output.toString()).put("message", "Concluído")
+            actualName?.takeIf { it.isNotBlank() }?.let { data.put("name",it) }
             connection.update("native_downloads", ContentValues().apply { put("data", data.toString()) }, "id=?", arrayOf(id))
             if(data.optLong("episodeId")>0) connection.update("episodes", ContentValues().apply {
-                put("path", output.toString()); put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
+                put("path", output.toString()); actualName?.takeIf { it.isNotBlank() }?.let { put("file_name",it) }; put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
                 put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
             }, "id=?", arrayOf(data.getLong("episodeId").toString()))
         }
@@ -179,10 +184,23 @@ class DownloadStore(context: Context) {
         val before=get(id) ?: return
         if(before.state=="SAVING") throw IllegalStateException("Aguarde o salvamento final")
         when(action) {
-            "pause" -> mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state", "PAUSED") }
+            "pause" -> mutate(id) { if(it.optString("state") in DownloadState.pending && it.optString("state")!="SAVING") it.put("state", "PAUSED") }
             "resume" -> { mutate(id) { if(it.optString("state") in setOf("PAUSED", "ERROR", "WAITING")) it.put("state", "QUEUED").put("attempts", 0).put("nextAttempt", 0) }; available(id,true) }
-            "cancel" -> { if(before.state=="COMPLETE") return; mutate(id) { it.put("state", "CANCELLED") }; available(id,false) }
-            "restart" -> { require(before.state !in setOf("DOWNLOADING","SAVING","VERIFYING","COMPLETE")); mutate(id) { it.put("restart",true).put("state","QUEUED").put("attempts",0).put("nextAttempt",0) }; available(id,true) }
+            "cancel" -> {
+                var output=""
+                val cancelled=mutate(id) {
+                    if(it.optString("state") !in setOf("SAVING","COMPLETE")) { output=it.optString("output"); it.put("state","CANCELLED").put("speed",0) }
+                }
+                if(cancelled.state!="CANCELLED") return
+                if(output.isNotBlank()) {
+                    val removed=runCatching { val uri=Uri.parse(output)
+                        if(uri.scheme=="file") File(uri.path!!).delete() else context.contentResolver.delete(uri,null,null)>0
+                    }.getOrDefault(false)
+                    mutate(id) { if(removed) it.put("output","") else it.put("message","Autorize novamente a pasta para remover o arquivo temporário.") }
+                }
+                available(id,false)
+            }
+            "restart" -> { require(before.state !in setOf("DOWNLOADING","SAVING","VERIFYING","COMPLETE")); mutate(id) { require(it.optString("state") in setOf("PAUSED","ERROR","CORRUPT","CANCELLED")); it.put("restart",true).put("state","QUEUED").put("bytes",0).put("total",-1).put("attempts",0).put("nextAttempt",0) }; available(id,true) }
         }
     }
     fun updateSource(id: String,url: String,headers: Map<String,String>,hash: String,hashType: String,destination: String) {

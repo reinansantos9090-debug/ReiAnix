@@ -107,3 +107,19 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
         override fun close() { closed=true; file?.close(); if(spec!=null) transferEnded(); spec=null; file=null }
     }
 }
+
+/** A partial MKV must not jump to cues at the far end before playing its first cluster. */
+class DownloadExtractorsFactory(private val context: Context): androidx.media3.extractor.ExtractorsFactory {
+    private val regular=androidx.media3.extractor.DefaultExtractorsFactory()
+    private val growing=androidx.media3.extractor.DefaultExtractorsFactory()
+        .setMatroskaExtractorFlags(androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
+    override fun createExtractors(): Array<androidx.media3.extractor.Extractor> = regular.createExtractors()
+    override fun createExtractors(uri: Uri,responseHeaders: Map<String,List<String>>): Array<androidx.media3.extractor.Extractor> {
+        val owned=uri.authority==context.packageName+".downloads"
+        val partial=owned && uri.pathSegments.firstOrNull()?.let { DownloadStore(context).get(it)?.state!="COMPLETE" }==true
+        return (if(partial) growing else regular).createExtractors(uri,responseHeaders)
+    }
+    override fun setSubtitleParserFactory(factory: androidx.media3.extractor.text.SubtitleParser.Factory): androidx.media3.extractor.ExtractorsFactory {
+        regular.setSubtitleParserFactory(factory); growing.setSubtitleParserFactory(factory); return this
+    }
+}

@@ -969,7 +969,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer("EXOPLAYER_CREATE requestId=" + requestId.ifEmpty { "-" })
             logPlayer("MEDIA3_PLAYER_CREATE_START requestId=" + requestId.ifEmpty { "-" })
             player = ExoPlayer.Builder(this)
-                .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
+                .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this,
+                    com.reiflix.reiflix_local.downloads.DownloadExtractorsFactory(this))
                     .setDataSourceFactory(com.reiflix.reiflix_local.downloads.DownloadDataSourceFactory(this)))
                 .build()
             PerformanceDiagnostics.markPlayer(this, "player_created", requestId,

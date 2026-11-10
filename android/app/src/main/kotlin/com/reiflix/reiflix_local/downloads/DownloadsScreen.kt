@@ -135,6 +135,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
                             if(item.state in DownloadState.pending && item.state!="SAVING") IconButton(onClick={ action(item,"pause") }) { Icon(Icons.Filled.Pause,"Pausar") }
                             if(item.state in setOf("PAUSED","ERROR")) IconButton(onClick={ action(item,"resume") }) { Icon(Icons.Filled.PlayArrow,"Retomar") }
+                            if(item.state=="CANCELLED" && item.output.isNotBlank()) IconButton(onClick={ action(item,"cancel") }) { Icon(Icons.Filled.DeleteOutline,"Limpar arquivo temporário") }
                             if(item.state in setOf("CORRUPT","CANCELLED")) TextButton(onClick={ action(item,"restart") }) { Text("Baixar novamente") }
                             if(item.state !in setOf("COMPLETE","CANCELLED","SAVING")) IconButton(onClick={ action(item,"cancel") }) { Icon(Icons.Filled.Close,"Cancelar") }
                             if(item.state in setOf("ERROR","PAUSED")) IconButton(onClick={ edit=item; add=true }) { Icon(Icons.Filled.Edit,"Atualizar link ou autenticação") }
