@@ -78,11 +78,7 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
         check(BuildConfig.ANILIST_CLIENT_ID.isNotBlank()) { "Conexão indisponível nesta versão." }
         val nonce = UUID.randomUUID().toString()
         prefs.edit().putString("oauth_state", nonce).putLong("oauth_started", System.currentTimeMillis()).commit()
-        Uri.parse("https://anilist.co/api/v2/oauth/authorize").buildUpon()
-            .appendQueryParameter("client_id", BuildConfig.ANILIST_CLIENT_ID)
-            .appendQueryParameter("response_type", "token")
-            .appendQueryParameter("redirect_uri", REDIRECT_URI)
-            .appendQueryParameter("state", nonce).build()
+        Uri.parse(AniListOAuthRequest.authorizationUrl(BuildConfig.ANILIST_CLIENT_ID, nonce))
     } }
 
     suspend fun acceptCallback(uri: Uri): Boolean = withContext(Dispatchers.IO) { mutex.withLock {
