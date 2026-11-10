@@ -2960,7 +2960,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         },
                         onToggleLock = { setLocked(!locked) },
-                        onResize = { toggleAspectMode() },
+                        onResize = { showEpisodePlaylist() },
                         onSource = { toggleMorePanel() },
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
@@ -3195,6 +3195,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             this,
             object : androidx.activity.OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    if (episodePlaylistOverlay != null) { closeEpisodePlaylist(); return }
                     logPlayer("PLAYER_BACK ANDROID_BACK requestId=" + requestId.ifEmpty { "-" })
                     if (moreVisible) {
                         moreVisible = false
@@ -3406,6 +3407,56 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    private var episodePlaylistOverlay: FrameLayout? = null
+    private fun closeEpisodePlaylist() {
+        episodePlaylistOverlay?.let { root.removeView(it) }
+        episodePlaylistOverlay = null
+    }
+
+    private fun showEpisodePlaylist() {
+        if (locked || episodeChangePending || episodePlaylistOverlay != null) return
+        val sourceSession = playerSessionId
+        val animeId = intent.getStringExtra("animeId")?.toLongOrNull() ?: return
+        lifecycleScope.launch {
+            try {
+                val rows = ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository
+                    .loadLibraryCatalogRows(setOf(animeId))
+                val anime = withContext(Dispatchers.IO) {
+                    com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(rows)
+                        .animes.firstOrNull()
+                } ?: return@launch
+                if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) || sourceSession != playerSessionId || isFinishing || episodeChangePending || episodePlaylistOverlay != null) return@launch
+                val overlay = FrameLayout(this@NativePlayerActivity).apply {
+                    setBackgroundColor(android.graphics.Color.argb(65, 0, 0, 0))
+                    setOnClickListener { closeEpisodePlaylist() }
+                }
+                val panel = ComposeView(this@NativePlayerActivity).apply {
+                    isClickable = true
+                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                    setContent {
+                        ReiAnixComposeTheme {
+                            com.reiflix.reiflix_local.ui.player.ReiAnixEpisodePlaylist(
+                                episodes = anime.contentEpisodes, currentId = currentEpisodeId().toLongOrNull() ?: -1L,
+                                onClose = { closeEpisodePlaylist() },
+                                onSelect = { id ->
+                                    closeEpisodePlaylist()
+                                    if (id != currentEpisodeId().toLongOrNull()) requestEpisode("player_next_request", id)
+                                },
+                            )
+                        }
+                    }
+                }
+                overlay.addView(panel, FrameLayout.LayoutParams(
+                    min(dp(420), (resources.displayMetrics.widthPixels * .72f).toInt()),
+                    ViewGroup.LayoutParams.MATCH_PARENT, Gravity.LEFT))
+                episodePlaylistOverlay = overlay
+                root.addView(overlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                touchControls()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch (error: Exception) { showFeedback("Não foi possível carregar os episódios.") }
+        }
     }
 
     private fun toggleAspectMode() {
@@ -4628,7 +4679,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             (!expectedUri.isNotBlank() && !::uri.isInitialized || uri.toString() == expectedUri) &&
             playerSessionId == expectedSessionId
 
-    private fun requestEpisode(eventType: String) {
+    private fun requestEpisode(eventType: String, selectedEpisodeId: Long? = null) {
         val isNextRequest = eventType == "player_next_request"
         val isPreviousRequest = eventType == "player_previous_request"
         if (!isNextRequest && !isPreviousRequest) return
@@ -4664,7 +4715,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
         val canNavigate = intent.getBooleanExtra(if (isNextRequest) "canNext" else "canPrevious", false)
-        if (!canNavigate) {
+        if (!canNavigate && selectedEpisodeId == null) {
             publishNavigationTransitionDiagnostic(
                 requestEvent("NEXT_REQUEST_REJECTED", "PREVIOUS_REQUEST_REJECTED"),
                 if (isNextRequest) "no_next_episode" else "no_previous_episode",
@@ -4774,6 +4825,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 startedAtMs = startedAtMs,
                 monotonicNs = monotonicNs,
                 playerSettings = payload.getJSONObject("playerSettings"),
+                selectedEpisodeId = selectedEpisodeId,
             )
             return
         }
@@ -4882,6 +4934,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         startedAtMs: Long,
         monotonicNs: Long,
         playerSettings: JSONObject,
+        selectedEpisodeId: Long? = null,
     ) {
         val direction = if (isNextRequest) "NEXT" else "PREVIOUS"
         lifecycleScope.launch {
@@ -4954,7 +5007,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     )
                 ) return@launch
 
-                val target = if (isNextRequest) navigation.next else navigation.previous
+                val selectedNavigation = selectedEpisodeId?.let {
+                    dependencies.sqliteLibraryRepository.playerNavigation(it)
+                }
+                val target = if (selectedEpisodeId != null) selectedNavigation?.current
+                    else if (isNextRequest) navigation.next else navigation.previous
                 if (target == null) {
                     // Preserve the legacy NEXT/PREVIOUS_TRANSITION_FAILED signal before
                     // invalidating the in-flight request, so diagnostics distinguish
@@ -5012,12 +5069,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val targetTitle = target.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
                     ?: target.fileName.trim().takeIf { it.isNotEmpty() }
                     ?: "Episódio local"
-                val destinationCanNext = if (isNextRequest) {
+                val destinationCanNext = if (selectedNavigation != null) {
+                    selectedNavigation.next != null
+                } else if (isNextRequest) {
                     navigation.nextCanNext
                 } else {
                     navigation.previousCanNext
                 }
-                val destinationCanPrevious = if (isNextRequest) {
+                val destinationCanPrevious = if (selectedNavigation != null) {
+                    selectedNavigation.previous != null
+                } else if (isNextRequest) {
                     navigation.nextCanPrevious
                 } else {
                     navigation.previousCanPrevious
@@ -5383,6 +5444,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onStop() {
+        closeEpisodePlaylist()
         publishPlayerLifecycle("onStop")
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
         val screenInteractive = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
@@ -6060,13 +6122,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
             context,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-                    if (!zoomEnabled ||
-                        !gestureInteractionAllowed() ||
+                    if (!gestureInteractionAllowed() ||
                         !::playerView.isInitialized ||
                         !::player.isInitialized
                     ) {
                         return false
                     }
+                    zoomAnimator?.cancel()
+                    if (!zoomTransformActive) {
+                        zoomScale = if (playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) fillZoomLimit() else 1f
+                    }
+                    zoomTransformActive = true
+                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    applyZoomTransform()
                     pinchActive = true
                     gestureMode = GestureMode.PINCH
                     gestureConsumed = true
@@ -6092,7 +6160,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val nextScale = PlayerGesturePolicy.clampZoom(
                         previousScale * effectiveRawFactor,
                         MIN_ZOOM,
-                        MAX_ZOOM,
+                        fillZoomLimit(),
                     )
                     val effectiveFactor = if (previousScale > 0f) {
                         nextScale / previousScale
@@ -6116,32 +6184,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     )
                     nextTranslationX = clamped.first
                     nextTranslationY = clamped.second
-                    zoomTranslationX = nextTranslationX
-                    zoomTranslationY = nextTranslationY
+                    zoomTranslationX = 0f
+                    zoomTranslationY = 0f
 
-                    // Manual zoom always uses FIT as its base. FILL remains an
-                    // independent aspect preference and is restored when zoom resets.
-                    if (playerView.resizeMode != AspectRatioFrameLayout.RESIZE_MODE_FIT) {
-                        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
+                    // Use a fill-sized surface so enlarging pixels cannot stay clipped
+                    // inside the old FIT rectangle. The scale is relative to FIT.
+                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     applyZoomTransform()
                     updateAspectButtonFromZoom()
+                    setFillSnapVisible(nearFill())
 
-                    val now = android.os.SystemClock.uptimeMillis()
-                    if (now - lastZoomFeedbackAtMs >= ZOOM_FEEDBACK_INTERVAL_MS) {
-                        lastZoomFeedbackAtMs = now
-                        val label = if (zoomScale <= ZOOM_SNAP_THRESHOLD) {
-                            "FIT"
-                        } else {
-                            "ZOOM " + String.format(java.util.Locale.US, "%.2fx", zoomScale)
-                        }
-                        showFeedback(label, 300L)
-                    }
                     return true
                 }
 
                 override fun onScaleEnd(detector: ScaleGestureDetector) {
-                    finishPinchGesture(cancelled = false)
+                    finishPinchGesture(cancelled = pinchEventCancelled)
                 }
             },
         )
@@ -6206,37 +6263,60 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private var gestureConsumed = false
         private var systemGestureEdge = false
         private var pinchActive = false
+        private var pinchEventCancelled = false
+        private var fillSnapVisible = false
+        private val snapOutlinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(192, 255, 255, 255)
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(30).toFloat()
+        }
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            if (fillSnapVisible) {
+                val inset = snapOutlinePaint.strokeWidth * .5f
+                canvas.drawRect(inset, inset, width - inset, height - inset, snapOutlinePaint)
+            }
+        }
+
+        private fun setFillSnapVisible(visible: Boolean) {
+            if (fillSnapVisible == visible) return
+            fillSnapVisible = visible
+            invalidate()
+        }
+
+        private fun nearFill(): Boolean = abs(zoomScale / fillZoomLimit() - 1f) < .07f
+
         private var lastVerticalY: Float? = null
         private var horizontalSeekStartPositionMs = 0L
         private var horizontalSeekTargetMs = 0L
         private var lastSeekPreviewAtMs = 0L
         private var lastPanX: Float? = null
         private var lastPanY: Float? = null
+        private var zoomTransformActive = false
         private var zoomScale = 1f
         private var zoomTranslationX = 0f
         private var zoomTranslationY = 0f
         private var zoomAnimator: ValueAnimator? = null
         private var lastZoomFeedbackAtMs = 0L
         private val zoomMatrix = Matrix()
+        init {
+            setWillNotDraw(false)
+            playerView.videoSurfaceView?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (zoomTransformActive) applyZoomTransform()
+            }
+        }
+
         private var longPressActive = false
         private var previousSpeedForLongPress = 1f
         private var gestureMode = GestureMode.IDLE
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (inPictureInPicture) return true
-            if (zoomEnabled) {
-                scaleDetector.onTouchEvent(event)
-            } else if (event.pointerCount > 1) {
-                // Multi-touch is intentionally consumed while zoom is disabled so
-                // it cannot fall through to the vertical/seek gesture classifier.
-                gestureConsumed = true
-                gestureMode = GestureMode.IDLE
-                restoreLongPressSpeed()
-                cancelGestureDetector(event)
-                return true
-            }
+            pinchEventCancelled = event.actionMasked == MotionEvent.ACTION_CANCEL
+            scaleDetector.onTouchEvent(event)
 
-            if (zoomEnabled && (event.pointerCount > 1 || pinchActive || gestureMode == GestureMode.PINCH)) {
+            if (event.pointerCount > 1 || pinchActive || gestureMode == GestureMode.PINCH) {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_POINTER_DOWN -> {
                         gestureConsumed = true
@@ -6254,7 +6334,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             val previousX = lastPanX
                             val previousY = lastPanY
                             if (previousX != null && previousY != null && zoomScale > 1.01f) {
-                                applyPanDelta(centerX - previousX, centerY - previousY)
+                                // Keep fit/fill centered; no independent pan.
                             }
                             lastPanX = centerX
                             lastPanY = centerY
@@ -6550,20 +6630,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 zoomTranslationX = 0f
                 zoomTranslationY = 0f
                 val video = playerView.videoSurfaceView
-                if (video is TextureView) {
-                    video.setTransform(Matrix())
-                } else {
-                    video?.apply {
-                        scaleX = 1f
-                        scaleY = 1f
-                        translationX = 0f
-                        translationY = 0f
-                    }
+                video?.apply {
+                    scaleX = 1f
+                    scaleY = 1f
+                    translationX = 0f
+                    translationY = 0f
                 }
             }
         }
 
         fun cancelInteractions() {
+            zoomAnimator?.cancel()
+            zoomAnimator = null
+            setFillSnapVisible(false)
             if (pinchActive) finishPinchGesture(cancelled = true)
             gestureConsumed = true
             gestureMode = GestureMode.IDLE
@@ -6583,6 +6662,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         fun resetZoomToFit() {
+            setFillSnapVisible(false)
+            zoomTransformActive = false
             zoomAnimator?.cancel()
             zoomAnimator = null
             zoomScale = 1f
@@ -6591,15 +6672,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (::playerView.isInitialized) {
                 playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 val video = playerView.videoSurfaceView
-                if (video is TextureView) {
-                    video.setTransform(Matrix())
-                } else {
-                    video?.apply {
-                        scaleX = 1f
-                        scaleY = 1f
-                        translationX = 0f
-                        translationY = 0f
-                    }
+                video?.apply {
+                    scaleX = 1f
+                    scaleY = 1f
+                    translationX = 0f
+                    translationY = 0f
                 }
                 updateAspectButtonFromZoom()
             }
@@ -6608,6 +6685,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private fun finishPinchGesture(cancelled: Boolean) {
             if (!pinchActive) return
             pinchActive = false
+            setFillSnapVisible(false)
             gestureConsumed = true
             gestureMode = GestureMode.PINCH
             lastPanX = null
@@ -6615,16 +6693,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
             if (!cancelled) {
                 logPlayer("GESTURE_END type=pinch requestId=" + requestId.ifEmpty { "-" })
-                if (zoomScale <= ZOOM_SNAP_THRESHOLD) {
+                val fitSnap = min(ZOOM_SNAP_THRESHOLD, 1f + (fillZoomLimit() - 1f) * .15f)
+                if (nearFill()) {
+                    animateZoomTo(fillZoomLimit())
+                } else if (zoomScale <= fitSnap) {
                     animateZoomToFit()
                 } else {
-                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     updateAspectButtonFromZoom()
                     applyZoomTransform()
-                    showFeedback(
-                        "ZOOM " + String.format(java.util.Locale.US, "%.2fx", zoomScale),
-                        900L,
-                    )
                 }
                 touchControls()
             } else {
@@ -6632,39 +6709,37 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
 
-        private fun animateZoomToFit() {
+        private fun animateZoomToFit() = animateZoomTo(1f)
+
+        private fun animateZoomTo(target: Float) {
             zoomAnimator?.cancel()
-            if (!ReiAnixMotionPolicy.systemAnimationsEnabled()) {
-                zoomScale = 1f
+            zoomAnimator = null
+            val destination = target.coerceIn(1f, fillZoomLimit())
+            fun settle() {
+                zoomScale = destination
                 zoomTranslationX = 0f
                 zoomTranslationY = 0f
-                restoreConfiguredAspectMode()
+                if (destination == 1f) restoreConfiguredAspectMode()
                 applyZoomTransform()
-                showFeedback("FIT", 900L)
-                zoomAnimator = null
+                updateAspectButtonFromZoom()
+            }
+            if (!ReiAnixMotionPolicy.systemAnimationsEnabled()) {
+                settle()
                 return
             }
-
             val startScale = zoomScale
-            val startX = zoomTranslationX
-            val startY = zoomTranslationY
-            zoomAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 160L
+            zoomAnimator = ValueAnimator.ofFloat(startScale, destination).apply {
+                duration = 200L
+                startDelay = 0L
                 addUpdateListener { animator ->
-                    val progress = animator.animatedValue as Float
-                    zoomScale = startScale + (1f - startScale) * progress
-                    zoomTranslationX = startX * (1f - progress)
-                    zoomTranslationY = startY * (1f - progress)
+                    zoomScale = animator.animatedValue as Float
                     applyZoomTransform()
                 }
                 addListener(object : android.animation.AnimatorListenerAdapter() {
+                    private var cancelled = false
+                    override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
                     override fun onAnimationEnd(animation: android.animation.Animator) {
-                        zoomScale = 1f
-                        zoomTranslationX = 0f
-                        zoomTranslationY = 0f
-                        restoreConfiguredAspectMode()
-                        applyZoomTransform()
-                        showFeedback("FIT", 900L)
+                        if (!cancelled) settle()
                         zoomAnimator = null
                     }
                 })
@@ -6709,6 +6784,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 viewportWidth = width.toFloat(),
                 viewportHeight = height.toFloat(),
             )
+        }
+
+        private fun fillZoomLimit(): Float {
+            val (fitWidth, fitHeight) = displayedVideoSize()
+            return max(width / fitWidth, height / fitHeight).coerceAtLeast(1f)
         }
 
         private fun displayedVideoSize(): Pair<Float, Float> {
@@ -6760,7 +6840,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         private fun restoreConfiguredAspectMode() {
-            val value = intent.getStringExtra("setting_player_aspect_ratio")
+            zoomTransformActive = false
+            playerView.videoSurfaceView?.apply { scaleX = 1f; scaleY = 1f; translationX = 0f; translationY = 0f }
+            val value = "fit"
             val label = aspectLabelFromSetting(value)
             playerView.resizeMode = resizeModeFromSetting(value)
             findViewByTag<TextView>("reiflix_aspect_button")?.apply {
@@ -6780,42 +6862,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         private fun applyZoomTransform() {
             val video = playerView.videoSurfaceView ?: return
-            val bounds = calculatePanBounds()
-            val clamped = PlayerGesturePolicy.clampTranslation(
-                zoomTranslationX,
-                zoomTranslationY,
-                bounds,
-            )
-            zoomTranslationX = clamped.first
-            zoomTranslationY = clamped.second
-
-            if (video is TextureView) {
-                zoomMatrix.reset()
-                if (video.width > 1 && video.height > 1 && width > 1 && height > 1) {
-                    zoomMatrix.setScale(
-                        zoomScale,
-                        zoomScale,
-                        video.width * 0.5f,
-                        video.height * 0.5f,
-                    )
-                    zoomMatrix.postTranslate(zoomTranslationX, zoomTranslationY)
-                }
-                video.isOpaque = false
-                video.setTransform(zoomMatrix)
-            } else {
-                if (video.width <= 1 || video.height <= 1 || width <= 1 || height <= 1) {
-                    video.post { applyZoomTransform() }
-                    return
-                }
-                video.pivotX = video.width * 0.5f
-                video.pivotY = video.height * 0.5f
-                video.scaleX = zoomScale
-                video.scaleY = zoomScale
-                video.translationX = zoomTranslationX
-                video.translationY = zoomTranslationY
-            }
+            val limit = fillZoomLimit()
+            zoomScale = zoomScale.coerceIn(1f, limit)
+            // CloudStream uses a ZOOM-sized surface and a View scale corrected
+            // for its implicit fill factor. Never scale TextureView pixels inside FIT.
+            val fillSurface = zoomTransformActive || zoomScale > 1f
+            val mode = if (fillSurface) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            if (playerView.resizeMode != mode) playerView.resizeMode = mode
+            val surfaceScale = if (fillSurface) zoomScale / limit else 1f
+            video.pivotX = video.width * .5f
+            video.pivotY = video.height * .5f
+            video.scaleX = surfaceScale
+            video.scaleY = surfaceScale
+            video.translationX = 0f
+            video.translationY = 0f
             video.invalidate()
         }
+
     }
 
     internal object PlayerGesturePolicy {
