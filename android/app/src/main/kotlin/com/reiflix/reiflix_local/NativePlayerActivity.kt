@@ -2960,7 +2960,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         },
                         onToggleLock = { setLocked(!locked) },
-                        onResize = { toggleAspectMode() },
+                        onResize = { showEpisodePlaylist() },
                         onSource = { toggleMorePanel() },
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
@@ -3195,6 +3195,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             this,
             object : androidx.activity.OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    if (episodePlaylistOverlay != null) { closeEpisodePlaylist(); return }
                     logPlayer("PLAYER_BACK ANDROID_BACK requestId=" + requestId.ifEmpty { "-" })
                     if (moreVisible) {
                         moreVisible = false
@@ -3406,6 +3407,56 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    private var episodePlaylistOverlay: FrameLayout? = null
+    private fun closeEpisodePlaylist() {
+        episodePlaylistOverlay?.let { root.removeView(it) }
+        episodePlaylistOverlay = null
+    }
+
+    private fun showEpisodePlaylist() {
+        if (locked || episodeChangePending || episodePlaylistOverlay != null) return
+        val sourceSession = playerSessionId
+        val animeId = intent.getStringExtra("animeId")?.toLongOrNull() ?: return
+        lifecycleScope.launch {
+            try {
+                val rows = ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository
+                    .loadLibraryCatalogRows(setOf(animeId))
+                val anime = withContext(Dispatchers.IO) {
+                    com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(rows)
+                        .animes.firstOrNull()
+                } ?: return@launch
+                if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) || sourceSession != playerSessionId || isFinishing || episodeChangePending || episodePlaylistOverlay != null) return@launch
+                val overlay = FrameLayout(this@NativePlayerActivity).apply {
+                    setBackgroundColor(android.graphics.Color.argb(65, 0, 0, 0))
+                    setOnClickListener { closeEpisodePlaylist() }
+                }
+                val panel = ComposeView(this@NativePlayerActivity).apply {
+                    isClickable = true
+                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                    setContent {
+                        ReiAnixComposeTheme {
+                            com.reiflix.reiflix_local.ui.player.ReiAnixEpisodePlaylist(
+                                episodes = anime.contentEpisodes, currentId = currentEpisodeId().toLongOrNull() ?: -1L,
+                                onClose = { closeEpisodePlaylist() },
+                                onSelect = { id ->
+                                    closeEpisodePlaylist()
+                                    if (id != currentEpisodeId().toLongOrNull()) requestEpisode("player_next_request", id)
+                                },
+                            )
+                        }
+                    }
+                }
+                overlay.addView(panel, FrameLayout.LayoutParams(
+                    min(dp(420), (resources.displayMetrics.widthPixels * .72f).toInt()),
+                    ViewGroup.LayoutParams.MATCH_PARENT, Gravity.LEFT))
+                episodePlaylistOverlay = overlay
+                root.addView(overlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                touchControls()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch (error: Exception) { showFeedback("Não foi possível carregar os episódios.") }
+        }
     }
 
     private fun toggleAspectMode() {
@@ -4628,7 +4679,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             (!expectedUri.isNotBlank() && !::uri.isInitialized || uri.toString() == expectedUri) &&
             playerSessionId == expectedSessionId
 
-    private fun requestEpisode(eventType: String) {
+    private fun requestEpisode(eventType: String, selectedEpisodeId: Long? = null) {
         val isNextRequest = eventType == "player_next_request"
         val isPreviousRequest = eventType == "player_previous_request"
         if (!isNextRequest && !isPreviousRequest) return
@@ -4664,7 +4715,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
         val canNavigate = intent.getBooleanExtra(if (isNextRequest) "canNext" else "canPrevious", false)
-        if (!canNavigate) {
+        if (!canNavigate && selectedEpisodeId == null) {
             publishNavigationTransitionDiagnostic(
                 requestEvent("NEXT_REQUEST_REJECTED", "PREVIOUS_REQUEST_REJECTED"),
                 if (isNextRequest) "no_next_episode" else "no_previous_episode",
@@ -4774,6 +4825,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 startedAtMs = startedAtMs,
                 monotonicNs = monotonicNs,
                 playerSettings = payload.getJSONObject("playerSettings"),
+                selectedEpisodeId = selectedEpisodeId,
             )
             return
         }
@@ -4882,6 +4934,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         startedAtMs: Long,
         monotonicNs: Long,
         playerSettings: JSONObject,
+        selectedEpisodeId: Long? = null,
     ) {
         val direction = if (isNextRequest) "NEXT" else "PREVIOUS"
         lifecycleScope.launch {
@@ -4954,7 +5007,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     )
                 ) return@launch
 
-                val target = if (isNextRequest) navigation.next else navigation.previous
+                val selectedNavigation = selectedEpisodeId?.let {
+                    dependencies.sqliteLibraryRepository.playerNavigation(it)
+                }
+                val target = if (selectedEpisodeId != null) selectedNavigation?.current
+                    else if (isNextRequest) navigation.next else navigation.previous
                 if (target == null) {
                     // Preserve the legacy NEXT/PREVIOUS_TRANSITION_FAILED signal before
                     // invalidating the in-flight request, so diagnostics distinguish
@@ -5012,12 +5069,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val targetTitle = target.episodeTitle?.trim()?.takeIf { it.isNotEmpty() }
                     ?: target.fileName.trim().takeIf { it.isNotEmpty() }
                     ?: "Episódio local"
-                val destinationCanNext = if (isNextRequest) {
+                val destinationCanNext = if (selectedNavigation != null) {
+                    selectedNavigation.next != null
+                } else if (isNextRequest) {
                     navigation.nextCanNext
                 } else {
                     navigation.previousCanNext
                 }
-                val destinationCanPrevious = if (isNextRequest) {
+                val destinationCanPrevious = if (selectedNavigation != null) {
+                    selectedNavigation.previous != null
+                } else if (isNextRequest) {
                     navigation.nextCanPrevious
                 } else {
                     navigation.previousCanPrevious
@@ -5383,6 +5444,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onStop() {
+        closeEpisodePlaylist()
         publishPlayerLifecycle("onStop")
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
         val screenInteractive = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
@@ -6060,13 +6122,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             context,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-                    if (!zoomEnabled ||
-                        !gestureInteractionAllowed() ||
+                    if (!gestureInteractionAllowed() ||
                         !::playerView.isInitialized ||
                         !::player.isInitialized
                     ) {
                         return false
                     }
+                    zoomAnimator?.cancel()
+                    if (playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) zoomScale = fillZoomLimit()
+                    playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     pinchActive = true
                     gestureMode = GestureMode.PINCH
                     gestureConsumed = true
@@ -6090,9 +6154,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val effectiveRawFactor = rawFactor.coerceIn(MIN_SCALE_FACTOR, MAX_SCALE_FACTOR)
                     val previousScale = zoomScale
                     val nextScale = PlayerGesturePolicy.clampZoom(
-                        previousScale * effectiveRawFactor,
+                        previousScale * (1f + (effectiveRawFactor - 1f) * 0.8f),
                         MIN_ZOOM,
-                        MAX_ZOOM,
+                        fillZoomLimit(),
                     )
                     val effectiveFactor = if (previousScale > 0f) {
                         nextScale / previousScale
@@ -6116,8 +6180,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     )
                     nextTranslationX = clamped.first
                     nextTranslationY = clamped.second
-                    zoomTranslationX = nextTranslationX
-                    zoomTranslationY = nextTranslationY
+                    zoomTranslationX = 0f
+                    zoomTranslationY = 0f
 
                     // Manual zoom always uses FIT as its base. FILL remains an
                     // independent aspect preference and is restored when zoom resets.
@@ -6224,19 +6288,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (inPictureInPicture) return true
-            if (zoomEnabled) {
-                scaleDetector.onTouchEvent(event)
-            } else if (event.pointerCount > 1) {
-                // Multi-touch is intentionally consumed while zoom is disabled so
-                // it cannot fall through to the vertical/seek gesture classifier.
-                gestureConsumed = true
-                gestureMode = GestureMode.IDLE
-                restoreLongPressSpeed()
-                cancelGestureDetector(event)
-                return true
-            }
+            scaleDetector.onTouchEvent(event)
 
-            if (zoomEnabled && (event.pointerCount > 1 || pinchActive || gestureMode == GestureMode.PINCH)) {
+            if (event.pointerCount > 1 || pinchActive || gestureMode == GestureMode.PINCH) {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_POINTER_DOWN -> {
                         gestureConsumed = true
@@ -6254,7 +6308,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             val previousX = lastPanX
                             val previousY = lastPanY
                             if (previousX != null && previousY != null && zoomScale > 1.01f) {
-                                applyPanDelta(centerX - previousX, centerY - previousY)
+                                // Keep fit/fill centered; no independent pan.
                             }
                             lastPanX = centerX
                             lastPanY = centerY
@@ -6711,6 +6765,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
         }
 
+        private fun fillZoomLimit(): Float {
+            val (fitWidth, fitHeight) = displayedVideoSize()
+            return max(width / fitWidth, height / fitHeight).coerceAtLeast(1f)
+        }
+
         private fun displayedVideoSize(): Pair<Float, Float> {
             val viewportWidth = width.toFloat()
             val viewportHeight = height.toFloat()
@@ -6760,7 +6819,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         private fun restoreConfiguredAspectMode() {
-            val value = intent.getStringExtra("setting_player_aspect_ratio")
+            val value = "fit"
             val label = aspectLabelFromSetting(value)
             playerView.resizeMode = resizeModeFromSetting(value)
             findViewByTag<TextView>("reiflix_aspect_button")?.apply {

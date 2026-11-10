@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PlayArrow
@@ -552,13 +552,13 @@ fun ReiAnixNativePlayerBottomControls(
                 enabled = !state.episodeTransitionInProgress,
             )
             PlayerBottomAction(
-                icon = Icons.Filled.AspectRatio,
-                label = state.aspectLabel,
+                icon = Icons.Filled.PlaylistPlay,
+                label = "Episódios",
                 showLabel = !landscape,
-                contentDescription = "Modo de vídeo atual: ${state.aspectLabel}. Tocar para ${if (state.aspectLabel == "Preencher") "Ajustar" else "Preencher"}",
+                contentDescription = "Abrir lista de episódios",
                 onClick = onResize,
                 enabled = !state.episodeTransitionInProgress,
-                active = state.aspectLabel == "Preencher",
+                active = false,
             )
             PlayerBottomAction(
                 icon = Icons.Filled.SkipNext,
