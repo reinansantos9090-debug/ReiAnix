@@ -23,6 +23,12 @@ android {
         targetSdk = 36
         versionCode = providers.gradleProperty("reianixBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2
         versionName = providers.gradleProperty("reianixBuildVersion").orNull?.takeIf { it.isNotBlank() } ?: "0.2.1"
+        val aniListClientId = providers.gradleProperty("anilistClientId")
+            .orElse(providers.environmentVariable("REIANIX_ANILIST_CLIENT_ID")).orNull.orEmpty().trim()
+        require(aniListClientId.isEmpty() || aniListClientId.matches(Regex("[0-9]+"))) {
+            "AniList client ID must be numeric."
+        }
+        buildConfigField("String", "ANILIST_CLIENT_ID", "\"$aniListClientId\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {

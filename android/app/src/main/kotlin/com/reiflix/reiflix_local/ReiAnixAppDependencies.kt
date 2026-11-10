@@ -94,6 +94,10 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixPersonalListService(sqliteDatabase, sqliteLibraryRepository)
     }
 
+    val aniListAccountService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        com.reiflix.reiflix_local.data.anilist.ReiAnixAniListAccountService(appContext, sqliteLibraryRepository)
+    }
+
     val consumptionService: ReiAnixConsumptionService by lazy(
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {

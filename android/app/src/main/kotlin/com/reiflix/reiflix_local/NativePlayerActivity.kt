@@ -5444,6 +5444,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 // Exactly one writer per event: Python validates the same event and
                 // publishes UI state, but skips the mutation after a native commit.
                 if (persistedNatively) {
+                    // The opt-in account queue is independent from playback and the SQLite writer.
+                    // Its coroutine owns all remote access and catches its own failures.
+                    if (episodeId != null) runCatching {
+                        ReiAnixAppDependencies.from(applicationContext).aniListAccountService
+                            .offerProgress(episodeId, positionMs, durationMs)
+                    }
                     payload?.put("nativeProgressPersisted", true)
                     if (episodeId != null &&
                         (notifyUiAfterCommit || eventType in setOf(
