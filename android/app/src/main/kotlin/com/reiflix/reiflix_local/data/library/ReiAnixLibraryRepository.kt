@@ -275,33 +275,33 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             if (!refreshInFlight.compareAndSet(false, true)) return
         }
         val commandUri = Uri.parse("reiflix://native").buildUpon()
-            .appendQueryParameter("action", "scan_library")
+            .appendQueryParameter("action", ReiAnixLibraryCommandCodec.Action.REFRESH.value)
             .appendQueryParameter("request_id", requestId)
             .appendQueryParameter("protocol_version", "2")
             .appendQueryParameter("created_at", System.currentTimeMillis().toString())
             .appendQueryParameter("created_monotonic_ns", System.nanoTime().toString())
             .build()
-        try {
-            appContext.startActivity(
-                Intent(Intent.ACTION_VIEW, commandUri)
-                    .setClass(appContext, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-            scope.launch {
-                stateMutex.withLock {
-                    _state.value = _state.value.copy(
-                        lastCommandId = requestId,
-                        lastCommandAction = ReiAnixLibraryCommandCodec.Action.REFRESH.value,
-                        lastCommandStatus = "QUEUED",
-                        lastCommandError = null,
-                    )
+        scope.launch {
+            // Publish the pending state before dispatch: a fast terminal result
+            // must never be overwritten by a late QUEUED update.
+            stateMutex.withLock {
+                _state.value = _state.value.copy(
+                    lastCommandId = requestId,
+                    lastCommandAction = ReiAnixLibraryCommandCodec.Action.REFRESH.value,
+                    lastCommandStatus = "QUEUED",
+                    lastCommandError = null,
+                )
+            }
+            try {
+                appContext.startActivity(
+                    Intent(Intent.ACTION_VIEW, commandUri)
+                        .setClass(appContext, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            } catch (exception: Exception) {
+                synchronized(refreshRequestGuard) {
+                    refreshInFlight.set(false)
                 }
-            }
-        } catch (exception: Exception) {
-            synchronized(refreshRequestGuard) {
-                refreshInFlight.set(false)
-            }
-            scope.launch {
                 stateMutex.withLock {
                     _state.value = _state.value.copy(
                         lastCommandId = requestId,
