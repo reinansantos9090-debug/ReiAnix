@@ -320,7 +320,7 @@ fun ReiAnixSettingsScreen(
                     top = ReiAnixTokens.Spacing.sm,
                     bottom = ReiAnixTokens.Spacing.xl,
                 ),
-                verticalArrangement = Arrangement.Top,
+                verticalArrangement = if (!searchVisible) Arrangement.Center else Arrangement.Top,
             ) {
                 when (state.status) {
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
