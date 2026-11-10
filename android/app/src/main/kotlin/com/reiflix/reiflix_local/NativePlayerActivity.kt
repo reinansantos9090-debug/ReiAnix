@@ -196,6 +196,83 @@ class NativePlayerActivity : ComponentActivity() {
     private var subtitleEmbeddedStyle = true
 
     private val handler = Handler(Looper.getMainLooper())
+    private var sleepTimerDeadlineMs = 0L
+    private var sleepTimerPaused = false
+    private var sleepTimerDialog: AlertDialog? = null
+    private val sleepTimerTick = object : Runnable {
+        override fun run() {
+            if (sessionState == SessionState.DESTROYED || sessionState == SessionState.EXITING) return
+            expireSleepTimerIfDue()
+            syncComposePlayerUiState()
+            if (sleepTimerDeadlineMs > 0L) handler.postDelayed(this, 1_000L)
+        }
+    }
+
+    private fun sleepTimerRemainingMs(): Long =
+        if (sleepTimerDeadlineMs > 0L) (sleepTimerDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L) else 0L
+
+    private fun expireSleepTimerIfDue(): Boolean {
+        if (sleepTimerDeadlineMs <= 0L || SystemClock.elapsedRealtime() < sleepTimerDeadlineMs) return false
+        sleepTimerDeadlineMs = 0L
+        sleepTimerPaused = true
+        handler.removeCallbacks(sleepTimerTick)
+        playbackWasRequestedBeforeStop = false
+        requestedPlayWhenReadyForGeneration = false
+        if (episodeChangePending) invalidateTransition("sleep_timer")
+        if (::player.isInitialized) {
+            player.pause()
+            saveProgress("player_paused", force = true, notifyUiAfterCommit = true)
+            updatePlayPauseButton()
+            updatePictureInPictureParams()
+        }
+        return true
+    }
+
+    private fun setSleepTimer(minutes: Int?) {
+        handler.removeCallbacks(sleepTimerTick)
+        sleepTimerPaused = false
+        sleepTimerDeadlineMs = minutes?.let { SystemClock.elapsedRealtime() + it * 60_000L } ?: 0L
+        if (sleepTimerDeadlineMs > 0L) handler.post(sleepTimerTick)
+        syncComposePlayerUiState()
+        touchControls()
+    }
+
+    private fun showSleepTimerSelection() {
+        if (episodeChangePending || sleepTimerDialog?.isShowing == true) return
+        val choices = arrayOf("15 minutos", "30 minutos", "45 minutos", "60 minutos", "90 minutos", "Personalizado", "Desativar")
+        sleepTimerDialog = AlertDialog.Builder(this)
+            .setTitle("Temporizador")
+            .setItems(choices) { _, which ->
+                when (which) {
+                    in 0..4 -> setSleepTimer(listOf(15, 30, 45, 60, 90)[which])
+                    5 -> showCustomSleepTimer()
+                    else -> setSleepTimer(null)
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .create().also { it.show() }
+    }
+
+    private fun showCustomSleepTimer() {
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "Minutos (1 a 1440)"
+            setSingleLine(true)
+            setPadding(dp(24), dp(12), dp(24), dp(12))
+        }
+        val dialog = AlertDialog.Builder(this).setTitle("Temporizador").setView(input)
+            .setPositiveButton("Iniciar", null).setNegativeButton("Cancelar", null).create()
+        sleepTimerDialog = dialog
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val minutes = input.text.toString().toIntOrNull()
+                if (minutes == null || minutes !in 1..1440) input.error = "Informe de 1 a 1440 minutos"
+                else { setSleepTimer(minutes); dialog.dismiss() }
+            }
+        }
+        dialog.show()
+    }
+
     private var lastSavedPosition = -1L
     private var lastProgressPersistAt = 0L
     private var suppressExitEvent = false
@@ -937,6 +1014,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ?: resizeModeFromSetting(intent.getStringExtra("setting_player_aspect_ratio"))
             playerView.resizeMode = savedResize
 
+            sleepTimerDeadlineMs = savedInstanceState?.getLong("sleep_timer_deadline_ms", 0L) ?: 0L
+            sleepTimerPaused = savedInstanceState?.getBoolean("sleep_timer_paused", false) ?: false
+            if (sleepTimerDeadlineMs > 0L) handler.post(sleepTimerTick)
             prepareCurrentMedia("initial", savedInstanceState?.takeIf { it.containsKey("play_when_ready") }?.getBoolean("play_when_ready"))
         } catch (exception: Exception) {
             if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
@@ -1342,8 +1422,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setTransitionPhase(TransitionPhase.PREPARING, "media_prepare")
         }
         val localUri = uri
-        val shouldPlayWhenReady = playWhenReadyOverride
-            ?: intent.getBooleanExtra("autoplay", true)
+        expireSleepTimerIfDue()
+        val shouldPlayWhenReady = !sleepTimerPaused && (playWhenReadyOverride
+            ?: intent.getBooleanExtra("autoplay", true))
         requestedPlayWhenReadyForGeneration = shouldPlayWhenReady
 
         initialSeekApplied = false
@@ -1516,7 +1597,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     // Use Media3's start-position API so resume does not require a
                     // second seek cycle after READY.
                     player.setMediaItem(mediaItem, initialPositionMsForGeneration)
-                    player.playWhenReady = shouldPlayWhenReady
+                    player.playWhenReady = shouldPlayWhenReady && !sleepTimerPaused && !expireSleepTimerIfDue()
 
                     if (reason != "initial") {
                         reattachPlayerViewAfterMediaReset(reason)
@@ -1794,6 +1875,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             if (!isCurrent()) return
+            if (playWhenReady && expireSleepTimerIfDue()) {
+                player.pause()
+                return
+            }
+            // A deliberate Play from PiP, headset or controls can resume after expiry.
+            if (playWhenReady) sleepTimerPaused = false
             logPlayer(
                 "PLAY_WHEN_READY_CHANGED requestId=" + requestId.ifEmpty { "-" } +
                     " value=" + playWhenReady +
@@ -2006,7 +2093,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     completionReported = true
                     saveProgress("player_completed", force = true)
                     updatePlayPauseButton()
-                    if (autoplayNext && intent.getBooleanExtra("canNext", false)) {
+                    if (!expireSleepTimerIfDue() && !sleepTimerPaused && autoplayNext && intent.getBooleanExtra("canNext", false)) {
                         requestEpisode("player_next_request")
                     }
                 }
@@ -2827,6 +2914,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                 requestEpisode("player_next_request")
                             }
                         },
+                        onSleepTimer = { showSleepTimerSelection() },
                         onPlaybackSpeed = {
                             showSpeedSelection(TextView(this@NativePlayerActivity))
                         },
@@ -3083,6 +3171,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             canPrevious = intent.getBooleanExtra("canPrevious", false),
             episodeTransitionInProgress = episodeChangePending,
             aspectLabel = aspectModeLabel,
+            sleepTimerLabel = if (sleepTimerDeadlineMs > 0L) formatTime(sleepTimerRemainingMs()) else "Desativado",
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
             audioTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_AUDIO),
             subtitleTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_TEXT),
@@ -3275,6 +3364,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun togglePlayPause() {
         if (!::player.isInitialized || errorVisible) return
+        expireSleepTimerIfDue()
+        sleepTimerPaused = false
         if (episodeChangePending) {
             logPlayer("PLAYER_COMMAND_IGNORED command=play_pause reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
             return
@@ -4680,6 +4771,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             playerSessionId == expectedSessionId
 
     private fun requestEpisode(eventType: String, selectedEpisodeId: Long? = null) {
+        if (expireSleepTimerIfDue()) return
         val isNextRequest = eventType == "player_next_request"
         val isPreviousRequest = eventType == "player_previous_request"
         if (!isNextRequest && !isPreviousRequest) return
@@ -5409,13 +5501,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     override fun onResume() {
         super.onResume()
+        expireSleepTimerIfDue()
         if (!isPictureInPictureActive()) pictureInPictureSession = false
         publishPlayerLifecycle("onResume")
         logPlayer("onResume requestId=" + requestId.ifEmpty { "-" })
         if (!inPictureInPicture) applyImmersiveAfterLayout()
         findViewByTag<GestureLayer>("reiflix_gesture_layer")?.refreshZoomForLayout()
         if (::player.isInitialized && !errorVisible && !playbackErrorForGeneration) {
-            if (!isPictureInPictureActive() && playbackWasRequestedBeforeStop &&
+            if (!sleepTimerPaused && !isPictureInPictureActive() && playbackWasRequestedBeforeStop &&
                 player.playbackState != Player.STATE_ENDED
             ) {
                 player.playWhenReady = true
@@ -5532,6 +5625,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putLong("sleep_timer_deadline_ms", sleepTimerDeadlineMs)
+        outState.putBoolean("sleep_timer_paused", sleepTimerPaused)
         outState.putLong("player_generation", playerGeneration)
         outState.putString("player_session_id", playerSessionId)
         outState.putLong("transition_generation", transitionGeneration)
@@ -5570,6 +5665,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(sleepTimerTick)
+        sleepTimerDialog?.dismiss()
+        sleepTimerDialog = null
         publishPlayerLifecycle("onDestroy")
         PerformanceDiagnostics.sampleMemory(this, "player_on_destroy")
         PerformanceDiagnostics.detach()

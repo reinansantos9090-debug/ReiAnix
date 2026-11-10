@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
@@ -77,6 +78,7 @@ fun ReiAnixNativePlayerOptionsPanel(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onPlaybackSpeed: () -> Unit,
+    onSleepTimer: () -> Unit,
     onRestart: () -> Unit,
     onHistory: () -> Unit,
     onMarkers: () -> Unit,
@@ -125,6 +127,13 @@ fun ReiAnixNativePlayerOptionsPanel(
                     onClick = onPlaybackSpeed,
                 )
                 PlayerOptionActionRow(
+                    icon = Icons.Filled.Timer,
+                    label = "Temporizador",
+                    value = state.sleepTimerLabel,
+                    enabled = !state.episodeTransitionInProgress,
+                    onClick = onSleepTimer,
+                )
+                PlayerOptionActionRow(
                     icon = Icons.Filled.Gesture,
                     label = "Gestos",
                     onClick = { page = PlayerOptionsPage.GESTURES },
@@ -134,13 +143,6 @@ fun ReiAnixNativePlayerOptionsPanel(
                     label = "Outras opções",
                     onClick = { page = PlayerOptionsPage.OTHER },
                 )
-                PlayerOptionActionRow(
-                    icon = Icons.Filled.Replay,
-                    label = "Reiniciar",
-                    enabled = !state.episodeTransitionInProgress,
-                    showChevron = false,
-                    onClick = onRestart,
-                )
                 if (showPictureInPicture) {
                     PlayerOptionActionRow(
                         icon = Icons.Filled.PictureInPictureAlt,
@@ -149,6 +151,13 @@ fun ReiAnixNativePlayerOptionsPanel(
                         onClick = onPictureInPicture,
                     )
                 }
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Replay,
+                    label = "Reiniciar",
+                    enabled = !state.episodeTransitionInProgress,
+                    showChevron = false,
+                    onClick = onRestart,
+                )
             }
 
             PlayerOptionsPage.GESTURES -> {
