@@ -25,3 +25,11 @@ A fila guarda o maior progresso pendente por anime e recibos por conta. Não red
 ## Validação necessária
 
 Além do build oficial, validar com o cadastro real: consentimento/negação, retorno ao app, nonce inválido/repetido, token revogado, ativação/desativação, 79%/80%, repetição de checkpoints, progresso remoto maior, último episódio, numeração incompatível, offline/reconexão, troca de conta e proteção do progresso local em falha de rede. Os testes JVM permanecem manuais.
+
+## Regras verificáveis de sincronização
+
+As políticas puras estão em `AniListAccountSyncPolicy.kt` e são cobertas por `AniListAccountSyncPolicyTest.kt`, que roda no workflow Kotlin/JVM existente. Elas verificam o limiar de 80%, exclusão de especiais, numeração absoluta em temporadas posteriores, proibição de retrocesso de progresso, conclusão somente com total conhecido e preservação de `COMPLETED`/`REPEATING`. Os testes de código não substituem um teste OAuth com conta real.
+
+Após enviar `SaveMediaListEntry`, o aplicativo exige um recibo com ID e progresso coerentes antes de confirmar a sincronização local. Falhas temporárias são reprogramadas sem bloquear a reprodução; erros permanentes não entram em um loop agressivo. Desconectar ou desativar limpa as pendências e cancela a retentativa agendada.
+
+**Ativação em builds oficiais:** o Client ID é público e pertence ao aplicativo ReiAnix, não à conta individual de cada usuário. Ele só deve ser configurado após o próprio desenvolvedor registrar `ReiAnix` com Redirect URL `reianix-anilist://oauth` nas configurações de desenvolvedor do AniList. Nenhum Client Secret é necessário para o fluxo implicit de Android. Um APK compilado sem esse número permanece com o botão de conexão desativado.
