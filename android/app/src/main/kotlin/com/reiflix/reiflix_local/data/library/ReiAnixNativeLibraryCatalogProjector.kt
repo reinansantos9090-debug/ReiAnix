@@ -9,6 +9,7 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
 import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
 import org.json.JSONArray
+import com.reiflix.reiflix_local.ui.artwork.localArtworkSourceRevision
 
 /** A single canonical SQLite read projected into the existing immutable Compose models. */
 internal data class ReiAnixNativeLibraryCatalogSnapshot(
@@ -19,8 +20,11 @@ internal data class ReiAnixNativeLibraryCatalogSnapshot(
 internal object ReiAnixNativeLibraryCatalogProjector {
     private val specialTypes = setOf("special", "ova", "oad", "ona", "extra")
 
-    fun project(rows: List<ReiAnixLibraryCatalogRow>): ReiAnixNativeLibraryCatalogSnapshot {
-        val animes = rows.map(::projectAnime)
+    fun project(
+        rows: List<ReiAnixLibraryCatalogRow>,
+        unchangedAnimes: Map<Long, ReiAnixAnimeUiModel> = emptyMap(),
+    ): ReiAnixNativeLibraryCatalogSnapshot {
+        val animes = rows.map { unchangedAnimes[it.anime.id] ?: projectAnime(it) }
         val lastPlayedByEpisodeId = rows.asSequence()
             .flatMap { it.episodes.asSequence() }
             .associate { it.id to (it.lastPlayedAt ?: 0.0) }
@@ -150,6 +154,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 ),
             ),
             "media_files" to movieEpisodes.map { episodeMap(it, anime.id, row) },
+            // File metadata is captured with the background catalog projection,
+            // never during Compose composition. Preserve same-path regeneration keys.
+            "artwork_source_revisions" to (animeArtwork.mapNotNull { it.localPath } +
+                listOfNotNull(anime.coverCache)).distinct().associateWith(::localArtworkSourceRevision),
             "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank()),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
@@ -215,6 +223,8 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "relative_path" to episode.relativePath,
             "volume_id" to episode.volumeId,
             "volume_uuid" to episode.volumeUuid,
+            "artwork_source_revisions" to listOfNotNull(artwork?.localPath)
+                .associateWith(::localArtworkSourceRevision),
             "artwork_local_path" to artwork?.localPath,
             "artwork_external_url" to artwork?.externalUrl,
         )

@@ -71,6 +71,7 @@ data class ReiAnixArtworkUiModel(
     val externalUrl: String?,
     val backdropLocalPath: String? = null,
     val backdropExternalUrl: String? = null,
+    val sourceRevisions: Map<String, String> = emptyMap(),
 ) {
     /** True only when Compose has a materialized local file to decode. */
     val isAvailable: Boolean

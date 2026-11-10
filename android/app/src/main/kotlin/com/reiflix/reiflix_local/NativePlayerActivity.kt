@@ -5215,7 +5215,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         ) {
             return null
         }
-        lastSavedPosition = position
         return JSONObject()
             .put("type", eventType)
             .put("requestId", requestId)
@@ -5271,6 +5270,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             )
                         }
                         persistedNatively = true
+                        // A failed or rejected write must not suppress the next retry.
+                        // An old episode's asynchronous receipt cannot move a new session.
+                        val committedSession = payload?.optString("playerSessionId").orEmpty()
+                        val committedGeneration = payload?.optLong("playerGeneration", -1L) ?: -1L
+                        handler.post {
+                            if (playerSessionId == committedSession && playerGeneration == committedGeneration) {
+                                lastSavedPosition = positionMs
+                            }
+                        }
                     } catch (error: Exception) {
                         logPlayer(
                             "NATIVE_PROGRESS_PERSIST_FAILED event=" + eventType +
@@ -5403,9 +5411,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
         if (sessionState != SessionState.EXITING || !exitProgressPublished) {
-            // onPause already emits the durable checkpoint; keep onStop lightweight
-            // to avoid duplicate mailbox/SQLite work during lifecycle transitions.
-            saveProgress("player_progress")
+            // Playback can continue between onPause and onStop (especially PiP).
+            // Capture that final position even when it is below the periodic threshold.
+            saveProgress("player_progress", force = true)
         }
         logPlayer("onStop finishing=" + isFinishing + " changingConfig=" + isChangingConfigurations)
         super.onStop()

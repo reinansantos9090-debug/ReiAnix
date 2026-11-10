@@ -256,6 +256,7 @@ object NativeScanController {
         val token = tokens.remove(scanId) ?: return
         jobs.remove(scanId)
         token.sourceKey?.let { key -> sourceOwners.remove(key, scanId) }
+        trimFinishedSnapshots()
     }
 
     private fun updateState(
@@ -269,7 +270,20 @@ object NativeScanController {
 
     private fun putSnapshot(snapshot: ScanProgressSnapshot) {
         mutableProgress.value = mutableProgress.value + (snapshot.operationId to snapshot)
+        trimFinishedSnapshots()
     }
+
+    private fun trimFinishedSnapshots() {
+        val snapshots = mutableProgress.value
+        val completed = snapshots.values.filter { it.state.isTerminal && !tokens.containsKey(it.operationId) }
+        if (completed.size <= MAX_FINISHED_SNAPSHOTS) return
+        // Linked map order breaks equal-millisecond ties in favor of the newest event.
+        val expired = completed.asReversed().sortedByDescending { it.finishedAtMillis ?: it.startedAtMillis }
+            .drop(MAX_FINISHED_SNAPSHOTS).map { it.operationId }.toSet()
+        mutableProgress.value = snapshots.filterKeys { it !in expired }
+    }
+
+    internal const val MAX_FINISHED_SNAPSHOTS = 32
 
     private fun readStrings(array: JSONArray?): List<String> {
         if (array == null) return emptyList()

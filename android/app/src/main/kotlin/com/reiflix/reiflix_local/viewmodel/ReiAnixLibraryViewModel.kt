@@ -62,6 +62,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.conflate
@@ -300,6 +301,8 @@ class ReiAnixLibraryViewModel(
 
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
+    // Snapshot rows are a projection cache of SQLite, never an independent writer.
+    private var nativeCatalogRows = emptyList<com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow>()
     private val episodeThumbnailRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
     // Details can request a new batch after each published artwork projection.
     // Serialize batches per anime so only one Trace.moe stream owns its samples.
@@ -1933,7 +1936,7 @@ class ReiAnixLibraryViewModel(
                                 // Do not rely only on the artwork event bus: reload the
                                 // committed SQLite projection as soon as this thumbnail
                                 // is registered, so Details never needs a manual refresh.
-                                refreshCatalogProjection()
+                                viewModelScope.launch { refreshNativeCatalog(setOf(animeId)) }
                             }
                             ReiAnixDiagnosticTimeline.record(
                                 name = "EPISODE_THUMBNAIL_OUTPUT_VALIDATED",
@@ -2114,12 +2117,14 @@ class ReiAnixLibraryViewModel(
 
         // A successful artwork commit must invalidate the existing SQLite projection:
         // Compose reads immutable models and does not consume NativeMailbox directly.
-        // Keep the publication stream bounded and debounce bursts (poster + backdrop,
-        // several list items) into one canonical re-read, without rescanning media.
+        // Retain the existing publication interval and every affected identity. Read
+        // only changed anime rows, without rescanning media or rescheduling artwork.
         appDependencies?.artworkService?.publishedArtworks?.let { publications ->
             viewModelScope.launch {
+                val affectedEntities = linkedSetOf<Pair<String, String>>()
                 publications
                     .onEach { publication ->
+                        affectedEntities += publication.entityType to publication.entityId
                         enqueuePublishedEpisodeThumbnail(publication)
                         ReiAnixDiagnosticTimeline.record(
                             name = "ARTWORK_PROJECTION_INVALIDATION_QUEUED",
@@ -2135,11 +2140,20 @@ class ReiAnixLibraryViewModel(
                         )
                     }
                     .debounce(ARTWORK_PROJECTION_REFRESH_DEBOUNCE_MS)
-                    .collectLatest { publication ->
+                    .collect { publication ->
+                        val affected = affectedEntities.toList()
+                        affectedEntities.clear()
+                        val animeIds = linkedSetOf<Long>()
+                        for ((type, rawId) in affected) {
+                            val id = rawId.toLongOrNull()?.takeIf { it > 0L } ?: continue
+                            if (type == "episode") {
+                                nativeLibraryRepository.getEpisode(id)?.animeId?.let(animeIds::add)
+                            } else if (type == "anime" || type == "movie") animeIds += id
+                        }
                         ReiAnixDiagnosticTimeline.record(
                             name = "ARTWORK_PROJECTION_REFRESH_REQUESTED",
                             source = "ReiAnixLibraryViewModel",
-                            result = "CANONICAL_SQLITE_RELOAD",
+                            result = "AFFECTED_SQLITE_ROWS_RELOAD",
                             requestId = publication.requestId,
                             context = mapOf(
                                 "entity_type" to publication.entityType,
@@ -2149,7 +2163,7 @@ class ReiAnixLibraryViewModel(
                                 "refresh_mode" to "PROJECTION_ONLY",
                             ),
                         )
-                        refreshCatalogProjection()
+                        if (animeIds.isNotEmpty()) refreshNativeCatalog(animeIds)
                     }
             }
         }
@@ -2245,12 +2259,46 @@ class ReiAnixLibraryViewModel(
             nativePagedLibraryState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
     }
 
-    private suspend fun refreshNativeCatalog() {
+    private suspend fun refreshNativeCatalog(affectedAnimeIds: Set<Long>? = null) {
         nativeCatalogReloadMutex.withLock {
             try {
-                val rows = nativeLibraryRepository.loadLibraryCatalogRows()
-                val projected = com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector
-                    .project(rows)
+                val incremental = affectedAnimeIds != null && nativeCatalogRows.isNotEmpty()
+                val changedRows = nativeLibraryRepository.loadLibraryCatalogRows(
+                    if (incremental) affectedAnimeIds else null,
+                )
+                // A new catalog member also needs canonical ordering; use the full path.
+                val previousRows = nativeCatalogRows.associateBy { it.anime.id }
+                val canPatch = incremental && changedRows.all { changed ->
+                    val previous = previousRows[changed.anime.id]?.anime
+                    previous != null && previous.title == changed.anime.title &&
+                        previous.addedAt == changed.anime.addedAt
+                }
+                // Metadata, progress and membership changes still need SQLite filters/sort.
+                val artworkOnly = canPatch && changedRows.size == affectedAnimeIds.orEmpty().size &&
+                    changedRows.all { changed ->
+                        val previous = previousRows.getValue(changed.anime.id)
+                        previous.copy(
+                            anime = previous.anime.copy(
+                                coverCache = changed.anime.coverCache,
+                                coverUrl = changed.anime.coverUrl,
+                                bannerUrl = changed.anime.bannerUrl,
+                            ),
+                            animeArtwork = changed.animeArtwork,
+                            episodeArtwork = changed.episodeArtwork,
+                        ) == changed
+                    }
+                val rows = if (canPatch) {
+                    val changedById = changedRows.associateBy { it.anime.id }
+                    nativeCatalogRows.mapNotNull { old ->
+                        if (old.anime.id in affectedAnimeIds.orEmpty()) changedById[old.anime.id] else old
+                    }
+                } else if (incremental) nativeLibraryRepository.loadLibraryCatalogRows() else changedRows
+                val unchanged = if (canPatch) nativeCatalogState.value.animes
+                    .filterNot { it.id in affectedAnimeIds.orEmpty() }.associateBy { it.id } else emptyMap()
+                val projected = withContext(Dispatchers.IO) {
+                    com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(rows, unchanged)
+                }
+                nativeCatalogRows = rows
                 nativeCatalogState.value = NativeCatalogState(
                     status = if (projected.animes.isEmpty()) {
                         com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
@@ -2260,6 +2308,13 @@ class ReiAnixLibraryViewModel(
                     animes = projected.animes,
                     continueWatching = projected.continueWatching,
                 )
+                if (artworkOnly) {
+                    val byId = projected.animes.associateBy { it.id }
+                    nativePagedLibraryState.value = nativePagedLibraryState.value.let { page ->
+                        page.copy(animes = page.animes.mapNotNull { byId[it.id] })
+                    }
+                    return@withLock
+                }
                 val filters = libraryFilters.value
                 loadNativeLibraryPage(
                     page = 0,
