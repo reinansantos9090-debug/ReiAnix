@@ -27,6 +27,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar
+import com.reiflix.reiflix_local.ui.settings.settingsClickable
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsTheme
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import kotlinx.coroutines.CancellationException
@@ -71,7 +72,7 @@ class AniListAccountActivity : ComponentActivity() {
                             .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
                     ) {
                         ReiAnixTopBar(
-                            title = "Contas",
+                            title = "Contas e Avançado",
                             titleStyle = MaterialTheme.typography.titleLarge,
                             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
                             onNavigationClick = { finish() },
@@ -80,7 +81,7 @@ class AniListAccountActivity : ComponentActivity() {
                         )
                         Row(
                             Modifier.fillMaxWidth()
-                                .clickable(enabled = !busy, role = Role.Button, onClick = {
+                                .settingsClickable(enabled = !busy, role = Role.Button, onClick = {
                                     error = ""
                                     if (state.connected) showAccount = true
                                     else if (state.configured) connect()
@@ -154,7 +155,7 @@ class AniListAccountActivity : ComponentActivity() {
 @Composable
 private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+        Modifier.fillMaxWidth().settingsClickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .heightIn(min = 56.dp).padding(vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

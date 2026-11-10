@@ -19,14 +19,41 @@ internal data class SettingsDestination(
 internal data class SettingsSearchResult(val destination: SettingsDestination, val entry: SettingsEntry)
 
 internal val SettingsRootCategories = listOf(
-    ReiAnixSettingsCategoryUiModel("Geral", "Preferências gerais", Icons.Filled.Settings),
-    ReiAnixSettingsCategoryUiModel("Aparência", "Tema, Home e Biblioteca", Icons.Filled.Palette),
-    ReiAnixSettingsCategoryUiModel("Biblioteca", "Organização e pastas da biblioteca", Icons.Filled.LibraryBooks),
+    ReiAnixSettingsCategoryUiModel("Geral", "Preferências, aparência e biblioteca", Icons.Filled.Settings),
     ReiAnixSettingsCategoryUiModel("Player", "Reprodução, controles, áudio e tela", Icons.Filled.PlayArrow),
     ReiAnixSettingsCategoryUiModel("Metadados e Capas", "Identificação, capas e miniaturas", Icons.Filled.Image),
-    ReiAnixSettingsCategoryUiModel("Dados e Backup", "Configurações, cache e restauração", Icons.Filled.Backup),
-    ReiAnixSettingsCategoryUiModel("Sobre e Diagnóstico", "Informações, verificações e relatórios", Icons.Filled.Info),
+    ReiAnixSettingsCategoryUiModel("Diagnóstico e Backup", "Dados, backup, informações e diagnóstico", Icons.Filled.Backup),
+    ReiAnixSettingsCategoryUiModel("Contas e Avançado", "AniList", Icons.Filled.Settings),
+    ReiAnixSettingsCategoryUiModel("Pastas", "Pastas locais da biblioteca", Icons.Filled.LibraryBooks),
 )
+
+/** Existing destinations remain addressable for saved navigation and search consumers. */
+internal fun settingsPageSections(page: String): List<String> = when (page) {
+    "Geral" -> listOf("Geral", "appearance_theme", "appearance_library", "Biblioteca")
+    "Player" -> listOf("player_playback", "player_video", "player_controls", "player_audio", "player_display", "Player")
+    "Diagnóstico e Backup" -> listOf("data_settings", "data_backup", "Dados e Backup", "about_diagnostics", "about_reports", "Sobre e Diagnóstico")
+    else -> listOf(page)
+}
+
+internal fun settingsSectionTitle(section: String): String = when (section) {
+    "Geral" -> "Comportamento"
+    "Biblioteca" -> "Organização da biblioteca"
+    "Dados e Backup" -> "Cache"
+    "Sobre e Diagnóstico" -> "Sobre"
+    "Player" -> "Restaurar preferências"
+    else -> settingsDestination(section)?.title ?: section
+}
+
+internal fun settingsPageForDestination(destination: String?): String? = when (destination) {
+    null -> null
+    "Aparência", "Biblioteca", "appearance_theme", "appearance_library", "general_behavior", "general_privacy", "library_organization" -> "Geral"
+    "library_storage", "library_scan" -> "Pastas"
+    "Dados e Backup", "Sobre e Diagnóstico", "data_cache", "about_app", "data_settings", "data_backup", "about_diagnostics", "about_reports" -> "Diagnóstico e Backup"
+    "player_advanced", "player_playback", "player_video", "player_controls", "player_audio", "player_display" -> "Player"
+    "metadata_identification", "metadata_artwork" -> "Metadados e Capas"
+    "Conta", "Contas" -> "Contas e Avançado"
+    else -> destination
+}
 
 internal val SettingsDestinations = listOf(
     SettingsDestination("Geral", "Geral", "", listOf(
