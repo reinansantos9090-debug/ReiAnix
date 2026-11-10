@@ -27,7 +27,7 @@ fun ReiAnixEpisodePlaylist(
         val index = episodes.indexOfFirst { it.id == currentId }
         if (index >= 0) listState.scrollToItem(index)
     }
-    Surface(Modifier.fillMaxSize(), shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
+    Surface(Modifier.fillMaxSize(), shape = androidx.compose.ui.graphics.RectangleShape,
         color = Color(0xFF161616), contentColor = Color.White) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

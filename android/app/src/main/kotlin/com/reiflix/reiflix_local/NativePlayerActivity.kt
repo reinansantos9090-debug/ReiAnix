@@ -6192,12 +6192,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     applyZoomTransform()
                     updateAspectButtonFromZoom()
+                    setFillSnapVisible(nearFill())
 
                     return true
                 }
 
                 override fun onScaleEnd(detector: ScaleGestureDetector) {
-                    finishPinchGesture(cancelled = false)
+                    finishPinchGesture(cancelled = pinchEventCancelled)
                 }
             },
         )
@@ -6262,6 +6263,30 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private var gestureConsumed = false
         private var systemGestureEdge = false
         private var pinchActive = false
+        private var pinchEventCancelled = false
+        private var fillSnapVisible = false
+        private val snapOutlinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(192, 255, 255, 255)
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(30).toFloat()
+        }
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            if (fillSnapVisible) {
+                val inset = snapOutlinePaint.strokeWidth * .5f
+                canvas.drawRect(inset, inset, width - inset, height - inset, snapOutlinePaint)
+            }
+        }
+
+        private fun setFillSnapVisible(visible: Boolean) {
+            if (fillSnapVisible == visible) return
+            fillSnapVisible = visible
+            invalidate()
+        }
+
+        private fun nearFill(): Boolean = abs(zoomScale / fillZoomLimit() - 1f) < .07f
+
         private var lastVerticalY: Float? = null
         private var horizontalSeekStartPositionMs = 0L
         private var horizontalSeekTargetMs = 0L
@@ -6276,6 +6301,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private var lastZoomFeedbackAtMs = 0L
         private val zoomMatrix = Matrix()
         init {
+            setWillNotDraw(false)
             playerView.videoSurfaceView?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 if (zoomTransformActive) applyZoomTransform()
             }
@@ -6287,6 +6313,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (inPictureInPicture) return true
+            pinchEventCancelled = event.actionMasked == MotionEvent.ACTION_CANCEL
             scaleDetector.onTouchEvent(event)
 
             if (event.pointerCount > 1 || pinchActive || gestureMode == GestureMode.PINCH) {
@@ -6613,6 +6640,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         fun cancelInteractions() {
+            zoomAnimator?.cancel()
+            zoomAnimator = null
+            setFillSnapVisible(false)
             if (pinchActive) finishPinchGesture(cancelled = true)
             gestureConsumed = true
             gestureMode = GestureMode.IDLE
@@ -6632,6 +6662,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         fun resetZoomToFit() {
+            setFillSnapVisible(false)
             zoomTransformActive = false
             zoomAnimator?.cancel()
             zoomAnimator = null
@@ -6654,6 +6685,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         private fun finishPinchGesture(cancelled: Boolean) {
             if (!pinchActive) return
             pinchActive = false
+            setFillSnapVisible(false)
             gestureConsumed = true
             gestureMode = GestureMode.PINCH
             lastPanX = null
@@ -6662,7 +6694,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (!cancelled) {
                 logPlayer("GESTURE_END type=pinch requestId=" + requestId.ifEmpty { "-" })
                 val fitSnap = min(ZOOM_SNAP_THRESHOLD, 1f + (fillZoomLimit() - 1f) * .15f)
-                if (zoomScale <= fitSnap) {
+                if (nearFill()) {
+                    animateZoomTo(fillZoomLimit())
+                } else if (zoomScale <= fitSnap) {
                     animateZoomToFit()
                 } else {
                     playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -6675,37 +6709,37 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
 
-        private fun animateZoomToFit() {
+        private fun animateZoomToFit() = animateZoomTo(1f)
+
+        private fun animateZoomTo(target: Float) {
             zoomAnimator?.cancel()
-            if (!ReiAnixMotionPolicy.systemAnimationsEnabled()) {
-                zoomScale = 1f
+            zoomAnimator = null
+            val destination = target.coerceIn(1f, fillZoomLimit())
+            fun settle() {
+                zoomScale = destination
                 zoomTranslationX = 0f
                 zoomTranslationY = 0f
-                restoreConfiguredAspectMode()
+                if (destination == 1f) restoreConfiguredAspectMode()
                 applyZoomTransform()
-                zoomAnimator = null
+                updateAspectButtonFromZoom()
+            }
+            if (!ReiAnixMotionPolicy.systemAnimationsEnabled()) {
+                settle()
                 return
             }
-
             val startScale = zoomScale
-            val startX = zoomTranslationX
-            val startY = zoomTranslationY
-            zoomAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 160L
+            zoomAnimator = ValueAnimator.ofFloat(startScale, destination).apply {
+                duration = 200L
+                startDelay = 0L
                 addUpdateListener { animator ->
-                    val progress = animator.animatedValue as Float
-                    zoomScale = startScale + (1f - startScale) * progress
-                    zoomTranslationX = startX * (1f - progress)
-                    zoomTranslationY = startY * (1f - progress)
+                    zoomScale = animator.animatedValue as Float
                     applyZoomTransform()
                 }
                 addListener(object : android.animation.AnimatorListenerAdapter() {
+                    private var cancelled = false
+                    override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
                     override fun onAnimationEnd(animation: android.animation.Animator) {
-                        zoomScale = 1f
-                        zoomTranslationX = 0f
-                        zoomTranslationY = 0f
-                        restoreConfiguredAspectMode()
-                        applyZoomTransform()
+                        if (!cancelled) settle()
                         zoomAnimator = null
                     }
                 })
