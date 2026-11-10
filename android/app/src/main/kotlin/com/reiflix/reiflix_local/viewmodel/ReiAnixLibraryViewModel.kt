@@ -2434,7 +2434,10 @@ class ReiAnixLibraryViewModel(
             )) {
                 is ReiAnixLibraryQueryResult.Success -> {
                     val pageResult = result.value
-                    val byId = catalog.animes.associateBy { it.id }
+                    // Artwork can commit while the page's SQL query is in flight.
+                    // Resolve its IDs against the latest projection, so an older
+                    // captured snapshot cannot replace newly displayed artwork.
+                    val byId = nativeCatalogState.value.animes.associateBy { it.id }
                     val missingIds = pageResult.animeIds.filterNot(byId::containsKey)
                     if (missingIds.isNotEmpty()) {
                         nativePagedLibraryState.value = current.copy(
