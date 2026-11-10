@@ -1,6 +1,8 @@
 package com.reiflix.reiflix_local.ui.account
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.SystemClock
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -31,6 +33,38 @@ import java.net.URL
 
 private const val MAX_AVATAR_BYTES = 4 * 1024 * 1024
 private const val MAX_AVATAR_DIMENSION = 256
+private const val AVATAR_CACHE_MAX_AGE_MS = 30 * 60 * 1000L
+
+/**
+ * The settings home leaves the composition while a category is open. Its avatar must
+ * survive that navigation, otherwise remember() starts at null and the gray fallback
+ * flashes every time the user goes back.
+ *
+ * Keep only one small, decoded avatar in process memory, keyed by its exact HTTPS URL.
+ * This is intentionally separate from artwork/thumbnails and never writes to disk.
+ */
+private object RecentAccountAvatar {
+    private var url: String? = null
+    private var bitmap: Bitmap? = null
+    private var refreshedAtMs: Long = 0L
+
+    @Synchronized
+    fun get(requestedUrl: String): Bitmap? =
+        bitmap?.takeIf { requestedUrl.isNotBlank() && requestedUrl == url }
+
+    @Synchronized
+    fun isFresh(requestedUrl: String): Boolean =
+        get(requestedUrl) != null &&
+            SystemClock.elapsedRealtime() - refreshedAtMs < AVATAR_CACHE_MAX_AGE_MS
+
+    @Synchronized
+    fun put(requestedUrl: String, decoded: Bitmap) {
+        if (requestedUrl.isBlank()) return
+        url = requestedUrl
+        bitmap = decoded
+        refreshedAtMs = SystemClock.elapsedRealtime()
+    }
+}
 
 @Composable
 fun ReiAnixAccountAvatar(
@@ -38,10 +72,20 @@ fun ReiAnixAccountAvatar(
     contentDescription: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    var bitmap by remember(pictureUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val avatarUrl = pictureUrl.trim()
+    // Read before the first frame: returning from any Settings category should draw
+    // the already-loaded photo, never a temporary AccountCircle placeholder.
+    var bitmap by remember(avatarUrl) { mutableStateOf(RecentAccountAvatar.get(avatarUrl)) }
 
-    LaunchedEffect(pictureUrl) {
-        bitmap = loadRemoteAvatarBitmap(pictureUrl)
+    LaunchedEffect(avatarUrl) {
+        // Keep showing the cached photo even when a background refresh is due.
+        RecentAccountAvatar.get(avatarUrl)?.let { bitmap = it }
+        if (avatarUrl.isBlank() || RecentAccountAvatar.isFresh(avatarUrl)) return@LaunchedEffect
+
+        loadRemoteAvatarBitmap(avatarUrl)?.let { downloaded ->
+            RecentAccountAvatar.put(avatarUrl, downloaded)
+            bitmap = downloaded
+        }
     }
 
     Box(
