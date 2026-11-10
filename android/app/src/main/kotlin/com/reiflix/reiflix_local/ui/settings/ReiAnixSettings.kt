@@ -369,12 +369,12 @@ fun ReiAnixSettingsScreen(
                                 modifier = Modifier.padding(vertical = ReiAnixTokens.Spacing.sm),
                             )
                         }
-                        if (searchQuery.isBlank() || listOf("anilist", "contas e sincronização").any {
+                        if (searchQuery.isBlank() || listOf("anilist", "contas").any {
                             it.contains(searchQuery.trim(), ignoreCase = true)
                         }) {
                             item(key = "settings:anilist-account") {
                                 SettingsFlatCategoryRow(
-                                    ReiAnixSettingsCategoryUiModel("Contas e sincronização", "AniList", Icons.Filled.AccountCircle),
+                                    ReiAnixSettingsCategoryUiModel("Contas", "AniList", Icons.Filled.AccountCircle),
                                     onClick = { accountContext.startActivity(android.content.Intent(accountContext,
                                         com.reiflix.reiflix_local.AniListAccountActivity::class.java)) },
                                 )
