@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
@@ -44,6 +45,7 @@ object ReiAnixRoutes {
     const val MY_LIST = "my_list"
     const val SEARCH = "search"
 
+    const val DOWNLOADS = "downloads"
     const val SETTINGS = "settings"
     const val STORAGE = "storage"
     const val ORGANIZE = "organize"
@@ -136,6 +138,11 @@ private val topLevelDestinations = listOf(
         label = "Buscar",
         selectedIcon = Icons.Filled.Search,
         unselectedIcon = Icons.Outlined.OutlinedSearch,
+    ),
+    ReiAnixBottomNavDestination(
+        route = ReiAnixRoutes.DOWNLOADS,
+        label = "Downloads",
+        selectedIcon = androidx.compose.material.icons.Icons.Filled.Download,
     ),
     ReiAnixBottomNavDestination(
         route = ReiAnixRoutes.SETTINGS,
@@ -392,6 +399,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.MY_LIST) { myList() }
             composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
+            composable(ReiAnixRoutes.DOWNLOADS) { com.reiflix.reiflix_local.downloads.DownloadsScreen() }
             composable(ReiAnixRoutes.SETTINGS) { settings() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }

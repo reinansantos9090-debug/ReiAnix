@@ -2,6 +2,7 @@ package com.reiflix.reiflix_local
 
 import android.util.Log
 import android.app.Application
+import kotlinx.coroutines.*
 
 /**
  * Native process Application and single owner of the existing Kotlin dependency
@@ -16,6 +17,17 @@ class ReiAnixApplication : Application() {
         super.onCreate()
         dependencies = ReiAnixAppDependencies(this)
         dependencies.bootstrap.start()
+        CoroutineScope(SupervisorJob()+Dispatchers.IO).launch {
+            try {
+                val downloads=com.reiflix.reiflix_local.downloads.DownloadStore(this@ReiAnixApplication)
+                downloads.ready()
+                com.reiflix.reiflix_local.downloads.DownloadSnapshots.refresh(this@ReiAnixApplication)
+                if(downloads.all().any { it.state in com.reiflix.reiflix_local.downloads.DownloadState.pending }) {
+                    com.reiflix.reiflix_local.downloads.DownloadScheduling.schedule(this@ReiAnixApplication,userInitiated=false)
+                }
+            } catch(cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Recovery mode must not be bypassed by download startup. */ }
+        }
         Log.i(TAG, "APPLICATION_READY nativeDependencyGraph=lazy bootstrap=started")
     }
 
