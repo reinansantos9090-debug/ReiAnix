@@ -55,7 +55,7 @@ class DownloadEngine(private val context: Context) {
                 active.values.joinAll()
             }
             store.all().any { it.state in DownloadState.pending }
-        } finally { DownloadSnapshots.refresh(context); runner.unlock() }
+        } finally { try {DownloadSnapshots.refresh(context);runCatching {DownloadScheduling.publish(context)}} finally {runner.unlock()} }
     }
     private suspend fun transfer(id: String) {
         var connection: HttpURLConnection?=null
