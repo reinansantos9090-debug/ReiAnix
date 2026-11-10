@@ -137,20 +137,12 @@ private fun ReiAnixBottomNavigation(
                         modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
                     )
                 },
-                label = {
-                    Text(
-                        text = destination.label,
-                        style = ReiAnixTokens.TypographyTokens.navigationLabel,
-                        color = contentColor,
-                        maxLines = 1,
-                    )
-                },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
                 ),
             )
         }

@@ -304,6 +304,8 @@ fun ReiAnixSettingsScreen(
 ) {
     val accountContext = androidx.compose.ui.platform.LocalContext.current
     var searchQuery by rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+    val profile by com.reiflix.reiflix_local.ReiAnixAppDependencies.from(accountContext).aniListAccountService.state.collectAsStateWithLifecycle()
+    var searchOpen by rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     val searchResults = searchSettings(searchQuery)
     ReiAnixResponsiveRoot {
         Surface(
@@ -321,7 +323,7 @@ fun ReiAnixSettingsScreen(
                     top = ReiAnixTokens.Spacing.sm,
                     bottom = ReiAnixTokens.Spacing.xl,
                 ),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
+                verticalArrangement = Arrangement.Center,
             ) {
                 when (state.status) {
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
@@ -348,20 +350,18 @@ fun ReiAnixSettingsScreen(
 
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
                         item(key = "settings:top-bar") {
-                            ReiAnixTopBar(
-                                title = "Configurações",
-                                subtitle = "Preferências do ReiAnix",
-                                navigationIcon = Icons.Filled.ArrowBack,
-                                navigationContentDescription = "Voltar das Configurações",
-                                onNavigationClick = onBack,
-                                modifier = Modifier.padding(bottom = ReiAnixTokens.Spacing.xs),
-                                titleStyle = ReiAnixTokens.TypographyTokens.screenTitle,
-                                titleColor = MaterialTheme.colorScheme.onSurface,
-                                applyResponsiveHorizontalPadding = false,
-                            )
+                            Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar(profile.avatarUrl)
+                                Text(if (profile.connected) profile.name else "ReiAnix", Modifier.weight(1f).padding(start = 10.dp),
+                                    style = MaterialTheme.typography.titleMedium)
+                                androidx.compose.material3.IconButton(onClick = {
+                                    searchOpen = !searchOpen
+                                    if (!searchOpen) searchQuery = ""
+                                }) { Icon(Icons.Filled.Search, contentDescription = "Pesquisar configurações") }
+                            }
                         }
 
-                        item(key = "settings:search") {
+                        if (searchOpen) item(key = "settings:search") {
                             ReiAnixTextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
@@ -434,21 +434,13 @@ private fun SettingsFlatCategoryRow(
     category: ReiAnixSettingsCategoryUiModel,
     onClick: () -> Unit,
 ) {
-    ReiAnixSettingsRow(
-        icon = category.icon,
-        title = category.label,
-        description = category.description,
-        onClick = onClick,
-        modifier = Modifier.padding(vertical = ReiAnixTokens.Spacing.xs).clip(ReiAnixTokens.Shapes.card)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow),
-        showDivider = false,
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .heightIn(min = 50.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
-        )
+        Text(category.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
     }
 }
 

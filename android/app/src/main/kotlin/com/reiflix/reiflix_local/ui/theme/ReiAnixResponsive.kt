@@ -168,7 +168,7 @@ data class ReiAnixResponsiveMetrics(
                 ReiAnixTokens.Responsive.homeHeroLandscapeMaxHeight,
             )
         }
-        return (maxWidth * 0.56f).coerceIn(
+        return (maxHeight * 0.55f).coerceIn(
             ReiAnixTokens.Responsive.homeHeroPortraitMinHeight,
             if (widthClass == ReiAnixWindowWidthClass.EXPANDED) {
                 ReiAnixTokens.Responsive.homeHeroExpandedMaxHeight
@@ -185,7 +185,7 @@ data class ReiAnixResponsiveMetrics(
                 ReiAnixTokens.Responsive.detailsHeroLandscapeMaxHeight,
             )
         }
-        return (maxWidth * 0.66f).coerceIn(
+        return (maxWidth * 0.82f).coerceIn(
             ReiAnixTokens.Dimensions.detailsHeroHeight,
             ReiAnixTokens.Dimensions.detailsHeroMaxHeight,
         )

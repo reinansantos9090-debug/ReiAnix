@@ -831,11 +831,22 @@ fun ReiAnixAnimeCard(
                         )
                     }
                 }
+                Text(
+                    text = title,
+                    style = ReiAnixTokens.TypographyTokens.cardTitle,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.86f))
+                        )).padding(start = 6.dp, end = 6.dp, top = 14.dp, bottom = 5.dp),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 if (!bottomBadgeText.isNullOrBlank()) {
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = ReiAnixTokens.Spacing.md),
+                            .padding(bottom = 48.dp),
                         shape = ReiAnixTokens.Shapes.chip,
                         color = MaterialTheme.colorScheme.surface.copy(alpha = ReiAnixTokens.Colors.surfaceOverlayAlpha),
                         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -872,13 +883,6 @@ fun ReiAnixAnimeCard(
                     ReiAnixTokens.Spacing.xs,
                 ),
             ) {
-                Text(
-                    text = title,
-                    style = ReiAnixTokens.TypographyTokens.cardTitle,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
                 if (metadata.isNotEmpty()) {
                     ReiAnixMetadata(text = metadata.joinToString(" • "))
                 }

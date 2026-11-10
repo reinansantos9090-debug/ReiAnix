@@ -33,7 +33,7 @@ object ReiAnixTokens {
         val playerControl = Color(0xFFFFFFFF)
         val playerScrim = Color(0xFF000000)
 
-        val primary = Color(0xFF2579FF)
+        val primary = Color(0xFF536DFE)
         val primaryContainer = surfaceRaised
         val onPrimary = Color(0xFFFFFFFF)
         val onPrimaryContainer = Color(0xFFFFFFFF)
@@ -168,7 +168,7 @@ object ReiAnixTokens {
         val iconLarge = 26.dp
         val loadingIndicatorSize = 20.dp
         val loadingIndicatorStroke = 2.dp
-        val accountAvatarSize = 72.dp
+        val accountAvatarSize = 50.dp
         val topBarMinHeight = 56.dp
         val bottomNavigationMinHeight = 64.dp
         val bottomNavigationIndicatorHeight = 32.dp
@@ -187,18 +187,18 @@ object ReiAnixTokens {
         val libraryGenrePickerMaxHeight = 360.dp
         // Grid gaps are expressed as density presets, not screen-local magic values.
         val libraryGridSpacingDense = 6.dp
-        val libraryGridSpacingBalanced = 8.dp
+        val libraryGridSpacingBalanced = 6.dp
         val libraryGridSpacingRelaxed = 12.dp
         val continueCardWidth = 250.dp
         val continuePosterWidth = 76.dp
         val continuePosterHeight = 108.dp
-        val posterAspectRatio = 0.7f
+        val posterAspectRatio = 114f / 180f
         val episodeThumbnailWidth = 120.dp
         val episodeThumbnailHeight = 68.dp
         val detailsEpisodeThumbnailFraction = 0.27f
-        val detailsHeroHeight = 240.dp
+        val detailsHeroHeight = 250.dp
         val searchFieldHeight = 48.dp
-        val detailsHeroMaxHeight = 300.dp
+        val detailsHeroMaxHeight = 360.dp
         val detailsHeroWideBreakpoint = 600.dp
         val detailsHeroPosterWidth = 112.dp
         val detailsHeroPosterOverlap = 64.dp
@@ -219,7 +219,7 @@ object ReiAnixTokens {
         val progressHeight = 4.dp
         val dividerHeight = 1.dp
         val borderWidth = 1.dp
-        val cornerRadius = 12.dp
+        val cornerRadius = 6.dp
     }
 
     /**
@@ -256,9 +256,9 @@ object ReiAnixTokens {
 
         val homeHeroLandscapeMinHeight = 180.dp
         val homeHeroLandscapeMaxHeight = 240.dp
-        val homeHeroPortraitMinHeight = 190.dp
-        val homeHeroPortraitMaxHeight = 240.dp
-        val homeHeroExpandedMaxHeight = 280.dp
+        val homeHeroPortraitMinHeight = 270.dp
+        val homeHeroPortraitMaxHeight = 500.dp
+        val homeHeroExpandedMaxHeight = 500.dp
         val detailsHeroLandscapeMinHeight = 200.dp
         val detailsHeroLandscapeMaxHeight = 260.dp
     }
@@ -270,7 +270,7 @@ object ReiAnixTokens {
         val card = androidx.compose.foundation.shape.RoundedCornerShape(Dimensions.cornerRadius)
         val large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
         val artwork = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-        val hero = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        val hero = androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
         val dialog = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
         val sheet = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
         val textField = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
@@ -293,7 +293,7 @@ object ReiAnixTokens {
         val topHorizontalPadding = 8.dp
         val topBottomPadding = 20.dp
         val topOverlayPortraitHeight = 132.dp
-        val topOverlayLandscapeHeight = 108.dp
+        val topOverlayLandscapeHeight = 88.dp
         val centerOverlayPortraitHeight = 110.dp
         val centerOverlayLandscapeHeight = 100.dp
         // Reserve room for the timeline, scalable action labels, and gesture-safe inset.
@@ -305,7 +305,7 @@ object ReiAnixTokens {
         // IconButton hit target remains independent of this visual size.
         val seekIconSize = 40.dp
         val centerButtonContainerSize = 76.dp
-        val centerButtonSize = 68.dp
+        val centerButtonSize = 70.dp
         val bufferingIndicatorSize = 32.dp
         val bufferingStroke = 3.dp
         val playIconSize = 48.dp
@@ -321,43 +321,50 @@ object ReiAnixTokens {
         val bottomExtraPadding = 4.dp
         val actionButtonSize = 48.dp
         val actionGlyphSize = 22.dp
-        val actionIconSize = 22.dp
+        val actionIconSize = 24.dp
     }
 
     object TypographyTokens {
         // Canonical roles shared by all Compose screens. Values stay in sp so system
         // font scaling and accessibility settings continue to apply.
         val display = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 26.sp,
             lineHeight = 32.sp,
             fontWeight = FontWeight.Bold,
         )
         val brandTitle = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 18.sp,
             lineHeight = 22.sp,
             fontWeight = FontWeight.Bold,
         )
         val heroTitle = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 22.sp,
             lineHeight = 27.sp,
             fontWeight = FontWeight.Bold,
         )
         val screenTitle = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 22.sp,
             lineHeight = 27.sp,
             fontWeight = FontWeight.Bold,
         )
         val emptyStateTitle = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 18.sp,
             lineHeight = 23.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val sectionTitle = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 17.sp,
             lineHeight = 22.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val itemTitle = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 14.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold,
@@ -365,16 +372,19 @@ object ReiAnixTokens {
         // Keep the previous semantic alias for existing call sites.
         val cardTitle = itemTitle
         val subtitle = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 13.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.Normal,
         )
         val body = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 14.sp,
             lineHeight = 20.sp,
             fontWeight = FontWeight.Normal,
         )
         val bodySecondary = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 13.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.Normal,
@@ -382,82 +392,98 @@ object ReiAnixTokens {
         // Semantic alias for screen descriptions and other secondary copy.
         val secondary = bodySecondary
         val metadata = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.Normal,
         )
         val caption = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 11.sp,
             lineHeight = 14.sp,
             fontWeight = FontWeight.Normal,
         )
         val episode = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.Medium,
         )
         val label = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val chip = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 11.sp,
             lineHeight = 14.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val button = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val navigationLabel = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 11.sp,
             lineHeight = 14.sp,
             fontWeight = FontWeight.Medium,
         )
         val settingsCategory = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 15.sp,
             lineHeight = 20.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val settingsDescription = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 13.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.Normal,
         )
         // Player-specific roles intentionally remain unchanged by the compact UI pass.
         val playerTopLabel = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 13.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
         val playerTechnical = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 11.sp,
             lineHeight = 14.sp,
             fontWeight = FontWeight.Medium,
         )
         val playerTime = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 11.sp,
             lineHeight = 14.sp,
             fontWeight = FontWeight.Medium,
         )
         val playerGlyph = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 17.sp,
             lineHeight = 20.sp,
             fontWeight = FontWeight.Bold,
         )
         val playerPauseGlyph = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 30.sp,
             lineHeight = 32.sp,
             fontWeight = FontWeight.Bold,
         )
         val playerActionGlyph = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 22.sp,
             lineHeight = 24.sp,
             fontWeight = FontWeight.Bold,
         )
         val playerActionLabel = TextStyle(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             fontSize = 10.sp,
             lineHeight = 12.sp,
             fontWeight = FontWeight.Medium,
