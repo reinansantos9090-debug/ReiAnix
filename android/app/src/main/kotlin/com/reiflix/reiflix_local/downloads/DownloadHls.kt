@@ -25,7 +25,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             val segments=mutableListOf<Segment>()
             text.lineSequence().map {it.trim()}.filter {it.isNotBlank()}.forEach { line ->
                 when {
-                    line.startsWith("#EXT-X-MEDIA-SEQUENCE:") -> seq=line.substringAfter(':').toLong()
+                    line.startsWith("#EXT-X-MEDIA-SEQUENCE:") -> seq=line.substringAfter(':').toLong().also {require(it>=0)}
                     line.startsWith("#EXT-X-KEY:") -> {
                         val a=attributes(line)
                         require(a["METHOD"] in setOf("NONE","AES-128") && a["KEYFORMAT"].let {it==null || it=="identity"}) {"Vídeo com proteção DRM não é suportado"}
@@ -92,7 +92,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                 while(index<playlist.segments.size) {
                     currentCoroutineContext().ensureActive(); if(store.get(id)?.state!="DOWNLOADING")return false
                     val start=android.os.SystemClock.elapsedRealtime();val segment=playlist.segments[index]
-                    var bytes=fetch(segment.url,128*1024*1024)
+                    var bytes=fetch(segment.url,32*1024*1024)
                     if(segment.key!=null) {
                         val key=keys[segment.key] ?: fetch(segment.key,16).also {require(it.size==16);keys[segment.key]=it}
                         val iv=ByteArray(16)

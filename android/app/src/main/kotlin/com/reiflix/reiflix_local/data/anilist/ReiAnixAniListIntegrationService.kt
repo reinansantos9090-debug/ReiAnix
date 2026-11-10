@@ -836,6 +836,10 @@ class ReiAnixAniListIntegrationService(
         }
         val local = library.getAnime(animeId)
             ?: return AniListResult.Failure(AniListError.InvalidRequest("Local anime does not exist."))
+        // An anonymous download has no title evidence to search. Explicit/manual matching remains available.
+        if (!force && local.metadataSource == "local_download_unidentified") {
+            return AniListResult.Success(AniListAutoMatchResult.Disabled)
+        }
         if (local.anilistMatchManual == true && local.anilistId != null) {
             return AniListResult.Success(AniListAutoMatchResult.AlreadyManuallyMatched(local.anilistId))
         }

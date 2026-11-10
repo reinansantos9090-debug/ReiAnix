@@ -89,7 +89,7 @@ class DownloadStore(context: Context) {
         rows.map { item ->
             val linked=matches[item.episodeId]
             val reference=if(item.state=="COMPLETE") item.output else item.virtualUri.toString()
-            if(item.episodeId>0 && (linked==null || (linked.first!=reference && linked.second!="download:${item.id}"))) {
+            if(item.episodeId>0 && ((!item.json.has("identityKnown") && item.json.optString("animeTitle").isBlank() && DownloadIdentity.title(item.name).isBlank()) || linked==null || (linked.first!=reference && linked.second!="download:${item.id}"))) {
                 DownloadItem(JSONObject(item.json.toString()).put("episodeId",0).put("animeId",0))
             } else if(linked!=null && linked.third!=item.animeId) DownloadItem(JSONObject(item.json.toString()).put("animeId",linked.third)) else item
         }
@@ -190,7 +190,7 @@ class DownloadStore(context: Context) {
             if(data.optLong("episodeId") > 0) return@transaction
             val anime = connection.rawQuery("SELECT id FROM anime WHERE lookup_title=? LIMIT 1", arrayOf(lookup)).use { if(it.moveToFirst()) it.getLong(0) else null }
                 ?: connection.insertOrThrow("anime", null, ContentValues().apply {
-                    put("lookup_title", lookup); put("title", title); put("added_at", System.currentTimeMillis()/1000.0); put("metadata_source", "local_download")
+                    put("lookup_title", lookup); put("title", title); put("added_at", System.currentTimeMillis()/1000.0); put("metadata_source", if(identified.isBlank()) "local_download_unidentified" else "local_download")
                 })
             val reuse = connection.rawQuery("SELECT id,path,missing FROM episodes WHERE anime_id=? AND file_name=? LIMIT 1", arrayOf(anime.toString(), current.name)).use { c ->
                 if(!c.moveToFirst()) null else {

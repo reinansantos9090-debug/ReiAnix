@@ -77,6 +77,8 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
     var initialized by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var add by remember { mutableStateOf(false) }
+    var identify by remember { mutableStateOf<DownloadItem?>(null) }
+    var identityTitle by remember { mutableStateOf("") }
     var edit by remember { mutableStateOf<DownloadItem?>(null) }
     var parallel by remember { mutableIntStateOf(2) }
     var busy by remember { mutableStateOf(false) }
@@ -132,6 +134,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                             Text(item.json.optString("integrity"),style=MaterialTheme.typography.bodySmall)
                             Text("SHA-256: ${item.json.optString("sha256")}",style=MaterialTheme.typography.labelSmall)
                         }
+                        if(item.mime.startsWith("video/") && !item.json.optBoolean("identityKnown") && item.state!="CANCELLED") TextButton(onClick={identify=item;identityTitle=""}) {Text("Identificar anime")}
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
                             if(item.state in DownloadState.pending && item.state!="SAVING") IconButton(onClick={ action(item,"pause") }) { Icon(Icons.Filled.Pause,"Pausar") }
                             if(item.state in setOf("PAUSED","ERROR")) IconButton(onClick={ action(item,"resume") }) { Icon(Icons.Filled.PlayArrow,"Retomar") }
@@ -153,6 +156,12 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
             }
         }
     }
+    if(identify!=null) AlertDialog(onDismissRequest={identify=null},title={Text("Nome do anime")},text={
+        OutlinedTextField(identityTitle,{identityTitle=it},label={Text("Nome do anime")},singleLine=true)
+    },confirmButton={TextButton(enabled=identityTitle.isNotBlank(),onClick={val item=identify!!;scope.launch {
+        try {withContext(Dispatchers.IO){store.relink(item.id,identityTitle.trim());DownloadSnapshots.refresh(context)};identify=null}
+        catch(_: Exception){error="Não foi possível identificar o anime"}
+    }}){Text("Salvar")}},dismissButton={TextButton(onClick={identify=null}){Text("Cancelar")}})
     if(add) DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName ->
         busy=true; error=""
         scope.launch {

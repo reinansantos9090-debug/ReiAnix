@@ -14,7 +14,7 @@ object DownloadScheduling {
     private const val JOB=8702
     fun hasUserJob(context: Context): Boolean = Build.VERSION.SDK_INT>=34 &&
         context.getSystemService(JobScheduler::class.java).getPendingJob(JOB)!=null
-    fun schedule(context: Context, userInitiated: Boolean = true) {
+    suspend fun schedule(context: Context, userInitiated: Boolean = true) {
         val wifi=com.reiflix.reiflix_local.ReiAnixAppDependencies.from(context).sqliteSettingsRepository.getPreference("downloads.wifi_only","false")=="true"
         var uidt=hasUserJob(context)
         if(Build.VERSION.SDK_INT>=34 && userInitiated && !uidt) {
