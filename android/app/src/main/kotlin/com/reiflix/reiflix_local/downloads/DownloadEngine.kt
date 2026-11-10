@@ -34,6 +34,14 @@ class DownloadEngine(private val context: Context) {
                 while(isActive && android.os.SystemClock.elapsedRealtime()-started < budgetMs) {
                     active.entries.removeAll { it.value.isCompleted }
                     val jobs=store.all()
+                    val wifiOnly=ReiAnixAppDependencies.from(context).sqliteSettingsRepository.getPreference("downloads.wifi_only","false")=="true"
+                    val network=context.getSystemService(android.net.ConnectivityManager::class.java)
+                    val allowed=!wifiOnly || network.getNetworkCapabilities(network.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)==true
+                    if(!allowed) {
+                        active.values.forEach {it.cancel()};active.values.joinAll();active.clear()
+                        if(jobs.none {it.state in DownloadState.pending})break
+                        onProgress("Aguardando Wi-Fi");delay(1000);continue
+                    }
                     val limit=(ReiAnixAppDependencies.from(context).sqliteSettingsRepository.getPreference("downloads.parallel","2")?.toIntOrNull() ?: 2).coerceIn(1,4)
                     jobs.filter { it.id !in active && it.state in DownloadState.pending && it.json.optLong("nextAttempt")<=System.currentTimeMillis() }
                         .sortedBy { it.json.optLong("created") }.take((limit-active.size).coerceAtLeast(0)).forEach { item ->
@@ -66,9 +74,14 @@ class DownloadEngine(private val context: Context) {
             val requestHeaders=headers.keys().asSequence().associateWith { headers.getString(it) }
             var resume=offset
             var validator=item.json.optString("validator").takeIf { it.isNotBlank() }
-            if(resume>0 && validator==null) { restart(id,file); resume=0 }
+            val hls=item.json.optBoolean("hls") || android.net.Uri.parse(secret.getString("url")).path.orEmpty().endsWith(".m3u8",true)
+            if(resume>0 && validator==null && !hls) { restart(id,file); resume=0 }
             store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","DOWNLOADING").put("message","") }
             if(!isDownloading(id)) return
+            if(hls) {
+                if(DownloadHls(context,store).receive(id,secret.getString("url"),requestHeaders,file)) verifyAndSave(id,file)
+                return
+            }
             // Fully received files interrupted during verification/export need no redownload.
             if(item.total>=0 && resume==item.total && resume>0) {
                 verifyAndSave(id,file); return
@@ -95,7 +108,13 @@ class DownloadEngine(private val context: Context) {
             val total=range?.total ?: length
             val contentType=connection.contentType?.substringBefore(';')?.trim()?.lowercase().orEmpty()
             if(contentType in setOf("text/html","application/xhtml+xml")) throw PermanentFailure("Este link abre uma página. Informe o link direto do arquivo.")
-            if(contentType.contains("mpegurl",true) || contentType.contains("dash+xml",true)) throw PermanentFailure("Esta fonte é uma playlist HLS/DASH; use o link direto de um arquivo de vídeo.")
+            if(contentType.contains("mpegurl",true)) {
+                connection.disconnect(); connection=null
+                restart(id,file); store.mutate(id){it.put("hls",true)}
+                if(DownloadHls(context,store).receive(id,secret.getString("url"),requestHeaders,file)) verifyAndSave(id,file)
+                return
+            }
+            if(contentType.contains("dash+xml",true)) throw PermanentFailure("Esta playlist DASH exige montagem de faixas ainda não suportada. Abra o site e escolha uma versão de arquivo ou HLS compatível.")
             if(total>0 && StatFs(store.directory.path).availableBytes < (total-resume).coerceAtLeast(0)+16L*1024*1024) throw PermanentFailure("Espaço insuficiente para baixar o arquivo")
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             store.mutate(id) {
@@ -111,12 +130,25 @@ class DownloadEngine(private val context: Context) {
                 if(serverHash!=null) it.put("serverHash",serverHash.first).put("serverHashType",serverHash.second)
             }
             try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
-            DownloadMetadata.offer(context,store.get(id)?.animeId ?: 0)
+            store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let { DownloadMetadata.offer(context,it.animeId) }
+            val prefs=ReiAnixAppDependencies.from(context).sqliteSettingsRepository
+            val connections=(prefs.getPreference("downloads.connections","1")?.toIntOrNull() ?: 1).coerceIn(1,4)
+            if(connections>1 && total>=4*1024*1024 && !store.get(id)!!.json.optBoolean("parallelDisabled") &&
+                newValidator?.startsWith("\"")==true && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
+                connection.disconnect(); connection=null
+                try {
+                    if(DownloadRanges.receive(store,id,secret.getString("url"),requestHeaders,file,resume,total,newValidator,connections)) verifyAndSave(id,file)
+                } catch(cancelled: CancellationException) { throw cancelled }
+                catch(_: DownloadRanges.Paused) { return }
+                catch(error: Exception) { if(store.get(id)?.state=="DOWNLOADING") { restart(id,file);store.mutate(id){it.put("parallelDisabled",true)};throw IOException("Retomando com uma conexão",error) } }
+                return
+            }
+            val bufferSize=(prefs.getPreference("downloads.buffer_kb","128")?.toIntOrNull() ?: 128).coerceIn(64,512)*1024
             var count=resume; var committedAt=android.os.SystemClock.elapsedRealtime(); var previous=resume; var checkedAt=0L
             RandomAccessFile(file,"rw").use { output ->
                 output.seek(resume)
                 connection.inputStream.use { input ->
-                    val buffer=ByteArray(128*1024)
+                    val buffer=ByteArray(bufferSize)
                     while(true) {
                         currentCoroutineContext().ensureActive()
                         val controlNow=android.os.SystemClock.elapsedRealtime()
@@ -129,6 +161,10 @@ class DownloadEngine(private val context: Context) {
                         if(responseEnd!=null && count+read>responseEnd) throw PermanentFailure("O servidor enviou dados fora da faixa solicitada")
                         if(count==0L) {
                             val prefix=String(buffer,0,minOf(read,256),Charsets.UTF_8).trimStart().lowercase()
+                            if(prefix.startsWith("#extm3u")) {
+                                store.mutate(id){it.put("hls",true)}
+                                throw IOException("Playlist detectada; preparando download HLS")
+                            }
                             if(prefix.startsWith("<!doctype html") || prefix.startsWith("<html") ||
                                 (store.get(id)?.mime?.startsWith("video/")==true && (prefix.startsWith("{") || prefix.startsWith("[")))) {
                                 throw PermanentFailure("O link retornou uma página ou mensagem de erro, não o vídeo")

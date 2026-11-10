@@ -31,7 +31,16 @@
     <service android:name=".downloads.DownloadTransferJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
     <service android:name="androidx.work.impl.foreground.SystemForegroundService" android:foregroundServiceType="dataSync" tools:node="merge" />
     <receiver android:name=".downloads.DownloadPauseReceiver" android:exported="false" />
-    <activity android:name=".downloads.DownloadsActivity" android:exported="true" android:launchMode="singleTop">
+    <activity android:name=".downloads.DownloadBrowserActivity" android:label="ReiAnix Browser" android:exported="true" android:launchMode="singleTop">
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="text/plain" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="http" /><data android:scheme="https" />
+      </intent-filter>
+    </activity>
+    <activity android:name=".downloads.DownloadsActivity" android:label="ReiAnix" android:exported="true" android:launchMode="singleTop">
       <intent-filter>
         <action android:name="android.intent.action.SEND" />
         <category android:name="android.intent.category.DEFAULT" />
@@ -42,7 +51,7 @@
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
         <data android:scheme="http" /><data android:scheme="https" />
-        <data android:mimeType="video/*" /><data android:mimeType="application/octet-stream" />
+        <data android:mimeType="video/*" /><data android:mimeType="application/octet-stream" /><data android:mimeType="application/vnd.apple.mpegurl" /><data android:mimeType="application/x-mpegURL" /><data android:mimeType="application/dash+xml" />
       </intent-filter>
     </activity>
     <activity android:name=".AniListAccountActivity" android:exported="false" />

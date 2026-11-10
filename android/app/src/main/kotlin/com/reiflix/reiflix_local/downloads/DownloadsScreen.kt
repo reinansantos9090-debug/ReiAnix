@@ -36,18 +36,22 @@ import org.json.JSONObject
 
 object DownloadSnapshots {
     val items=MutableStateFlow<List<DownloadItem>>(emptyList())
-    fun refresh(context: Context) { runCatching { val store=DownloadStore(context); items.value=store.projectLinks(store.all()) } }
+    fun refresh(context: Context) { runCatching { val store=DownloadStore(context); items.value=store.projectLinks(store.all()).map { item ->
+        val art=store.artwork(item); if(art==null)item else DownloadItem(JSONObject(item.json.toString()).put("displayAnime",art.first).put("coverCache",art.second))
+    } } }
 }
 
 class DownloadsActivity: ComponentActivity() {
     private var incoming by mutableStateOf("")
+    private var incomingTitle by mutableStateOf("")
+    private var incomingName by mutableStateOf("")
     private var incomingHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); accept(intent)
         setContent { ReiAnixComposeTheme {
             Surface(Modifier.fillMaxSize()) {
                 Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
-                    DownloadsScreen(incoming,incomingHeaders,onBack={ finish() })
+                    DownloadsScreen(incoming,incomingHeaders,incomingTitle,incomingName,onBack={ finish() })
                 }
             }
         } }
@@ -56,6 +60,8 @@ class DownloadsActivity: ComponentActivity() {
     private fun accept(intent: Intent) {
         val raw=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else intent.dataString.orEmpty()
         incoming=Regex("https?://[^\\s]+",RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
+        incomingTitle=sequenceOf(Intent.EXTRA_TITLE,Intent.EXTRA_SUBJECT,"title","name").mapNotNull { intent.getStringExtra(it) }.firstOrNull {it.isNotBlank()}.orEmpty()
+        incomingName=intent.getStringExtra("downloadName").orEmpty()
         val bundle=intent.getBundleExtra("headers") ?: intent.getBundleExtra("com.android.browser.headers")
         incomingHeaders=bundle?.keySet()?.mapNotNull { key -> (bundle.get(key) as? String)?.let { key to it } }?.toMap().orEmpty()
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT); intent.removeExtra("headers"); intent.removeExtra("com.android.browser.headers")
@@ -63,7 +69,7 @@ class DownloadsActivity: ComponentActivity() {
 }
 
 @Composable
-fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),onBack: (() -> Unit)? = null) {
+fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",onBack: (() -> Unit)? = null) {
     val context=LocalContext.current
     val store=remember(context) { DownloadStore(context) }
     val scope=rememberCoroutineScope()
@@ -88,7 +94,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
     fun action(item: DownloadItem,command: String) {
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { if(command=="forget") store.forget(item.id) else store.control(item.id,command); DownloadSnapshots.refresh(context) }
+                withContext(Dispatchers.IO) { if(command=="forget") store.forget(item.id).also {DownloadScheduling.clear(context,item.id)} else store.control(item.id,command); DownloadSnapshots.refresh(context) }
                 if(command in setOf("resume","restart")) DownloadScheduling.schedule(context)
             } catch(_: Exception) { error="Não foi possível executar esta ação. Aguarde o salvamento ou tente novamente." }
         }
@@ -98,12 +104,6 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
             if(onBack!=null) IconButton(onClick=onBack) { Icon(Icons.Filled.ArrowBack,"Voltar") }
             Text("Downloads",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
             IconButton(onClick={ add=true },enabled=initialized && !busy) { Icon(Icons.Filled.Add,"Adicionar download") }
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal=20.dp),verticalAlignment=Alignment.CenterVertically) {
-            Text("Downloads simultâneos",Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium)
-            IconButton(enabled=initialized && parallel>1,onClick={ parallel--; scope.launch { try { ReiAnixAppDependencies.from(context).sqliteSettingsRepository.setPreference("downloads.parallel",parallel.toString()) } catch(_: Exception) { error="Não foi possível salvar o limite" } } }) { Icon(Icons.Filled.Remove,"Diminuir limite") }
-            Text(parallel.toString())
-            IconButton(enabled=initialized && parallel<4,onClick={ parallel++; scope.launch { try { ReiAnixAppDependencies.from(context).sqliteSettingsRepository.setPreference("downloads.parallel",parallel.toString()) } catch(_: Exception) { error="Não foi possível salvar o limite" } } }) { Icon(Icons.Filled.Add,"Aumentar limite") }
         }
         if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(20.dp))
         if(!initialized && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -121,7 +121,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                     Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                         Text(item.name,style=MaterialTheme.typography.titleMedium)
                         Text(DownloadState.labels[item.state] ?: item.state,style=MaterialTheme.typography.bodyMedium)
-                        if(item.total>0) LinearProgressIndicator(progress={ (item.bytes.toFloat()/item.total).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth())
+                        if(downloadPercent(item)!=null) LinearProgressIndicator(progress={ downloadPercent(item)!!/100f },modifier=Modifier.fillMaxWidth())
                         else if(item.state in DownloadState.pending) LinearProgressIndicator(Modifier.fillMaxWidth())
                         val size=Formatter.formatFileSize(context,item.bytes)
                         val total=if(item.total>=0) Formatter.formatFileSize(context,item.total) else "tamanho desconhecido"
@@ -153,14 +153,19 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
             }
         }
     }
-    if(add) DownloadDialog(initialUrl,suppliedHeaders,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName ->
+    if(add) DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName ->
         busy=true; error=""
         scope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     val editing=edit
-                    if(editing==null) store.enqueue(url,name,dest,hash,type,headers,anime,autoName)
-                    else store.updateSource(editing.id,url,headers,hash,type,dest)
+                    val profile=store.profile(url)
+                    val combined=downloadProfileHeaders(profile).toMutableMap()
+                    headers.forEach { (key,value) -> combined.keys.filter {it.equals(key,true)}.toList().forEach(combined::remove); combined[key]=value }
+                    val expected=profile.optString("hash").ifBlank {hash}
+                    val algorithm=if(profile.optString("hash").isNotBlank())profile.optString("hashType","SHA-256") else type
+                    if(editing==null) store.enqueue(url,name,dest,expected,algorithm,combined,anime,autoName)
+                    else {store.updateSource(editing.id,url,combined,expected,algorithm,dest); if(anime.isNotBlank())store.relink(editing.id,anime)}
                     DownloadSnapshots.refresh(context)
                 }
                 add=false; edit=null
@@ -174,13 +179,13 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
 }
 
 @Composable
-private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
+private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
     onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
-    var name by remember { mutableStateOf(editing?.name ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
+    var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
     var nameTouched by remember { mutableStateOf(editing!=null) }
-    var anime by remember { mutableStateOf("") }
+    var anime by remember { mutableStateOf(editing?.json?.optString("animeTitle").orEmpty().ifBlank {DownloadIdentity.title(initialTitle)}) }
     var destination by remember { mutableStateOf(editing?.json?.optString("destination").orEmpty()) }
     var hash by remember { mutableStateOf(editing?.json?.optString("expectedHash").orEmpty()) }
     var hashType by remember { mutableStateOf(editing?.json?.optString("hashType","SHA-256") ?: "SHA-256") }
@@ -223,23 +228,12 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
                 }
                 url=next; if(!nameTouched && editing==null) name=runCatching { URLUtil.guessFileName(next.trim(),null,null) }.getOrDefault("episodio.mp4") },label={ Text("Link direto HTTP/HTTPS") },singleLine=true,enabled=!busy && !sourceLoading)
             OutlinedTextField(name,{ name=it; nameTouched=true },label={ Text("Nome do arquivo, incluindo extensão") },singleLine=true,enabled=!busy && !sourceLoading && editing==null)
-            if(editing==null) {
+            run {
                 OutlinedTextField(anime,{ anime=it },label={ Text("Nome do anime (opcional)") },singleLine=true,enabled=!busy && !sourceLoading)
             }
                 Text(if(destination.isBlank()) "Destino: Downloads/ReiAnix" else "Destino: $destination",style=MaterialTheme.typography.bodySmall)
                 Row { TextButton(onClick={ folder.launch(null) },enabled=!busy && !sourceLoading) { Text("Escolher pasta") }; TextButton(onClick={ destination="" },enabled=!busy && !sourceLoading) { Text("Padrão") } }
-            if(editing!=null) Text("Mudar o endereço reinicia os dados recebidos com segurança; atualizar apenas a sessão permite retomar quando o servidor aceita.",style=MaterialTheme.typography.bodySmall)
-            Text("Integridade",style=MaterialTheme.typography.titleSmall)
-            Row { listOf("SHA-256","SHA-1","MD5").forEach { kind -> TextButton(onClick={ hashType=kind },enabled=!busy && !sourceLoading) { Text(if(hashType==kind) "✓ $kind" else kind) } } }
-            OutlinedTextField(hash,{ hash=it },label={ Text("Hash de referência (opcional)") },enabled=!busy && !sourceLoading)
-            Text("Sem referência fornecida pelo usuário ou servidor, calculamos o SHA-256, mas não podemos confirmar que o original está correto.",style=MaterialTheme.typography.bodySmall)
-            Text("Autenticação (opcional)",style=MaterialTheme.typography.titleSmall)
-            OutlinedTextField(user,{ user=it },label={ Text("Usuário (HTTP Basic)") },singleLine=true,enabled=!busy && !sourceLoading)
-            OutlinedTextField(password,{ password=it },label={ Text("Senha") },singleLine=true,enabled=!busy && !sourceLoading,visualTransformation=PasswordVisualTransformation())
-            OutlinedTextField(cookie,{ cookie=it },label={ Text("Cookie da sessão autorizada") },enabled=!busy && !sourceLoading,visualTransformation=PasswordVisualTransformation())
-            OutlinedTextField(referer,{ referer=it },label={ Text("Referer, se exigido pelo servidor") },singleLine=true,enabled=!busy && !sourceLoading)
-            TextButton(onClick={ originalHeaders=originalHeaders.filterKeys { it.lowercase() !in setOf("authorization","cookie","referer") }; cookie=""; user=""; password=""; referer="" },enabled=!busy && !sourceLoading) { Text("Limpar autenticação") }
-            TextButton(onClick={ try { DownloadHttp.validateUrl(url); login=true } catch(_: Exception) { error="Informe um link válido primeiro" } },enabled=!busy && !sourceLoading) { Text("Entrar no site para obter a sessão") }
+            TextButton(onClick={ try { DownloadHttp.validateUrl(url); context.startActivity(Intent(context,DownloadBrowserActivity::class.java).setData(Uri.parse(url.trim()))) } catch(_: Exception) { error="Informe um link válido primeiro" } },enabled=!busy && !sourceLoading) { Text("Entrar no site") }
             if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
             if(submissionError.isNotBlank()) Text(submissionError,color=MaterialTheme.colorScheme.error)
         } },
@@ -254,29 +248,7 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
             } catch(_: Exception) { error="Confira o link e os dados informados" }
         }) { Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar") } },
         dismissButton={ TextButton(onClick=onDismiss,enabled=!busy && !sourceLoading) { Text("Cancelar") } })
-    if(login) WebSessionDialog(url,onDismiss={ login=false },onCookie={ cookie=it; login=false })
-}
 
-@Composable
-private fun WebSessionDialog(url: String,onDismiss: ()->Unit,onCookie: (String)->Unit) {
-    val context=LocalContext.current
-    val origin=remember(url) { val uri=Uri.parse(url); "${uri.scheme}://${uri.encodedAuthority}/" }
-    val web=remember { WebView(context).apply {
-        settings.javaScriptEnabled=true; settings.allowFileAccess=false; settings.allowContentAccess=false
-        settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        webViewClient=object: WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView,request: WebResourceRequest): Boolean = request.url.scheme !in setOf("https","http")
-        }
-        loadUrl(origin)
-    } }
-    DisposableEffect(web) { onDispose { web.stopLoading(); web.destroy() } }
-    Dialog(onDismissRequest=onDismiss) { Surface {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
-            Text("Entre no site. Apenas os cookies deste endereço serão usados no download.",Modifier.padding(12.dp),style=MaterialTheme.typography.bodySmall)
-            AndroidView(factory={ web },modifier=Modifier.weight(1f).fillMaxWidth())
-            Row { TextButton(onClick=onDismiss) { Text("Cancelar") }; TextButton(onClick={ CookieManager.getInstance().flush(); onCookie(CookieManager.getInstance().getCookie(url).orEmpty()) }) { Text("Usar sessão") } }
-        }
-    } }
 }
 
 @Composable
@@ -288,8 +260,8 @@ fun DownloadLibraryStatus(animeId: Long = 0,episodeId: Long = 0) {
 @Composable
 fun downloadLibraryLabel(animeId: Long = 0,episodeId: Long = 0): String? {
     val flow=remember(animeId,episodeId) { DownloadSnapshots.items.map { rows ->
-        rows.firstOrNull { (if(episodeId>0) it.episodeId==episodeId else it.animeId==animeId) && it.state!="COMPLETE" && it.state!="CANCELLED" }
-            ?.let { (DownloadState.labels[it.state] ?: it.state)+(if(it.total>0) " • ${(it.bytes*100/it.total).coerceIn(0,100)}%" else "") }
+        rows.firstOrNull { (if(episodeId>0) it.episodeId==episodeId else animeId>0 && it.animeId==animeId) && it.state!="COMPLETE" && it.state!="CANCELLED" }
+            ?.let { (DownloadState.labels[it.state] ?: it.state)+(downloadPercent(it)?.let {percent -> " • $percent%"} ?: "") }
     }.distinctUntilChanged() }
     val label by flow.collectAsStateWithLifecycle(initialValue=null)
     return label

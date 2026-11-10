@@ -64,6 +64,7 @@ class DownloadStore(context: Context) {
         deps.bootstrap.awaitStarted()
         db.transaction { connection ->
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_downloads (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)")
+            connection.execSQL("CREATE TABLE IF NOT EXISTS native_download_profiles (id TEXT PRIMARY KEY NOT NULL, secret TEXT NOT NULL)")
         }
     }
     fun all(): List<DownloadItem> = db.read { connection ->
@@ -79,10 +80,10 @@ class DownloadStore(context: Context) {
     /** SQLite row IDs may be reused after a user deletes a library item. Never let a
      * retained download record target another episode's playback or progress. */
     fun projectLinks(rows: List<DownloadItem>): List<DownloadItem> = db.read { connection ->
-        val matches=mutableMapOf<Long,Pair<String,String>>()
+        val matches=mutableMapOf<Long,Triple<String,String,Long>>()
         rows.map { it.episodeId }.filter { it>0 }.distinct().chunked(500).forEach { ids ->
-            connection.rawQuery("SELECT id,path,media_identity FROM episodes WHERE id IN (${ids.joinToString(",") { "?" }})",ids.map { it.toString() }.toTypedArray()).use { c ->
-                while(c.moveToNext()) matches[c.getLong(0)]=c.getString(1) to c.getString(2).orEmpty()
+            connection.rawQuery("SELECT id,path,media_identity,anime_id FROM episodes WHERE id IN (${ids.joinToString(",") { "?" }})",ids.map { it.toString() }.toTypedArray()).use { c ->
+                while(c.moveToNext()) matches[c.getLong(0)]=Triple(c.getString(1),c.getString(2).orEmpty(),c.getLong(3))
             }
         }
         rows.map { item ->
@@ -90,7 +91,7 @@ class DownloadStore(context: Context) {
             val reference=if(item.state=="COMPLETE") item.output else item.virtualUri.toString()
             if(item.episodeId>0 && (linked==null || (linked.first!=reference && linked.second!="download:${item.id}"))) {
                 DownloadItem(JSONObject(item.json.toString()).put("episodeId",0).put("animeId",0))
-            } else item
+            } else if(linked!=null && linked.third!=item.animeId) DownloadItem(JSONObject(item.json.toString()).put("animeId",linked.third)) else item
         }
     }
     fun mutate(id: String, change: (JSONObject) -> Unit): DownloadItem = db.transaction { connection ->
@@ -134,15 +135,56 @@ class DownloadStore(context: Context) {
             mutate(id) { it.put("state", "ERROR").put("message", "Não foi possível adicionar o vídeo à biblioteca") }
             throw e
         }
-        get(id)!!.also { DownloadMetadata.offer(context,it.animeId) }
+        get(id)!!.also { if(it.json.optBoolean("identityKnown")) DownloadMetadata.offer(context,it.animeId) }
+    }
+    fun relink(id: String,title: String) {
+        require(title.isNotBlank() && title.length<=300)
+        val item=get(id) ?: return
+        if(item.episodeId<=0) {mutate(id){it.put("animeTitle",title)};return}
+        db.transaction { c ->
+            val owns=c.rawQuery("SELECT 1 FROM episodes WHERE id=? AND media_identity=?",arrayOf(item.episodeId.toString(),"download:$id")).use {it.moveToFirst()}
+            if(!owns)return@transaction
+            val lookup=MediaTitleNormalizer.normalizeTitle(title)
+            val target=c.rawQuery("SELECT id FROM anime WHERE lookup_title=? LIMIT 1",arrayOf(lookup)).use {if(it.moveToFirst())it.getLong(0) else null}
+                ?: c.insertOrThrow("anime",null,ContentValues().apply {put("lookup_title",lookup);put("title",title);put("added_at",System.currentTimeMillis()/1000.0);put("metadata_source","local_download")})
+            c.update("episodes",ContentValues().apply {put("anime_id",target)},"id=?",arrayOf(item.episodeId.toString()))
+            val data=c.rawQuery("SELECT data FROM native_downloads WHERE id=?",arrayOf(id)).use {it.moveToFirst();JSONObject(it.getString(0))}
+            data.put("animeId",target).put("animeTitle",title).put("identityKnown",true)
+            c.update("native_downloads",ContentValues().apply {put("data",data.toString())},"id=?",arrayOf(id))
+        }
+        DownloadEvents.catalog.tryEmit(Unit)
+        get(id)?.let {DownloadMetadata.offer(context,it.animeId)}
+    }
+    fun profile(url: String): JSONObject = db.read { c ->
+        c.rawQuery("SELECT secret FROM native_download_profiles WHERE id=?",arrayOf(digest(url.trim().toByteArray()))).use {
+            if(it.moveToFirst()) JSONObject(DownloadSecrets.decrypt(it.getString(0))) else JSONObject()
+        }
+    }
+    fun saveProfile(url: String,data: JSONObject) {
+        DownloadHttp.validateUrl(url)
+        require(data.toString().length<65536)
+        val hash=data.optString("hash").trim().lowercase()
+        val size=when(data.optString("hashType","SHA-256")) { "MD5"->32; "SHA-1"->40; else->64 }
+        require(hash.isBlank() || hash.matches(Regex("[0-9a-f]{$size}"))) { "Hash de referência inválido" }
+        db.transaction { c -> c.insertWithOnConflict("native_download_profiles",null,ContentValues().apply {
+            put("id",digest(url.trim().toByteArray())); put("secret",DownloadSecrets.encrypt(data.toString()))
+        },android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE) }
+    }
+    fun artwork(item: DownloadItem): Pair<String,String>? = db.read { c ->
+        c.rawQuery("SELECT title,cover_cache FROM anime WHERE id=?",arrayOf(item.animeId.toString())).use {
+            if(it.moveToFirst()) it.getString(0) to it.getString(1).orEmpty() else null
+        }
     }
     fun secret(item: DownloadItem): JSONObject = JSONObject(DownloadSecrets.decrypt(item.json.getString("secret")))
     fun registerMedia(id: String) {
         val current = get(id) ?: return
         if(current.episodeId > 0 || !current.mime.startsWith("video/")) return
         val parsed = MediaFilenameParser.parseVideoPath(current.name)
-        val title = current.json.optString("animeTitle").ifBlank { parsed.animeTitle.ifBlank { current.name.substringBeforeLast('.') } }
-        val lookup = MediaTitleNormalizer.normalizeTitle(title).ifBlank { "download $id" }
+        val explicit=current.json.optString("animeTitle").trim()
+        val inferred=DownloadIdentity.title(current.name)
+        val identified=explicit.ifBlank { inferred }
+        val title=identified.ifBlank { "Download não identificado — ${current.name}" }
+        val lookup = if(identified.isBlank()) "download $id" else MediaTitleNormalizer.normalizeTitle(title)
         db.transaction { connection ->
             val data = connection.rawQuery("SELECT data FROM native_downloads WHERE id=?", arrayOf(id)).use { it.moveToFirst(); JSONObject(it.getString(0)) }
             if(data.optLong("episodeId") > 0) return@transaction
@@ -169,7 +211,7 @@ class DownloadStore(context: Context) {
                 put("identification_confidence", parsed.confidence.name.lowercase()); put("manual_override", 0)
                 put("missing", 0); put("availability_state", "available")
             })
-            data.put("animeId", anime).put("episodeId", episode)
+            data.put("animeId", anime).put("episodeId", episode).put("identityKnown",identified.isNotBlank())
             connection.update("native_downloads", ContentValues().apply { put("data", data.toString()) }, "id=?", arrayOf(id))
         }
         DownloadEvents.catalog.tryEmit(Unit)
@@ -260,7 +302,7 @@ class DownloadStore(context: Context) {
 }
 
 /** Credential-bearing URLs and headers never appear in logs, WorkData or plaintext preferences. */
-private object DownloadSecrets {
+internal object DownloadSecrets {
     @Synchronized private fun key(): SecretKey {
         val store=KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         return (store.getKey("reianix.downloads",null) as? SecretKey) ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore").apply {
