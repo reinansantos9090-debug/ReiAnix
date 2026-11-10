@@ -82,6 +82,19 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             )
         }
 
+        /** Ignore late/stale terminal callbacks and preserve unrelated command results. */
+        internal fun finishRefreshCommand(
+            current: ReiAnixLibraryUiState,
+            requestId: String,
+            status: String,
+        ): ReiAnixLibraryUiState {
+            if (current.lastCommandId != requestId ||
+                !current.lastCommandAction.equals("refresh", ignoreCase = true) ||
+                current.lastCommandStatus?.uppercase() !in setOf("QUEUED", "RUNNING")
+            ) return current
+            return current.copy(lastCommandStatus = status)
+        }
+
         internal fun reconcilePagedState(
             current: ReiAnixLibraryPagedUiState,
             canonicalAnimes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
@@ -231,6 +244,8 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
     private val stateMutex = Mutex()
     private val pageGeneration = AtomicLong(0L)
     private val refreshInFlight = AtomicBoolean(false)
+    /** Correlates native scan termination with only the currently requested refresh. */
+    private var activeRefreshRequestId: String? = null
     /** Keeps duplicate scan requests from being started concurrently. */
     private val refreshRequestGuard = Any()
     private val pageRequestGuard = Any()
@@ -273,6 +288,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         val requestId = UUID.randomUUID().toString()
         synchronized(refreshRequestGuard) {
             if (!refreshInFlight.compareAndSet(false, true)) return
+            activeRefreshRequestId = requestId
         }
         val commandUri = Uri.parse("reiflix://native").buildUpon()
             .appendQueryParameter("action", "scan_library")
@@ -289,17 +305,24 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             )
             scope.launch {
                 stateMutex.withLock {
-                    _state.value = _state.value.copy(
-                        lastCommandId = requestId,
-                        lastCommandAction = ReiAnixLibraryCommandCodec.Action.REFRESH.value,
-                        lastCommandStatus = "QUEUED",
-                        lastCommandError = null,
-                    )
+                    // A fast native scan may have completed before this coroutine ran.
+                    // Never restore QUEUED after its terminal callback has cleared the request.
+                    if (synchronized(refreshRequestGuard) { activeRefreshRequestId == requestId }) {
+                        _state.value = _state.value.copy(
+                            lastCommandId = requestId,
+                            lastCommandAction = ReiAnixLibraryCommandCodec.Action.REFRESH.value,
+                            lastCommandStatus = "QUEUED",
+                            lastCommandError = null,
+                        )
+                    }
                 }
             }
         } catch (exception: Exception) {
             synchronized(refreshRequestGuard) {
-                refreshInFlight.set(false)
+                if (activeRefreshRequestId == requestId) {
+                    activeRefreshRequestId = null
+                    refreshInFlight.set(false)
+                }
             }
             scope.launch {
                 stateMutex.withLock {
@@ -310,6 +333,35 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                         lastCommandError = exception.message ?: "Não foi possível iniciar a varredura nativa.",
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * The native scan produces saf_library_scan_complete, not a legacy Compose
+     * refresh command result. Complete only its matching UI request so the
+     * pull-to-refresh indicator and single-flight guard cannot remain stuck.
+     * This does not start/stop scans or touch catalog/artwork work.
+     */
+    fun reportNativeRefreshCompletion(requestId: String?, status: String) {
+        val normalizedId = requestId?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val terminalStatus = status.trim().uppercase()
+        if (terminalStatus !in setOf("COMPLETED", "PARTIAL", "FAILED", "CANCELLED")) return
+
+        val isCurrent = synchronized(refreshRequestGuard) {
+            if (activeRefreshRequestId != normalizedId) {
+                false
+            } else {
+                activeRefreshRequestId = null
+                refreshInFlight.set(false)
+                true
+            }
+        }
+        if (!isCurrent) return
+
+        scope.launch {
+            stateMutex.withLock {
+                _state.value = finishRefreshCommand(_state.value, normalizedId, terminalStatus)
             }
         }
     }
@@ -633,7 +685,10 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             // Only release the scan guard here. The ViewModel observes the
             // terminal native scan event and queries canonical SQLite directly.
             synchronized(refreshRequestGuard) {
-                refreshInFlight.set(false)
+                if (activeRefreshRequestId == result.requestId) {
+                    activeRefreshRequestId = null
+                    refreshInFlight.set(false)
+                }
             }
         }
 
@@ -689,6 +744,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         commandResultObserver.stopWatching()
         scope.coroutineContext[Job]?.cancel()
         synchronized(refreshRequestGuard) {
+            activeRefreshRequestId = null
             refreshInFlight.set(false)
         }
         synchronized(pageRequestGuard) { inFlightPage = null }

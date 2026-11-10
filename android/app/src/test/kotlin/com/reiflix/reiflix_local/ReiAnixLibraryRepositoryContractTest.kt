@@ -7,12 +7,66 @@ import org.robolectric.annotation.Config
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryCommandCodec
 import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
 import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
+import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 class ReiAnixLibraryRepositoryContractTest {
+    @Test
+    fun nativeRefreshTerminalResultClearsOnlyMatchingQueuedIndicator() {
+        val pending = ReiAnixLibraryUiState(
+            lastCommandId = "scan-request-a",
+            lastCommandAction = "refresh",
+            lastCommandStatus = "QUEUED",
+        )
+        val completed = ReiAnixLibraryRepository.finishRefreshCommand(
+            pending,
+            "scan-request-a",
+            "COMPLETED",
+        )
+        assertEquals("COMPLETED", completed.lastCommandStatus)
+        assertEquals("scan-request-a", completed.lastCommandId)
+        assertEquals("refresh", completed.lastCommandAction)
+
+        val staleResult = ReiAnixLibraryRepository.finishRefreshCommand(
+            pending,
+            "scan-request-old",
+            "FAILED",
+        )
+        assertEquals(pending, staleResult)
+    }
+
+    @Test
+    fun partialOrFailedRefreshStopsIndicatorWithoutChangingOtherCommands() {
+        val running = ReiAnixLibraryUiState(
+            scanInProgress = false,
+            lastCommandId = "scan-request-b",
+            lastCommandAction = "refresh",
+            lastCommandStatus = "RUNNING",
+        )
+        for (terminal in listOf("PARTIAL", "FAILED", "CANCELLED")) {
+            val finished = ReiAnixLibraryRepository.finishRefreshCommand(
+                running,
+                "scan-request-b",
+                terminal,
+            )
+            assertEquals(terminal, finished.lastCommandStatus)
+            assertEquals(false, finished.scanInProgress)
+            assertEquals(
+                finished,
+                ReiAnixLibraryRepository.finishRefreshCommand(finished, "scan-request-b", "COMPLETED"),
+            )
+        }
+
+        val unrelated = running.copy(lastCommandAction = "native_player_handoff")
+        assertEquals(
+            unrelated,
+            ReiAnixLibraryRepository.finishRefreshCommand(unrelated, "scan-request-b", "COMPLETED"),
+        )
+    }
+
     @Test
     fun libraryPageCommandEncodesAndDecodesBoundedPayload() {
         val command = ReiAnixLibraryCommandCodec.create(

@@ -3212,6 +3212,7 @@ class MainActivity : ComponentActivity() {
                                 requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
                                 "Não foi possível atualizar a biblioteca agora. Tente novamente.",
                             )
+                            libraryViewModel.reportNativeScanRefreshCompletion(requestId, "FAILED")
                         }
                         return
                     }
@@ -3509,6 +3510,9 @@ class MainActivity : ComponentActivity() {
                             .put("noSourcesAvailable", false),
                     ),
             )
+            if (origin == "USER_REFRESH") {
+                libraryViewModel.reportNativeScanRefreshCompletion(requestId, "FAILED")
+            }
             return
         }
         lifecycleScope.launch {
@@ -3523,6 +3527,7 @@ class MainActivity : ComponentActivity() {
             var requestedSources = 0
             var scanCompletedSuccessfully = false
             var noSourcesAvailable = false
+            var refreshTerminalStatus = "FAILED"
 
             suspend fun awaitAndRecordSource(source: String, scanId: String) {
                 scanIds += scanId
@@ -3689,6 +3694,7 @@ class MainActivity : ComponentActivity() {
                     successfulScopes > 0 -> "PARTIAL"
                     else -> "FAILED"
                 }
+                refreshTerminalStatus = status
                 val terminalRequestState = when (status) {
                     "FAILED" -> NativeRequestState.OperationState.FAILED
                     "CANCELLED" -> NativeRequestState.OperationState.CANCELLED
@@ -3728,10 +3734,12 @@ class MainActivity : ComponentActivity() {
                 scanCompletedSuccessfully = status == "COMPLETED"
                 noSourcesAvailable = requestedSources == 0
             } catch (cancelled: CancellationException) {
+                refreshTerminalStatus = "CANCELLED"
                 nativeRequestState.markOperationState(requestId, "scan_library", NativeRequestState.OperationState.CANCELLED)
                 publishNativeDiagnostic("OPERATION_CANCELLED", requestId, "scan_library", NativeRequestState.OperationState.CANCELLED.name)
                 throw cancelled
             } catch (exception: Exception) {
+                refreshTerminalStatus = "FAILED"
                 Log.e(tag, "Native storage discovery failed origin=$origin reason=$reason", exception)
                 nativeRequestState.markOperationState(requestId, "scan_library", NativeRequestState.OperationState.FAILED)
                 publishNativeDiagnostic(
@@ -3763,6 +3771,12 @@ class MainActivity : ComponentActivity() {
                         ),
                 )
             } finally {
+                // The manual refresh UI is a separate observer of the native scan.
+                // Always release its matching indicator/guard after a terminal result,
+                // without changing the scanner's durable retry policy below.
+                if (origin == "USER_REFRESH") {
+                    libraryViewModel.reportNativeScanRefreshCompletion(requestId, refreshTerminalStatus)
+                }
                 // Keep the durable request pending after partial/failed/cancelled scans.
                 // A later foreground entry can retry without treating a partial snapshot
                 // as proof that missing files were removed.
