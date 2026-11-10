@@ -33,3 +33,16 @@ As políticas puras estão em `AniListAccountSyncPolicy.kt` e são cobertas por 
 Após enviar `SaveMediaListEntry`, o aplicativo exige um recibo com ID e progresso coerentes antes de confirmar a sincronização local. Falhas temporárias são reprogramadas sem bloquear a reprodução; erros permanentes não entram em um loop agressivo. Desconectar ou desativar limpa as pendências e cancela a retentativa agendada.
 
 **Ativação em builds oficiais:** o Client ID é público e pertence ao aplicativo ReiAnix, não à conta individual de cada usuário. Ele só deve ser configurado após o próprio desenvolvedor registrar `ReiAnix` com Redirect URL `reianix-anilist://oauth` nas configurações de desenvolvedor do AniList. Nenhum Client Secret é necessário para o fluxo implicit de Android. Um APK compilado sem esse número permanece com o botão de conexão desativado.
+
+## Correção do erro `unsupported_grant_type` no navegador
+
+O usuário relatou o retorno JSON `unsupported_grant_type` da página de autorização depois de entrar no AniList. Isso significa que o servidor recusou o fluxo solicitado; **não** comprova senha incorreta. A causa exata no servidor ainda não foi confirmada.
+
+A partir desta correção, `AniListOAuthRequest.authorizationUrl()` monta o endereço a partir do exemplo oficial para o fluxo *implicit*:
+
+- `https://anilist.co/api/v2/oauth/authorize?client_id=56542&response_type=token`, com `state` aleatório adicional conforme OAuth2 para proteção contra CSRF;
+- não envia `redirect_uri` na requisição, pois já está cadastrado na aplicação AniList como `reianix-anilist://oauth`;
+- mantém verificação obrigatória do `state` recebido, prazo de 15 minutos e a validação do token por `Viewer` antes de salvar a conta;
+- não usa `client_secret`, não solicita senha pelo ReiAnix e não altera as regras de sincronização.
+
+**Validação pendente em dispositivo real:** instalar o APK desta branch, entrar em Configurações → Contas e sincronização → AniList → Conectar ao AniList, autorizar no navegador e confirmar que volta ao aplicativo como conectado. Depois ativar a sincronização e testar um episódio que tenha associação AniList confirmada manualmente. Se o navegador continuar exibindo `unsupported_grant_type`, o AniList pode estar recusando o próprio fluxo `response_type=token`; nesse caso, não mudar para `code` sem fluxo seguro de troca de código, nem enviar o Client Secret para o APK. Os testes locais de URL e a compilação não provam a aceitação pelo servidor.
