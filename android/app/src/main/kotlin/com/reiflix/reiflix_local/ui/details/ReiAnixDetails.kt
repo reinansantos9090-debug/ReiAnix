@@ -1046,9 +1046,12 @@ private fun DetailsHero(
                     ) {
                         ReiAnixEpisodeThumbnail(
                             localPath = traceMoeState.currentThumbnailPath,
-                            sourceRevisions = anime.contentEpisodes.firstOrNull {
-                                it.id == traceMoeState.currentEpisodeId
-                            }?.artwork?.sourceRevisions.orEmpty(),
+                            sourceRevisions = anime.seasons.asSequence()
+                                .flatMap { it.episodes.asSequence() }
+                                .plus(anime.specials.asSequence())
+                                .plus(anime.mediaFiles.asSequence())
+                                .firstOrNull { it.id == traceMoeState.currentEpisodeId }
+                                ?.artwork?.sourceRevisions.orEmpty(),
                             contentDescription = traceMoeState.currentEpisodeLabel ?: "Thumbnail em análise",
                             modifier = Modifier.fillMaxSize(),
                             identity = "${anime.stableKey}:trace-moe:${traceMoeState.currentEpisodeId}",
