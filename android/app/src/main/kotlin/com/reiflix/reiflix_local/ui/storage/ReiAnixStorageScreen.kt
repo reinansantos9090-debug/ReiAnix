@@ -165,6 +165,17 @@ private fun ReiAnixLibraryFoldersSection(
         // During loading or query failures, retain the last known configured folders.
         else -> snapshotSafSources
     }
+    // Keep the folder list stable while SQLite refreshes. A very short query should
+    // not flash a full-screen loading state over folders we already know about.
+    var showFolderLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(nativeFolders.status, configuredSafSources.isEmpty()) {
+        showFolderLoading = false
+        if (nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING &&
+            configuredSafSources.isEmpty()) {
+            kotlinx.coroutines.delay(300)
+            showFolderLoading = true
+        }
+    }
     val selectionBusy =
         storage.safSelectionPending ||
             (
@@ -181,7 +192,7 @@ private fun ReiAnixLibraryFoldersSection(
                 item(key = "folders-header") {
                     SettingsHeader("Pastas", "", onBack)
                 }
-                if (nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING) {
+                if (showFolderLoading) {
                     item(key = "folders-loading") {
                         ReiAnixLoadingState("Verificando armazenamento", "Consultando as pastas da biblioteca…")
                     }
