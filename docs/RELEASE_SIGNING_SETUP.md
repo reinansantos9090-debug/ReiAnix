@@ -9,7 +9,7 @@ A correção **não desativa o Google Play Protect** nem garante ausência de av
 ## Configuração obrigatória — uma vez, antes de mesclar esta PR
 
 1. Em um terminal **confiável** com JDK (inclui `keytool`), `openssl`, `base64` e [GitHub CLI](https://cli.github.com/), autentique-se no GitHub com permissão de administrar os segredos e as variáveis de Actions deste repositório (`gh auth login`).
-2. A partir do clone do repositório, execute: `bash scripts/setup_release_signing.sh`.
+2. A partir de um clone confiável do repositório, abra **a branch desta PR** (`git fetch origin fix/stable-release-signing-20261110` e `git switch fix/stable-release-signing-20261110`) e execute: `bash scripts/setup_release_signing.sh`. O script ainda não existe na `main` enquanto a PR não for mesclada.
 3. Escolha e **guarde com segurança** a senha da nova chave. O script cria `$HOME/ReiAnix-release-key.jks` (ou reaproveita o arquivo se já existir), grava **quatro segredos criptografados** e uma variável pública do certificado no repositório.
 4. **Faça uma cópia de segurança privada da chave .jks, em local diferente do terminal usado, e guarde a senha em um gerenciador seguro.** Se gerar a chave em ambiente temporário (incluindo Codespaces), baixe uma cópia privada antes de encerrar o ambiente. Jamais coloque o arquivo, senha ou base64 em um commit, issue, PR, print ou chat.
 5. Confirme em **Settings → Secrets and variables → Actions** que aparecem os seguintes nomes (GitHub não mostra os valores dos segredos):
