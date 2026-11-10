@@ -31,6 +31,24 @@
         <data android:scheme="reianix-anilist" android:host="oauth" />
       </intent-filter>
     </activity>
+    <!-- Public Android "Abrir com" entry; the Media3 player itself stays private. -->
+    <activity
+        android:name=".ExternalVideoActivity"
+        android:exported="true"
+        android:excludeFromRecents="true"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:mimeType="video/*" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="video/*" />
+      </intent-filter>
+    </activity>
     <activity android:name=".NativePlayerActivity" android:theme="@style/ReiAnixPlayerTheme" android:launchMode="singleTop" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" android:screenOrientation="fullSensor" android:supportsPictureInPicture="true" android:exported="false" />
     <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:documentLaunchMode="never" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
       <intent-filter>
