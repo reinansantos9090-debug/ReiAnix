@@ -32,6 +32,7 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private val wake = Channel<Unit>(Channel.CONFLATED)
+    private var delayedRetry: Job? = null
     private val mutableState = MutableStateFlow(State())
     val state = mutableState.asStateFlow()
 
@@ -50,11 +51,22 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
                             if (failure.code == 401 || failure.code == 403) {
                                 prefs.edit().remove("token").putBoolean("enabled", false).commit()
                                 refresh("Conecte sua conta novamente."); false
+                            } else if (failure.code in 400..499 && failure.code != 408 && failure.code != 429) {
+                                refresh("O AniList recusou a sincronização. Confira a associação do anime."); false
                             } else { refresh("Sincronização pendente. Tentaremos novamente."); true }
                         } catch (_: Exception) { refresh("Sincronização pendente. Tentaremos novamente."); true }
                     }
                     if (!retry) break
                     if (attempt < 2) delay(retryDelay)
+                    else {
+                        // Keep pending writes retryable after temporary errors even if no new
+                        // playback event arrives. Channel conflation prevents a busy loop.
+                        delayedRetry?.cancel()
+                        delayedRetry = scope.launch {
+                            delay(maxOf(retryDelay, 5 * 60_000L))
+                            wake.trySend(Unit)
+                        }
+                    }
                 }
             }
         }
@@ -99,19 +111,20 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
     suspend fun setAutoSync(enabled: Boolean) = withContext(Dispatchers.IO) { mutex.withLock {
         check(!enabled || prefs.contains("token"))
         prefs.edit().putBoolean("enabled", enabled).apply()
-        if (!enabled) clearPending()
+        if (!enabled) { clearPending(); delayedRetry?.cancel() }
         refresh()
         if (enabled) wake.trySend(Unit)
     } }
 
     suspend fun disconnect() = withContext(Dispatchers.IO) { mutex.withLock {
         prefs.edit().clear().commit()
+        delayedRetry?.cancel()
         refresh("Conta desconectada neste aparelho.")
     } }
 
     /** Runs after a successful local checkpoint; never holds up playback or the SQLite writer. */
     fun offerProgress(episodeId: Long, positionMs: Long, durationMs: Long) {
-        if (durationMs <= 0L || positionMs.toDouble() / durationMs < .8) return
+        if (!AniListAccountSyncPolicy.reachedCheckpoint(positionMs, durationMs)) return
         scope.launch {
             try {
                 mutex.withLock {
@@ -120,11 +133,10 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
                     val anime = library.getAnime(episode.animeId) ?: return@withLock
                     // Artwork's permissive matching rules must never silently write to the wrong profile entry.
                     if (anime.anilistMatchManual != true) { refresh("Confirme a associação ao AniList nos detalhes do anime para sincronizar."); return@withLock }
-                    val mediaId = anime.anilistId?.takeIf { it > 0L } ?: return@withLock
-                    if (episode.episodeType?.lowercase() in setOf("special", "ova", "oad", "ona", "extra")) return@withLock
-                    val number = if (anime.mediaKind.equals("movie", ignoreCase = true)) 1.0 else if (episode.season <= 1) episode.number else episode.absoluteNumber
-                    if (number == null || !number.isFinite() || number < 1 || number % 1.0 != 0.0 || number > Int.MAX_VALUE) return@withLock
-                    val progress = number.toInt()
+                    val mediaId = anime.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() } ?: return@withLock
+                    val progress = AniListAccountSyncPolicy.episodeProgress(
+                        anime.mediaKind, episode.season, episode.number, episode.absoluteNumber, episode.episodeType,
+                    ) ?: return@withLock
                     if (progress <= prefs.getInt("ack_$mediaId", 0)) return@withLock
                     val previous = prefs.getString("pending_$mediaId", null)?.let(::JSONObject)?.optInt("progress") ?: 0
                     if (progress >= previous) prefs.edit().putString("pending_$mediaId", JSONObject()
@@ -154,22 +166,21 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
             val total = data.optInt("episodes", 0)
             if (total > 0 && progress > total) { prefs.edit().remove(key).commit(); refresh("Numeração incompatível com o AniList; confira a associação do anime."); continue }
             val remoteStatus = entry?.optString("status").orEmpty()
-            val shouldComplete = total > 0 && progress == total &&
-                remoteStatus != "COMPLETED" && remoteStatus != "REPEATING"
-            if (progress > remoteProgress || shouldComplete) {
+            if (AniListAccountSyncPolicy.shouldSend(progress, remoteProgress, total, remoteStatus)) {
                 val latestAnime = episode?.let { library.getAnime(it.animeId) }
                 if (latestAnime == null || latestAnime.anilistId != mediaId || latestAnime.anilistMatchManual != true) {
                     prefs.edit().remove(key).commit()
                     continue
                 }
-                val status = when {
-                    remoteStatus == "COMPLETED" || remoteStatus == "REPEATING" -> remoteStatus
-                    total > 0 && progress >= total -> "COMPLETED"
-                    else -> "CURRENT"
-                }
-                request("mutation(\$entry: Int, \$media: Int, \$progress: Int, \$status: MediaListStatus) { SaveMediaListEntry(id: \$entry, mediaId: \$media, progress: \$progress, status: \$status) { id progress } }",
+                val status = AniListAccountSyncPolicy.statusFor(progress, total, remoteStatus)
+                val expectedProgress = maxOf(progress, remoteProgress)
+                val receipt = request("mutation(\$entry: Int, \$media: Int, \$progress: Int, \$status: MediaListStatus) { SaveMediaListEntry(id: \$entry, mediaId: \$media, progress: \$progress, status: \$status) { id progress } }",
                     JSONObject().put("entry", entry?.optInt("id")?.takeIf { it > 0 } ?: JSONObject.NULL)
-                        .put("media", mediaId).put("progress", maxOf(progress, remoteProgress)).put("status", status), token)
+                        .put("media", mediaId).put("progress", expectedProgress).put("status", status), token)
+                    .optJSONObject("SaveMediaListEntry")
+                // A 2xx HTTP response alone is not proof that AniList saved this mutation.
+                if (receipt == null || receipt.optInt("id", 0) <= 0 ||
+                    receipt.optInt("progress", -1) < expectedProgress) throw AccountFailure(502)
             }
             prefs.edit().putInt("ack_$mediaId", maxOf(progress, remoteProgress)).remove(key).commit()
             refresh("Progresso sincronizado com o AniList.")
