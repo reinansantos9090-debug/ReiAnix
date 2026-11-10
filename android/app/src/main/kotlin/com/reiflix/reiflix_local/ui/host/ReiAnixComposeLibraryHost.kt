@@ -344,6 +344,9 @@ class ReiAnixComposeLibraryHost(
                                 scanInProgress = libraryState.scanInProgress,
                                 scanState = libraryState.scanState,
                                 lastScanStatus = libraryState.lastScanStatus,
+                                libraryFoldersContent = { onFoldersBack ->
+                                    com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFoldersRoute(libraryViewModel, onBack = onFoldersBack)
+                                },
                             )
                         },
                         recovery = {

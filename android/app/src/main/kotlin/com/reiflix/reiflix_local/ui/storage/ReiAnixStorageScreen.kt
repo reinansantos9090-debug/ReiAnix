@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -30,6 +29,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Add
+import com.reiflix.reiflix_local.ui.settings.settingsClickable
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -48,12 +55,12 @@ import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
 import com.reiflix.reiflix_local.viewmodel.ReiAnixNativeFoldersUiState
 import com.reiflix.reiflix_local.viewmodel.ReiAnixNativeFoldersStatus
 import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsSurface
+import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoot
 import com.reiflix.reiflix_local.ui.settings.SettingsHeader
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
 
 @Composable
@@ -103,13 +110,72 @@ fun ReiAnixStorageScreen(
     onRefreshNativeFolders: () -> Unit = {},
     title: String = "Armazenamento",
 ) {
-    ReiAnixResponsiveRoot {
+    ReiAnixSettingsRoot {
+        ReiAnixLibraryFoldersSection(state, nativeFolders, onSelectSaf, onRemoveSaf,
+            onRefreshNativeFolders, onBack = onBack)
+    }
+}
+
+/** Same canonical folder state and native SAF actions as the dedicated storage screen. */
+@Composable
+fun ReiAnixLibraryFoldersRoute(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit = {}) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val nativeFolders by viewModel.nativeFoldersState.collectAsStateWithLifecycle()
+    LaunchedEffect(viewModel) { viewModel.refreshNativeFolders() }
+    ReiAnixSettingsRoot {
+    ReiAnixLibraryFoldersSection(
+        state = state,
+        nativeFolders = nativeFolders,
+        onSelectSaf = viewModel::selectSafTree,
+        onRemoveSaf = viewModel::removeSafTree,
+        onRefreshNativeFolders = viewModel::refreshNativeFolders,
+        onBack = onBack,
+    )
+    }
+}
+
+@Composable
+private fun ReiAnixLibraryFoldersSection(
+    state: ReiAnixLibraryUiState,
+    nativeFolders: ReiAnixNativeFoldersUiState,
+    onSelectSaf: () -> Unit,
+    onRemoveSaf: (String) -> Unit,
+    onRefreshNativeFolders: () -> Unit,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
+) {
     val storage = state.storage
     var pendingRemoval by remember { mutableStateOf<ReiAnixStorageSourceUiModel?>(null) }
 
-    val configuredSafSources = nativeFolders.folders
+    // The library snapshot also retains configured SAF sources while the SQLite query
+    // is loading or unavailable. Show those sources rather than an empty folder list.
+    val snapshotSafSources = storage.configuredSources
+        .filter { it.kind.equals("saf", ignoreCase = true) && it.reference.isNotBlank() }
+    val sqliteSafSources = nativeFolders.folders
         .filter { android.provider.DocumentsContract.isTreeUri(android.net.Uri.parse(it.path)) }
         .map { ReiAnixStorageSourceUiModel(reference = it.path, name = it.name.orEmpty(), kind = "saf") }
+    val configuredSafSources = when (nativeFolders.status) {
+        // Once SQLite has answered, it is authoritative. Avoid showing a recently
+        // removed folder that may still be present in the older library snapshot.
+        ReiAnixNativeFoldersStatus.READY, ReiAnixNativeFoldersStatus.EMPTY -> {
+            val persistedPaths = nativeFolders.folders.map { it.path }.toSet()
+            (snapshotSafSources.filter { it.reference in persistedPaths } + sqliteSafSources)
+                .distinctBy { it.reference }
+        }
+        // During loading or query failures, retain the last known configured folders.
+        else -> snapshotSafSources
+    }
+    // Keep the folder list stable while SQLite refreshes. A very short query should
+    // not flash a full-screen loading state over folders we already know about.
+    var showFolderLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(nativeFolders.status, configuredSafSources.isEmpty()) {
+        showFolderLoading = false
+        if (nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING &&
+            configuredSafSources.isEmpty()) {
+            kotlinx.coroutines.delay(300)
+            showFolderLoading = true
+        }
+    }
     val selectionBusy =
         storage.safSelectionPending ||
             (
@@ -120,108 +186,64 @@ fun ReiAnixStorageScreen(
         state.lastCommandAction.equals("remove_saf", ignoreCase = true) &&
             state.lastCommandStatus?.uppercase() in setOf("QUEUED", "RUNNING")
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = androidx.compose.ui.Alignment.TopCenter,
-        ) {
-            LazyColumn(
-                modifier = Modifier
-                    .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(
-                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                vertical = ReiAnixTokens.Spacing.sm,
-            ),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-        ) {
-            item(key = "header") {
-                SettingsHeader(
-                    title = title,
-                    subtitle = "Pastas da biblioteca e acessos locais",
-                    onBack = onBack,
-                    backContentDescription = "Voltar do armazenamento",
-                )
-            }
-
-            if (nativeFolders.status == ReiAnixNativeFoldersStatus.LOADING) {
-                item(key = "checking") {
-                    ReiAnixLoadingState(
-                        title = "Verificando armazenamento",
-                        message = "Consultando as pastas da biblioteca…",
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
+                item(key = "folders-header") {
+                    SettingsHeader("Pastas", "", onBack)
                 }
-            }
-
-            if (storage.safSelectionPending) {
-                item(key = "selection") {
-                    ReiAnixLoadingState(
-                        title = "Seleção de pasta em andamento",
-                        message = "Aguardando o seletor de pastas do Android…",
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-
-            item(key = "library-section") {
-                StorageSectionTitle(
-                    title = "Pasta da biblioteca",
-                    description = "Escolha uma pasta local que o ReiAnix poderá ler e manter autorizada no Android.",
-                )
-            }
-
-            item(key = "select-folder") {
-                ReiAnixPrimaryButton(
-                    text = "Selecionar pasta",
-                    onClick = onSelectSaf,
-                    enabled = !selectionBusy && !removeBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            if (nativeFolders.status == ReiAnixNativeFoldersStatus.READY ||
-                nativeFolders.status == ReiAnixNativeFoldersStatus.EMPTY) {
-                item(key = "folder-count") {
-                    val count = configuredSafSources.size
-                    Text(
-                        text = if (count == 1) "1 pasta cadastrada" else "$count pastas cadastradas",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-            items(configuredSafSources, key = { it.reference }) { source ->
-                val name = friendlySourceName(source.name).ifBlank { source.reference }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                    ) {
-                        Text(
-                            text = name,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = source.reference,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                if (showFolderLoading) {
+                    item(key = "folders-loading") {
+                        ReiAnixLoadingState("Verificando armazenamento", "Consultando as pastas da biblioteca…")
                     }
-                    androidx.compose.material3.IconButton(
-                        onClick = { pendingRemoval = source },
-                        enabled = !removeBusy && !selectionBusy,
-                    ) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Remover $name")
+                }
+                if (storage.safSelectionPending) {
+                    item(key = "folders-selecting") {
+                        ReiAnixLoadingState("Seleção de pasta em andamento", "Aguardando o seletor de pastas do Android…")
+                    }
+                }
+                items(configuredSafSources, key = { it.reference }) { source ->
+                    val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
+                    Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Icon(Icons.Filled.Folder, contentDescription = null, modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onSurface)
+                        Column(Modifier.weight(1f)) {
+                            Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                            Text(source.reference, style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        androidx.compose.material3.IconButton(onClick = { pendingRemoval = source },
+                            enabled = !removeBusy && !selectionBusy) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Remover $name")
+                        }
+                    }
+                }
+                if (configuredSafSources.isEmpty() &&
+                    nativeFolders.status in setOf(ReiAnixNativeFoldersStatus.EMPTY, ReiAnixNativeFoldersStatus.READY)) {
+                    item(key = "folders-empty") {
+                        Text("Nenhuma pasta cadastrada", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
+                    }
+                }
+                if (nativeFolders.status == ReiAnixNativeFoldersStatus.ERROR ||
+                    nativeFolders.status == ReiAnixNativeFoldersStatus.NOT_FOUND) {
+                    item(key = "folders-error") {
+                        Text("Não foi possível consultar as pastas cadastradas.", modifier = Modifier.padding(20.dp))
+                        ReiAnixSecondaryButton("Tentar novamente", onRefreshNativeFolders)
                     }
                 }
             }
-            if (nativeFolders.status == ReiAnixNativeFoldersStatus.ERROR ||
-                nativeFolders.status == ReiAnixNativeFoldersStatus.NOT_FOUND) {
-                item { ReiAnixSecondaryButton(text = "Tentar novamente", onClick = onRefreshNativeFolders) }
+            Row(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 24.dp)
+                .heightIn(min = 48.dp)
+                .settingsClickable(enabled = !selectionBusy && !removeBusy, onClick = onSelectSaf)
+                .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(24.dp))
+                Text("Adicionar pasta", style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -260,8 +282,6 @@ fun ReiAnixStorageScreen(
         )
     }
 
-    }
-    }
 }
 
 @Composable

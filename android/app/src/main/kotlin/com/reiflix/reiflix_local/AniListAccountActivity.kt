@@ -27,19 +27,37 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.ui.ReiAnixTopBar
 import com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar
+import com.reiflix.reiflix_local.ui.settings.settingsClickable
+import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoot
+import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsTheme
+import com.reiflix.reiflix_local.ui.settings.SettingsHeader
 import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class AniListAccountActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val account = ReiAnixAppDependencies.from(this).aniListAccountService
-        account.retryPending()
-        lifecycleScope.launch { account.refreshProfile() }
         setContent {
             ReiAnixComposeTheme {
+                ReiAnixSettingsRoot {
+                    AniListAccountSettingsScreen(onBack = { finish() }, useSystemInsets = true)
+                }
+            }
+        }
+    }
+}
+
+/** Shared by the main Settings navigator and the standalone OAuth/account entry point. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = false) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val account = remember(context) { ReiAnixAppDependencies.from(context).aniListAccountService }
+    LaunchedEffect(account) {
+        account.retryPending()
+        account.refreshProfile()
+    }
                 val state by account.state.collectAsStateWithLifecycle()
                 val scope = rememberCoroutineScope()
                 var busy by remember { mutableStateOf(false) }
@@ -51,7 +69,7 @@ class AniListAccountActivity : ComponentActivity() {
                         busy = true
                         error = ""
                         try {
-                            startActivity(Intent(Intent.ACTION_VIEW, account.authorizationUri())
+                            context.startActivity(Intent(Intent.ACTION_VIEW, account.authorizationUri())
                                 .addCategory(Intent.CATEGORY_BROWSABLE))
                             showAccount = false
                         } catch (cancelled: CancellationException) {
@@ -66,19 +84,14 @@ class AniListAccountActivity : ComponentActivity() {
                 }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Column(
-                        Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
-                            .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+                        Modifier
+                            .then(if (useSystemInsets) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
+                            .verticalScroll(rememberScrollState()),
                     ) {
-                        ReiAnixTopBar(
-                            title = "Contas",
-                            navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
-                            onNavigationClick = { finish() },
-                            applyResponsiveHorizontalPadding = false,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 12.dp),
-                        )
+                        SettingsHeader(title = "Contas e Avançado", subtitle = "", onBack = onBack)
                         Row(
                             Modifier.fillMaxWidth()
-                                .clickable(enabled = !busy, role = Role.Button, onClick = {
+                                .settingsClickable(enabled = !busy, role = Role.Button, onClick = {
                                     error = ""
                                     if (state.connected) showAccount = true
                                     else if (state.configured) connect()
@@ -87,13 +100,13 @@ class AniListAccountActivity : ComponentActivity() {
                                 .semantics {
                                     stateDescription = if (state.connected) "Conta conectada" else "Conta não conectada"
                                 }
-                                .heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 16.dp),
+                                .heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(24.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(painterResource(R.drawable.ic_anilist), contentDescription = null,
                                 modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurface)
-                            Text("AniList", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                            Text("AniList", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                             if (state.connected) Icon(Icons.Filled.CheckCircle, contentDescription = "Conta conectada",
                                 tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                         }
@@ -143,19 +156,18 @@ class AniListAccountActivity : ComponentActivity() {
                         }
                     }
                 }
-            }
-        }
-    }
 }
 
 @Composable
 private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .heightIn(min = 72.dp).padding(vertical = 20.dp),
+        Modifier.fillMaxWidth().settingsClickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .heightIn(min = 56.dp).padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        com.reiflix.reiflix_local.ui.settings.SettingsLeadingIcon(label)
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
             modifier = Modifier.size(28.dp))
     }
@@ -169,7 +181,7 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
         // Clear the credential-bearing URI immediately; never log or save it in instance state.
         intent.data = null
         setContent {
-            ReiAnixComposeTheme {
+            ReiAnixComposeTheme { ReiAnixSettingsTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -177,6 +189,7 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
                         CircularProgressIndicator()
                     }
                 }
+            }
             }
         }
         lifecycleScope.launch {
@@ -191,9 +204,13 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
                     "Não foi possível conectar ao AniList. Tente novamente.", android.widget.Toast.LENGTH_LONG).show()
             } finally {
                 if (!isFinishing && !isDestroyed) {
-                    runCatching {
-                        startActivity(Intent(this@AniListOAuthCallbackActivity, AniListAccountActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                    // Return to the already open Settings page instead of pushing a second
+                    // Activity over it. When restored as a task root, reopen the app safely.
+                    if (isTaskRoot) {
+                        runCatching {
+                            startActivity(Intent(this@AniListOAuthCallbackActivity, MainActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                        }
                     }
                     finish()
                 }

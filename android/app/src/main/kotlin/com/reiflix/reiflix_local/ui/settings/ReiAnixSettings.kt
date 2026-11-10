@@ -1,7 +1,5 @@
 package com.reiflix.reiflix_local.ui.settings
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -52,7 +50,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -67,13 +64,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.BuildConfig
 import com.reiflix.reiflix_local.ui.ReiAnixBadge
-import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
 import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
 import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
 import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
 import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixTextField
 import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
 import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
@@ -84,7 +78,6 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixManualDiagnostics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.widthIn
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
 
 data class ReiAnixSettingsCategoryUiModel(
     val label: String,
@@ -230,6 +223,7 @@ fun ReiAnixSettingsRoute(
     scanInProgress: Boolean = false,
     scanState: String = "IDLE",
     lastScanStatus: String? = null,
+    libraryFoldersContent: (@Composable (() -> Unit) -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedDestination by rememberSaveable { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -238,32 +232,41 @@ fun ReiAnixSettingsRoute(
     val rootStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     // Restore saved navigation from APKs that still had these intermediate pages.
-    val destination = when (selectedDestination) {
-        "Conta" -> null
-        "general_behavior", "general_privacy" -> "Geral"
-        "library_storage", "library_scan", "library_organization" -> "Biblioteca"
-        "player_advanced" -> "Player"
-        "metadata_identification", "metadata_artwork" -> "Metadados e Capas"
-        "data_cache" -> "Dados e Backup"
-        "about_app" -> "Sobre e Diagnóstico"
-        else -> selectedDestination
-    }
+    val destination = settingsPageForDestination(selectedDestination)
     fun goBack() {
-        selectedDestination = settingsDestination(destination)?.parent?.takeIf { it.isNotBlank() }
+        selectedDestination = null
         selectedItemIndex = 0
     }
     BackHandler(enabled = destination != null) { goBack() }
     when {
+        destination == "Pastas" -> {
+            if (libraryFoldersContent != null) {
+                libraryFoldersContent(::goBack)
+            } else {
+                // Fallback navigation must clear the internal destination, or returning
+                // from Storage will immediately open it again.
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    selectedDestination = null
+                    onOpenStorage()
+                }
+            }
+        }
+        destination == "Contas e Avançado" -> androidx.compose.runtime.key(destination) {
+            ReiAnixSettingsRoot {
+                com.reiflix.reiflix_local.AniListAccountSettingsScreen(onBack = ::goBack)
+            }
+        }
         destination != null -> androidx.compose.runtime.key(destination, selectedItemIndex) {
             ReiAnixComposeSettingsCategoryScreen(
                 category = destination,
-                initialItemIndex = selectedItemIndex,
+                initialItemIndex = 0,
                 onOpenSubmenu = { selectedDestination = it; selectedItemIndex = 0 },
                 state = state,
                 onBack = ::goBack,
                 onUpdateSetting = viewModel::setSetting,
-                    onAction = viewModel::requestAction,
+                onAction = viewModel::requestAction,
                 onOpenStorage = onOpenStorage,
+                libraryFoldersContent = libraryFoldersContent,
                 scanInProgress = scanInProgress,
                 scanState = scanState,
                 lastScanStatus = lastScanStatus,
@@ -303,9 +306,9 @@ fun ReiAnixSettingsScreen(
     onRetry: () -> Unit,
 ) {
     val accountContext = androidx.compose.ui.platform.LocalContext.current
-    var searchQuery by rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
-    val searchResults = searchSettings(searchQuery)
-    ReiAnixResponsiveRoot {
+    val account by com.reiflix.reiflix_local.ReiAnixAppDependencies.from(accountContext)
+        .aniListAccountService.state.collectAsStateWithLifecycle()
+    ReiAnixSettingsRoot {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
@@ -313,15 +316,15 @@ fun ReiAnixSettingsScreen(
             LazyColumn(
                 modifier = Modifier
                     .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
-                    .fillMaxWidth(),
+                    .fillMaxSize(),
                 state = listState,
                 contentPadding = PaddingValues(
-                    start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                    end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                    start = 0.dp,
+                    end = 0.dp,
                     top = ReiAnixTokens.Spacing.sm,
                     bottom = ReiAnixTokens.Spacing.xl,
                 ),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
+                verticalArrangement = Arrangement.Center,
             ) {
                 when (state.status) {
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
@@ -348,56 +351,28 @@ fun ReiAnixSettingsScreen(
 
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
                         item(key = "settings:top-bar") {
-                            ReiAnixTopBar(
-                                title = "Configurações",
-                                subtitle = "Preferências do ReiAnix",
-                                navigationIcon = Icons.Filled.ArrowBack,
-                                navigationContentDescription = "Voltar das Configurações",
-                                onNavigationClick = onBack,
-                                modifier = Modifier.padding(bottom = ReiAnixTokens.Spacing.xs),
-                                titleStyle = ReiAnixTokens.TypographyTokens.screenTitle,
-                                titleColor = MaterialTheme.colorScheme.onSurface,
-                                applyResponsiveHorizontalPadding = false,
-                            )
-                        }
-
-                        item(key = "settings:search") {
-                            ReiAnixTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                label = { Text("Pesquisar configurações") },
-                                modifier = Modifier.padding(vertical = ReiAnixTokens.Spacing.sm),
-                            )
-                        }
-                        if (searchQuery.isBlank() || listOf("anilist", "contas").any {
-                            it.contains(searchQuery.trim(), ignoreCase = true)
-                        }) {
-                            item(key = "settings:anilist-account") {
-                                SettingsFlatCategoryRow(
-                                    ReiAnixSettingsCategoryUiModel("Contas", "AniList", Icons.Filled.AccountCircle),
-                                    onClick = { accountContext.startActivity(android.content.Intent(accountContext,
-                                        com.reiflix.reiflix_local.AniListAccountActivity::class.java)) },
+                            Row(
+                                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (account.connected) {
+                                    com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar(
+                                        pictureUrl = account.avatarUrl,
+                                        contentDescription = "Foto de ${account.name}",
+                                        modifier = Modifier.size(50.dp),
+                                    )
+                                }
+                                Text(
+                                    text = if (account.connected) account.name else "Configurações",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
                                 )
                             }
                         }
-                        if (searchQuery.isBlank()) {
-                            items(SettingsRootCategories, key = { "settings-category:${it.label}" }) { category ->
-                                SettingsFlatCategoryRow(category = category, onClick = { onOpenCategory(category.label) })
-                            }
-                        } else {
-                            if (searchResults.isEmpty()) {
-                                item(key = "settings:no-results") { Text("Nenhuma configuração encontrada.") }
-                            }
-                            items(searchResults, key = { "settings-search:${it.destination.id}:${it.entry.key}" }) { result ->
-                                SettingsFlatCategoryRow(
-                                    category = ReiAnixSettingsCategoryUiModel(
-                                        result.entry.title,
-                                        result.destination.parent.takeIf { it.isNotBlank() }?.let { "$it → ${result.destination.title}" } ?: result.destination.title,
-                                        SettingsRootCategories.first { it.label == result.destination.parent.ifBlank { result.destination.title } }.icon,
-                                    ),
-                                    onClick = { onOpenCategory("${result.destination.id}#${result.entry.key}") },
-                                )
-                            }
+                        items(SettingsRootCategories, key = { "settings-category:${it.label}" }) { category ->
+                            SettingsFlatCategoryRow(category = category, onClick = { onOpenCategory(category.label) })
                         }
 
                         item(key = "settings:footer") {
@@ -411,13 +386,8 @@ fun ReiAnixSettingsScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Text(
-                                    text = "ReiAnix",
+                                    text = "ReiAnix  •  ${BuildConfig.VERSION_NAME}",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = "v${BuildConfig.VERSION_NAME}",
-                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -433,22 +403,24 @@ fun ReiAnixSettingsScreen(
 private fun SettingsFlatCategoryRow(
     category: ReiAnixSettingsCategoryUiModel,
     onClick: () -> Unit,
+    showDescription: Boolean = false,
 ) {
-    ReiAnixSettingsRow(
-        icon = category.icon,
-        title = category.label,
-        description = category.description,
-        onClick = onClick,
-        modifier = Modifier.padding(vertical = ReiAnixTokens.Spacing.xs).clip(ReiAnixTokens.Shapes.card)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow),
-        showDivider = false,
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 50.dp)
+            .settingsClickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = if (showDescription) 12.dp else 0.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${category.label}. ${category.description}"
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Icon(
-            imageVector = Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(category.label, style = MaterialTheme.typography.bodyMedium)
+            if (showDescription) Text(category.description, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -462,6 +434,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onUpdateSetting: (String, String) -> Unit,
     onAction: (String) -> Unit,
     onOpenStorage: () -> Unit,
+    libraryFoldersContent: (@Composable (() -> Unit) -> Unit)?,
     scanInProgress: Boolean = false,
     scanState: String = "IDLE",
     lastScanStatus: String? = null,
@@ -507,7 +480,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
         }
     }
 
-    ReiAnixResponsiveRoot {
+    ReiAnixSettingsRoot {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -551,7 +524,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 title = { Text(title) },
                 text = { Text(message) },
                 confirmButton = {
-                    ReiAnixCompactButton(
+                    SettingsDialogButton(
                         text = confirmLabel,
                         onClick = {
                             pendingConfirmationAction = null
@@ -561,7 +534,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     )
                 },
                 dismissButton = {
-                    ReiAnixCompactButton(
+                    SettingsDialogButton(
                         text = "Cancelar",
                         onClick = { pendingConfirmationAction = null },
                     )
@@ -575,10 +548,10 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)
                 .fillMaxWidth(),
             contentPadding = PaddingValues(
-                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                vertical = ReiAnixTokens.Spacing.xs,
+                horizontal = 0.dp,
+                vertical = 8.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+            verticalArrangement = Arrangement.Top,
         ) {
             item(key = "header:" + category) {
                 SettingsHeader(
@@ -630,13 +603,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     )
                 }
             } else {
-                items(SettingsDestinations.filter { it.parent == category }, key = { "submenu:" + it.id }) { submenu ->
-                    SettingsFlatCategoryRow(
-                        category = ReiAnixSettingsCategoryUiModel(submenu.title, submenu.entries.joinToString(" · ") { it.title }, SettingsRootCategories.first { it.label == category }.icon),
-                        onClick = { onOpenSubmenu(submenu.id) },
-                    )
-                }
-                when (category) {
+                settingsPageSections(category).forEach { section ->
+                    item(key = "section:$section") { SettingsSectionLabel(settingsSectionTitle(section)) }
+                    when (section) {
                 "Biblioteca" -> {
                     item(key = "setting:library.sort_default") {
                         ChoiceSettingRow(
@@ -669,14 +638,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("library.page_size", it) },
                         )
                     }
-                    item(key = "folders") {
-                        ReiAnixSecondaryButton(
-                            text = "Adicionar ou alterar pasta",
-                            onClick = onOpenStorage,
-                            modifier = Modifier.fillMaxWidth().padding(top = ReiAnixTokens.Spacing.md),
-                        )
-                    }
                 }
+
                 "Geral" -> {
                     item(key = "setting:app.confirm_destructive") {
                         BooleanSettingRow(
@@ -712,7 +675,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Restaurar",
                                     onClick = { requestDestructiveAction("reset_player") },
                                     enabled = !actionBusy("reset_player"),
@@ -787,7 +750,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Limpar cache de capas",
                                     onClick = { requestDestructiveAction("clear_anilist_cache") },
                                     enabled = !actionBusy("clear_anilist_cache"),
@@ -1181,20 +1144,20 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     .padding(ReiAnixTokens.Spacing.lg),
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
-                                ReiAnixPrimaryButton(
+                                SettingsActionRow(
                                     text = "Exportar configurações",
                                     onClick = { onAction("settings_export") },
                                     enabled = !actionBusy("settings_export"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Importar configurações",
                                     onClick = { onAction("settings_import") },
                                     enabled = !actionBusy("settings_import"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
 
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Restaurar configurações",
                                     onClick = { requestDestructiveAction("reset_all_settings") },
                                     enabled = !actionBusy("reset_all_settings"),
@@ -1213,25 +1176,25 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     .padding(ReiAnixTokens.Spacing.lg),
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
-                                ReiAnixPrimaryButton(
+                                SettingsActionRow(
                                     text = "Fazer backup",
                                     onClick = { onAction("backup_create") },
                                     enabled = !actionBusy("backup_create"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Restaurar backup",
                                     onClick = { requestDestructiveAction("backup_restore") },
                                     enabled = !actionBusy("backup_restore"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Verificar integridade",
                                     onClick = { onAction("backup_integrity") },
                                     enabled = !actionBusy("backup_integrity"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Reconciliar arquivos",
                                     onClick = { onAction("backup_reconcile") },
                                     enabled = !actionBusy("backup_reconcile"),
@@ -1337,7 +1300,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                ReiAnixPrimaryButton(
+                                SettingsActionRow(
                                     text = "Executar diagnóstico geral",
                                     onClick = { onAction("diagnostic_run_general") },
                                     enabled = !diagnosticWorkRunning,
@@ -1355,7 +1318,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     "Desempenho e estabilidade" to "diagnostic_run_performance",
                                 )
                                 diagnosticActions.forEach { (label, action) ->
-                                    ReiAnixSecondaryButton(
+                                    SettingsActionRow(
                                         text = label,
                                         onClick = { onAction(action) },
                                         enabled = !diagnosticWorkRunning,
@@ -1378,25 +1341,25 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     .padding(ReiAnixTokens.Spacing.lg),
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                             ) {
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Importar logcat (ADB)",
                                     onClick = { onAction("diagnostic_import_logcat") },
                                     enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_import_logcat"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Cancelar coleta atual",
                                     onClick = { onAction("diagnostic_cancel") },
                                     enabled = diagnosticCollectionRunning,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixPrimaryButton(
+                                SettingsActionRow(
                                     text = "Exportar relatório coletado",
                                     onClick = { onAction("diagnostic_export") },
                                     enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_export"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                ReiAnixSecondaryButton(
+                                SettingsActionRow(
                                     text = "Limpar resultados e histórico",
                                     onClick = { pendingConfirmationAction = "diagnostic_clear" },
                                     enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_clear"),
@@ -1510,6 +1473,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 }
+                }
             }
             }
         }
@@ -1524,13 +1488,13 @@ private fun SettingsSectionLabel(
     Text(
         text = title,
         style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = MaterialTheme.colorScheme.primary,
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                top = ReiAnixTokens.Spacing.sm,
-                bottom = ReiAnixTokens.Spacing.xs,
-                start = ReiAnixTokens.Spacing.xs,
+                top = 24.dp,
+                bottom = 8.dp,
+                start = 60.dp,
             )
             .semantics { heading() },
     )
@@ -1565,7 +1529,7 @@ fun ReiAnixSettingsRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    showDivider: Boolean = true,
+    showDivider: Boolean = false,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     Column(
@@ -1579,54 +1543,40 @@ fun ReiAnixSettingsRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
-                .clickable(
+                .settingsClickable(
                     enabled = enabled,
                     role = Role.Button,
                     onClick = onClick,
                 )
                 .padding(
-                    horizontal = ReiAnixTokens.Spacing.xs,
-                    vertical = ReiAnixTokens.Spacing.xs,
+                    horizontal = 20.dp,
+                    vertical = 16.dp,
                 ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Box(
-                modifier = Modifier.size(ReiAnixTokens.Dimensions.settingsIconContainerSize),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (enabled) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha)
-                    },
-                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-                )
-            }
+            Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 Text(
                     text = title,
-                    style = ReiAnixTokens.TypographyTokens.settingsCategory,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = if (enabled) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    maxLines = 1,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (description.isNotBlank()) {
                     Text(
                         text = description,
-                        style = ReiAnixTokens.TypographyTokens.settingsDescription,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = 10,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -1659,12 +1609,12 @@ fun SettingsHeader(
 ) {
     ReiAnixTopBar(
         title = title,
-        subtitle = subtitle,
+        subtitle = null,
         navigationIcon = Icons.Filled.ArrowBack,
         navigationContentDescription = backContentDescription,
         onNavigationClick = onBack,
-        modifier = Modifier.padding(bottom = ReiAnixTokens.Spacing.xs),
-        titleStyle = ReiAnixTokens.TypographyTokens.screenTitle,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+        titleStyle = MaterialTheme.typography.titleLarge,
         titleColor = MaterialTheme.colorScheme.onSurface,
         applyResponsiveHorizontalPadding = false,
     )
@@ -1690,17 +1640,17 @@ private fun SettingsPreferenceText(
     ) {
         Text(
             text = title,
-            style = ReiAnixTokens.TypographyTokens.bodySecondary,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
+            maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
         if (description.isNotBlank()) {
             Text(
                 text = description,
-                style = ReiAnixTokens.TypographyTokens.metadata,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
+                maxLines = 10,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -1727,17 +1677,18 @@ private fun BooleanSettingRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
-                .clickable(
+                .settingsClickable(
                     role = Role.Switch,
                     onClick = { onCheckedChange(!checked) },
                 )
                 .padding(
-                    horizontal = ReiAnixTokens.Spacing.xs,
-                    vertical = ReiAnixTokens.Spacing.xs,
+                    horizontal = 20.dp,
+                    vertical = 16.dp,
                 ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            SettingsLeadingIcon(keyName)
             SettingsPreferenceText(
                 title = title,
                 description = description,
@@ -1753,7 +1704,6 @@ private fun BooleanSettingRow(
                     uncheckedBorderColor = MaterialTheme.colorScheme.outline,
                 ),
                 modifier = Modifier
-                    .size(ReiAnixTokens.Dimensions.settingsTrailingSize)
                     .semantics {
                         stateDescription = if (checked) "Ativado" else "Desativado"
                     },
@@ -1785,16 +1735,17 @@ private fun LanguageSettingRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = ReiAnixTokens.Spacing.xs),
+                .padding(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            SettingsLeadingIcon(keyName)
             SettingsPreferenceText(
                 title = title,
                 description = description,
                 modifier = Modifier.weight(1f),
             )
-            ReiAnixCompactButton(
+            SettingsDialogButton(
                 text = "Salvar",
                 onClick = { onSave(draftValue.trim()) },
                 modifier = Modifier.semantics { contentDescription = "Salvar " + title },
@@ -1806,7 +1757,7 @@ private fun LanguageSettingRow(
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = ReiAnixTokens.Spacing.xs)
+                .padding(horizontal = 20.dp)
                 .padding(bottom = ReiAnixTokens.Spacing.sm)
                 .semantics { contentDescription = title },
         )
@@ -1881,7 +1832,7 @@ private fun ChoiceSettingRow(
                 }
             },
             confirmButton = {
-                ReiAnixCompactButton(
+                SettingsDialogButton(
                     text = "Fechar",
                     onClick = { dialogOpen = false },
                 )
@@ -1901,45 +1852,24 @@ private fun ChoiceSettingRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
-                .clickable(
+                .settingsClickable(
                     role = Role.Button,
                     onClick = { dialogOpen = true },
                 )
                 .padding(
-                    horizontal = ReiAnixTokens.Spacing.xs,
-                    vertical = ReiAnixTokens.Spacing.xs,
+                    horizontal = 20.dp,
+                    vertical = 16.dp,
                 ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            SettingsLeadingIcon(keyName)
             SettingsPreferenceText(
                 title = title,
-                description = description,
+                description = if (description.isBlank()) selectedLabel else "$selectedLabel\n$description",
                 modifier = Modifier.weight(1f),
             )
-            Column(
-                modifier = Modifier
-                    .widthIn(
-                        min = ReiAnixTokens.Dimensions.settingsChoiceValueMinWidth,
-                        max = ReiAnixTokens.Dimensions.settingsChoiceValueMaxWidth,
-                    )
-                    .semantics { contentDescription = selectedLabel },
-                horizontalAlignment = Alignment.End,
-            ) {
-                Text(
-                    text = selectedLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Icon(
-                    imageVector = Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
-                )
-            }
+
         }
 
     }
@@ -2073,8 +2003,8 @@ private fun PosterSizeSettingRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = ReiAnixTokens.Spacing.xs,
-                vertical = ReiAnixTokens.Spacing.sm,
+                horizontal = 20.dp,
+                vertical = 16.dp,
             )
             .semantics(mergeDescendants = true) {
                 contentDescription = "Tamanho dos pôsteres"
@@ -2086,6 +2016,7 @@ private fun PosterSizeSettingRow(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            SettingsLeadingIcon("appearance.poster_size", Modifier.padding(end = 16.dp))
             SettingsPreferenceText(
                 title = "Tamanho dos pôsteres",
                 description = "Ajusta as capas da Home e da Biblioteca. 0 é o menor tamanho; 16 é o maior.",
@@ -2105,10 +2036,10 @@ private fun PosterSizeSettingRow(
             onValueChangeFinished = {
                 onSelected(sliderValue.toInt().coerceIn(0, 16))
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(start = 40.dp),
         )
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(start = 40.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
@@ -2122,5 +2053,37 @@ private fun PosterSizeSettingRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 50.dp)
+            .settingsClickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 14.dp)
+            .semantics { stateDescription = if (enabled) "Habilitado" else "Desabilitado" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SettingsLeadingIcon(text, Modifier.padding(end = 16.dp))
+        Text(text, style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f))
+    }
+}
+
+@Composable
+private fun SettingsDialogButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    androidx.compose.material3.TextButton(onClick = onClick, modifier = modifier, enabled = enabled) {
+        Text(text, style = MaterialTheme.typography.labelLarge)
     }
 }
