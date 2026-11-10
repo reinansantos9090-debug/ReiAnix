@@ -21,35 +21,37 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Full-row pressed highlight, matching CloudStream's selectableItemBackground. */
+/** CloudStream-style touch feedback: react immediately rather than leaving a
+ * delayed opaque highlight visible while the next settings page is opening.
+ */
 fun Modifier.settingsClickable(
     enabled: Boolean = true,
     role: Role = Role.Button,
     onClick: () -> Unit,
 ): Modifier = composed {
     val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    val focused by interactions.collectIsFocusedAsState()
-    var pending by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     val currentClick by rememberUpdatedState(onClick)
-    val currentEnabled by rememberUpdatedState(enabled)
-    val color = MaterialTheme.colorScheme.onSurface
-    val alpha by animateFloatAsState(
-        if (enabled && (pressed || pending || focused)) 0.32f else 0f,
-        animationSpec = tween(if (pressed || pending || focused) 50 else 180), label = "settingsPress",
-    )
-    drawBehind { drawRect(color.copy(alpha = alpha)) }
-        .clickable(enabled = enabled, role = role, interactionSource = interactions, indication = null) {
-            if (!pending) scope.launch {
-                pending = true
-                try {
-                    // Keep the confirmation visible even on a quick tap before navigation.
-                    delay(100)
-                    if (currentEnabled) currentClick()
-                } finally { pending = false }
+    val scope = rememberCoroutineScope()
+    var blocked by remember { mutableStateOf(false) }
+    val rippleColor = MaterialTheme.colorScheme.onSurface
+    clickable(
+        enabled = enabled,
+        role = role,
+        interactionSource = interactions,
+        indication = androidx.compose.material3.ripple(color = rippleColor),
+    ) {
+        if (blocked) return@clickable
+        blocked = true
+        try {
+            currentClick()
+        } finally {
+            // Only debounce repeated taps; never delay the actual navigation.
+            scope.launch {
+                delay(180)
+                blocked = false
             }
         }
+    }
 }
 
 /** Explicit icons avoid substring collisions (e.g., every backup or subtitle option).
