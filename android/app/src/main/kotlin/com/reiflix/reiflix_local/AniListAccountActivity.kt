@@ -35,7 +35,7 @@ class AniListAccountActivity : ComponentActivity() {
                         Text("Contas e sincronização", style = MaterialTheme.typography.headlineSmall)
                         Text("AniList", style = MaterialTheme.typography.titleLarge)
                         Text(if (state.connected) "Conectado como ${state.name}" else "Conta não conectada")
-                        if (!state.configured) Text("A conexão com o AniList ainda não está disponível nesta versão.")
+                        if (!state.configured) Text("Este APK foi compilado sem o Client ID público do ReiAnix no AniList. O cadastro é feito uma única vez pelo desenvolvedor; usuários não precisam digitar chaves.")
                         Text("Conecte sua conta para atualizar sua lista enquanto assiste. Sua senha é informada somente na página oficial do AniList.")
                         if (!state.connected) {
                             Button(enabled = state.configured && !busy, onClick = {
