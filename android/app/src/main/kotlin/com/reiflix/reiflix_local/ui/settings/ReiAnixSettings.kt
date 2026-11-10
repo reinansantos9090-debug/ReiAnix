@@ -302,6 +302,7 @@ fun ReiAnixSettingsScreen(
     onOpenCategory: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
+    val accountContext = androidx.compose.ui.platform.LocalContext.current
     var searchQuery by rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
     val searchResults = searchSettings(searchQuery)
     ReiAnixResponsiveRoot {
@@ -367,6 +368,17 @@ fun ReiAnixSettingsScreen(
                                 label = { Text("Pesquisar configurações") },
                                 modifier = Modifier.padding(vertical = ReiAnixTokens.Spacing.sm),
                             )
+                        }
+                        if (searchQuery.isBlank() || listOf("anilist", "contas e sincronização").any {
+                            it.contains(searchQuery.trim(), ignoreCase = true)
+                        }) {
+                            item(key = "settings:anilist-account") {
+                                SettingsFlatCategoryRow(
+                                    ReiAnixSettingsCategoryUiModel("Contas e sincronização", "AniList", Icons.Filled.AccountCircle),
+                                    onClick = { accountContext.startActivity(android.content.Intent(accountContext,
+                                        com.reiflix.reiflix_local.AniListAccountActivity::class.java)) },
+                                )
+                            }
                         }
                         if (searchQuery.isBlank()) {
                             items(SettingsRootCategories, key = { "settings-category:${it.label}" }) { category ->
