@@ -117,9 +117,10 @@ class DownloadEngine(private val context: Context) {
             if(contentType.contains("dash+xml",true)) throw PermanentFailure("Esta playlist DASH exige montagem de faixas ainda não suportada. Abra o site e escolha uma versão de arquivo ou HLS compatível.")
             if(total>0 && StatFs(store.directory.path).availableBytes < (total-resume).coerceAtLeast(0)+16L*1024*1024) throw PermanentFailure("Espaço insuficiente para baixar o arquivo")
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
+            val disposition=connection.getHeaderField("Content-Disposition")
             store.mutate(id) {
                 if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L) {
-                    val proposed=android.webkit.URLUtil.guessFileName(secret.getString("url"),connection.getHeaderField("Content-Disposition"),contentType)
+                    val proposed=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
                     if(proposed.isNotBlank() && proposed !in setOf(".","..") && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
                         it.put("name",proposed).put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(proposed)}")
                     }
