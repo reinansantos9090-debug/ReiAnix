@@ -240,7 +240,16 @@ fun ReiAnixSettingsRoute(
     BackHandler(enabled = destination != null) { goBack() }
     when {
         destination == "Pastas" -> {
-            libraryFoldersContent?.invoke(::goBack) ?: androidx.compose.runtime.LaunchedEffect(Unit) { onOpenStorage() }
+            if (libraryFoldersContent != null) {
+                libraryFoldersContent(::goBack)
+            } else {
+                // Fallback navigation must clear the internal destination, or returning
+                // from Storage will immediately open it again.
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    selectedDestination = null
+                    onOpenStorage()
+                }
+            }
         }
         destination == "Contas e Avançado" -> {
             val context = androidx.compose.ui.platform.LocalContext.current
