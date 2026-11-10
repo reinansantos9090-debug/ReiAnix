@@ -147,9 +147,15 @@ private fun ReiAnixLibraryFoldersSection(
     val storage = state.storage
     var pendingRemoval by remember { mutableStateOf<ReiAnixStorageSourceUiModel?>(null) }
 
-    val configuredSafSources = nativeFolders.folders
+    // The library snapshot also retains configured SAF sources while the SQLite query
+    // is loading or unavailable. Show those sources rather than an empty folder list.
+    val snapshotSafSources = storage.configuredSources
+        .filter { it.kind.equals("saf", ignoreCase = true) && it.reference.isNotBlank() }
+    val sqliteSafSources = nativeFolders.folders
         .filter { android.provider.DocumentsContract.isTreeUri(android.net.Uri.parse(it.path)) }
         .map { ReiAnixStorageSourceUiModel(reference = it.path, name = it.name.orEmpty(), kind = "saf") }
+    val configuredSafSources = (snapshotSafSources + sqliteSafSources)
+        .distinctBy { it.reference }
     val selectionBusy =
         storage.safSelectionPending ||
             (
@@ -196,8 +202,8 @@ private fun ReiAnixLibraryFoldersSection(
                         }
                     }
                 }
-                if (nativeFolders.status == ReiAnixNativeFoldersStatus.EMPTY ||
-                    (nativeFolders.status == ReiAnixNativeFoldersStatus.READY && configuredSafSources.isEmpty())) {
+                if (configuredSafSources.isEmpty() &&
+                    nativeFolders.status in setOf(ReiAnixNativeFoldersStatus.EMPTY, ReiAnixNativeFoldersStatus.READY)) {
                     item(key = "folders-empty") {
                         Text("Nenhuma pasta cadastrada", style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
