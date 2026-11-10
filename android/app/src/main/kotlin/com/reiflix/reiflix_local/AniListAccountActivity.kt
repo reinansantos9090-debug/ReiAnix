@@ -162,9 +162,11 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
 private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().settingsClickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .heightIn(min = 56.dp).padding(vertical = 16.dp),
+            .heightIn(min = 56.dp).padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        com.reiflix.reiflix_local.ui.settings.SettingsLeadingIcon(label)
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
             modifier = Modifier.size(28.dp))
