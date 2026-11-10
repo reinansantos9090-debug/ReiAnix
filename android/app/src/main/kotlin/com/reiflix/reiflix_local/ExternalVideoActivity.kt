@@ -93,6 +93,7 @@ class ExternalVideoActivity : ComponentActivity() {
 
             val playerIntent = request.toIntent(this@ExternalVideoActivity, videoUri)
                 .putExtra("nativeCompose", true)
+                .putExtra("externalVideo", true)
                 .putExtra("handoffDispatchedAtMs", System.currentTimeMillis())
 
             // Pass the incoming URI permission to the private player Activity.
