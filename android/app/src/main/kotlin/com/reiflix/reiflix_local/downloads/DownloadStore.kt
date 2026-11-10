@@ -88,6 +88,8 @@ class DownloadStore(context: Context) {
         headers: Map<String, String>, animeTitle: String = "", automaticName: Boolean = false): DownloadItem = withContext(Dispatchers.IO) {
         ready()
         DownloadHttp.validateUrl(url)
+        require(url.length<=16384) { "O link é longo demais" }
+        require(headers.values.all { it.length<=16384 && it.none { c -> c=='\r' || c=='\n' } }) { "Cabeçalho de autenticação inválido" }
         require(name.isNotBlank() && name.length <= 200 && name !in setOf(".", "..") && name.none { it == '/' || it == '\\' || it.code < 32 }) { "Nome de arquivo inválido" }
         require(hashType in setOf("SHA-256", "SHA-1", "MD5"))
         val hash = expectedHash.trim().lowercase()
@@ -272,6 +274,7 @@ object DownloadMetadata {
             deps.artworkService.requestPendingArtwork()
             DownloadEvents.catalog.tryEmit(Unit)
         } catch(cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-        catch (_: Exception) { offered.remove(animeId) }
+        catch (_: Exception) { /* Existing artwork recovery remains available. */ }
+        finally { offered.remove(animeId) }
     }
 }

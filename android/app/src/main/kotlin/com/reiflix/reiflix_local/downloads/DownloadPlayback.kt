@@ -61,6 +61,8 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
         private var item: DownloadItem?=null
         private var spec: DataSpec?=null
         private var position=0L
+        private var cachedItem: DownloadItem?=null
+        private var refreshedAt=0L
         private var remaining=C.LENGTH_UNSET.toLong()
         @Volatile private var closed=false
         override fun open(dataSpec: DataSpec): Long {
@@ -68,7 +70,7 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
             val id=dataSpec.uri.pathSegments.firstOrNull() ?: throw IOException("Download inválido")
             val current=store.get(id) ?: throw IOException("Download não encontrado")
             if(current.state in setOf("CANCELLED","CORRUPT","ERROR")) throw IOException("Aguarde ou retome o download")
-            item=current; spec=dataSpec; closed=false; position=dataSpec.position
+            item=current; cachedItem=current; refreshedAt=0L; spec=dataSpec; closed=false; position=dataSpec.position
             file=RandomAccessFile(store.partial(id),"r")
             file!!.seek(position)
             remaining=if(dataSpec.length!=C.LENGTH_UNSET.toLong()) dataSpec.length else if(current.total>=0) (current.total-position).coerceAtLeast(0) else C.LENGTH_UNSET.toLong()
@@ -82,7 +84,9 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
             val started=android.os.SystemClock.elapsedRealtime()
             while(!closed) {
                 if(Thread.currentThread().isInterrupted) throw InterruptedIOException()
-                val current=store.get(initial.id)
+                val now=android.os.SystemClock.elapsedRealtime()
+                if(now-refreshedAt>=200) { cachedItem=store.get(initial.id); refreshedAt=now }
+                val current=cachedItem
                 if(current==null) {
                     val available=(file!!.length()-position).coerceAtLeast(0)
                     if(available==0L) return C.RESULT_END_OF_INPUT

@@ -68,6 +68,7 @@ class DownloadTransferJob: JobService() {
     override fun onDestroy() { stopped=true; running?.cancel(); super.onDestroy() }
 }
 
+@androidx.annotation.Keep
 class DownloadWorker(context: Context,parameters: WorkerParameters): CoroutineWorker(context,parameters) {
     override suspend fun doWork(): Result {
         if(DownloadScheduling.hasUserJob(applicationContext)) return Result.retry()

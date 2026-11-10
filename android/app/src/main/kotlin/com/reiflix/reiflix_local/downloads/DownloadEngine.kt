@@ -97,16 +97,17 @@ class DownloadEngine(private val context: Context) {
             if(contentType in setOf("text/html","application/xhtml+xml")) throw PermanentFailure("Este link abre uma página. Informe o link direto do arquivo.")
             if(contentType.contains("mpegurl",true) || contentType.contains("dash+xml",true)) throw PermanentFailure("Esta fonte é uma playlist HLS/DASH; use o link direto de um arquivo de vídeo.")
             if(total>0 && StatFs(store.directory.path).availableBytes < (total-resume).coerceAtLeast(0)+16L*1024*1024) throw PermanentFailure("Espaço insuficiente para baixar o arquivo")
-            val serverHash=serverHash(connection)
+            val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             store.mutate(id) {
                 if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L) {
                     val proposed=android.webkit.URLUtil.guessFileName(secret.getString("url"),connection.getHeaderField("Content-Disposition"),contentType)
-                    if(proposed.isNotBlank() && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
+                    if(proposed.isNotBlank() && proposed !in setOf(".","..") && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
                         it.put("name",proposed).put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(proposed)}")
                     }
                 }
                 it.put("total",total).put("validator",newValidator ?: "")
                 if(contentType.startsWith("video/")) it.put("mime",contentType)
+                if(resume==0L) { it.remove("serverHash"); it.remove("serverHashType") }
                 if(serverHash!=null) it.put("serverHash",serverHash.first).put("serverHashType",serverHash.second)
             }
             try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
@@ -172,7 +173,7 @@ class DownloadEngine(private val context: Context) {
     private fun isDownloading(id: String)=store.get(id)?.state=="DOWNLOADING"
     private fun restart(id: String,file: File) {
         RandomAccessFile(file,"rw").use { it.setLength(0); it.fd.sync() }
-        store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1) }
+        store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1); it.remove("validator"); it.remove("serverHash"); it.remove("serverHashType") }
     }
     private suspend fun verifyAndSave(id: String,file: File) {
         val item=store.get(id) ?: return
