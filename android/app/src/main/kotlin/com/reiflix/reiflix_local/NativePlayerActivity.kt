@@ -6134,6 +6134,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     }
                     zoomTransformActive = true
                     playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    applyZoomTransform()
                     pinchActive = true
                     gestureMode = GestureMode.PINCH
                     gestureConsumed = true
