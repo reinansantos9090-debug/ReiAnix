@@ -251,11 +251,9 @@ fun ReiAnixSettingsRoute(
                 }
             }
         }
-        destination == "Contas e Avançado" -> {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            androidx.compose.runtime.LaunchedEffect(Unit) {
-                selectedDestination = null
-                context.startActivity(android.content.Intent(context, com.reiflix.reiflix_local.AniListAccountActivity::class.java))
+        destination == "Contas e Avançado" -> androidx.compose.runtime.key(destination) {
+            ReiAnixSettingsRoot {
+                com.reiflix.reiflix_local.AniListAccountSettingsScreen(onBack = ::goBack)
             }
         }
         destination != null -> androidx.compose.runtime.key(destination, selectedItemIndex) {
@@ -266,7 +264,7 @@ fun ReiAnixSettingsRoute(
                 state = state,
                 onBack = ::goBack,
                 onUpdateSetting = viewModel::setSetting,
-                    onAction = viewModel::requestAction,
+                onAction = viewModel::requestAction,
                 onOpenStorage = onOpenStorage,
                 libraryFoldersContent = libraryFoldersContent,
                 scanInProgress = scanInProgress,
