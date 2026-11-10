@@ -89,18 +89,33 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
         val callback = intent.data
         // Clear the credential-bearing URI immediately; never log or save it in instance state.
         intent.data = null
+        setContent {
+            ReiAnixComposeTheme {
+                Surface(Modifier.fillMaxSize()) {
+                    Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text("Conectando ao AniList…")
+                        CircularProgressIndicator()
+                    }
+                }
+            }
+        }
         lifecycleScope.launch {
             try {
-                if (callback != null) ReiAnixAppDependencies.from(applicationContext)
+                val connected = callback != null && ReiAnixAppDependencies.from(applicationContext)
                     .aniListAccountService.acceptCallback(callback)
+                if (!connected) android.widget.Toast.makeText(this@AniListOAuthCallbackActivity,
+                    "Conexão não concluída. Tente novamente.", android.widget.Toast.LENGTH_LONG).show()
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (_: Exception) {
                 android.widget.Toast.makeText(this@AniListOAuthCallbackActivity,
                     "Não foi possível conectar ao AniList. Tente novamente.", android.widget.Toast.LENGTH_LONG).show()
             } finally {
                 if (!isFinishing && !isDestroyed) {
-                    startActivity(Intent(this@AniListOAuthCallbackActivity, AniListAccountActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                    runCatching {
+                        startActivity(Intent(this@AniListOAuthCallbackActivity, AniListAccountActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                    }
                     finish()
                 }
             }
