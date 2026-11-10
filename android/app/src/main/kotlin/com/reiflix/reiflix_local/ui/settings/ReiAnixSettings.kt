@@ -224,6 +224,7 @@ fun ReiAnixSettingsRoute(
     scanInProgress: Boolean = false,
     scanState: String = "IDLE",
     lastScanStatus: String? = null,
+    libraryFoldersContent: (@Composable () -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedDestination by rememberSaveable { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -258,6 +259,7 @@ fun ReiAnixSettingsRoute(
                 onUpdateSetting = viewModel::setSetting,
                     onAction = viewModel::requestAction,
                 onOpenStorage = onOpenStorage,
+                libraryFoldersContent = libraryFoldersContent,
                 scanInProgress = scanInProgress,
                 scanState = scanState,
                 lastScanStatus = lastScanStatus,
@@ -318,7 +320,7 @@ fun ReiAnixSettingsScreen(
                     top = ReiAnixTokens.Spacing.sm,
                     bottom = ReiAnixTokens.Spacing.xl,
                 ),
-                verticalArrangement = if (!searchVisible) Arrangement.Center else Arrangement.Top,
+                verticalArrangement = Arrangement.Top,
             ) {
                 when (state.status) {
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
@@ -346,12 +348,9 @@ fun ReiAnixSettingsScreen(
                     com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
                         item(key = "settings:top-bar") {
                             Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                IconButton(onClick = onBack) {
-                                    Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar das Configurações")
-                                }
                                 if (account.connected) {
                                     com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar(
                                         pictureUrl = account.avatarUrl,
@@ -474,6 +473,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     onUpdateSetting: (String, String) -> Unit,
     onAction: (String) -> Unit,
     onOpenStorage: () -> Unit,
+    libraryFoldersContent: (@Composable () -> Unit)?,
     scanInProgress: Boolean = false,
     scanState: String = "IDLE",
     lastScanStatus: String? = null,
@@ -682,11 +682,15 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         )
                     }
                     item(key = "folders") {
-                        SettingsActionRow(
-                            text = "Adicionar ou alterar pasta",
-                            onClick = onOpenStorage,
-                            modifier = Modifier.fillMaxWidth().padding(top = ReiAnixTokens.Spacing.md),
-                        )
+                        if (libraryFoldersContent != null) {
+                            libraryFoldersContent()
+                        } else {
+                            SettingsActionRow(
+                                text = "Adicionar ou alterar pasta",
+                                onClick = onOpenStorage,
+                                modifier = Modifier.fillMaxWidth().padding(top = ReiAnixTokens.Spacing.md),
+                            )
+                        }
                     }
                 }
                 "Geral" -> {
