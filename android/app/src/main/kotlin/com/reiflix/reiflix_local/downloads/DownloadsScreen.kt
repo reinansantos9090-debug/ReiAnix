@@ -162,7 +162,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
         try {withContext(Dispatchers.IO){store.relink(item.id,identityTitle.trim());DownloadSnapshots.refresh(context)};identify=null}
         catch(_: Exception){error="Não foi possível identificar o anime"}
     }}){Text("Salvar")}},dismissButton={TextButton(onClick={identify=null}){Text("Cancelar")}})
-    if(add) DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName ->
+    if(add) key(initialUrl,initialTitle,initialName,edit?.id) { DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName ->
         busy=true; error=""
         scope.launch {
             try {
@@ -184,7 +184,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
             catch(_: Exception) { error="Não foi possível adicionar o download. Confira o link, a pasta e o nome do arquivo." }
             finally { busy=false }
         }
-    })
+    }) }
 }
 
 @Composable
