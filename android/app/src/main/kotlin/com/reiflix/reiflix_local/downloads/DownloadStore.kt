@@ -213,11 +213,14 @@ class DownloadStore(context: Context) {
         val normalized=hash.trim().lowercase()
         val length=when(hashType) { "MD5"->32; "SHA-1"->40; else->64 }
         require(normalized.isBlank() || normalized.matches(Regex("[0-9a-f]{$length}"))) { "Hash inválido" }
+        require(url.length<=16384 && headers.values.all { it.length<=16384 && it.none { c -> c=='\r' || c=='\n' } }) { "Link ou cabeçalho inválido" }
+        val previousUrl=runCatching { secret(item).getString("url") }.getOrNull()
         val encrypted=DownloadSecrets.encrypt(JSONObject().put("url",url).put("headers",JSONObject(headers)).toString())
         var previousOutput=""
         mutate(id) {
             require(it.optString("state") in setOf("ERROR","PAUSED"))
             if(it.optString("destination")!=destination) { previousOutput=it.optString("output"); it.put("destination",destination).put("output","") }
+            if(previousUrl!=url) { it.put("restart",true).put("bytes",0).put("total",-1) }
             it.put("secret",encrypted).put("signature",digest(url.toByteArray())).put("expectedHash",normalized)
                 .put("hashType",hashType).put("state","QUEUED").put("attempts",0).put("nextAttempt",0)
         }

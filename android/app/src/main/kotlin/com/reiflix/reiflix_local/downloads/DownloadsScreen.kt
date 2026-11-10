@@ -126,7 +126,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                         val size=Formatter.formatFileSize(context,item.bytes)
                         val total=if(item.total>=0) Formatter.formatFileSize(context,item.total) else "tamanho desconhecido"
                         val speed=item.json.optLong("speed")
-                        Text("$size / $total"+(if(speed>0) " • ${Formatter.formatFileSize(context,speed)}/s • ~${((item.total-item.bytes).coerceAtLeast(0)/speed)/60} min" else ""),style=MaterialTheme.typography.bodySmall)
+                        Text("$size / $total"+(if(speed>0) " • ${Formatter.formatFileSize(context,speed)}/s"+(if(item.total>0) " • ~${((item.total-item.bytes).coerceAtLeast(0)/speed)/60} min" else "") else ""),style=MaterialTheme.typography.bodySmall)
                         item.json.optString("message").takeIf { it.isNotBlank() }?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
                         if(item.state=="COMPLETE") {
                             Text(item.json.optString("integrity"),style=MaterialTheme.typography.bodySmall)
@@ -178,12 +178,12 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
     onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
-    var name by remember { mutableStateOf(runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
+    var name by remember { mutableStateOf(editing?.name ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
     var nameTouched by remember { mutableStateOf(editing!=null) }
     var anime by remember { mutableStateOf("") }
-    var destination by remember { mutableStateOf("") }
-    var hash by remember { mutableStateOf("") }
-    var hashType by remember { mutableStateOf("SHA-256") }
+    var destination by remember { mutableStateOf(editing?.json?.optString("destination").orEmpty()) }
+    var hash by remember { mutableStateOf(editing?.json?.optString("expectedHash").orEmpty()) }
+    var hashType by remember { mutableStateOf(editing?.json?.optString("hashType","SHA-256") ?: "SHA-256") }
     var cookie by remember { mutableStateOf(initialHeaders.entries.firstOrNull { it.key.equals("cookie",true) }?.value.orEmpty()) }
     var user by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -191,15 +191,18 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
     var login by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var originalHeaders by remember { mutableStateOf(initialHeaders) }
+    var sourceLoading by remember { mutableStateOf(editing!=null) }
+    var sessionOrigin by remember { mutableStateOf(runCatching { java.net.URL(initialUrl) }.getOrNull()) }
     LaunchedEffect(editing?.id) {
         if(editing!=null) try {
             val secret=withContext(Dispatchers.IO) { DownloadStore(context).secret(editing) }
-            url=secret.getString("url"); name=editing.name; destination=editing.json.optString("destination")
+            url=secret.getString("url"); name=editing.name; destination=editing.json.optString("destination"); sessionOrigin=runCatching { java.net.URL(url) }.getOrNull()
             hash=editing.json.optString("expectedHash"); hashType=editing.json.optString("hashType","SHA-256")
             val h=secret.optJSONObject("headers") ?: JSONObject(); originalHeaders=h.keys().asSequence().associateWith { h.getString(it) }
             cookie=originalHeaders.entries.firstOrNull { it.key.equals("cookie",true) }?.value.orEmpty()
             referer=originalHeaders.entries.firstOrNull { it.key.equals("referer",true) }?.value.orEmpty()
-        } catch(_: Exception) { error="Não foi possível recuperar a sessão. Informe novamente o link e as credenciais." }
+        } catch(_: Exception) { originalHeaders=emptyMap(); cookie=""; user=""; password=""; error="Não foi possível recuperar a sessão. Informe novamente o link e as credenciais." }
+        finally { sourceLoading=false }
     }
     val folder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if(uri!=null) try {
@@ -209,28 +212,38 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
     }
     AlertDialog(onDismissRequest={ if(!busy) onDismiss() },title={ Text(if(editing==null) "Adicionar download" else "Atualizar link / sessão") },
         text={ Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(url,{ url=it; if(!nameTouched && editing==null) name=runCatching { URLUtil.guessFileName(it.trim(),null,null) }.getOrDefault("episodio.mp4") },label={ Text("Link direto HTTP/HTTPS") },singleLine=true,enabled=!busy)
-            OutlinedTextField(name,{ name=it; nameTouched=true },label={ Text("Nome do arquivo, incluindo extensão") },singleLine=true,enabled=!busy && editing==null)
+            OutlinedTextField(url,{ next ->
+                val nextOrigin=runCatching { java.net.URL(DownloadHttp.validateUrl(next).toASCIIString()) }.getOrNull()
+                if(nextOrigin!=null) {
+                    if(sessionOrigin?.let { !DownloadHttp.sameOrigin(it,nextOrigin) }==true) {
+                        originalHeaders=originalHeaders.filterKeys { it.lowercase() !in setOf("authorization","cookie","referer") }
+                        cookie=""; user=""; password=""; referer=""
+                    }
+                    sessionOrigin=nextOrigin
+                }
+                url=next; if(!nameTouched && editing==null) name=runCatching { URLUtil.guessFileName(next.trim(),null,null) }.getOrDefault("episodio.mp4") },label={ Text("Link direto HTTP/HTTPS") },singleLine=true,enabled=!busy && !sourceLoading)
+            OutlinedTextField(name,{ name=it; nameTouched=true },label={ Text("Nome do arquivo, incluindo extensão") },singleLine=true,enabled=!busy && !sourceLoading && editing==null)
             if(editing==null) {
-                OutlinedTextField(anime,{ anime=it },label={ Text("Nome do anime (opcional)") },singleLine=true,enabled=!busy)
+                OutlinedTextField(anime,{ anime=it },label={ Text("Nome do anime (opcional)") },singleLine=true,enabled=!busy && !sourceLoading)
             }
                 Text(if(destination.isBlank()) "Destino: Downloads/ReiAnix" else "Destino: $destination",style=MaterialTheme.typography.bodySmall)
-                Row { TextButton(onClick={ folder.launch(null) },enabled=!busy) { Text("Escolher pasta") }; TextButton(onClick={ destination="" },enabled=!busy) { Text("Padrão") } }
+                Row { TextButton(onClick={ folder.launch(null) },enabled=!busy && !sourceLoading) { Text("Escolher pasta") }; TextButton(onClick={ destination="" },enabled=!busy && !sourceLoading) { Text("Padrão") } }
+            if(editing!=null) Text("Mudar o endereço reinicia os dados recebidos com segurança; atualizar apenas a sessão permite retomar quando o servidor aceita.",style=MaterialTheme.typography.bodySmall)
             Text("Integridade",style=MaterialTheme.typography.titleSmall)
-            Row { listOf("SHA-256","SHA-1","MD5").forEach { kind -> TextButton(onClick={ hashType=kind },enabled=!busy) { Text(if(hashType==kind) "✓ $kind" else kind) } } }
-            OutlinedTextField(hash,{ hash=it },label={ Text("Hash de referência (opcional)") },enabled=!busy)
+            Row { listOf("SHA-256","SHA-1","MD5").forEach { kind -> TextButton(onClick={ hashType=kind },enabled=!busy && !sourceLoading) { Text(if(hashType==kind) "✓ $kind" else kind) } } }
+            OutlinedTextField(hash,{ hash=it },label={ Text("Hash de referência (opcional)") },enabled=!busy && !sourceLoading)
             Text("Sem referência fornecida pelo usuário ou servidor, calculamos o SHA-256, mas não podemos confirmar que o original está correto.",style=MaterialTheme.typography.bodySmall)
             Text("Autenticação (opcional)",style=MaterialTheme.typography.titleSmall)
-            OutlinedTextField(user,{ user=it },label={ Text("Usuário (HTTP Basic)") },singleLine=true,enabled=!busy)
-            OutlinedTextField(password,{ password=it },label={ Text("Senha") },singleLine=true,enabled=!busy,visualTransformation=PasswordVisualTransformation())
-            OutlinedTextField(cookie,{ cookie=it },label={ Text("Cookie da sessão autorizada") },enabled=!busy,visualTransformation=PasswordVisualTransformation())
-            OutlinedTextField(referer,{ referer=it },label={ Text("Referer, se exigido pelo servidor") },singleLine=true,enabled=!busy)
-            TextButton(onClick={ originalHeaders=originalHeaders.filterKeys { it.lowercase() !in setOf("authorization","cookie","referer") }; cookie=""; user=""; password=""; referer="" },enabled=!busy) { Text("Limpar autenticação") }
-            TextButton(onClick={ try { DownloadHttp.validateUrl(url); login=true } catch(_: Exception) { error="Informe um link válido primeiro" } },enabled=!busy) { Text("Entrar no site para obter a sessão") }
+            OutlinedTextField(user,{ user=it },label={ Text("Usuário (HTTP Basic)") },singleLine=true,enabled=!busy && !sourceLoading)
+            OutlinedTextField(password,{ password=it },label={ Text("Senha") },singleLine=true,enabled=!busy && !sourceLoading,visualTransformation=PasswordVisualTransformation())
+            OutlinedTextField(cookie,{ cookie=it },label={ Text("Cookie da sessão autorizada") },enabled=!busy && !sourceLoading,visualTransformation=PasswordVisualTransformation())
+            OutlinedTextField(referer,{ referer=it },label={ Text("Referer, se exigido pelo servidor") },singleLine=true,enabled=!busy && !sourceLoading)
+            TextButton(onClick={ originalHeaders=originalHeaders.filterKeys { it.lowercase() !in setOf("authorization","cookie","referer") }; cookie=""; user=""; password=""; referer="" },enabled=!busy && !sourceLoading) { Text("Limpar autenticação") }
+            TextButton(onClick={ try { DownloadHttp.validateUrl(url); login=true } catch(_: Exception) { error="Informe um link válido primeiro" } },enabled=!busy && !sourceLoading) { Text("Entrar no site para obter a sessão") }
             if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
             if(submissionError.isNotBlank()) Text(submissionError,color=MaterialTheme.colorScheme.error)
         } },
-        confirmButton={ TextButton(enabled=!busy,onClick={
+        confirmButton={ TextButton(enabled=!busy && !sourceLoading,onClick={
             try {
                 DownloadHttp.validateUrl(url)
                 val headers=originalHeaders.filterKeys { it.lowercase() !in setOf("cookie","referer") }.toMutableMap()
@@ -240,7 +253,7 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
                 onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched)
             } catch(_: Exception) { error="Confira o link e os dados informados" }
         }) { Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar") } },
-        dismissButton={ TextButton(onClick=onDismiss,enabled=!busy) { Text("Cancelar") } })
+        dismissButton={ TextButton(onClick=onDismiss,enabled=!busy && !sourceLoading) { Text("Cancelar") } })
     if(login) WebSessionDialog(url,onDismiss={ login=false },onCookie={ cookie=it; login=false })
 }
 
