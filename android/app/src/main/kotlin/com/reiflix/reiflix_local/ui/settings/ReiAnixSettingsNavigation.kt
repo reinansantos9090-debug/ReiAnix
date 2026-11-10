@@ -50,7 +50,7 @@ internal val SettingsDestinations = listOf(
     SettingsDestination("Biblioteca", "Biblioteca", "", listOf(
         SettingsEntry("setting:library.sort_default", "Ordenação padrão"),
         SettingsEntry("setting:library.page_size", "Itens por página"),
-        SettingsEntry("folders", "Adicionar ou alterar pasta", "pastas armazenamento fontes remover pasta"),
+        SettingsEntry("folders", "Pasta da biblioteca", "selecionar pasta pastas cadastradas armazenamento fontes remover pasta adicionar ou alterar pasta"),
     )),
     SettingsDestination("appearance_theme", "Tema", "Aparência", listOf(
         SettingsEntry("setting:appearance.theme", "Tema"),

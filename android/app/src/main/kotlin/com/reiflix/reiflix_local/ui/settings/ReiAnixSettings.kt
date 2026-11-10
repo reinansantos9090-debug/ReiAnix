@@ -686,7 +686,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             libraryFoldersContent()
                         } else {
                             SettingsActionRow(
-                                text = "Adicionar ou alterar pasta",
+                                text = "Pasta da biblioteca",
                                 onClick = onOpenStorage,
                                 modifier = Modifier.fillMaxWidth().padding(top = ReiAnixTokens.Spacing.md),
                             )
