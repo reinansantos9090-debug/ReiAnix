@@ -52,32 +52,88 @@ fun Modifier.settingsClickable(
         }
 }
 
-internal fun settingsIcon(key: String): ImageVector = when {
-    key.contains("backup", true) || key.contains("restaur", true) -> Icons.Filled.Backup
-    key.contains("export", true) || key.contains("import", true) -> Icons.Filled.ImportExport
-    key.contains("cache", true) || key.contains("limpar", true) -> Icons.Filled.DeleteOutline
-    key.contains("diagn", true) || key.contains("verific", true) -> Icons.Filled.BugReport
-    key.contains("theme", true) || key.contains("tema", true) -> Icons.Filled.Palette
-    key.contains("poster", true) || key.contains("card_size", true) || key.contains("grid", true) -> Icons.Filled.GridView
-    key.contains("thumbnail", true) || key.contains("artwork", true) -> Icons.Filled.Image
-    key.contains("metadata", true) -> Icons.Filled.ManageSearch
-    key.contains("subtitle", true) || key.contains("legenda", true) -> Icons.Filled.Subtitles
-    key.contains("audio", true) || key.contains("volume", true) -> Icons.Filled.VolumeUp
-    key.contains("brightness", true) -> Icons.Filled.BrightnessMedium
-    key.contains("speed", true) -> Icons.Filled.Speed
-    key.contains("pip", true) -> Icons.Filled.PictureInPictureAlt
-    key.contains("rotation", true) -> Icons.Filled.ScreenRotation
-    key.contains("immersive", true) || key.contains("aspect", true) || key.contains("resolution", true) || key.contains("frame_rate", true) -> Icons.Filled.AspectRatio
-    key.contains("zoom", true) -> Icons.Filled.ZoomIn
-    key.contains("lock", true) -> Icons.Filled.Lock
-    key.contains("gestures", true) || key.contains("tap", true) || key.contains("press", true) -> Icons.Filled.TouchApp
-    key.contains("sort", true) -> Icons.Filled.Sort
-    key.contains("page_size", true) -> Icons.Filled.ViewList
-    key.contains("continue", true) || key.contains("resume", true) -> Icons.Filled.History
-    key.contains("autoplay", true) -> Icons.Filled.SkipNext
-    key.contains("confirm", true) -> Icons.Filled.Security
-    key.contains("folder", true) || key.contains("pasta", true) -> Icons.Filled.Folder
-    key.startsWith("player") -> Icons.Filled.PlayArrow
+/** Explicit icons avoid substring collisions (e.g., every backup or subtitle option).
+ * Each action has its own symbol; unknown future keys use the safe Settings fallback.
+ */
+internal fun settingsIcon(key: String): ImageVector = when (key) {
+    "app.confirm_destructive" -> Icons.Filled.Security
+    "player.reset" -> Icons.Filled.RestartAlt
+    "metadata.anilist_enabled" -> Icons.Filled.Public
+    "metadata.auto_match" -> Icons.Filled.AutoFixHigh
+    "artwork.enabled" -> Icons.Filled.CloudDownload
+    "artwork.cache_limit_mb" -> Icons.Filled.DataUsage
+    "data-cache:artwork-cache" -> Icons.Filled.DeleteSweep
+    "about:app" -> Icons.Filled.InfoOutline
+    "library.sort_default" -> Icons.Filled.SortByAlpha
+    "library.page_size" -> Icons.Filled.FormatListNumbered
+    "folders" -> Icons.Filled.FolderOpen
+    "appearance.theme" -> Icons.Filled.Palette
+    "appearance.card_size" -> Icons.Filled.CropPortrait
+    "library.grid_density" -> Icons.Filled.ViewModule
+    "appearance.poster_size" -> Icons.Filled.PhotoSizeSelectSmall
+    "appearance.show_thumbnails" -> Icons.Filled.Collections
+    "library.continue_watching" -> Icons.Filled.VideoLibrary
+    "library.continue_watching_limit" -> Icons.Filled.PlaylistPlay
+    "player.autoplay_next" -> Icons.Filled.SkipNext
+    "player.resume" -> Icons.Filled.PlayCircleOutline
+    "player.default_speed" -> Icons.Filled.Speed
+    "player.aspect_ratio" -> Icons.Filled.FitScreen
+    "player.max_video_resolution" -> Icons.Filled.Hd
+    "player.max_video_frame_rate" -> Icons.Filled.SlowMotionVideo
+    "player.zoom_enabled" -> Icons.Filled.ZoomIn
+    "player.lock_mode" -> Icons.Filled.Lock
+    "player.double_tap_seek_seconds" -> Icons.Filled.Forward10
+    "player.long_press_speed" -> Icons.Filled.FastForward
+    "gestures.volume" -> Icons.Filled.VolumeUp
+    "gestures.brightness" -> Icons.Filled.Brightness6
+    "gestures.horizontal_seek" -> Icons.Filled.Swipe
+    "gestures.double_tap" -> Icons.Filled.TouchApp
+    "gestures.long_press" -> Icons.Filled.PanToolAlt
+    "player.max_audio_channels" -> Icons.Filled.SurroundSound
+    "audio.preferred_language" -> Icons.Filled.Translate
+    "audio.preferred_subtitle_language" -> Icons.Filled.Language
+    "audio.subtitle_scale" -> Icons.Filled.FormatSize
+    "audio.subtitle_bottom_padding" -> Icons.Filled.VerticalAlignBottom
+    "audio.subtitle_embedded_style" -> Icons.Filled.FormatColorText
+    "audio.subtitles" -> Icons.Filled.Subtitles
+    "player.immersive" -> Icons.Filled.Fullscreen
+    "player.rotation" -> Icons.Filled.ScreenRotation
+    "player.pip" -> Icons.Filled.PictureInPictureAlt
+    "player.auto_hide_seconds" -> Icons.Filled.TimerOff
+    "data-cache:actions" -> Icons.Filled.SettingsBackupRestore
+    "backup:actions" -> Icons.Filled.Backup
+    "data-cache:info" -> Icons.Filled.Storage
+    "backup:info" -> Icons.Filled.CloudDone
+    "diagnostic:info" -> Icons.Filled.BugReport
+    "diagnostic:actions" -> Icons.Filled.FactCheck
+    "diagnostic:reports" -> Icons.Filled.Assessment
+    "diagnostic:timeline:heading" -> Icons.Filled.Timeline
+    "Restaurar" -> Icons.Filled.Restore
+    "Limpar cache de capas" -> Icons.Filled.CleaningServices
+    "Exportar configurações" -> Icons.Filled.UploadFile
+    "Importar configurações" -> Icons.Filled.Download
+    "Restaurar configurações" -> Icons.Filled.RestorePage
+    "Fazer backup" -> Icons.Filled.Save
+    "Restaurar backup" -> Icons.Filled.RestoreFromTrash
+    "Verificar integridade" -> Icons.Filled.Verified
+    "Reconciliar arquivos" -> Icons.Filled.Sync
+    "Executar diagnóstico geral" -> Icons.Filled.Troubleshoot
+    "Importar logcat (ADB)" -> Icons.Filled.Article
+    "Cancelar coleta atual" -> Icons.Filled.Cancel
+    "Exportar relatório coletado" -> Icons.Filled.FileUpload
+    "Limpar resultados e histórico" -> Icons.Filled.DeleteForever
+    "Sistema Android" -> Icons.Filled.Android
+    "Logcat disponível" -> Icons.Filled.Terminal
+    "Armazenamento e permissões" -> Icons.Filled.FolderShared
+    "Scanner e indexação" -> Icons.Filled.ManageSearch
+    "SQLite e biblioteca" -> Icons.Filled.Dataset
+    "Thumbnails, capas e cache" -> Icons.Filled.PhotoLibrary
+    "Ponte e comunicação interna" -> Icons.Filled.Cable
+    "Desempenho e estabilidade" -> Icons.Filled.Insights
+    "Trocar conta" -> Icons.Filled.SwitchAccount
+    "Sair" -> Icons.Filled.Logout
+    "Adicionar pasta" -> Icons.Filled.CreateNewFolder
+    "Pasta da biblioteca" -> Icons.Filled.Folder
     else -> Icons.Filled.Settings
 }
 
