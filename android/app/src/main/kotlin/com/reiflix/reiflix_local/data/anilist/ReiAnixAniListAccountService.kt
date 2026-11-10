@@ -122,7 +122,7 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
                     if (anime.anilistMatchManual != true) { refresh("Confirme a associação ao AniList nos detalhes do anime para sincronizar."); return@withLock }
                     val mediaId = anime.anilistId?.takeIf { it > 0L } ?: return@withLock
                     if (episode.episodeType?.lowercase() in setOf("special", "ova", "oad", "ona", "extra")) return@withLock
-                    val number = if (anime.mediaKind == "movie") 1.0 else if (episode.season <= 1) episode.number else episode.absoluteNumber
+                    val number = if (anime.mediaKind.equals("movie", ignoreCase = true)) 1.0 else if (episode.season <= 1) episode.number else episode.absoluteNumber
                     if (number == null || !number.isFinite() || number < 1 || number % 1.0 != 0.0 || number > Int.MAX_VALUE) return@withLock
                     val progress = number.toInt()
                     if (progress <= prefs.getInt("ack_$mediaId", 0)) return@withLock
@@ -157,13 +157,19 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
             val shouldComplete = total > 0 && progress == total &&
                 remoteStatus != "COMPLETED" && remoteStatus != "REPEATING"
             if (progress > remoteProgress || shouldComplete) {
+                val latestAnime = episode?.let { library.getAnime(it.animeId) }
+                if (latestAnime == null || latestAnime.anilistId != mediaId || latestAnime.anilistMatchManual != true) {
+                    prefs.edit().remove(key).commit()
+                    continue
+                }
                 val status = when {
                     remoteStatus == "COMPLETED" || remoteStatus == "REPEATING" -> remoteStatus
                     total > 0 && progress >= total -> "COMPLETED"
                     else -> "CURRENT"
                 }
-                request("mutation(\$media: Int, \$progress: Int, \$status: MediaListStatus) { SaveMediaListEntry(mediaId: \$media, progress: \$progress, status: \$status) { id progress } }",
-                    JSONObject().put("media", mediaId).put("progress", maxOf(progress, remoteProgress)).put("status", status), token)
+                request("mutation(\$entry: Int, \$media: Int, \$progress: Int, \$status: MediaListStatus) { SaveMediaListEntry(id: \$entry, mediaId: \$media, progress: \$progress, status: \$status) { id progress } }",
+                    JSONObject().put("entry", entry?.optInt("id")?.takeIf { it > 0 } ?: JSONObject.NULL)
+                        .put("media", mediaId).put("progress", maxOf(progress, remoteProgress)).put("status", status), token)
             }
             prefs.edit().putInt("ack_$mediaId", maxOf(progress, remoteProgress)).remove(key).commit()
             refresh("Progresso sincronizado com o AniList.")
