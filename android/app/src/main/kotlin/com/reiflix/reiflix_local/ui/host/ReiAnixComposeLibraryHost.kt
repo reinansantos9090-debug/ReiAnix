@@ -299,8 +299,7 @@ class ReiAnixComposeLibraryHost(
                                 onRemoveFolder = libraryViewModel::removeSafTree,
                                 onOpenSettings = {
                                     navController.navigate(
-                                        ReiAnixRoutes.DOWNLOADS,
-            ReiAnixRoutes.SETTINGS,
+                                        ReiAnixRoutes.SETTINGS,
                                         navOptions {
                                             launchSingleTop = true
                                         },

@@ -37,10 +37,10 @@ class DownloadEngine(private val context: Context) {
                     val limit=(ReiAnixAppDependencies.from(context).sqliteSettingsRepository.getPreference("downloads.parallel","2")?.toIntOrNull() ?: 2).coerceIn(1,4)
                     jobs.filter { it.id !in active && it.state in DownloadState.pending && it.json.optLong("nextAttempt")<=System.currentTimeMillis() }
                         .sortedBy { it.json.optLong("created") }.take((limit-active.size).coerceAtLeast(0)).forEach { item ->
-                            active[item.id]=launch { transfer(item.id,onProgress) }
+                            active[item.id]=launch { transfer(item.id) }
                         }
                     if(active.isEmpty() && jobs.none { it.state in DownloadState.pending }) break
-                    onProgress("${active.size} download(s) • ${jobs.count { it.state in DownloadState.pending }} na fila")
+                    onProgress("${active.size} download(s) • ${android.text.format.Formatter.formatFileSize(context,jobs.filter { it.state in DownloadState.pending }.sumOf { it.bytes })} recebidos")
                     delay(1000)
                 }
                 active.values.forEach { it.cancel() }
@@ -49,7 +49,7 @@ class DownloadEngine(private val context: Context) {
             store.all().any { it.state in DownloadState.pending }
         } finally { DownloadSnapshots.refresh(context); runner.unlock() }
     }
-    private suspend fun transfer(id: String,onProgress: (String)->Unit) {
+    private suspend fun transfer(id: String) {
         var connection: HttpURLConnection?=null
         try {
             var item=store.get(id) ?: return
@@ -77,6 +77,7 @@ class DownloadEngine(private val context: Context) {
             val code=connection.responseCode
             if(code==401 || code==403) throw PermanentFailure("Autenticação necessária ou link expirado. Atualize o link ou a sessão.")
             if(code==404 || code==410) throw PermanentFailure("Arquivo não encontrado ou link expirado")
+            if(code==416) { restart(id,file); throw IOException("Faixa anterior indisponível; reiniciando") }
             if(code==429 || code>=500) throw IOException("Servidor temporariamente indisponível")
             if(code !in setOf(200,206)) throw PermanentFailure("O servidor recusou o download (HTTP $code)")
             if(connection.getHeaderField("Content-Encoding")?.let { it!="identity" }==true) throw PermanentFailure("O servidor enviou uma representação comprimida incompatível com a retomada")
@@ -89,18 +90,26 @@ class DownloadEngine(private val context: Context) {
                 restart(id,file); throw IOException("O arquivo no servidor mudou; reiniciando com segurança")
             }
             val length=connection.getHeaderFieldLong("Content-Length",-1)
+            if(range!=null && length>=0 && length!=range.end-range.start+1) throw PermanentFailure("O tamanho e a faixa retornados pelo servidor não conferem")
+            val responseEnd=range?.end?.plus(1)
             val total=range?.total ?: length
-            val contentType=connection.contentType?.substringBefore(';')?.trim().orEmpty()
+            val contentType=connection.contentType?.substringBefore(';')?.trim()?.lowercase().orEmpty()
             if(contentType in setOf("text/html","application/xhtml+xml")) throw PermanentFailure("Este link abre uma página. Informe o link direto do arquivo.")
             if(contentType.contains("mpegurl",true) || contentType.contains("dash+xml",true)) throw PermanentFailure("Esta fonte é uma playlist HLS/DASH; use o link direto de um arquivo de vídeo.")
             if(total>0 && StatFs(store.directory.path).availableBytes < (total-resume).coerceAtLeast(0)+16L*1024*1024) throw PermanentFailure("Espaço insuficiente para baixar o arquivo")
             val serverHash=serverHash(connection)
             store.mutate(id) {
+                if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L) {
+                    val proposed=android.webkit.URLUtil.guessFileName(secret.getString("url"),connection.getHeaderField("Content-Disposition"),contentType)
+                    if(proposed.isNotBlank() && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
+                        it.put("name",proposed).put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(proposed)}")
+                    }
+                }
                 it.put("total",total).put("validator",newValidator ?: "")
                 if(contentType.startsWith("video/")) it.put("mime",contentType)
                 if(serverHash!=null) it.put("serverHash",serverHash.first).put("serverHashType",serverHash.second)
             }
-            store.registerMedia(id)
+            try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
             DownloadMetadata.offer(context,store.get(id)?.animeId ?: 0)
             var count=resume; var committedAt=android.os.SystemClock.elapsedRealtime(); var previous=resume; var checkedAt=0L
             RandomAccessFile(file,"rw").use { output ->
@@ -116,6 +125,14 @@ class DownloadEngine(private val context: Context) {
                         }
                         val read=input.read(buffer)
                         if(read<0) break
+                        if(responseEnd!=null && count+read>responseEnd) throw PermanentFailure("O servidor enviou dados fora da faixa solicitada")
+                        if(count==0L) {
+                            val prefix=String(buffer,0,minOf(read,256),Charsets.UTF_8).trimStart().lowercase()
+                            if(prefix.startsWith("<!doctype html") || prefix.startsWith("<html") ||
+                                (store.get(id)?.mime?.startsWith("video/")==true && (prefix.startsWith("{") || prefix.startsWith("[")))) {
+                                throw PermanentFailure("O link retornou uma página ou mensagem de erro, não o vídeo")
+                            }
+                        }
                         if(total>=0 && count+read>total) throw PermanentFailure("O servidor enviou mais dados que o tamanho informado")
                         output.write(buffer,0,read); count+=read
                         val now=android.os.SystemClock.elapsedRealtime()
@@ -124,7 +141,6 @@ class DownloadEngine(private val context: Context) {
                             val speed=(count-previous)*1000/(now-committedAt).coerceAtLeast(1)
                             store.mutate(id) { it.put("bytes",count).put("speed",speed) }
                             previous=count; committedAt=now
-                            onProgress("${store.get(id)?.name.orEmpty()} • ${count/1024} KB")
                         }
                     }
                 }

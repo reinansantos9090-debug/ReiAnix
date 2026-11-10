@@ -85,7 +85,7 @@ class DownloadStore(context: Context) {
         DownloadItem(data)
     }
     suspend fun enqueue(url: String, name: String, destination: String, expectedHash: String, hashType: String,
-        headers: Map<String, String>, animeTitle: String = ""): DownloadItem = withContext(Dispatchers.IO) {
+        headers: Map<String, String>, animeTitle: String = "", automaticName: Boolean = false): DownloadItem = withContext(Dispatchers.IO) {
         ready()
         DownloadHttp.validateUrl(url)
         require(name.isNotBlank() && name.length <= 200 && name !in setOf(".", "..") && name.none { it == '/' || it == '\\' || it.code < 32 }) { "Nome de arquivo inválido" }
@@ -98,7 +98,7 @@ class DownloadStore(context: Context) {
         val data = JSONObject().put("id", id).put("name", name).put("state", "QUEUED").put("bytes", 0)
             .put("total", -1).put("generation", 0).put("destination", destination).put("expectedHash", hash)
             .put("hashType", hashType).put("secret", DownloadSecrets.encrypt(payload.toString())).put("signature", signature)
-            .put("created", System.currentTimeMillis()).put("animeTitle", animeTitle.trim())
+            .put("created", System.currentTimeMillis()).put("animeTitle", animeTitle.trim()).put("automaticName",automaticName)
             .put("virtualUri", "content://${context.packageName}.downloads/$id/${Uri.encode(name)}")
             .put("mime", MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream")
         db.transaction { connection ->
@@ -185,7 +185,7 @@ class DownloadStore(context: Context) {
             "restart" -> { require(before.state !in setOf("DOWNLOADING","SAVING","VERIFYING","COMPLETE")); mutate(id) { it.put("restart",true).put("state","QUEUED").put("attempts",0).put("nextAttempt",0) }; available(id,true) }
         }
     }
-    fun updateSource(id: String,url: String,headers: Map<String,String>,hash: String,hashType: String) {
+    fun updateSource(id: String,url: String,headers: Map<String,String>,hash: String,hashType: String,destination: String) {
         DownloadHttp.validateUrl(url)
         val item=get(id) ?: error("Download não encontrado")
         require(item.state in setOf("ERROR","PAUSED"))
@@ -194,10 +194,16 @@ class DownloadStore(context: Context) {
         val length=when(hashType) { "MD5"->32; "SHA-1"->40; else->64 }
         require(normalized.isBlank() || normalized.matches(Regex("[0-9a-f]{$length}"))) { "Hash inválido" }
         val encrypted=DownloadSecrets.encrypt(JSONObject().put("url",url).put("headers",JSONObject(headers)).toString())
+        var previousOutput=""
         mutate(id) {
             require(it.optString("state") in setOf("ERROR","PAUSED"))
+            if(it.optString("destination")!=destination) { previousOutput=it.optString("output"); it.put("destination",destination).put("output","") }
             it.put("secret",encrypted).put("signature",digest(url.toByteArray())).put("expectedHash",normalized)
                 .put("hashType",hashType).put("state","QUEUED").put("attempts",0).put("nextAttempt",0)
+        }
+        if(previousOutput.isNotBlank()) runCatching {
+            val uri=Uri.parse(previousOutput)
+            if(uri.scheme=="file") java.io.File(uri.path!!).delete() else context.contentResolver.delete(uri,null,null)
         }
         available(id,true)
     }

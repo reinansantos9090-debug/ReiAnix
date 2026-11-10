@@ -29,7 +29,7 @@ object DownloadHttp {
             if(offset>0 && !validator.isNullOrBlank()) {
                 connection.setRequestProperty("Range","bytes=$offset-"); connection.setRequestProperty("If-Range",validator)
             }
-            val code=connection.responseCode
+            val code=try { connection.responseCode } catch(error: Exception) { connection.disconnect(); throw error }
             if(code in setOf(301,302,303,307,308)) {
                 val location=connection.getHeaderField("Location"); connection.disconnect()
                 if(location.isNullOrBlank()) throw IOException("Redirecionamento sem destino")
@@ -42,7 +42,7 @@ object DownloadHttp {
     }
     data class Range(val start: Long,val end: Long,val total: Long)
     fun range(header: String?): Range? {
-        val m=Regex("bytes (\\d+)-(\\d+)/(\\d+)").matchEntire(header?.trim().orEmpty()) ?: return null
+        val m=Regex("bytes (\\d+)-(\\d+)/(\\d+)",RegexOption.IGNORE_CASE).matchEntire(header?.trim().orEmpty()) ?: return null
         val start=m.groupValues[1].toLongOrNull() ?: return null
         val end=m.groupValues[2].toLongOrNull() ?: return null
         val total=m.groupValues[3].toLongOrNull() ?: return null

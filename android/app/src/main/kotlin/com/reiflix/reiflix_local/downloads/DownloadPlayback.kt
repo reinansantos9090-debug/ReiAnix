@@ -82,7 +82,14 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
             val started=android.os.SystemClock.elapsedRealtime()
             while(!closed) {
                 if(Thread.currentThread().isInterrupted) throw InterruptedIOException()
-                val current=store.get(initial.id) ?: initial
+                val current=store.get(initial.id)
+                if(current==null) {
+                    val available=(file!!.length()-position).coerceAtLeast(0)
+                    if(available==0L) return C.RESULT_END_OF_INPUT
+                    val n=file!!.read(buffer,offset,minOf(length.toLong(),available,if(remaining>=0)remaining else Long.MAX_VALUE).toInt())
+                    if(n>0) { position+=n; if(remaining>=0)remaining-=n; bytesTransferred(n) }
+                    return if(n<0) C.RESULT_END_OF_INPUT else n
+                }
                 if(current.generation!=initial.generation) throw IOException("O arquivo foi reiniciado pelo servidor; abra o episódio novamente")
                 if(current.state in setOf("CANCELLED","CORRUPT","ERROR")) throw IOException("Download interrompido; confira a aba Downloads")
                 val available=(minOf(file!!.length(),current.bytes)-position).coerceAtLeast(0)

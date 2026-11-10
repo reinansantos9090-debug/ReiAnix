@@ -152,14 +152,14 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
             }
         }
     }
-    if(add) DownloadDialog(initialUrl,suppliedHeaders,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime ->
+    if(add) DownloadDialog(initialUrl,suppliedHeaders,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName ->
         busy=true; error=""
         scope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     val editing=edit
-                    if(editing==null) store.enqueue(url,name,dest,hash,type,headers,anime)
-                    else store.updateSource(editing.id,url,headers,hash,type)
+                    if(editing==null) store.enqueue(url,name,dest,hash,type,headers,anime,autoName)
+                    else store.updateSource(editing.id,url,headers,hash,type,dest)
                     DownloadSnapshots.refresh(context)
                 }
                 add=false; edit=null
@@ -174,10 +174,11 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
 
 @Composable
 private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
-    onSubmit: (String,String,String,String,String,Map<String,String>,String)->Unit) {
+    onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
+    var nameTouched by remember { mutableStateOf(editing!=null) }
     var anime by remember { mutableStateOf("") }
     var destination by remember { mutableStateOf("") }
     var hash by remember { mutableStateOf("") }
@@ -192,7 +193,7 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
     LaunchedEffect(editing?.id) {
         if(editing!=null) try {
             val secret=withContext(Dispatchers.IO) { DownloadStore(context).secret(editing) }
-            url=secret.getString("url"); name=editing.name
+            url=secret.getString("url"); name=editing.name; destination=editing.json.optString("destination")
             hash=editing.json.optString("expectedHash"); hashType=editing.json.optString("hashType","SHA-256")
             val h=secret.optJSONObject("headers") ?: JSONObject(); originalHeaders=h.keys().asSequence().associateWith { h.getString(it) }
             cookie=originalHeaders.entries.firstOrNull { it.key.equals("cookie",true) }?.value.orEmpty()
@@ -207,13 +208,13 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
     }
     AlertDialog(onDismissRequest={ if(!busy) onDismiss() },title={ Text(if(editing==null) "Adicionar download" else "Atualizar link / sessão") },
         text={ Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(url,{ url=it },label={ Text("Link direto HTTP/HTTPS") },singleLine=true,enabled=!busy)
-            OutlinedTextField(name,{ name=it },label={ Text("Nome do arquivo, incluindo extensão") },singleLine=true,enabled=!busy && editing==null)
+            OutlinedTextField(url,{ url=it; if(!nameTouched && editing==null) name=runCatching { URLUtil.guessFileName(it.trim(),null,null) }.getOrDefault("episodio.mp4") },label={ Text("Link direto HTTP/HTTPS") },singleLine=true,enabled=!busy)
+            OutlinedTextField(name,{ name=it; nameTouched=true },label={ Text("Nome do arquivo, incluindo extensão") },singleLine=true,enabled=!busy && editing==null)
             if(editing==null) {
                 OutlinedTextField(anime,{ anime=it },label={ Text("Nome do anime (opcional)") },singleLine=true,enabled=!busy)
+            }
                 Text(if(destination.isBlank()) "Destino: Downloads/ReiAnix" else "Destino: $destination",style=MaterialTheme.typography.bodySmall)
                 Row { TextButton(onClick={ folder.launch(null) },enabled=!busy) { Text("Escolher pasta") }; TextButton(onClick={ destination="" },enabled=!busy) { Text("Padrão") } }
-            }
             Text("Integridade",style=MaterialTheme.typography.titleSmall)
             Row { listOf("SHA-256","SHA-1","MD5").forEach { kind -> TextButton(onClick={ hashType=kind },enabled=!busy) { Text(if(hashType==kind) "✓ $kind" else kind) } } }
             OutlinedTextField(hash,{ hash=it },label={ Text("Hash de referência (opcional)") },enabled=!busy)
@@ -223,6 +224,7 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
             OutlinedTextField(password,{ password=it },label={ Text("Senha") },singleLine=true,enabled=!busy,visualTransformation=PasswordVisualTransformation())
             OutlinedTextField(cookie,{ cookie=it },label={ Text("Cookie da sessão autorizada") },enabled=!busy,visualTransformation=PasswordVisualTransformation())
             OutlinedTextField(referer,{ referer=it },label={ Text("Referer, se exigido pelo servidor") },singleLine=true,enabled=!busy)
+            TextButton(onClick={ originalHeaders=originalHeaders.filterKeys { it.lowercase() !in setOf("authorization","cookie","referer") }; cookie=""; user=""; password=""; referer="" },enabled=!busy) { Text("Limpar autenticação") }
             TextButton(onClick={ try { DownloadHttp.validateUrl(url); login=true } catch(_: Exception) { error="Informe um link válido primeiro" } },enabled=!busy) { Text("Entrar no site para obter a sessão") }
             if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
             if(submissionError.isNotBlank()) Text(submissionError,color=MaterialTheme.colorScheme.error)
@@ -234,7 +236,7 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
                 if(cookie.isNotBlank()) headers["Cookie"]=cookie.trim()
                 if(referer.isNotBlank()) headers["Referer"]=referer.trim()
                 if(user.isNotBlank()) { headers.keys.filter { it.equals("authorization",true) }.forEach(headers::remove); headers["Authorization"]="Basic "+android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP) }
-                onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime)
+                onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched)
             } catch(_: Exception) { error="Confira o link e os dados informados" }
         }) { Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar") } },
         dismissButton={ TextButton(onClick=onDismiss,enabled=!busy) { Text("Cancelar") } })
