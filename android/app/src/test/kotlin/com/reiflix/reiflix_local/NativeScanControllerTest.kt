@@ -22,6 +22,29 @@ class NativeScanControllerTest {
     private fun id(): String = "scan-test-${UUID.randomUUID()}"
 
     @Test
+    fun finishedHistoryIsBoundedWithoutEvictingActiveScans() {
+        val active = id()
+        val finished = mutableListOf<String>()
+        assertTrue(NativeScanController.begin(active, "saf:$active"))
+        try {
+            repeat(NativeScanController.MAX_FINISHED_SNAPSHOTS + 8) {
+                val scan = id()
+                finished += scan
+                assertTrue(NativeScanController.begin(scan, "saf:$scan"))
+                NativeScanController.complete(scan, "EMPTY_COMPLETE", JSONObject())
+                NativeScanController.finish(scan)
+            }
+            assertNotNull(NativeScanController.snapshot(active))
+            assertNull(NativeScanController.snapshot(finished.first()))
+            assertNotNull(NativeScanController.snapshot(finished.last()))
+            assertTrue(NativeScanController.progress.value.values.count { it.state.isTerminal } <=
+                NativeScanController.MAX_FINISHED_SNAPSHOTS)
+        } finally {
+            NativeScanController.finish(active)
+        }
+    }
+
+    @Test
     fun beginPublishesPreparingSnapshotAndPreventsDuplicateSource() {
         val first = id()
         val second = id()

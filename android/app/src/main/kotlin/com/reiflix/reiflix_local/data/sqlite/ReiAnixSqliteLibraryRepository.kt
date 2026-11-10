@@ -14,6 +14,8 @@ import org.json.JSONException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * Native repository against the existing canonical library.sqlite3.
@@ -261,8 +263,8 @@ class ReiAnixSqliteLibraryRepository(
         // SQL candidate narrowing uses first-character variants, then the streamed cursor
         // applies the canonical Unicode-normalized token predicate.
         val candidateArgs = mutableListOf<String>()
-        for (term in terms) {
-            val variants = nativeSearchCharacterVariants(term.first().toString())
+        for (character in terms.map { it.first().toString() }.distinct()) {
+            val variants = nativeSearchCharacterVariants(character)
             val alternatives = mutableListOf<String>()
             for (variant in variants) {
                 alternatives += listOf(
@@ -330,7 +332,9 @@ class ReiAnixSqliteLibraryRepository(
             queryArgs += offset.toString()
         }
 
+        val searchContext = currentCoroutineContext()
         database.read { connection ->
+            searchContext.ensureActive()
             val matched = mutableListOf<Pair<Long, Int>>()
             val relevanceMode = terms.isNotEmpty() && sortLabel.isNullOrBlank()
             val keepCount = if (allResults) Int.MAX_VALUE else {
@@ -338,6 +342,7 @@ class ReiAnixSqliteLibraryRepository(
             }
             val queryText = terms.joinToString(" ")
             val relevanceOrder = compareByDescending<Pair<Long, Int>> { it.second }.thenBy { it.first }
+            val bestMatches = java.util.PriorityQueue<Pair<Long, Int>>(relevanceOrder.reversed())
             val exactTotal = if (terms.isEmpty()) {
                 val countSql = buildString {
                     append("SELECT COUNT(*) FROM anime a")
@@ -356,6 +361,7 @@ class ReiAnixSqliteLibraryRepository(
 
             connection.rawQuery(sql, queryArgs.toTypedArray()).use { cursor ->
                 while (cursor.moveToNext()) {
+                    searchContext.ensureActive()
                     if (terms.isNotEmpty()) {
                         val searchable = buildString {
                             for (column in 1..18) {
@@ -369,46 +375,47 @@ class ReiAnixSqliteLibraryRepository(
                     }
 
                     val id = cursor.getLong(0)
-                    val title = normalizeNativeSearchText(cursor.getString(1).orEmpty())
-                    val alternateTitles = listOf(2, 3, 4)
-                        .map { column -> normalizeNativeSearchText(cursor.getString(column).orEmpty()) }
-                        .filter(String::isNotBlank)
-                    val aliases = normalizeNativeSearchText(cursor.getString(5).orEmpty())
-                    val studio = normalizeNativeSearchText(cursor.getString(15).orEmpty())
-                    val genres = normalizeNativeSearchText(cursor.getString(10).orEmpty() + " " + cursor.getString(20).orEmpty())
-                    var score = when {
-                        terms.isEmpty() -> 0
-                        title == queryText -> 1000
-                        title.startsWith(queryText) -> 800
-                        title.contains(queryText) -> 600
-                        alternateTitles.any { it == queryText } -> 520
-                        alternateTitles.any { it.startsWith(queryText) } -> 420
-                        alternateTitles.any { it.contains(queryText) } -> 320
-                        aliases.contains(queryText) -> 320
-                        studio == queryText -> 300
-                        else -> 0
-                    }
-                    score += terms.sumOf { term ->
-                        when {
-                            title == term -> 350
-                            title.contains(term) -> 180
-                            alternateTitles.any { it == term } -> 150
-                            alternateTitles.any { it.contains(term) } -> 110
-                            aliases == term -> 140
-                            aliases.contains(term) -> 95
-                            genres == term -> 120
-                            genres.contains(term) -> 80
-                            studio == term -> 50
-                            else -> 20
+                    val score = if (relevanceMode) {
+                        val title = normalizeNativeSearchText(cursor.getString(1).orEmpty())
+                        val alternateTitles = listOf(2, 3, 4)
+                            .map { column -> normalizeNativeSearchText(cursor.getString(column).orEmpty()) }
+                            .filter(String::isNotBlank)
+                        val aliases = normalizeNativeSearchText(cursor.getString(5).orEmpty())
+                        val studio = normalizeNativeSearchText(cursor.getString(15).orEmpty())
+                        val genres = normalizeNativeSearchText(cursor.getString(10).orEmpty() + " " + cursor.getString(20).orEmpty())
+                        var score = when {
+                            terms.isEmpty() -> 0
+                            title == queryText -> 1000
+                            title.startsWith(queryText) -> 800
+                            title.contains(queryText) -> 600
+                            alternateTitles.any { it == queryText } -> 520
+                            alternateTitles.any { it.startsWith(queryText) } -> 420
+                            alternateTitles.any { it.contains(queryText) } -> 320
+                            aliases.contains(queryText) -> 320
+                            studio == queryText -> 300
+                            else -> 0
                         }
-                    }
+                        score += terms.sumOf { term ->
+                            when {
+                                title == term -> 350
+                                title.contains(term) -> 180
+                                alternateTitles.any { it == term } -> 150
+                                alternateTitles.any { it.contains(term) } -> 110
+                                aliases == term -> 140
+                                aliases.contains(term) -> 95
+                                genres == term -> 120
+                                genres.contains(term) -> 80
+                                studio == term -> 50
+                                else -> 20
+                            }
+                        }
+
+                        score
+                    } else 0
 
                     if (relevanceMode) {
-                        matched += id to score
-                        if (matched.size > keepCount) {
-                            matched.sortWith(relevanceOrder)
-                            matched.removeAt(matched.lastIndex)
-                        }
+                        bestMatches.add(id to score)
+                        if (bestMatches.size > keepCount) bestMatches.poll()
                     } else if (matched.size < keepCount) {
                         // SQL already orders the requested sort; retain only enough rows
                         // to produce this page while continuing the cursor to count matches.
@@ -416,7 +423,7 @@ class ReiAnixSqliteLibraryRepository(
                     }
                 }
             }
-            val ordered = if (relevanceMode) matched.sortedWith(relevanceOrder) else matched
+            val ordered = if (relevanceMode) bestMatches.sortedWith(relevanceOrder) else matched
             val page = when {
                 allResults -> ordered
                 terms.isEmpty() -> ordered
@@ -438,17 +445,21 @@ class ReiAnixSqliteLibraryRepository(
         }
     }
 
+    private val searchMarks = "\\p{M}+".toRegex()
+    private val searchSeparators = "[^\\p{L}\\p{Nd}]+".toRegex()
+    private val searchWhitespace = "\\s+".toRegex()
+
     private fun normalizeNativeSearchText(value: String): String =
         java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
-            .replace("\\p{M}+".toRegex(), "")
+            .replace(searchMarks, "")
             .lowercase(java.util.Locale.ROOT)
-            .replace("[^\\p{L}\\p{Nd}]+".toRegex(), " ")
+            .replace(searchSeparators, " ")
             .trim()
-            .replace("\\s+".toRegex(), " ")
+            .replace(searchWhitespace, " ")
 
     private fun nativeSearchCharacterVariants(character: String): Set<String> {
         val base = java.text.Normalizer.normalize(character, java.text.Normalizer.Form.NFD)
-            .replace("\\p{M}+".toRegex(), "")
+            .replace(searchMarks, "")
         return when (base.lowercase(java.util.Locale.ROOT)) {
             "a" -> setOf("a", "á", "à", "â", "ã", "ä", "å", "ā")
             "e" -> setOf("e", "é", "è", "ê", "ë", "ē")
@@ -1370,10 +1381,25 @@ class ReiAnixSqliteLibraryRepository(
      * Episode observations that are exclusively removed from multiple scopes remain excluded
      * under the same legacy projection rules.
      */
-    suspend fun loadLibraryCatalogRows(): List<ReiAnixLibraryCatalogRow> = withContext(Dispatchers.IO) {
+    suspend fun loadLibraryCatalogRows(
+        animeIds: Set<Long>? = null,
+    ): List<ReiAnixLibraryCatalogRow> = withContext(Dispatchers.IO) {
+        if (animeIds?.isEmpty() == true) return@withContext emptyList()
+        require(animeIds == null || animeIds.all { it > 0L })
+        // IDs are validated persisted longs, never user-supplied SQL. Each read stays
+        // in the same consistent snapshot and retains the full catalog's visibility rules.
+        val ids = animeIds?.joinToString(",")
+        val animeFilter = ids?.let { " WHERE id IN ($it)" }.orEmpty()
+        val episodeFilter = ids?.let { " AND e.anime_id IN ($it)" }.orEmpty()
+        val artworkFilter = ids?.let {
+            " AND ((art.entity_type IN ('anime','movie') AND art.entity_id IN ($it)) OR " +
+                "(art.entity_type='episode' AND EXISTS (SELECT 1 FROM episodes pe " +
+                "WHERE CAST(pe.id AS TEXT)=art.entity_id AND pe.anime_id IN ($it))))"
+        }.orEmpty()
+        val genreFilter = ids?.let { " WHERE ag.anime_id IN ($it)" }.orEmpty()
         database.readConsistentSnapshot { connection ->
             val animes = connection.rawQuery(
-                "SELECT * FROM anime ORDER BY added_at DESC, title COLLATE NOCASE ASC, id DESC",
+                "SELECT * FROM anime$animeFilter ORDER BY added_at DESC, title COLLATE NOCASE ASC, id DESC",
                 null,
             ).use { cursor ->
                 buildList {
@@ -1398,6 +1424,7 @@ class ReiAnixSqliteLibraryRepository(
                       FROM episode_observations o WHERE o.episode_id=e.id
                     ) < 2
                   )
+                $episodeFilter
                 ORDER BY e.anime_id, e.season, e.number, e.absolute_number, e.file_name
                 """.trimIndent(),
                 null,
@@ -1424,6 +1451,7 @@ class ReiAnixSqliteLibraryRepository(
                         )
                     )
                 )
+                $artworkFilter
                 ORDER BY art.priority DESC, art.updated_at DESC, art.id DESC
                 """.trimIndent(),
                 null,
@@ -1443,6 +1471,7 @@ class ReiAnixSqliteLibraryRepository(
                 SELECT DISTINCT ag.anime_id, g.id, g.canonical_name
                 FROM anime_genres ag
                 JOIN genres g ON g.id=ag.genre_id
+                $genreFilter
                 ORDER BY g.normalized_name
                 """.trimIndent(),
                 null,

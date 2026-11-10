@@ -18,6 +18,18 @@ import org.junit.Test
 class LibraryUiMappersTest {
 
     @Test
+    fun samePathArtworkRevisionSurvivesMappingWithoutFileAccess() {
+        val source = animeSource(id = 10L, seasons = emptyList()).toMutableMap()
+        source["artwork_source_revisions"] = mapOf("/cache/poster.jpg" to "100-200")
+        val original = LibraryUiMappers.anime(source)
+        source["artwork_source_revisions"] = mapOf("/cache/poster.jpg" to "120-300")
+        val regenerated = LibraryUiMappers.anime(source)
+        assertEquals(original.artwork?.localPath, regenerated.artwork?.localPath)
+        assertEquals("100-200", original.artwork?.sourceRevisions?.get("/cache/poster.jpg"))
+        assertEquals("120-300", regenerated.artwork?.sourceRevisions?.get("/cache/poster.jpg"))
+    }
+
+    @Test
     fun animeMappingPreservesIdentityOrderProgressStateAndMetadata() {
         val first = episode(101, 1, 0.0, 1200.0, "unwatched")
         val partial = episode(102, 2, 300.0, 1200.0, "in_progress")

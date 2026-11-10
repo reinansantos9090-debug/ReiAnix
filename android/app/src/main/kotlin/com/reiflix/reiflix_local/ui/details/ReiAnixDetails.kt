@@ -915,6 +915,7 @@ private fun DetailsHero(
                 maxDimensionPx = 1024,
                 externalUrl = anime.artwork?.backdropExternalUrl,
                 fallbackExternalUrl = anime.artwork?.externalUrl,
+                sourceRevisions = anime.artwork?.sourceRevisions.orEmpty(),
             )
             Box(
                 modifier = Modifier.matchParentSize().background(
@@ -939,7 +940,8 @@ private fun DetailsHero(
                             .clip(ReiAnixTokens.Shapes.artwork).offset(y = -posterOverlap),
                         identity = anime.stableKey + ":poster",
                         maxDimensionPx = 512,
-                        externalUrl = anime.artwork?.externalUrl)
+                        externalUrl = anime.artwork?.externalUrl,
+                        sourceRevisions = anime.artwork?.sourceRevisions.orEmpty())
                     Text(text = anime.title, style = ReiAnixTokens.TypographyTokens.heroTitle, color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -959,7 +961,8 @@ private fun DetailsHero(
                             modifier = Modifier.width(ReiAnixTokens.Dimensions.detailsHeroPosterWidth).aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio).clip(ReiAnixTokens.Shapes.artwork),
                             identity = anime.stableKey + ":poster",
                             maxDimensionPx = 512,
-                            externalUrl = anime.artwork?.externalUrl)
+                            externalUrl = anime.artwork?.externalUrl,
+                            sourceRevisions = anime.artwork?.sourceRevisions.orEmpty())
                     }
                     Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
                     Column(modifier = Modifier.weight(1f).padding(top = ReiAnixTokens.Spacing.sm), verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
@@ -1043,6 +1046,12 @@ private fun DetailsHero(
                     ) {
                         ReiAnixEpisodeThumbnail(
                             localPath = traceMoeState.currentThumbnailPath,
+                            sourceRevisions = anime.seasons.asSequence()
+                                .flatMap { it.episodes.asSequence() }
+                                .plus(anime.specials.asSequence())
+                                .plus(anime.mediaFiles.asSequence())
+                                .firstOrNull { it.id == traceMoeState.currentEpisodeId }
+                                ?.artwork?.sourceRevisions.orEmpty(),
                             contentDescription = traceMoeState.currentEpisodeLabel ?: "Thumbnail em análise",
                             modifier = Modifier.fillMaxSize(),
                             identity = "${anime.stableKey}:trace-moe:${traceMoeState.currentEpisodeId}",
@@ -1632,6 +1641,7 @@ private fun DetailsSeasonCard(
                         modifier = Modifier.fillMaxSize(),
                         identity = season.stableKey + ":preview",
                         externalUrl = previewExternal,
+                        sourceRevisions = season.episodes.firstOrNull()?.artwork?.sourceRevisions.orEmpty(),
                     )
                 } else {
                     Box(

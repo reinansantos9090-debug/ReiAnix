@@ -93,6 +93,7 @@ fun ReiAnixLocalArtwork(
     fallbackLocalPath: String? = null,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    sourceRevisions: Map<String, String> = emptyMap(),
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -212,7 +213,7 @@ fun ReiAnixLocalArtwork(
         } else {
             // A regenerated local thumbnail can keep the same path; include its file
             // revision so Coil cannot continue serving a previously cached black frame.
-            val sourceRevision = localArtworkSourceRevision(source)
+            val sourceRevision = sourceRevisions[source].orEmpty()
             val memoryCacheKey = remember(
                 stableIdentity,
                 source,
@@ -488,6 +489,7 @@ fun ReiAnixPoster(
     maxDimensionPx: Int = 512,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    sourceRevisions: Map<String, String> = emptyMap(),
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -502,6 +504,7 @@ fun ReiAnixPoster(
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
+        sourceRevisions = sourceRevisions,
     )
 }
 
@@ -515,6 +518,7 @@ fun ReiAnixBackdrop(
     maxDimensionPx: Int = 1024,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    sourceRevisions: Map<String, String> = emptyMap(),
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -529,6 +533,7 @@ fun ReiAnixBackdrop(
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
+        sourceRevisions = sourceRevisions,
     )
 }
 
@@ -541,6 +546,7 @@ fun ReiAnixEpisodeThumbnail(
     fallbackLocalPath: String? = null,
     externalUrl: String? = null,
     fallbackExternalUrl: String? = null,
+    sourceRevisions: Map<String, String> = emptyMap(),
 ) {
     ReiAnixLocalArtwork(
         localPath = localPath,
@@ -555,6 +561,7 @@ fun ReiAnixEpisodeThumbnail(
         fallbackLocalPath = fallbackLocalPath,
         externalUrl = externalUrl,
         fallbackExternalUrl = fallbackExternalUrl,
+        sourceRevisions = sourceRevisions,
     )
 }
 

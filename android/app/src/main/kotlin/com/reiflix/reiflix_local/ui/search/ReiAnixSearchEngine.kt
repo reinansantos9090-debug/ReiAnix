@@ -185,13 +185,17 @@ class ReiAnixSearchIndex private constructor(
                 },
             )
 
+        private val marks = "\\p{M}+".toRegex()
+        private val separators = "[^\\p{L}\\p{Nd}]+".toRegex()
+        private val whitespace = "\\s+".toRegex()
+
         fun normalizeSearchText(value: String): String =
             Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
-                .replace("\\p{M}+".toRegex(), "")
+                .replace(marks, "")
                 .lowercase(Locale.ROOT)
-                .replace("[^\\p{L}\\p{Nd}]+".toRegex(), " ")
+                .replace(separators, " ")
                 .trim()
-                .replace("\\s+".toRegex(), " ")
+                .replace(whitespace, " ")
 
         private fun Double.toDisplayNumber(): String =
             if (this % 1.0 == 0.0) {

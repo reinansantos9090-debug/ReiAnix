@@ -181,6 +181,14 @@ object LibraryUiMappers {
                 externalUrl = posterExternalUrl,
                 backdropLocalPath = backdropLocalPath,
                 backdropExternalUrl = backdropExternalUrl,
+                sourceRevisions = buildMap {
+                    for (source in sources.reversed()) {
+                        val revisions = source["artwork_source_revisions"] as? Map<*, *> ?: continue
+                        for ((path, revision) in revisions) {
+                            if (path is String && revision is String) put(path, revision)
+                        }
+                    }
+                },
             )
         }
     }
