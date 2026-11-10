@@ -6641,15 +6641,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (::playerView.isInitialized) {
                 playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 val video = playerView.videoSurfaceView
-                if (video is TextureView) {
-                    video.setTransform(Matrix())
-                } else {
-                    video?.apply {
-                        scaleX = 1f
-                        scaleY = 1f
-                        translationX = 0f
-                        translationY = 0f
-                    }
+                video?.apply {
+                    scaleX = 1f
+                    scaleY = 1f
+                    translationX = 0f
+                    translationY = 0f
                 }
                 updateAspectButtonFromZoom()
             }
@@ -6665,7 +6661,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
             if (!cancelled) {
                 logPlayer("GESTURE_END type=pinch requestId=" + requestId.ifEmpty { "-" })
-                if (zoomScale <= ZOOM_SNAP_THRESHOLD) {
+                val fitSnap = min(ZOOM_SNAP_THRESHOLD, 1f + (fillZoomLimit() - 1f) * .15f)
+                if (zoomScale <= fitSnap) {
                     animateZoomToFit()
                 } else {
                     playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
