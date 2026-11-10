@@ -43,7 +43,7 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
             wifi=prefs.getPreference("downloads.wifi_only","false")=="true"
         } } catch(_: Exception) { message="Não foi possível carregar as configurações" } finally { busy=false }
     }
-    fun save(key: String,value: String) { scope.launch { try { withContext(Dispatchers.IO) { prefs.setPreference(key,value) } } catch(_: Exception) { message="Não foi possível salvar" } } }
+    fun save(key: String,value: String) { scope.launch { try { withContext(Dispatchers.IO) { prefs.setPreference(key,value); if(key=="downloads.wifi_only")DownloadScheduling.reconfigure(context) } } catch(_: Exception) { message="Não foi possível salvar" } } }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             IconButton(onClick=onBack) { Icon(Icons.Filled.ArrowBack,"Voltar") }

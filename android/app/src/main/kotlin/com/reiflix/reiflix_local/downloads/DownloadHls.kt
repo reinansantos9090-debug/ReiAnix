@@ -92,16 +92,37 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                 while(index<playlist.segments.size) {
                     currentCoroutineContext().ensureActive(); if(store.get(id)?.state!="DOWNLOADING")return false
                     val start=android.os.SystemClock.elapsedRealtime();val segment=playlist.segments[index]
-                    var bytes=fetch(segment.url,32*1024*1024)
-                    if(segment.key!=null) {
-                        val key=keys[segment.key] ?: fetch(segment.key,16).also {require(it.size==16);keys[segment.key]=it}
-                        val iv=ByteArray(16)
-                        if(segment.iv!=null) {val hex=segment.iv.removePrefix("0x").padStart(32,'0');require(hex.length==32);for(i in 0..15)iv[i]=hex.substring(i*2,i*2+2).toInt(16).toByte()}
-                        else for(i in 0..7)iv[15-i]=(segment.sequence ushr (8*i)).toByte()
-                        bytes=Cipher.getInstance("AES/CBC/PKCS5Padding").run {init(Cipher.DECRYPT_MODE,SecretKeySpec(key,"AES"),IvParameterSpec(iv));doFinal(bytes)}
-                    }
-                    out.write(bytes);out.fd.sync();count+=bytes.size;index++
-                    val speed=bytes.size*1000L/(android.os.SystemClock.elapsedRealtime()-start).coerceAtLeast(1)
+                    val temporary=File(store.directory,"$id.segment")
+                    var received=0L
+                    try {
+                        val c=DownloadHttp.connect(segment.url,headers,0,null,credentialOrigin=url)
+                        try {
+                            require(c.responseCode==200) {"Não foi possível obter o segmento"}
+                            temporary.outputStream().use { target -> c.inputStream.use { input ->
+                                val buffer=ByteArray(128*1024)
+                                while(true) {
+                                    currentCoroutineContext().ensureActive();if(store.get(id)?.state!="DOWNLOADING")throw Paused()
+                                    val n=input.read(buffer);if(n<0)break;received+=n
+                                    require(received<=1024L*1024*1024) {"Segmento excede o limite seguro"};target.write(buffer,0,n)
+                                }
+                            } }
+                            require(received>0 && (c.contentLengthLong<0 || received==c.contentLengthLong)) {"Segmento incompleto"}
+                        } finally {c.disconnect()}
+                        val cipher=if(segment.key!=null) {
+                            val key=keys[segment.key] ?: fetch(segment.key,16).also {require(it.size==16);keys[segment.key]=it}
+                            val iv=ByteArray(16)
+                            if(segment.iv!=null) {val hex=segment.iv.removePrefix("0x").padStart(32,'0');require(hex.length==32);for(i in 0..15)iv[i]=hex.substring(i*2,i*2+2).toInt(16).toByte()}
+                            else for(i in 0..7)iv[15-i]=(segment.sequence ushr (8*i)).toByte()
+                            Cipher.getInstance("AES/CBC/PKCS5Padding").apply {init(Cipher.DECRYPT_MODE,SecretKeySpec(key,"AES"),IvParameterSpec(iv))}
+                        } else null
+                        val source=temporary.inputStream()
+                        (if(cipher==null) source else javax.crypto.CipherInputStream(source,cipher)).use { input ->
+                            val buffer=ByteArray(128*1024)
+                            while(true) {currentCoroutineContext().ensureActive();if(store.get(id)?.state!="DOWNLOADING")throw Paused();val n=input.read(buffer);if(n<0)break;out.write(buffer,0,n)}
+                        }
+                        out.fd.sync();count=out.filePointer;index++
+                    } finally {temporary.delete()}
+                    val speed=received*1000L/(android.os.SystemClock.elapsedRealtime()-start).coerceAtLeast(1)
                     store.mutate(id){it.put("bytes",count).put("hlsIndex",index).put("speed",speed)}
                 }
             }
