@@ -154,8 +154,17 @@ private fun ReiAnixLibraryFoldersSection(
     val sqliteSafSources = nativeFolders.folders
         .filter { android.provider.DocumentsContract.isTreeUri(android.net.Uri.parse(it.path)) }
         .map { ReiAnixStorageSourceUiModel(reference = it.path, name = it.name.orEmpty(), kind = "saf") }
-    val configuredSafSources = (snapshotSafSources + sqliteSafSources)
-        .distinctBy { it.reference }
+    val configuredSafSources = when (nativeFolders.status) {
+        // Once SQLite has answered, it is authoritative. Avoid showing a recently
+        // removed folder that may still be present in the older library snapshot.
+        ReiAnixNativeFoldersStatus.READY, ReiAnixNativeFoldersStatus.EMPTY -> {
+            val persistedPaths = nativeFolders.folders.map { it.path }.toSet()
+            (snapshotSafSources.filter { it.reference in persistedPaths } + sqliteSafSources)
+                .distinctBy { it.reference }
+        }
+        // During loading or query failures, retain the last known configured folders.
+        else -> snapshotSafSources
+    }
     val selectionBusy =
         storage.safSelectionPending ||
             (
