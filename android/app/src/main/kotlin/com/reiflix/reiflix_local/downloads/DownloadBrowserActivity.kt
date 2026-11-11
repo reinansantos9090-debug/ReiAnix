@@ -4,6 +4,14 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.Manifest
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.webkit.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -26,9 +34,21 @@ import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import org.json.JSONArray
 import java.util.concurrent.ConcurrentHashMap
 
+/** The selected URL is edited and enqueued over the web page, never via navigation. */
+private data class BrowserDownloadOffer(
+    val url: String,
+    val headers: Map<String,String>,
+    val title: String,
+    val filename: String,
+    val capture: PlayerMediaCandidate?,
+    val hlsHint: Boolean,
+)
+
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
 class DownloadBrowserActivity: ComponentActivity() {
     private var requested by mutableStateOf("")
+    private var pendingOffer by mutableStateOf<BrowserDownloadOffer?>(null)
+    private var offerError by mutableStateOf("")
     private var web: WebView?=null
     private val mediaRequests=ConcurrentHashMap<String,Pair<Long,Map<String,String>>>()
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,6 +66,12 @@ class DownloadBrowserActivity: ComponentActivity() {
         var title by remember { mutableStateOf("") }
         var progress by remember { mutableIntStateOf(0) }
         var showMedia by remember { mutableStateOf(false) }
+        var submitting by remember { mutableStateOf(false) }
+        val downloadStore=remember {DownloadStore(applicationContext)}
+        val scope=rememberCoroutineScope()
+        val notificationPermission=rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { }
         var candidates by remember { mutableStateOf<List<BrowserDownloadChoice>>(emptyList()) }
         var error by remember { mutableStateOf("") }
         val observed=remember {ConcurrentHashMap<String,PlayerMediaCandidate>()}
@@ -126,7 +152,14 @@ class DownloadBrowserActivity: ComponentActivity() {
         }
         LaunchedEffect(requested) { if(requested.isNotBlank()) try { DownloadHttp.validateUrl(requested); browser.loadUrl(requested) } catch(_: Exception) { error="Endereço inválido" } }
         DisposableEffect(browser) { onDispose { browser.stopLoading(); browser.destroy(); web=null } }
-        BackHandler { if(browser.canGoBack()) browser.goBack() else finish() }
+        BackHandler {
+            when {
+                pendingOffer!=null -> { if(!submitting)pendingOffer=null }
+                showMedia -> showMedia=false
+                browser.canGoBack() -> browser.goBack()
+                else -> finish()
+            }
+        }
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
@@ -152,6 +185,49 @@ class DownloadBrowserActivity: ComponentActivity() {
                 if(error.isNotBlank()) Text(error,Modifier.padding(8.dp),color=MaterialTheme.colorScheme.error)
                 AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
             }
+        }
+        val offer=pendingOffer
+        if(offer!=null) key(offer.url,offer.filename) {
+            DownloadDialog(
+                initialUrl=offer.url,
+                initialHeaders=offer.headers,
+                initialTitle=offer.title,
+                initialName=offer.filename,
+                editing=null,
+                busy=submitting,
+                submissionError=offerError,
+                onDismiss={ if(!submitting){pendingOffer=null;offerError=""} },
+                onSubmit={url,name,destination,_,_,headers,anime,autoName ->
+                    if(!submitting) {
+                        submitting=true
+                        offerError=""
+                        scope.launch {
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    downloadStore.enqueue(
+                                        url=url,name=name,destination=destination,
+                                        expectedHash="",hashType="SHA-256",headers=headers,
+                                        animeTitle=anime,automaticName=autoName,
+                                        playerCapture=offer.capture?.evidence()?.takeIf {
+                                            it.optString("url")==url
+                                        },
+                                        hlsHint=offer.hlsHint && url==offer.url,
+                                    )
+                                    DownloadSnapshots.refresh(applicationContext)
+                                }
+                                DownloadScheduling.schedule(applicationContext)
+                                if(Build.VERSION.SDK_INT>=33)
+                                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                pendingOffer=null
+                                Toast.makeText(this@DownloadBrowserActivity,
+                                    "Download adicionado à fila",Toast.LENGTH_SHORT).show()
+                            } catch(e: Exception) {
+                                offerError=e.message ?: "Não foi possível iniciar este download"
+                            } finally { submitting=false }
+                        }
+                    }
+                },
+            )
         }
         if(showMedia) AlertDialog(
             onDismissRequest={showMedia=false},
@@ -206,10 +282,15 @@ class DownloadBrowserActivity: ComponentActivity() {
                 putString(canonical,value)
             }
         }
-        startActivity(Intent(this,DownloadsActivity::class.java).setData(Uri.parse(url))
-            .putExtra("headers",headers).putExtra(Intent.EXTRA_TITLE,title).putExtra("playerCapture",capture?.evidence()?.toString())
-            .putExtra("hlsHint",mime?.contains("mpegurl",ignoreCase=true)==true)
-            .putExtra("downloadName",if(capture!=null) DownloadIdentity.capturedFileName(title,url,mime) else URLUtil.guessFileName(url,disposition,mime)))
+        val filename=if(title.isNotBlank() && !title.equals("Animes Online",ignoreCase=true))
+            DownloadIdentity.capturedFileName(title,url,mime)
+        else URLUtil.guessFileName(url,disposition,mime)
+        offerError=""
+        pendingOffer=BrowserDownloadOffer(
+            url=url,headers=headers.keySet().associateWith {headers.getString(it).orEmpty()},
+            title=title,filename=filename,capture=capture,
+            hlsHint=mime?.contains("mpegurl",ignoreCase=true)==true,
+        )
     }
     override fun onPause() { web?.onPause(); super.onPause() }
     override fun onResume() { super.onResume(); web?.onResume() }
