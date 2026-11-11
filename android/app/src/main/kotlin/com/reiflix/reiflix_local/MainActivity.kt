@@ -3594,12 +3594,14 @@ class MainActivity : ComponentActivity() {
                 configuredScopes = folders.size
                 // The built-in Downloads/ReiAnix directory is a real source, not
                 // only a decorative row in Settings. It has no synthetic SAF grant.
-                requestedSources++
-                val defaultScanId = scanDefaultReiAnixFolder(force = true, requestId = requestId)
-                if (defaultScanId == null) {
-                    recordSourceStartFailure(DefaultReiAnixFolderScanner.SOURCE_KEY, "scan_not_started")
-                } else {
-                    pendingSources += DefaultReiAnixFolderScanner.SOURCE_KEY to defaultScanId
+                if (Build.VERSION.SDK_INT >= 29) {
+                    requestedSources++
+                    val defaultScanId = scanDefaultReiAnixFolder(force = true, requestId = requestId)
+                    if (defaultScanId == null) {
+                        recordSourceStartFailure(DefaultReiAnixFolderScanner.SOURCE_KEY, "scan_not_started")
+                    } else {
+                        pendingSources += DefaultReiAnixFolderScanner.SOURCE_KEY to defaultScanId
+                    }
                 }
                 for (folder in folders) {
                     requestedSources++
@@ -4489,7 +4491,7 @@ class MainActivity : ComponentActivity() {
         force: Boolean = false,
         requestId: String? = null,
     ): String? {
-        if (!bootstrapAllowsNativeOperations()) return null
+        if (!bootstrapAllowsNativeOperations() || Build.VERSION.SDK_INT < 29) return null
         val revision = DefaultReiAnixFolderScanner.revision(this)
         if (!force && DefaultReiAnixFolderScanner.isUpToDate(this, revision)) return null
 
