@@ -24,6 +24,14 @@ class BrowserMediaOptionTest {
         assertTrue(results.first().capture==null)
     }
 
+    @Test fun prefersDirectMp4OverTsAndHlsAtTheSameResolution() {
+        val mp4=source("https://cdn.example/720.mp4","720p")
+        val ts=source("https://cdn.example/720.ts","720p")
+        val hls=source("https://cdn.example/720.m3u8","720p","hls")
+        val results=BrowserMediaResults.combine(emptyList(),listOf(hls,ts,mp4))
+        assertEquals(listOf(mp4.url,ts.url,hls.url),results.map { it.url })
+    }
+
     @Test fun excludesUnrelatedOrDangerousLinks() {
         assertFalse(BrowserMediaOption.eligible(source("https://ads.example/ads/clip-720p.mp4","720p")))
         assertFalse(BrowserMediaOption.eligible(source("javascript:alert(1)","720p")))
