@@ -6019,6 +6019,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun sourceFor(localUri: Uri): String {
         return when {
+            localUri.scheme.equals("content", true) && localUri.authority == "$packageName.downloads" -> "reianix_download"
             localUri.scheme.equals("content", true) && localUri.authority == MediaStore.AUTHORITY -> "mediastore"
             localUri.scheme.equals("content", true) -> "saf"
             localUri.scheme.equals("file", true) -> "broad_storage"
@@ -6046,6 +6047,28 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun validateLocalSource(localUri: Uri): SourceValidationFailure? {
         val result = when (localUri.scheme?.lowercase()) {
             "content" -> {
+                // Downloads have a private app-owned ContentProvider. They do not
+                // require READ_MEDIA_VIDEO or a user SAF grant. A missing/partial
+                // file is a source-readiness issue, never a revoked permission.
+                if (localUri.authority == "$packageName.downloads") {
+                    val id = localUri.pathSegments.firstOrNull().orEmpty()
+                    val item = runCatching {
+                        com.reiflix.reiflix_local.downloads.DownloadStore(this).get(id)
+                    }.getOrNull()
+                    when {
+                        item == null || item.state in setOf("CANCELLED", "CORRUPT") ->
+                            SourceValidationFailure("Este download não está disponível.", "MEDIA_URI_INVALID")
+                        item.state == "ERROR" ->
+                            SourceValidationFailure("Este download precisa ser retomado.", "MEDIA_URI_INVALID")
+                        runCatching {
+                            contentResolver.openFileDescriptor(localUri, "r")?.use { true } == true
+                        }.getOrDefault(false) -> null
+                        else -> SourceValidationFailure(
+                            "O arquivo do download ainda não está disponível para leitura.",
+                            "MEDIA_URI_INVALID",
+                        )
+                    }
+                } else {
                 val safAuthorized = runCatching {
                     SafScanner.isAuthorizedDocument(this, localUri)
                 }.getOrDefault(false)
@@ -6092,6 +6115,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             "MEDIA_URI_INVALID",
                         )
                     } else null
+                }
                 }
             }
             "file" -> {
