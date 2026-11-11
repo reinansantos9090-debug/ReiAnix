@@ -109,6 +109,7 @@ class ReiAnixComposeLibraryHost(
                 }
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
+            val welcomeRequired by activity.welcomeNeedsSetup.collectAsStateWithLifecycle()
 
             // A route mount must not cause remote reconciliation. Observe scan-state
             // transitions only; drop the first snapshot so a stored/idle state on process
@@ -388,12 +389,14 @@ class ReiAnixComposeLibraryHost(
                             navController.navigateToCollector()
                         },
                     )
-                    if (onboardingAllowed && nativeOnboarding.isPromptVisible) {
+                    if (onboardingAllowed && welcomeRequired) {
                         ReiAnixLibraryFolderOnboarding(
                             state = nativeOnboarding.phase,
-                            message = nativeOnboarding.message,
                             error = nativeOnboarding.error,
-                            onCancel = activity::dismissNativeStorageOnboarding,
+                            onStart = activity::completeReiAnixWelcome,
+                            onSelectReiAnixFolder = {
+                                activity.requestDefaultReiAnixFolderAuthorization()
+                            },
                             onSelectFolder = {
                                 activity.requestNativeStorageAction("select_tree")
                             },
