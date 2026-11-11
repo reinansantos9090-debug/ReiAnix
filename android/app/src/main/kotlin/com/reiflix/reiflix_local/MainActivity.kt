@@ -4052,8 +4052,10 @@ class MainActivity : ComponentActivity() {
             val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
             if (documentId != null && documentId.startsWith("primary:")) {
                 val relative = documentId.removePrefix("primary:").trim('/')
-                return if (relative.isEmpty()) "/storage/emulated/0"
-                    else "/storage/emulated/0/$relative"
+                // Resolve the actual Android user's external storage root (which
+                // is not always /storage/emulated/0 in multi-user/work profiles).
+                val primaryRoot = Environment.getExternalStorageDirectory().absolutePath.trimEnd('/')
+                return if (relative.isEmpty()) primaryRoot else "$primaryRoot/$relative"
             }
         }
         return displayName.trim().ifBlank { uri.toString() }
