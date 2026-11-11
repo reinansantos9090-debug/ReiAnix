@@ -1600,8 +1600,12 @@ class ReiAnixSqliteLibraryRepository(
                             if(download?.second=="SAVING") {recordEpisodeObservation(db,current.id,snapshot,item);unchanged++;continue}
                         }
                         val patch = ContentValues()
-                        if (current.path != item.location) patch.put("path", item.location)
-                        if (current.fileName != item.fileName) patch.put("file_name", item.fileName)
+                        // Native downloads retain their app-owned virtual URI and the
+                        // original title, even when the scanner sees an output-provider
+                        // filename or a different URI alias for the same physical file.
+                        val ownedDownload = current.mediaIdentity?.startsWith("download:") == true
+                        if (!ownedDownload && current.path != item.location) patch.put("path", item.location)
+                        if (!ownedDownload && current.fileName != item.fileName) patch.put("file_name", item.fileName)
                         item.mimeType?.takeIf { it.isNotBlank() }?.let { if (current.mimeType != it) patch.put("mime_type", it) }
                         item.sizeBytes?.let { if (current.fileSize != it) patch.put("file_size", it) }
                         item.modifiedAtEpochSeconds?.let { if (current.modifiedAt != it) patch.put("modified_at", it) }
@@ -1613,7 +1617,7 @@ class ReiAnixSqliteLibraryRepository(
                         item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
                         item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
                         item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity?.startsWith("download:")!=true && current.mediaIdentity != it) patch.put("media_identity", it) }
-                        if (current.manualOverride != true) {
+                        if (current.manualOverride != true && !ownedDownload) {
                             item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
                             item.episodeTitle?.takeIf { it.isNotBlank() }?.let { if (current.episodeTitle != it) patch.put("episode_title", it) }
                             item.identificationSource?.takeIf { it.isNotBlank() }?.let { if (current.identificationSource != it) patch.put("identification_source", it) }
