@@ -13,7 +13,7 @@ internal object DownloadCaptureGuard {
     data class Facts(val duration: Double,val width: Int,val height: Int)
     class Rejected(message: String): IOException(message)
     private fun facts(context: Context,file: File?,uri: Uri?): Facts? {
-        val retriever=MediaMetadataRetriever()
+        val retriever=runCatching {MediaMetadataRetriever()}.getOrNull() ?: return null
         return try {
             if(file!=null)retriever.setDataSource(file.path)
             else {require(uri?.scheme in setOf("file","content"));retriever.setDataSource(context,uri!!)}
@@ -28,7 +28,7 @@ internal object DownloadCaptureGuard {
         val item=store.get(id) ?: return
         if(!item.json.has("playerCapture") || item.json.optBoolean("captureApproved"))return
         val stage=item.json.optInt("captureProbeStage")
-        val thresholds=longArrayOf(256*1024,2*1024*1024,16*1024*1024,128*1024*1024)
+        val thresholds=longArrayOf(256L*1024,2L*1024*1024,16L*1024*1024,128L*1024*1024)
         if(!complete && (stage>=thresholds.size || bytes<thresholds[stage]))return
         store.mutate(id){it.put("captureProbeStage",stage+1)}
         val actual=facts(context,file,null)

@@ -21,7 +21,7 @@ class ReiAnixApplication : Application() {
             try {
                 val downloads=com.reiflix.reiflix_local.downloads.DownloadStore(this@ReiAnixApplication)
                 downloads.ready()
-                if(com.reiflix.reiflix_local.downloads.DownloadCaptureGuard.removeLegacyBanners(this@ReiAnixApplication,downloads))com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+                if(runCatching {com.reiflix.reiflix_local.downloads.DownloadCaptureGuard.removeLegacyBanners(this@ReiAnixApplication,downloads)}.getOrDefault(false))com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
                 if(com.reiflix.reiflix_local.downloads.DownloadCatalogBridge.reconcile(dependencies.sqliteDatabase)) {
                     com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
                 }

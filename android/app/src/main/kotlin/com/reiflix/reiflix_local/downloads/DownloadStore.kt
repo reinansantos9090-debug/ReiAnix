@@ -26,7 +26,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 object DownloadEvents {
     // Catalog invalidation only on structural changes, never on progress updates.
-    val catalog = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val catalog = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 8)
 }
 
 object DownloadState {
