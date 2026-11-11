@@ -110,6 +110,7 @@ class ReiAnixComposeLibraryHost(
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
             val welcomeRequired by activity.welcomeNeedsSetup.collectAsStateWithLifecycle()
+            val welcomeFolderPaths by activity.welcomeFolderPaths.collectAsStateWithLifecycle()
 
             // A route mount must not cause remote reconciliation. Observe scan-state
             // transitions only; drop the first snapshot so a stored/idle state on process
@@ -393,6 +394,8 @@ class ReiAnixComposeLibraryHost(
                         ReiAnixLibraryFolderOnboarding(
                             state = nativeOnboarding.phase,
                             error = nativeOnboarding.error,
+                            selectedFolderPath = welcomeFolderPaths.selectedFolder,
+                            reiAnixFolderPath = welcomeFolderPaths.reiAnixFolder,
                             onStart = activity::completeReiAnixWelcome,
                             onSelectReiAnixFolder = {
                                 activity.requestDefaultReiAnixFolderAuthorization()
