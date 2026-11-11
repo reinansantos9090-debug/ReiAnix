@@ -94,8 +94,8 @@ class DownloadStore(context: Context) {
                 }, "id=? AND media_identity=? AND path=?", owned + outputUri)
                 connection.update("episodes", ContentValues().apply {
                     put("file_name", originalName)
-                }, "id=? AND media_identity=? AND manual_override=0 AND path=?",
-                    owned + originalUri)
+                }, "id=? AND media_identity=? AND manual_override=0 AND path=? AND (file_name IS NULL OR file_name!=?)",
+                    owned + originalUri + originalName)
                 // The scanner previously also derived an episode title from
                 // the output filename (e.g. "Animes Online"). For native downloads
                 // the chosen filename is authoritative unless edited manually.
