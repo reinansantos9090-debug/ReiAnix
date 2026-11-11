@@ -39,6 +39,31 @@ class ReiAnixHomeInstrumentedTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun timelineHistoryIconAndDurationMenuOpenTheirActions() {
+        var timelineOpens = 0
+        var durationOpens = 0
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                HomeHeader(
+                    onSearch = {},
+                    onRefresh = {},
+                    onOpenTimeline = { timelineOpens++ },
+                    onOpenDurationAnomalies = { durationOpens++ },
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Linha do tempo").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Pesquisar na biblioteca").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Linha do tempo").performClick()
+        assertEquals(1, timelineOpens)
+
+        composeRule.onNodeWithContentDescription("Mais opções da Home").performClick()
+        composeRule.onNodeWithText("Durações incomuns").performClick()
+        assertEquals(1, durationOpens)
+    }
+
+    @Test
     fun loadingStateIsRendered() {
         composeRule.setContent {
             ReiAnixComposeRoot {
