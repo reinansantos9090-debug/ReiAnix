@@ -121,7 +121,8 @@ class DownloadEngine(private val context: Context) {
             val disposition=connection.getHeaderField("Content-Disposition")
             store.mutate(id) {
                 if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L) {
-                    val proposed=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
+                    val serverName=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
+                    val proposed=if(it.has("playerCapture")) it.getString("name").substringBeforeLast('.')+"."+serverName.substringAfterLast('.',"mp4") else serverName
                     if(proposed.isNotBlank() && proposed !in setOf(".","..") && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
                         it.put("name",proposed).put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(proposed)}")
                     }
