@@ -211,12 +211,13 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
             catch(_: Exception) { error="Não foi possível adicionar o download. Confira o link, a pasta e o nome do arquivo." }
             finally { busy=false }
         }
-    }) }
+    },hlsHint=hlsHint && initialUrl.isNotBlank()) }
 }
 
 @Composable
 internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
-    onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit) {
+    onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit,
+    hlsHint: Boolean = false) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
@@ -236,6 +237,34 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     var originalHeaders by remember { mutableStateOf(initialHeaders) }
     var sourceLoading by remember { mutableStateOf(editing!=null) }
     var sessionOrigin by remember { mutableStateOf(runCatching { java.net.URL(initialUrl) }.getOrNull()) }
+    var sizeResult by remember { mutableStateOf<DownloadSizeProbe.Result?>(null) }
+    var storageBytes by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(Unit) {
+        storageBytes=withContext(Dispatchers.IO) {
+            DownloadSizeProbe.internalAvailableBytes(context)
+        }
+    }
+    // Debounce user edits and do not block WebView or the "Iniciar" button.
+    // The exact same authenticated redirect policy applies as in downloads.
+    LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint) {
+        sizeResult=null
+        delay(350)
+        val target=url.trim()
+        if(runCatching { DownloadHttp.validateUrl(target) }.isFailure) {
+            sizeResult=DownloadSizeProbe.Result.Unknown
+            return@LaunchedEffect
+        }
+        val probeHeaders=originalHeaders.filterKeys {
+            it.lowercase() !in setOf("cookie","referer","authorization")
+        }.toMutableMap()
+        if(cookie.isNotBlank())probeHeaders["Cookie"]=cookie.trim()
+        if(referer.isNotBlank())probeHeaders["Referer"]=referer.trim()
+        if(user.isNotBlank())probeHeaders["Authorization"]="Basic "+
+            android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP)
+        sizeResult=withTimeoutOrNull(15_000) {
+            DownloadSizeProbe.inspect(target,probeHeaders,hlsHint && target==initialUrl)
+        } ?: DownloadSizeProbe.Result.Unknown
+    }
     LaunchedEffect(editing?.id) {
         if(editing!=null) try {
             val secret=withContext(Dispatchers.IO) { DownloadStore(context).secret(editing) }
@@ -350,14 +379,33 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                        Text("Nome do arquivo",color=Color.LightGray,
-                            style=MaterialTheme.typography.bodyMedium,
-                            modifier=Modifier.weight(1f))
-                        IconButton(onClick={
-                            (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
-                                ?.setPrimaryClip(android.content.ClipData.newPlainText("Nome do arquivo",name))
-                        }) {
-                            Icon(Icons.Filled.ContentCopy,"Copiar nome do arquivo",tint=Color.LightGray)
+                        Text("Nome",color=Color.LightGray,
+                            style=MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.width(5.dp))
+                        val videoSize=when {
+                            sizeResult==null -> "Calculando…"
+                            sizeResult?.bytes==null -> "Indisponível"
+                            sizeResult?.exact==true -> Formatter.formatFileSize(context,sizeResult!!.bytes!!)
+                            else -> "≈"+Formatter.formatFileSize(context,sizeResult!!.bytes!!)
+                        }
+                        val availableSize=storageBytes?.let { Formatter.formatFileSize(context,it) } ?: "—"
+                        Text(
+                            "$videoSize / $availableSize",
+                            color=Color.LightGray,
+                            fontSize=9.sp,
+                            maxLines=1,
+                            overflow=TextOverflow.Ellipsis,
+                            modifier=Modifier.weight(1f),
+                        )
+                        IconButton(
+                            modifier=Modifier.size(32.dp),
+                            onClick={
+                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Nome",name))
+                            },
+                        ) {
+                            Icon(Icons.Filled.ContentCopy,"Copiar nome",tint=Color.LightGray,
+                                modifier=Modifier.size(20.dp))
                         }
                     }
                     TextField(
