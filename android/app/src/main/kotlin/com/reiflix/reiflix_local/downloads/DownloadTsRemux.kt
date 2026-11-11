@@ -40,7 +40,8 @@ internal object DownloadTsRemux {
         val output=File(input.parentFile,input.name+".remux.mp4")
         // During saving, an additional copy of the final video must still fit
         // beside the original partial. If storage is tight, keep the .ts.
-        val required=input.length().coerceAtMost(Long.MAX_VALUE/2)*2+RESERVE_BYTES
+        if(input.length()>(Long.MAX_VALUE-RESERVE_BYTES)/2) return null
+        val required=input.length()*2+RESERVE_BYTES
         if(StatFs(input.parentFile!!.absolutePath).availableBytes<required) return null
         var successful=false
         output.delete()
@@ -55,10 +56,11 @@ internal object DownloadTsRemux {
                     val formats=(0 until count).map(extractor::getTrackFormat)
                     val mimes=formats.map { it.getString(MediaFormat.KEY_MIME).orEmpty().lowercase() }
                     if(!compatibleTracks(mimes)) return null
-                    muxer=MediaMuxer(output.absolutePath,MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                    val tracks=formats.map(muxer::addTrack)
+                    val activeMuxer=MediaMuxer(output.absolutePath,MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                    muxer=activeMuxer
+                    val tracks=formats.map(activeMuxer::addTrack)
                     formats.indices.forEach(extractor::selectTrack)
-                    muxer.start()
+                    activeMuxer.start()
                     started=true
                     val buffer=ByteBuffer.allocateDirect(BUFFER_BYTES)
                     val info=MediaCodec.BufferInfo()
@@ -78,7 +80,7 @@ internal object DownloadTsRemux {
                         require(whenUs>=0 && whenUs>=lastTime[track]) {"Timestamps incompatíveis"}
                         lastTime[track]=whenUs
                         info.set(0,length,whenUs,extractor.sampleFlags)
-                        muxer.writeSampleData(tracks[track],buffer,info)
+                        activeMuxer.writeSampleData(tracks[track],buffer,info)
                         samples[track]++
                         copied+=length.toLong()
                         if(!extractor.advance()) break
@@ -86,7 +88,7 @@ internal object DownloadTsRemux {
                     // Verify every selected track survived; never silently
                     // strip audio when converting a muxed anime episode.
                     require(samples.isNotEmpty() && samples.all { it>0 } && copied>0)
-                    muxer.stop()
+                    activeMuxer.stop()
                     started=false
                 } finally {
                     if(started) runCatching { muxer?.stop() }
