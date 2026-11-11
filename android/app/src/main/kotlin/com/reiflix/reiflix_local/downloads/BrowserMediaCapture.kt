@@ -40,7 +40,11 @@ internal object BrowserMediaCapture {
     return !/^https?:${'$'}/.test(u.protocol)||/(^|\.)(doubleclick\.net|googlesyndication\.com|adnxs\.com|adsterra\.com|popads\.net)${'$'}/.test(u.hostname)||/(?:^|\/)(ads?|advert(isement)?s?|banners?|preroll)(?:\/|[_.-]|${'$'})/i.test(u.pathname)||(d&&Number(d[1])/Number(d[2])>4);
   }catch(e){return true}};
   const adElement=e=>{try{for(let n=e;n&&n.nodeType===1;n=n.parentElement){if(/(?:^|[\s_-])(ad|ads|advert|advertisement|banner|preroll)(?:${'$'}|[\s_-])/i.test((n.id||'')+' '+(typeof n.className==='string'?n.className:'')))return true;}return false;}catch(e){return true}};
-  const rect=e=>{try{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)!==0&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth?r:null;}catch(e){return null}};
+  const rect=e=>{try{
+    for(let n=e;n&&n.nodeType===1;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'||Number(s.opacity)===0)return null;}
+    const r=e.getBoundingClientRect(),left=Math.max(0,r.left),right=Math.min(innerWidth,r.right),top=Math.max(0,r.top),bottom=Math.min(innerHeight,r.bottom);
+    return right>left&&bottom>top?{left,right,top,bottom,width:right-left,height:bottom-top}:null;
+  }catch(e){return null}};
   const message=obj=>{try{if(window.ReiAnixMedia)window.ReiAnixMedia.postMessage(JSON.stringify({...obj,frame:frameId,page:location.href}));}catch(e){}};
   const children=()=>Array.from(document.querySelectorAll('iframe,frame'));
   const sendFrame=e=>{try{const r=rect(e);e.contentWindow.postMessage({type:'REI_FRAME_INFO',known:frame.known,allowed:frame.allowed&&!!r&&r.width>=200&&r.height>=110&&!adElement(e),width:r?Math.min(r.width,frame.width):0,height:r?Math.min(r.height,frame.height):0},'*');}catch(e){}};
