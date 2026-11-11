@@ -532,6 +532,9 @@ class MainActivity : ComponentActivity() {
     }
     private val pendingSafReleaseWaiters = mutableMapOf<String, MutableList<String>>()
     private var storageReceiverRegistered = false
+    // Recheck missed MediaStore notifications when returning from the background.
+    // The native generation cache avoids rediscovering unchanged media.
+    private var defaultFolderCheckPending = true
     private var systemBackDispatchPosted = false
     private var systemBackEventCount = 0
     private var externalSettingsKind: String? = null
@@ -2448,6 +2451,7 @@ class MainActivity : ComponentActivity() {
 
         synchronizeSafTreeChangeObservers()
         dispatchPendingSafTreeChanges()
+        checkDefaultFolderOnForegroundEntry()
     }
 
     /**
@@ -2462,6 +2466,13 @@ class MainActivity : ComponentActivity() {
         publishStorageStatus()
         synchronizeSafTreeChangeObservers()
         dispatchPendingSafTreeChanges()
+        checkDefaultFolderOnForegroundEntry()
+    }
+
+    private fun checkDefaultFolderOnForegroundEntry() {
+        if (!defaultFolderCheckPending || !bootstrapAllowsNativeOperations() ||
+            !MediaStoreScanner.hasReadPermission(this)) return
+        if (scanMediaStore() != null) defaultFolderCheckPending = false
     }
 
     private fun synchronizeSafTreeChangeObservers(forceInventoryCheck: Boolean = false) {
@@ -2708,6 +2719,7 @@ class MainActivity : ComponentActivity() {
         // while the Activity is backgrounded. MediaStore/UI observers keep their
         // existing lifecycle because they are separate capabilities.
         logLifecycle("onStop")
+        defaultFolderCheckPending = true
         unregisterStorageReceiver()
         MediaStoreScanner.stopChangeObserver(this)
         super.onStop()
