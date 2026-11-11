@@ -131,7 +131,8 @@ class DownloadStore(context: Context) {
     }
     suspend fun enqueue(url: String, name: String, destination: String, expectedHash: String, hashType: String,
         headers: Map<String, String>, animeTitle: String = "", automaticName: Boolean = false,
-        playerCapture: JSONObject? = null, hlsHint: Boolean = false): DownloadItem = withContext(Dispatchers.IO) {
+        playerCapture: JSONObject? = null, hlsHint: Boolean = false,
+        detectedSize: Long? = null, detectedExact: Boolean = false): DownloadItem = withContext(Dispatchers.IO) {
         ready()
         DownloadHttp.validateUrl(url)
         require(url.length<=16384) { "O link é longo demais" }
@@ -151,6 +152,11 @@ class DownloadStore(context: Context) {
             .put("hls",hlsHint)
             .put("virtualUri", "content://${context.packageName}.downloads/$id/${Uri.encode(name)}")
             .put("mime", MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream")
+        // Discovered size is display metadata only. Never use an HLS estimate
+        // as the transfer's authoritative total or expected byte count.
+        detectedSize?.takeIf { it>0L }?.let { size ->
+            data.put("detectedSize",size).put("detectedSizeExact",detectedExact)
+        }
         if(playerCapture!=null) {val evidence=JSONObject(playerCapture.toString());evidence.remove("url");evidence.remove("page");data.put("playerCapture",evidence)}
         db.transaction { connection ->
             val duplicate = connection.rawQuery("SELECT data FROM native_downloads", null).use { c ->
