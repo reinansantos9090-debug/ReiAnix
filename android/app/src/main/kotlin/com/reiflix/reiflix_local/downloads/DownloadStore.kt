@@ -88,8 +88,10 @@ class DownloadStore(context: Context) {
         }
         rows.map { item ->
             val linked=matches[item.episodeId]
-            val reference=if(item.state=="COMPLETE") item.output else item.virtualUri.toString()
-            if(item.episodeId>0 && ((!item.json.has("identityKnown") && item.json.optString("animeTitle").isBlank() && DownloadIdentity.title(item.name).isBlank()) || linked==null || (linked.first!=reference && linked.second!="download:${item.id}"))) {
+            val stableReference=item.virtualUri.toString()
+            // A completed download may still have a legacy output URI in SQLite.
+            // Only the exact owner identity proves that it is the same episode.
+            if(item.episodeId>0 && ((!item.json.has("identityKnown") && item.json.optString("animeTitle").isBlank() && DownloadIdentity.title(item.name).isBlank()) || linked==null || (linked.first!=stableReference && linked.first!=item.output && linked.second!="download:${item.id}"))) {
                 DownloadItem(JSONObject(item.json.toString()).put("episodeId",0).put("animeId",0))
             } else if(linked!=null && linked.third!=item.animeId) DownloadItem(JSONObject(item.json.toString()).put("animeId",linked.third)) else item
         }
@@ -236,19 +238,21 @@ class DownloadStore(context: Context) {
     }
     fun complete(id: String, output: Uri) {
         DownloadCatalogBridge.reconcile(db)
-        val actualName=runCatching {
-            if(output.scheme=="file") File(output.path!!).name else context.contentResolver.query(output,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null }
-        }.getOrNull()
         db.transaction { connection ->
             val data = connection.rawQuery("SELECT data FROM native_downloads WHERE id=?", arrayOf(id)).use { it.moveToFirst(); JSONObject(it.getString(0)) }
             check(data.optString("state")=="SAVING") { "O download não está na etapa de publicação" }
             data.put("state", "COMPLETE").put("output", output.toString()).put("message", "Concluído")
-            actualName?.takeIf { it.isNotBlank() }?.let { data.put("name",it) }
+            // Keep the user's original filename. ContentProviders can return a
+            // generic display title or even omit the extension after publication.
             connection.update("native_downloads", ContentValues().apply { put("data", data.toString()) }, "id=?", arrayOf(id))
             if(data.optLong("episodeId")>0) connection.update("episodes", ContentValues().apply {
-                put("path", output.toString()); actualName?.takeIf { it.isNotBlank() }?.let { put("file_name",it) }; put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
+                // Keep the same app-owned URI across DOWNLOADING, SAVING and
+                // COMPLETE; the DownloadProvider resolves the final output.
+                put("path", data.getString("virtualUri"))
+                put("file_name",data.getString("name"))
+                put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
                 put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
-            }, "id=? AND (media_identity=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri")))
+            }, "id=? AND (media_identity=? OR path=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri"),output.toString()))
         }
         DownloadEvents.catalog.tryEmit(Unit)
     }
