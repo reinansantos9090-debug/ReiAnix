@@ -73,9 +73,11 @@ internal object DownloadTsRemux {
                         if(track<0) break
                         if(track !in 0 until count) error("Faixa fora do limite")
                         buffer.clear()
+                        val declared=extractor.sampleSize
+                        require(declared in 1..BUFFER_BYTES.toLong()) {"Amostra incompatível"}
                         val length=extractor.readSampleData(buffer,0)
                         if(length<0) break
-                        require(length in 1..BUFFER_BYTES) {"Amostra incompatível"}
+                        require(length.toLong()==declared) {"Amostra truncada"}
                         val whenUs=extractor.sampleTime
                         require(whenUs>=0 && whenUs>=lastTime[track]) {"Timestamps incompatíveis"}
                         lastTime[track]=whenUs
