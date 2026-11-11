@@ -69,6 +69,24 @@ class DownloadSizeProbeTest {
         assertFalse(DownloadSizeProbe.Result.Unknown.exact)
     }
 
+    @Test fun googlevideoClenMayRevealExactBytesWithoutRequestingTheFile() {
+        assertEquals(229_638_144L,DownloadSizeProbe.trustedUrlLength(
+            "https://rr4---sn-example.googlevideo.com/videoplayback?id=abc&clen=229638144&dur=1042",
+        ))
+        assertNull(DownloadSizeProbe.trustedUrlLength(
+            "https://googlevideo.com.evil.example/videoplayback?clen=999999999",
+        ))
+        assertNull(DownloadSizeProbe.trustedUrlLength(
+            "https://cdn.example/file.mp4?clen=999999999",
+        ))
+        assertNull(DownloadSizeProbe.trustedUrlLength(
+            "https://r1.googlevideo.com/other?clen=9999",
+        ))
+        assertNull(DownloadSizeProbe.trustedUrlLength(
+            "https://r1.googlevideo.com/videoplayback?clen=noclen",
+        ))
+    }
+
     @Test fun encryptedPlaylistDoesNotClaimExactRemuxedSize() {
         val p=DownloadSizeProbe.parseVod(
             "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"key\"\n#EXTINF:4,\na.ts\n#EXT-X-ENDLIST",
