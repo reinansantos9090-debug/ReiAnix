@@ -77,17 +77,20 @@ internal object BrowserMediaCapture {
     m=/(?:quality|res|height|q)[=:/_-](2160|1440|1080|720|480|360|240)(?:[^0-9]|$)/i.exec(text);
     return m?m[1]+'p':'Qualidade não informada';
   };
-  const sendOption=(raw,label,origin,separateAudio=false)=>{try{
+  const sendOption=(raw,label,origin,separateAudio=false,mimeHint='')=>{try{
     if(!frame.known||!frame.allowed)return;
     const url=new URL(raw,location.href).href;
-    const format=mediaFormat(url)||(origin==='visible-video'?'video':'');
+    const hint=String(mimeHint||'').toLowerCase();
+    const format=mediaFormat(url)||
+      (hint.includes('mpegurl')?'hls':hint.includes('dash+xml')?'dash':
+        hint.startsWith('video/')?'video':origin==='visible-video'?'video':'');
     if(!format||badUrl(url)||url.length>16384)return;
     const quality=qualityFrom(label,url);
     const key=url+'|'+quality,now=Date.now();
     if(emittedOptions.get(key)&&now-emittedOptions.get(key)<4000)return;
     if(emittedOptions.size>=96)emittedOptions.clear();
     emittedOptions.set(key,now);
-    message({kind:'option',url,quality,format,origin,separateAudio:!!separateAudio});
+    message({kind:'option',url,quality,format,origin,separateAudio:!!separateAudio,mimeHint:hint});
   }catch(e){}};
   const scanOptions=(prepareMasters=false)=>{try{
     if(!frame.known||!frame.allowed)return;
@@ -95,20 +98,24 @@ internal object BrowserMediaCapture {
       const r=rect(v);return r&&r.width>=200&&r.height>=110&&!adElement(v);
     }).slice(0,8);
     const sources=new Set(),pendingMasters=new Set();
-    const offer=(raw,label,origin)=>{try{
+    const offer=(raw,label,origin,mimeHint='')=>{try{
       if(!raw)return;
       const url=new URL(raw,location.href).href;
-      if(!mediaFormat(url)&&origin!=='visible-video')return;
+      const hint=String(mimeHint||'').toLowerCase();
+      const format=mediaFormat(url)||
+        (hint.includes('mpegurl')?'hls':hint.includes('dash+xml')?'dash':hint.startsWith('video/')?'video':'');
+      if(!format&&origin!=='visible-video')return;
       if(badUrl(url))return;
       sources.add(url);
-      if(mediaFormat(url)==='hls')pendingMasters.add(url);
-      sendOption(url,label,origin);
+      if(format==='hls')pendingMasters.add(url);
+      sendOption(url,label,origin,false,hint);
     }catch(e){}};
     visible.forEach(v=>{
       offer(v.currentSrc||v.src,v.getAttribute('data-quality')||v.getAttribute('data-res')||'','visible-video');
       v.querySelectorAll('source[src]').forEach(source=>{
         offer(source.src,source.getAttribute('label')||source.getAttribute('res')||
-          source.getAttribute('data-quality')||source.getAttribute('size')||'','source');
+          source.getAttribute('data-quality')||source.getAttribute('size')||'','source',
+          source.getAttribute('type')||'');
       });
     });
     // Explicit quality controls can expose all renditions before Play. Accept
@@ -130,7 +137,7 @@ internal object BrowserMediaCapture {
         master.children.some(child=>sources.has(child.url))||
         (visible.length===1&&recent.length===1);
       if(!related)return;
-      master.children.forEach(child=>sendOption(child.url,child.quality,'master',child.audio));
+      master.children.forEach(child=>sendOption(child.url,child.quality,'master',child.audio,'application/vnd.apple.mpegurl'));
     });
     // Only on an explicit toolbar request: inspect a few *same-origin*
     // visible HLS playlists. Cross-origin/CORS/auth restrictions are respected.
