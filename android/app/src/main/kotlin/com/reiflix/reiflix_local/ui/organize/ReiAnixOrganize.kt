@@ -94,7 +94,7 @@ fun ReiAnixOrganizeRoute(
     viewModel: ReiAnixLibraryViewModel,
     onBack: () -> Unit,
     onOpenStorageAccess: () -> Unit,
-    onRequestMediaAccess: () -> Unit,
+    onSelectDefaultReiAnixFolder: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
     onOpenSettings: () -> Unit,
@@ -124,7 +124,7 @@ fun ReiAnixOrganizeRoute(
         isRefreshing = isRefreshing,
         onBack = onBack,
         onOpenStorageAccess = onOpenStorageAccess,
-        onRequestMediaAccess = onRequestMediaAccess,
+        onSelectDefaultReiAnixFolder = onSelectDefaultReiAnixFolder,
         onAddFolder = onAddFolder,
         onRemoveFolder = onRemoveFolder,
         onOpenSettings = onOpenSettings,
@@ -160,7 +160,7 @@ fun ReiAnixOrganizeScreen(
     isRefreshing: Boolean,
     onBack: () -> Unit,
     onOpenStorageAccess: () -> Unit,
-    onRequestMediaAccess: () -> Unit,
+    onSelectDefaultReiAnixFolder: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
     onOpenSettings: () -> Unit,
@@ -315,7 +315,7 @@ fun ReiAnixOrganizeScreen(
 
             ReiAnixLibraryLoadStatus.EMPTY -> {
                 EmptyOrganizeContent(
-                    onRequestMediaAccess = onRequestMediaAccess,
+                    onSelectDefaultReiAnixFolder = onSelectDefaultReiAnixFolder,
                     onOpenStorageAccess = onOpenStorageAccess,
                     onAddFolder = onAddFolder,
                     onRefresh = onRefresh,
@@ -1205,7 +1205,7 @@ private fun OrganizeCollectionContent(
 
 @Composable
 private fun EmptyOrganizeContent(
-    onRequestMediaAccess: () -> Unit,
+    onSelectDefaultReiAnixFolder: () -> Unit,
     onOpenStorageAccess: () -> Unit,
     onAddFolder: () -> Unit,
     onRefresh: () -> Unit,
@@ -1230,14 +1230,14 @@ private fun EmptyOrganizeContent(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             EmptyAction(
-                label = "Permitir vídeos",
-                onClick = onRequestMediaAccess,
+                label = "Pasta ReiAnix",
+                onClick = onSelectDefaultReiAnixFolder,
                 icon = Icons.Filled.Info,
                 modifier = Modifier.weight(1f),
             )
             EmptyAction(
-                label = "Acesso amplo",
-                onClick = onOpenStorageAccess,
+                label = "Adicionar pasta",
+                onClick = onAddFolder,
                 icon = Icons.Filled.Info,
                 modifier = Modifier.weight(1f),
             )
