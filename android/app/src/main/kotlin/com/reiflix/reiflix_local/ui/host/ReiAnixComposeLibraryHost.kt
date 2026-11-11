@@ -109,6 +109,8 @@ class ReiAnixComposeLibraryHost(
                 }
             }
             val nativeOnboarding by activity.nativeStorageOnboardingState.collectAsStateWithLifecycle()
+            val welcomeRequired by activity.welcomeNeedsSetup.collectAsStateWithLifecycle()
+            val welcomeFolderPaths by activity.welcomeFolderPaths.collectAsStateWithLifecycle()
 
             // A route mount must not cause remote reconciliation. Observe scan-state
             // transitions only; drop the first snapshot so a stored/idle state on process
@@ -292,8 +294,8 @@ class ReiAnixComposeLibraryHost(
                                 onOpenStorageAccess = {
                                     activity.requestNativeStorageAction("open_broad_storage_settings")
                                 },
-                                onRequestMediaAccess = {
-                                    activity.requestNativeStorageAction("request_media_access")
+                                onSelectDefaultReiAnixFolder = {
+                                    activity.requestDefaultReiAnixFolderAuthorization()
                                 },
                                 onAddFolder = libraryViewModel::selectSafTree,
                                 onRemoveFolder = libraryViewModel::removeSafTree,
@@ -345,7 +347,13 @@ class ReiAnixComposeLibraryHost(
                                 scanState = libraryState.scanState,
                                 lastScanStatus = libraryState.lastScanStatus,
                                 libraryFoldersContent = { onFoldersBack ->
-                                    com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFoldersRoute(libraryViewModel, onBack = onFoldersBack)
+                                    com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFoldersRoute(
+                                        libraryViewModel,
+                                        onBack = onFoldersBack,
+                                        onSelectDefaultReiAnixFolder = {
+                                            activity.requestDefaultReiAnixFolderAuthorization()
+                                        },
+                                    )
                                 },
                             )
                         },
@@ -365,8 +373,8 @@ class ReiAnixComposeLibraryHost(
                                     }
                                 },
                                 onRemoveSaf = libraryViewModel::removeSafTree,
-                                onRequestMediaAccess = {
-                                    activity.requestNativeStorageAction("request_media_access")
+                                onSelectDefaultReiAnixFolder = {
+                                    activity.requestDefaultReiAnixFolderAuthorization()
                                 },
                                 onOpenBroadSettings = {
                                     activity.requestNativeStorageAction("open_broad_storage_settings")
@@ -382,12 +390,16 @@ class ReiAnixComposeLibraryHost(
                             navController.navigateToCollector()
                         },
                     )
-                    if (onboardingAllowed && nativeOnboarding.isPromptVisible) {
+                    if (onboardingAllowed && welcomeRequired) {
                         ReiAnixLibraryFolderOnboarding(
                             state = nativeOnboarding.phase,
-                            message = nativeOnboarding.message,
                             error = nativeOnboarding.error,
-                            onCancel = activity::dismissNativeStorageOnboarding,
+                            selectedFolderPath = welcomeFolderPaths.selectedFolder,
+                            reiAnixFolderPath = welcomeFolderPaths.reiAnixFolder,
+                            onStart = activity::completeReiAnixWelcome,
+                            onSelectReiAnixFolder = {
+                                activity.requestDefaultReiAnixFolderAuthorization()
+                            },
                             onSelectFolder = {
                                 activity.requestNativeStorageAction("select_tree")
                             },
