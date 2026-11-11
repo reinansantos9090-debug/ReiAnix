@@ -122,7 +122,7 @@ class DownloadStore(context: Context) {
             .put("created", System.currentTimeMillis()).put("animeTitle", animeTitle.trim()).put("automaticName",automaticName)
             .put("virtualUri", "content://${context.packageName}.downloads/$id/${Uri.encode(name)}")
             .put("mime", MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream")
-        if(playerCapture!=null)data.put("playerCapture",playerCapture)
+        if(playerCapture!=null) {val evidence=JSONObject(playerCapture.toString());evidence.remove("url");evidence.remove("page");data.put("playerCapture",evidence)}
         db.transaction { connection ->
             val duplicate = connection.rawQuery("SELECT data FROM native_downloads", null).use { c ->
                 var found = false

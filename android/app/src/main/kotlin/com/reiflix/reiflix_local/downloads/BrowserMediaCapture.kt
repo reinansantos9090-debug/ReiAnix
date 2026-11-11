@@ -74,9 +74,16 @@ internal object BrowserMediaCapture {
     }schedule();
   }catch(e){}};
   const hls=(url,type)=>/mpegurl/i.test(type||'')||/\.m3u8(?:[?#]|${'$'})/i.test(url||'');
+  const readManifest=async response=>{let reader;try{
+    const clone=response.clone();if(!clone.body||!clone.body.getReader)return;
+    reader=clone.body.getReader();const decoder=new TextDecoder();let text='',bytes=0;
+    while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;
+      if(bytes>1048576){reader.cancel().catch(()=>{});return;}text+=decoder.decode(part.value,{stream:true});}
+    inspect(response.url,text+decoder.decode());
+  }catch(e){}finally{try{if(reader)reader.releaseLock();}catch(e){}}};
   const fetchOriginal=window.fetch;
   if(fetchOriginal)window.fetch=function(...args){return fetchOriginal.apply(this,args).then(response=>{
-    try{const type=response.headers.get('content-type')||'',length=Number(response.headers.get('content-length')||0);if(hls(response.url,type)&&length<=1048576)response.clone().text().then(text=>inspect(response.url,text)).catch(()=>{});}catch(e){}return response;
+    try{const type=response.headers.get('content-type')||'',length=Number(response.headers.get('content-length')||0);if(hls(response.url,type)&&length<=1048576)readManifest(response);}catch(e){}return response;
   });};
   const openOriginal=XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open=function(...args){this.addEventListener('load',()=>{try{if((this.responseType===''||this.responseType==='text')&&hls(this.responseURL,this.getResponseHeader('content-type')))inspect(this.responseURL,this.responseText);}catch(e){}},{once:true});return openOriginal.apply(this,args);};

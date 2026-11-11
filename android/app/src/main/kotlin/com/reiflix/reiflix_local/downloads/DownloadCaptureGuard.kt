@@ -32,9 +32,9 @@ internal object DownloadCaptureGuard {
         if(!complete && (stage>=thresholds.size || bytes<thresholds[stage]))return
         store.mutate(id){it.put("captureProbeStage",stage+1)}
         val actual=facts(context,file,null)
-        if(actual!=null && !valid(actual))throw Rejected("O recurso capturado não corresponde a um episódio: vídeo curto ou formato de banner. Use o download do próprio site.")
+        if(actual!=null && (actual.width.toDouble()/actual.height !in 0.45..3.2 || (complete && !valid(actual))))throw Rejected("O recurso capturado não corresponde a um episódio: vídeo curto ou formato de banner. Use o download do próprio site.")
         if(actual==null && complete)throw Rejected("Não foi possível confirmar o vídeo capturado. Use o link do download do próprio site.")
-        if(actual!=null)approve(context,store,id)
+        if(actual!=null && valid(actual))approve(context,store,id)
     }
     fun approveHls(context: Context,store: DownloadStore,id: String,duration: Double) {
         val item=store.get(id) ?: return
@@ -65,20 +65,26 @@ internal object DownloadCaptureGuard {
             database.transaction {db ->
                 val targets=paths.filter {it.first==item.episodeId || aliases[it.second]==item.id}
                 val archived=org.json.JSONArray()
+                val removals=mutableListOf<Pair<Long,Long>>()
+                var protected=false
                 targets.forEach target@{ (episode,_) ->
                     db.rawQuery("SELECT e.*,a.favorite,a.is_pinned,a.user_tags,a.personal_note,a.anilist_match_manual,a.metadata_source AS anime_source,a.metadata_manual_fields AS anime_manual_fields FROM episodes e JOIN anime a ON a.id=e.anime_id WHERE e.id=?",arrayOf(episode.toString())).use {c ->
                         if(!c.moveToFirst())return@target
                         fun number(name: String)=c.getDouble(c.getColumnIndexOrThrow(name))
                         fun string(name: String)=c.getString(c.getColumnIndexOrThrow(name)).orEmpty()
-                        if(number("progress")>0 || number("watched")>0 || number("manual_override")>0 || number("favorite")>0 || number("is_pinned")>0 || number("anilist_match_manual")>0 || string("user_tags") !in setOf("","[]") || string("personal_note").isNotBlank() || string("anime_source")=="manual" || string("anime_manual_fields") !in setOf("","[]"))return@target
+                        if(number("progress")>0 || number("watched")>0 || number("manual_override")>0 || number("favorite")>0 || number("is_pinned")>0 || number("anilist_match_manual")>0 || string("user_tags") !in setOf("","[]") || string("personal_note").isNotBlank() || string("anime_source")=="manual" || string("anime_manual_fields") !in setOf("","[]")) {protected=true;return@target}
                         val anime=c.getLong(c.getColumnIndexOrThrow("anime_id"))
-                        if(db.rawQuery("SELECT 1 FROM artwork WHERE manual=1 AND ((entity_type='episode' AND entity_id=?) OR (entity_type='anime' AND entity_id=?)) LIMIT 1",arrayOf(episode.toString(),anime.toString())).use {it.moveToFirst()})return@target
+                        if(db.rawQuery("SELECT 1 FROM artwork WHERE manual=1 AND ((entity_type='episode' AND entity_id=?) OR (entity_type='anime' AND entity_id=?)) LIMIT 1",arrayOf(episode.toString(),anime.toString())).use {it.moveToFirst()}) {protected=true;return@target}
                         val archive=JSONObject();for(i in 0 until c.columnCount)archive.put(c.getColumnName(i),c.getString(i));archived.put(archive)
-                        db.delete("artwork","entity_type='episode' AND entity_id=?",arrayOf(episode.toString()))
-                        db.delete("episodes","id=?",arrayOf(episode.toString()));changed=true
-                        val empty=db.rawQuery("SELECT 1 FROM episodes WHERE anime_id=? LIMIT 1",arrayOf(anime.toString())).use {!it.moveToFirst()}
-                        if(empty) {db.delete("artwork","entity_type='anime' AND entity_id=?",arrayOf(anime.toString()));db.delete("anime","id=?",arrayOf(anime.toString()))}
+                        removals+=episode to anime
                     }
+                }
+                if(protected)return@transaction
+                removals.forEach { (episode,anime) ->
+                    db.delete("artwork","entity_type='episode' AND entity_id=?",arrayOf(episode.toString()))
+                    db.delete("episodes","id=?",arrayOf(episode.toString()));changed=true
+                    val empty=db.rawQuery("SELECT 1 FROM episodes WHERE anime_id=? LIMIT 1",arrayOf(anime.toString())).use {!it.moveToFirst()}
+                    if(empty) {db.delete("artwork","entity_type='anime' AND entity_id=?",arrayOf(anime.toString()));db.delete("anime","id=?",arrayOf(anime.toString()))}
                 }
                 val data=JSONObject(item.json.toString()).put("excludedBanner",true).put("state","CANCELLED").put("episodeId",0).put("animeId",0).put("rejectedLibraryRows",archived)
                 db.execSQL("UPDATE native_downloads SET data=? WHERE id=?",arrayOf(data.toString(),item.id))
