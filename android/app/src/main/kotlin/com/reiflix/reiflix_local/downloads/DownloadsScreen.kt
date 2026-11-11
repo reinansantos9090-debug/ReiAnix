@@ -285,8 +285,10 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         properties=DialogProperties(usePlatformDefaultWidth=false),
     ) {
         Surface(
-            modifier=Modifier.fillMaxWidth(0.88f).widthIn(max=390.dp)
-                .fillMaxHeight(0.68f).heightIn(min=330.dp,max=560.dp),
+            // Compact central editor like the reference image, not a
+            // full-screen or oversized download manager sheet.
+            modifier=Modifier.fillMaxWidth(0.62f).widthIn(min=225.dp,max=340.dp)
+                .fillMaxHeight(0.42f).heightIn(min=305.dp,max=445.dp),
             shape=RoundedCornerShape(24.dp),
             color=Color.Black,
             tonalElevation=0.dp,
