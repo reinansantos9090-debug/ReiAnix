@@ -50,9 +50,15 @@ object DownloadScheduling {
         val progress=downloadPercent(item)
         val speed=item.json.optLong("speed")
         val size=android.text.format.Formatter.formatFileSize(context,item.bytes)
-        val total=if(item.total>0)android.text.format.Formatter.formatFileSize(context,item.total) else "tamanho desconhecido"
-        val eta=if(speed>0 && item.total>item.bytes) {
-            val seconds=(item.total-item.bytes)/speed; " • ${seconds/60}m ${seconds%60}s"
+        // Reuse the size already discovered in the download editor. The
+        // transfer's authoritative 'total' takes precedence as soon as the
+        // server supplies it; HLS estimates are always marked approximate.
+        val displayTotal=downloadDisplaySize(item)
+        val total=displayTotal?.let {
+            (if(it.exact) "" else "≈ ")+android.text.format.Formatter.formatFileSize(context,it.bytes)
+        } ?: "tamanho desconhecido"
+        val eta=if(speed>0 && displayTotal?.exact==true && displayTotal.bytes>item.bytes) {
+            val seconds=(displayTotal.bytes-item.bytes)/speed; " • ${seconds/60}m ${seconds%60}s"
         } else ""
         val detail="${DownloadState.labels[item.state] ?: item.state} • "+(progress?.let {"$it% • "} ?: "")+"$size / $total"+
             (if(speed>0) " • ${android.text.format.Formatter.formatFileSize(context,speed)}/s" else "")+eta
@@ -95,7 +101,9 @@ object DownloadScheduling {
     fun publish(context: Context) {
         val rows=DownloadSnapshots.items.value
         rows.forEach { item ->
-            val marker=item.state+":"+item.bytes+":"+item.json.optLong("speed")+":"+item.json.optString("coverCache")
+            val marker=item.state+":"+item.bytes+":"+item.total+":"+item.json.optLong("detectedSize")+
+                ":"+item.json.optBoolean("detectedSizeExact")+":"+item.json.optLong("hlsEstimatedTotal")+
+                ":"+item.json.optLong("speed")+":"+item.json.optString("coverCache")
             if(posted[item.id]==marker)return@forEach
             posted[item.id]=marker
             val path=item.json.optString("coverCache")
