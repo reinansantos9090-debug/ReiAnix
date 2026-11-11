@@ -15,6 +15,7 @@ internal data class BrowserMediaOption(
     val quality: String,
     val format: String,
     val origin: String,
+    val mimeHint: String = "",
     val separateAudio: Boolean = false,
     val receivedAt: Long = System.nanoTime() / 1_000_000,
 ) {
@@ -27,6 +28,7 @@ internal data class BrowserMediaOption(
                 quality = obj.optString("quality").trim().take(48),
                 format = obj.optString("format").lowercase(),
                 origin = obj.optString("origin").lowercase(),
+                mimeHint = obj.optString("mimeHint").lowercase().take(80),
                 separateAudio = obj.optBoolean("separateAudio"),
             ).takeIf(::eligible)
         }.getOrNull()
@@ -43,7 +45,12 @@ internal data class BrowserMediaOption(
                 value.frame.length in 1..100 &&
                 value.format in setOf("hls", "video", "dash") &&
                 value.origin in setOf("visible-video", "source", "quality-link", "master") &&
-                (knownMedia || value.origin == "visible-video") &&
+                (knownMedia || value.origin == "visible-video" ||
+                    value.origin == "master" ||
+                    (value.origin == "source" &&
+                        (value.mimeHint.startsWith("video/") ||
+                            value.mimeHint.contains("mpegurl") ||
+                            value.mimeHint.contains("dash+xml")))) &&
                 value.quality.none { it == '\r' || it == '\n' || it.isISOControl() } &&
                 !PlayerMediaCandidate.advertisementUrl(value.url)
         }.getOrDefault(false)
