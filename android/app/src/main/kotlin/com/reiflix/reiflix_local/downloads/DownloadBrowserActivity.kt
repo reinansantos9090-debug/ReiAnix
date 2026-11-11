@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap
 class DownloadBrowserActivity: ComponentActivity() {
     private var requested by mutableStateOf("")
     private var web: WebView?=null
+    private val mediaRequests=ConcurrentHashMap<String,Pair<Long,Map<String,String>>>()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); accept(intent)
         setContent { ReiAnixComposeTheme { Browser() } }
@@ -63,11 +64,22 @@ class DownloadBrowserActivity: ComponentActivity() {
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this,true)
                 webViewClient=object: WebViewClient() {
+                    override fun shouldInterceptRequest(view: WebView,request: WebResourceRequest): WebResourceResponse? {
+                        if(request.method=="GET" && request.url.scheme in setOf("http","https")) {
+                            val headers=request.requestHeaders.filter { (key,value) ->
+                                key.lowercase() in setOf("origin","referer","user-agent","authorization","cookie") &&
+                                    value.length<=16384 && value.none {it=='\r'||it=='\n'}
+                            }
+                            if(mediaRequests.size>=128) mediaRequests.entries.minByOrNull {it.value.first}?.let {mediaRequests.remove(it.key,it.value)}
+                            mediaRequests[request.url.toString()]=android.os.SystemClock.elapsedRealtime() to headers
+                        }
+                        return null
+                    }
                     override fun shouldOverrideUrlLoading(view: WebView,request: WebResourceRequest): Boolean {
                         if(request.url.scheme !in setOf("http","https")) { return true }
                         return false
                     }
-                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear();error="" }
+                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear();mediaRequests.clear();error="" }
                     override fun onPageFinished(view: WebView,url: String) { address=url; title=view.title.orEmpty() }
 
                 }
@@ -132,6 +144,11 @@ class DownloadBrowserActivity: ComponentActivity() {
             CookieManager.getInstance().getCookie(url)?.let {putString("Cookie",it)}
             if(!agent.isNullOrBlank())putString("User-Agent",agent)
             if(page.isNotBlank())putString("Referer",page)
+            // Only use headers actually observed for this exact URL, never those of another CDN.
+            mediaRequests[url]?.takeIf {android.os.SystemClock.elapsedRealtime()-it.first<120000}?.second?.forEach { (key,value) ->
+                val canonical=when(key.lowercase()) {"origin"->"Origin";"referer"->"Referer";"user-agent"->"User-Agent";"authorization"->"Authorization";"cookie"->"Cookie";else->key}
+                putString(canonical,value)
+            }
         }
         startActivity(Intent(this,DownloadsActivity::class.java).setData(Uri.parse(url))
             .putExtra("headers",headers).putExtra(Intent.EXTRA_TITLE,title).putExtra("playerCapture",capture?.evidence()?.toString())

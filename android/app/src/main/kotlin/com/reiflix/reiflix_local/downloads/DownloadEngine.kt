@@ -88,7 +88,8 @@ class DownloadEngine(private val context: Context) {
             }
             connection=DownloadHttp.connect(secret.getString("url"),requestHeaders,resume,validator)
             val code=connection.responseCode
-            if(code==401 || code==403) throw PermanentFailure("Autenticação necessária ou link expirado. Atualize o link ou a sessão.")
+            if(code==401) throw PermanentFailure("O servidor solicitou autenticação (HTTP 401). Abra novamente o vídeo no navegador e capture o link.")
+            if(code==403) throw PermanentFailure("O servidor recusou o download (HTTP 403). Capture novamente o vídeo no navegador; a sessão ou as regras do servidor podem impedir esta transferência.")
             if(code==404 || code==410) throw PermanentFailure("Arquivo não encontrado ou link expirado")
             if(code==416) { restart(id,file); throw IOException("Faixa anterior indisponível; reiniciando") }
             if(code==429 || code>=500) throw IOException("Servidor temporariamente indisponível")

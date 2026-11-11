@@ -24,7 +24,17 @@ object DownloadHttp {
             connection.setRequestProperty("User-Agent","ReiAnix/Downloads")
             // Never forward cookies, referer tokens or credentials to a redirect's other origin.
             if(sameOrigin(origin,target)) headers.forEach { (key,value) ->
-                if(key.lowercase() in setOf("authorization","cookie","referer","user-agent") && value.none { c -> c=='\r'||c=='\n' }) connection.setRequestProperty(key,value)
+                if(key.lowercase() in setOf("authorization","cookie","referer","user-agent","origin") && value.none { c -> c=='\r'||c=='\n' }) connection.setRequestProperty(key,value)
+            }
+            if(!sameOrigin(origin,target)) headers.forEach { (key,value) ->
+                if(value.none {it=='\r'||it=='\n'}) when(key.lowercase()) {
+                    "user-agent", "origin" -> connection.setRequestProperty(key,value)
+                    "referer" -> runCatching {
+                        val page=URL(value)
+                        if(page.protocol in setOf("http","https") && !(page.protocol=="https" && target.protocol!="https"))
+                            connection.setRequestProperty("Referer",URL(page.protocol,page.host,page.port,"/").toString())
+                    }
+                }
             }
             if(end!=null || (offset>0 && !validator.isNullOrBlank())) {
                 connection.setRequestProperty("Range","bytes=$offset-${end ?: ""}"); if(!validator.isNullOrBlank()) connection.setRequestProperty("If-Range",validator)

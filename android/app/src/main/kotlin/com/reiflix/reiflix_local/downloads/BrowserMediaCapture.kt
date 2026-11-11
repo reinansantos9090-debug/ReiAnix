@@ -60,7 +60,8 @@ internal object BrowserMediaCapture {
       const now=Date.now(),matching=Array.from(manifests.values()).filter(m=>now-m.time<60000&&Math.abs(m.duration-v.duration)<=Math.max(10,v.duration*0.02));
       matching.sort((a,b)=>b.time-a.time);if(matching.length!==1){clear();return;}const media=matching[0];
       url=media.url;source='hls';
-      for(const master of masters.values()){if(master.children.includes(url)&&now-master.time<60000){url=master.url;break;}}
+      // Keep the exact rendition the player loaded, including its signed query.
+      // Switching back to a master may require a different session or choose another rendition.
     }
     if(badUrl(url)){clear();return;}
     const key=url+'|'+v.videoWidth+'|'+v.videoHeight+'|'+v.duration;
