@@ -65,10 +65,10 @@ class ReiAnixScrollAwareHeaderState internal constructor() {
     }
 
     internal fun updateContentAtTop(isAtTop: Boolean) {
+        // Returning to the first item must not expand the header instantly:
+        // doing so shifts the list during a scroll and looks like a "jump".
+        // The next downward gesture expands it smoothly via onPreScroll.
         contentAtTop = isAtTop
-        if (isAtTop && measuredHeightPx > 0) {
-            visibleHeightPx = measuredHeightPx.toFloat()
-        }
     }
 
     internal fun updateMeasuredHeight(heightPx: Int) {

@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
@@ -216,25 +217,9 @@ private fun ReiAnixHomeObservedScreen(
                     onOpenCollector = onOpenCollector,
                     onSearch = onSearch,
                     onRefresh = onRefresh,
+                    onOpenTimeline = onOpenTimeline,
+                    onOpenDurationAnomalies = onOpenDurationAnomalies,
                 )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
-                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                ) {
-                    ReiAnixSecondaryButton(
-                        text = "Linha do tempo",
-                        onClick = onOpenTimeline,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ReiAnixSecondaryButton(
-                        text = "Durações incomuns",
-                        onClick = onOpenDurationAnomalies,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
             }
         }
 
@@ -587,10 +572,12 @@ private fun HomeNotice(
 }
 
 @Composable
-private fun HomeHeader(
+internal fun HomeHeader(
     onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenTimeline: (() -> Unit)? = null,
+    onOpenDurationAnomalies: (() -> Unit)? = null,
 ) {
     val menuExpanded = rememberSaveable { mutableStateOf(false) }
 
@@ -598,6 +585,13 @@ private fun HomeHeader(
         title = "ReiAnix",
         titleStyle = ReiAnixTokens.TypographyTokens.brandTitle,
         actions = {
+            if (onOpenTimeline != null) {
+                ReiAnixIconActionButton(
+                    icon = Icons.Filled.History,
+                    contentDescription = "Linha do tempo",
+                    onClick = onOpenTimeline,
+                )
+            }
             ReiAnixIconActionButton(
                 icon = Icons.Filled.Search,
                 contentDescription = "Pesquisar na biblioteca",
@@ -628,6 +622,15 @@ private fun HomeHeader(
                             onOpenCollector()
                         },
                     )
+                    if (onOpenDurationAnomalies != null) {
+                        DropdownMenuItem(
+                            text = { Text("Durações incomuns") },
+                            onClick = {
+                                menuExpanded.value = false
+                                onOpenDurationAnomalies()
+                            },
+                        )
+                    }
                 }
             }
         },
