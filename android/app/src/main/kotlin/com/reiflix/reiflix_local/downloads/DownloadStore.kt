@@ -38,7 +38,9 @@ object DownloadState {
 
 data class DownloadItem(val json: JSONObject) {
     val id: String get() = json.getString("id")
-    val name: String get() = json.getString("name")
+    // The app-controlled virtual URI retains the user-selected episode filename.
+    val name: String get() = Uri.parse(json.optString("virtualUri")).lastPathSegment
+        ?.takeIf { it.isNotBlank() } ?: json.getString("name")
     val state: String get() = json.optString("state", "QUEUED")
     val bytes: Long get() = json.optLong("bytes")
     val total: Long get() = json.optLong("total", -1)
@@ -65,6 +67,41 @@ class DownloadStore(context: Context) {
         db.transaction { connection ->
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_downloads (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)")
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_download_profiles (id TEXT PRIMARY KEY NOT NULL, secret TEXT NOT NULL)")
+            // Repair old COMPLETE rows whose name/path were overwritten by an output
+            // provider. Match by the download-owned identity, never by filename alone.
+            val legacy = connection.rawQuery("SELECT id,data FROM native_downloads", null).use { c ->
+                buildList {
+                    while (c.moveToNext()) add(c.getString(0) to JSONObject(c.getString(1)))
+                }
+            }
+            legacy.forEach { (id, data) ->
+                if (data.optString("state") != "COMPLETE" || data.optLong("episodeId") <= 0) return@forEach
+                val originalUri = data.optString("virtualUri")
+                val outputUri = data.optString("output")
+                if (originalUri.isBlank() || outputUri.isBlank()) return@forEach
+                val originalName = DownloadItem(data).name
+                if (originalName.isBlank()) return@forEach
+                val providerName = data.optString("name")
+                if (providerName != originalName) {
+                    data.put("name", originalName)
+                    connection.update("native_downloads", ContentValues().apply {
+                        put("data", data.toString())
+                    }, "id=?", arrayOf(id))
+                }
+                val owned = arrayOf(data.optLong("episodeId").toString(), "download:$id")
+                connection.update("episodes", ContentValues().apply {
+                    put("path", originalUri)
+                }, "id=? AND media_identity=? AND path=?", owned + outputUri)
+                connection.update("episodes", ContentValues().apply {
+                    put("file_name", originalName)
+                }, "id=? AND media_identity=? AND manual_override=0 AND path=? AND (file_name IS NULL OR file_name!=?)",
+                    owned + originalUri + originalName)
+                // The scanner previously also derived an episode title from
+                // the output filename (e.g. "Animes Online"). For native downloads
+                // the chosen filename is authoritative unless edited manually.
+                connection.execSQL("UPDATE episodes SET episode_title=NULL WHERE id=? AND media_identity=? AND manual_override=0 AND path=? AND episode_title IS NOT NULL",
+                    owned + originalUri)
+            }
         }
         // Migrate only episodes proven to belong to previously completed
         // downloads. Older builds stored a MediaStore Downloads URI directly,
@@ -275,19 +312,18 @@ class DownloadStore(context: Context) {
             val data = connection.rawQuery("SELECT data FROM native_downloads WHERE id=?", arrayOf(id)).use { it.moveToFirst(); JSONObject(it.getString(0)) }
             check(data.optString("state")=="SAVING") { "O download não está na etapa de publicação" }
             data.put("state", "COMPLETE").put("output", output.toString()).put("message", "Concluído")
-            if(finalBytes>0) data.put("bytes",finalBytes).put("total",finalBytes)
-            // Keep the user's original filename. ContentProviders can return a
-            // generic display title or even omit the extension after publication.
+                .put("name", DownloadItem(data).name)
             connection.update("native_downloads", ContentValues().apply { put("data", data.toString()) }, "id=?", arrayOf(id))
             if(data.optLong("episodeId")>0) connection.update("episodes", ContentValues().apply {
-                // Keep the same app-owned URI across DOWNLOADING, SAVING and
-                // COMPLETE; the DownloadProvider resolves the final output.
-                put("path", data.getString("virtualUri"))
-                put("file_name",data.getString("name"))
+                // The episode keeps one provider URI before and after publication.
+                put("path", data.getString("virtualUri")); put("file_name", data.getString("name"))
                 put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
-                put("file_size", data.optLong("bytes")); put("mime_type",data.optString("mime"))
-                put("missing", 0); put("availability_state", "available")
-            }, "id=? AND (media_identity=? OR path=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri"),output.toString()))
+                put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
+            }, "id=? AND (media_identity=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri")))
+            if(data.optLong("episodeId")>0) connection.execSQL(
+                "UPDATE episodes SET episode_title=NULL WHERE id=? AND media_identity=? AND manual_override=0 AND episode_title IS NOT NULL",
+                arrayOf(data.getLong("episodeId").toString(),"download:$id")
+            )
         }
         DownloadEvents.catalog.tryEmit(Unit)
     }
@@ -349,8 +385,18 @@ class DownloadStore(context: Context) {
         val item=get(id) ?: return
         require(item.state in setOf("COMPLETE", "CANCELLED", "ERROR", "CORRUPT"))
         require(item.state=="COMPLETE" || item.output.isBlank()) { "Conclua ou retome o salvamento antes de remover o registro" }
-        db.transaction { it.delete("native_downloads", "id=?", arrayOf(id)) }
+        db.transaction { connection ->
+            if(item.state=="COMPLETE" && item.output.isNotBlank() && item.episodeId>0) {
+                // A forgotten download becomes an ordinary local file reference.
+                connection.update("episodes",ContentValues().apply {
+                    put("path",item.output)
+                    putNull("media_identity")
+                },"id=? AND media_identity=?",arrayOf(item.episodeId.toString(),"download:$id"))
+            }
+            connection.delete("native_downloads","id=?",arrayOf(id))
+        }
         partial(id).delete()
+        DownloadEvents.catalog.tryEmit(Unit)
     }
     companion object {
         fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

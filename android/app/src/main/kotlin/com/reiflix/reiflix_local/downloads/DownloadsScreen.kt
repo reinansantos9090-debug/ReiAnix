@@ -231,8 +231,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
-    // A filename supplied by the browser comes from the episode page, not an
-    // opaque CDN URL. Never replace that meaningful title with a server banner.
+    // Names passed by the ReiAnix browser are deliberate; a CDN header must not replace them.
     var nameTouched by remember { mutableStateOf(editing!=null || initialName.isNotBlank()) }
     var anime by remember { mutableStateOf(editing?.json?.optString("animeTitle").orEmpty().ifBlank {DownloadIdentity.title(initialTitle)}) }
     var destination by remember { mutableStateOf(editing?.json?.optString("destination").orEmpty()) }

@@ -2230,7 +2230,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
         assertTrue(com.reiflix.reiflix_local.downloads.DownloadCatalogBridge.reconcile(database))
         database.read {db ->
-            db.rawQuery("SELECT progress,watched,path FROM episodes WHERE id=7",null).use {c ->assertTrue(c.moveToFirst());assertEquals(500.0,c.getDouble(0),0.0);assertEquals(1,c.getInt(1));assertEquals(output,c.getString(2))}
+            db.rawQuery("SELECT progress,watched,path FROM episodes WHERE id=7",null).use {c ->assertTrue(c.moveToFirst());assertEquals(500.0,c.getDouble(0),0.0);assertEquals(1,c.getInt(1));assertEquals(virtual,c.getString(2))}
             assertEquals(1L,android.database.DatabaseUtils.longForQuery(db,"SELECT count(*) FROM episodes",null))
             assertEquals(1L,android.database.DatabaseUtils.longForQuery(db,"SELECT count(*) FROM anime",null))
             db.rawQuery("SELECT personal_note,user_tags FROM anime WHERE id=1",null).use {c ->assertTrue(c.moveToFirst());assertTrue(c.getString(0).contains("keep this note"));assertTrue(c.getString(0).contains("download note"));assertTrue(c.getString(1).contains("download-tag"))}
