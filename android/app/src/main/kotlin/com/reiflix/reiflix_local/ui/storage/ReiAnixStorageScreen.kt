@@ -112,13 +112,17 @@ fun ReiAnixStorageScreen(
 ) {
     ReiAnixSettingsRoot {
         ReiAnixLibraryFoldersSection(state, nativeFolders, onSelectSaf, onRemoveSaf,
-            onRefreshNativeFolders, onBack = onBack)
+            onRefreshNativeFolders, onRequestMediaAccess = onRequestMediaAccess, onBack = onBack)
     }
 }
 
 /** Same canonical folder state and native SAF actions as the dedicated storage screen. */
 @Composable
-fun ReiAnixLibraryFoldersRoute(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit = {}) {
+fun ReiAnixLibraryFoldersRoute(
+    viewModel: ReiAnixLibraryViewModel,
+    onBack: () -> Unit = {},
+    onRequestMediaAccess: () -> Unit,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val nativeFolders by viewModel.nativeFoldersState.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel) { viewModel.refreshNativeFolders() }
@@ -129,6 +133,7 @@ fun ReiAnixLibraryFoldersRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
         onSelectSaf = viewModel::selectSafTree,
         onRemoveSaf = viewModel::removeSafTree,
         onRefreshNativeFolders = viewModel::refreshNativeFolders,
+        onRequestMediaAccess = onRequestMediaAccess,
         onBack = onBack,
     )
     }
@@ -141,6 +146,7 @@ private fun ReiAnixLibraryFoldersSection(
     onSelectSaf: () -> Unit,
     onRemoveSaf: (String) -> Unit,
     onRefreshNativeFolders: () -> Unit,
+    onRequestMediaAccess: () -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
 ) {
@@ -212,6 +218,17 @@ private fun ReiAnixLibraryFoldersSection(
                                     else "Downloads/ReiAnix · Pasta padrão do aplicativo",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (!storage.mediaReadState.equals("full", ignoreCase = true) &&
+                                    android.os.Build.VERSION.SDK_INT >= 29) {
+                                    Text(
+                                        "Arquivos salvos por outros aplicativos podem exigir permissão de vídeos.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    androidx.compose.material3.TextButton(onClick = onRequestMediaAccess) {
+                                        Text("Permitir acesso aos vídeos")
+                                    }
+                                }
                             }
                         }
                     }
