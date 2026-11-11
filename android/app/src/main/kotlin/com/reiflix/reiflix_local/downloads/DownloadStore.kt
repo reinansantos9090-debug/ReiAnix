@@ -313,13 +313,17 @@ class DownloadStore(context: Context) {
             check(data.optString("state")=="SAVING") { "O download não está na etapa de publicação" }
             data.put("state", "COMPLETE").put("output", output.toString()).put("message", "Concluído")
                 .put("name", DownloadItem(data).name)
+            // PR #296: the exported MP4 can have a different byte length from its TS source.
+            if (finalBytes > 0L) data.put("bytes", finalBytes).put("total", finalBytes)
             connection.update("native_downloads", ContentValues().apply { put("data", data.toString()) }, "id=?", arrayOf(id))
             if(data.optLong("episodeId")>0) connection.update("episodes", ContentValues().apply {
                 // The episode keeps one provider URI before and after publication.
                 put("path", data.getString("virtualUri")); put("file_name", data.getString("name"))
                 put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
-                put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
-            }, "id=? AND (media_identity=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri")))
+                put("file_size", data.optLong("bytes")); put("mime_type",data.optString("mime"))
+                put("missing", 0); put("availability_state", "available")
+            }, "id=? AND (media_identity=? OR path=? OR path=?)",
+                arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri"),output.toString()))
             if(data.optLong("episodeId")>0) connection.execSQL(
                 "UPDATE episodes SET episode_title=NULL WHERE id=? AND media_identity=? AND manual_override=0 AND episode_title IS NOT NULL",
                 arrayOf(data.getLong("episodeId").toString(),"download:$id")
