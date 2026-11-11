@@ -329,7 +329,13 @@ class DownloadStore(context: Context) {
         mutate(id) {
             require(it.optString("state") in setOf("ERROR","PAUSED"))
             if(it.optString("destination")!=destination) { previousOutput=it.optString("output"); it.put("destination",destination).put("output","") }
-            if(previousUrl!=url) { it.put("restart",true).put("bytes",0).put("total",-1).put("parallelDisabled",false);it.remove("hls");it.remove("playerCapture");it.remove("captureApproved");it.remove("captureProbeStage") }
+            if(previousUrl!=url) {
+                it.put("restart",true).put("bytes",0).put("total",-1).put("parallelDisabled",false)
+                it.remove("hls");it.remove("playerCapture");it.remove("captureApproved");it.remove("captureProbeStage")
+                // The editor probe described the old URL; never show it as
+                // the byte count of an entirely different source.
+                it.remove("detectedSize");it.remove("detectedSizeExact")
+            }
             it.put("secret",encrypted).put("signature",digest(url.toByteArray())).put("expectedHash",normalized)
                 .put("hashType",hashType).put("state","QUEUED").put("attempts",0).put("nextAttempt",0)
         }
