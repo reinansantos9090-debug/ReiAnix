@@ -81,7 +81,8 @@ class DownloadStore(context: Context) {
                 if (originalUri.isBlank() || outputUri.isBlank()) return@forEach
                 val originalName = DownloadItem(data).name
                 if (originalName.isBlank()) return@forEach
-                if (data.optString("name") != originalName) {
+                val providerName = data.optString("name")
+                if (providerName != originalName) {
                     data.put("name", originalName)
                     connection.update("native_downloads", ContentValues().apply {
                         put("data", data.toString())
@@ -95,6 +96,13 @@ class DownloadStore(context: Context) {
                     put("file_name", originalName)
                 }, "id=? AND media_identity=? AND manual_override=0 AND path=?",
                     owned + originalUri)
+                if (providerName != originalName && providerName.isNotBlank()) {
+                    // A scanner may also have promoted the provider basename to the
+                    // episode title; clear only that derived title, never a manual one.
+                    val providerTitle = providerName.substringBeforeLast('.',providerName)
+                    connection.execSQL("UPDATE episodes SET episode_title=NULL WHERE id=? AND media_identity=? AND manual_override=0 AND LOWER(TRIM(COALESCE(episode_title,'')))=LOWER(?)",
+                        arrayOf(owned[0],owned[1],providerTitle))
+                }
             }
         }
     }
