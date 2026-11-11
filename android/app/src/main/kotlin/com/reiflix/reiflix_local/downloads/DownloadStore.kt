@@ -67,6 +67,35 @@ class DownloadStore(context: Context) {
         db.transaction { connection ->
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_downloads (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)")
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_download_profiles (id TEXT PRIMARY KEY NOT NULL, secret TEXT NOT NULL)")
+            // Repair old COMPLETE rows whose name/path were overwritten by an output
+            // provider. Match by the download-owned identity, never by filename alone.
+            val legacy = connection.rawQuery("SELECT id,data FROM native_downloads", null).use { c ->
+                buildList {
+                    while (c.moveToNext()) add(c.getString(0) to JSONObject(c.getString(1)))
+                }
+            }
+            legacy.forEach { (id, data) ->
+                if (data.optString("state") != "COMPLETE" || data.optLong("episodeId") <= 0) return@forEach
+                val originalUri = data.optString("virtualUri")
+                val outputUri = data.optString("output")
+                if (originalUri.isBlank() || outputUri.isBlank()) return@forEach
+                val originalName = DownloadItem(data).name
+                if (originalName.isBlank()) return@forEach
+                if (data.optString("name") != originalName) {
+                    data.put("name", originalName)
+                    connection.update("native_downloads", ContentValues().apply {
+                        put("data", data.toString())
+                    }, "id=?", arrayOf(id))
+                }
+                val owned = arrayOf(data.optLong("episodeId").toString(), "download:$id")
+                connection.update("episodes", ContentValues().apply {
+                    put("path", originalUri)
+                }, "id=? AND media_identity=? AND path=?", owned + outputUri)
+                connection.update("episodes", ContentValues().apply {
+                    put("file_name", originalName)
+                }, "id=? AND media_identity=? AND manual_override=0 AND path=?",
+                    owned + originalUri)
+            }
         }
     }
     fun all(): List<DownloadItem> = db.read { connection ->
