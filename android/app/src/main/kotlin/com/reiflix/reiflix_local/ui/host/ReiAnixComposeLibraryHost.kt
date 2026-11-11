@@ -293,8 +293,8 @@ class ReiAnixComposeLibraryHost(
                                 onOpenStorageAccess = {
                                     activity.requestNativeStorageAction("open_broad_storage_settings")
                                 },
-                                onRequestMediaAccess = {
-                                    activity.requestNativeStorageAction("request_media_access")
+                                onSelectDefaultReiAnixFolder = {
+                                    activity.requestDefaultReiAnixFolderAuthorization()
                                 },
                                 onAddFolder = libraryViewModel::selectSafTree,
                                 onRemoveFolder = libraryViewModel::removeSafTree,
@@ -372,7 +372,6 @@ class ReiAnixComposeLibraryHost(
                                     }
                                 },
                                 onRemoveSaf = libraryViewModel::removeSafTree,
-                                onRequestMediaAccess = {},
                                 onSelectDefaultReiAnixFolder = {
                                     activity.requestDefaultReiAnixFolderAuthorization()
                                 },
