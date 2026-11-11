@@ -349,8 +349,8 @@ class ReiAnixComposeLibraryHost(
                                     com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFoldersRoute(
                                         libraryViewModel,
                                         onBack = onFoldersBack,
-                                        onRequestMediaAccess = {
-                                            activity.requestNativeStorageAction("request_media_access")
+                                        onSelectDefaultReiAnixFolder = {
+                                            activity.requestDefaultReiAnixFolderAuthorization()
                                         },
                                     )
                                 },
@@ -372,8 +372,9 @@ class ReiAnixComposeLibraryHost(
                                     }
                                 },
                                 onRemoveSaf = libraryViewModel::removeSafTree,
-                                onRequestMediaAccess = {
-                                    activity.requestNativeStorageAction("request_media_access")
+                                onRequestMediaAccess = {},
+                                onSelectDefaultReiAnixFolder = {
+                                    activity.requestDefaultReiAnixFolderAuthorization()
                                 },
                                 onOpenBroadSettings = {
                                     activity.requestNativeStorageAction("open_broad_storage_settings")
