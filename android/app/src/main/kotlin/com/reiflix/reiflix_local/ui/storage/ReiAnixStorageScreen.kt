@@ -29,13 +29,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Add
 import com.reiflix.reiflix_local.ui.settings.settingsClickable
 import androidx.compose.ui.semantics.contentDescription
@@ -179,7 +179,15 @@ private fun ReiAnixLibraryFoldersSection(
         }.getOrDefault(false)
 
     val defaultSource = configuredSafSources.firstOrNull(::isDefaultReiAnixFolder)
-    val defaultAuthorized = defaultSource?.let { storage.sourceState(it) == "available" } == true
+    val localContext = LocalContext.current
+    val defaultAuthorized = defaultSource?.let { source ->
+        runCatching {
+            val treeUri = android.net.Uri.parse(source.reference)
+            localContext.contentResolver.persistedUriPermissions.any { permission ->
+                permission.isReadPermission && permission.uri == treeUri
+            }
+        }.getOrDefault(false)
+    } == true
     val otherSafSources = configuredSafSources.filterNot(::isDefaultReiAnixFolder)
 
     // Keep the folder list stable while SQLite refreshes. A very short query should
