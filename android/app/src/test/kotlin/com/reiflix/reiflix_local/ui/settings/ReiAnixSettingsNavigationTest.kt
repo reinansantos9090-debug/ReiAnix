@@ -11,7 +11,7 @@ class ReiAnixSettingsNavigationTest {
     @Test fun rootCategoriesKeepRequestedCloudStreamOrder() {
         assertEquals(
             listOf(
-                "Geral", "Player", "Metadados e Capas", "Diagnóstico e Backup",
+                "Geral", "Player", "Downloads", "Metadados e Capas", "Diagnóstico e Backup",
                 "Contas e Avançado", "Pastas",
             ),
             SettingsRootCategories.map { it.label },
