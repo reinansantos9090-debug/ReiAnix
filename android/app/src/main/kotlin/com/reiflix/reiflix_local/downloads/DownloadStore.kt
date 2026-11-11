@@ -38,7 +38,9 @@ object DownloadState {
 
 data class DownloadItem(val json: JSONObject) {
     val id: String get() = json.getString("id")
-    val name: String get() = json.getString("name")
+    // The app-controlled virtual URI retains the user-selected episode filename.
+    val name: String get() = Uri.parse(json.optString("virtualUri")).lastPathSegment
+        ?.takeIf { it.isNotBlank() } ?: json.getString("name")
     val state: String get() = json.optString("state", "QUEUED")
     val bytes: Long get() = json.optLong("bytes")
     val total: Long get() = json.optLong("total", -1)
