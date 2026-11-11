@@ -4,6 +4,14 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.Manifest
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.webkit.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -26,9 +34,21 @@ import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
 import org.json.JSONArray
 import java.util.concurrent.ConcurrentHashMap
 
+/** The selected URL is edited and enqueued over the web page, never via navigation. */
+private data class BrowserDownloadOffer(
+    val url: String,
+    val headers: Map<String,String>,
+    val title: String,
+    val filename: String,
+    val capture: PlayerMediaCandidate?,
+    val hlsHint: Boolean,
+)
+
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
 class DownloadBrowserActivity: ComponentActivity() {
     private var requested by mutableStateOf("")
+    private var pendingOffer by mutableStateOf<BrowserDownloadOffer?>(null)
+    private var offerError by mutableStateOf("")
     private var web: WebView?=null
     private val mediaRequests=ConcurrentHashMap<String,Pair<Long,Map<String,String>>>()
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,16 +66,44 @@ class DownloadBrowserActivity: ComponentActivity() {
         var title by remember { mutableStateOf("") }
         var progress by remember { mutableIntStateOf(0) }
         var showMedia by remember { mutableStateOf(false) }
-        var candidates by remember { mutableStateOf<List<PlayerMediaCandidate>>(emptyList()) }
+        var submitting by remember { mutableStateOf(false) }
+        val downloadStore=remember {DownloadStore(applicationContext)}
+        val scope=rememberCoroutineScope()
+        val notificationPermission=rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { }
+        var candidates by remember { mutableStateOf<List<BrowserDownloadChoice>>(emptyList()) }
         var error by remember { mutableStateOf("") }
         val observed=remember {ConcurrentHashMap<String,PlayerMediaCandidate>()}
+        val sourceOptions=remember {ConcurrentHashMap<String,BrowserMediaOption>()}
+        fun updateCandidates() {
+            val now=System.nanoTime()/1_000_000
+            val confirmed=observed.values.filter {
+                now-it.receivedAt in 0..20000 && PlayerMediaCandidate.eligible(it)
+            }
+            // Keep the existing largest-visible-player filter to avoid ad players.
+            val largest=confirmed.maxOfOrNull {it.area} ?: 0.0
+            val main=confirmed.filter {it.area>=largest*0.75}
+            val visible=sourceOptions.values.filter {
+                now-it.receivedAt in 0..60000 && BrowserMediaOption.eligible(it)
+            }
+            candidates=BrowserMediaResults.combine(main,visible)
+        }
         val browser=remember {
             WebView(this).apply {
                 web=this
-                BrowserMediaCapture.install(this) { frame,item ->
-                    if(item==null)observed.remove(frame)
-                    else if(observed.size<20 || observed.containsKey(frame))observed[frame]=item
-                }
+                BrowserMediaCapture.install(
+                    this,
+                    onMedia = { frame,item ->
+                        if(item==null)observed.remove(frame)
+                        else if(observed.size<20 || observed.containsKey(frame))observed[frame]=item
+                    },
+                    onOption = { item ->
+                        val key=item.frame+"::"+item.url
+                        if(sourceOptions.size<96 || sourceOptions.containsKey(key))sourceOptions[key]=item
+                        if(showMedia)updateCandidates()
+                    },
+                )
                 settings.javaScriptEnabled=true; settings.domStorageEnabled=true
                 settings.allowFileAccess=false; settings.allowContentAccess=false
                 settings.useWideViewPort=true; settings.loadWithOverviewMode=true
@@ -79,7 +127,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                         if(request.url.scheme !in setOf("http","https")) { return true }
                         return false
                     }
-                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear();mediaRequests.clear();error="" }
+                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear();sourceOptions.clear();mediaRequests.clear();error="" }
                     override fun onPageFinished(view: WebView,url: String) { address=url; title=view.title.orEmpty() }
 
                 }
@@ -104,7 +152,14 @@ class DownloadBrowserActivity: ComponentActivity() {
         }
         LaunchedEffect(requested) { if(requested.isNotBlank()) try { DownloadHttp.validateUrl(requested); browser.loadUrl(requested) } catch(_: Exception) { error="Endereço inválido" } }
         DisposableEffect(browser) { onDispose { browser.stopLoading(); browser.destroy(); web=null } }
-        BackHandler { if(browser.canGoBack()) browser.goBack() else finish() }
+        BackHandler {
+            when {
+                pendingOffer!=null -> { if(!submitting)pendingOffer=null }
+                showMedia -> showMedia=false
+                browser.canGoBack() -> browser.goBack()
+                else -> finish()
+            }
+        }
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
@@ -115,12 +170,13 @@ class DownloadBrowserActivity: ComponentActivity() {
                     IconButton(onClick={
                         browser.evaluateJavascript("window.__reiScanPlayers && window.__reiScanPlayers(true)") {
                             browser.postDelayed({
-                                val now=System.nanoTime()/1_000_000
-                                val valid=observed.values.filter {now-it.receivedAt in 0..15000 && PlayerMediaCandidate.eligible(it)}
-                                val largest=valid.maxOfOrNull {it.area} ?: 0.0
-                                candidates=valid.filter {it.area>=largest*0.75}.distinctBy {it.url}.sortedByDescending {it.area}
+                                updateCandidates()
                                 showMedia=true
-                            },2000)
+                            },700)
+                            // A same-origin HLS master can finish loading after
+                            // the first results. Update the open list without a
+                            // second user tap or starting video playback.
+                            browser.postDelayed({ if(showMedia)updateCandidates() },2600)
                         }
                     }) { Icon(Icons.Filled.Download,"Vídeos encontrados") }
                     IconButton(onClick={ startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java)) }) { Icon(Icons.Filled.List,"Fila de downloads") }
@@ -130,12 +186,90 @@ class DownloadBrowserActivity: ComponentActivity() {
                 AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
             }
         }
-        if(showMedia) AlertDialog(onDismissRequest={showMedia=false},title={Text("Vídeos encontrados")},text={
-            if(candidates.isEmpty()) Text("Não foi possível confirmar o vídeo principal. Inicie o episódio e tente novamente, ou use o download do próprio site.")
-            else LazyColumn { items(candidates) { item -> TextButton(onClick={showMedia=false; offer(item.url,browser.settings.userAgentString,null,null,title,item.page,item)}) {
-                Text("Vídeo principal • ${item.width}×${item.height} • ${(item.duration/60).toInt()} min",maxLines=2)
-            } } }
-        },confirmButton={TextButton(onClick={showMedia=false}){Text("Fechar")}})
+        val offer=pendingOffer
+        if(offer!=null) key(offer.url,offer.filename) {
+            DownloadDialog(
+                initialUrl=offer.url,
+                initialHeaders=offer.headers,
+                initialTitle=offer.title,
+                initialName=offer.filename,
+                editing=null,
+                busy=submitting,
+                submissionError=offerError,
+                onDismiss={ if(!submitting){pendingOffer=null;offerError=""} },
+                onSubmit={url,name,destination,_,_,headers,anime,autoName,detected ->
+                    if(!submitting) {
+                        submitting=true
+                        offerError=""
+                        scope.launch {
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    downloadStore.enqueue(
+                                        url=url,name=name,destination=destination,
+                                        expectedHash="",hashType="SHA-256",headers=headers,
+                                        animeTitle=anime,automaticName=autoName,
+                                        playerCapture=offer.capture?.evidence()?.takeIf {
+                                            it.optString("url")==url
+                                        },
+                                        hlsHint=offer.hlsHint && url==offer.url,
+                                        detectedSize=detected?.bytes,detectedExact=detected?.exact==true,
+                                    )
+                                    DownloadSnapshots.refresh(applicationContext)
+                                }
+                                DownloadScheduling.schedule(applicationContext)
+                                if(Build.VERSION.SDK_INT>=33)
+                                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                pendingOffer=null
+                                Toast.makeText(this@DownloadBrowserActivity,
+                                    "Download adicionado à fila",Toast.LENGTH_SHORT).show()
+                            } catch(e: Exception) {
+                                offerError=e.message ?: "Não foi possível iniciar este download"
+                            } finally { submitting=false }
+                        }
+                    }
+                },
+                hlsHint=offer.hlsHint,
+            )
+        }
+        if(showMedia) AlertDialog(
+            onDismissRequest={showMedia=false},
+            title={Text("Fontes e qualidades disponíveis")},
+            text={
+                if(candidates.isEmpty()) {
+                    Text("Nenhum link de vídeo foi encontrado na página atual. Algumas fontes só são disponibilizadas após abrir o player ou iniciar a reprodução.")
+                } else LazyColumn {
+                    items(candidates,key={it.url}) { item ->
+                        val supported=item.format!="dash" && !item.separateAudio
+                        val formatLabel=when(item.format) {
+                            "hls" -> "HLS"
+                            "dash" -> "DASH"
+                            else -> "Vídeo"
+                        }
+                        TextButton(
+                            enabled=supported,
+                            onClick={
+                                showMedia=false
+                                offer(item.url,browser.settings.userAgentString,null,
+                                    if(item.format=="hls")"application/vnd.apple.mpegurl" else null,
+                                    title,item.page,item.capture)
+                            },
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text("${item.quality} • $formatLabel" +
+                                    if(item.capture!=null) " • Player confirmado" else " • Fonte encontrada",
+                                    maxLines=2)
+                                if(!supported) Text(
+                                    if(item.separateAudio) "Faixas de áudio separadas ainda não suportadas"
+                                    else "DASH ainda não é compatível com o downloader",
+                                    style=MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton={TextButton(onClick={showMedia=false}){Text("Fechar")}},
+        )
     }
     private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String,capture: PlayerMediaCandidate? = null) {
         if(!url.startsWith("https://") && !url.startsWith("http://")) return
@@ -150,9 +284,15 @@ class DownloadBrowserActivity: ComponentActivity() {
                 putString(canonical,value)
             }
         }
-        startActivity(Intent(this,DownloadsActivity::class.java).setData(Uri.parse(url))
-            .putExtra("headers",headers).putExtra(Intent.EXTRA_TITLE,title).putExtra("playerCapture",capture?.evidence()?.toString())
-            .putExtra("downloadName",if(capture!=null) DownloadIdentity.capturedFileName(title,url,mime) else URLUtil.guessFileName(url,disposition,mime)))
+        val filename=if(title.isNotBlank() && !title.equals("Animes Online",ignoreCase=true))
+            DownloadIdentity.capturedFileName(title,url,mime)
+        else URLUtil.guessFileName(url,disposition,mime)
+        offerError=""
+        pendingOffer=BrowserDownloadOffer(
+            url=url,headers=headers.keySet().associateWith {headers.getString(it).orEmpty()},
+            title=title,filename=filename,capture=capture,
+            hlsHint=mime?.contains("mpegurl",ignoreCase=true)==true,
+        )
     }
     override fun onPause() { web?.onPause(); super.onPause() }
     override fun onResume() { super.onResume(); web?.onResume() }

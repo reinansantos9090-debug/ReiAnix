@@ -48,6 +48,13 @@ class DownloadEngine(private val context: Context) {
                             active[item.id]=launch { transfer(item.id) }
                         }
                     if(active.isEmpty() && jobs.none { it.state in DownloadState.pending }) break
+                    // Don't keep a user-initiated foreground notification alive
+                    // indefinitely with "0 downloads" while all retryable jobs
+                    // are sleeping. WorkManager/JobScheduler will resume the queue.
+                    if(active.isEmpty() && jobs.none {
+                        it.state in DownloadState.pending &&
+                            it.json.optLong("nextAttempt")<=System.currentTimeMillis()
+                    }) break
                     onProgress("${active.size} download(s) • ${android.text.format.Formatter.formatFileSize(context,jobs.filter { it.state in DownloadState.pending }.sumOf { it.bytes })} recebidos")
                     delay(1000)
                 }
@@ -121,7 +128,8 @@ class DownloadEngine(private val context: Context) {
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             val disposition=connection.getHeaderField("Content-Disposition")
             store.mutate(id) {
-                if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L) {
+                if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L &&
+                    !it.has("playerCapture")) {
                     val serverName=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
                     val proposed=if(it.has("playerCapture")) it.getString("name").substringBeforeLast('.')+"."+serverName.substringAfterLast('.',"mp4") else serverName
                     if(proposed.isNotBlank() && proposed !in setOf(".","..") && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
@@ -245,12 +253,51 @@ class DownloadEngine(private val context: Context) {
             }
         }
         if(store.get(id)?.state !in DownloadState.pending) return
-        store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","SAVING") }
-        if(store.get(id)?.state!="SAVING") return
-        val destination=export(id,file)
-        // Once export is durable, publish exactly that URI and preserve the episode/progress ID.
-        store.complete(id,destination)
-        file.delete() // Open player file descriptors remain valid; new opens use the final URI.
+        // Optional lossless remux only after downloading and verifying the TS.
+        // Keep the original .part untouched so existing player readers can
+        // finish; incompatible media simply retains the original TS file.
+        val beforePublication=store.get(id) ?: return
+        // Keep the source-container identity across interruptions between remux
+        // and export. A retry must NEVER publish raw TS bytes with an .mp4 name.
+        val savedOriginal=beforePublication.json.optString("remuxSourceName")
+        val isTs=savedOriginal.isNotBlank() ||
+            beforePublication.mime.equals("video/mp2t",true) ||
+            beforePublication.name.endsWith(".ts",true)
+        val originalName=savedOriginal.ifBlank {
+            if(beforePublication.mime.equals("video/mp2t",true) &&
+                !beforePublication.name.endsWith(".ts",true))
+                beforePublication.name.substringBeforeLast('.',beforePublication.name)+".ts"
+            else beforePublication.name
+        }
+        val remuxed=if(isTs) DownloadTsRemux.tryRemux(context,file) else null
+        try {
+            if(remuxed!=null) {
+                val original=originalName
+                val mp4Name=original.substringBeforeLast('.',original)+".mp4"
+                store.mutate(id) {
+                    it.put("remuxSourceName",original)
+                    it.put("name",mp4Name).put("mime","video/mp4")
+                }
+                store.registerMedia(id)
+            } else if(savedOriginal.isNotBlank() || (isTs && originalName!=beforePublication.name)) {
+                // An interrupted remux or a TS URL carrying an .mp4 label must
+                // never leave the original MPEG-TS data mislabeled as MP4.
+                store.mutate(id) {
+                    it.put("name",originalName).put("mime","video/mp2t")
+                    it.remove("remuxSourceName")
+                }
+                store.registerMedia(id)
+            }
+            if(store.get(id)?.state !in DownloadState.pending) return
+            store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","SAVING") }
+            if(store.get(id)?.state!="SAVING") return
+            val publishedFile=remuxed ?: file
+            val destination=export(id,publishedFile)
+            // Commit the final published file size, which may differ after
+            // changing container headers without recompressing the video.
+            store.complete(id,destination,publishedFile.length())
+            file.delete() // Original TS is deleted only after durable publication.
+        } finally { remuxed?.delete() }
     }
     private suspend fun export(id: String,file: File): Uri {
         var item=store.get(id)!!
@@ -258,7 +305,7 @@ class DownloadEngine(private val context: Context) {
         var output=item.output.takeIf { it.isNotBlank() }?.let(Uri::parse)
         if(output==null) {
             output=when {
-                tree.isNotBlank() -> DocumentFile.fromTreeUri(context,Uri.parse(tree))?.createFile("application/octet-stream", ".${item.name}.$id.part")?.uri
+                tree.isNotBlank() -> DocumentFile.fromTreeUri(context,Uri.parse(tree))?.createFile(item.mime, ".${item.name}.$id.part")?.uri
                     ?: throw PermanentFailure("Não foi possível criar o arquivo na pasta escolhida")
                 Build.VERSION.SDK_INT>=29 -> context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME,item.name); put(MediaStore.Downloads.MIME_TYPE,item.mime)
@@ -302,7 +349,30 @@ class DownloadEngine(private val context: Context) {
             store.mutate(id) { it.put("output",renamed.toString()) }
             return renamed
         }
-        if(Build.VERSION.SDK_INT>=29 && target.scheme=="content") context.contentResolver.update(target,ContentValues().apply { put(MediaStore.Downloads.IS_PENDING,0) },null,null)
+        if(Build.VERSION.SDK_INT>=29 && target.scheme=="content") {
+            // Publish only after the full video has been flushed. Android can
+            // then index the final display name, MIME and media thumbnail.
+            val published=context.contentResolver.update(target,ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME,item.name)
+                put(MediaStore.Downloads.MIME_TYPE,item.mime)
+                put(MediaStore.Downloads.IS_PENDING,0)
+            },null,null)
+            if(published<=0) throw PermanentFailure("Não foi possível publicar o arquivo concluído no Android")
+            runCatching {
+                val displayName=context.contentResolver.query(
+                    target,arrayOf(MediaStore.Downloads.DISPLAY_NAME),null,null,null
+                )?.use { cursor -> if(cursor.moveToFirst()) cursor.getString(0) else null }
+                if(!displayName.isNullOrBlank()) {
+                    val publicFile=File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                        "ReiAnix/$displayName",
+                    )
+                    android.media.MediaScannerConnection.scanFile(
+                        context,arrayOf(publicFile.absolutePath),arrayOf(item.mime),null
+                    )
+                }
+            }.onFailure { android.util.Log.w("ReiAnixDownload","Android media index refresh failed",it) }
+        }
         return target
     }
     private fun serverHash(connection: HttpURLConnection): Pair<String,String>? {

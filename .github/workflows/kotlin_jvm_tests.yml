@@ -5,6 +5,8 @@ on:
     paths:
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/downloads/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/downloads/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/**"
       - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/catalog/**"
@@ -35,7 +37,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: reianix-kotlin-jvm-${{ github.ref }}
+  # v2 isolates checks from historical runs stuck in GitHub Actions finalization.
+  group: reianix-kotlin-jvm-${{ github.ref }}-v2
   cancel-in-progress: true
 
 permissions:

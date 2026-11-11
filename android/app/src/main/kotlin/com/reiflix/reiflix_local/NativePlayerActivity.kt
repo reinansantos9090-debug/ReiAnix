@@ -6019,6 +6019,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun sourceFor(localUri: Uri): String {
         return when {
+            localUri.scheme.equals("content", true) && localUri.authority == "$packageName.downloads" -> "reianix_download"
             localUri.scheme.equals("content", true) && localUri.authority == MediaStore.AUTHORITY -> "mediastore"
             localUri.scheme.equals("content", true) -> "saf"
             localUri.scheme.equals("file", true) -> "broad_storage"
@@ -6059,12 +6060,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         MediaStoreScanner.isAuthorizedDocument(this, localUri)
                     }.getOrDefault(false)
                 } else false
+                // Compatibility for episodes created by older ReiAnix APKs:
+                // they may still point directly to the final MediaStore output.
+                // A confirmed ownership record is enough to test readability
+                // without demanding gallery-wide permission.
+                val ownedFinishedOutput = if (!safAuthorized && !mediaStoreAuthorized &&
+                    localUri.authority == MediaStore.AUTHORITY
+                ) runCatching {
+                    com.reiflix.reiflix_local.downloads.DownloadStore(this).all().any { download ->
+                        download.state == "COMPLETE" && download.output == localUri.toString()
+                    }
+                }.getOrDefault(false) else false
                 logPlayer(
                     "AUTH_CHECK scheme=content authority=" + localUri.authority.orEmpty() +
                         " download=" + ownDownload +
                         " saf=" + safAuthorized + " mediastore=" + mediaStoreAuthorized,
                 )
-                if (!safAuthorized && !mediaStoreAuthorized && !intent.getBooleanExtra("externalVideo", false)) {
+                if (!safAuthorized && !mediaStoreAuthorized && !ownedFinishedOutput &&
+                    !intent.getBooleanExtra("externalVideo", false)) {
                     if (localUri.authority == MediaStore.AUTHORITY &&
                         !MediaStoreScanner.hasReadPermission(this)
                     ) {
@@ -6098,6 +6111,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             "MEDIA_URI_INVALID",
                         )
                     } else null
+                }
                 }
             }
             "file" -> {
