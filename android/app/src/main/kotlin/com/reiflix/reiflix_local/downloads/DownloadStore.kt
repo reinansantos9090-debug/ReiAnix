@@ -32,7 +32,7 @@ object DownloadEvents {
 object DownloadState {
     val pending = setOf("QUEUED", "DOWNLOADING", "WAITING", "VERIFYING", "SAVING")
     val labels = mapOf("QUEUED" to "Na fila", "DOWNLOADING" to "Baixando", "WAITING" to "Aguardando conexão / nova tentativa",
-        "VERIFYING" to "Verificando integridade", "SAVING" to "Salvando na pasta", "PAUSED" to "Pausado",
+        "VERIFYING" to "Preparando arquivo", "SAVING" to "Salvando na pasta", "PAUSED" to "Pausado",
         "COMPLETE" to "Concluído", "ERROR" to "Falhou", "CORRUPT" to "Integridade não confere", "CANCELLED" to "Cancelado")
 }
 

@@ -13,6 +13,7 @@ internal object BrowserMediaCapture {
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
         WebViewCompat.addWebMessageListener(web,"ReiAnixMedia",setOf("*")) { _,message,sourceOrigin,_,_ ->
             if(sourceOrigin.scheme !in setOf("http","https"))return@addWebMessageListener
+            if(message.type!=androidx.webkit.WebMessageCompat.TYPE_STRING)return@addWebMessageListener
             val raw=message.data ?: return@addWebMessageListener
             if(raw.length>32768)return@addWebMessageListener
             runCatching {

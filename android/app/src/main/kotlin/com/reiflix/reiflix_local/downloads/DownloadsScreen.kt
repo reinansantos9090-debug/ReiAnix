@@ -137,7 +137,10 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                 var menu by remember(item.id) {mutableStateOf(false)}
                 Row(Modifier.fillMaxWidth().heightIn(min=64.dp).clickable {menu=true}.padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
-                        Text(item.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
+                        val parsed=com.reiflix.reiflix_local.data.media.MediaFilenameParser.parseVideoPath(item.name)
+                        val episode=parsed.episodeNumber
+                        val label=if(episode!=null) "Episódio "+(if(episode%1.0==0.0)episode.toLong().toString() else episode.toString()) else item.name.substringBeforeLast('.',item.name)
+                        Text(label,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
                         val received=Formatter.formatFileSize(context,item.bytes)
                         val total=if(item.total>0)Formatter.formatFileSize(context,item.total) else "tamanho desconhecido"
                         val subtitle=if(item.state=="QUEUED" && item.bytes==0L) item.json.optString("displayAnime").ifBlank {"Na fila"} else "$received / $total"
