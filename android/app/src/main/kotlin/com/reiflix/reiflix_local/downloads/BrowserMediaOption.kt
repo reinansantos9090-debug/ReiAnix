@@ -93,7 +93,16 @@ internal object BrowserMediaResults {
         return byUrl.values.sortedWith(
             compareByDescending<BrowserDownloadChoice> {
                 Regex("(2160|1440|1080|720|480|360|240)p").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            }.thenBy { it.format }.thenBy { it.url },
+            }.thenBy {
+                // When multiple sources offer the same quality, show a real
+                // MP4 file first; do not assume a TS/HLS URL is already MP4.
+                when {
+                    it.url.substringBefore('?').endsWith(".mp4",true) -> 0
+                    it.format=="video" -> 1
+                    it.format=="hls" -> 2
+                    else -> 3
+                }
+            }.thenBy { it.url },
         )
     }
 }
