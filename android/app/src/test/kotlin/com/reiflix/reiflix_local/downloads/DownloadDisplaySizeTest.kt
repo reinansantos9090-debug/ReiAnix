@@ -6,7 +6,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class DownloadDisplaySizeTest {
     private fun item(bytes: Long, total: Long = -1, state: String = "DOWNLOADING",
         discovered: Long = 0, exact: Boolean = false,
