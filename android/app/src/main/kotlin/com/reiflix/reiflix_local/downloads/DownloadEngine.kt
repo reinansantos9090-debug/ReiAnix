@@ -253,12 +253,32 @@ class DownloadEngine(private val context: Context) {
             }
         }
         if(store.get(id)?.state !in DownloadState.pending) return
-        store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","SAVING") }
-        if(store.get(id)?.state!="SAVING") return
-        val destination=export(id,file)
-        // Once export is durable, publish exactly that URI and preserve the episode/progress ID.
-        store.complete(id,destination)
-        file.delete() // Open player file descriptors remain valid; new opens use the final URI.
+        // Optional lossless remux only after downloading and verifying the TS.
+        // Keep the original .part untouched so existing player readers can
+        // finish; incompatible media simply retains the original TS file.
+        val beforePublication=store.get(id) ?: return
+        val isTs=beforePublication.mime.equals("video/mp2t",true) ||
+            beforePublication.name.endsWith(".ts",true)
+        val remuxed=if(isTs) DownloadTsRemux.tryRemux(context,file) else null
+        try {
+            if(remuxed!=null) {
+                val original=beforePublication.name
+                val mp4Name=original.substringBeforeLast('.',original)+".mp4"
+                store.mutate(id) {
+                    it.put("name",mp4Name).put("mime","video/mp4")
+                }
+                store.registerMedia(id)
+            }
+            if(store.get(id)?.state !in DownloadState.pending) return
+            store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","SAVING") }
+            if(store.get(id)?.state!="SAVING") return
+            val publishedFile=remuxed ?: file
+            val destination=export(id,publishedFile)
+            // Commit the final published file size, which may differ after
+            // changing container headers without recompressing the video.
+            store.complete(id,destination,publishedFile.length())
+            file.delete() // Original TS is deleted only after durable publication.
+        } finally { remuxed?.delete() }
     }
     private suspend fun export(id: String,file: File): Uri {
         var item=store.get(id)!!
