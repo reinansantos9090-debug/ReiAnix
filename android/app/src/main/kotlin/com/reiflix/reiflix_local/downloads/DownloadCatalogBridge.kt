@@ -111,6 +111,7 @@ internal object DownloadCatalogBridge {
         // Child rows survive; equivalent unique observations/artwork already present on keep win.
         db.execSQL("UPDATE OR IGNORE episode_observations SET episode_id=? WHERE episode_id=?",arrayOf(keep,duplicate))
         db.execSQL("UPDATE OR IGNORE artwork SET entity_id=? WHERE entity_type='episode' AND entity_id=?",arrayOf(keep.toString(),duplicate.toString()))
+        db.delete("artwork","entity_type='episode' AND entity_id=?",arrayOf(duplicate.toString()))
         db.delete("episodes","id=?",arrayOf(duplicate.toString()))
         val occupied=db.rawQuery("SELECT 1 FROM episodes WHERE path=? AND id!=?",arrayOf(job.output,keep.toString())).use {it.moveToFirst()}
         if(!occupied)patch.put("path",job.output)
@@ -139,6 +140,7 @@ internal object DownloadCatalogBridge {
         db.update("anime",patch,"id=?",arrayOf(keep.toString()))
         db.execSQL("INSERT OR IGNORE INTO anime_genres(anime_id,genre_id,source,created_at,updated_at) SELECT ?,genre_id,source,created_at,updated_at FROM anime_genres WHERE anime_id=?",arrayOf(keep,other))
         db.execSQL("UPDATE OR IGNORE artwork SET entity_id=? WHERE entity_type='anime' AND entity_id=?",arrayOf(keep.toString(),other.toString()))
+        db.delete("artwork","entity_type='anime' AND entity_id=?",arrayOf(other.toString()))
         db.delete("anime","id=?",arrayOf(other.toString()))
     }
 }

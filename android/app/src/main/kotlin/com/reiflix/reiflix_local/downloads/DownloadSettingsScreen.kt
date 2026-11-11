@@ -50,14 +50,14 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             DownloadSection("Fila e rede")
             DownloadOption("Downloads simultâneos",Icons.Filled.Queue)
-            Row { (1..4).forEach { n -> FilterChip(selected=parallel==n,onClick={ parallel=n; save("downloads.parallel",n.toString()) },label={ Text("$n") },enabled=!busy) } }
+            Row(Modifier.padding(start=38.dp)) { (1..4).forEach { n -> FilterChip(selected=parallel==n,onClick={ parallel=n; save("downloads.parallel",n.toString()) },label={ Text("$n") },enabled=!busy) } }
             Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Filled.Wifi,null,Modifier.padding(end=16.dp).size(22.dp)); Text("Somente Wi-Fi",Modifier.weight(1f)); Switch(wifi,{ wifi=it; save("downloads.wifi_only",it.toString()) },enabled=!busy) }
             DownloadSection("Desempenho avançado")
             DownloadOption("Número de partes",Icons.Filled.CallSplit)
-            Row { listOf(1,2,4,8,16).forEach { n -> FilterChip(selected=connections==n,onClick={ connections=n; save("downloads.connections",n.toString()) },label={ Text("$n") },enabled=!busy) } }
+            Row(Modifier.padding(start=38.dp)) { listOf(1,2,4,8,16).forEach { n -> FilterChip(selected=connections==n,onClick={ connections=n; save("downloads.connections",n.toString()) },label={ Text("$n") },enabled=!busy) } }
             Text("Mais conexões podem ajudar em servidores que aceitam faixas de bytes. O ReiAnix usa uma conexão quando isso não é seguro. Alterações valem na próxima transferência ou retomada.",style=MaterialTheme.typography.bodySmall)
             DownloadOption("Buffer de transferência",Icons.Filled.Memory)
-            Row { listOf(64,128,256,512).forEach { n -> FilterChip(selected=buffer==n,onClick={ buffer=n; save("downloads.buffer_kb",n.toString()) },label={ Text("$n KB") },enabled=!busy) } }
+            Row(Modifier.padding(start=38.dp)) { listOf(64,128,256,512).forEach { n -> FilterChip(selected=buffer==n,onClick={ buffer=n; save("downloads.buffer_kb",n.toString()) },label={ Text("$n KB") },enabled=!busy) } }
             Text("Buffers maiores reduzem operações de escrita, mas usam mais memória. A velocidade também depende da rede e do servidor.",style=MaterialTheme.typography.bodySmall)
             DownloadSection("Opções por link")
             Text("As credenciais são específicas do link informado, armazenadas de forma cifrada. Salve antes de adicionar o download; para um download existente, pause e salve aqui para aplicá-los.",style=MaterialTheme.typography.bodySmall)
@@ -100,7 +100,7 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
 
 @Composable
 private fun DownloadSection(title: String) {
-    Text(title,color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.titleSmall,modifier=Modifier.padding(top=16.dp,bottom=4.dp))
+    Text(title,color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.labelLarge,modifier=Modifier.padding(start=38.dp,top=24.dp,bottom=8.dp))
 }
 
 @Composable
