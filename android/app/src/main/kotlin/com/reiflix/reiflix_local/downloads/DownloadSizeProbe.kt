@@ -147,8 +147,10 @@ internal object DownloadSizeProbe {
                     c.getHeaderField("Content-Range"),c.getHeaderField("Content-Encoding"),
                     c.contentType)
                 if(size!=null)return Headers(size,false)
-                if(c.responseCode==HttpURLConnection.HTTP_UNAUTHORIZED ||
-                    c.responseCode==HttpURLConnection.HTTP_FORBIDDEN)break
+                // Many CDNs reject HEAD even when a one-byte GET Range is
+                // allowed. Do not abandon the GET fallback after a HEAD 403.
+                if(method=="GET" && (c.responseCode==HttpURLConnection.HTTP_UNAUTHORIZED ||
+                    c.responseCode==HttpURLConnection.HTTP_FORBIDDEN))break
             } catch(_: java.io.IOException) { /* HEAD may be unsupported; try a one-byte Range. */ }
             finally { c?.disconnect() }
         }
