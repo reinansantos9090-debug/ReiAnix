@@ -58,8 +58,21 @@ object DownloadScheduling {
             (if(speed>0) " • ${android.text.format.Formatter.formatFileSize(context,speed)}/s" else "")+eta
         builder.setContentTitle(item.json.optString("displayAnime").ifBlank {item.json.optString("animeTitle").ifBlank {item.name}})
             .setContentText(item.name).setStyle(NotificationCompat.BigTextStyle().bigText(item.name+"\n"+detail))
-            .setSubText(if(progress!=null) "$progress%" else DownloadState.labels[item.state])
-            .setOngoing(active).setProgress(100,progress ?: 0,active && progress==null)
+            .setSubText(if(active && progress!=null) "$progress%" else DownloadState.labels[item.state])
+            .setOngoing(active)
+        if(active) {
+            builder.setProgress(100,progress ?: 0,progress==null)
+        } else {
+            // A completed file is not an active foreground transfer. Do not
+            // leave a 100% "downloading" progress indicator on Android.
+            builder.setProgress(0,0,false).setAutoCancel(true)
+            if(item.state=="COMPLETE") {
+                builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentText("Download concluído • ${item.name}")
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setTimeoutAfter(20_000)
+            }
+        }
         val path=item.json.optString("coverCache")
         covers[path]?.let {builder.setLargeIcon(it)}
         if(item.state!="SAVING" && item.state!="COMPLETE" && item.state!="CANCELLED" && item.state!="CORRUPT") {
@@ -93,7 +106,10 @@ object DownloadScheduling {
                 val options=android.graphics.BitmapFactory.Options().apply {inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/160).coerceAtLeast(1)}
                 android.graphics.BitmapFactory.decodeFile(file,options)?.let {covers[path]=it}
             }
-            if(item.state in setOf("CANCELLED","CORRUPT")) context.getSystemService(NotificationManager::class.java).cancel(noticeId(item.id))
+            if(item.state in setOf("CANCELLED","CORRUPT")) {
+                context.getSystemService(NotificationManager::class.java).cancel(noticeId(item.id))
+                return@forEach
+            }
             else runCatching {context.getSystemService(NotificationManager::class.java).notify(noticeId(item.id),itemNotification(context,item,""))}
         }
     }
