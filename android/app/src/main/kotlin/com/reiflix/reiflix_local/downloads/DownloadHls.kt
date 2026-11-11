@@ -80,7 +80,8 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             val base=item.name.substringBeforeLast('.',item.name)
             store.mutate(id) {
                 it.put("hls",true).put("mime",if(extension=="ts") "video/mp2t" else "video/mp4").put("total",-1).put("hlsCount",playlist.segments.size)
-                if(it.optLong("episodeId")==0L) it.put("name","$base.$extension").put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode("$base.$extension")}")
+                it.put("name","$base.$extension")
+                if(it.optLong("episodeId")==0L) it.put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode("$base.$extension")}")
             }
             store.registerMedia(id)
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let {DownloadMetadata.offer(context,it.animeId)}

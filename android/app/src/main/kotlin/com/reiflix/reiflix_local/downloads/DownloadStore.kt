@@ -178,7 +178,13 @@ class DownloadStore(context: Context) {
     fun secret(item: DownloadItem): JSONObject = JSONObject(DownloadSecrets.decrypt(item.json.getString("secret")))
     fun registerMedia(id: String) {
         val current = get(id) ?: return
-        if(current.episodeId > 0 || !current.mime.startsWith("video/")) return
+        if(!current.mime.startsWith("video/")) return
+        if(current.episodeId>0) {
+            val changed=db.transaction { c -> c.update("episodes",ContentValues().apply {put("mime_type",current.mime)},
+                "id=? AND media_identity=? AND (mime_type IS NULL OR mime_type!=?)",arrayOf(current.episodeId.toString(),"download:$id",current.mime)) }
+            if(changed>0)DownloadEvents.catalog.tryEmit(Unit)
+            return
+        }
         val parsed = MediaFilenameParser.parseVideoPath(current.name)
         val explicit=current.json.optString("animeTitle").trim()
         val inferred=DownloadIdentity.title(current.name)
@@ -279,7 +285,7 @@ class DownloadStore(context: Context) {
         mutate(id) {
             require(it.optString("state") in setOf("ERROR","PAUSED"))
             if(it.optString("destination")!=destination) { previousOutput=it.optString("output"); it.put("destination",destination).put("output","") }
-            if(previousUrl!=url) { it.put("restart",true).put("bytes",0).put("total",-1) }
+            if(previousUrl!=url) { it.put("restart",true).put("bytes",0).put("total",-1).put("parallelDisabled",false);it.remove("hls") }
             it.put("secret",encrypted).put("signature",digest(url.toByteArray())).put("expectedHash",normalized)
                 .put("hashType",hashType).put("state","QUEUED").put("attempts",0).put("nextAttempt",0)
         }
