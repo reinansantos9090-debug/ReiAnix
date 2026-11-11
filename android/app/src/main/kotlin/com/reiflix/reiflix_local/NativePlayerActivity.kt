@@ -6046,7 +6046,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun validateLocalSource(localUri: Uri): SourceValidationFailure? {
         val result = when (localUri.scheme?.lowercase()) {
             "content" -> {
-                val safAuthorized = runCatching {
+                // The app's non-exported download provider owns the virtual episode URI.
+                // It is not a SAF document or a MediaStore row; let the provider validate
+                // the persisted download and its actual readability instead of reporting
+                // a false "permission revoked" error while the file is still growing.
+                val ownDownload = localUri.authority == "${packageName}.downloads"
+                val safAuthorized = ownDownload || runCatching {
                     SafScanner.isAuthorizedDocument(this, localUri)
                 }.getOrDefault(false)
                 val mediaStoreAuthorized = if (!safAuthorized) {
@@ -6056,6 +6061,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 } else false
                 logPlayer(
                     "AUTH_CHECK scheme=content authority=" + localUri.authority.orEmpty() +
+                        " download=" + ownDownload +
                         " saf=" + safAuthorized + " mediastore=" + mediaStoreAuthorized,
                 )
                 if (!safAuthorized && !mediaStoreAuthorized && !intent.getBooleanExtra("externalVideo", false)) {
