@@ -120,17 +120,18 @@ internal object BrowserMediaCapture {
     });
     // Explicit quality controls can expose all renditions before Play. Accept
     // only media links that belong to visible controls, never arbitrary hrefs.
-    if(visible.length>0) {
-      Array.from(document.querySelectorAll('[data-quality][data-src],[data-res][data-url],a[download][href]'))
-        .slice(0,80).forEach(control=>{
-          const r=rect(control);
-          if(!r||adElement(control))return;
-          offer(control.getAttribute('data-src')||control.getAttribute('data-url')||
-            control.getAttribute('href'),
-            control.getAttribute('data-quality')||control.getAttribute('data-res')||
-            control.textContent||'','quality-link');
-        });
-    }
+    // Direct links/quality controls are useful even on a page that has not
+    // mounted its player yet. Each control must itself be visible and the URL
+    // must identify a supported media representation.
+    Array.from(document.querySelectorAll('[data-quality][data-src],[data-res][data-url],a[download][href]'))
+      .slice(0,80).forEach(control=>{
+        const r=rect(control);
+        if(!r||adElement(control))return;
+        offer(control.getAttribute('data-src')||control.getAttribute('data-url')||
+          control.getAttribute('href'),
+          control.getAttribute('data-quality')||control.getAttribute('data-res')||
+          control.textContent||'','quality-link');
+      });
     const recent=Array.from(masters.values()).filter(m=>Date.now()-m.time<60000);
     recent.forEach(master=>{
       const related=sources.has(master.url)||
