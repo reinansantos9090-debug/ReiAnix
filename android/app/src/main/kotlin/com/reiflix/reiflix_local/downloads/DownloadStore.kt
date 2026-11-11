@@ -66,6 +66,31 @@ class DownloadStore(context: Context) {
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_downloads (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)")
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_download_profiles (id TEXT PRIMARY KEY NOT NULL, secret TEXT NOT NULL)")
         }
+        // Migrate only episodes proven to belong to previously completed
+        // downloads. Older builds stored a MediaStore Downloads URI directly,
+        // which the player could mistake for a revoked video permission.
+        val migrated = db.transaction { connection ->
+            val completed = connection.rawQuery(
+                "SELECT data FROM native_downloads", null,
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val item = runCatching { DownloadItem(JSONObject(cursor.getString(0))) }.getOrNull()
+                        if (item != null && item.state == "COMPLETE" && item.episodeId > 0 &&
+                            item.output.isNotBlank()) add(item)
+                    }
+                }
+            }
+            completed.sumOf { item ->
+                connection.update(
+                    "episodes",
+                    ContentValues().apply { put("path", item.virtualUri.toString()) },
+                    "id=? AND media_identity=? AND path=?",
+                    arrayOf(item.episodeId.toString(), "download:${item.id}", item.output),
+                )
+            }
+        }
+        if (migrated > 0) DownloadEvents.catalog.tryEmit(Unit)
     }
     fun all(): List<DownloadItem> = db.read { connection ->
         connection.rawQuery("SELECT data FROM native_downloads ORDER BY rowid DESC", null).use { cursor ->
