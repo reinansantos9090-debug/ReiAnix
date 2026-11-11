@@ -209,7 +209,6 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
 @Composable
 private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
     onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit) {
-    val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
     var nameTouched by remember { mutableStateOf(editing!=null) }
@@ -237,12 +236,6 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
         } catch(_: Exception) { originalHeaders=emptyMap(); cookie=""; user=""; password=""; error="Não foi possível recuperar a sessão. Informe novamente o link e as credenciais." }
         finally { sourceLoading=false }
     }
-    val folder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if(uri!=null) try {
-            context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            destination=uri.toString()
-        } catch(_: Exception) { error="A pasta não concedeu acesso de escrita persistente" }
-    }
     AlertDialog(onDismissRequest={ if(!busy) onDismiss() },title={ Text(if(editing==null) "Adicionar download" else "Atualizar link / sessão") },
         text={ Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(url,{ next ->
@@ -260,11 +253,10 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
                 OutlinedTextField(anime,{ anime=it },label={ Text("Nome do anime (opcional)") },singleLine=true,enabled=!busy && !sourceLoading)
             }
                 Text(if(destination.isBlank()) "Destino: Downloads/ReiAnix" else "Destino: $destination",style=MaterialTheme.typography.bodySmall)
-                Row { TextButton(onClick={ folder.launch(null) },enabled=!busy && !sourceLoading) { Text("Escolher pasta") }; TextButton(onClick={ destination="" },enabled=!busy && !sourceLoading) { Text("Padrão") } }
             if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
             if(submissionError.isNotBlank()) Text(submissionError,color=MaterialTheme.colorScheme.error)
         } },
-        confirmButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=Color.White),modifier=Modifier.heightIn(min=48.dp),enabled=!busy && !sourceLoading,onClick={
+        confirmButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.primary),modifier=Modifier.heightIn(min=48.dp),enabled=!busy && !sourceLoading,onClick={
             try {
                 DownloadHttp.validateUrl(url)
                 val headers=originalHeaders.filterKeys { it.lowercase() !in setOf("cookie","referer") }.toMutableMap()
@@ -273,8 +265,8 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
                 if(user.isNotBlank()) { headers.keys.filter { it.equals("authorization",true) }.forEach(headers::remove); headers["Authorization"]="Basic "+android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP) }
                 onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched)
             } catch(_: Exception) { error="Confira o link e os dados informados" }
-        }) { Icon(Icons.Filled.Download,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar",fontSize=16.sp) } },
-        dismissButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=Color.White),modifier=Modifier.heightIn(min=48.dp),onClick=onDismiss,enabled=!busy && !sourceLoading) { Icon(Icons.Filled.Close,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Cancelar",fontSize=16.sp) } })
+        }) { Icon(Icons.Filled.Download,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar",fontSize=14.sp) } },
+        dismissButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.primary),modifier=Modifier.heightIn(min=48.dp),onClick=onDismiss,enabled=!busy && !sourceLoading) { Icon(Icons.Filled.Close,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Cancelar",fontSize=14.sp) } })
 
 }
 
