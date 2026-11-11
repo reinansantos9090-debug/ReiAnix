@@ -4016,6 +4016,84 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** The welcome is completed only by the explicit "Começar" action. */
+    fun completeReiAnixWelcome() {
+        val prefs = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean(WELCOME_INITIALIZED, true)
+            .putBoolean(WELCOME_COMPLETED, true)
+            .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, true)
+            .apply()
+        _welcomeNeedsSetup.value = false
+        _nativeStorageOnboardingState.value = _nativeStorageOnboardingState.value.copy(dismissed = true)
+    }
+
+    /**
+     * Prepare the app's public Downloads destination without requesting broad
+     * photo/video access. MediaStore creates an app-owned temporary Downloads
+     * entry; deleting the entry leaves the directory for the SAF picker.
+     */
+    private fun ensureReiAnixDownloadsDirectory(): Boolean {
+        val folder = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "ReiAnix",
+        )
+        if (folder.isDirectory) return true
+        if (Build.VERSION.SDK_INT < 29) {
+            return folder.mkdirs() || folder.isDirectory
+        }
+        var probeUri: Uri? = null
+        return try {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, ".reianix-folder-" + UUID.randomUUID() + ".tmp")
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/ReiAnix/")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            probeUri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            probeUri != null
+        } catch (error: Exception) {
+            Log.w(tag, "Could not prepare built-in Downloads folder", error)
+            false
+        } finally {
+            probeUri?.let { uri ->
+                runCatching { contentResolver.delete(uri, null, null) }
+                    .onFailure { Log.w(tag, "Could not remove folder creation probe", it) }
+            }
+        }
+    }
+
+    /** Only the explicitly requested folder, never gallery-wide runtime access. */
+    fun requestDefaultReiAnixFolderAuthorization(): Boolean {
+        if (safPickerPending || pendingDefaultReiAnixSelection ||
+            !bootstrapAllowsNativeOperations()) return false
+        lifecycleScope.launch {
+            val created = withContext(Dispatchers.IO) {
+                ensureReiAnixDownloadsDirectory()
+            }
+            if (!created) {
+                publishSafPickerError(
+                    null,
+                    "Não foi possível preparar Downloads/ReiAnix. Verifique o armazenamento e tente novamente.",
+                    "default_folder_preparation",
+                    "DEFAULT_FOLDER_CREATE_FAILED",
+                )
+                return@launch
+            }
+            pendingDefaultReiAnixSelection = true
+            if (!requestNativeStorageAction("select_tree")) {
+                pendingDefaultReiAnixSelection = false
+                publishSafPickerError(
+                    null,
+                    "Não foi possível abrir o seletor de pastas do Android.",
+                    "default_folder_selection",
+                    "DEFAULT_FOLDER_PICKER_UNAVAILABLE",
+                )
+            }
+        }
+        return true
+    }
+
     /**
      * Dismissal changes only the onboarding presentation; it never grants access,
      * deletes a configured root, or marks a missing folder as ready.
