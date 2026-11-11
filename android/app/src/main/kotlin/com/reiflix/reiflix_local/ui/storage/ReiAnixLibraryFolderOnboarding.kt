@@ -1,19 +1,19 @@
 package com.reiflix.reiflix_local.ui.storage
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -21,50 +21,28 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.reiflix.reiflix_local.ui.ReiAnixCard
-import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
 import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
 import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
 
 /**
- * First-access surface for a library without an authorized source.
- *
- * Uses the ReiAnix theme and tokens while adapting the source reference's
- * horizontal action row to wide layouts. Compact layouts retain stacked,
- * touch-friendly actions. The native Activity owns SAF authorization and onboarding
- * state; canonical SQLite owns configured roots. Mailbox events remain available for
- * still-active legacy consumers, not as the Compose overlay's source of truth.
+ * Single first-run welcome screen. A library root is optional: "Começar" completes
+ * onboarding without granting broad media or filesystem permissions. Existing roots
+ * stay in the canonical SQLite store and are never reset by this UI.
  */
 @Composable
 fun ReiAnixLibraryFolderOnboarding(
     state: String,
-    message: String?,
     error: String?,
-    onCancel: () -> Unit,
+    onStart: () -> Unit,
+    onSelectReiAnixFolder: () -> Unit,
     onSelectFolder: () -> Unit,
 ) {
-    val normalizedState = state.trim().lowercase()
-    val pickerOpen = normalizedState == "folder_picker_open"
-    // "error" may be a diagnostic code (for example, selected_saf_source_validation_failed).
-    // Never show that internal identifier when the bridge already supplies a user-facing message.
-    val errorMessage = error
-        ?.trim()
-        ?.takeIf { value -> value.isNotBlank() && value.any { character -> character.isWhitespace() } }
-    val hasError = !error.isNullOrBlank()
-    val fallbackMessage =
-        "Escolha uma pasta que pertença à sua biblioteca do ReiAnix. " +
-            "Somente vídeos dentro dessa pasta e de suas subpastas serão considerados."
-    val displayMessage = when {
-        pickerOpen -> "Aguardando a escolha da pasta no Android…"
-        !message.isNullOrBlank() -> message.trim()
-        errorMessage != null -> errorMessage
-        else -> fallbackMessage
+    val pickerOpen = state.equals("folder_picker_open", ignoreCase = true)
+    val errorMessage = error?.trim()?.takeIf { value ->
+        value.isNotBlank() && value.any { it.isWhitespace() }
     }
 
     Surface(
@@ -74,127 +52,93 @@ fun ReiAnixLibraryFolderOnboarding(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(
-                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                    vertical = ReiAnixTokens.Spacing.xxxl,
-                ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+                .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding)
+                .padding(top = 44.dp, bottom = 12.dp),
+            horizontalAlignment = Alignment.Start,
         ) {
-            ReiAnixCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = ReiAnixTokens.Dimensions.onboardingCardMaxWidth),
+            Icon(
+                imageVector = Icons.Filled.RocketLaunch,
+                contentDescription = null,
+                modifier = Modifier.size(44.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = "Bem-vindo(a) ao ReiAnix!",
+                modifier = Modifier.padding(top = ReiAnixTokens.Spacing.sm),
+                style = ReiAnixTokens.TypographyTokens.display,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Vamos definir algumas coisas primeiro. Você sempre pode fazer alterações nas configurações depois também.",
+                modifier = Modifier.padding(top = ReiAnixTokens.Spacing.md, bottom = ReiAnixTokens.Spacing.lg),
+                style = ReiAnixTokens.TypographyTokens.body,
+                color = ReiAnixTokens.Colors.textMuted,
+            )
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val wideLayout = maxWidth >= 480.dp
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = if (wideLayout) Alignment.Start else Alignment.CenterHorizontally,
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = "Configure a pasta padrão Downloads/ReiAnix para guardar seus animes e downloads.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "O Android solicitará que você confirme o acesso somente a essa pasta.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = onSelectReiAnixFolder,
+                        enabled = !pickerOpen,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     ) {
-                        if (!wideLayout) {
-                            Icon(
-                                imageVector = if (pickerOpen) Icons.Filled.Folder else Icons.Filled.VideoLibrary,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .align(Alignment.CenterHorizontally)
-                                    .size(ReiAnixTokens.Dimensions.onboardingIconSize),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-
-                        Text(
-                            text = "Fonte da biblioteca necessária",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = if (wideLayout) ReiAnixTokens.Spacing.xs else ReiAnixTokens.Spacing.lg),
-                            style = ReiAnixTokens.TypographyTokens.display,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = if (wideLayout) TextAlign.Start else TextAlign.Center,
+                        Text("Selecionar pasta ReiAnix")
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Text(
+                        text = "Também é possível adicionar outra pasta que já contém seus animes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = onSelectFolder,
+                        enabled = !pickerOpen,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                    ) {
+                        Text("Selecionar uma pasta")
+                    }
+                    if (pickerOpen) {
+                        ReiAnixProgressIndicator(
+                            progress = 0f,
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                            announceProgress = false,
                         )
-
+                    }
+                    if (errorMessage != null) {
                         Text(
-                            text = displayMessage,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    top = ReiAnixTokens.Spacing.md,
-                                    bottom = ReiAnixTokens.Spacing.xl,
-                                ),
-                            style = ReiAnixTokens.TypographyTokens.body,
-                            color = ReiAnixTokens.Colors.textMuted,
-                            textAlign = if (wideLayout) TextAlign.Start else TextAlign.Center,
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
                         )
-
-                        if (hasError) {
-                            Text(
-                                text = "Você pode tentar novamente sem fechar o aplicativo.",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = ReiAnixTokens.Spacing.lg),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = ReiAnixTokens.Colors.error,
-                                textAlign = if (wideLayout) TextAlign.Start else TextAlign.Center,
-                            )
-                        }
-
-                        if (pickerOpen) {
-                            ReiAnixProgressIndicator(
-                                progress = 0f,
-                                modifier = Modifier
-                                    .align(if (wideLayout) Alignment.Start else Alignment.CenterHorizontally)
-                                    .padding(bottom = ReiAnixTokens.Spacing.lg),
-                                announceProgress = false,
-                            )
-                        }
-
-                        if (wideLayout) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = ReiAnixTokens.Spacing.sm),
-                                horizontalArrangement = Arrangement.spacedBy(
-                                    ReiAnixTokens.Spacing.sm,
-                                    Alignment.End,
-                                ),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                ReiAnixSecondaryButton(
-                                    text = "CANCELAR",
-                                    onClick = onCancel,
-                                    enabled = !pickerOpen,
-                                    modifier = Modifier.semantics { role = Role.Button },
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "ESCOLHER PASTA",
-                                    onClick = onSelectFolder,
-                                    enabled = !pickerOpen,
-                                )
-                            }
-                        } else {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                ReiAnixSecondaryButton(
-                                    text = "CANCELAR",
-                                    onClick = onCancel,
-                                    enabled = !pickerOpen,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .semantics { role = Role.Button },
-                                )
-                                ReiAnixSecondaryButton(
-                                    text = "ESCOLHER PASTA",
-                                    onClick = onSelectFolder,
-                                    enabled = !pickerOpen,
-                                    leadingIcon = Icons.Filled.Folder,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+            Button(
+                onClick = onStart,
+                enabled = !pickerOpen,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) {
+                Text("Começar", textAlign = TextAlign.Center)
             }
         }
     }
