@@ -96,13 +96,11 @@ class DownloadStore(context: Context) {
                     put("file_name", originalName)
                 }, "id=? AND media_identity=? AND manual_override=0 AND path=?",
                     owned + originalUri)
-                if (providerName != originalName && providerName.isNotBlank()) {
-                    // A scanner may also have promoted the provider basename to the
-                    // episode title; clear only that derived title, never a manual one.
-                    val providerTitle = providerName.substringBeforeLast('.',providerName)
-                    connection.execSQL("UPDATE episodes SET episode_title=NULL WHERE id=? AND media_identity=? AND manual_override=0 AND LOWER(TRIM(COALESCE(episode_title,'')))=LOWER(?)",
-                        arrayOf(owned[0],owned[1],providerTitle))
-                }
+                // The scanner previously also derived an episode title from
+                // the output filename (e.g. "Animes Online"). For native downloads
+                // the chosen filename is authoritative unless edited manually.
+                connection.execSQL("UPDATE episodes SET episode_title=NULL WHERE id=? AND media_identity=? AND manual_override=0 AND path=? AND episode_title IS NOT NULL",
+                    owned + originalUri)
             }
         }
     }
@@ -287,6 +285,10 @@ class DownloadStore(context: Context) {
                 put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
                 put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
             }, "id=? AND (media_identity=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri")))
+            if(data.optLong("episodeId")>0) connection.execSQL(
+                "UPDATE episodes SET episode_title=NULL WHERE id=? AND media_identity=? AND manual_override=0 AND episode_title IS NOT NULL",
+                arrayOf(data.getLong("episodeId").toString(),"download:$id")
+            )
         }
         DownloadEvents.catalog.tryEmit(Unit)
     }
