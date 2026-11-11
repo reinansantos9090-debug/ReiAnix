@@ -38,9 +38,24 @@ object DownloadState {
 
 data class DownloadItem(val json: JSONObject) {
     val id: String get() = json.getString("id")
-    // The app-controlled virtual URI retains the user-selected episode filename.
-    val name: String get() = Uri.parse(json.optString("virtualUri")).lastPathSegment
-        ?.takeIf { it.isNotBlank() } ?: json.getString("name")
+    // The app-controlled virtual URI protects the original episode filename from
+    // a generic CDN/provider rename. When remux changes TS <-> MP4, the new
+    // container extension recorded by the engine must take precedence instead.
+    val name: String get() {
+        val stored = json.optString("name")
+        val virtual = Uri.parse(json.optString("virtualUri")).lastPathSegment
+            ?.takeIf { it.isNotBlank() } ?: return stored
+        val mimeExtension = when (json.optString("mime").substringBefore(';').lowercase()) {
+            "video/mp4" -> "mp4"
+            "video/mp2t" -> "ts"
+            else -> null
+        }
+        val storedExtension = stored.substringAfterLast('.', "").lowercase()
+        val virtualExtension = virtual.substringAfterLast('.', "").lowercase()
+        if (mimeExtension != null && storedExtension == mimeExtension &&
+            virtualExtension != mimeExtension) return stored
+        return virtual
+    }
     val state: String get() = json.optString("state", "QUEUED")
     val bytes: Long get() = json.optLong("bytes")
     val total: Long get() = json.optLong("total", -1)
