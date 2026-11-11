@@ -11,6 +11,11 @@ class PlayerMediaCandidateTest {
         assertFalse(PlayerMediaCandidate.eligible(episode().copy(duration=30.0)))
         assertFalse(PlayerMediaCandidate.eligible(episode("https://cdn.example/ads/video.mp4")))
     }
+    @Test fun rejectsAResourceWithAnotherDuration() {
+        assertFalse(PlayerMediaCandidate.durationMatches(1440.0,2.517))
+        assertFalse(PlayerMediaCandidate.durationMatches(1440.0,180.0))
+        assertTrue(PlayerMediaCandidate.durationMatches(1440.0,1439.7))
+    }
     @Test fun requiresVisiblePlayerAndSupportedEvidence() {
         assertFalse(PlayerMediaCandidate.eligible(episode().copy(renderedWidth=120.0,renderedHeight=60.0)))
         assertFalse(PlayerMediaCandidate.eligible(episode().copy(source="network")))

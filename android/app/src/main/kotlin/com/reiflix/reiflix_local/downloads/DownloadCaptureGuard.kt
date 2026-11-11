@@ -32,15 +32,17 @@ internal object DownloadCaptureGuard {
         if(!complete && (stage>=thresholds.size || bytes<thresholds[stage]))return
         store.mutate(id){it.put("captureProbeStage",stage+1)}
         val actual=facts(context,file,null)
-        if(actual!=null && (actual.width.toDouble()/actual.height !in 0.45..3.2 || (complete && !valid(actual))))throw Rejected("O recurso capturado não corresponde a um episódio: vídeo curto ou formato de banner. Use o download do próprio site.")
+        val expected=item.json.getJSONObject("playerCapture").optDouble("duration")
+        val matches=actual!=null && valid(actual) && PlayerMediaCandidate.durationMatches(expected,actual.duration)
+        if(actual!=null && (actual.width.toDouble()/actual.height !in 0.45..3.2 || (complete && !matches)))throw Rejected("O recurso capturado não corresponde a um episódio: vídeo curto ou formato de banner. Use o download do próprio site.")
         if(actual==null && complete)throw Rejected("Não foi possível confirmar o vídeo capturado. Use o link do download do próprio site.")
-        if(actual!=null && valid(actual))approve(context,store,id)
+        if(matches)approve(context,store,id)
     }
     fun approveHls(context: Context,store: DownloadStore,id: String,duration: Double) {
         val item=store.get(id) ?: return
         val capture=item.json.optJSONObject("playerCapture") ?: return
         val expected=capture.optDouble("duration")
-        if(!duration.isFinite() || duration<120 || kotlin.math.abs(duration-expected)>maxOf(10.0,expected*0.02))throw Rejected("A playlist não corresponde à duração do episódio no player.")
+        if(duration<120 || !PlayerMediaCandidate.durationMatches(expected,duration))throw Rejected("A playlist não corresponde à duração do episódio no player.")
         approve(context,store,id)
     }
     private fun approve(context: Context,store: DownloadStore,id: String) {

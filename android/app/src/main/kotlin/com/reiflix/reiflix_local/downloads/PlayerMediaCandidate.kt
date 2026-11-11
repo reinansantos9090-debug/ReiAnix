@@ -23,6 +23,8 @@ internal data class PlayerMediaCandidate(val url: String,val page: String,val fr
                 item.width.toDouble()/item.height in 0.45..3.2 && item.renderedWidth.isFinite() && item.renderedHeight.isFinite() &&
                 item.renderedWidth>=200 && item.renderedHeight>=110 && !advertisementUrl(item.url)
         }.getOrDefault(false)
+        fun durationMatches(expected: Double,actual: Double): Boolean = expected.isFinite() && actual.isFinite() &&
+            expected>=120 && kotlin.math.abs(expected-actual)<=maxOf(10.0,expected*0.02)
         fun advertisementUrl(url: String): Boolean = runCatching {
             val uri=URI(url);val host=uri.host.orEmpty().lowercase();val path=uri.path.orEmpty().lowercase()
             val adDomain=listOf("doubleclick.net","googlesyndication.com","adnxs.com","adsterra.com","popads.net").any {host==it || host.endsWith(".$it")}
