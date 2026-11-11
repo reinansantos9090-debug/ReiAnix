@@ -50,10 +50,15 @@ android {
 
     buildTypes {
         getByName("release") {
-            signingConfig = if (System.getenv("REIFLIX_ANDROID_KEYSTORE_PATH").isNullOrBlank()) {
-                signingConfigs.getByName("debug")
-            } else {
-                signingConfigs.getByName("ciRelease")
+            // Release APKs must never silently inherit a changing debug key.
+            // Only PR preview artifacts opt in to debug signing explicitly.
+            signingConfig = when {
+                !System.getenv("REIFLIX_ANDROID_KEYSTORE_PATH").isNullOrBlank() ->
+                    signingConfigs.getByName("ciRelease")
+                System.getenv("REIFLIX_ALLOW_DEBUG_RELEASE_FOR_PR") == "true" &&
+                    System.getenv("GITHUB_EVENT_NAME") == "pull_request" ->
+                    signingConfigs.getByName("debug")
+                else -> null // Local release without a key remains unsigned, not debug-signed.
             }
             ndk {
                 abiFilters += "arm64-v8a"
