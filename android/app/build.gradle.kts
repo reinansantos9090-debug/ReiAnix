@@ -95,6 +95,8 @@ dependencies {
     androidTestImplementation("androidx.navigation:navigation-testing:2.9.8")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.webkit:webkit:1.14.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.1")
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")

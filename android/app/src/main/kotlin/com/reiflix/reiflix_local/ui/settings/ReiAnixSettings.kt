@@ -239,6 +239,9 @@ fun ReiAnixSettingsRoute(
     }
     BackHandler(enabled = destination != null) { goBack() }
     when {
+        destination == "Downloads" -> ReiAnixSettingsRoot {
+            com.reiflix.reiflix_local.downloads.DownloadSettingsScreen(onBack=::goBack)
+        }
         destination == "Pastas" -> {
             if (libraryFoldersContent != null) {
                 libraryFoldersContent(::goBack)

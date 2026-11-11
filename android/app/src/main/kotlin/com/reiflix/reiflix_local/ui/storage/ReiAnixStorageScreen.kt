@@ -192,6 +192,30 @@ private fun ReiAnixLibraryFoldersSection(
                 item(key = "folders-header") {
                     SettingsHeader("Pastas", "", onBack)
                 }
+                // Downloads already uses this destination without a SAF grant. Do not
+                // manufacture a tree URI or permission for the built-in destination.
+                if (configuredSafSources.none { source ->
+                        runCatching {
+                            android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(source.reference))
+                                .trimEnd('/') == "primary:Download/ReiAnix"
+                        }.getOrDefault(false)
+                    }) {
+                    item(key = "default-download-folder") {
+                        Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Icon(Icons.Filled.Folder, contentDescription = null, modifier = Modifier.size(32.dp),
+                                tint = MaterialTheme.colorScheme.onSurface)
+                            Column(Modifier.weight(1f)) {
+                                Text("ReiAnix", style = MaterialTheme.typography.bodyLarge)
+                                Text(if (android.os.Build.VERSION.SDK_INT >= 29) "Downloads/ReiAnix · Pasta padrão"
+                                    else "Downloads/ReiAnix · Pasta padrão do aplicativo",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
                 if (showFolderLoading) {
                     item(key = "folders-loading") {
                         ReiAnixLoadingState("Verificando armazenamento", "Consultando as pastas da biblioteca…")
@@ -220,13 +244,6 @@ private fun ReiAnixLibraryFoldersSection(
                             enabled = !removeBusy && !selectionBusy) {
                             Icon(Icons.Filled.Delete, contentDescription = "Remover $name")
                         }
-                    }
-                }
-                if (configuredSafSources.isEmpty() &&
-                    nativeFolders.status in setOf(ReiAnixNativeFoldersStatus.EMPTY, ReiAnixNativeFoldersStatus.READY)) {
-                    item(key = "folders-empty") {
-                        Text("Nenhuma pasta cadastrada", style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
                     }
                 }
                 if (nativeFolders.status == ReiAnixNativeFoldersStatus.ERROR ||

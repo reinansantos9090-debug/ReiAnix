@@ -2220,6 +2220,11 @@ class ReiAnixLibraryViewModel(
                 .collectLatest { refreshNativeCatalog() }
         }
 
+        viewModelScope.launch {
+            com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.collectLatest {
+                refreshNativeCatalog()
+            }
+        }
         libraryFilterJob?.cancel()
         libraryFilterJob = viewModelScope.launch {
             libraryFilters

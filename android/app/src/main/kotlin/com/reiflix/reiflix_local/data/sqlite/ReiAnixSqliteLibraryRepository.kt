@@ -1536,6 +1536,9 @@ class ReiAnixSqliteLibraryRepository(
     ): NativeLibraryIndexReport = withContext(Dispatchers.IO) {
             require(snapshot.operationId.isNotBlank()) { "A scan operation ID is required." }
             require(snapshot.scopeRoot.isNotBlank()) { "An explicit scope root is required." }
+            val bridge=com.reiflix.reiflix_local.downloads.DownloadCatalogBridge
+            if(bridge.reconcile(database))com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+            val downloadAliases=bridge.aliases(database,snapshot.items.map {it.location})
             var transactionReport: NativeLibraryIndexReport? = null
             val report = database.transaction(
                 onOutcome = { outcome ->
@@ -1580,14 +1583,22 @@ class ReiAnixSqliteLibraryRepository(
                         ambiguous++
                         continue
                     }
+                    val download=downloadAliases[item.location]?.let {bridge.episodeFor(db,it)}
+                    if(download?.second=="REJECTED") {unchanged++;continue}
+                    val downloadRow=download?.let {entry -> db.rawQuery("SELECT * FROM episodes WHERE id=?",arrayOf(entry.first.toString())).use {c ->if(c.moveToFirst())c.toEpisodeRecord() else null}}
                     val identityRow = byIdentity.singleOrNull()
                     val pathRow = byPath.singleOrNull()
                     if (identityRow != null && pathRow != null && identityRow.id != pathRow.id) {
                         ambiguous++
                         continue
                     }
-                    val current = identityRow ?: pathRow
+                    val current = downloadRow ?: identityRow ?: pathRow
                     if (current != null) {
+                        if(downloadRow!=null) {
+                            seenLocations+=current.path
+                            current.mediaIdentity?.let {seenIdentities+=it}
+                            if(download?.second=="SAVING") {recordEpisodeObservation(db,current.id,snapshot,item);unchanged++;continue}
+                        }
                         val patch = ContentValues()
                         if (current.path != item.location) patch.put("path", item.location)
                         if (current.fileName != item.fileName) patch.put("file_name", item.fileName)
@@ -1601,7 +1612,7 @@ class ReiAnixSqliteLibraryRepository(
                         item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
                         item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
                         item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
-                        item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
+                        item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity?.startsWith("download:")!=true && current.mediaIdentity != it) patch.put("media_identity", it) }
                         if (current.manualOverride != true) {
                             item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
                             item.episodeTitle?.takeIf { it.isNotBlank() }?.let { if (current.episodeTitle != it) patch.put("episode_title", it) }

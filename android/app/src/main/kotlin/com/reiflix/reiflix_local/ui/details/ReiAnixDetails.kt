@@ -1742,6 +1742,7 @@ private fun DetailsEpisodeItem(
     var identificationError by rememberSaveable(episode.stableKey) { mutableStateOf<String?>(null) }
     val editScope = rememberCoroutineScope()
 
+    Column {
     ReiAnixEpisodeCard(episode = episode, showThumbnail = showThumbnail, isCurrent = isCurrent, isNext = isNext,
         modifier = Modifier.padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
         onPlay = { onWatch(episode.id) }, trailingContent = {
@@ -1769,6 +1770,8 @@ private fun DetailsEpisodeItem(
                 }
             }
         })
+    com.reiflix.reiflix_local.downloads.DownloadLibraryStatus(episodeId = episode.id)
+    }
     if (showIdentificationEditor) {
         AlertDialog(
             onDismissRequest = { if (!identificationSaving) showIdentificationEditor = false },

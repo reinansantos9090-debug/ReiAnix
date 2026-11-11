@@ -1,6 +1,7 @@
 package com.reiflix.reiflix_local.ui.settings
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
@@ -21,6 +22,7 @@ internal data class SettingsSearchResult(val destination: SettingsDestination, v
 internal val SettingsRootCategories = listOf(
     ReiAnixSettingsCategoryUiModel("Geral", "Preferências, aparência e biblioteca", Icons.Filled.Settings),
     ReiAnixSettingsCategoryUiModel("Player", "Reprodução, controles, áudio e tela", Icons.Filled.PlayArrow),
+    ReiAnixSettingsCategoryUiModel("Downloads", "Fila, integridade, autenticação e desempenho", androidx.compose.material.icons.Icons.Filled.Download),
     ReiAnixSettingsCategoryUiModel("Metadados e Capas", "Identificação, capas e miniaturas", Icons.Filled.Image),
     ReiAnixSettingsCategoryUiModel("Diagnóstico e Backup", "Dados, backup, informações e diagnóstico", Icons.Filled.Backup),
     ReiAnixSettingsCategoryUiModel("Contas e Avançado", "AniList", Icons.Filled.Settings),
