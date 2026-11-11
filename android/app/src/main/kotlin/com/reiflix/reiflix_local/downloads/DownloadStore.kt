@@ -231,6 +231,7 @@ class DownloadStore(context: Context) {
         }
     }
     fun complete(id: String, output: Uri) {
+        DownloadCatalogBridge.reconcile(db)
         val actualName=runCatching {
             if(output.scheme=="file") File(output.path!!).name else context.contentResolver.query(output,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null }
         }.getOrNull()

@@ -9,6 +9,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -45,9 +48,13 @@ class DownloadBrowserActivity: ComponentActivity() {
         var candidates by remember { mutableStateOf<List<String>>(emptyList()) }
         var error by remember { mutableStateOf("") }
         val observed=remember { ConcurrentHashMap.newKeySet<String>() }
+        val referers=remember {ConcurrentHashMap<String,String>()}
         val browser=remember {
             WebView(this).apply {
                 web=this
+                BrowserMediaCapture.install(this) { url,page ->
+                    if(observed.size<120) {observed.add(url);referers[url]=page}
+                }
                 settings.javaScriptEnabled=true; settings.domStorageEnabled=true
                 settings.allowFileAccess=false; settings.allowContentAccess=false
                 settings.useWideViewPort=true; settings.loadWithOverviewMode=true
@@ -57,14 +64,17 @@ class DownloadBrowserActivity: ComponentActivity() {
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this,true)
                 webViewClient=object: WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView,request: WebResourceRequest): Boolean {
-                        if(request.url.scheme !in setOf("http","https")) { error="Este endereço não é um link HTTP/HTTPS de vídeo"; return true }
+                        if(request.url.scheme !in setOf("http","https")) { return true }
                         return false
                     }
-                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear() }
+                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear();referers.clear();error="" }
                     override fun onPageFinished(view: WebView,url: String) { address=url; title=view.title.orEmpty() }
                     override fun shouldInterceptRequest(view: WebView,request: WebResourceRequest): WebResourceResponse? {
                         val url=request.url.toString()
-                        if(request.method=="GET" && isVideoLink(url) && observed.size<100) observed.add(url)
+                        if(request.method=="GET" && isVideoLink(url) && observed.size<120) {
+                            observed.add(url)
+                            request.requestHeaders.entries.firstOrNull {it.key.equals("referer",true)}?.value?.let {referers[url]=it}
+                        }
                         return null
                     }
                 }
@@ -93,13 +103,14 @@ class DownloadBrowserActivity: ComponentActivity() {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    IconButton(onClick={ if(browser.canGoBack()) browser.goBack() else finish() }) { Icon(Icons.Filled.ArrowBack,"Voltar") }
-                    OutlinedTextField(address,{address=it},singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")})
-                    IconButton(onClick={ try { val url=if(address.startsWith("http"))address else "https://$address"; DownloadHttp.validateUrl(url); browser.loadUrl(url) } catch(_: Exception) {error="Endereço inválido"} }) { Icon(Icons.Filled.ArrowForward,"Abrir endereço") }
+                    OutlinedTextField(address,{address=it},singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")},
+                        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),keyboardActions=KeyboardActions(onGo={
+                            try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
+                        }))
                     IconButton(onClick={
                         browser.evaluateJavascript("JSON.stringify(Array.from(document.querySelectorAll('video,video source,a[download]')).map(e=>e.currentSrc||e.src||e.href).filter(Boolean))") { encoded ->
                             runCatching { val decoded=org.json.JSONTokener(encoded).nextValue() as? String; val array=JSONArray(decoded ?: "[]"); (0 until array.length()).forEach { i -> val u=array.optString(i); if(u.startsWith("http")) observed.add(u) } }
-                            candidates=observed.toList(); showMedia=true
+                            candidates=observed.toList().sortedBy {if(it.substringBefore('?').endsWith(".m3u8",true))0 else 1}; showMedia=true
                         }
                     }) { Icon(Icons.Filled.Download,"Vídeos encontrados") }
                     IconButton(onClick={ startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java)) }) { Icon(Icons.Filled.List,"Fila de downloads") }
@@ -111,7 +122,7 @@ class DownloadBrowserActivity: ComponentActivity() {
         }
         if(showMedia) AlertDialog(onDismissRequest={showMedia=false},title={Text("Vídeos encontrados")},text={
             if(candidates.isEmpty()) Text("Nenhum link de vídeo detectado. Inicie o vídeo ou use o botão de download do site e tente novamente.")
-            else LazyColumn { items(candidates) { url -> TextButton(onClick={showMedia=false; offer(url,browser.settings.userAgentString,null,null,title,browser.url.orEmpty())}) { Text(Uri.parse(url).lastPathSegment ?: "Vídeo",maxLines=2) } } }
+            else LazyColumn { items(candidates) { url -> TextButton(onClick={showMedia=false; offer(url,browser.settings.userAgentString,null,null,title,referers[url] ?: browser.url.orEmpty())}) { Text(Uri.parse(url).lastPathSegment ?: "Vídeo",maxLines=2) } } }
         },confirmButton={TextButton(onClick={showMedia=false}){Text("Fechar")}})
     }
     private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String) {

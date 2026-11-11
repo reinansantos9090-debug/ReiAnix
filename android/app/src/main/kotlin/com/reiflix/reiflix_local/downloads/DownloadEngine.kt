@@ -133,7 +133,7 @@ class DownloadEngine(private val context: Context) {
             try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let { DownloadMetadata.offer(context,it.animeId) }
             val prefs=ReiAnixAppDependencies.from(context).sqliteSettingsRepository
-            val connections=(prefs.getPreference("downloads.connections","1")?.toIntOrNull() ?: 1).coerceIn(1,4)
+            val connections=(prefs.getPreference("downloads.connections","4")?.toIntOrNull() ?: 4).coerceIn(1,16)
             if(connections>1 && total>=4*1024*1024 && !store.get(id)!!.json.optBoolean("parallelDisabled") &&
                 newValidator?.startsWith("\"")==true && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
                 connection.disconnect(); connection=null
@@ -144,7 +144,7 @@ class DownloadEngine(private val context: Context) {
                 catch(error: Exception) { if(store.get(id)?.state=="DOWNLOADING") { restart(id,file);store.mutate(id){it.put("parallelDisabled",true)};throw IOException("Retomando com uma conexão",error) } }
                 return
             }
-            val bufferSize=(prefs.getPreference("downloads.buffer_kb","128")?.toIntOrNull() ?: 128).coerceIn(64,512)*1024
+            val bufferSize=(prefs.getPreference("downloads.buffer_kb","256")?.toIntOrNull() ?: 256).coerceIn(64,512)*1024
             var count=resume; var committedAt=android.os.SystemClock.elapsedRealtime(); var previous=resume; var checkedAt=0L
             RandomAccessFile(file,"rw").use { output ->
                 output.seek(resume)
@@ -214,30 +214,29 @@ class DownloadEngine(private val context: Context) {
     private fun isDownloading(id: String)=store.get(id)?.state=="DOWNLOADING"
     private fun restart(id: String,file: File) {
         RandomAccessFile(file,"rw").use { it.setLength(0); it.fd.sync() }
-        store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1); it.remove("validator"); it.remove("serverHash"); it.remove("serverHashType") }
+        store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1); it.remove("validator"); it.remove("serverHash"); it.remove("serverHashType");it.put("hlsIndex",0);it.remove("hlsFingerprint") }
     }
     private suspend fun verifyAndSave(id: String,file: File) {
         val item=store.get(id) ?: return
         if(item.state !in DownloadState.pending) return
         store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","VERIFYING") }
-        val expected=item.json.optString("expectedHash").ifBlank { item.json.optString("serverHash") }
-        val algorithm=if(item.json.optString("expectedHash").isNotBlank()) item.json.optString("hashType","SHA-256") else item.json.optString("serverHashType","SHA-256")
-        val requested=MessageDigest.getInstance(algorithm); val sha=if(algorithm=="SHA-256") requested else MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer=ByteArray(256*1024)
-            while(true) {
-                currentCoroutineContext().ensureActive()
-                if(store.get(id)?.state !in DownloadState.pending) return
-                val n=input.read(buffer); if(n<0) break
-                requested.update(buffer,0,n); if(sha!==requested) sha.update(buffer,0,n)
+        // Reference-entry UI was removed. Honor a whole-file digest supplied by the server,
+        // but do not hash every unreferenced file merely to display a checksum.
+        val expected=item.json.optString("serverHash")
+        if(expected.isNotBlank()) {
+            val requested=MessageDigest.getInstance(item.json.optString("serverHashType","SHA-256"))
+            file.inputStream().use {input ->
+                val buffer=ByteArray(256*1024)
+                while(true) {
+                    currentCoroutineContext().ensureActive();if(store.get(id)?.state !in DownloadState.pending)return
+                    val n=input.read(buffer);if(n<0)break;requested.update(buffer,0,n)
+                }
             }
-        }
-        val computed=requested.digest().joinToString("") { "%02x".format(it) }
-        val sha256=if(sha===requested) computed else sha.digest().joinToString("") { "%02x".format(it) }
-        store.mutate(id) { it.put("sha256",sha256).put("integrity",if(expected.isBlank()) "SHA-256 calculado; sem referência para comparar" else "$algorithm verificado") }
-        if(expected.isNotBlank() && !computed.equals(expected,true)) {
-            store.mutate(id) { it.put("state","CORRUPT").put("message","O hash não confere. O arquivo não foi publicado na pasta de destino.") }
-            store.available(id,false); return
+            val computed=requested.digest().joinToString("") {"%02x".format(it)}
+            if(!computed.equals(expected,true)) {
+                store.mutate(id){it.put("state","CORRUPT").put("message","O arquivo recebido não confere com o servidor. Tente baixar novamente.")}
+                store.available(id,false);return
+            }
         }
         if(store.get(id)?.state !in DownloadState.pending) return
         store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","SAVING") }
@@ -283,6 +282,8 @@ class DownloadEngine(private val context: Context) {
             out.flush()
         }
         if(target.scheme=="file") RandomAccessFile(File(target.path!!),"rw").use { it.fd.sync() }
+        val keys=DownloadCatalogBridge.fileKeys(context,target.toString())
+        store.mutate(id){it.put("outputKeys",org.json.JSONArray(keys.toList())).put("outputKeysAt",System.currentTimeMillis())}
         if(tree.isNotBlank()) {
             val parent=DocumentFile.fromTreeUri(context,Uri.parse(tree)) ?: throw PermanentFailure("Pasta de destino indisponível")
             var finalName=item.name; var suffix=1

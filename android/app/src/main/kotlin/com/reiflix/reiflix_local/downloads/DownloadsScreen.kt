@@ -11,6 +11,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -74,6 +80,8 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
     val store=remember(context) { DownloadStore(context) }
     val scope=rememberCoroutineScope()
     val items by DownloadSnapshots.items.collectAsStateWithLifecycle()
+    var queueMenu by remember { mutableStateOf(false) }
+    var newestFirst by remember { mutableStateOf(false) }
     var initialized by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var add by remember { mutableStateOf(false) }
@@ -104,12 +112,18 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
             if(onBack!=null) IconButton(onClick=onBack) { Icon(Icons.Filled.ArrowBack,"Voltar") }
-            Text("Downloads",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
-            IconButton(onClick={ add=true },enabled=initialized && !busy) { Icon(Icons.Filled.Add,"Adicionar download") }
+            Text("Fila de download",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
+            Box {
+                IconButton(onClick={queueMenu=true},enabled=initialized && !busy) {Icon(Icons.Filled.Sort,"Opções da fila")}
+                DropdownMenu(expanded=queueMenu,onDismissRequest={queueMenu=false}) {
+                    DropdownMenuItem(text={Text("Adicionar download")},leadingIcon={Icon(Icons.Filled.Add,null)},onClick={queueMenu=false;add=true})
+                    DropdownMenuItem(text={Text(if(newestFirst)"Mais antigos primeiro" else "Mais recentes primeiro")},leadingIcon={Icon(Icons.Filled.SwapVert,null)},onClick={newestFirst=!newestFirst;queueMenu=false})
+                }
+            }
         }
         if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(20.dp))
         if(!initialized && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if(initialized && items.isEmpty()) {
+        if(initialized && items.none {it.state !in setOf("COMPLETE","CANCELLED")}) {
             Column(Modifier.fillMaxWidth().padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                 Icon(Icons.Filled.Download,null,Modifier.size(48.dp))
                 Text("Seus downloads aparecem aqui",style=MaterialTheme.typography.titleMedium)
@@ -117,40 +131,39 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                 TextButton(onClick={ add=true }) { Text("Adicionar download") }
             }
         }
-        LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            items(items,key={ it.id }) { item ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                        Text(item.name,style=MaterialTheme.typography.titleMedium)
-                        Text(DownloadState.labels[item.state] ?: item.state,style=MaterialTheme.typography.bodyMedium)
-                        if(downloadPercent(item)!=null) LinearProgressIndicator(progress={ downloadPercent(item)!!/100f },modifier=Modifier.fillMaxWidth())
-                        else if(item.state in DownloadState.pending) LinearProgressIndicator(Modifier.fillMaxWidth())
-                        val size=Formatter.formatFileSize(context,item.bytes)
-                        val total=if(item.total>=0) Formatter.formatFileSize(context,item.total) else "tamanho desconhecido"
-                        val speed=item.json.optLong("speed")
-                        Text("$size / $total"+(if(speed>0) " • ${Formatter.formatFileSize(context,speed)}/s"+(if(item.total>0) " • ~${((item.total-item.bytes).coerceAtLeast(0)/speed)/60} min" else "") else ""),style=MaterialTheme.typography.bodySmall)
-                        item.json.optString("message").takeIf { it.isNotBlank() }?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
-                        if(item.state=="COMPLETE") {
-                            Text(item.json.optString("integrity"),style=MaterialTheme.typography.bodySmall)
-                            Text("SHA-256: ${item.json.optString("sha256")}",style=MaterialTheme.typography.labelSmall)
+        LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(horizontal=20.dp,vertical=12.dp)) {
+            val pending=items.filter {it.state !in setOf("COMPLETE","CANCELLED")}.let {rows -> if(newestFirst)rows else rows.reversed()}
+            items(pending,key={it.id}) { item ->
+                var menu by remember(item.id) {mutableStateOf(false)}
+                Row(Modifier.fillMaxWidth().heightIn(min=64.dp).clickable {menu=true}.padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                        Text(item.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
+                        val received=Formatter.formatFileSize(context,item.bytes)
+                        val total=if(item.total>0)Formatter.formatFileSize(context,item.total) else "tamanho desconhecido"
+                        val subtitle=if(item.state=="QUEUED" && item.bytes==0L) item.json.optString("displayAnime").ifBlank {"Na fila"} else "$received / $total"
+                        Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
+                        if(item.state in setOf("ERROR","CORRUPT","PAUSED","WAITING")) Text(item.json.optString("message").ifBlank {DownloadState.labels[item.state].orEmpty()},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)
+                    }
+                    Box(Modifier.padding(start=16.dp)) {
+                        val percent=downloadPercent(item)
+                        if(percent==null && item.state=="DOWNLOADING") CircularProgressIndicator(Modifier.size(28.dp),color=Color.White,strokeWidth=2.dp)
+                        else Canvas(Modifier.size(28.dp)) {
+                            drawCircle(Color.White,style=Stroke(1.8.dp.toPx()))
+                            if(percent!=null && percent>0)drawArc(Color.White,-90f,360f*percent/100f,true)
                         }
-                        if(item.mime.startsWith("video/") && !item.json.optBoolean("identityKnown") && item.state!="CANCELLED") TextButton(onClick={identify=item;identityTitle=""}) {Text("Identificar anime")}
-                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                            if(item.state in DownloadState.pending && item.state!="SAVING") IconButton(onClick={ action(item,"pause") }) { Icon(Icons.Filled.Pause,"Pausar") }
-                            if(item.state in setOf("PAUSED","ERROR")) IconButton(onClick={ action(item,"resume") }) { Icon(Icons.Filled.PlayArrow,"Retomar") }
-                            if(item.state=="CANCELLED" && item.output.isNotBlank()) IconButton(onClick={ action(item,"cancel") }) { Icon(Icons.Filled.DeleteOutline,"Limpar arquivo temporário") }
-                            if(item.state in setOf("CORRUPT","CANCELLED")) TextButton(onClick={ action(item,"restart") }) { Text("Baixar novamente") }
-                            if(item.state !in setOf("COMPLETE","CANCELLED","SAVING")) IconButton(onClick={ action(item,"cancel") }) { Icon(Icons.Filled.Close,"Cancelar") }
-                            if(item.state in setOf("ERROR","PAUSED")) IconButton(onClick={ edit=item; add=true }) { Icon(Icons.Filled.Edit,"Atualizar link ou autenticação") }
-                            if(item.mime.startsWith("video/") && item.bytes>128*1024 && item.state !in setOf("CANCELLED","ERROR","CORRUPT")) TextButton(onClick={
-                                val uri=if(item.state=="COMPLETE") Uri.parse(item.output) else item.virtualUri
-                                context.startActivity(Intent(context,NativePlayerActivity::class.java).putExtra("uri",uri.toString())
-                                    .putExtra("episodeId",item.episodeId.takeIf { it>0 }?.toString().orEmpty()).putExtra("animeId",item.animeId.takeIf { it>0 }?.toString().orEmpty())
-                                    .putExtra("title",item.name).putExtra("autoplay",true))
-                            }) { Text("Assistir") }
-                            if(item.state in setOf("COMPLETE","CANCELLED","CORRUPT") && (item.state=="COMPLETE" || item.output.isBlank())) IconButton(onClick={ action(item,"forget") }) { Icon(Icons.Filled.DeleteOutline,"Remover da lista; manter arquivo concluído") }
+                        DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                            if(item.state in DownloadState.pending && item.state!="SAVING") DropdownMenuItem(text={Text("Pausar")},leadingIcon={Icon(Icons.Filled.Pause,null)},onClick={menu=false;action(item,"pause")})
+                            if(item.state in setOf("PAUSED","ERROR")) DropdownMenuItem(text={Text("Retomar")},leadingIcon={Icon(Icons.Filled.PlayArrow,null)},onClick={menu=false;action(item,"resume")})
+                            if(item.state=="CORRUPT") DropdownMenuItem(text={Text("Baixar novamente")},onClick={menu=false;action(item,"restart")})
+                            if(item.state!="SAVING") DropdownMenuItem(text={Text("Cancelar")},leadingIcon={Icon(Icons.Filled.Close,null)},onClick={menu=false;action(item,"cancel")})
+                            if(!item.json.optBoolean("identityKnown")) DropdownMenuItem(text={Text("Identificar anime")},leadingIcon={Icon(Icons.Filled.Edit,null)},onClick={menu=false;identify=item;identityTitle=""})
+                            if(item.state in setOf("ERROR","PAUSED")) DropdownMenuItem(text={Text("Atualizar link")},onClick={menu=false;edit=item;add=true})
+                            if(item.mime.startsWith("video/") && item.bytes>128*1024 && item.state !in setOf("ERROR","CORRUPT")) DropdownMenuItem(text={Text("Assistir")},leadingIcon={Icon(Icons.Filled.PlayCircle,null)},onClick={
+                                menu=false
+                                context.startActivity(Intent(context,NativePlayerActivity::class.java).putExtra("uri",item.virtualUri.toString())
+                                    .putExtra("episodeId",item.episodeId.takeIf {it>0}?.toString().orEmpty()).putExtra("animeId",item.animeId.takeIf {it>0}?.toString().orEmpty()).putExtra("title",item.name).putExtra("autoplay",true))
+                            })
                         }
-                        if(item.state!="COMPLETE" && item.episodeId>0) Text("Você pode assistir enquanto baixa quando o formato permitir. Avançar para trechos ainda não recebidos pode exigir espera.",style=MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -171,8 +184,8 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                     val profile=store.profile(url)
                     val combined=downloadProfileHeaders(profile).toMutableMap()
                     headers.forEach { (key,value) -> combined.keys.filter {it.equals(key,true)}.toList().forEach(combined::remove); combined[key]=value }
-                    val expected=profile.optString("hash").ifBlank {hash}
-                    val algorithm=if(profile.optString("hash").isNotBlank())profile.optString("hashType","SHA-256") else type
+                    val expected=""
+                    val algorithm="SHA-256"
                     if(editing==null) store.enqueue(url,name,dest,expected,algorithm,combined,anime,autoName)
                     else {store.updateSource(editing.id,url,combined,expected,algorithm,dest); if(anime.isNotBlank())store.relink(editing.id,anime)}
                     DownloadSnapshots.refresh(context)
@@ -242,11 +255,10 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
             }
                 Text(if(destination.isBlank()) "Destino: Downloads/ReiAnix" else "Destino: $destination",style=MaterialTheme.typography.bodySmall)
                 Row { TextButton(onClick={ folder.launch(null) },enabled=!busy && !sourceLoading) { Text("Escolher pasta") }; TextButton(onClick={ destination="" },enabled=!busy && !sourceLoading) { Text("Padrão") } }
-            TextButton(onClick={ try { DownloadHttp.validateUrl(url); context.startActivity(Intent(context,DownloadBrowserActivity::class.java).setData(Uri.parse(url.trim()))) } catch(_: Exception) { error="Informe um link válido primeiro" } },enabled=!busy && !sourceLoading) { Text("Entrar no site") }
             if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
             if(submissionError.isNotBlank()) Text(submissionError,color=MaterialTheme.colorScheme.error)
         } },
-        confirmButton={ TextButton(enabled=!busy && !sourceLoading,onClick={
+        confirmButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=Color.White),modifier=Modifier.heightIn(min=48.dp),enabled=!busy && !sourceLoading,onClick={
             try {
                 DownloadHttp.validateUrl(url)
                 val headers=originalHeaders.filterKeys { it.lowercase() !in setOf("cookie","referer") }.toMutableMap()
@@ -255,8 +267,8 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
                 if(user.isNotBlank()) { headers.keys.filter { it.equals("authorization",true) }.forEach(headers::remove); headers["Authorization"]="Basic "+android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP) }
                 onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched)
             } catch(_: Exception) { error="Confira o link e os dados informados" }
-        }) { Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar") } },
-        dismissButton={ TextButton(onClick=onDismiss,enabled=!busy && !sourceLoading) { Text("Cancelar") } })
+        }) { Icon(Icons.Filled.Download,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar",fontSize=16.sp) } },
+        dismissButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=Color.White),modifier=Modifier.heightIn(min=48.dp),onClick=onDismiss,enabled=!busy && !sourceLoading) { Icon(Icons.Filled.Close,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Cancelar",fontSize=16.sp) } })
 
 }
 

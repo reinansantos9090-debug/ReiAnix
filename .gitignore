@@ -5,3 +5,9 @@ build/
 android/.gradle/
 android/.kotlin/
 android/app/build/
+
+# Never commit Android app signing keys or keystores.
+*.jks
+*.keystore
+*.p12
+*.pfx

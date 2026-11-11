@@ -71,8 +71,8 @@ object ReiAnixSettingsContract {
 
     val definitions: Map<String, ReiAnixSettingDefinition> = listOf(
         int("downloads.parallel", 2, 1, 2, 3, 4),
-        int("downloads.buffer_kb", 128, 64, 128, 256, 512),
-        int("downloads.connections", 1, 1, 2, 4),
+        int("downloads.buffer_kb", 256, 64, 128, 256, 512),
+        int("downloads.connections", 4, 1, 2, 4, 8, 16),
         bool("downloads.wifi_only", false),
         bool("app.confirm_destructive", true),
         enum("appearance.theme", "dark", "system", "light", "dark"),

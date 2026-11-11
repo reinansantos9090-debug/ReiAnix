@@ -21,6 +21,9 @@ class ReiAnixApplication : Application() {
             try {
                 val downloads=com.reiflix.reiflix_local.downloads.DownloadStore(this@ReiAnixApplication)
                 downloads.ready()
+                if(com.reiflix.reiflix_local.downloads.DownloadCatalogBridge.reconcile(dependencies.sqliteDatabase)) {
+                    com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+                }
                 com.reiflix.reiflix_local.downloads.DownloadSnapshots.refresh(this@ReiAnixApplication)
                 if(downloads.all().any { it.state in com.reiflix.reiflix_local.downloads.DownloadState.pending }) {
                     com.reiflix.reiflix_local.downloads.DownloadScheduling.schedule(this@ReiAnixApplication,userInitiated=false)
