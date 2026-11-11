@@ -121,7 +121,8 @@ class DownloadEngine(private val context: Context) {
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             val disposition=connection.getHeaderField("Content-Disposition")
             store.mutate(id) {
-                if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L) {
+                if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L &&
+                    !it.has("playerCapture")) {
                     val serverName=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
                     val proposed=if(it.has("playerCapture")) it.getString("name").substringBeforeLast('.')+"."+serverName.substringAfterLast('.',"mp4") else serverName
                     if(proposed.isNotBlank() && proposed !in setOf(".","..") && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
@@ -258,7 +259,7 @@ class DownloadEngine(private val context: Context) {
         var output=item.output.takeIf { it.isNotBlank() }?.let(Uri::parse)
         if(output==null) {
             output=when {
-                tree.isNotBlank() -> DocumentFile.fromTreeUri(context,Uri.parse(tree))?.createFile("application/octet-stream", ".${item.name}.$id.part")?.uri
+                tree.isNotBlank() -> DocumentFile.fromTreeUri(context,Uri.parse(tree))?.createFile(item.mime, ".${item.name}.$id.part")?.uri
                     ?: throw PermanentFailure("Não foi possível criar o arquivo na pasta escolhida")
                 Build.VERSION.SDK_INT>=29 -> context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME,item.name); put(MediaStore.Downloads.MIME_TYPE,item.mime)
@@ -302,7 +303,30 @@ class DownloadEngine(private val context: Context) {
             store.mutate(id) { it.put("output",renamed.toString()) }
             return renamed
         }
-        if(Build.VERSION.SDK_INT>=29 && target.scheme=="content") context.contentResolver.update(target,ContentValues().apply { put(MediaStore.Downloads.IS_PENDING,0) },null,null)
+        if(Build.VERSION.SDK_INT>=29 && target.scheme=="content") {
+            // Publish only after the full video has been flushed. Android can
+            // then index the final display name, MIME and media thumbnail.
+            val published=context.contentResolver.update(target,ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME,item.name)
+                put(MediaStore.Downloads.MIME_TYPE,item.mime)
+                put(MediaStore.Downloads.IS_PENDING,0)
+            },null,null)
+            if(published<=0) throw PermanentFailure("Não foi possível publicar o arquivo concluído no Android")
+            runCatching {
+                val displayName=context.contentResolver.query(
+                    target,arrayOf(MediaStore.Downloads.DISPLAY_NAME),null,null,null
+                )?.use { cursor -> if(cursor.moveToFirst()) cursor.getString(0) else null }
+                if(!displayName.isNullOrBlank()) {
+                    val publicFile=File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                        "ReiAnix/$displayName",
+                    )
+                    android.media.MediaScannerConnection.scanFile(
+                        context,arrayOf(publicFile.absolutePath),arrayOf(item.mime),null
+                    )
+                }
+            }.onFailure { android.util.Log.w("ReiAnixDownload","Android media index refresh failed",it) }
+        }
         return target
     }
     private fun serverHash(connection: HttpURLConnection): Pair<String,String>? {
