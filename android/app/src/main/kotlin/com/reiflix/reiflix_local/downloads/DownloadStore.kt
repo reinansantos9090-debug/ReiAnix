@@ -263,12 +263,13 @@ class DownloadStore(context: Context) {
             DownloadEvents.catalog.tryEmit(Unit)
         }
     }
-    fun complete(id: String, output: Uri) {
+    fun complete(id: String, output: Uri, finalBytes: Long = -1L) {
         DownloadCatalogBridge.reconcile(db)
         db.transaction { connection ->
             val data = connection.rawQuery("SELECT data FROM native_downloads WHERE id=?", arrayOf(id)).use { it.moveToFirst(); JSONObject(it.getString(0)) }
             check(data.optString("state")=="SAVING") { "O download não está na etapa de publicação" }
             data.put("state", "COMPLETE").put("output", output.toString()).put("message", "Concluído")
+            if(finalBytes>0) data.put("bytes",finalBytes).put("total",finalBytes)
             // Keep the user's original filename. ContentProviders can return a
             // generic display title or even omit the extension after publication.
             connection.update("native_downloads", ContentValues().apply { put("data", data.toString()) }, "id=?", arrayOf(id))
@@ -278,7 +279,8 @@ class DownloadStore(context: Context) {
                 put("path", data.getString("virtualUri"))
                 put("file_name",data.getString("name"))
                 put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
-                put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
+                put("file_size", data.optLong("bytes")); put("mime_type",data.optString("mime"))
+                put("missing", 0); put("availability_state", "available")
             }, "id=? AND (media_identity=? OR path=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri"),output.toString()))
         }
         DownloadEvents.catalog.tryEmit(Unit)
