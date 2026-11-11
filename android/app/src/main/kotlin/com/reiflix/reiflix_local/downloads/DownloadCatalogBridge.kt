@@ -99,9 +99,13 @@ internal object DownloadCatalogBridge {
         val owner=a.getAsLong("anime_id");val redundant=b.getAsLong("anime_id")
         val media=b.getAsString("media_identity").orEmpty()
         if(media.startsWith("download:") && media!="download:${job.id}")return false
-        val newer=(b.getAsDouble("last_played_at") ?: 0.0)>(a.getAsDouble("last_played_at") ?: 0.0)
+        val lastA=a.getAsDouble("last_played_at") ?: 0.0
+        val lastB=b.getAsDouble("last_played_at") ?: 0.0
+        val progressA=a.getAsDouble("progress") ?: 0.0
+        val progressB=b.getAsDouble("progress") ?: 0.0
+        val resume=when {lastA==lastB->maxOf(progressA,progressB);lastB>lastA->progressB;else->progressA}
         val patch=ContentValues().apply {
-            put("progress",if(newer)b.getAsDouble("progress") ?: 0.0 else a.getAsDouble("progress") ?: 0.0)
+            put("progress",resume)
             put("last_played_at",maxOf(a.getAsDouble("last_played_at") ?: 0.0,b.getAsDouble("last_played_at") ?: 0.0))
             put("duration",maxOf(a.getAsDouble("duration") ?: 0.0,b.getAsDouble("duration") ?: 0.0))
             put("watched",maxOf(a.getAsInteger("watched") ?: 0,b.getAsInteger("watched") ?: 0))
