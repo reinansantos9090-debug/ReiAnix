@@ -49,3 +49,44 @@ internal data class BrowserMediaOption(
         }.getOrDefault(false)
     }
 }
+
+/** Deduplicate the selected player rendition and independent page/manifest options. */
+internal data class BrowserDownloadChoice(
+    val url: String,
+    val page: String,
+    val quality: String,
+    val format: String,
+    val separateAudio: Boolean,
+    val capture: PlayerMediaCandidate?,
+)
+
+internal object BrowserMediaResults {
+    fun combine(
+        confirmed: List<PlayerMediaCandidate>,
+        discovered: List<BrowserMediaOption>,
+    ): List<BrowserDownloadChoice> {
+        val byUrl = LinkedHashMap<String, BrowserDownloadChoice>()
+        discovered.filter(BrowserMediaOption::eligible).forEach { option ->
+            byUrl.putIfAbsent(
+                option.url,
+                BrowserDownloadChoice(option.url, option.page, option.quality, option.format, option.separateAudio, null),
+            )
+        }
+        confirmed.filter(PlayerMediaCandidate::eligible).forEach { item ->
+            val previous = byUrl[item.url]
+            byUrl[item.url] = BrowserDownloadChoice(
+                url = item.url,
+                page = item.page,
+                quality = previous?.quality?.takeIf { it != "Qualidade não informada" } ?: "${item.height}p",
+                format = previous?.format ?: if (item.source == "hls") "hls" else "video",
+                separateAudio = previous?.separateAudio == true,
+                capture = item,
+            )
+        }
+        return byUrl.values.sortedWith(
+            compareByDescending<BrowserDownloadChoice> {
+                Regex("(2160|1440|1080|720|480|360|240)p").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            }.thenBy { it.format }.thenBy { it.url },
+        )
+    }
+}
