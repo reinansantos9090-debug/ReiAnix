@@ -227,6 +227,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                         }
                     }
                 },
+                hlsHint=offer.hlsHint,
             )
         }
         if(showMedia) AlertDialog(
