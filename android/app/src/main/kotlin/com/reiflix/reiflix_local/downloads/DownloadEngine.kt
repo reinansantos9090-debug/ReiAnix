@@ -65,7 +65,7 @@ class DownloadEngine(private val context: Context) {
             val file=store.partial(id)
             if(item.json.optBoolean("restart")) {
                 RandomAccessFile(file,"rw").use { it.setLength(0) }
-                item=store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1).put("restart",false).remove("validator"); it.remove("serverHash"); it.put("hlsIndex",0); it.remove("hlsFingerprint") }
+                item=store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1).put("restart",false).remove("validator"); it.remove("serverHash"); it.put("hlsIndex",0); it.remove("hlsFingerprint");if(it.has("playerCapture"))it.put("captureApproved",false).put("captureProbeStage",0) }
             }
             // A crash can leave uncommitted bytes. Only persisted, fsynced bytes are reusable.
             val offset=minOf(item.bytes,file.length())
@@ -107,6 +107,7 @@ class DownloadEngine(private val context: Context) {
             val responseEnd=range?.end?.plus(1)
             val total=range?.total ?: length
             val contentType=connection.contentType?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+            if(item.json.has("playerCapture") && contentType.startsWith("image/"))throw DownloadCaptureGuard.Rejected("A captura retornou uma imagem, não o episódio")
             if(contentType in setOf("text/html","application/xhtml+xml")) throw PermanentFailure("Este link abre uma página. Informe o link direto do arquivo.")
             if(contentType.contains("mpegurl",true)) {
                 connection.disconnect(); connection=null
@@ -138,8 +139,9 @@ class DownloadEngine(private val context: Context) {
                 newValidator?.startsWith("\"")==true && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
                 connection.disconnect(); connection=null
                 try {
-                    if(DownloadRanges.receive(store,id,secret.getString("url"),requestHeaders,file,resume,total,newValidator,connections)) verifyAndSave(id,file)
+                    if(DownloadRanges.receive(context,store,id,secret.getString("url"),requestHeaders,file,resume,total,newValidator,connections)) verifyAndSave(id,file)
                 } catch(cancelled: CancellationException) { throw cancelled }
+                catch(rejected: DownloadCaptureGuard.Rejected) {throw rejected}
                 catch(_: DownloadRanges.Paused) { return }
                 catch(error: Exception) { if(store.get(id)?.state=="DOWNLOADING") { restart(id,file);store.mutate(id){it.put("parallelDisabled",true)};throw IOException("Retomando com uma conexão",error) } }
                 return
@@ -178,6 +180,7 @@ class DownloadEngine(private val context: Context) {
                             output.fd.sync()
                             val speed=(count-previous)*1000/(now-committedAt).coerceAtLeast(1)
                             store.mutate(id) { it.put("bytes",count).put("speed",speed) }
+                            DownloadCaptureGuard.probe(context,store,id,file,count)
                             previous=count; committedAt=now
                         }
                     }
@@ -199,11 +202,11 @@ class DownloadEngine(private val context: Context) {
             val item=store.get(id) ?: return
             if(item.state !in DownloadState.pending) return
             val attempts=item.json.optInt("attempts")+1
-            val permanent=error is PermanentFailure || error is SecurityException || error is IllegalArgumentException || attempts>=12
+            val permanent=error is DownloadCaptureGuard.Rejected || error is PermanentFailure || error is SecurityException || error is IllegalArgumentException || attempts>=12
             store.mutate(id) {
                 it.put("state",if(permanent) "ERROR" else "WAITING").put("attempts",attempts).put("speed",0)
                     .put("nextAttempt",System.currentTimeMillis()+minOf(60_000L,2000L*(1L shl attempts.coerceAtMost(5))))
-                    .put("message",when(error) { is PermanentFailure -> error.message; is SecurityException -> "Permissão de destino indisponível. Escolha novamente a pasta."; else -> if(permanent) "Não foi possível concluir. Confira a conexão e tente retomar." else "Aguardando conexão ou servidor; a retomada é automática." })
+                    .put("message",when(error) { is DownloadCaptureGuard.Rejected -> error.message; is PermanentFailure -> error.message; is SecurityException -> "Permissão de destino indisponível. Escolha novamente a pasta."; else -> if(permanent) "Não foi possível concluir. Confira a conexão e tente retomar." else "Aguardando conexão ou servidor; a retomada é automática." })
             }
         } finally { connection?.disconnect() }
     }
@@ -214,11 +217,12 @@ class DownloadEngine(private val context: Context) {
     private fun isDownloading(id: String)=store.get(id)?.state=="DOWNLOADING"
     private fun restart(id: String,file: File) {
         RandomAccessFile(file,"rw").use { it.setLength(0); it.fd.sync() }
-        store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1); it.remove("validator"); it.remove("serverHash"); it.remove("serverHashType");it.put("hlsIndex",0);it.remove("hlsFingerprint") }
+        store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1); it.remove("validator"); it.remove("serverHash"); it.remove("serverHashType");it.put("hlsIndex",0);it.remove("hlsFingerprint");if(it.has("playerCapture"))it.put("captureApproved",false).put("captureProbeStage",0) }
     }
     private suspend fun verifyAndSave(id: String,file: File) {
         val item=store.get(id) ?: return
         if(item.state !in DownloadState.pending) return
+        DownloadCaptureGuard.probe(context,store,id,file,item.bytes,complete=true)
         store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","VERIFYING") }
         // Reference-entry UI was removed. Honor a whole-file digest supplied by the server,
         // but do not hash every unreferenced file merely to display a checksum.

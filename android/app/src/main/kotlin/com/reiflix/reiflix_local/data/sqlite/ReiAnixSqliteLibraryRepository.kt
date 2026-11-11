@@ -1584,6 +1584,7 @@ class ReiAnixSqliteLibraryRepository(
                         continue
                     }
                     val download=downloadAliases[item.location]?.let {bridge.episodeFor(db,it)}
+                    if(download?.second=="REJECTED") {unchanged++;continue}
                     val downloadRow=download?.let {entry -> db.rawQuery("SELECT * FROM episodes WHERE id=?",arrayOf(entry.first.toString())).use {c ->if(c.moveToFirst())c.toEpisodeRecord() else null}}
                     val identityRow = byIdentity.singleOrNull()
                     val pathRow = byPath.singleOrNull()

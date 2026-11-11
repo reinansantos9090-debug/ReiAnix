@@ -103,7 +103,7 @@ class DownloadStore(context: Context) {
         DownloadItem(data)
     }
     suspend fun enqueue(url: String, name: String, destination: String, expectedHash: String, hashType: String,
-        headers: Map<String, String>, animeTitle: String = "", automaticName: Boolean = false): DownloadItem = withContext(Dispatchers.IO) {
+        headers: Map<String, String>, animeTitle: String = "", automaticName: Boolean = false, playerCapture: JSONObject? = null): DownloadItem = withContext(Dispatchers.IO) {
         ready()
         DownloadHttp.validateUrl(url)
         require(url.length<=16384) { "O link é longo demais" }
@@ -112,6 +112,7 @@ class DownloadStore(context: Context) {
         require(hashType in setOf("SHA-256", "SHA-1", "MD5"))
         val hash = expectedHash.trim().lowercase()
         require(hash.isEmpty() || hash.matches(Regex(when(hashType) { "MD5" -> "[0-9a-f]{32}"; "SHA-1" -> "[0-9a-f]{40}"; else -> "[0-9a-f]{64}" }))) { "Hash de referência inválido" }
+        if(playerCapture!=null)require(PlayerMediaCandidate.parse(playerCapture)?.url==url.trim()) {"Não foi possível confirmar o player principal"}
         val id = UUID.randomUUID().toString()
         val payload = JSONObject().put("url", url).put("headers", JSONObject(headers))
         val signature = digest(url.toByteArray())
@@ -121,6 +122,7 @@ class DownloadStore(context: Context) {
             .put("created", System.currentTimeMillis()).put("animeTitle", animeTitle.trim()).put("automaticName",automaticName)
             .put("virtualUri", "content://${context.packageName}.downloads/$id/${Uri.encode(name)}")
             .put("mime", MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream")
+        if(playerCapture!=null)data.put("playerCapture",playerCapture)
         db.transaction { connection ->
             val duplicate = connection.rawQuery("SELECT data FROM native_downloads", null).use { c ->
                 var found = false
@@ -178,6 +180,8 @@ class DownloadStore(context: Context) {
     fun secret(item: DownloadItem): JSONObject = JSONObject(DownloadSecrets.decrypt(item.json.getString("secret")))
     fun registerMedia(id: String) {
         val current = get(id) ?: return
+        if(current.state in setOf("CANCELLED","CORRUPT","ERROR"))return
+        if(current.json.has("playerCapture") && !current.json.optBoolean("captureApproved"))return
         if(!current.mime.startsWith("video/")) return
         if(current.episodeId>0) {
             val changed=db.transaction { c -> c.update("episodes",ContentValues().apply {put("mime_type",current.mime)},
@@ -286,7 +290,7 @@ class DownloadStore(context: Context) {
         mutate(id) {
             require(it.optString("state") in setOf("ERROR","PAUSED"))
             if(it.optString("destination")!=destination) { previousOutput=it.optString("output"); it.put("destination",destination).put("output","") }
-            if(previousUrl!=url) { it.put("restart",true).put("bytes",0).put("total",-1).put("parallelDisabled",false);it.remove("hls") }
+            if(previousUrl!=url) { it.put("restart",true).put("bytes",0).put("total",-1).put("parallelDisabled",false);it.remove("hls");it.remove("playerCapture");it.remove("captureApproved");it.remove("captureProbeStage") }
             it.put("secret",encrypted).put("signature",digest(url.toByteArray())).put("expectedHash",normalized)
                 .put("hashType",hashType).put("state","QUEUED").put("attempts",0).put("nextAttempt",0)
         }

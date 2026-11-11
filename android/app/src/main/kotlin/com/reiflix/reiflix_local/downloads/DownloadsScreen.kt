@@ -50,6 +50,7 @@ object DownloadSnapshots {
 class DownloadsActivity: ComponentActivity() {
     private var incoming by mutableStateOf("")
     private var incomingTitle by mutableStateOf("")
+    private var incomingCapture by mutableStateOf<String?>(null)
     private var incomingName by mutableStateOf("")
     private var incomingHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +58,7 @@ class DownloadsActivity: ComponentActivity() {
         setContent { ReiAnixComposeTheme {
             Surface(Modifier.fillMaxSize()) {
                 Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
-                    DownloadsScreen(incoming,incomingHeaders,incomingTitle,incomingName,onBack={ finish() })
+                    DownloadsScreen(incoming,incomingHeaders,incomingTitle,incomingName,playerCapture=incomingCapture,onBack={ finish() })
                 }
             }
         } }
@@ -68,6 +69,8 @@ class DownloadsActivity: ComponentActivity() {
         incoming=Regex("https?://[^\\s]+",RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
         incomingTitle=sequenceOf(Intent.EXTRA_TITLE,Intent.EXTRA_SUBJECT,"title","name").mapNotNull { intent.getStringExtra(it) }.firstOrNull {it.isNotBlank()}.orEmpty()
         incomingName=intent.getStringExtra("downloadName").orEmpty()
+        incomingCapture=intent.getStringExtra("playerCapture")?.takeIf {it.length<=32768}
+        intent.removeExtra("playerCapture")
         val bundle=intent.getBundleExtra("headers") ?: intent.getBundleExtra("com.android.browser.headers")
         incomingHeaders=bundle?.keySet()?.mapNotNull { key -> (bundle.get(key) as? String)?.let { key to it } }?.toMap().orEmpty()
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT); intent.removeExtra("headers"); intent.removeExtra("com.android.browser.headers")
@@ -75,7 +78,7 @@ class DownloadsActivity: ComponentActivity() {
 }
 
 @Composable
-fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",onBack: (() -> Unit)? = null) {
+fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",playerCapture: String? = null,onBack: (() -> Unit)? = null) {
     val context=LocalContext.current
     val store=remember(context) { DownloadStore(context) }
     val scope=rememberCoroutineScope()
@@ -189,7 +192,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                     headers.forEach { (key,value) -> combined.keys.filter {it.equals(key,true)}.toList().forEach(combined::remove); combined[key]=value }
                     val expected=""
                     val algorithm="SHA-256"
-                    if(editing==null) store.enqueue(url,name,dest,expected,algorithm,combined,anime,autoName)
+                    if(editing==null) store.enqueue(url,name,dest,expected,algorithm,combined,anime,autoName,playerCapture?.let {JSONObject(it)}?.takeIf {it.optString("url")==url})
                     else {store.updateSource(editing.id,url,combined,expected,algorithm,dest); if(anime.isNotBlank())store.relink(editing.id,anime)}
                     DownloadSnapshots.refresh(context)
                 }

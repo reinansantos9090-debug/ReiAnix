@@ -45,15 +45,15 @@ class DownloadBrowserActivity: ComponentActivity() {
         var title by remember { mutableStateOf("") }
         var progress by remember { mutableIntStateOf(0) }
         var showMedia by remember { mutableStateOf(false) }
-        var candidates by remember { mutableStateOf<List<String>>(emptyList()) }
+        var candidates by remember { mutableStateOf<List<PlayerMediaCandidate>>(emptyList()) }
         var error by remember { mutableStateOf("") }
-        val observed=remember { ConcurrentHashMap.newKeySet<String>() }
-        val referers=remember {ConcurrentHashMap<String,String>()}
+        val observed=remember {ConcurrentHashMap<String,PlayerMediaCandidate>()}
         val browser=remember {
             WebView(this).apply {
                 web=this
-                BrowserMediaCapture.install(this) { url,page ->
-                    if(observed.size<120) {observed.add(url);referers[url]=page}
+                BrowserMediaCapture.install(this) { frame,item ->
+                    if(item==null)observed.remove(frame)
+                    else if(observed.size<20 || observed.containsKey(frame))observed[frame]=item
                 }
                 settings.javaScriptEnabled=true; settings.domStorageEnabled=true
                 settings.allowFileAccess=false; settings.allowContentAccess=false
@@ -67,16 +67,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                         if(request.url.scheme !in setOf("http","https")) { return true }
                         return false
                     }
-                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear();referers.clear();error="" }
+                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear();error="" }
                     override fun onPageFinished(view: WebView,url: String) { address=url; title=view.title.orEmpty() }
-                    override fun shouldInterceptRequest(view: WebView,request: WebResourceRequest): WebResourceResponse? {
-                        val url=request.url.toString()
-                        if(request.method=="GET" && isVideoLink(url) && observed.size<120) {
-                            observed.add(url)
-                            request.requestHeaders.entries.firstOrNull {it.key.equals("referer",true)}?.value?.let {referers[url]=it}
-                        }
-                        return null
-                    }
+
                 }
                 webChromeClient=object: WebChromeClient() {
                     override fun onProgressChanged(view: WebView,n: Int) { progress=n }
@@ -108,9 +101,14 @@ class DownloadBrowserActivity: ComponentActivity() {
                             try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
                         }))
                     IconButton(onClick={
-                        browser.evaluateJavascript("JSON.stringify(Array.from(document.querySelectorAll('video,video source,a[download]')).map(e=>e.currentSrc||e.src||e.href).filter(Boolean))") { encoded ->
-                            runCatching { val decoded=org.json.JSONTokener(encoded).nextValue() as? String; val array=JSONArray(decoded ?: "[]"); (0 until array.length()).forEach { i -> val u=array.optString(i); if(u.startsWith("http")) observed.add(u) } }
-                            candidates=observed.toList().sortedBy {if(it.substringBefore('?').endsWith(".m3u8",true))0 else 1}; showMedia=true
+                        browser.evaluateJavascript("window.__reiScanPlayers && window.__reiScanPlayers()") {
+                            browser.postDelayed({
+                                val now=System.nanoTime()/1_000_000
+                                val valid=observed.values.filter {now-it.receivedAt in 0..15000 && PlayerMediaCandidate.eligible(it)}
+                                val largest=valid.maxOfOrNull {it.area} ?: 0.0
+                                candidates=valid.filter {it.area>=largest*0.75}.distinctBy {it.url}.sortedByDescending {it.area}
+                                showMedia=true
+                            },250)
                         }
                     }) { Icon(Icons.Filled.Download,"Vídeos encontrados") }
                     IconButton(onClick={ startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java)) }) { Icon(Icons.Filled.List,"Fila de downloads") }
@@ -121,11 +119,13 @@ class DownloadBrowserActivity: ComponentActivity() {
             }
         }
         if(showMedia) AlertDialog(onDismissRequest={showMedia=false},title={Text("Vídeos encontrados")},text={
-            if(candidates.isEmpty()) Text("Nenhum link de vídeo detectado. Inicie o vídeo ou use o botão de download do site e tente novamente.")
-            else LazyColumn { items(candidates) { url -> TextButton(onClick={showMedia=false; offer(url,browser.settings.userAgentString,null,null,title,referers[url] ?: browser.url.orEmpty())}) { Text(Uri.parse(url).lastPathSegment ?: "Vídeo",maxLines=2) } } }
+            if(candidates.isEmpty()) Text("Não foi possível confirmar o vídeo principal. Inicie o episódio e tente novamente, ou use o download do próprio site.")
+            else LazyColumn { items(candidates) { item -> TextButton(onClick={showMedia=false; offer(item.url,browser.settings.userAgentString,null,null,title,item.page,item)}) {
+                Text("Vídeo principal • ${item.width}×${item.height} • ${(item.duration/60).toInt()} min",maxLines=2)
+            } } }
         },confirmButton={TextButton(onClick={showMedia=false}){Text("Fechar")}})
     }
-    private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String) {
+    private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String,capture: PlayerMediaCandidate? = null) {
         if(!url.startsWith("https://") && !url.startsWith("http://")) return
         CookieManager.getInstance().flush()
         val headers=Bundle().apply {
@@ -134,7 +134,7 @@ class DownloadBrowserActivity: ComponentActivity() {
             if(page.isNotBlank())putString("Referer",page)
         }
         startActivity(Intent(this,DownloadsActivity::class.java).setData(Uri.parse(url))
-            .putExtra("headers",headers).putExtra(Intent.EXTRA_TITLE,title)
+            .putExtra("headers",headers).putExtra(Intent.EXTRA_TITLE,title).putExtra("playerCapture",capture?.evidence()?.toString())
             .putExtra("downloadName",URLUtil.guessFileName(url,disposition,mime)))
     }
     override fun onPause() { web?.onPause(); super.onPause() }

@@ -14,7 +14,7 @@ import javax.crypto.spec.SecretKeySpec
 /** VOD HLS: one muxed rendition, TS or fMP4, with optional identity AES-128 encryption. */
 class DownloadHls(private val context: Context,private val store: DownloadStore) {
     data class Segment(val url: String,val key: String?,val iv: String?,val sequence: Long)
-    data class Playlist(val segments: List<Segment>,val init: String?)
+    data class Playlist(val segments: List<Segment>,val init: String?,val duration: Double)
     companion object {
         fun attributes(line: String): Map<String,String> = Regex("([A-Z0-9-]+)=(\"[^\"]*\"|[^,]*)").findAll(line.substringAfter(':')).associate {it.groupValues[1] to it.groupValues[2].trim('"')}
         fun parse(text: String,url: String): Playlist {
@@ -22,9 +22,10 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             require(text.contains("#EXT-X-ENDLIST")) {"Transmissões ao vivo ainda não são suportadas para download"}
             require(!text.contains("#EXT-X-BYTERANGE")) {"Esta playlist usa faixas internas ainda não suportadas"}
             var key: String?=null; var iv: String?=null; var seq=0L; var init: String?=null
-            val segments=mutableListOf<Segment>()
+            val segments=mutableListOf<Segment>(); var duration=0.0
             text.lineSequence().map {it.trim()}.filter {it.isNotBlank()}.forEach { line ->
                 when {
+                    line.startsWith("#EXTINF:") -> {val seconds=line.substringAfter(':').substringBefore(',').toDouble();require(seconds.isFinite() && seconds>=0);duration+=seconds}
                     line.startsWith("#EXT-X-MEDIA-SEQUENCE:") -> seq=line.substringAfter(':').toLong().also {require(it>=0)}
                     line.startsWith("#EXT-X-KEY:") -> {
                         val a=attributes(line)
@@ -40,7 +41,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                     !line.startsWith('#') -> {require(segments.size<20000); segments+=Segment(URL(URL(url),line).toString(),key,iv,seq++)}
                 }
             }
-            require(segments.isNotEmpty()); return Playlist(segments,init)
+            require(segments.isNotEmpty()); return Playlist(segments,init,duration)
         }
     }
     suspend fun receive(id: String,url: String,headers: Map<String,String>,file: File): Boolean {
@@ -83,6 +84,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                 it.put("name","$base.$extension")
                 if(it.optLong("episodeId")==0L) it.put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode("$base.$extension")}")
             }
+            DownloadCaptureGuard.approveHls(context,store,id,playlist.duration)
             store.registerMedia(id)
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let {DownloadMetadata.offer(context,it.animeId)}
             var count=item.bytes; var index=item.json.optInt("hlsIndex")

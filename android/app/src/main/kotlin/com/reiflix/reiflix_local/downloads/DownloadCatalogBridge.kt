@@ -45,7 +45,7 @@ internal object DownloadCatalogBridge {
     fun outputs(database: ReiAnixSqliteDatabase): List<DownloadItem> = database.read {db ->
         val exists=db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_downloads'",null).use {it.moveToFirst()}
         if(!exists)emptyList() else db.rawQuery("SELECT data FROM native_downloads",null).use {c ->buildList {
-            while(c.moveToNext())runCatching {DownloadItem(JSONObject(c.getString(0)))}.getOrNull()?.takeIf {it.output.isNotBlank() && it.episodeId>0 && it.state in setOf("SAVING","COMPLETE")}?.let {add(it)}
+            while(c.moveToNext())runCatching {DownloadItem(JSONObject(c.getString(0)))}.getOrNull()?.takeIf {it.output.isNotBlank() && (it.json.optBoolean("excludedBanner") || (it.episodeId>0 && it.state in setOf("SAVING","COMPLETE")))}?.let {add(it)}
         }}
     }
     fun aliases(database: ReiAnixSqliteDatabase,locations: Collection<String>): Map<String,String> {
@@ -74,12 +74,13 @@ internal object DownloadCatalogBridge {
     fun episodeFor(db: SQLiteDatabase,downloadId: String): Pair<Long,String>? = db.rawQuery("SELECT data FROM native_downloads WHERE id=?",arrayOf(downloadId)).use { c ->
         if(!c.moveToFirst())return@use null
         val item=DownloadItem(JSONObject(c.getString(0)))
+        if(item.json.optBoolean("excludedBanner"))return@use 0L to "REJECTED"
         val owns=db.rawQuery("SELECT 1 FROM episodes WHERE id=? AND (media_identity=? OR path=? OR path=?)",arrayOf(item.episodeId.toString(),"download:$downloadId",item.virtualUri.toString(),item.output)).use {it.moveToFirst()}
         if(owns) item.episodeId to item.state else null
     }
     /** Repair prior app-created duplicates, only where a physical-file alias proves equivalence. */
     fun reconcile(database: ReiAnixSqliteDatabase): Boolean {
-        val jobs=outputs(database)
+        val jobs=outputs(database).filter {!it.json.optBoolean("excludedBanner")}
         if(jobs.isEmpty())return false
         val episodes=database.read {db ->db.rawQuery("SELECT id,path FROM episodes",null).use {c ->buildList {while(c.moveToNext())add(c.getLong(0) to c.getString(1))}}}
         val aliases=aliases(database,episodes.map {it.second})
