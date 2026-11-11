@@ -20,24 +20,24 @@ class DownloadDisplaySizeTest {
 
     @Test fun usesEditorSizeUntilTransferSuppliesItsAuthoritativeTotal() {
         val early=item(bytes=10_000_000,discovered=173_000_000,exact=true)
-        assertEquals(173_000_000,downloadDisplaySize(early)?.bytes)
+        assertEquals(173_000_000L,downloadDisplaySize(early)?.bytes)
         assertTrue(downloadDisplaySize(early)?.exact == true)
         assertEquals(5,downloadPercent(early))
         val confirmed=item(bytes=20_000_000,total=174_200_000,
             discovered=173_000_000,exact=true)
-        assertEquals(174_200_000,downloadDisplaySize(confirmed)?.bytes)
+        assertEquals(174_200_000L,downloadDisplaySize(confirmed)?.bytes)
         assertEquals(11,downloadPercent(confirmed))
     }
 
     @Test fun hlsEstimateRemainsApproximateAndUsesSegmentProgress() {
         val hls=item(bytes=8_000_000,discovered=173_000_000,exact=false,
             hls=true,parts=20,partIndex=1)
-        assertEquals(173_000_000,downloadDisplaySize(hls)?.bytes)
+        assertEquals(173_000_000L,downloadDisplaySize(hls)?.bytes)
         assertFalse(downloadDisplaySize(hls)!!.exact)
         assertEquals(5,downloadPercent(hls))
         val refined=item(bytes=20_000_000,discovered=173_000_000,exact=false,
             hls=true,hlsEstimate=168_000_000,parts=20,partIndex=4)
-        assertEquals(168_000_000,downloadDisplaySize(refined)?.bytes)
+        assertEquals(168_000_000L,downloadDisplaySize(refined)?.bytes)
         assertEquals(20,downloadPercent(refined))
     }
 
