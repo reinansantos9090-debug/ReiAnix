@@ -216,23 +216,21 @@ private fun ReiAnixHomeObservedScreen(
                     onOpenCollector = onOpenCollector,
                     onSearch = onSearch,
                     onRefresh = onRefresh,
+                    onOpenDurationAnomalies = onOpenDurationAnomalies,
                 )
 
-                Row(
+                // Keep the outlined timeline action below the top bar, centered and
+                // slightly narrower than the former two-column button.
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
-                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                    contentAlignment = Alignment.Center,
                 ) {
                     ReiAnixSecondaryButton(
                         text = "Linha do tempo",
                         onClick = onOpenTimeline,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ReiAnixSecondaryButton(
-                        text = "Durações incomuns",
-                        onClick = onOpenDurationAnomalies,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(0.44f),
                     )
                 }
             }
@@ -591,6 +589,7 @@ private fun HomeHeader(
     onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenDurationAnomalies: (() -> Unit)? = null,
 ) {
     val menuExpanded = rememberSaveable { mutableStateOf(false) }
 
@@ -628,6 +627,15 @@ private fun HomeHeader(
                             onOpenCollector()
                         },
                     )
+                    if (onOpenDurationAnomalies != null) {
+                        DropdownMenuItem(
+                            text = { Text("Durações incomuns") },
+                            onClick = {
+                                menuExpanded.value = false
+                                onOpenDurationAnomalies()
+                            },
+                        )
+                    }
                 }
             }
         },
