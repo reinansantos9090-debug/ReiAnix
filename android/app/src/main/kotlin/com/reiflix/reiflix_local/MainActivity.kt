@@ -4067,11 +4067,17 @@ class MainActivity : ComponentActivity() {
     fun requestDefaultReiAnixFolderAuthorization(): Boolean {
         if (safPickerPending || pendingDefaultReiAnixSelection ||
             !bootstrapAllowsNativeOperations()) return false
+        // Claim the user action before folder creation to dedupe rapid taps.
+        pendingDefaultReiAnixSelection = true
         lifecycleScope.launch {
-            val created = withContext(Dispatchers.IO) {
-                ensureReiAnixDownloadsDirectory()
+            val created = try {
+                withContext(Dispatchers.IO) { ensureReiAnixDownloadsDirectory() }
+            } catch (cancelled: CancellationException) {
+                pendingDefaultReiAnixSelection = false
+                throw cancelled
             }
             if (!created) {
+                pendingDefaultReiAnixSelection = false
                 publishSafPickerError(
                     null,
                     "Não foi possível preparar Downloads/ReiAnix. Verifique o armazenamento e tente novamente.",
@@ -4080,7 +4086,6 @@ class MainActivity : ComponentActivity() {
                 )
                 return@launch
             }
-            pendingDefaultReiAnixSelection = true
             if (!requestNativeStorageAction("select_tree")) {
                 pendingDefaultReiAnixSelection = false
                 publishSafPickerError(
