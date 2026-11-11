@@ -37,11 +37,11 @@ internal data class BrowserMediaOption(
             val media = URI(value.url)
             val path = media.path.orEmpty().lowercase()
             val knownMedia = listOf(
-                ".m3u8", ".mp4", ".mkv", ".webm", ".m4v", ".mov", ".ts", ".m2ts",
+                ".m3u8", ".mpd", ".mp4", ".mkv", ".webm", ".m4v", ".mov", ".ts", ".m2ts",
             ).any { path.endsWith(it) }
             value.url.length in 8..16384 && value.page.length in 8..16384 &&
                 value.frame.length in 1..100 &&
-                value.format in setOf("hls", "video") &&
+                value.format in setOf("hls", "video", "dash") &&
                 value.origin in setOf("visible-video", "source", "quality-link", "master") &&
                 (knownMedia || value.origin == "visible-video") &&
                 value.quality.none { it == '\r' || it == '\n' || it.isISOControl() } &&
