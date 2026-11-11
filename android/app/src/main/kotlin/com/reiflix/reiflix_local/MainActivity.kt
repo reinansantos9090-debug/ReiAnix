@@ -4111,7 +4111,13 @@ class MainActivity : ComponentActivity() {
         if (safPickerPending || pendingDefaultReiAnixSelection ||
             !bootstrapAllowsNativeOperations()) return false
         // Claim the user action before folder creation to dedupe rapid taps.
+        // Keep the welcome choices disabled until the Android picker returns.
         pendingDefaultReiAnixSelection = true
+        _nativeStorageOnboardingState.value = _nativeStorageOnboardingState.value.copy(
+            phase = NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN,
+            message = "Preparando a pasta ReiAnix…",
+            error = null,
+        )
         lifecycleScope.launch {
             val created = try {
                 withContext(Dispatchers.IO) { ensureReiAnixDownloadsDirectory() }
