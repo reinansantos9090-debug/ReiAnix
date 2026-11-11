@@ -37,7 +37,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: reianix-kotlin-jvm-${{ github.ref }}
+  # v2 isolates checks from historical runs stuck in GitHub Actions finalization.
+  group: reianix-kotlin-jvm-${{ github.ref }}-v2
   cancel-in-progress: true
 
 permissions:
