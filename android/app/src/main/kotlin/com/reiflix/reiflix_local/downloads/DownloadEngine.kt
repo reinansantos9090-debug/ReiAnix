@@ -263,21 +263,27 @@ class DownloadEngine(private val context: Context) {
         val isTs=savedOriginal.isNotBlank() ||
             beforePublication.mime.equals("video/mp2t",true) ||
             beforePublication.name.endsWith(".ts",true)
+        val originalName=savedOriginal.ifBlank {
+            if(beforePublication.mime.equals("video/mp2t",true) &&
+                !beforePublication.name.endsWith(".ts",true))
+                beforePublication.name.substringBeforeLast('.',beforePublication.name)+".ts"
+            else beforePublication.name
+        }
         val remuxed=if(isTs) DownloadTsRemux.tryRemux(context,file) else null
         try {
             if(remuxed!=null) {
-                val original=savedOriginal.ifBlank { beforePublication.name }
+                val original=originalName
                 val mp4Name=original.substringBeforeLast('.',original)+".mp4"
                 store.mutate(id) {
                     it.put("remuxSourceName",original)
                     it.put("name",mp4Name).put("mime","video/mp4")
                 }
                 store.registerMedia(id)
-            } else if(savedOriginal.isNotBlank()) {
-                // A previous attempt may have been interrupted after selecting
-                // MP4. Restore TS metadata when the new remux cannot complete.
+            } else if(savedOriginal.isNotBlank() || (isTs && originalName!=beforePublication.name)) {
+                // An interrupted remux or a TS URL carrying an .mp4 label must
+                // never leave the original MPEG-TS data mislabeled as MP4.
                 store.mutate(id) {
-                    it.put("name",savedOriginal).put("mime","video/mp2t")
+                    it.put("name",originalName).put("mime","video/mp2t")
                     it.remove("remuxSourceName")
                 }
                 store.registerMedia(id)
