@@ -238,17 +238,16 @@ class DownloadStore(context: Context) {
     }
     fun complete(id: String, output: Uri) {
         DownloadCatalogBridge.reconcile(db)
-        val actualName=runCatching {
-            if(output.scheme=="file") File(output.path!!).name else context.contentResolver.query(output,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null }
-        }.getOrNull()
         db.transaction { connection ->
             val data = connection.rawQuery("SELECT data FROM native_downloads WHERE id=?", arrayOf(id)).use { it.moveToFirst(); JSONObject(it.getString(0)) }
             check(data.optString("state")=="SAVING") { "O download não está na etapa de publicação" }
             data.put("state", "COMPLETE").put("output", output.toString()).put("message", "Concluído")
-            actualName?.takeIf { it.isNotBlank() }?.let { data.put("name",it) }
+                .put("name", DownloadItem(data).name)
             connection.update("native_downloads", ContentValues().apply { put("data", data.toString()) }, "id=?", arrayOf(id))
             if(data.optLong("episodeId")>0) connection.update("episodes", ContentValues().apply {
-                put("path", output.toString()); actualName?.takeIf { it.isNotBlank() }?.let { put("file_name",it) }; put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
+                // The episode keeps one provider URI before and after publication.
+                put("path", data.getString("virtualUri")); put("file_name", data.getString("name"))
+                put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
                 put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
             }, "id=? AND (media_identity=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri")))
         }
@@ -306,8 +305,18 @@ class DownloadStore(context: Context) {
         val item=get(id) ?: return
         require(item.state in setOf("COMPLETE", "CANCELLED", "ERROR", "CORRUPT"))
         require(item.state=="COMPLETE" || item.output.isBlank()) { "Conclua ou retome o salvamento antes de remover o registro" }
-        db.transaction { it.delete("native_downloads", "id=?", arrayOf(id)) }
+        db.transaction { connection ->
+            if(item.state=="COMPLETE" && item.output.isNotBlank() && item.episodeId>0) {
+                // A forgotten download becomes an ordinary local file reference.
+                connection.update("episodes",ContentValues().apply {
+                    put("path",item.output)
+                    putNull("media_identity")
+                },"id=? AND media_identity=?",arrayOf(item.episodeId.toString(),"download:$id"))
+            }
+            connection.delete("native_downloads","id=?",arrayOf(id))
+        }
         partial(id).delete()
+        DownloadEvents.catalog.tryEmit(Unit)
     }
     companion object {
         fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
