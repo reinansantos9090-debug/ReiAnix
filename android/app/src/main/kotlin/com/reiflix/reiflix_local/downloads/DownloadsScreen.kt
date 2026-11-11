@@ -209,6 +209,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
 @Composable
 private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
     onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit) {
+    val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
     var nameTouched by remember { mutableStateOf(editing!=null) }
