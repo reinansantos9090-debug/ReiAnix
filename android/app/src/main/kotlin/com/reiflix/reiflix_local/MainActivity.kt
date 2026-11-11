@@ -32,6 +32,7 @@ import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
@@ -40,6 +41,7 @@ import android.os.SystemClock
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.Settings
@@ -94,6 +96,7 @@ class MainActivity : ComponentActivity() {
     private var broadStoragePermissionPending = false
     private var mediaPermissionRequestPending = false
     private var safPickerPending = false
+    private var pendingDefaultReiAnixSelection = false
     private enum class SafPickerPhase {
         IDLE, REQUESTED, LAUNCHING, WAITING_RESULT, COMPLETED, CANCELLED, FAILED, TIMEOUT
     }
@@ -138,6 +141,8 @@ class MainActivity : ComponentActivity() {
     private var nativeBootstrapDecisionComplete = false
     private val pendingNativeIntentsBeforeBootstrap = ArrayList<Intent>()
     private var lastObservedMediaAccess: String? = null
+    private val _welcomeNeedsSetup = MutableStateFlow(false)
+    val welcomeNeedsSetup: StateFlow<Boolean> = _welcomeNeedsSetup.asStateFlow()
     private val _nativeStorageOnboardingState = MutableStateFlow(NativeStorageOnboardingState())
     val nativeStorageOnboardingState: StateFlow<NativeStorageOnboardingState> = _nativeStorageOnboardingState.asStateFlow()
     private var storageOnboardingRefreshJob: Job? = null
@@ -220,6 +225,9 @@ class MainActivity : ComponentActivity() {
         private const val BRIDGE_PROTOCOL_VERSION = 2
         private const val NATIVE_STORAGE_ONBOARDING_PREFS = "reiflix_native_storage_onboarding"
         private const val NATIVE_STORAGE_ONBOARDING_DISMISSED = "dismissed"
+        private const val WELCOME_INITIALIZED = "welcome_initialized_v2"
+        private const val WELCOME_COMPLETED = "welcome_completed_v2"
+        private const val DEFAULT_REIANIX_DOCUMENT_ID = "primary:Download/ReiAnix"
         private val SETTINGS_STORAGE_ACTIONS = setOf(
             "select_saf", "request_media_access", "check_storage_access", "open_broad_storage_settings",
         )
@@ -281,6 +289,7 @@ class MainActivity : ComponentActivity() {
         private const val STATE_ACTIVE_PLAYER_REQUEST_ID = "reiflix.activePlayerRequestId"
         private const val STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS = "reiflix.activePlayerCommandCreatedAtMs"
         private const val STATE_SAF_PICKER_PENDING = "reiflix.safPickerPending"
+        private const val STATE_SAF_PICKER_DEFAULT = "reiflix.safPickerDefaultReiAnix"
         private const val STATE_SAF_PICKER_STARTED_AT_MS = "reiflix.safPickerStartedAtMs"
         private const val STATE_SAF_PICKER_FOCUS_LOST = "reiflix.safPickerFocusLost"
         private const val STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS = "reiflix.safPickerFocusRegainedAtMs"
@@ -926,6 +935,7 @@ class MainActivity : ComponentActivity() {
     private fun clearSafPickerPending(requestId: String?, terminalPhase: SafPickerPhase) {
         cancelSafPickerWatchdog()
         safPickerPending = false
+        pendingDefaultReiAnixSelection = false
         pendingSafRequestId = null
         safPickerStartedAtMs = 0L
         safPickerFocusLost = false
@@ -1107,6 +1117,18 @@ class MainActivity : ComponentActivity() {
 
         setSafPickerPhase(requestId, SafPickerPhase.WAITING_RESULT)
         try {
+            if (pendingDefaultReiAnixSelection &&
+                runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() != DEFAULT_REIANIX_DOCUMENT_ID
+            ) {
+                clearSafPickerPending(requestId, SafPickerPhase.FAILED)
+                publishSafPickerError(
+                    requestId,
+                    "Selecione exatamente a pasta Downloads/ReiAnix para autorizá-la.",
+                    "selection_validation",
+                    "WRONG_DEFAULT_FOLDER",
+                )
+                return
+            }
             if (uri.scheme?.lowercase() != "content" || !DocumentsContract.isTreeUri(uri)) {
                 clearSafPickerPending(requestId, SafPickerPhase.FAILED)
                 publishSafPickerError(requestId, "A pasta selecionada não é uma árvore SAF válida.",
@@ -1312,6 +1334,7 @@ class MainActivity : ComponentActivity() {
         activePlayerRequestId = savedInstanceState?.getString(STATE_ACTIVE_PLAYER_REQUEST_ID)?.trim()?.takeIf { it.isNotEmpty() }
         activePlayerCommandCreatedAtMs = savedInstanceState?.getLong(STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS, 0L) ?: 0L
         safPickerPending = savedInstanceState?.getBoolean(STATE_SAF_PICKER_PENDING) ?: false
+        pendingDefaultReiAnixSelection = savedInstanceState?.getBoolean(STATE_SAF_PICKER_DEFAULT) ?: false
         safPickerStartedAtMs = savedInstanceState?.getLong(STATE_SAF_PICKER_STARTED_AT_MS, 0L) ?: 0L
         safPickerFocusLost = savedInstanceState?.getBoolean(STATE_SAF_PICKER_FOCUS_LOST) ?: false
         safPickerFocusRegainedAtMs = savedInstanceState?.getLong(STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS, 0L) ?: 0L
@@ -2764,6 +2787,7 @@ class MainActivity : ComponentActivity() {
         outState.putLong(STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS, activePlayerCommandCreatedAtMs)
         outState.putBoolean(STATE_BROAD_SETTINGS_PENDING, broadStoragePermissionPending)
         outState.putBoolean(STATE_SAF_PICKER_PENDING, safPickerPending)
+        outState.putBoolean(STATE_SAF_PICKER_DEFAULT, pendingDefaultReiAnixSelection)
         outState.putLong(STATE_SAF_PICKER_STARTED_AT_MS, safPickerStartedAtMs)
         outState.putBoolean(STATE_SAF_PICKER_FOCUS_LOST, safPickerFocusLost)
         outState.putLong(STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS, safPickerFocusRegainedAtMs)
@@ -4006,6 +4030,7 @@ class MainActivity : ComponentActivity() {
             .putBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, true)
             .apply()
         _nativeStorageOnboardingState.value = current.copy(dismissed = true)
+        completeReiAnixWelcome()
     }
 
     /**
@@ -4083,10 +4108,12 @@ class MainActivity : ComponentActivity() {
         storageOnboardingRefreshJob = lifecycleScope.launch {
             val prefs = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
             val wasDismissed = prefs.getBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
+            var existingRootsBeforeWelcome = false
             val result = try {
                 withContext(Dispatchers.IO) {
                     val roots = appDependencies.sqliteLibraryRepository.listFolders()
                         .filter { it.kind.equals("saf", ignoreCase = true) }
+                    existingRootsBeforeWelcome = roots.isNotEmpty()
                     if (roots.isEmpty()) {
                         NativeStorageOnboardingState(
                             phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
@@ -4167,6 +4194,15 @@ class MainActivity : ComponentActivity() {
                 ).apply()
             }
             _nativeStorageOnboardingState.value = result
+            // Upgrade-safe first-run gate: an existing configured library or a
+            // previously dismissed welcome is never treated as a new installation.
+            if (!prefs.getBoolean(WELCOME_INITIALIZED, false)) {
+                prefs.edit()
+                    .putBoolean(WELCOME_INITIALIZED, true)
+                    .putBoolean(WELCOME_COMPLETED, existingRootsBeforeWelcome || wasDismissed)
+                    .apply()
+            }
+            _welcomeNeedsSetup.value = !prefs.getBoolean(WELCOME_COMPLETED, false)
             Log.i(tag, "NATIVE_STORAGE_ONBOARDING_REVALIDATED origin=" + origin + " phase=" + result.phase)
         }
     }
@@ -5490,6 +5526,14 @@ class MainActivity : ComponentActivity() {
                 .put("state", "requesting").put("status", "REQUESTED")
                 .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REQUESTING))))
         val pickerIntent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            // This is a navigation hint, never an automatic SAF permission grant.
+            if (pendingDefaultReiAnixSelection && Build.VERSION.SDK_INT >= 26) {
+                val initial = DocumentsContract.buildDocumentUri(
+                    "com.android.externalstorage.documents",
+                    DEFAULT_REIANIX_DOCUMENT_ID,
+                )
+                putExtra(DocumentsContract.EXTRA_INITIAL_URI, initial)
+            }
             // Do not set a MIME type/category: ACTION_OPEN_DOCUMENT_TREE is the directory contract.
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
