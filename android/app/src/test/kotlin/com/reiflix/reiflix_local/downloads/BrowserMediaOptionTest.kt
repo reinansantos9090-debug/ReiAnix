@@ -34,6 +34,10 @@ class BrowserMediaOptionTest {
         assertTrue(BrowserMediaOption.eligible(
             source("https://cdn.example/media?id=42","720p").copy(mimeHint="video/mp4"),
         ))
+        assertTrue(BrowserMediaOption.eligible(
+            source("https://cdn.example/variant?token=abc","720p","hls")
+                .copy(origin="master",mimeHint="application/vnd.apple.mpegurl"),
+        ))
     }
 
     @Test fun preservesWhetherAQualityRequiresUnsupportedSeparateAudio() {
