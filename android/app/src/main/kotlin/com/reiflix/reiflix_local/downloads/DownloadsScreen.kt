@@ -187,7 +187,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
         try {withContext(Dispatchers.IO){store.relink(item.id,identityTitle.trim());DownloadSnapshots.refresh(context)};identify=null}
         catch(_: Exception){error="Não foi possível identificar o anime"}
     }}){Text("Salvar")}},dismissButton={TextButton(onClick={identify=null}){Text("Cancelar")}})
-    if(add) key(initialUrl,initialTitle,initialName,edit?.id) { DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName ->
+    if(add) key(initialUrl,initialTitle,initialName,edit?.id) { DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName,detected ->
         busy=true; error=""
         scope.launch {
             try {
@@ -200,7 +200,8 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                     val algorithm="SHA-256"
                     if(editing==null) store.enqueue(url,name,dest,expected,algorithm,combined,anime,autoName,
                         playerCapture?.let {JSONObject(it)}?.takeIf {it.optString("url")==url},
-                        hlsHint=hlsHint && url==initialUrl)
+                        hlsHint=hlsHint && url==initialUrl,
+                        detectedSize=detected?.bytes,detectedExact=detected?.exact==true)
                     else {store.updateSource(editing.id,url,combined,expected,algorithm,dest); if(anime.isNotBlank())store.relink(editing.id,anime)}
                     DownloadSnapshots.refresh(context)
                 }
@@ -216,7 +217,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
 
 @Composable
 internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
-    onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit,
+    onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean,DownloadSizeProbe.Result?)->Unit,
     hlsHint: Boolean = false) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
@@ -238,6 +239,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     var sourceLoading by remember { mutableStateOf(editing!=null) }
     var sessionOrigin by remember { mutableStateOf(runCatching { java.net.URL(initialUrl) }.getOrNull()) }
     var sizeResult by remember { mutableStateOf<DownloadSizeProbe.Result?>(null) }
+    var sizeProbeUrl by remember { mutableStateOf("") }
     var storageBytes by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(Unit) {
         storageBytes=withContext(Dispatchers.IO) {
@@ -248,6 +250,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     // The exact same authenticated redirect policy applies as in downloads.
     LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint) {
         sizeResult=null
+        sizeProbeUrl=""
         delay(350)
         val target=url.trim()
         if(runCatching { DownloadHttp.validateUrl(target) }.isFailure) {
@@ -264,6 +267,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         sizeResult=withTimeoutOrNull(15_000) {
             DownloadSizeProbe.inspect(target,probeHeaders,hlsHint && target==initialUrl)
         } ?: DownloadSizeProbe.Result.Unknown
+        sizeProbeUrl=target
     }
     LaunchedEffect(editing?.id) {
         if(editing!=null) try {
@@ -306,7 +310,8 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                     "$user:$password".toByteArray(),android.util.Base64.NO_WRAP,
                 )
             }
-            onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched)
+            val measured=sizeResult?.takeIf { sizeProbeUrl==url.trim() && (it.bytes ?: 0L)>0L }
+            onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched,measured)
         } catch(e: Exception) { error=e.message ?: "Confira o link e os dados informados" }
     }
     Dialog(
