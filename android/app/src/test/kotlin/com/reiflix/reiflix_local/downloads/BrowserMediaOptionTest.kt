@@ -31,6 +31,9 @@ class BrowserMediaOptionTest {
         assertFalse(BrowserMediaOption.eligible(source("https://user:pass@cdn.example/episode.mp4","480p")))
         assertTrue(BrowserMediaOption.eligible(source("https://cdn.example/stream.m3u8","1080p","hls")))
         assertTrue(BrowserMediaOption.eligible(source("https://cdn.example/manifest.mpd","1080p","dash")))
+        assertTrue(BrowserMediaOption.eligible(
+            source("https://cdn.example/media?id=42","720p").copy(mimeHint="video/mp4"),
+        ))
     }
 
     @Test fun preservesWhetherAQualityRequiresUnsupportedSeparateAudio() {
