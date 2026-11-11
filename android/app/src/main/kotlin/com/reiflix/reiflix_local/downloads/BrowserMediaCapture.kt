@@ -93,10 +93,19 @@ internal object BrowserMediaCapture {
   XMLHttpRequest.prototype.open=function(...args){this.addEventListener('load',()=>{try{if((this.responseType===''||this.responseType==='text')&&hls(this.responseURL,this.getResponseHeader('content-type')))inspect(this.responseURL,this.responseText);}catch(e){}},{once:true});return openOriginal.apply(this,args);};
   window.addEventListener('message',e=>{const d=e.data;if(!d||typeof d!=='object')return;
     if(e.source===parent&&d.type==='REI_FRAME_INFO'){frame={known:!!d.known,allowed:!!d.allowed,width:Number(d.width)||0,height:Number(d.height)||0};schedule();}
-    if(e.source===parent&&d.type==='REI_SCAN'){scan();children().forEach(f=>{try{f.contentWindow.postMessage({type:'REI_SCAN'},'*')}catch(e){}});}
+    if(e.source===parent&&d.type==='REI_SCAN'){if(d.prepare)prepare();scan();children().forEach(f=>{try{f.contentWindow.postMessage({type:'REI_SCAN',prepare:!!d.prepare},'*')}catch(e){}});}
     if(d.type==='REI_FRAME_REQUEST')children().filter(f=>f.contentWindow===e.source).forEach(sendFrame);
   });
-  window.__reiScanPlayers=()=>{scan();children().forEach(f=>{sendFrame(f);try{f.contentWindow.postMessage({type:'REI_SCAN'},'*')}catch(e){}});};
+  // Only an explicit toolbar request asks the existing visible player to load
+  // metadata. Never autoplay, click ads, or scrape arbitrary script URLs.
+  const prepare=()=>{if(!frame.known||!frame.allowed)return;
+    Array.from(document.querySelectorAll('video')).forEach(v=>{const r=rect(v);
+      if(!r||r.width<200||r.height<110||adElement(v)||v.readyState>=1||v.autoplay&&v.muted&&v.loop)return;
+      const source=v.currentSrc||v.src||(v.querySelector('source[src]')||{}).src;
+      if(source&&!badUrl(source)){v.preload='metadata';if(v.networkState===0||v.networkState===3)v.load();}
+    });
+  };
+  window.__reiScanPlayers=(prepareMetadata=false)=>{if(prepareMetadata)prepare();scan();children().forEach(f=>{sendFrame(f);try{f.contentWindow.postMessage({type:'REI_SCAN',prepare:prepareMetadata},'*')}catch(e){}});};
   document.addEventListener('loadstart',()=>{clear();manifests.clear();masters.clear();schedule();},true);
   ['loadedmetadata','durationchange','play','pause','timeupdate','emptied'].forEach(event=>document.addEventListener(event,schedule,true));
   document.addEventListener('DOMContentLoaded',()=>{window.__reiScanPlayers();new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','class','style']});},{once:true});

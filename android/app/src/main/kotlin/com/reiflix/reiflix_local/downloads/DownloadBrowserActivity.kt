@@ -101,14 +101,14 @@ class DownloadBrowserActivity: ComponentActivity() {
                             try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
                         }))
                     IconButton(onClick={
-                        browser.evaluateJavascript("window.__reiScanPlayers && window.__reiScanPlayers()") {
+                        browser.evaluateJavascript("window.__reiScanPlayers && window.__reiScanPlayers(true)") {
                             browser.postDelayed({
                                 val now=System.nanoTime()/1_000_000
                                 val valid=observed.values.filter {now-it.receivedAt in 0..15000 && PlayerMediaCandidate.eligible(it)}
                                 val largest=valid.maxOfOrNull {it.area} ?: 0.0
                                 candidates=valid.filter {it.area>=largest*0.75}.distinctBy {it.url}.sortedByDescending {it.area}
                                 showMedia=true
-                            },250)
+                            },2000)
                         }
                     }) { Icon(Icons.Filled.Download,"Vídeos encontrados") }
                     IconButton(onClick={ startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java)) }) { Icon(Icons.Filled.List,"Fila de downloads") }
@@ -135,7 +135,7 @@ class DownloadBrowserActivity: ComponentActivity() {
         }
         startActivity(Intent(this,DownloadsActivity::class.java).setData(Uri.parse(url))
             .putExtra("headers",headers).putExtra(Intent.EXTRA_TITLE,title).putExtra("playerCapture",capture?.evidence()?.toString())
-            .putExtra("downloadName",URLUtil.guessFileName(url,disposition,mime)))
+            .putExtra("downloadName",if(capture!=null) DownloadIdentity.capturedFileName(title,url,mime) else URLUtil.guessFileName(url,disposition,mime)))
     }
     override fun onPause() { web?.onPause(); super.onPause() }
     override fun onResume() { super.onResume(); web?.onResume() }

@@ -75,7 +75,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             var item=store.get(id) ?: return false
             if(item.bytes>file.length() || item.json.optString("hlsFingerprint")!=fingerprint) {
                 RandomAccessFile(file,"rw").use {it.setLength(0);it.fd.sync()}
-                item=store.mutate(id) { it.put("bytes",0).put("hlsIndex",0).put("generation",it.optLong("generation")+1).put("hlsFingerprint",fingerprint) }
+                item=store.mutate(id) { it.put("bytes",0).put("hlsIndex",0).put("generation",it.optLong("generation")+1).put("hlsFingerprint",fingerprint).put("hlsEstimatedTotal",0) }
             }
             val extension=if(playlist.init==null) "ts" else "mp4"
             val base=item.name.substringBeforeLast('.',item.name)
@@ -126,7 +126,8 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                         out.fd.sync();count=out.filePointer;index++
                     } finally {temporary.delete()}
                     val speed=received*1000L/(android.os.SystemClock.elapsedRealtime()-start).coerceAtLeast(1)
-                    store.mutate(id){it.put("bytes",count).put("hlsIndex",index).put("speed",speed)}
+                    store.mutate(id){it.put("bytes",count).put("hlsIndex",index).put("speed",speed)
+                        if(index>=3) it.put("hlsEstimatedTotal",(count.toDouble()*playlist.segments.size/index).toLong())}
                 }
             }
             store.mutate(id){it.put("total",count).put("speed",0)}

@@ -145,8 +145,8 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                         val label=if(episode!=null) "Episódio "+(if(episode%1.0==0.0)episode.toLong().toString() else episode.toString()) else item.name.substringBeforeLast('.',item.name)
                         Text(label,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
                         val received=Formatter.formatFileSize(context,item.bytes)
-                        val total=if(item.total>0)Formatter.formatFileSize(context,item.total) else "tamanho desconhecido"
-                        val subtitle=if(item.state=="QUEUED" && item.bytes==0L) item.json.optString("displayAnime").ifBlank {"Na fila"} else "$received / $total"
+                        val total=if(item.total>0)Formatter.formatFileSize(context,item.total) else if(item.json.optInt("hlsCount")>0) "${item.json.optInt("hlsIndex")} / ${item.json.optInt("hlsCount")} partes • ${downloadPercent(item) ?: 0}%" + if(item.json.optLong("hlsEstimatedTotal")>0) " • total estimado ≈ ${Formatter.formatFileSize(context,item.json.optLong("hlsEstimatedTotal"))}" else "" else "calculando tamanho…"
+                        val subtitle=if(item.state=="QUEUED" && item.bytes==0L) item.json.optString("displayAnime").ifBlank {"Na fila"} else if(item.total<=0 && item.json.optInt("hlsCount")>0) "$received • $total" else "$received / $total"
                         Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
                         if(item.state in setOf("ERROR","CORRUPT","PAUSED","WAITING")) Text(item.json.optString("message").ifBlank {DownloadState.labels[item.state].orEmpty()},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)
                     }
