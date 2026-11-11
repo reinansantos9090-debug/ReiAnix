@@ -82,11 +82,13 @@ internal object DownloadSizeProbe {
         for(line in text.lineSequence().map { it.trim() }) {
             when {
                 line.startsWith("#EXT-X-BYTERANGE") -> return null // not supported by the downloader
+                line.startsWith("#EXT-X-DISCONTINUITY") -> return null
                 line.startsWith("#EXT-X-MAP:") -> {
                     val uri=DownloadHls.attributes(line)["URI"] ?: return null
                     if(DownloadHls.attributes(line)["BYTERANGE"]!=null)return null
                     val resolved=runCatching { URL(URL(sourceUrl),uri).toString() }.getOrNull() ?: return null
                     if(runCatching { DownloadHttp.validateUrl(resolved) }.isFailure)return null
+                    if(init!=null && init!=resolved)return null
                     init=resolved
                 }
                 line.startsWith("#EXT-X-KEY:") -> {
