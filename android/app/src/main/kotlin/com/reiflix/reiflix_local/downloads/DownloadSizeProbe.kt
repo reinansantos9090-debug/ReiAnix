@@ -109,6 +109,20 @@ internal object DownloadSizeProbe {
         return if(segments.isNotEmpty())HlsPlan(segments,init,duration,encrypted) else null
     }
 
+    /**
+     * Some Googlevideo VOD URLs carry the signed `clen` (content length)
+     * parameter for this exact representation. Do not trust arbitrary
+     * user-controlled `size` URL parameters on other domains.
+     */
+    fun trustedUrlLength(value: String): Long? = runCatching {
+        val uri=DownloadHttp.validateUrl(value)
+        val hostname=uri.host.orEmpty().lowercase(Locale.ROOT)
+        if(hostname!="googlevideo.com" && !hostname.endsWith(".googlevideo.com"))return@runCatching null
+        if(uri.path!="/videoplayback")return@runCatching null
+        uri.rawQuery?.split('&')?.firstOrNull { it.substringBefore('=')=="clen" }
+            ?.substringAfter('=',"")?.toLongOrNull()?.takeIf { it>0L }
+    }.getOrNull()
+
     fun bitrateEstimate(durationSeconds: Double, bitsPerSecond: Long?): Long? {
         if(!durationSeconds.isFinite() || durationSeconds<=0 || bitsPerSecond==null || bitsPerSecond<=0)return null
         val total=durationSeconds*bitsPerSecond/8.0
@@ -122,6 +136,7 @@ internal object DownloadSizeProbe {
                 val path=URL(url).path.lowercase(Locale.ROOT)
                 val isManifest=hlsHint || path.endsWith(".m3u8")
                 if(isManifest) return@withContext inspectHls(url,headers)
+                trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen") }
                 val first=probe(url,headers)
                 if(first.manifest) return@withContext inspectHls(url,headers)
                 first.length?.let { return@withContext Result(it,true,"http") }
