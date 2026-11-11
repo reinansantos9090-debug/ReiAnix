@@ -118,8 +118,10 @@ internal object DownloadCatalogBridge {
         db.execSQL("UPDATE OR IGNORE artwork SET entity_id=? WHERE entity_type='episode' AND entity_id=?",arrayOf(keep.toString(),duplicate.toString()))
         db.delete("artwork","entity_type='episode' AND entity_id=?",arrayOf(duplicate.toString()))
         db.delete("episodes","id=?",arrayOf(duplicate.toString()))
-        val occupied=db.rawQuery("SELECT 1 FROM episodes WHERE path=? AND id!=?",arrayOf(job.output,keep.toString())).use {it.moveToFirst()}
-        if(!occupied)patch.put("path",job.output)
+        val stablePath=job.virtualUri.toString()
+        val occupied=db.rawQuery("SELECT 1 FROM episodes WHERE path=? AND id!=?",arrayOf(stablePath,keep.toString())).use {it.moveToFirst()}
+        if(!occupied)patch.put("path",stablePath)
+        if((a.getAsInteger("manual_override") ?: 0)==0 && (b.getAsInteger("manual_override") ?: 0)==0) patch.put("file_name",job.name)
         db.update("episodes",patch,"id=?",arrayOf(keep.toString()))
         if(owner!=redundant)mergeEmptyAnime(db,owner,redundant)
         return true
