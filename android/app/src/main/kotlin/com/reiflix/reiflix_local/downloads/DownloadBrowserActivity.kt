@@ -208,6 +208,7 @@ class DownloadBrowserActivity: ComponentActivity() {
         }
         startActivity(Intent(this,DownloadsActivity::class.java).setData(Uri.parse(url))
             .putExtra("headers",headers).putExtra(Intent.EXTRA_TITLE,title).putExtra("playerCapture",capture?.evidence()?.toString())
+            .putExtra("hlsHint",mime?.contains("mpegurl",ignoreCase=true)==true)
             .putExtra("downloadName",if(capture!=null) DownloadIdentity.capturedFileName(title,url,mime) else URLUtil.guessFileName(url,disposition,mime)))
     }
     override fun onPause() { web?.onPause(); super.onPause() }
