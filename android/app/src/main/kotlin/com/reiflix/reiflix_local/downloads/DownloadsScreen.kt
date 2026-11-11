@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.NativePlayerActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
@@ -213,7 +215,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
 }
 
 @Composable
-private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
+internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
     onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
@@ -245,37 +247,163 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
         } catch(_: Exception) { originalHeaders=emptyMap(); cookie=""; user=""; password=""; error="Não foi possível recuperar a sessão. Informe novamente o link e as credenciais." }
         finally { sourceLoading=false }
     }
-    AlertDialog(onDismissRequest={ if(!busy) onDismiss() },title={ Text(if(editing==null) "Adicionar download" else "Atualizar link / sessão") },
-        text={ Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(url,{ next ->
-                val nextOrigin=runCatching { java.net.URL(DownloadHttp.validateUrl(next).toASCIIString()) }.getOrNull()
-                if(nextOrigin!=null) {
-                    if(sessionOrigin?.let { !DownloadHttp.sameOrigin(it,nextOrigin) }==true) {
-                        originalHeaders=originalHeaders.filterKeys { it.lowercase() !in setOf("authorization","cookie","referer") }
-                        cookie=""; user=""; password=""; referer=""
-                    }
-                    sessionOrigin=nextOrigin
-                }
-                url=next; if(!nameTouched && editing==null) name=runCatching { URLUtil.guessFileName(next.trim(),null,null) }.getOrDefault("episodio.mp4") },label={ Text("Link direto HTTP/HTTPS") },singleLine=true,enabled=!busy && !sourceLoading)
-            OutlinedTextField(name,{ name=it; nameTouched=true },label={ Text("Nome do arquivo, incluindo extensão") },singleLine=true,enabled=!busy && !sourceLoading && editing==null)
-            run {
-                OutlinedTextField(anime,{ anime=it },label={ Text("Nome do anime (opcional)") },singleLine=true,enabled=!busy && !sourceLoading)
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showAnime by remember { mutableStateOf(false) }
+    var showSession by remember { mutableStateOf(false) }
+    val canEdit=!busy && !sourceLoading
+    val ink=Color.White
+    val lines=TextFieldDefaults.colors(
+        focusedContainerColor=Color.Transparent,
+        unfocusedContainerColor=Color.Transparent,
+        disabledContainerColor=Color.Transparent,
+        focusedTextColor=ink,
+        unfocusedTextColor=ink,
+        disabledTextColor=Color.Gray,
+        focusedIndicatorColor=Color.LightGray,
+        unfocusedIndicatorColor=Color.Gray,
+        focusedPlaceholderColor=Color.Gray,
+        unfocusedPlaceholderColor=Color.Gray,
+    )
+    fun begin() {
+        try {
+            DownloadHttp.validateUrl(url)
+            require(name.isNotBlank()) { "Informe o nome do arquivo" }
+            val headers=originalHeaders.filterKeys { it.lowercase() !in setOf("cookie","referer") }.toMutableMap()
+            if(cookie.isNotBlank()) headers["Cookie"]=cookie.trim()
+            if(referer.isNotBlank()) headers["Referer"]=referer.trim()
+            if(user.isNotBlank()) {
+                headers.keys.filter { it.equals("authorization",true) }.forEach(headers::remove)
+                headers["Authorization"]="Basic "+android.util.Base64.encodeToString(
+                    "$user:$password".toByteArray(),android.util.Base64.NO_WRAP,
+                )
             }
-                Text(if(destination.isBlank()) "Destino: Downloads/ReiAnix" else "Destino: $destination",style=MaterialTheme.typography.bodySmall)
-            if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
-            if(submissionError.isNotBlank()) Text(submissionError,color=MaterialTheme.colorScheme.error)
-        } },
-        confirmButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.primary),modifier=Modifier.heightIn(min=48.dp),enabled=!busy && !sourceLoading,onClick={
-            try {
-                DownloadHttp.validateUrl(url)
-                val headers=originalHeaders.filterKeys { it.lowercase() !in setOf("cookie","referer") }.toMutableMap()
-                if(cookie.isNotBlank()) headers["Cookie"]=cookie.trim()
-                if(referer.isNotBlank()) headers["Referer"]=referer.trim()
-                if(user.isNotBlank()) { headers.keys.filter { it.equals("authorization",true) }.forEach(headers::remove); headers["Authorization"]="Basic "+android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP) }
-                onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched)
-            } catch(_: Exception) { error="Confira o link e os dados informados" }
-        }) { Icon(Icons.Filled.Download,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar",fontSize=14.sp) } },
-        dismissButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.primary),modifier=Modifier.heightIn(min=48.dp),onClick=onDismiss,enabled=!busy && !sourceLoading) { Icon(Icons.Filled.Close,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Cancelar",fontSize=14.sp) } })
+            onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched)
+        } catch(e: Exception) { error=e.message ?: "Confira o link e os dados informados" }
+    }
+    Dialog(
+        onDismissRequest={ if(!busy) onDismiss() },
+        properties=DialogProperties(usePlatformDefaultWidth=false),
+    ) {
+        Surface(
+            modifier=Modifier.fillMaxWidth(0.88f).widthIn(max=390.dp)
+                .fillMaxHeight(0.68f).heightIn(min=330.dp,max=560.dp),
+            shape=RoundedCornerShape(24.dp),
+            color=Color.Black,
+            tonalElevation=0.dp,
+            shadowElevation=12.dp,
+        ) {
+            Column(Modifier.fillMaxSize().padding(horizontal=20.dp,vertical=12.dp)) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("Download",style=MaterialTheme.typography.titleMedium,color=ink,
+                        modifier=Modifier.weight(1f))
+                    Box {
+                        IconButton(onClick={menuExpanded=true}) {
+                            Icon(Icons.Filled.MoreVert,"Opções do download",tint=Color.LightGray)
+                        }
+                        DropdownMenu(expanded=menuExpanded,onDismissRequest={menuExpanded=false}) {
+                            DropdownMenuItem(text={Text("Nome do anime")},
+                                onClick={menuExpanded=false;showAnime=!showAnime})
+                            DropdownMenuItem(text={Text("Sessão e autenticação")},
+                                onClick={menuExpanded=false;showSession=!showSession})
+                            DropdownMenuItem(text={Text("Copiar link")},
+                                onClick={
+                                    menuExpanded=false
+                                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                                        ?.setPrimaryClip(android.content.ClipData.newPlainText("Link",url))
+                                })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                    verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Text("Link",color=ink,style=MaterialTheme.typography.bodyMedium)
+                    TextField(
+                        value=url,
+                        onValueChange={ next ->
+                            val nextOrigin=runCatching {
+                                java.net.URL(DownloadHttp.validateUrl(next).toASCIIString())
+                            }.getOrNull()
+                            if(nextOrigin!=null) {
+                                if(sessionOrigin?.let { !DownloadHttp.sameOrigin(it,nextOrigin) }==true) {
+                                    originalHeaders=originalHeaders.filterKeys {
+                                        it.lowercase() !in setOf("authorization","cookie","referer")
+                                    }
+                                    cookie="";user="";password="";referer=""
+                                }
+                                sessionOrigin=nextOrigin
+                            }
+                            url=next
+                            if(!nameTouched && editing==null) name=runCatching {
+                                URLUtil.guessFileName(next.trim(),null,null)
+                            }.getOrDefault("episodio.mp4")
+                        },
+                        modifier=Modifier.fillMaxWidth(),
+                        enabled=canEdit,
+                        maxLines=6,
+                        minLines=3,
+                        colors=lines,
+                        textStyle=MaterialTheme.typography.bodyMedium,
+                        placeholder={Text("https://…")},
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                        Text("Nome do arquivo",color=Color.LightGray,
+                            style=MaterialTheme.typography.bodyMedium,
+                            modifier=Modifier.weight(1f))
+                        IconButton(onClick={
+                            (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                                ?.setPrimaryClip(android.content.ClipData.newPlainText("Nome do arquivo",name))
+                        }) {
+                            Icon(Icons.Filled.ContentCopy,"Copiar nome do arquivo",tint=Color.LightGray)
+                        }
+                    }
+                    TextField(
+                        value=name,
+                        onValueChange={name=it;nameTouched=true},
+                        modifier=Modifier.fillMaxWidth(),
+                        enabled=canEdit && editing==null,
+                        singleLine=true,
+                        textStyle=MaterialTheme.typography.bodyMedium,
+                        colors=lines,
+                    )
+                    if(showAnime) {
+                        TextField(anime,{anime=it},label={Text("Nome do anime (opcional)")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,
+                            enabled=canEdit,colors=lines)
+                    }
+                    if(showSession) {
+                        Text(if(destination.isBlank())"Destino: Downloads/ReiAnix"
+                            else "Destino: $destination",
+                            style=MaterialTheme.typography.bodySmall,color=Color.LightGray)
+                        TextField(referer,{referer=it},label={Text("Referer")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,enabled=canEdit,colors=lines)
+                        TextField(cookie,{cookie=it},label={Text("Cookie")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,enabled=canEdit,colors=lines)
+                        TextField(user,{user=it},label={Text("Usuário (opcional)")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,enabled=canEdit,colors=lines)
+                        TextField(password,{password=it},label={Text("Senha (opcional)")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,enabled=canEdit,
+                            visualTransformation=PasswordVisualTransformation(),colors=lines)
+                    }
+                    if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,
+                        style=MaterialTheme.typography.bodySmall)
+                    if(submissionError.isNotBlank()) Text(submissionError,
+                        color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth().padding(top=12.dp),
+                    horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically) {
+                    TextButton(onClick=onDismiss,enabled=canEdit) {
+                        Text("Cancelar",color=Color.LightGray)
+                    }
+                    TextButton(onClick=::begin,enabled=canEdit) {
+                        Text(if(busy) "Iniciando…" else if(editing==null)"Iniciar" else "Retomar",
+                            color=if(canEdit)Color.White else Color.Gray)
+                    }
+                }
+            }
+        }
+    }
 
 }
 
