@@ -88,6 +88,11 @@ import java.util.concurrent.ConcurrentHashMap
  * Android-specific SAF, Credential Manager, lifecycle, and Media3 player
  * integration remain owned by this single Activity without a Flutter host.
  */
+data class ReiAnixWelcomeFolderPaths(
+    val selectedFolder: String? = null,
+    val reiAnixFolder: String? = null,
+)
+
 class MainActivity : ComponentActivity() {
     private val tag = "[REIFLIX][ANDROID]"
     private val MAX_SETTINGS_FILE_BYTES = 1024 * 1024
@@ -143,6 +148,8 @@ class MainActivity : ComponentActivity() {
     private var lastObservedMediaAccess: String? = null
     private val _welcomeNeedsSetup = MutableStateFlow(false)
     val welcomeNeedsSetup: StateFlow<Boolean> = _welcomeNeedsSetup.asStateFlow()
+    private val _welcomeFolderPaths = MutableStateFlow(ReiAnixWelcomeFolderPaths())
+    val welcomeFolderPaths: StateFlow<ReiAnixWelcomeFolderPaths> = _welcomeFolderPaths.asStateFlow()
     private val _nativeStorageOnboardingState = MutableStateFlow(NativeStorageOnboardingState())
     val nativeStorageOnboardingState: StateFlow<NativeStorageOnboardingState> = _nativeStorageOnboardingState.asStateFlow()
     private var storageOnboardingRefreshJob: Job? = null
@@ -290,6 +297,8 @@ class MainActivity : ComponentActivity() {
         private const val STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS = "reiflix.activePlayerCommandCreatedAtMs"
         private const val STATE_SAF_PICKER_PENDING = "reiflix.safPickerPending"
         private const val STATE_SAF_PICKER_DEFAULT = "reiflix.safPickerDefaultReiAnix"
+        private const val STATE_WELCOME_SELECTED_FOLDER = "reiflix.welcomeSelectedFolder"
+        private const val STATE_WELCOME_REIANIX_FOLDER = "reiflix.welcomeReiAnixFolder"
         private const val STATE_SAF_PICKER_STARTED_AT_MS = "reiflix.safPickerStartedAtMs"
         private const val STATE_SAF_PICKER_FOCUS_LOST = "reiflix.safPickerFocusLost"
         private const val STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS = "reiflix.safPickerFocusRegainedAtMs"
@@ -1116,8 +1125,10 @@ class MainActivity : ComponentActivity() {
         }
 
         setSafPickerPhase(requestId, SafPickerPhase.WAITING_RESULT)
+        // Preserve the picker intent before clearSafPickerPending() resets its state.
+        val wasDefaultReiAnixSelection = pendingDefaultReiAnixSelection
         try {
-            if (pendingDefaultReiAnixSelection &&
+            if (wasDefaultReiAnixSelection &&
                 runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() != DEFAULT_REIANIX_DOCUMENT_ID
             ) {
                 clearSafPickerPending(requestId, SafPickerPhase.FAILED)
@@ -1188,6 +1199,15 @@ class MainActivity : ComponentActivity() {
                         stage = "source_registration", code = "SOURCE_PERSISTENCE_FAILED",
                         status = SafScanner.STATUS_FAILED, treeUri = uri)
                     return@launch
+                }
+                // The visible welcome path changes only after the Android grant was
+                // verified and its canonical SQLite registration succeeded.
+                val displayPath = welcomeFolderDisplayPath(uri, selectedName)
+                val currentWelcomePaths = _welcomeFolderPaths.value
+                _welcomeFolderPaths.value = if (wasDefaultReiAnixSelection) {
+                    currentWelcomePaths.copy(reiAnixFolder = displayPath)
+                } else {
+                    currentWelcomePaths.copy(selectedFolder = displayPath)
                 }
                 libraryViewModel.refreshNativeFolders()
                 synchronizeSafTreeChangeObservers()
@@ -1335,6 +1355,10 @@ class MainActivity : ComponentActivity() {
         activePlayerCommandCreatedAtMs = savedInstanceState?.getLong(STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS, 0L) ?: 0L
         safPickerPending = savedInstanceState?.getBoolean(STATE_SAF_PICKER_PENDING) ?: false
         pendingDefaultReiAnixSelection = savedInstanceState?.getBoolean(STATE_SAF_PICKER_DEFAULT) ?: false
+        _welcomeFolderPaths.value = ReiAnixWelcomeFolderPaths(
+            selectedFolder = savedInstanceState?.getString(STATE_WELCOME_SELECTED_FOLDER),
+            reiAnixFolder = savedInstanceState?.getString(STATE_WELCOME_REIANIX_FOLDER),
+        )
         safPickerStartedAtMs = savedInstanceState?.getLong(STATE_SAF_PICKER_STARTED_AT_MS, 0L) ?: 0L
         safPickerFocusLost = savedInstanceState?.getBoolean(STATE_SAF_PICKER_FOCUS_LOST) ?: false
         safPickerFocusRegainedAtMs = savedInstanceState?.getLong(STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS, 0L) ?: 0L
@@ -2788,6 +2812,8 @@ class MainActivity : ComponentActivity() {
         outState.putBoolean(STATE_BROAD_SETTINGS_PENDING, broadStoragePermissionPending)
         outState.putBoolean(STATE_SAF_PICKER_PENDING, safPickerPending)
         outState.putBoolean(STATE_SAF_PICKER_DEFAULT, pendingDefaultReiAnixSelection)
+        outState.putString(STATE_WELCOME_SELECTED_FOLDER, _welcomeFolderPaths.value.selectedFolder)
+        outState.putString(STATE_WELCOME_REIANIX_FOLDER, _welcomeFolderPaths.value.reiAnixFolder)
         outState.putLong(STATE_SAF_PICKER_STARTED_AT_MS, safPickerStartedAtMs)
         outState.putBoolean(STATE_SAF_PICKER_FOCUS_LOST, safPickerFocusLost)
         outState.putLong(STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS, safPickerFocusRegainedAtMs)
@@ -4014,6 +4040,23 @@ class MainActivity : ComponentActivity() {
                 .put("message", "Não foi possível abrir a solicitação de permissão para vídeos.")
                 .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE)))
         }
+    }
+
+    /**
+     * Android document IDs can be opaque. Only the primary external-storage
+     * provider supplies a path we can safely translate for the welcome screen.
+     * All other providers show their selected display name, not a fabricated path.
+     */
+    private fun welcomeFolderDisplayPath(uri: Uri, displayName: String): String {
+        if (uri.authority == "com.android.externalstorage.documents") {
+            val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            if (documentId != null && documentId.startsWith("primary:")) {
+                val relative = documentId.removePrefix("primary:").trim('/')
+                return if (relative.isEmpty()) "/storage/emulated/0"
+                    else "/storage/emulated/0/$relative"
+            }
+        }
+        return displayName.trim().ifBlank { uri.toString() }
     }
 
     /** The welcome is completed only by the explicit "Começar" action. */
