@@ -26,6 +26,9 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object NativeScanRunner {
     private const val TAG = "[REIANIX][NATIVE_SCAN]"
+    // MediaStore uses "Download" (singular); Settings labels it "Downloads".
+    private const val DEFAULT_DOWNLOAD_SCOPE_ROOT = "Download/ReiAnix"
+    private const val DEFAULT_DOWNLOAD_CATALOG_SOURCE = "Downloads/ReiAnix"
 
     /**
      * Replays recovery receipts only for generations started by the durable recovery protocol.
@@ -1074,6 +1077,8 @@ object NativeScanRunner {
         requestId: String?,
     ) {
         val appContext = context.applicationContext
+        // Only the built-in download directory is an implicit library source.
+        val defaultFolderItems = mutableListOf<NativeDiscoveredMedia>()
 
             try {
                 NativeMailbox.write(appContext, JSONObject().put("type", "mediastore_scan_progress")
@@ -1089,6 +1094,21 @@ object NativeScanRunner {
                     { NativeScanController.isCancelled(scanId) },
                     scanId,
                     onBatch = { batch ->
+                    // A content URI alone does not prove a video belongs to this directory.
+                    batch.optJSONArray("documents")?.let { documents ->
+                        discoveredMediaFromSnapshot(documents, DEFAULT_DOWNLOAD_CATALOG_SOURCE)
+                            .forEach { item ->
+                                val relativePath = item.relativePath?.replace('\\', '/')?.trim('/')
+                                    ?: return@forEach
+                                if (relativePath == DEFAULT_DOWNLOAD_SCOPE_ROOT ||
+                                    relativePath.startsWith("$DEFAULT_DOWNLOAD_SCOPE_ROOT/")) {
+                                    defaultFolderItems += item.copy(
+                                        scopeLocation = relativePath,
+                                        scopeVerified = false,
+                                    )
+                                }
+                            }
+                    }
                     val volume = batch.optString("volumeId")
                     NativeScanPublisher.publish(
                         appContext,
@@ -1102,7 +1122,14 @@ object NativeScanRunner {
                         batch.optLong("generation", NativeIndex.cachedGeneration(appContext, "mediastore:" + volume)),
                         batch,
                     )
-                    }
+                    },
+                    libraryScopes = listOf(
+                        MediaStoreScanner.LibraryScope(
+                            authority = "com.android.externalstorage.documents",
+                            volumeId = "primary",
+                            treeDocumentId = "primary:$DEFAULT_DOWNLOAD_SCOPE_ROOT",
+                        ),
+                    ),
                 )
                 result.put("requestId", requestId ?: "").put("scanId", scanId)
                     .put("scopeKind", "global").put("scopeRef", MediaStoreScanner.SOURCE)
@@ -1116,7 +1143,35 @@ object NativeScanRunner {
                         triggerRequestId = requestId,
                     )
                 }
-                // MediaStore is diagnostic-only under the existing library-source contract.
+                // Positive-only indexing. MediaStore results cannot prove that all
+                // files are present yet (new downloads, .nomedia, partial permissions).
+                // Never mark existing episodes as missing from this source.
+                if (defaultFolderItems.isNotEmpty() && !result.optBoolean("cancelled")) {
+                    val snapshot = NativeLibraryScanSnapshot(
+                        operationId = scanId,
+                        source = "mediastore",
+                        scopeRoot = DEFAULT_DOWNLOAD_SCOPE_ROOT,
+                        scopeReference = DEFAULT_DOWNLOAD_CATALOG_SOURCE,
+                        expectedLocations = setOf(DEFAULT_DOWNLOAD_SCOPE_ROOT),
+                        processedLocations = emptySet(),
+                        status = "PARTIAL",
+                        complete = false,
+                        authorizationValid = MediaStoreScanner.hasReadPermission(appContext),
+                        items = defaultFolderItems,
+                    )
+                    val report = ReiAnixAppDependencies.from(appContext).libraryService
+                        .indexDiscoveredMedia(snapshot)
+                    result.put("defaultFolderIndex", JSONObject()
+                        .put("inserted", report.inserted)
+                        .put("updated", report.updated)
+                        .put("unchanged", report.unchanged)
+                        .put("ambiguous", report.ambiguous)
+                        .put("rejectedOutOfScope", report.rejectedOutOfScope))
+                    if (report.inserted > 0 || report.updated > 0) {
+                        com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+                    }
+                }
+                // All other MediaStore discoveries remain diagnostic-only.
                 result.put("nativeLibraryIndexOwner", true)
                 NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", "mediastore_scan")
                     .put("requestId", requestId ?: "").put("payload", result))
