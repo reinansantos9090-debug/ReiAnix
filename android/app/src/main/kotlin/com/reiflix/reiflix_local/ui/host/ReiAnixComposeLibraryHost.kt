@@ -345,7 +345,13 @@ class ReiAnixComposeLibraryHost(
                                 scanState = libraryState.scanState,
                                 lastScanStatus = libraryState.lastScanStatus,
                                 libraryFoldersContent = { onFoldersBack ->
-                                    com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFoldersRoute(libraryViewModel, onBack = onFoldersBack)
+                                    com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFoldersRoute(
+                                        libraryViewModel,
+                                        onBack = onFoldersBack,
+                                        onRequestMediaAccess = {
+                                            activity.requestNativeStorageAction("request_media_access")
+                                        },
+                                    )
                                 },
                             )
                         },
