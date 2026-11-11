@@ -257,15 +257,28 @@ class DownloadEngine(private val context: Context) {
         // Keep the original .part untouched so existing player readers can
         // finish; incompatible media simply retains the original TS file.
         val beforePublication=store.get(id) ?: return
-        val isTs=beforePublication.mime.equals("video/mp2t",true) ||
+        // Keep the source-container identity across interruptions between remux
+        // and export. A retry must NEVER publish raw TS bytes with an .mp4 name.
+        val savedOriginal=beforePublication.json.optString("remuxSourceName")
+        val isTs=savedOriginal.isNotBlank() ||
+            beforePublication.mime.equals("video/mp2t",true) ||
             beforePublication.name.endsWith(".ts",true)
         val remuxed=if(isTs) DownloadTsRemux.tryRemux(context,file) else null
         try {
             if(remuxed!=null) {
-                val original=beforePublication.name
+                val original=savedOriginal.ifBlank { beforePublication.name }
                 val mp4Name=original.substringBeforeLast('.',original)+".mp4"
                 store.mutate(id) {
+                    it.put("remuxSourceName",original)
                     it.put("name",mp4Name).put("mime","video/mp4")
+                }
+                store.registerMedia(id)
+            } else if(savedOriginal.isNotBlank()) {
+                // A previous attempt may have been interrupted after selecting
+                // MP4. Restore TS metadata when the new remux cannot complete.
+                store.mutate(id) {
+                    it.put("name",savedOriginal).put("mime","video/mp2t")
+                    it.remove("remuxSourceName")
                 }
                 store.registerMedia(id)
             }
