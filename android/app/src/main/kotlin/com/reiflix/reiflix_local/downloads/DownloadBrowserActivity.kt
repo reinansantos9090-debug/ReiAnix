@@ -197,7 +197,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 busy=submitting,
                 submissionError=offerError,
                 onDismiss={ if(!submitting){pendingOffer=null;offerError=""} },
-                onSubmit={url,name,destination,_,_,headers,anime,autoName ->
+                onSubmit={url,name,destination,_,_,headers,anime,autoName,detected ->
                     if(!submitting) {
                         submitting=true
                         offerError=""
@@ -212,6 +212,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                             it.optString("url")==url
                                         },
                                         hlsHint=offer.hlsHint && url==offer.url,
+                                        detectedSize=detected?.bytes,detectedExact=detected?.exact==true,
                                     )
                                     DownloadSnapshots.refresh(applicationContext)
                                 }
