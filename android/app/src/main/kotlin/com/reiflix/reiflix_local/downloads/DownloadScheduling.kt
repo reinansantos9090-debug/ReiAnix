@@ -50,16 +50,35 @@ object DownloadScheduling {
         val progress=downloadPercent(item)
         val speed=item.json.optLong("speed")
         val size=android.text.format.Formatter.formatFileSize(context,item.bytes)
-        val total=if(item.total>0)android.text.format.Formatter.formatFileSize(context,item.total) else "tamanho desconhecido"
-        val eta=if(speed>0 && item.total>item.bytes) {
-            val seconds=(item.total-item.bytes)/speed; " • ${seconds/60}m ${seconds%60}s"
+        // Reuse the size already discovered in the download editor. The
+        // transfer's authoritative 'total' takes precedence as soon as the
+        // server supplies it; HLS estimates are always marked approximate.
+        val displayTotal=downloadDisplaySize(item)
+        val total=displayTotal?.let {
+            (if(it.exact) "" else "≈ ")+android.text.format.Formatter.formatFileSize(context,it.bytes)
+        } ?: "tamanho desconhecido"
+        val eta=if(speed>0 && displayTotal?.exact==true && displayTotal.bytes>item.bytes) {
+            val seconds=(displayTotal.bytes-item.bytes)/speed; " • ${seconds/60}m ${seconds%60}s"
         } else ""
         val detail="${DownloadState.labels[item.state] ?: item.state} • "+(progress?.let {"$it% • "} ?: "")+"$size / $total"+
             (if(speed>0) " • ${android.text.format.Formatter.formatFileSize(context,speed)}/s" else "")+eta
         builder.setContentTitle(item.json.optString("displayAnime").ifBlank {item.json.optString("animeTitle").ifBlank {item.name}})
             .setContentText(item.name).setStyle(NotificationCompat.BigTextStyle().bigText(item.name+"\n"+detail))
-            .setSubText(if(progress!=null) "$progress%" else DownloadState.labels[item.state])
-            .setOngoing(active).setProgress(100,progress ?: 0,active && progress==null)
+            .setSubText(if(active && progress!=null) "$progress%" else DownloadState.labels[item.state])
+            .setOngoing(active)
+        if(active) {
+            builder.setProgress(100,progress ?: 0,progress==null)
+        } else {
+            // A completed file is not an active foreground transfer. Do not
+            // leave a 100% "downloading" progress indicator on Android.
+            builder.setProgress(0,0,false).setAutoCancel(true)
+            if(item.state=="COMPLETE") {
+                builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentText("Download concluído • ${item.name}")
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setTimeoutAfter(20_000)
+            }
+        }
         val path=item.json.optString("coverCache")
         covers[path]?.let {builder.setLargeIcon(it)}
         if(item.state!="SAVING" && item.state!="COMPLETE" && item.state!="CANCELLED" && item.state!="CORRUPT") {
@@ -82,7 +101,9 @@ object DownloadScheduling {
     fun publish(context: Context) {
         val rows=DownloadSnapshots.items.value
         rows.forEach { item ->
-            val marker=item.state+":"+item.bytes+":"+item.json.optLong("speed")+":"+item.json.optString("coverCache")
+            val marker=item.state+":"+item.bytes+":"+item.total+":"+item.json.optLong("detectedSize")+
+                ":"+item.json.optBoolean("detectedSizeExact")+":"+item.json.optLong("hlsEstimatedTotal")+
+                ":"+item.json.optLong("speed")+":"+item.json.optString("coverCache")
             if(posted[item.id]==marker)return@forEach
             posted[item.id]=marker
             val path=item.json.optString("coverCache")
@@ -93,7 +114,10 @@ object DownloadScheduling {
                 val options=android.graphics.BitmapFactory.Options().apply {inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/160).coerceAtLeast(1)}
                 android.graphics.BitmapFactory.decodeFile(file,options)?.let {covers[path]=it}
             }
-            if(item.state in setOf("CANCELLED","CORRUPT")) context.getSystemService(NotificationManager::class.java).cancel(noticeId(item.id))
+            if(item.state in setOf("CANCELLED","CORRUPT")) {
+                context.getSystemService(NotificationManager::class.java).cancel(noticeId(item.id))
+                return@forEach
+            }
             else runCatching {context.getSystemService(NotificationManager::class.java).notify(noticeId(item.id),itemNotification(context,item,""))}
         }
     }

@@ -15,11 +15,16 @@ object DownloadHttp {
     }
     fun sameOrigin(a: URL,b: URL): Boolean = a.protocol.equals(b.protocol,true) && a.host.equals(b.host,true) &&
         (if(a.port<0) a.defaultPort else a.port)==(if(b.port<0)b.defaultPort else b.port)
-    fun connect(url: String, headers: Map<String,String>, offset: Long, validator: String?, end: Long? = null, credentialOrigin: String = url): HttpURLConnection {
+    fun connect(url: String, headers: Map<String,String>, offset: Long, validator: String?, end: Long? = null, credentialOrigin: String = url,
+        method: String = "GET", connectTimeoutMs: Int = 20_000, readTimeoutMs: Int = 25_000): HttpURLConnection {
+        require(method in setOf("GET","HEAD"))
         val origin=URL(validateUrl(credentialOrigin).toASCIIString()); var target=URL(validateUrl(url).toASCIIString())
         repeat(8) {
             val connection=target.openConnection() as HttpURLConnection
-            connection.instanceFollowRedirects=false; connection.connectTimeout=20_000; connection.readTimeout=25_000
+            connection.instanceFollowRedirects=false
+            connection.connectTimeout=connectTimeoutMs.coerceIn(1000,30_000)
+            connection.readTimeout=readTimeoutMs.coerceIn(1000,30_000)
+            connection.requestMethod=method
             connection.setRequestProperty("Accept-Encoding","identity")
             connection.setRequestProperty("User-Agent","ReiAnix/Downloads")
             // Never forward cookies, referer tokens or credentials to a redirect's other origin.

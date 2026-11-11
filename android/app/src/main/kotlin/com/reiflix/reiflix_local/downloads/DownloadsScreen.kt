@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reiflix.reiflix_local.NativePlayerActivity
 import com.reiflix.reiflix_local.ReiAnixAppDependencies
@@ -51,6 +53,7 @@ class DownloadsActivity: ComponentActivity() {
     private var incoming by mutableStateOf("")
     private var incomingTitle by mutableStateOf("")
     private var incomingCapture by mutableStateOf<String?>(null)
+    private var incomingHlsHint by mutableStateOf(false)
     private var incomingName by mutableStateOf("")
     private var incomingHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,7 +61,8 @@ class DownloadsActivity: ComponentActivity() {
         setContent { ReiAnixComposeTheme {
             Surface(Modifier.fillMaxSize()) {
                 Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
-                    DownloadsScreen(incoming,incomingHeaders,incomingTitle,incomingName,playerCapture=incomingCapture,onBack={ finish() })
+                    DownloadsScreen(incoming,incomingHeaders,incomingTitle,incomingName,
+                        playerCapture=incomingCapture,hlsHint=incomingHlsHint,onBack={ finish() })
                 }
             }
         } }
@@ -70,7 +74,9 @@ class DownloadsActivity: ComponentActivity() {
         incomingTitle=sequenceOf(Intent.EXTRA_TITLE,Intent.EXTRA_SUBJECT,"title","name").mapNotNull { intent.getStringExtra(it) }.firstOrNull {it.isNotBlank()}.orEmpty()
         incomingName=intent.getStringExtra("downloadName").orEmpty()
         incomingCapture=intent.getStringExtra("playerCapture")?.takeIf {it.length<=32768}
+        incomingHlsHint=intent.getBooleanExtra("hlsHint",false)
         intent.removeExtra("playerCapture")
+        intent.removeExtra("hlsHint")
         val bundle=intent.getBundleExtra("headers") ?: intent.getBundleExtra("com.android.browser.headers")
         incomingHeaders=bundle?.keySet()?.mapNotNull { key -> (bundle.get(key) as? String)?.let { key to it } }?.toMap().orEmpty()
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT); intent.removeExtra("headers"); intent.removeExtra("com.android.browser.headers")
@@ -78,7 +84,7 @@ class DownloadsActivity: ComponentActivity() {
 }
 
 @Composable
-fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",playerCapture: String? = null,onBack: (() -> Unit)? = null) {
+fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",playerCapture: String? = null,hlsHint: Boolean = false,onBack: (() -> Unit)? = null) {
     val context=LocalContext.current
     val store=remember(context) { DownloadStore(context) }
     val scope=rememberCoroutineScope()
@@ -145,8 +151,17 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                         val label=if(episode!=null) "Episódio "+(if(episode%1.0==0.0)episode.toLong().toString() else episode.toString()) else item.name.substringBeforeLast('.',item.name)
                         Text(label,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
                         val received=Formatter.formatFileSize(context,item.bytes)
-                        val total=if(item.total>0)Formatter.formatFileSize(context,item.total) else if(item.json.optInt("hlsCount")>0) "${item.json.optInt("hlsIndex")} / ${item.json.optInt("hlsCount")} partes • ${downloadPercent(item) ?: 0}%" + if(item.json.optLong("hlsEstimatedTotal")>0) " • total estimado ≈ ${Formatter.formatFileSize(context,item.json.optLong("hlsEstimatedTotal"))}" else "" else "calculando tamanho…"
-                        val subtitle=if(item.state=="QUEUED" && item.bytes==0L) item.json.optString("displayAnime").ifBlank {"Na fila"} else if(item.total<=0 && item.json.optInt("hlsCount")>0) "$received • $total" else "$received / $total"
+                        val displayTotal=downloadDisplaySize(item)
+                        val hlsCount=item.json.optInt("hlsCount")
+                        val total=if(displayTotal!=null) {
+                            (if(displayTotal.exact)"" else "≈ ")+Formatter.formatFileSize(context,displayTotal.bytes)
+                        } else "calculando tamanho…"
+                        val parts=if(item.total<=0 && hlsCount>0)
+                            " • ${item.json.optInt("hlsIndex")} / $hlsCount partes"
+                        else ""
+                        val subtitle=if(item.state=="QUEUED" && item.bytes==0L)
+                            item.json.optString("displayAnime").ifBlank {"Na fila"}
+                        else "$received / $total$parts"
                         Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
                         if(item.state in setOf("ERROR","CORRUPT","PAUSED","WAITING")) Text(item.json.optString("message").ifBlank {DownloadState.labels[item.state].orEmpty()},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)
                     }
@@ -181,7 +196,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
         try {withContext(Dispatchers.IO){store.relink(item.id,identityTitle.trim());DownloadSnapshots.refresh(context)};identify=null}
         catch(_: Exception){error="Não foi possível identificar o anime"}
     }}){Text("Salvar")}},dismissButton={TextButton(onClick={identify=null}){Text("Cancelar")}})
-    if(add) key(initialUrl,initialTitle,initialName,edit?.id) { DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName ->
+    if(add) key(initialUrl,initialTitle,initialName,edit?.id) { DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName,detected ->
         busy=true; error=""
         scope.launch {
             try {
@@ -192,7 +207,10 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                     headers.forEach { (key,value) -> combined.keys.filter {it.equals(key,true)}.toList().forEach(combined::remove); combined[key]=value }
                     val expected=""
                     val algorithm="SHA-256"
-                    if(editing==null) store.enqueue(url,name,dest,expected,algorithm,combined,anime,autoName,playerCapture?.let {JSONObject(it)}?.takeIf {it.optString("url")==url})
+                    if(editing==null) store.enqueue(url,name,dest,expected,algorithm,combined,anime,autoName,
+                        playerCapture?.let {JSONObject(it)}?.takeIf {it.optString("url")==url},
+                        hlsHint=hlsHint && url==initialUrl,
+                        detectedSize=detected?.bytes,detectedExact=detected?.exact==true)
                     else {store.updateSource(editing.id,url,combined,expected,algorithm,dest); if(anime.isNotBlank())store.relink(editing.id,anime)}
                     DownloadSnapshots.refresh(context)
                 }
@@ -203,16 +221,19 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
             catch(_: Exception) { error="Não foi possível adicionar o download. Confira o link, a pasta e o nome do arquivo." }
             finally { busy=false }
         }
-    }) }
+    },hlsHint=hlsHint && initialUrl.isNotBlank()) }
 }
 
 @Composable
-private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
-    onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean)->Unit) {
+internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
+    onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean,DownloadSizeProbe.Result?)->Unit,
+    hlsHint: Boolean = false) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
-    var nameTouched by remember { mutableStateOf(editing!=null) }
+    // A filename supplied by the browser comes from the episode page, not an
+    // opaque CDN URL. Never replace that meaningful title with a server banner.
+    var nameTouched by remember { mutableStateOf(editing!=null || initialName.isNotBlank()) }
     var anime by remember { mutableStateOf(editing?.json?.optString("animeTitle").orEmpty().ifBlank {DownloadIdentity.title(initialTitle)}) }
     var destination by remember { mutableStateOf(editing?.json?.optString("destination").orEmpty()) }
     var hash by remember { mutableStateOf(editing?.json?.optString("expectedHash").orEmpty()) }
@@ -226,6 +247,37 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
     var originalHeaders by remember { mutableStateOf(initialHeaders) }
     var sourceLoading by remember { mutableStateOf(editing!=null) }
     var sessionOrigin by remember { mutableStateOf(runCatching { java.net.URL(initialUrl) }.getOrNull()) }
+    var sizeResult by remember { mutableStateOf<DownloadSizeProbe.Result?>(null) }
+    var sizeProbeUrl by remember { mutableStateOf("") }
+    var storageBytes by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(Unit) {
+        storageBytes=withContext(Dispatchers.IO) {
+            DownloadSizeProbe.internalAvailableBytes(context)
+        }
+    }
+    // Debounce user edits and do not block WebView or the "Iniciar" button.
+    // The exact same authenticated redirect policy applies as in downloads.
+    LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint) {
+        sizeResult=null
+        sizeProbeUrl=""
+        delay(350)
+        val target=url.trim()
+        if(runCatching { DownloadHttp.validateUrl(target) }.isFailure) {
+            sizeResult=DownloadSizeProbe.Result.Unknown
+            return@LaunchedEffect
+        }
+        val probeHeaders=originalHeaders.filterKeys {
+            it.lowercase() !in setOf("cookie","referer","authorization")
+        }.toMutableMap()
+        if(cookie.isNotBlank())probeHeaders["Cookie"]=cookie.trim()
+        if(referer.isNotBlank())probeHeaders["Referer"]=referer.trim()
+        if(user.isNotBlank())probeHeaders["Authorization"]="Basic "+
+            android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP)
+        sizeResult=withTimeoutOrNull(15_000) {
+            DownloadSizeProbe.inspect(target,probeHeaders,hlsHint && target==initialUrl)
+        } ?: DownloadSizeProbe.Result.Unknown
+        sizeProbeUrl=target
+    }
     LaunchedEffect(editing?.id) {
         if(editing!=null) try {
             val secret=withContext(Dispatchers.IO) { DownloadStore(context).secret(editing) }
@@ -237,37 +289,185 @@ private fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>
         } catch(_: Exception) { originalHeaders=emptyMap(); cookie=""; user=""; password=""; error="Não foi possível recuperar a sessão. Informe novamente o link e as credenciais." }
         finally { sourceLoading=false }
     }
-    AlertDialog(onDismissRequest={ if(!busy) onDismiss() },title={ Text(if(editing==null) "Adicionar download" else "Atualizar link / sessão") },
-        text={ Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(url,{ next ->
-                val nextOrigin=runCatching { java.net.URL(DownloadHttp.validateUrl(next).toASCIIString()) }.getOrNull()
-                if(nextOrigin!=null) {
-                    if(sessionOrigin?.let { !DownloadHttp.sameOrigin(it,nextOrigin) }==true) {
-                        originalHeaders=originalHeaders.filterKeys { it.lowercase() !in setOf("authorization","cookie","referer") }
-                        cookie=""; user=""; password=""; referer=""
-                    }
-                    sessionOrigin=nextOrigin
-                }
-                url=next; if(!nameTouched && editing==null) name=runCatching { URLUtil.guessFileName(next.trim(),null,null) }.getOrDefault("episodio.mp4") },label={ Text("Link direto HTTP/HTTPS") },singleLine=true,enabled=!busy && !sourceLoading)
-            OutlinedTextField(name,{ name=it; nameTouched=true },label={ Text("Nome do arquivo, incluindo extensão") },singleLine=true,enabled=!busy && !sourceLoading && editing==null)
-            run {
-                OutlinedTextField(anime,{ anime=it },label={ Text("Nome do anime (opcional)") },singleLine=true,enabled=!busy && !sourceLoading)
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showAnime by remember { mutableStateOf(false) }
+    var showSession by remember { mutableStateOf(false) }
+    val canEdit=!busy && !sourceLoading
+    val ink=Color.White
+    val lines=TextFieldDefaults.colors(
+        focusedContainerColor=Color.Transparent,
+        unfocusedContainerColor=Color.Transparent,
+        disabledContainerColor=Color.Transparent,
+        focusedTextColor=ink,
+        unfocusedTextColor=ink,
+        disabledTextColor=Color.Gray,
+        focusedIndicatorColor=Color.LightGray,
+        unfocusedIndicatorColor=Color.Gray,
+        focusedPlaceholderColor=Color.Gray,
+        unfocusedPlaceholderColor=Color.Gray,
+    )
+    fun begin() {
+        try {
+            DownloadHttp.validateUrl(url)
+            require(name.isNotBlank()) { "Informe o nome do arquivo" }
+            val headers=originalHeaders.filterKeys { it.lowercase() !in setOf("cookie","referer") }.toMutableMap()
+            if(cookie.isNotBlank()) headers["Cookie"]=cookie.trim()
+            if(referer.isNotBlank()) headers["Referer"]=referer.trim()
+            if(user.isNotBlank()) {
+                headers.keys.filter { it.equals("authorization",true) }.forEach(headers::remove)
+                headers["Authorization"]="Basic "+android.util.Base64.encodeToString(
+                    "$user:$password".toByteArray(),android.util.Base64.NO_WRAP,
+                )
             }
-                Text(if(destination.isBlank()) "Destino: Downloads/ReiAnix" else "Destino: $destination",style=MaterialTheme.typography.bodySmall)
-            if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
-            if(submissionError.isNotBlank()) Text(submissionError,color=MaterialTheme.colorScheme.error)
-        } },
-        confirmButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.primary),modifier=Modifier.heightIn(min=48.dp),enabled=!busy && !sourceLoading,onClick={
-            try {
-                DownloadHttp.validateUrl(url)
-                val headers=originalHeaders.filterKeys { it.lowercase() !in setOf("cookie","referer") }.toMutableMap()
-                if(cookie.isNotBlank()) headers["Cookie"]=cookie.trim()
-                if(referer.isNotBlank()) headers["Referer"]=referer.trim()
-                if(user.isNotBlank()) { headers.keys.filter { it.equals("authorization",true) }.forEach(headers::remove); headers["Authorization"]="Basic "+android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP) }
-                onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched)
-            } catch(_: Exception) { error="Confira o link e os dados informados" }
-        }) { Icon(Icons.Filled.Download,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(busy) "Adicionando…" else if(editing==null) "Baixar" else "Retomar",fontSize=14.sp) } },
-        dismissButton={ TextButton(colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.primary),modifier=Modifier.heightIn(min=48.dp),onClick=onDismiss,enabled=!busy && !sourceLoading) { Icon(Icons.Filled.Close,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Cancelar",fontSize=14.sp) } })
+            val measured=sizeResult?.takeIf { sizeProbeUrl==url.trim() && (it.bytes ?: 0L)>0L }
+            onSubmit(url.trim(),name.trim(),destination,hash.trim(),hashType,headers,anime,!nameTouched,measured)
+        } catch(e: Exception) { error=e.message ?: "Confira o link e os dados informados" }
+    }
+    Dialog(
+        onDismissRequest={ if(!busy) onDismiss() },
+        properties=DialogProperties(usePlatformDefaultWidth=false),
+    ) {
+        Surface(
+            // Compact central editor like the reference image, not a
+            // full-screen or oversized download manager sheet.
+            modifier=Modifier.fillMaxWidth(0.62f).widthIn(min=225.dp,max=340.dp)
+                .fillMaxHeight(0.42f).heightIn(min=305.dp,max=445.dp),
+            shape=RoundedCornerShape(24.dp),
+            color=Color.Black,
+            tonalElevation=0.dp,
+            shadowElevation=12.dp,
+        ) {
+            Column(Modifier.fillMaxSize().padding(horizontal=20.dp,vertical=12.dp)) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("Download",style=MaterialTheme.typography.titleMedium,color=ink,
+                        modifier=Modifier.weight(1f))
+                    Box {
+                        IconButton(onClick={menuExpanded=true}) {
+                            Icon(Icons.Filled.MoreVert,"Opções do download",tint=Color.LightGray)
+                        }
+                        DropdownMenu(expanded=menuExpanded,onDismissRequest={menuExpanded=false}) {
+                            DropdownMenuItem(text={Text("Nome do anime")},
+                                onClick={menuExpanded=false;showAnime=!showAnime})
+                            DropdownMenuItem(text={Text("Sessão e autenticação")},
+                                onClick={menuExpanded=false;showSession=!showSession})
+                            DropdownMenuItem(text={Text("Copiar link")},
+                                onClick={
+                                    menuExpanded=false
+                                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                                        ?.setPrimaryClip(android.content.ClipData.newPlainText("Link",url))
+                                })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                    verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Text("Link",color=ink,style=MaterialTheme.typography.bodyMedium)
+                    TextField(
+                        value=url,
+                        onValueChange={ next ->
+                            val nextOrigin=runCatching {
+                                java.net.URL(DownloadHttp.validateUrl(next).toASCIIString())
+                            }.getOrNull()
+                            if(nextOrigin!=null) {
+                                if(sessionOrigin?.let { !DownloadHttp.sameOrigin(it,nextOrigin) }==true) {
+                                    originalHeaders=originalHeaders.filterKeys {
+                                        it.lowercase() !in setOf("authorization","cookie","referer")
+                                    }
+                                    cookie="";user="";password="";referer=""
+                                }
+                                sessionOrigin=nextOrigin
+                            }
+                            url=next
+                            if(!nameTouched && editing==null) name=runCatching {
+                                URLUtil.guessFileName(next.trim(),null,null)
+                            }.getOrDefault("episodio.mp4")
+                        },
+                        modifier=Modifier.fillMaxWidth(),
+                        enabled=canEdit,
+                        maxLines=6,
+                        minLines=3,
+                        colors=lines,
+                        textStyle=MaterialTheme.typography.bodyMedium,
+                        placeholder={Text("https://…")},
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                        Text("Nome",color=Color.LightGray,
+                            style=MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.width(5.dp))
+                        val videoSize=when {
+                            sizeResult==null -> "Calculando…"
+                            sizeResult?.bytes==null -> "Indisponível"
+                            sizeResult?.exact==true -> Formatter.formatFileSize(context,sizeResult!!.bytes!!)
+                            else -> "≈"+Formatter.formatFileSize(context,sizeResult!!.bytes!!)
+                        }
+                        val availableSize=storageBytes?.let { Formatter.formatFileSize(context,it) } ?: "—"
+                        Text(
+                            "$videoSize / $availableSize",
+                            color=Color.LightGray,
+                            fontSize=9.sp,
+                            maxLines=1,
+                            overflow=TextOverflow.Ellipsis,
+                            modifier=Modifier.weight(1f),
+                        )
+                        IconButton(
+                            modifier=Modifier.size(32.dp),
+                            onClick={
+                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Nome",name))
+                            },
+                        ) {
+                            Icon(Icons.Filled.ContentCopy,"Copiar nome",tint=Color.LightGray,
+                                modifier=Modifier.size(20.dp))
+                        }
+                    }
+                    TextField(
+                        value=name,
+                        onValueChange={name=it;nameTouched=true},
+                        modifier=Modifier.fillMaxWidth(),
+                        enabled=canEdit && editing==null,
+                        singleLine=true,
+                        textStyle=MaterialTheme.typography.bodyMedium,
+                        colors=lines,
+                    )
+                    if(showAnime) {
+                        TextField(anime,{anime=it},label={Text("Nome do anime (opcional)")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,
+                            enabled=canEdit,colors=lines)
+                    }
+                    if(showSession) {
+                        Text(if(destination.isBlank())"Destino: Downloads/ReiAnix"
+                            else "Destino: $destination",
+                            style=MaterialTheme.typography.bodySmall,color=Color.LightGray)
+                        TextField(referer,{referer=it},label={Text("Referer")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,enabled=canEdit,colors=lines)
+                        TextField(cookie,{cookie=it},label={Text("Cookie")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,enabled=canEdit,colors=lines)
+                        TextField(user,{user=it},label={Text("Usuário (opcional)")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,enabled=canEdit,colors=lines)
+                        TextField(password,{password=it},label={Text("Senha (opcional)")},
+                            modifier=Modifier.fillMaxWidth(),singleLine=true,enabled=canEdit,
+                            visualTransformation=PasswordVisualTransformation(),colors=lines)
+                    }
+                    if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,
+                        style=MaterialTheme.typography.bodySmall)
+                    if(submissionError.isNotBlank()) Text(submissionError,
+                        color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth().padding(top=12.dp),
+                    horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically) {
+                    TextButton(onClick=onDismiss,enabled=canEdit) {
+                        Text("Cancelar",color=Color.LightGray)
+                    }
+                    TextButton(onClick=::begin,enabled=canEdit) {
+                        Text(if(busy) "Iniciando…" else if(editing==null)"Iniciar" else "Retomar",
+                            color=if(canEdit)Color.White else Color.Gray)
+                    }
+                }
+            }
+        }
+    }
 
 }
 

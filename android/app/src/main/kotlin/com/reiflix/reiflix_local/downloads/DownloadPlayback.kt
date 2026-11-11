@@ -27,7 +27,10 @@ class DownloadProvider: ContentProvider() {
         if(mode!="r") throw FileNotFoundException("Somente leitura")
         val item=item(uri) ?: throw FileNotFoundException()
         if(item.state in setOf("CANCELLED","CORRUPT")) throw FileNotFoundException("Download indisponível")
-        if(item.state=="COMPLETE" && item.output.isNotBlank()) return context!!.contentResolver.openFileDescriptor(Uri.parse(item.output),"r") ?: throw FileNotFoundException()
+        if(item.state=="COMPLETE" && item.output.isNotBlank()) {
+            return context!!.contentResolver.openFileDescriptor(Uri.parse(item.output), "r")
+                ?: throw FileNotFoundException("Arquivo concluído indisponível")
+        }
         return ParcelFileDescriptor.open(DownloadStore(context!!).partial(item.id),ParcelFileDescriptor.MODE_READ_ONLY)
     }
     override fun insert(uri: Uri,values: ContentValues?): Uri?=null
@@ -48,7 +51,21 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
             if(owned && item==null) throw IOException("Download não encontrado")
             source=if(owned && item?.state!="COMPLETE") GrowingSource(context) else DefaultDataSource.Factory(context).createDataSource()
             listeners.forEach { source!!.addTransferListener(it) }
-            return source!!.open(if(item?.state=="COMPLETE") dataSpec.withUri(Uri.parse(item.output)) else dataSpec)
+            val initialSpec=if(item?.state=="COMPLETE" && item.output.isNotBlank()) dataSpec.withUri(Uri.parse(item.output)) else dataSpec
+            return try {
+                source!!.open(initialSpec)
+            } catch (missing: FileNotFoundException) {
+                // The .part file may have been removed just after publication.
+                // Re-read the canonical state rather than surfacing a false
+                // permission failure when the final file has just become ready.
+                val finalized=if(owned) item?.id?.let { DownloadStore(context).get(it) } else null
+                if(finalized?.state!="COMPLETE" || finalized.output.isBlank()) throw missing
+                source?.close()
+                source=DefaultDataSource.Factory(context).createDataSource().also { replacement ->
+                    listeners.forEach(replacement::addTransferListener)
+                }
+                source!!.open(dataSpec.withUri(Uri.parse(finalized.output)))
+            }
         }
         override fun read(buffer: ByteArray,offset: Int,length: Int)=source?.read(buffer,offset,length) ?: C.RESULT_END_OF_INPUT
         override fun getUri(): Uri?=source?.uri
@@ -81,12 +98,17 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
             if(length==0) return 0
             if(remaining==0L) return C.RESULT_END_OF_INPUT
             val initial=item ?: throw IOException("Fonte fechada")
-            val started=android.os.SystemClock.elapsedRealtime()
+            var lastGrowthAt=android.os.SystemClock.elapsedRealtime()
+            var knownBytes=initial.bytes
             while(!closed) {
                 if(Thread.currentThread().isInterrupted) throw InterruptedIOException()
                 val now=android.os.SystemClock.elapsedRealtime()
                 if(now-refreshedAt>=200) { cachedItem=store.get(initial.id); refreshedAt=now }
                 val current=cachedItem
+                if(current!=null && current.bytes>knownBytes) {
+                    knownBytes=current.bytes
+                    lastGrowthAt=now
+                }
                 if(current==null) {
                     val available=(file!!.length()-position).coerceAtLeast(0)
                     if(available==0L) return C.RESULT_END_OF_INPUT
@@ -102,7 +124,10 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
                     if(n>0) { position+=n; if(remaining>=0) remaining-=n; bytesTransferred(n); return n }
                 }
                 if(current.state=="COMPLETE" || (current.total>=0 && position>=current.total && current.bytes>=current.total)) return C.RESULT_END_OF_INPUT
-                if(android.os.SystemClock.elapsedRealtime()-started>60_000) throw IOException("Aguardando mais dados do download. Tente reproduzir novamente quando avançar.")
+                // Seeking beyond the downloaded prefix must buffer while data
+                // continues arriving. Only fail after a prolonged real stall,
+                // never just because a large video has not finished downloading.
+                if(now-lastGrowthAt>180_000) throw IOException("O download parou de receber dados; confira a fila de downloads.")
                 try { Thread.sleep(200) } catch(_: InterruptedException) { Thread.currentThread().interrupt(); throw InterruptedIOException() }
             }
             throw InterruptedIOException()

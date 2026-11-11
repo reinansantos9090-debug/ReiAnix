@@ -66,6 +66,31 @@ class DownloadStore(context: Context) {
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_downloads (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)")
             connection.execSQL("CREATE TABLE IF NOT EXISTS native_download_profiles (id TEXT PRIMARY KEY NOT NULL, secret TEXT NOT NULL)")
         }
+        // Migrate only episodes proven to belong to previously completed
+        // downloads. Older builds stored a MediaStore Downloads URI directly,
+        // which the player could mistake for a revoked video permission.
+        val migrated = db.transaction { connection ->
+            val completed = connection.rawQuery(
+                "SELECT data FROM native_downloads", null,
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val item = runCatching { DownloadItem(JSONObject(cursor.getString(0))) }.getOrNull()
+                        if (item != null && item.state == "COMPLETE" && item.episodeId > 0 &&
+                            item.output.isNotBlank()) add(item)
+                    }
+                }
+            }
+            completed.sumOf { item ->
+                connection.update(
+                    "episodes",
+                    ContentValues().apply { put("path", item.virtualUri.toString()) },
+                    "id=? AND media_identity=? AND path=?",
+                    arrayOf(item.episodeId.toString(), "download:${item.id}", item.output),
+                )
+            }
+        }
+        if (migrated > 0) DownloadEvents.catalog.tryEmit(Unit)
     }
     fun all(): List<DownloadItem> = db.read { connection ->
         connection.rawQuery("SELECT data FROM native_downloads ORDER BY rowid DESC", null).use { cursor ->
@@ -88,8 +113,10 @@ class DownloadStore(context: Context) {
         }
         rows.map { item ->
             val linked=matches[item.episodeId]
-            val reference=if(item.state=="COMPLETE") item.output else item.virtualUri.toString()
-            if(item.episodeId>0 && ((!item.json.has("identityKnown") && item.json.optString("animeTitle").isBlank() && DownloadIdentity.title(item.name).isBlank()) || linked==null || (linked.first!=reference && linked.second!="download:${item.id}"))) {
+            val stableReference=item.virtualUri.toString()
+            // A completed download may still have a legacy output URI in SQLite.
+            // Only the exact owner identity proves that it is the same episode.
+            if(item.episodeId>0 && ((!item.json.has("identityKnown") && item.json.optString("animeTitle").isBlank() && DownloadIdentity.title(item.name).isBlank()) || linked==null || (linked.first!=stableReference && linked.first!=item.output && linked.second!="download:${item.id}"))) {
                 DownloadItem(JSONObject(item.json.toString()).put("episodeId",0).put("animeId",0))
             } else if(linked!=null && linked.third!=item.animeId) DownloadItem(JSONObject(item.json.toString()).put("animeId",linked.third)) else item
         }
@@ -103,7 +130,9 @@ class DownloadStore(context: Context) {
         DownloadItem(data)
     }
     suspend fun enqueue(url: String, name: String, destination: String, expectedHash: String, hashType: String,
-        headers: Map<String, String>, animeTitle: String = "", automaticName: Boolean = false, playerCapture: JSONObject? = null): DownloadItem = withContext(Dispatchers.IO) {
+        headers: Map<String, String>, animeTitle: String = "", automaticName: Boolean = false,
+        playerCapture: JSONObject? = null, hlsHint: Boolean = false,
+        detectedSize: Long? = null, detectedExact: Boolean = false): DownloadItem = withContext(Dispatchers.IO) {
         ready()
         DownloadHttp.validateUrl(url)
         require(url.length<=16384) { "O link é longo demais" }
@@ -120,8 +149,14 @@ class DownloadStore(context: Context) {
             .put("total", -1).put("generation", 0).put("destination", destination).put("expectedHash", hash)
             .put("hashType", hashType).put("secret", DownloadSecrets.encrypt(payload.toString())).put("signature", signature)
             .put("created", System.currentTimeMillis()).put("animeTitle", animeTitle.trim()).put("automaticName",automaticName)
+            .put("hls",hlsHint)
             .put("virtualUri", "content://${context.packageName}.downloads/$id/${Uri.encode(name)}")
             .put("mime", MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream")
+        // Discovered size is display metadata only. Never use an HLS estimate
+        // as the transfer's authoritative total or expected byte count.
+        detectedSize?.takeIf { it>0L }?.let { size ->
+            data.put("detectedSize",size).put("detectedSizeExact",detectedExact)
+        }
         if(playerCapture!=null) {val evidence=JSONObject(playerCapture.toString());evidence.remove("url");evidence.remove("page");data.put("playerCapture",evidence)}
         db.transaction { connection ->
             val duplicate = connection.rawQuery("SELECT data FROM native_downloads", null).use { c ->
@@ -234,21 +269,25 @@ class DownloadStore(context: Context) {
             DownloadEvents.catalog.tryEmit(Unit)
         }
     }
-    fun complete(id: String, output: Uri) {
+    fun complete(id: String, output: Uri, finalBytes: Long = -1L) {
         DownloadCatalogBridge.reconcile(db)
-        val actualName=runCatching {
-            if(output.scheme=="file") File(output.path!!).name else context.contentResolver.query(output,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null }
-        }.getOrNull()
         db.transaction { connection ->
             val data = connection.rawQuery("SELECT data FROM native_downloads WHERE id=?", arrayOf(id)).use { it.moveToFirst(); JSONObject(it.getString(0)) }
             check(data.optString("state")=="SAVING") { "O download não está na etapa de publicação" }
             data.put("state", "COMPLETE").put("output", output.toString()).put("message", "Concluído")
-            actualName?.takeIf { it.isNotBlank() }?.let { data.put("name",it) }
+            if(finalBytes>0) data.put("bytes",finalBytes).put("total",finalBytes)
+            // Keep the user's original filename. ContentProviders can return a
+            // generic display title or even omit the extension after publication.
             connection.update("native_downloads", ContentValues().apply { put("data", data.toString()) }, "id=?", arrayOf(id))
             if(data.optLong("episodeId")>0) connection.update("episodes", ContentValues().apply {
-                put("path", output.toString()); actualName?.takeIf { it.isNotBlank() }?.let { put("file_name",it) }; put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
-                put("file_size", data.optLong("bytes")); put("missing", 0); put("availability_state", "available")
-            }, "id=? AND (media_identity=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri")))
+                // Keep the same app-owned URI across DOWNLOADING, SAVING and
+                // COMPLETE; the DownloadProvider resolves the final output.
+                put("path", data.getString("virtualUri"))
+                put("file_name",data.getString("name"))
+                put("source_folder", data.optString("destination").ifBlank { "Downloads/ReiAnix" })
+                put("file_size", data.optLong("bytes")); put("mime_type",data.optString("mime"))
+                put("missing", 0); put("availability_state", "available")
+            }, "id=? AND (media_identity=? OR path=? OR path=?)", arrayOf(data.getLong("episodeId").toString(),"download:$id",data.getString("virtualUri"),output.toString()))
         }
         DownloadEvents.catalog.tryEmit(Unit)
     }
@@ -290,7 +329,13 @@ class DownloadStore(context: Context) {
         mutate(id) {
             require(it.optString("state") in setOf("ERROR","PAUSED"))
             if(it.optString("destination")!=destination) { previousOutput=it.optString("output"); it.put("destination",destination).put("output","") }
-            if(previousUrl!=url) { it.put("restart",true).put("bytes",0).put("total",-1).put("parallelDisabled",false);it.remove("hls");it.remove("playerCapture");it.remove("captureApproved");it.remove("captureProbeStage") }
+            if(previousUrl!=url) {
+                it.put("restart",true).put("bytes",0).put("total",-1).put("parallelDisabled",false)
+                it.remove("hls");it.remove("playerCapture");it.remove("captureApproved");it.remove("captureProbeStage")
+                // The editor probe described the old URL; never show it as
+                // the byte count of an entirely different source.
+                it.remove("detectedSize");it.remove("detectedSizeExact")
+            }
             it.put("secret",encrypted).put("signature",digest(url.toByteArray())).put("expectedHash",normalized)
                 .put("hashType",hashType).put("state","QUEUED").put("attempts",0).put("nextAttempt",0)
         }
