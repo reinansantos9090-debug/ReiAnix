@@ -48,6 +48,13 @@ class DownloadEngine(private val context: Context) {
                             active[item.id]=launch { transfer(item.id) }
                         }
                     if(active.isEmpty() && jobs.none { it.state in DownloadState.pending }) break
+                    // Don't keep a user-initiated foreground notification alive
+                    // indefinitely with "0 downloads" while all retryable jobs
+                    // are sleeping. WorkManager/JobScheduler will resume the queue.
+                    if(active.isEmpty() && jobs.none {
+                        it.state in DownloadState.pending &&
+                            it.json.optLong("nextAttempt")<=System.currentTimeMillis()
+                    }) break
                     onProgress("${active.size} download(s) • ${android.text.format.Formatter.formatFileSize(context,jobs.filter { it.state in DownloadState.pending }.sumOf { it.bytes })} recebidos")
                     delay(1000)
                 }
