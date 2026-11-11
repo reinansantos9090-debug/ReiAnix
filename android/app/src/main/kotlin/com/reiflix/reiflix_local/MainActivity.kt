@@ -7,6 +7,7 @@ import com.reiflix.reiflix_local.bridge.NativeRequestState
 import com.reiflix.reiflix_local.player.DeviceInteractionProfile
 import com.reiflix.reiflix_local.player.SystemUiController
 import com.reiflix.reiflix_local.scanner.BroadStorageScanner
+import com.reiflix.reiflix_local.scanner.DefaultReiAnixFolderScanner
 import com.reiflix.reiflix_local.scanner.MediaStoreRetryScheduler
 import com.reiflix.reiflix_local.scanner.MediaStoreScanner
 import com.reiflix.reiflix_local.scanner.NativeScanController
@@ -103,6 +104,13 @@ class MainActivity : ComponentActivity() {
     private var safPickerWatchdog: Runnable? = null
     private val safPickerWatchdogHandler = Handler(Looper.getMainLooper())
     private var activityResumed = false
+    private val defaultFolderScanHandler = Handler(Looper.getMainLooper())
+    private val defaultFolderScanRunnable = Runnable {
+        if (activityResumed && bootstrapAllowsNativeOperations() &&
+            !safPickerPending && !mediaPermissionRequestPending) {
+            scanDefaultReiAnixFolder()
+        }
+    }
     private var googleSignInJob: Job? = null
     private var googleSignOutJob: Job? = null
     private var pendingMediaRequestId: String? = null
@@ -563,6 +571,7 @@ class MainActivity : ComponentActivity() {
         }
 
     private fun scheduleMediaStoreIncrementalRescan() {
+        scheduleDefaultReiAnixFolderScan()
         MediaStoreRetryScheduler.schedule(
             applicationContext,
             reason = "content_observer_debounce",
@@ -2448,6 +2457,7 @@ class MainActivity : ComponentActivity() {
 
         synchronizeSafTreeChangeObservers()
         dispatchPendingSafTreeChanges()
+        scheduleDefaultReiAnixFolderScan()
     }
 
     /**
@@ -2462,6 +2472,7 @@ class MainActivity : ComponentActivity() {
         publishStorageStatus()
         synchronizeSafTreeChangeObservers()
         dispatchPendingSafTreeChanges()
+        scheduleDefaultReiAnixFolderScan()
     }
 
     private fun synchronizeSafTreeChangeObservers(forceInventoryCheck: Boolean = false) {
@@ -2710,6 +2721,7 @@ class MainActivity : ComponentActivity() {
         logLifecycle("onStop")
         unregisterStorageReceiver()
         MediaStoreScanner.stopChangeObserver(this)
+        defaultFolderScanHandler.removeCallbacks(defaultFolderScanRunnable)
         super.onStop()
     }
 
@@ -3580,6 +3592,15 @@ class MainActivity : ComponentActivity() {
                         .sortedBy { it.path }
                 }
                 configuredScopes = folders.size
+                // The built-in Downloads/ReiAnix directory is a real source, not
+                // only a decorative row in Settings. It has no synthetic SAF grant.
+                requestedSources++
+                val defaultScanId = scanDefaultReiAnixFolder(force = true, requestId = requestId)
+                if (defaultScanId == null) {
+                    recordSourceStartFailure(DefaultReiAnixFolderScanner.SOURCE_KEY, "scan_not_started")
+                } else {
+                    pendingSources += DefaultReiAnixFolderScanner.SOURCE_KEY to defaultScanId
+                }
                 for (folder in folders) {
                     requestedSources++
                     val reference = folder.path.trim()
@@ -4452,6 +4473,91 @@ class MainActivity : ComponentActivity() {
         if (launched || NativeScanController.snapshot(scanId)?.state?.isTerminal == true) return scanId
         NativeScanController.finish(scanId)
         return NativeScanController.activeScanId(BroadStorageScanner.SOURCE)
+    }
+
+    /**
+     * Only queries the built-in Download/ReiAnix subtree. Its MediaStore
+     * visibility is not exhaustive, so never marks existing episodes missing.
+     */
+    private fun scheduleDefaultReiAnixFolderScan() {
+        defaultFolderScanHandler.removeCallbacks(defaultFolderScanRunnable)
+        // Debounce download completion and MediaStore's asynchronous indexing.
+        defaultFolderScanHandler.postDelayed(defaultFolderScanRunnable, 1_200L)
+    }
+
+    private fun scanDefaultReiAnixFolder(
+        force: Boolean = false,
+        requestId: String? = null,
+    ): String? {
+        if (!bootstrapAllowsNativeOperations()) return null
+        val revision = DefaultReiAnixFolderScanner.revision(this)
+        if (!force && DefaultReiAnixFolderScanner.isUpToDate(this, revision)) return null
+
+        val sourceKey = DefaultReiAnixFolderScanner.SOURCE_KEY
+        val scanId = UUID.randomUUID().toString()
+        if (!NativeScanController.begin(scanId, sourceKey)) {
+            return NativeScanController.activeScanId(sourceKey)
+        }
+        val appContext = applicationContext
+        val launched = NativeScanController.launch(scanId) {
+            try {
+                val discovery = DefaultReiAnixFolderScanner.discover(
+                    appContext, scanId,
+                    isCancelled = { NativeScanController.isCancelled(scanId) },
+                )
+                if (discovery.cancelled || NativeScanController.isCancelled(scanId)) {
+                    NativeScanController.complete(scanId, "CANCELLED",
+                        JSONObject().put("cancelled", true))
+                    return@launch
+                }
+                if (!discovery.readable) {
+                    NativeScanController.complete(scanId, "FAILED",
+                        JSONObject().put("errorType", "DEFAULT_DOWNLOADS_NOT_READABLE"))
+                    return@launch
+                }
+                val report = if (discovery.snapshot.items.isNotEmpty()) {
+                    appDependencies.libraryService.indexDiscoveredMedia(discovery.snapshot)
+                } else null
+                if (report != null && (report.inserted > 0 || report.updated > 0)) {
+                    // The native catalog is authoritative. Only invalidate on changes.
+                    com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+                }
+                val finalRevision = DefaultReiAnixFolderScanner.revision(appContext)
+                if (discovery.errors.isEmpty() && revision == finalRevision) {
+                    DefaultReiAnixFolderScanner.markIndexed(appContext, revision)
+                }
+                val result = JSONObject()
+                    .put("source", sourceKey)
+                    .put("requestId", requestId ?: "")
+                    .put("videos", discovery.snapshot.items.size)
+                    .put("inserted", report?.inserted ?: 0)
+                    .put("updated", report?.updated ?: 0)
+                    .put("ambiguous", report?.ambiguous ?: 0)
+                    .put("failedQueries", discovery.errors.size)
+                NativeScanController.complete(
+                    scanId,
+                    if (discovery.errors.isEmpty()) "COMPLETED" else "PARTIAL",
+                    result,
+                )
+                if (revision != finalRevision) {
+                    // MediaStore changed while scanning. Never cache a stale result.
+                    defaultFolderScanHandler.post { scheduleDefaultReiAnixFolderScan() }
+                }
+            } catch (cancelled: CancellationException) {
+                NativeScanController.complete(scanId, "CANCELLED",
+                    JSONObject().put("cancelled", true))
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(tag, "Built-in Downloads/ReiAnix discovery failed", error)
+                NativeScanController.complete(scanId, "FAILED",
+                    JSONObject().put("errorType", error.javaClass.simpleName))
+            } finally {
+                NativeScanController.finish(scanId)
+            }
+        }
+        if (launched || NativeScanController.snapshot(scanId)?.state?.isTerminal == true) return scanId
+        NativeScanController.finish(scanId)
+        return NativeScanController.activeScanId(sourceKey)
     }
 
     private fun scanMediaStore(requestId: String? = null): String? {
