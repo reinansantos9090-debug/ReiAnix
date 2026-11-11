@@ -85,8 +85,9 @@ internal object DownloadSizeProbe {
                 line.startsWith("#EXT-X-MAP:") -> {
                     val uri=DownloadHls.attributes(line)["URI"] ?: return null
                     if(DownloadHls.attributes(line)["BYTERANGE"]!=null)return null
-                    init=runCatching { URL(URL(sourceUrl),uri).toString() }.getOrNull() ?: return null
-                    if(runCatching { DownloadHttp.validateUrl(init) }.isFailure)return null
+                    val resolved=runCatching { URL(URL(sourceUrl),uri).toString() }.getOrNull() ?: return null
+                    if(runCatching { DownloadHttp.validateUrl(resolved) }.isFailure)return null
+                    init=resolved
                 }
                 line.startsWith("#EXT-X-KEY:") -> {
                     if(DownloadHls.attributes(line)["METHOD"] !in setOf(null,"NONE")) encrypted=true
