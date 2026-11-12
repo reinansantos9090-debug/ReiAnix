@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.artwork
+package com.reianix.reianix_local.ui.artwork
 
 import android.content.Context
 import android.net.Uri
@@ -35,9 +35,9 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Dimension
 import coil.size.Size
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.ui.ReiAnixArtworkMissingState
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.ui.ReiAnixArtworkMissingState
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import java.io.File
 import kotlin.math.max
 import kotlin.math.min

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.discovery
+package com.reianix.reianix_local.ui.discovery
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,9 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscovery
-import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.data.library.ReiAnixLibraryDiscovery
+import com.reianix.reianix_local.ui.ReiAnixCompactButton
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import kotlinx.coroutines.CancellationException
 import java.text.SimpleDateFormat
 import java.util.Date

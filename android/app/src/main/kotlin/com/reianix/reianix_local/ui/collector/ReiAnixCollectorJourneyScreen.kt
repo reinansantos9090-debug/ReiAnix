@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.collector
+package com.reianix.reianix_local.ui.collector
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -33,12 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
-import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixCollectorJourneyViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixCollectorJourneyViewModelFactory
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.library.rememberReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToTopLevel
+import com.reianix.reianix_local.viewmodel.ReiAnixCollectorJourneyViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixCollectorJourneyViewModelFactory
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -79,7 +79,7 @@ fun ReiAnixCollectorJourneyRoute(
 
 @Composable
 private fun ReiAnixCollectorJourneyScreen(
-    state: com.reiflix.reiflix_local.viewmodel.ReiAnixCollectorJourneyUiState,
+    state: com.reianix.reianix_local.viewmodel.ReiAnixCollectorJourneyUiState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onSelectTitle: (String) -> Unit,

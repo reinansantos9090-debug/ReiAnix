@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui
+package com.reianix.reianix_local.ui
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -61,14 +61,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixHomeAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.presentationStateLabel
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.artwork.ReiAnixEpisodeThumbnail
+import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixHomeAnimeUiModel
+import com.reianix.reianix_local.ui.model.presentationStateLabel
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import kotlin.math.roundToInt
 
 @Composable
@@ -923,7 +923,7 @@ fun ReiAnixEpisodeCard(
         }
         if (episode.isCompleted) {
             add("Concluído")
-        } else if (episode.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS) {
+        } else if (episode.consumptionState == com.reianix.reianix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS) {
             add("Em andamento")
         }
         if (!episode.isPlayable) {

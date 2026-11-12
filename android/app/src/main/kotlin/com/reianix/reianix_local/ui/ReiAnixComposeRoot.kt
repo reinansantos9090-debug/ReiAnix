@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui
+package com.reianix.reianix_local.ui
 
 import androidx.annotation.Keep
 import androidx.compose.foundation.background
@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
+import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
 
 @Keep
 /**

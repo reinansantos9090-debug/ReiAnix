@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.details
+package com.reianix.reianix_local.ui.details
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -78,49 +78,49 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.ui.ReiAnixBadge
-import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
-import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
-import com.reiflix.reiflix_local.ui.ReiAnixChip
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
-import com.reiflix.reiflix_local.ui.ReiAnixEpisodeCard
-import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
-import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
-import com.reiflix.reiflix_local.ui.formatDurationLabel
-import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
-import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
-import com.reiflix.reiflix_local.ui.discovery.ReiAnixMarathonDialog
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
-import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
-import com.reiflix.reiflix_local.ui.model.presentationStateLabel
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjection
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
-import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
-import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
-import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveBreakpoints
-import com.reiflix.reiflix_local.ui.theme.ReiAnixWindowWidthClass
+import com.reianix.reianix_local.ui.ReiAnixBadge
+import com.reianix.reianix_local.ui.ReiAnixBadgeTone
+import com.reianix.reianix_local.ui.ReiAnixCompactButton
+import com.reianix.reianix_local.ui.ReiAnixChip
+import com.reianix.reianix_local.ui.ReiAnixEmptyLibraryState
+import com.reianix.reianix_local.ui.ReiAnixEmptyState
+import com.reianix.reianix_local.ui.ReiAnixEpisodeCard
+import com.reianix.reianix_local.ui.ReiAnixIconActionButton
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
+import com.reianix.reianix_local.ui.ReiAnixProgressIndicator
+import com.reianix.reianix_local.ui.formatDurationLabel
+import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
+import com.reianix.reianix_local.ui.ReiAnixSecondaryButton
+import com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState
+import com.reianix.reianix_local.ui.artwork.ReiAnixBackdrop
+import com.reianix.reianix_local.ui.discovery.ReiAnixMarathonDialog
+import com.reianix.reianix_local.ui.artwork.ReiAnixEpisodeThumbnail
+import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
+import com.reianix.reianix_local.ui.model.presentationStateLabel
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsUiState
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsUiStateProjection
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
+import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
+import com.reianix.reianix_local.ui.navigation.navigateToPlayer
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveBreakpoints
+import com.reianix.reianix_local.ui.theme.ReiAnixWindowWidthClass
 import androidx.compose.foundation.layout.widthIn
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationStatus
-import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationUiState
-import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListUiState
-import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModelFactory
-import com.reiflix.reiflix_local.data.anilist.AniListAnime
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixTraceMoeIdentificationStatus
+import com.reianix.reianix_local.viewmodel.ReiAnixTraceMoeIdentificationUiState
+import com.reianix.reianix_local.viewmodel.ReiAnixAniListUiState
+import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModelFactory
+import com.reianix.reianix_local.data.anilist.AniListAnime
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -986,9 +986,9 @@ private fun DetailsHero(
                 ReiAnixBadge(
                     text = stateLabel,
                     tone = when (anime.presentationState) {
-                        com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState.ARTWORK_FAILED ->
+                        com.reianix.reianix_local.ui.model.ReiAnixPresentationState.ARTWORK_FAILED ->
                             ReiAnixBadgeTone.Warning
-                        com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState.METADATA_MISSING ->
+                        com.reianix.reianix_local.ui.model.ReiAnixPresentationState.METADATA_MISSING ->
                             ReiAnixBadgeTone.Warning
                         else -> ReiAnixBadgeTone.Primary
                     },
@@ -1770,7 +1770,7 @@ private fun DetailsEpisodeItem(
                 }
             }
         })
-    com.reiflix.reiflix_local.downloads.DownloadLibraryStatus(episodeId = episode.id)
+    com.reianix.reianix_local.downloads.DownloadLibraryStatus(episodeId = episode.id)
     }
     if (showIdentificationEditor) {
         AlertDialog(

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.home
+package com.reianix.reianix_local.ui.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -66,47 +66,47 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.collect
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
-import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
-import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
-import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
-import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
-import com.reiflix.reiflix_local.ui.ReiAnixMetadata
-import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
-import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
-import com.reiflix.reiflix_local.ui.ReiAnixSectionTitle
-import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixBackdrop
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
-import com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeader
-import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeaderState
-import com.reiflix.reiflix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
-import com.reiflix.reiflix_local.ui.discovery.ReiAnixDurationAnomalyDialog
-import com.reiflix.reiflix_local.ui.discovery.ReiAnixTimelineDialog
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixHomeAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.presentationStateLabel
-import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
-import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
-import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
-import com.reiflix.reiflix_local.ui.navigation.navigateToPlayer
-import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.ReiAnixEmptyLibraryState
+import com.reianix.reianix_local.ui.ReiAnixCompactButton
+import com.reianix.reianix_local.ui.ReiAnixAnimeCard
+import com.reianix.reianix_local.ui.ReiAnixIconActionButton
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.ReiAnixEmptyState
+import com.reianix.reianix_local.ui.ReiAnixLoadingState
+import com.reianix.reianix_local.ui.ReiAnixMetadata
+import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
+import com.reianix.reianix_local.ui.ReiAnixProgressIndicator
+import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
+import com.reianix.reianix_local.ui.ReiAnixSectionTitle
+import com.reianix.reianix_local.ui.ReiAnixSecondaryButton
+import com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState
+import com.reianix.reianix_local.ui.artwork.ReiAnixBackdrop
+import com.reianix.reianix_local.ui.artwork.ReiAnixEpisodeThumbnail
+import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import com.reianix.reianix_local.ui.library.rememberReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeader
+import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeaderState
+import com.reianix.reianix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
+import com.reianix.reianix_local.ui.discovery.ReiAnixDurationAnomalyDialog
+import com.reianix.reianix_local.ui.discovery.ReiAnixTimelineDialog
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixContinueWatchingUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixHomeAnimeUiModel
+import com.reianix.reianix_local.ui.model.presentationStateLabel
+import com.reianix.reianix_local.ui.model.ReiAnixHomeLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
+import com.reianix.reianix_local.ui.navigation.navigateToMyList
+import com.reianix.reianix_local.ui.navigation.navigateToPlayer
+import com.reianix.reianix_local.ui.navigation.navigateToTopLevel
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.LocalReiAnixPosterSize
+import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -1101,7 +1101,7 @@ private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
 
 private fun homeAnimeCardWidth(
     preference: String,
-    responsive: com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveMetrics,
+    responsive: com.reianix.reianix_local.ui.theme.ReiAnixResponsiveMetrics,
 ): androidx.compose.ui.unit.Dp = responsive.homeCardWidth(preference)
 
 @Composable

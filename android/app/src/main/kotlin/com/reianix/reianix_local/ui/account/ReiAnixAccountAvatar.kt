@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.account
+package com.reianix.reianix_local.ui.account
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -26,7 +26,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL

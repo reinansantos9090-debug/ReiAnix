@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.details
+package com.reianix.reianix_local.ui.details
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -26,20 +26,20 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.data.anilist.AniListAnime
-import com.reiflix.reiflix_local.ui.ReiAnixBadge
-import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
-import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
-import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
-import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
-import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModelFactory
+import com.reianix.reianix_local.data.anilist.AniListAnime
+import com.reianix.reianix_local.ui.ReiAnixBadge
+import com.reianix.reianix_local.ui.ReiAnixBadgeTone
+import com.reianix.reianix_local.ui.ReiAnixLoadingState
+import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
+import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModelFactory
 
 /**
  * Read-only Details destination for a remote AniList result that has no local ID.

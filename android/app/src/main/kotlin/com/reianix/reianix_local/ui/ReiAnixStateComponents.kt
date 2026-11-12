@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui
+package com.reianix.reianix_local.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +22,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 
 /**
  * Presentation-only state components for the existing local-library flows.
