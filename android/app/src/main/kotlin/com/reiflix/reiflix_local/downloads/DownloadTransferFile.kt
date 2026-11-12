@@ -34,7 +34,12 @@ internal class DownloadTransferFile(private val context: Context, private val st
     val isPublic: Boolean get() = uri != null
 
     fun prepare() {
-        if(uri != null) return
+        if(uri != null) {
+            // Resume downloads created by an older ReiAnix build without
+            // keeping their MediaStore row hidden under "pending-...part".
+            runCatching { syncName() }
+            return
+        }
         val item = store.get(id) ?: throw IOException("Download não encontrado")
         // A previously started private transfer must continue from its committed bytes.
         if ((item.bytes > 0L || legacyFile.length() > 0L) && legacyFile.exists()) return
@@ -86,6 +91,7 @@ internal class DownloadTransferFile(private val context: Context, private val st
             val changed=context.contentResolver.update(transfer,ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME,item.name)
                 put(MediaStore.Downloads.MIME_TYPE,item.mime)
+                put(MediaStore.Downloads.IS_PENDING,0)
             },null,null)
             if(changed<=0) throw IOException("Não foi possível atualizar o nome público do download")
         } else if(transfer.scheme=="content") {
