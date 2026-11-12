@@ -1559,6 +1559,7 @@ class ReiAnixSqliteLibraryRepository(
                 val seenLocations = linkedSetOf<String>()
                 val seenIdentities = linkedSetOf<String>()
                 val inputIdentities = hashSetOf<String>()
+                val oldUnnumberedMovieAlbums = linkedSetOf<Long>()
 
                 val indexedItems = recognizeUnnumberedSeriesSiblings(
                     normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items)
@@ -1620,6 +1621,22 @@ class ReiAnixSqliteLibraryRepository(
                         item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
                         item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity?.startsWith("download:")!=true && current.mediaIdentity != it) patch.put("media_identity", it) }
                         if (current.manualOverride != true && !ownedDownload) {
+                            // A formerly standalone "One Piece.mkv" can be recognized
+                            // as a serial episode when a numbered sibling proves it.
+                            // Preserve its original path, progress, artwork and ID.
+                            if(item.identificationSource=="verified_series_sibling" &&
+                                current.episodeType=="movie" && item.episodeNumber!=null) {
+                                patch.put("number",item.episodeNumber)
+                                patch.put("season",item.season ?: 1)
+                                val target= db.rawQuery(
+                                    "SELECT id FROM anime WHERE lookup_title=? AND LOWER(COALESCE(media_kind,'series'))='series'",
+                                    arrayOf(item.normalizedAnimeTitle()),
+                                ).use {c ->buildList { while(c.moveToNext())add(c.getLong(0)) }}
+                                if(target.size==1 && target.single()!=current.animeId) {
+                                    patch.put("anime_id",target.single())
+                                    oldUnnumberedMovieAlbums += current.animeId
+                                }
+                            }
                             item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
                             item.episodeTitle?.takeIf { it.isNotBlank() }?.let { if (current.episodeTitle != it) patch.put("episode_title", it) }
                             item.identificationSource?.takeIf { it.isNotBlank() }?.let { if (current.identificationSource != it) patch.put("identification_source", it) }
@@ -1738,6 +1755,31 @@ class ReiAnixSqliteLibraryRepository(
                     } finally {
                         db.execSQL("RELEASE native_index_item")
                     }
+                }
+
+                // Remove only automatic empty movie shells after their actual
+                // episodes have moved. Never erase user-curated albums or files.
+                for(old in oldUnnumberedMovieAlbums) {
+                    db.execSQL("SAVEPOINT cleanup_empty_movie")
+                    try {
+                        val permitted=db.rawQuery(
+                            """SELECT 1 FROM anime WHERE id=? AND LOWER(COALESCE(media_kind,''))='movie'
+                               AND COALESCE(favorite,0)=0 AND COALESCE(is_pinned,0)=0
+                               AND COALESCE(anilist_match_manual,0)=0
+                               AND TRIM(COALESCE(personal_note,''))=''
+                               AND COALESCE(user_tags,'[]') IN ('','[]')
+                               AND COALESCE(metadata_manual_fields,'[]') IN ('','[]')
+                               AND NOT EXISTS(SELECT 1 FROM episodes WHERE anime_id=?)""",
+                            arrayOf(old.toString(),old.toString()),
+                        ).use {it.moveToFirst()}
+                        if(permitted) {
+                            db.delete("artwork","entity_type='anime' AND entity_id=?",arrayOf(old.toString()))
+                            db.delete("anime_genres","anime_id=?",arrayOf(old.toString()))
+                            db.delete("anime","id=?",arrayOf(old.toString()))
+                        }
+                    } catch(_:Exception) {
+                        db.execSQL("ROLLBACK TO cleanup_empty_movie")
+                    } finally { db.execSQL("RELEASE cleanup_empty_movie") }
                 }
 
                 val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence && ambiguous == 0
