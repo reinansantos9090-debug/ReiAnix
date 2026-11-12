@@ -18,6 +18,9 @@ internal object DownloadSizeIntelligence {
         """(?i)(?:^|[\s|;,(\[])(?:tamanho(?:\s+do\s+arquivo)?|file[\s_-]*size|content[\s_-]*size|size|tam\.?)\s*[:=–—-]?\s*(\d{1,8}(?:[.,]\d{1,2})?)\s*(TiB|GiB|MiB|KiB|TB|GB|MB|KB|B)\b"""
     )
 
+    fun stripSizeAnnotations(value:String):String =
+        annotatedSize.replace(value," ").replace(Regex("""\s+""")," ").trim()
+
     fun fromSharedMetadata(vararg texts:String):Evidence? {
         for(text in texts) {
             if(text.isBlank() || text.length>16_384)continue
