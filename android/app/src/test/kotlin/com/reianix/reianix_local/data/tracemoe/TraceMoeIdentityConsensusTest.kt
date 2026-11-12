@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local.data.tracemoe
+package com.reianix.reianix_local.data.tracemoe
 
-import com.reiflix.reiflix_local.data.anilist.shouldAllowTraceMoeWithAutoMatchSetting
-import com.reiflix.reiflix_local.data.anilist.shouldHonorTraceMoeSuccessfulCooldown
-import com.reiflix.reiflix_local.data.anilist.shouldResumeTraceMoeSession
+import com.reianix.reianix_local.data.anilist.shouldAllowTraceMoeWithAutoMatchSetting
+import com.reianix.reianix_local.data.anilist.shouldHonorTraceMoeSuccessfulCooldown
+import com.reianix.reianix_local.data.anilist.shouldResumeTraceMoeSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse

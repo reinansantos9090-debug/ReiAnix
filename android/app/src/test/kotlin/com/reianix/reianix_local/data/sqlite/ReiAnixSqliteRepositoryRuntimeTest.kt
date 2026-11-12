@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.sqlite
+package com.reianix.reianix_local.data.sqlite
 
 import android.content.Context
 import android.app.Application
@@ -18,10 +18,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
-import com.reiflix.reiflix_local.data.anilist.readPersistedArtworkDiscoveryAttemptTimes
-import com.reiflix.reiflix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryQueryResult
+import com.reianix.reianix_local.data.anilist.readPersistedArtworkDiscoveryAttemptTimes
+import com.reianix.reianix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -310,25 +310,25 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             db.execSQL("DROP TABLE folders")
         }
 
-        val bootstrap = com.reiflix.reiflix_local.ReiAnixAppDependencies(context).bootstrap
+        val bootstrap = com.reianix.reianix_local.ReiAnixAppDependencies(context).bootstrap
         bootstrap.awaitStarted()
         val state = bootstrap.state.value
 
         assertTrue("A canonical database missing a core table must require recovery.", state.recoveryRequired)
         assertEquals(
-            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
+            com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus.RECOVERY_REQUIRED,
             state.persistenceStatus,
         )
         assertEquals(
-            com.reiflix.reiflix_local.ReiAnixBootstrapStage.RECOVERY_REQUIRED,
+            com.reianix.reianix_local.ReiAnixBootstrapStage.RECOVERY_REQUIRED,
             state.stage,
         )
         assertFalse(
             "Native services must not be published as ready while core tables are missing.",
-            state.completedStages.contains(com.reiflix.reiflix_local.ReiAnixBootstrapStage.NATIVE_SERVICES_READY),
+            state.completedStages.contains(com.reianix.reianix_local.ReiAnixBootstrapStage.NATIVE_SERVICES_READY),
         )
         assertFalse(
-            state.completedStages.contains(com.reiflix.reiflix_local.ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER),
+            state.completedStages.contains(com.reianix.reianix_local.ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER),
         )
     }
 
@@ -2228,14 +2228,14 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val data=JSONObject().put("id",id).put("name","episode-01.mkv").put("state","COMPLETE").put("output",output).put("virtualUri",virtual).put("episodeId",7).put("animeId",1)
             db.execSQL("INSERT INTO native_downloads(id,data) VALUES(?,?)",arrayOf(id,data.toString()))
         }
-        assertTrue(com.reiflix.reiflix_local.downloads.DownloadCatalogBridge.reconcile(database))
+        assertTrue(com.reianix.reianix_local.downloads.DownloadCatalogBridge.reconcile(database))
         database.read {db ->
             db.rawQuery("SELECT progress,watched,path FROM episodes WHERE id=7",null).use {c ->assertTrue(c.moveToFirst());assertEquals(500.0,c.getDouble(0),0.0);assertEquals(1,c.getInt(1));assertEquals(virtual,c.getString(2))}
             assertEquals(1L,android.database.DatabaseUtils.longForQuery(db,"SELECT count(*) FROM episodes",null))
             assertEquals(1L,android.database.DatabaseUtils.longForQuery(db,"SELECT count(*) FROM anime",null))
             db.rawQuery("SELECT personal_note,user_tags FROM anime WHERE id=1",null).use {c ->assertTrue(c.moveToFirst());assertTrue(c.getString(0).contains("keep this note"));assertTrue(c.getString(0).contains("download note"));assertTrue(c.getString(1).contains("download-tag"))}
         }
-        assertFalse(com.reiflix.reiflix_local.downloads.DownloadCatalogBridge.reconcile(database))
+        assertFalse(com.reianix.reianix_local.downloads.DownloadCatalogBridge.reconcile(database))
     }
 
     @Test
@@ -2251,7 +2251,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             val data=JSONObject().put("id",id).put("name","episode-01.mkv").put("state","COMPLETE").put("output","file:///download/episode-01.mkv").put("virtualUri",virtual).put("episodeId",7).put("animeId",1)
             db.execSQL("INSERT INTO native_downloads(id,data) VALUES(?,?)",arrayOf(id,data.toString()))
         }
-        assertFalse(com.reiflix.reiflix_local.downloads.DownloadCatalogBridge.reconcile(database))
+        assertFalse(com.reianix.reianix_local.downloads.DownloadCatalogBridge.reconcile(database))
         database.read {db ->assertEquals(2L,android.database.DatabaseUtils.longForQuery(db,"SELECT count(*) FROM episodes",null))}
     }
 
