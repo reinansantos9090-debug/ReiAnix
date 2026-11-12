@@ -74,7 +74,7 @@ class DownloadsActivity: ComponentActivity() {
         // Some sharing apps put the episode label next to the link in EXTRA_TEXT,
         // not EXTRA_TITLE. Keep only the text; do not treat the CDN path as a title.
         val sharedText=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else ""
-        val textLabel=sharedText.replace(Regex("""https?://[^\\s]+""",RegexOption.IGNORE_CASE),"")
+        val textLabel=sharedText.replace(Regex("""https?://[^\s]+""",RegexOption.IGNORE_CASE),"")
             .trim().trim('-','–',':',' ').take(200)
         incomingTitle=sequenceOf(Intent.EXTRA_TITLE,Intent.EXTRA_SUBJECT,"title","name")
             .mapNotNull { intent.getStringExtra(it) }
