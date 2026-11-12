@@ -19,7 +19,7 @@ O objetivo desta etapa é fazer os fluxos de diagnóstico originados em componen
 
 ### Timeline e contrato do evento
 
-Novo arquivo: `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/diagnostics/ReiAnixDiagnosticTimeline.kt`.
+Novo arquivo: `android/app/src/main/kotlin/com/reianix/reianix_local/data/diagnostics/ReiAnixDiagnosticTimeline.kt`.
 
 O contrato nativo registra:
 
