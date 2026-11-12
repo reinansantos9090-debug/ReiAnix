@@ -83,10 +83,10 @@ object DownloadIdentity {
         val episode = episodeTitleFromPage(sharedTitle, url)
         if (episodeMarker.containsMatchIn(episode) && usefulPageTitle(episode)) {
             val normalized = episode.replace(
-                Regex("""(?i)\\b(?:epis[oó]dio|episode|ep)[\\s._-]*(\\d{1,4})\\b"""),
+                Regex("""(?i)\b(?:epis[oó]dio|episode|ep)[\s._-]*(\d{1,4})\b"""),
             ) { match ->
                 "Episódio " + match.groupValues[1].padStart(2, '0')
-            }.replace(Regex("""\\s+"""), " ").trim()
+            }.replace(Regex("""\s+"""), " ").trim()
             val clean = normalized.map { if (it.isISOControl() || it in "\\/:*?\\\"<>|") ' ' else it }
                 .joinToString("").trim().take(180).trim()
             if (clean.isNotBlank()) {
