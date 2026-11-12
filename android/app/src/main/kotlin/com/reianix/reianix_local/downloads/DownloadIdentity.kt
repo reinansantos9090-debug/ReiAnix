@@ -16,7 +16,7 @@ object DownloadIdentity {
             if (ext in DownloadContainerDetector.knownExtensions + setOf("bin", "m3u8", "mpd"))
                 stem = stem.substringBeforeLast('.')
         }
-        return stem.isBlank() || genericFile.matches(stem.trim())
+        return stem.isBlank() || genericFile.matches(stem.trim()) || DownloadResourceIdentity.opaque(value)
     }
 
     private fun cleanedPageTitle(title: String): String = title
@@ -80,23 +80,34 @@ object DownloadIdentity {
      * Do not fabricate an episode number when the sender provides no episode metadata. */
     fun suggestedName(sharedTitle: String, url: String, providedName: String): String {
         if (providedName.isNotBlank() && !isGenericMediaName(providedName)) return providedName
-        val episode = episodeTitleFromPage(sharedTitle, url)
-        if (episodeMarker.containsMatchIn(episode) && usefulPageTitle(episode)) {
-            val normalized = episode.replace(
+        val fromContext=DownloadResourceIdentity.contextualEpisodeName(url)
+        val episode=episodeTitleFromPage(sharedTitle,url).takeIf {
+            episodeMarker.containsMatchIn(it) && usefulPageTitle(it)
+        } ?: fromContext
+        if (!episode.isNullOrBlank()) {
+            val normalized=episode.replace(
                 Regex("""(?i)\b(?:epis[oó]dio|episode|ep)[\s._-]*(\d{1,4})\b"""),
-            ) { match ->
-                "Episódio " + match.groupValues[1].padStart(2, '0')
-            }.replace(Regex("""\s+"""), " ").trim()
-            val clean = normalized.map { if (it.isISOControl() || it in "\\/:*?\\\"<>|") ' ' else it }
-                .joinToString("").trim().take(180).trim()
-            if (clean.isNotBlank()) {
-                val ext = providedName.substringAfterLast('.', "").lowercase()
+            ) { match -> "Episódio " + match.groupValues[1].padStart(2,'0') }
+                .replace(Regex("""\s+""")," ").trim()
+            val safe=normalized.map {
+                if(it.isISOControl() || it in "\\/:*?\"<>|") ' ' else it
+            }.joinToString("").take(180).trim()
+            if(safe.isNotBlank()) {
+                val ext=providedName.substringAfterLast('.', "").lowercase()
                     .takeIf { it in DownloadContainerDetector.knownExtensions } ?: "mp4"
-                return clean + "." + ext
+                return safe+"."+ext
             }
         }
+        DownloadResourceIdentity.bestName(null,url,null)?.let { return it }
+        val plainTitle=sharedTitle.trim().takeIf { usefulPageTitle(it) }
+        if(plainTitle!=null) {
+            val clean=plainTitle.map {
+                if(it.isISOControl() || it in "\\/:*?\"<>|") ' ' else it
+            }.joinToString("").trim().take(180)
+            if(clean.isNotBlank())return clean+".mp4"
+        }
         return providedName.ifBlank {
-            runCatching { android.webkit.URLUtil.guessFileName(url, null, null) }
+            runCatching { android.webkit.URLUtil.guessFileName(url,null,null) }
                 .getOrDefault("episodio.mp4")
         }
     }
