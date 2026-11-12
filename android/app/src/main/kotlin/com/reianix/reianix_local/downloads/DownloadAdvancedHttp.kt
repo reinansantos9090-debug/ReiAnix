@@ -107,7 +107,14 @@ internal object DownloadAdvancedHttp {
                             .startsWith("multipart/byteranges",ignoreCase=true) &&
                         c.getHeaderFieldLong("Content-Length",0) in 1..PREFIX_MAX) {
                         val buffer=ByteArray(PREFIX_MAX)
-                        val read=c.inputStream.use {it.read(buffer)}
+                        var read=0
+                        c.inputStream.use { stream ->
+                            while(read<PREFIX_MAX) {
+                                val n=stream.read(buffer,read,PREFIX_MAX-read)
+                                if(n<0)break
+                                read+=n
+                            }
+                        }
                         if(read>0)length=multipartTotal(buffer.copyOf(read))
                     }
                     if(length!=null && length>0) {
