@@ -205,6 +205,25 @@ class DownloadEngine(private val context: Context) {
                                 throw PermanentFailure("O link retornou uma página ou mensagem de erro, não o vídeo")
                             }
                         }
+                        // A binary CDN response may be an actual MP4/TS/MKV.
+                        // Identify the file by its first bytes while the transfer is
+                        // already running; this adds NO network request or waiting.
+                        if(count==0L && read>=512) {
+                            val current=store.get(id)
+                            if(current!=null && (current.name.endsWith(".bin",true) ||
+                                current.mime.equals("application/octet-stream",true))) {
+                                val found=DownloadContainerDetector.sniff(buffer.copyOf(minOf(read,4096)))
+                                if(found!=null) {
+                                    val corrected=DownloadContainerDetector.outputName(current.name,found.extension)
+                                    store.mutate(id) {
+                                        it.put("sourceWasOpaque",true).put("name",corrected)
+                                            .put("mime",found.mime).put("serverNameResolved",true)
+                                    }
+                                    runCatching { target.syncName() }
+                                    store.registerMedia(id)
+                                }
+                            }
+                        }
                         if(total>=0 && count+read>total) throw PermanentFailure("O servidor enviou mais dados que o tamanho informado")
                         output.write(buffer,0,read); count+=read
                         val now=android.os.SystemClock.elapsedRealtime()
@@ -300,11 +319,11 @@ class DownloadEngine(private val context: Context) {
         val originalExtension=originalName.substringAfterLast('.', "").lowercase()
         // A .bin response may contain valid MP4/TS/MKV data, but an arbitrary
         // binary is not an episode. Do not publish it as a playable video.
-        if(originalExtension=="bin" && actualContainer==null)
+        if((originalExtension=="bin" || beforePublication.json.optBoolean("sourceWasOpaque")) && actualContainer==null)
             throw PermanentFailure("O arquivo .bin não contém um formato de vídeo reconhecido; não foi renomeado para MP4.")
         // A recognizable ftyp header alone does not make an arbitrary .bin
         // playable. Confirm a genuine video track before publishing as MP4.
-        if(originalExtension=="bin" && actualContainer?.extension=="mp4") {
+        if((originalExtension=="bin" || beforePublication.json.optBoolean("sourceWasOpaque")) && actualContainer?.extension=="mp4") {
             val playable=runCatching {
                 val extractor=android.media.MediaExtractor()
                 try {
