@@ -87,7 +87,13 @@ object DownloadScheduling {
             if(item.state=="COMPLETE") {
                 // Completed notifications stay visible until the user dismisses
                 // them. An automatic timeout hid the only completion feedback.
+                // Explicit completion symbol for the status bar and for Android
+                // notification cards that support preferring the small icon.
+                // Some Samsung One UI versions enforce the launcher icon on cards.
                 builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .addExtras(android.os.Bundle().apply {
+                        putBoolean("android.app.preferSmallIcon", true)
+                    })
                     .setContentText("Download concluído • ${item.name}")
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
                     .setOngoing(false)

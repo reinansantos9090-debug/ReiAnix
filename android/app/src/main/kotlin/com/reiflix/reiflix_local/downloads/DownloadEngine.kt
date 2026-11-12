@@ -136,8 +136,12 @@ class DownloadEngine(private val context: Context) {
                 if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L &&
                     !it.has("playerCapture")) {
                     val serverName=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
-                    val proposed=if(it.has("playerCapture")) it.getString("name").substringBeforeLast('.')+"."+serverName.substringAfterLast('.',"mp4") else serverName
-                    if(proposed.isNotBlank() && proposed !in setOf(".","..") && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
+                    // Never replace an already selected episode filename with an
+                    // opaque CDN name such as videoplayback.bin.
+                    val proposed=serverName
+                    if(!DownloadIdentity.isGenericMediaName(proposed) && proposed.isNotBlank() &&
+                        proposed !in setOf(".","..") && proposed.length<=200 &&
+                        proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
                         it.put("name",proposed).put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(proposed)}")
                     }
                 }
