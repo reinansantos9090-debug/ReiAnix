@@ -145,6 +145,9 @@ internal object DownloadSizeProbe {
             try {
                 DownloadHttp.validateUrl(url)
                 val path=URL(url).path.lowercase(Locale.ROOT)
+                if(DownloadSpecialMetadata.isManifest(url))
+                    return@withContext DownloadSpecialMetadata.inspectManifest(url,headers)
+                        ?: Result.Unknown
                 val manifest=hlsHint || path.endsWith(".m3u8")
                 if(path.endsWith(".mpd"))
                     return@withContext DownloadDashMetadata.inspect(url,headers).copy(name=hint)
@@ -157,6 +160,12 @@ internal object DownloadSizeProbe {
                     .copy(name=response.name ?: hint, mime=response.mime)
                 if(response.length!=null)
                     return@withContext Result(response.length,true,response.source,response.name ?: hint,response.mime)
+                if(response.page) DownloadSpecialMetadata.inspectPage(url,headers)?.let {
+                    return@withContext it.copy(name=response.name ?: hint)
+                }
+                DownloadSpecialMetadata.inspectCloud(url)?.let {
+                    return@withContext it.copy(name=it.name ?: response.name ?: hint)
+                }
                 // Only after the fast, low-cost strategies fail: the advanced
                 // bounded probes cover 416, suffix, multipart and validated
                 // same-origin metadata. A vendor hint is not exact.
@@ -170,6 +179,9 @@ internal object DownloadSizeProbe {
                 if(advanced!=null) return@withContext advanced.copy(name=advanced.name ?: response.name ?: hint,
                     mime=advanced.mime ?: response.mime)
                 native?.let {return@withContext Result(it.bytes,false,it.source,response.name ?: hint,response.mime)}
+                DownloadSpecialMetadata.inspectWebDav(url,headers)?.let {
+                    return@withContext it.copy(name=response.name ?: hint)
+                }
                 Result(null,false,"unknown",response.name ?: hint,response.mime)
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
             catch(_: Exception) { Result(null,false,"unknown",hint) }
@@ -177,7 +189,7 @@ internal object DownloadSizeProbe {
 
     private data class Headers(
         val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String,
-        val dash:Boolean = false
+        val dash:Boolean = false, val page:Boolean = false
     )
 
     /**
@@ -205,6 +217,8 @@ internal object DownloadSizeProbe {
                     bestMime=mime
                 if(mime.contains("dash+xml"))
                     return Headers(null,false,bestName,bestMime,"dash-manifest",dash=true)
+                if(mime.startsWith("text/html"))
+                    return Headers(null,false,bestName,bestMime,"html-page",page=true)
                 val resolved=DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
                     c.url.toString(),c.contentType)
                 if(resolved!=null && (bestName==null ||
