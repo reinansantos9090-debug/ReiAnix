@@ -75,7 +75,7 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
         override fun getResponseHeaders(): Map<String,List<String>> = source?.responseHeaders ?: emptyMap()
         override fun close() { source?.close(); source=null }
     }
-    private class GrowingSource(context: Context): BaseDataSource(false) {
+    private class GrowingSource(private val context: Context): BaseDataSource(false) {
         private val store=DownloadStore(context)
         private var file: DownloadRandomFile?=null
         private var item: DownloadItem?=null
