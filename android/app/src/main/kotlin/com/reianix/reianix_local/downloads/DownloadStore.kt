@@ -43,6 +43,7 @@ data class DownloadItem(val json: JSONObject) {
     // container extension recorded by the engine must take precedence instead.
     val name: String get() {
         val stored = json.optString("name")
+        if(json.optBoolean("serverNameResolved")) return stored
         val virtual = Uri.parse(json.optString("virtualUri")).lastPathSegment
             ?.takeIf { it.isNotBlank() } ?: return stored
         val mimeExtension = when (json.optString("mime").substringBefore(';').lowercase()) {
