@@ -83,12 +83,19 @@ class DownloadEngine(private val context: Context) {
             val requestHeaders=headers.keys().asSequence().associateWith { headers.getString(it) }
             var resume=offset
             var validator=item.json.optString("validator").takeIf { it.isNotBlank() }
-            val hls=item.json.optBoolean("hls") || android.net.Uri.parse(secret.getString("url")).path.orEmpty().endsWith(".m3u8",true)
-            if(resume>0 && validator==null && !hls) { restart(id,target); resume=0 }
+            val sourcePath=android.net.Uri.parse(secret.getString("url")).path.orEmpty()
+            val hls=item.json.optBoolean("hls") || sourcePath.endsWith(".m3u8",true)
+            val dash=item.json.optBoolean("adaptiveDash") || sourcePath.endsWith(".mpd",true)
+            if(resume>0 && validator==null && !hls && !dash) { restart(id,target); resume=0 }
             store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","DOWNLOADING").put("message","") }
             if(!isDownloading(id)) return
             if(hls) {
                 if(receiveHls(id,secret.getString("url"),requestHeaders,target)) verifyAndSave(id,target)
+                return
+            }
+            if(dash) {
+                if(DownloadAdaptiveTransfer(context,store).receiveDash(
+                    id,secret.getString("url"),target)) verifyAndSave(id,target)
                 return
             }
             // Fully received files interrupted during verification/export need no redownload.
@@ -125,7 +132,14 @@ class DownloadEngine(private val context: Context) {
                 if(receiveHls(id,secret.getString("url"),requestHeaders,target)) verifyAndSave(id,target)
                 return
             }
-            if(contentType.contains("dash+xml",true)) throw PermanentFailure("Esta playlist DASH exige montagem de faixas ainda não suportada. Abra o site e escolha uma versão de arquivo ou HLS compatível.")
+            if(contentType.contains("dash+xml",true)) {
+                connection.disconnect();connection=null
+                restart(id,target)
+                store.mutate(id){it.put("adaptiveDash",true)}
+                if(DownloadAdaptiveTransfer(context,store).receiveDash(
+                    id,secret.getString("url"),target))verifyAndSave(id,target)
+                return
+            }
             if(total>0 && (item.json.optString("destination").isBlank() || !target.isPublic) &&
                 StatFs(if(target.isPublic) Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).path else store.directory.path)
                     .availableBytes < (total-resume).coerceAtLeast(0)+16L*1024*1024)
