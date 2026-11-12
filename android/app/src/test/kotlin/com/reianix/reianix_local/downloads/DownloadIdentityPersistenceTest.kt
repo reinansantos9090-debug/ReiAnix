@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import android.net.Uri
 import org.json.JSONObject
@@ -15,7 +15,7 @@ class DownloadIdentityPersistenceTest {
     fun providerDisplayNameCannotReplaceUserSelectedEpisodeName() {
         val expected = "Boku no Hero Academia 4 Dublado Episódio I - Animes Online.mp4"
         val id = "00000000-0000-0000-0000-000000000011"
-        val uri = "content://com.reiflix.reiflix_local.downloads/$id/${Uri.encode(expected)}"
+        val uri = "content://com.reianix.reianix_local.downloads/$id/${Uri.encode(expected)}"
         // Models a prior release where a provider renamed the SQLite record.
         val item = DownloadItem(JSONObject()
             .put("id", id)
@@ -28,7 +28,7 @@ class DownloadIdentityPersistenceTest {
     @Test
     fun convertedTsUsesFinalMp4NameAndMimeInsteadOfOldVirtualSuffix() {
         val id = "00000000-0000-0000-0000-000000000012"
-        val uri = "content://com.reiflix.reiflix_local.downloads/$id/Episode%201.ts"
+        val uri = "content://com.reianix.reianix_local.downloads/$id/Episode%201.ts"
         val item = DownloadItem(JSONObject()
             .put("id", id)
             .put("virtualUri", uri)
@@ -42,7 +42,7 @@ class DownloadIdentityPersistenceTest {
     @Test
     fun mislabeledMp4ContainingTsKeepsCorrectedTsExtension() {
         val id = "00000000-0000-0000-0000-000000000013"
-        val uri = "content://com.reiflix.reiflix_local.downloads/$id/Episode%202.mp4"
+        val uri = "content://com.reianix.reianix_local.downloads/$id/Episode%202.mp4"
         val item = DownloadItem(JSONObject()
             .put("id", id)
             .put("virtualUri", uri)

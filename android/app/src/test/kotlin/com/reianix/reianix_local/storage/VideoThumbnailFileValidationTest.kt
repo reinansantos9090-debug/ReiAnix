@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.storage
+package com.reianix.reianix_local.storage
 
 import android.graphics.Bitmap
 import android.graphics.Color

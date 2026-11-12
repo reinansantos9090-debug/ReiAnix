@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
 import android.app.Application
 import org.junit.Assert.assertFalse
