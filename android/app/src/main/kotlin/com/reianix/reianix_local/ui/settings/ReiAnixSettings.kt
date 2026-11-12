@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.settings
+package com.reianix.reianix_local.ui.settings
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -62,22 +62,22 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.reiflix.reiflix_local.BuildConfig
-import com.reiflix.reiflix_local.ui.ReiAnixBadge
-import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
-import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
-import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.ReiAnixTextField
-import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
-import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixManualDiagnostics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.BuildConfig
+import com.reianix.reianix_local.ui.ReiAnixBadge
+import com.reianix.reianix_local.ui.ReiAnixBadgeTone
+import com.reianix.reianix_local.ui.ReiAnixLoadingState
+import com.reianix.reianix_local.ui.ReiAnixIconActionButton
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.ReiAnixTextField
+import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsOperationState
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsUiState
+import com.reianix.reianix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.diagnostics.ReiAnixManualDiagnostics
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.widthIn
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
 
 data class ReiAnixSettingsCategoryUiModel(
     val label: String,
@@ -240,7 +240,7 @@ fun ReiAnixSettingsRoute(
     BackHandler(enabled = destination != null) { goBack() }
     when {
         destination == "Downloads" -> ReiAnixSettingsRoot {
-            com.reiflix.reiflix_local.downloads.DownloadSettingsScreen(onBack=::goBack)
+            com.reianix.reianix_local.downloads.DownloadSettingsScreen(onBack=::goBack)
         }
         destination == "Pastas" -> {
             if (libraryFoldersContent != null) {
@@ -256,7 +256,7 @@ fun ReiAnixSettingsRoute(
         }
         destination == "Contas e Avançado" -> androidx.compose.runtime.key(destination) {
             ReiAnixSettingsRoot {
-                com.reiflix.reiflix_local.AniListAccountSettingsScreen(onBack = ::goBack)
+                com.reianix.reianix_local.AniListAccountSettingsScreen(onBack = ::goBack)
             }
         }
         destination != null -> androidx.compose.runtime.key(destination, selectedItemIndex) {
@@ -309,7 +309,7 @@ fun ReiAnixSettingsScreen(
     onRetry: () -> Unit,
 ) {
     val accountContext = androidx.compose.ui.platform.LocalContext.current
-    val account by com.reiflix.reiflix_local.ReiAnixAppDependencies.from(accountContext)
+    val account by com.reianix.reianix_local.ReiAnixAppDependencies.from(accountContext)
         .aniListAccountService.state.collectAsStateWithLifecycle()
     ReiAnixSettingsRoot {
         Surface(
@@ -330,7 +330,7 @@ fun ReiAnixSettingsScreen(
                 verticalArrangement = Arrangement.Center,
             ) {
                 when (state.status) {
-                    com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
+                    com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
                         item(key = "settings:loading") {
                             ReiAnixLoadingState(
                                 title = "Carregando configurações",
@@ -340,7 +340,7 @@ fun ReiAnixSettingsScreen(
                         }
                     }
 
-                    com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR -> {
+                    com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR -> {
                         item(key = "settings:error") {
                             ReiAnixRecoverableErrorState(
                                 title = "Não foi possível carregar as configurações",
@@ -352,14 +352,14 @@ fun ReiAnixSettingsScreen(
                         }
                     }
 
-                    com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
+                    com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
                         item(key = "settings:top-bar") {
                             Row(
                                 Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 if (account.connected) {
-                                    com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar(
+                                    com.reianix.reianix_local.ui.account.ReiAnixAccountAvatar(
                                         pictureUrl = account.avatarUrl,
                                         contentDescription = "Foto de ${account.name}",
                                         modifier = Modifier.size(50.dp),
@@ -588,7 +588,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
             }
-            if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING) {
+            if (state.status == com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING) {
                 item(key = "category-loading") {
                     ReiAnixLoadingState(
                         title = "Carregando configurações",
@@ -596,7 +596,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-            } else if (state.status == com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR) {
+            } else if (state.status == com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR) {
                 item(key = "category-error") {
                     ReiAnixRecoverableErrorState(
                         title = "Não foi possível carregar as configurações",
@@ -1968,7 +1968,7 @@ private fun storageBroadAccessLabel(state: String): String = when (state.lowerca
 
 private fun storageApiLabel(api: Int?): String = api?.toString() ?: "desconhecida"
 
-private fun com.reiflix.reiflix_local.ui.model.ReiAnixSettingsStorageUiState.lifecycleStateLabel(): String =
+private fun com.reianix.reianix_local.ui.model.ReiAnixSettingsStorageUiState.lifecycleStateLabel(): String =
     lifecycleState.ifBlank { "desconhecido" }
 
 private fun storageSummary(state: ReiAnixSettingsUiState): String {

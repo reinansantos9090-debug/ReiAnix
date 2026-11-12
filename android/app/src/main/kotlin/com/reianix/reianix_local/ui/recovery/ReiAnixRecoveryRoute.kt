@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.recovery
+package com.reianix.reianix_local.ui.recovery
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,8 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
-import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsOperationState
+import com.reianix.reianix_local.viewmodel.ReiAnixSettingsViewModel
 
 /**
  * Explicit recovery surface used when the canonical SQLite database fails the native

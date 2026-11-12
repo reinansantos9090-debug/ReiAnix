@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.search
+package com.reianix.reianix_local.ui.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -58,44 +58,44 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.data.anilist.AniListAnime
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixPoster
-import com.reiflix.reiflix_local.ui.ReiAnixSurface
-import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
-import com.reiflix.reiflix_local.ui.ReiAnixBadge
-import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
-import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
-import com.reiflix.reiflix_local.ui.ReiAnixChip
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
-import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
-import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
-import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
-import com.reiflix.reiflix_local.ui.ReiAnixSearchField
-import com.reiflix.reiflix_local.ui.ReiAnixScreenTitle
-import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixSearchFilters
-import com.reiflix.reiflix_local.ui.model.ReiAnixSearchUiState
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
-import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.data.anilist.AniListAnime
+import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import com.reianix.reianix_local.ui.ReiAnixSurface
+import com.reianix.reianix_local.ui.ReiAnixAnimeCard
+import com.reianix.reianix_local.ui.ReiAnixBadge
+import com.reianix.reianix_local.ui.ReiAnixBadgeTone
+import com.reianix.reianix_local.ui.ReiAnixCompactButton
+import com.reianix.reianix_local.ui.ReiAnixChip
+import com.reianix.reianix_local.ui.ReiAnixEmptyLibraryState
+import com.reianix.reianix_local.ui.ReiAnixEmptyState
+import com.reianix.reianix_local.ui.ReiAnixIconActionButton
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.ReiAnixLoadingState
+import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
+import com.reianix.reianix_local.ui.ReiAnixSearchField
+import com.reianix.reianix_local.ui.ReiAnixScreenTitle
+import com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState
+import com.reianix.reianix_local.ui.library.ReiAnixLibrarySort
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixSearchFilters
+import com.reianix.reianix_local.ui.model.ReiAnixSearchUiState
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListUiState
-import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixAniListViewModelFactory
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixAniListUiState
+import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModelFactory
 import androidx.compose.ui.unit.dp
 
 private val ReiAnixFilterIcon: ImageVector = ImageVector.Builder(
@@ -205,7 +205,7 @@ fun ReiAnixSearchRoute(
 }
 @Composable
 fun ReiAnixSearchScreen(
-    libraryState: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
+    libraryState: com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState,
     browseAnimes: List<ReiAnixAnimeUiModel> = emptyList(),
     searchQuery: String,
     searchState: ReiAnixSearchUiState,

@@ -1,11 +1,11 @@
-package com.reiflix.reiflix_local.ui.settings
+package com.reianix.reianix_local.ui.settings
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
-import com.reiflix.reiflix_local.R
+import com.reianix.reianix_local.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -54,6 +54,6 @@ fun ReiAnixSettingsTheme(content: @Composable () -> Unit) {
 @Composable
 fun ReiAnixSettingsRoot(content: @Composable () -> Unit) {
     ReiAnixSettingsTheme {
-        com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot(content = content)
+        com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot(content = content)
     }
 }

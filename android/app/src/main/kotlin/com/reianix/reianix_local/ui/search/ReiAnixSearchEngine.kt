@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.ui.search
+package com.reianix.reianix_local.ui.search
 
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import java.text.Normalizer
 import java.util.Locale
 

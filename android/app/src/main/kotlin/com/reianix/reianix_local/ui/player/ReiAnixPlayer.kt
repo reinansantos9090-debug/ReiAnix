@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.player
+package com.reianix.reianix_local.ui.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
-import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
+import com.reianix.reianix_local.ui.ReiAnixLoadingState
+import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,9 +27,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixPlayerArgs
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.navigation.ReiAnixPlayerArgs
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 
 /**
  * Compose navigation boundary for the existing native Media3 player.

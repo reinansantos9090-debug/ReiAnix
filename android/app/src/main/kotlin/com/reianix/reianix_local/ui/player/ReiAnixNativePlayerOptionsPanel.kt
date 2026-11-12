@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.player
+package com.reianix.reianix_local.ui.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,7 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import java.util.Locale
 
 private enum class PlayerOptionsPage {
