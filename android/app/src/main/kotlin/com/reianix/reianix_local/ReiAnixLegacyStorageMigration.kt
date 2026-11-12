@@ -1,7 +1,6 @@
 package com.reianix.reianix_local
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
 import java.io.File
 import java.util.Locale
@@ -33,6 +32,7 @@ internal object ReiAnixLegacyIdentity {
                 }
             }
         }
+        return success
     }
 }
 
@@ -45,6 +45,9 @@ internal object ReiAnixLegacyStorageMigration {
     fun migrate(context: Context) {
         val legacy = ReiAnixLegacyIdentity.previousPrefix
         if (legacy.isBlank() || legacy.equals("reianix", ignoreCase = true)) return
+        val marker = context.getSharedPreferences("reianix_migration", Context.MODE_PRIVATE)
+        if (marker.getBoolean("legacy_storage_v1", false)) return
+        var success = true
         val data = File(context.filesDir, "data")
         val targets = listOf(
             File(data, legacy + "-native-index.json") to File(data, "reianix-native-index.json"),
@@ -55,13 +58,16 @@ internal object ReiAnixLegacyStorageMigration {
         targets.forEach { (previous, updated) ->
             if (!previous.exists() || updated.exists()) return@forEach
             if (!previous.renameTo(updated)) {
+                success = false
                 Log.w("ReiAnixMigration", "Could not migrate private metadata: " + previous.name)
             }
         }
-        migratePreferences(context)
+        if (!migratePreferences(context)) success = false
+        if (success) marker.edit().putBoolean("legacy_storage_v1", true).commit()
     }
 
-    private fun migratePreferences(context: Context) {
+    private fun migratePreferences(context: Context): Boolean {
+        var success = true
         val directory = File(context.applicationInfo.dataDir, "shared_prefs")
         val xmlFiles = directory.listFiles()?.filter { it.isFile && it.extension == "xml" }.orEmpty()
         xmlFiles.forEach { xml ->
@@ -87,6 +93,7 @@ internal object ReiAnixLegacyStorageMigration {
                 hasChanges = true
             }
             if (hasChanges && !edits.commit()) {
+                success = false
                 Log.w("ReiAnixMigration", "Could not preserve previous private preferences")
             }
         }

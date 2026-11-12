@@ -15,7 +15,8 @@ class ReiAnixApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        ReiAnixLegacyStorageMigration.migrate(this)
+        runCatching { ReiAnixLegacyStorageMigration.migrate(this) }
+            .onFailure { Log.w("ReiAnixMigration", "Legacy metadata migration deferred", it) }
         dependencies = ReiAnixAppDependencies(this)
         dependencies.bootstrap.start()
         CoroutineScope(SupervisorJob()+Dispatchers.IO).launch {
