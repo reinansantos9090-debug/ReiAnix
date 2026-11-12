@@ -230,7 +230,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     hlsHint: Boolean = false) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
-    var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
+    var name by remember { mutableStateOf(editing?.name ?: DownloadIdentity.suggestedName(initialTitle,initialUrl,initialName)) }
     // Names passed by the ReiAnix browser are deliberate; a CDN header must not replace them.
     // A fallback CDN name is not a deliberate user choice. Allow a meaningful
     // Content-Disposition to correct it when the server responds.
@@ -382,9 +382,8 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                                 sessionOrigin=nextOrigin
                             }
                             url=next
-                            if(!nameTouched && editing==null) name=runCatching {
-                                URLUtil.guessFileName(next.trim(),null,null)
-                            }.getOrDefault("episodio.mp4")
+                            if(!nameTouched && editing==null)
+                                name=DownloadIdentity.suggestedName(initialTitle,next.trim(),"")
                         },
                         modifier=Modifier.fillMaxWidth(),
                         enabled=canEdit,
