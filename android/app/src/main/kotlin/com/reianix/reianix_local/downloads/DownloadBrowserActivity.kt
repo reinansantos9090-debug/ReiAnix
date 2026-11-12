@@ -284,13 +284,18 @@ class DownloadBrowserActivity: ComponentActivity() {
                 putString(canonical,value)
             }
         }
-        val filename=if(title.isNotBlank() && !title.equals("Animes Online",ignoreCase=true))
-            DownloadIdentity.capturedFileName(title,url,mime)
+        // Prefer the actual page (top frame) when the video URL belongs to an
+        // embedded player or an opaque CDN. Only explicit episode evidence from
+        // the page title/URL may supply an automatic anime filename.
+        val pageTitle=DownloadIdentity.episodeTitleFromPage(title, web?.url.orEmpty())
+            .ifBlank { DownloadIdentity.episodeTitleFromPage(title, page) }
+        val filename=if(pageTitle.isNotBlank())
+            DownloadIdentity.capturedFileName(pageTitle,url,mime)
         else URLUtil.guessFileName(url,disposition,mime)
         offerError=""
         pendingOffer=BrowserDownloadOffer(
             url=url,headers=headers.keySet().associateWith {headers.getString(it).orEmpty()},
-            title=title,filename=filename,capture=capture,
+            title=pageTitle.ifBlank { title },filename=filename,capture=capture,
             hlsHint=mime?.contains("mpegurl",ignoreCase=true)==true,
         )
     }

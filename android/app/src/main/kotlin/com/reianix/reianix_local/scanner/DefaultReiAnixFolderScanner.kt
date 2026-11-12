@@ -73,6 +73,18 @@ internal object DefaultReiAnixFolderScanner {
     ): Discovery = withContext(Dispatchers.IO) {
         val items = ArrayList<NativeDiscoveredMedia>()
         val seenPaths = HashSet<String>()
+        // Direct-to-public transfers can be visible in My Files before completion.
+        // Do not import the still-growing file as a second library episode.
+        val activeTransferIds = runCatching {
+            com.reianix.reianix_local.downloads.DownloadStore(context).all()
+                .filter { it.state !in setOf("COMPLETE", "CANCELLED", "CORRUPT") }
+                .mapNotNull { item ->
+                    item.json.optString("transferUri").takeIf(String::isNotBlank)
+                        ?.let(android.net.Uri::parse)
+                        ?.takeIf { it.authority == MediaStore.AUTHORITY }
+                        ?.lastPathSegment?.toLongOrNull()
+                }.toSet()
+        }.getOrDefault(emptySet())
         val errors = ArrayList<String>()
         var successfulQueries = 0
         var cancelled = false
@@ -91,6 +103,8 @@ internal object DefaultReiAnixFolderScanner {
             MediaStore.Video.Media.getContentUri(volume),
             // Also sees ReiAnix-owned downloads without a broad video grant.
             MediaStore.Downloads.getContentUri(volume),
+            // Files can contain MKV/MP4 rows that the Video collection omitted.
+            MediaStore.Files.getContentUri(volume),
         )
         val projection = arrayOf(
             MediaStore.MediaColumns._ID,
@@ -137,7 +151,8 @@ internal object DefaultReiAnixFolderScanner {
 
                         val relativePath = directory.trimEnd('/') + "/" + fileName
                         val id = it.getLong(idColumn)
-                        if (id <= 0L || !seenPaths.add(relativePath.lowercase(Locale.ROOT))) continue
+                        if (id <= 0L || id in activeTransferIds ||
+                            !seenPaths.add(relativePath.lowercase(Locale.ROOT))) continue
                         val scopedPath = relativePath.substring(FOLDER.length).trimStart('/')
                         val parsed = MediaFilenameParser.parseVideoPath(
                             scopedPath, allowStandaloneMovie = '/' !in scopedPath,

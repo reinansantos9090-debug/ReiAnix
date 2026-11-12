@@ -4,6 +4,68 @@ import com.reianix.reianix_local.data.media.MediaFilenameParser
 
 /** A season/episode marker alone is not an anime title. Never match it against AniList. */
 object DownloadIdentity {
+    private val episodeMarker = Regex("""(?i)(?:^|[\s._-])(?:epis[oó]dio|episode|ep)[\s._-]*\d{1,4}(?:$|[\s._-])""")
+    private val genericFile = Regex("""(?i)^(?:videoplayback|downloadfile|download|stream|playlist|master|index|video|file|media)(?:[-_ ]*\d+)?$""")
+
+    /** Provider filenames such as videoplayback.bin.mp4 contain no anime identity. */
+    fun isGenericMediaName(value: String): Boolean {
+        var stem = value.substringBefore('?').substringBefore('#')
+            .substringAfterLast('/').trim()
+        repeat(3) {
+            val ext = stem.substringAfterLast('.', "").lowercase()
+            if (ext in setOf("bin", "mp4", "ts", "mkv", "m4v", "webm", "mov", "m3u8"))
+                stem = stem.substringBeforeLast('.')
+        }
+        return stem.isBlank() || genericFile.matches(stem.trim())
+    }
+
+    private fun cleanedPageTitle(title: String): String = title
+        .substringBefore(" | ").substringBefore(" – ")
+        .replace(Regex("""(?i)\s*-\s*Animes Online(?:\s*TV)?\s*$"""), "")
+        .trim()
+
+    private fun usefulPageTitle(value: String): Boolean {
+        val title = cleanedPageTitle(value)
+        if (title.length < 3 || title.equals("Animes Online", true) ||
+            title.equals("Assistir Animes Online", true) || title.equals("Home", true) ||
+            isGenericMediaName(title)) return false
+        // A title consisting only of "Episode 4" cannot identify its series.
+        val withoutEpisode = title.replace(Regex("""(?i)\b(?:epis[oó]dio|episode|ep)\s*\d{1,4}\b"""), "")
+        return withoutEpisode.count(Char::isLetter) >= 3
+    }
+
+    /** Use an explicit episode slug only, never a guessed CDN ID or sequence. */
+    private fun episodeTitleFromPageUrl(pageUrl: String): String {
+        val uri = runCatching { java.net.URI(pageUrl) }.getOrNull() ?: return ""
+        if (uri.scheme !in setOf("http", "https")) return ""
+        val host = uri.host.orEmpty().lowercase()
+        if (host == "googlevideo.com" || host.endsWith(".googlevideo.com")) return ""
+        val parts = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+        val episodeIndex = parts.indexOfLast { episodeMarker.containsMatchIn(it.replace('-', ' ').replace('_', ' ')) }
+        if (episodeIndex < 0) return ""
+        val episode = parts[episodeIndex].replace(Regex("[-_]+"), " ").trim()
+        val meaningfulEpisode = episode.replace(Regex("""(?i)\b(?:epis[oó]dio|episode|ep)\s*\d{1,4}\b"""), "")
+            .count(Char::isLetter) >= 3
+        val series = if (meaningfulEpisode) "" else parts.getOrNull(episodeIndex-1).orEmpty()
+            .takeUnless { it.lowercase() in setOf("anime", "animes", "watch", "assistir", "episodios", "episodio", "episode") }
+            ?.replace(Regex("[-_]+"), " ")?.takeIf { it.count(Char::isLetter)>=3 }.orEmpty()
+        if (!meaningfulEpisode && series.isBlank()) return ""
+        val text = listOf(series,episode).filter(String::isNotBlank).joinToString(" ")
+        return text.split(Regex("""\s+""")).joinToString(" ") { word ->
+            if (word.equals("episodio", true)) "Episódio"
+            else word.replaceFirstChar { it.titlecase() }
+        }.take(180)
+    }
+
+    /** Prefer actual episode metadata; never label the CDN videoplayback as an anime. */
+    fun episodeTitleFromPage(pageTitle: String, pageUrl: String): String {
+        val title = cleanedPageTitle(pageTitle)
+        if (usefulPageTitle(title) && episodeMarker.containsMatchIn(title)) return title
+        val fromUrl = episodeTitleFromPageUrl(pageUrl)
+        if (fromUrl.isNotBlank()) return fromUrl
+        return title.takeIf(::usefulPageTitle).orEmpty()
+    }
+
     /** Page titles describe the episode; opaque CDN paths describe storage. */
     fun capturedFileName(pageTitle: String, url: String, mime: String?): String {
         val title=pageTitle.substringBefore(" | ").substringBefore(" – ")
@@ -16,6 +78,7 @@ object DownloadIdentity {
     }
     fun title(value: String): String {
         val clean=value.substringBefore(" | ").substringBefore(" – ").trim()
+        if (!usefulPageTitle(clean)) return ""
         val parsed=MediaFilenameParser.parseVideoPath(clean).animeTitle.trim()
         if(parsed.isBlank() || parsed.equals("Arquivo não identificado",true)) return ""
         val letters=parsed.replace(Regex("(?i)\\b(?:s\\d+[ ._-]*e\\d+|epis[oó]dio[ ._-]*\\d+|episode[ ._-]*\\d+|downloadfile|download|video|arquivo|mkv|mp4|webm)\\b"),"").filter { it.isLetter() }

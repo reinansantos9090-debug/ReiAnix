@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ReiAnix original high-contrast monochrome notification icon.
+     CloudStream-inspired tall frame; angular inner mark identifies the state.
+     Keep shape legible at 24dp and as a small status-bar glyph. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M6.75,1.2 L17.25,1.2 C18.7,1.2 19.55,2.4 19.55,3.8 L19.55,20.2 C19.55,21.6 18.65,22.8 17.25,22.8 L6.75,22.8 C5.35,22.8 4.45,21.6 4.45,20.2 L4.45,3.8 C4.45,2.4 5.35,1.2 6.75,1.2 Z M7.15,4.45 L7.15,19.55 L16.85,19.55 L16.85,4.45 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,8.7 L12,11.7 L15,8.7 L16.55,10.25 L13.55,13.25 L16.55,16.25 L15,17.8 L12,14.8 L9,17.8 L7.45,16.25 L10.45,13.25 L7.45,10.25 Z" />
+</vector>

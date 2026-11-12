@@ -112,8 +112,13 @@ jobs:
               --tests com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProviderTest \
               --tests com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
               --tests com.reianix.reianix_local.downloads.DownloadDisplaySizeTest \
+              --tests com.reianix.reianix_local.downloads.DownloadNotificationIconTest \
               --tests com.reianix.reianix_local.downloads.DownloadRandomFileTest \
               --tests com.reianix.reianix_local.downloads.DownloadIdentityPersistenceTest \
+              --tests com.reianix.reianix_local.data.media.MediaFilenameParserTest \
+              --tests com.reianix.reianix_local.data.sqlite.NativeLibraryIndexingPolicyTest \
+              --tests com.reianix.reianix_local.scanner.DefaultReiAnixFolderScannerTest \
+              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.distinctSecondReleaseIsImportedWithoutReplacingOriginalEpisode' \
               --tests com.reianix.reianix_local.ui.settings.ReiAnixSettingsNavigationTest \
               --tests com.reianix.reianix_local.data.anilist.ReiAnixAniListSearchTermsTest \
               --tests com.reianix.reianix_local.data.anilist.ReiAnixAniListClientTest \

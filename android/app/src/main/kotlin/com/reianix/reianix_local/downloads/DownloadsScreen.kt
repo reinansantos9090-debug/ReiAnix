@@ -232,7 +232,11 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
     // Names passed by the ReiAnix browser are deliberate; a CDN header must not replace them.
-    var nameTouched by remember { mutableStateOf(editing!=null || initialName.isNotBlank()) }
+    // A fallback CDN name is not a deliberate user choice. Allow a meaningful
+    // Content-Disposition to correct it when the server responds.
+    var nameTouched by remember {
+        mutableStateOf(editing!=null || (initialName.isNotBlank() && !DownloadIdentity.isGenericMediaName(initialName)))
+    }
     var anime by remember { mutableStateOf(editing?.json?.optString("animeTitle").orEmpty().ifBlank {DownloadIdentity.title(initialTitle)}) }
     var destination by remember { mutableStateOf(editing?.json?.optString("destination").orEmpty()) }
     var hash by remember { mutableStateOf(editing?.json?.optString("expectedHash").orEmpty()) }

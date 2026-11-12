@@ -136,8 +136,12 @@ class DownloadEngine(private val context: Context) {
                 if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L &&
                     !it.has("playerCapture")) {
                     val serverName=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
-                    val proposed=if(it.has("playerCapture")) it.getString("name").substringBeforeLast('.')+"."+serverName.substringAfterLast('.',"mp4") else serverName
-                    if(proposed.isNotBlank() && proposed !in setOf(".","..") && proposed.length<=200 && proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
+                    // Never replace an already selected episode filename with an
+                    // opaque CDN name such as videoplayback.bin.
+                    val proposed=serverName
+                    if(!DownloadIdentity.isGenericMediaName(proposed) && proposed.isNotBlank() &&
+                        proposed !in setOf(".","..") && proposed.length<=200 &&
+                        proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
                         it.put("name",proposed).put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(proposed)}")
                     }
                 }
@@ -146,6 +150,9 @@ class DownloadEngine(private val context: Context) {
                 if(resume==0L) { it.remove("serverHash"); it.remove("serverHashType"); it.put("hlsIndex",0); it.remove("hlsFingerprint") }
                 if(serverHash!=null) it.put("serverHash",serverHash.first).put("serverHashType",serverHash.second)
             }
+            // The browser/server may refine the name or extension after enqueue.
+            // Reflect that on the public row without changing the virtual player URI.
+            runCatching { target.syncName() }
             try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let { DownloadMetadata.offer(context,it.animeId) }
             val prefs=ReiAnixAppDependencies.from(context).sqliteSettingsRepository
