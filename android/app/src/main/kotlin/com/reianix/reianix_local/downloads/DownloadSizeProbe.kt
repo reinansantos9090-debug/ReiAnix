@@ -30,7 +30,7 @@ internal object DownloadSizeProbe {
         val encrypted: Boolean)
     internal data class MasterChoice(val url: String, val bandwidth: Long?,val averageBandwidth: Long? = null)
 
-    private const val NETWORK_TIMEOUT_MS = 4_000
+    private const val NETWORK_TIMEOUT_MS = 2_100
     private const val MAX_MANIFEST_BYTES = 1024 * 1024
     private const val MAX_EXACT_SEGMENTS = 40
     private const val MAX_SAMPLE_SEGMENTS = 12
