@@ -342,6 +342,16 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
             sizeResult=DownloadSizeProbe.Result.Unknown
             return@LaunchedEffect
         }
+        if(DownloadSignedLinkPolicy.avoidPrefetch(target)) {
+            // A speculative metadata GET may consume a one-shot CDN token.
+            // Start the real transfer on the first authorized GET instead.
+            sizeResult=providedSize?.takeIf {target==initialUrl.trim()}
+                ?: DownloadSizeIntelligence.fromUrlMetadata(target)?.let {
+                    DownloadSizeProbe.Result(it.bytes,false,it.source)
+                } ?: DownloadSizeProbe.Result.Unknown
+            sizeProbeUrl=target
+            return@LaunchedEffect
+        }
         val probeHeaders=originalHeaders.filterKeys {
             it.lowercase() !in setOf("cookie","referer","authorization")
         }.toMutableMap()
