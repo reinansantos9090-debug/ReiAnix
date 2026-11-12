@@ -46,4 +46,11 @@ class DownloadSizeIntelligenceTest {
         assertEquals(provider,DownloadSizeIntelligence.reconcile(provider,extrapolated))
     }
 
+    @Test fun cleansSharedTitleWithoutLosingEpisodeName() {
+        val title=DownloadSizeIntelligence.stripSizeAnnotations(
+            "Solo Leveling - Episódio 01 • TAMANHO 141 MB")
+        assertTrue(title.startsWith("Solo Leveling - Episódio 01"))
+        assertFalse(title.contains("TAMANHO"))
+    }
+
 }
