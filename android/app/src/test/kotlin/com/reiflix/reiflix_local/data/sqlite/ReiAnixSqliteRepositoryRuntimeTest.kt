@@ -1455,6 +1455,48 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun conflictingRemoteIdsWithNumericContinuationMergeOnRealCanonicalSchema() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.setForeignKeyConstraintsEnabled(true)
+            fun album(id:Long,remote:Long) {
+                db.execSQL(
+                    """INSERT INTO anime(id,lookup_title,title,added_at,anilist_id,
+                       media_kind,episodes_count) VALUES(
+                       ?,'pass the monster meat milady','Pass the Monster Meat, Milady!',
+                       1100,?,'series',12)""",
+                    arrayOf(id,remote),
+                )
+            }
+            album(301,80001)
+            album(302,80002)
+            for (number in 1..12) {
+                val id=if(number<=6)301L else 302L
+                db.execSQL(
+                    """INSERT INTO episodes(anime_id,path,file_name,season,number,progress)
+                       VALUES(?,?,?,1,?,?)""",
+                    arrayOf(id,"content://anime/$id/$number","episode-$number.mkv",
+                        number.toDouble(),if(number==7)123.0 else 0.0),
+                )
+            }
+        }
+        val repo=ReiAnixSqliteLibraryRepository(context)
+        assertTrue(repo.reconcileExistingSeries())
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT COUNT(*) FROM episodes WHERE anime_id=301",null).use{
+                assertTrue(it.moveToFirst());assertEquals(12,it.getInt(0))
+            }
+            db.rawQuery("SELECT progress FROM episodes WHERE path='content://anime/302/7'",null).use{
+                assertTrue(it.moveToFirst());assertEquals(123.0,it.getDouble(0),0.0)
+            }
+            db.rawQuery("SELECT COUNT(*) FROM anime WHERE id IN(301,302)",null).use{
+                assertTrue(it.moveToFirst());assertEquals(1,it.getInt(0))
+            }
+            db.rawQuery("PRAGMA foreign_key_check",null).use{assertFalse(it.moveToFirst())}
+        }
+    }
+
+    @Test
     fun remoteVerifiedSeriesMergeSurvivesCanonicalForeignKeysAndKeepsEachEpisode() {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READWRITE).use {db ->
