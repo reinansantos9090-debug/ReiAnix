@@ -80,6 +80,12 @@ internal class DownloadTransferFile(private val context: Context, private val st
         context.contentResolver.openInputStream(it) ?: throw IOException("Falha ao ler download")
     } ?: FileInputStream(legacyFile)
     fun size(): Long = open(false).use {it.length()}
+    fun sizeOf(candidate: Uri):Long {
+        return context.contentResolver.openFileDescriptor(candidate,"r")?.use { descriptor ->
+            val stat=descriptor.statSize
+            if(stat>=0) stat else FileInputStream(descriptor.fileDescriptor).channel.use {it.size()}
+        } ?: throw IOException("Não foi possível confirmar o tamanho final")
+    }
     fun discardSource() {
         uri?.let {runCatching {context.contentResolver.delete(it,null,null)}} ?: legacyFile.delete()
     }
