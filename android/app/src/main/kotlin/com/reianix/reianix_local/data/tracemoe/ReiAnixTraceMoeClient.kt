@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.tracemoe
+package com.reianix.reianix_local.data.tracemoe
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException

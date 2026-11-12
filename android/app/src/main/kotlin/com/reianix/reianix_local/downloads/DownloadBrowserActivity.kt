@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import android.content.Intent
 import android.graphics.Bitmap
@@ -30,7 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
+import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
 import org.json.JSONArray
 import java.util.concurrent.ConcurrentHashMap
 

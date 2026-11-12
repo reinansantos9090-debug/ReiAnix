@@ -1,9 +1,9 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.ReiAnixAppDependencies
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException

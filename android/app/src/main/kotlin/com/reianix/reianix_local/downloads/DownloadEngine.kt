@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import android.content.ContentValues
 import android.content.Context
@@ -10,7 +10,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Base64
 import androidx.documentfile.provider.DocumentFile
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import org.json.JSONObject

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import android.content.ContentValues
 import android.content.Context
@@ -9,7 +9,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.system.Os
 import android.system.OsConstants
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

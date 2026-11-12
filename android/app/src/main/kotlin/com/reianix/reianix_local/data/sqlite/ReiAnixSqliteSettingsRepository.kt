@@ -1,10 +1,10 @@
-package com.reiflix.reiflix_local.data.sqlite
+package com.reianix.reianix_local.data.sqlite
 
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

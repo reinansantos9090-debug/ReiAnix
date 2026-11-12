@@ -1,14 +1,14 @@
-package com.reiflix.reiflix_local.data.sqlite
+package com.reianix.reianix_local.data.sqlite
 
-import com.reiflix.reiflix_local.data.media.AniListCatalogId
-import com.reiflix.reiflix_local.data.media.Anime
-import com.reiflix.reiflix_local.data.media.AnimeRecordId
-import com.reiflix.reiflix_local.data.media.ArtworkReference
-import com.reiflix.reiflix_local.data.media.CanonicalMediaIdentity
-import com.reiflix.reiflix_local.data.media.Episode
-import com.reiflix.reiflix_local.data.media.EpisodeRecordId
-import com.reiflix.reiflix_local.data.media.LocalMediaReference
-import com.reiflix.reiflix_local.data.media.PlaybackProgress
+import com.reianix.reianix_local.data.media.AniListCatalogId
+import com.reianix.reianix_local.data.media.Anime
+import com.reianix.reianix_local.data.media.AnimeRecordId
+import com.reianix.reianix_local.data.media.ArtworkReference
+import com.reianix.reianix_local.data.media.CanonicalMediaIdentity
+import com.reianix.reianix_local.data.media.Episode
+import com.reianix.reianix_local.data.media.EpisodeRecordId
+import com.reianix.reianix_local.data.media.LocalMediaReference
+import com.reianix.reianix_local.data.media.PlaybackProgress
 
 /** Explicit read mapping; these projections never create or rewrite SQLite rows. */
 fun ReiAnixAnimeRecord.toDomain(): Anime = Anime(
