@@ -76,12 +76,15 @@ internal object DownloadAdvancedHttp {
         if(original.scheme !in setOf("http","https"))return null
         val saved=cache[url]?.takeIf {System.currentTimeMillis()-it.timestamp in 0..CACHE_MS}
         var metadataName=DownloadResourceIdentity.bestName(null,url,null)
+        val startedAt=System.nanoTime()
+        val maxNanos=4_800_000_000L
         // Retry only once for temporary responses. Never retry 401/403.
         val phases=listOf("suffix" to "bytes=-1","multipart" to "bytes=0-0,-1",
             "unsatisfied" to "bytes=999999999999999999")
         for((phase,range) in phases) {
+            if(System.nanoTime()-startedAt>=maxNanos)break
             var retries=0
-            while(retries<2) {
+            while(retries<2 && System.nanoTime()-startedAt<maxNanos) {
                 retries++
                 var c:HttpURLConnection?=null
                 try {
