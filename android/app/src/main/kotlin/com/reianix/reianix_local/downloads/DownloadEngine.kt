@@ -243,7 +243,19 @@ class DownloadEngine(private val context: Context) {
             if(total>=0 && count!=total) throw IOException("Transferência interrompida antes do fim")
             if(count==0L) throw PermanentFailure("O arquivo recebido está vazio")
             if(!isDownloading(id)) return
-            if(total<0) store.mutate(id) { it.put("total",count) }
+            // A chunked response has no authoritative Content-Length; only EOF
+            // establishes its actual byte count. Never present a guessed total
+            // while the stream is still being received.
+            if(total<0) {
+                val finished=DownloadAdvancedHttp.chunkedCompleteLength(count,true)
+                    ?: throw PermanentFailure("Fluxo recebido sem conteúdo completo")
+                val chunked=connection.getHeaderField("Transfer-Encoding")
+                    .orEmpty().contains("chunked",true)
+                store.mutate(id) {
+                    it.put("total",finished)
+                    if(chunked)it.put("sizeSource","chunked-eof")
+                }
+            }
             verifyAndSave(id,target)
         } catch(cancelled: CancellationException) {
             withContext(NonCancellable+Dispatchers.IO) {
@@ -444,6 +456,20 @@ class DownloadEngine(private val context: Context) {
             // Commit the already-published URI before removing a remux source.
             store.complete(id,destination,finalBytes)
             committed=true
+            // Only opaque .bin sources benefit from this optional *local*
+            // platform metadata check. It never sends another HTTP request or
+            // blocks the initial name/size dialog.
+            if(beforePublication.json.optBoolean("sourceWasOpaque")) {
+                runCatching {
+                    DownloadContainerMetadata.nativeEstimate(context,destination)
+                        ?.let {hint ->
+                            store.mutate(id) {
+                                it.put("nativeMediaEstimate",hint.bytes)
+                                    .put("nativeMediaEstimateSource",hint.source)
+                            }
+                        }
+                }
+            }
             if(target.isPublic) {
                 if(publicRemux!=null) target.discardSource()
             } else file.delete()
