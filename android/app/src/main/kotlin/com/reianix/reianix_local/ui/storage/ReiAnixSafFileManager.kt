@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.storage
+package com.reianix.reianix_local.ui.storage
 
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -15,8 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.reiflix.reiflix_local.storage.SafFileOperations
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.storage.SafFileOperations
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date

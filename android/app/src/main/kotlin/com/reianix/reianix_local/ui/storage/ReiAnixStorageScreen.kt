@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.storage
+package com.reianix.reianix_local.ui.storage
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,32 +37,32 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Add
-import com.reiflix.reiflix_local.ui.settings.settingsClickable
+import com.reianix.reianix_local.ui.settings.settingsClickable
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.reiflix.reiflix_local.ui.ReiAnixBadge
-import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
-import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
-import com.reiflix.reiflix_local.ui.ReiAnixCard
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
-import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
-import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixNativeFoldersUiState
-import com.reiflix.reiflix_local.viewmodel.ReiAnixNativeFoldersStatus
-import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsSurface
-import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoot
-import com.reiflix.reiflix_local.ui.settings.SettingsHeader
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.ReiAnixBadge
+import com.reianix.reianix_local.ui.ReiAnixCompactButton
+import com.reianix.reianix_local.ui.ReiAnixBadgeTone
+import com.reianix.reianix_local.ui.ReiAnixCard
+import com.reianix.reianix_local.ui.ReiAnixLoadingState
+import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
+import com.reianix.reianix_local.ui.ReiAnixScannerInProgressState
+import com.reianix.reianix_local.ui.ReiAnixSecondaryButton
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixStorageSourceUiModel
+import com.reianix.reianix_local.viewmodel.ReiAnixNativeFoldersUiState
+import com.reianix.reianix_local.viewmodel.ReiAnixNativeFoldersStatus
+import com.reianix.reianix_local.ui.settings.ReiAnixSettingsSurface
+import com.reianix.reianix_local.ui.settings.ReiAnixSettingsRoot
+import com.reianix.reianix_local.ui.settings.SettingsHeader
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.widthIn
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 
 @Composable
 fun ReiAnixStorageRoute(
@@ -495,7 +495,7 @@ private fun SafSourceCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 } else {
-                    com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState(
+                    com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState(
                         title = stateLabel,
                         message = when (state) {
                             "revoked" -> "A autorização desta pasta não está mais disponível no Android."

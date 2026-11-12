@@ -1,13 +1,13 @@
-package com.reiflix.reiflix_local.viewmodel
+package com.reianix.reianix_local.viewmodel
 
 import android.content.Context
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.ReiAnixAppDependencies
 import androidx.lifecycle.viewModelScope
-import com.reiflix.reiflix_local.data.anilist.AniListAnime
-import com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult
-import com.reiflix.reiflix_local.data.anilist.AniListError
-import com.reiflix.reiflix_local.data.anilist.AniListResult
-import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
+import com.reianix.reianix_local.data.anilist.AniListAnime
+import com.reianix.reianix_local.data.anilist.AniListAutoMatchResult
+import com.reianix.reianix_local.data.anilist.AniListError
+import com.reianix.reianix_local.data.anilist.AniListResult
+import com.reianix.reianix_local.data.anilist.ReiAnixAniListIntegrationService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.theme
+package com.reianix.reianix_local.ui.theme
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints

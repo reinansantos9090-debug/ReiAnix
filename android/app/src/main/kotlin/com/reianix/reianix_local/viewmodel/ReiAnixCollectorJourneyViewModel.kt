@@ -1,10 +1,10 @@
-package com.reiflix.reiflix_local.viewmodel
+package com.reianix.reianix_local.viewmodel
 
 import android.util.Log
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourney
+import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.data.collector.ReiAnixCollectorJourney
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow

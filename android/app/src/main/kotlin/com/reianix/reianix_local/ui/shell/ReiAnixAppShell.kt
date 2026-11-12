@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.shell
+package com.reianix.reianix_local.ui.shell
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.snap
@@ -28,8 +28,8 @@ import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 
 /**
  * Global Compose chrome for the ReiAnix incremental native cutover.

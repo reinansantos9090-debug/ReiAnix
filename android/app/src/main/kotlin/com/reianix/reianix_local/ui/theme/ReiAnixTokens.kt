@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.theme
+package com.reianix.reianix_local.ui.theme
 
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography

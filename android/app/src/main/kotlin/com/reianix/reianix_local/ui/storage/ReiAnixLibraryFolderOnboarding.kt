@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.storage
+package com.reianix.reianix_local.ui.storage
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,9 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.ReiAnixProgressIndicator
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 
 /**
  * The user can authorize either source or skip both with "Começar".

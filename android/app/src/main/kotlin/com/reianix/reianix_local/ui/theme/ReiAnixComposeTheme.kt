@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.theme
+package com.reianix.reianix_local.ui.theme
 
 import androidx.annotation.Keep
 import androidx.compose.foundation.isSystemInDarkTheme
