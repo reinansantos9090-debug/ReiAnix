@@ -92,7 +92,7 @@ object DownloadIdentity {
             if (clean.isNotBlank()) {
                 val ext = providedName.substringAfterLast('.', "").lowercase()
                     .takeIf { it in DownloadContainerDetector.knownExtensions } ?: "mp4"
-                return "$" + "{clean}.$" + "{ext}"
+                return clean + "." + ext
             }
         }
         return providedName.ifBlank {
