@@ -35,6 +35,91 @@ internal object DownloadTsRemux {
         return videos==1 && videos+audios==mimes.size
     }
 
+    /**
+     * Remux a public pending MPEG-TS item directly to another pending public item.
+     * Never writes a second full-sized episode inside the app data directory.
+     * The caller owns and deletes the candidate URI on failure.
+     */
+    suspend fun tryRemux(context: Context, input: android.net.Uri, output: android.net.Uri): Boolean {
+        if(Build.VERSION.SDK_INT<26) return false
+        var success=false
+        try {
+            context.contentResolver.openFileDescriptor(input,"r")?.use { inDescriptor ->
+                val length=inDescriptor.statSize
+                if(length in 0 until 256L*1024) return false
+                val extractor=MediaExtractor()
+                var muxer:MediaMuxer?=null
+                var started=false
+                try {
+                    extractor.setDataSource(inDescriptor.fileDescriptor)
+                    val count=extractor.trackCount
+                    val formats=(0 until count).map(extractor::getTrackFormat)
+                    val mimes=formats.map { it.getString(MediaFormat.KEY_MIME).orEmpty().lowercase() }
+                    if(!compatibleTracks(mimes)) return false
+                    context.contentResolver.openFileDescriptor(output,"rw")?.use { outDescriptor ->
+                        val activeMuxer=MediaMuxer(outDescriptor.fileDescriptor,MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                        muxer=activeMuxer
+                        val tracks=formats.map(activeMuxer::addTrack)
+                        formats.indices.forEach(extractor::selectTrack)
+                        activeMuxer.start()
+                        started=true
+                        val buffer=ByteBuffer.allocateDirect(BUFFER_BYTES)
+                        val info=MediaCodec.BufferInfo()
+                        val lastTime=LongArray(count) {-1L}
+                        val samples=IntArray(count)
+                        var copied=0L
+                        while(true) {
+                            currentCoroutineContext().ensureActive()
+                            val track=extractor.sampleTrackIndex
+                            if(track<0) break
+                            if(track !in 0 until count) error("Faixa fora do limite")
+                            buffer.clear()
+                            val declared=extractor.sampleSize
+                            require(declared in 1..BUFFER_BYTES.toLong()) {"Amostra incompatível"}
+                            val size=extractor.readSampleData(buffer,0)
+                            if(size<0) break
+                            require(size.toLong()==declared) {"Amostra truncada"}
+                            val timestamp=extractor.sampleTime
+                            require(timestamp>=0 && timestamp>=lastTime[track]) {"Timestamps incompatíveis"}
+                            lastTime[track]=timestamp
+                            info.set(0,size,timestamp,extractor.sampleFlags)
+                            activeMuxer.writeSampleData(tracks[track],buffer,info)
+                            samples[track]++
+                            copied+=size.toLong()
+                            if(!extractor.advance())break
+                        }
+                        require(samples.isNotEmpty() && samples.all{it>0} && copied>0L)
+                        activeMuxer.stop()
+                        started=false
+                        activeMuxer.release()
+                        muxer=null
+                    } ?: return false
+                } finally {
+                    if(started) runCatching{muxer?.stop()}
+                    runCatching{muxer?.release()}
+                    extractor.release()
+                }
+            } ?: return false
+            context.contentResolver.openFileDescriptor(output,"r")?.use { candidate ->
+                if(candidate.statSize==0L) return false
+                val verification=MediaExtractor()
+                try {
+                    verification.setDataSource(candidate.fileDescriptor)
+                    require(verification.trackCount in 1..2)
+                    require((0 until verification.trackCount).any {
+                        verification.getTrackFormat(it).getString(MediaFormat.KEY_MIME) in listOf("video/avc","video/hevc")
+                    })
+                } finally {verification.release()}
+            } ?: return false
+            success=true
+        } catch(cancelled:kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch(error:Exception) {
+            Log.i(TAG,"Mantendo MPEG-TS original: ${error.javaClass.simpleName}")
+        }
+        return success
+    }
+
     suspend fun tryRemux(context: Context, input: File): File? {
         if(!input.isFile || input.length()<256*1024) return null
         val output=File(input.parentFile,input.name+".remux.mp4")

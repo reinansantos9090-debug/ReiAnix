@@ -31,7 +31,10 @@ class DownloadProvider: ContentProvider() {
             return context!!.contentResolver.openFileDescriptor(Uri.parse(item.output), "r")
                 ?: throw FileNotFoundException("Arquivo concluído indisponível")
         }
-        return ParcelFileDescriptor.open(DownloadStore(context!!).partial(item.id),ParcelFileDescriptor.MODE_READ_ONLY)
+        val transfer=DownloadTransferFile(context!!,DownloadStore(context!!),item.id)
+        return transfer.uri?.let { context!!.contentResolver.openFileDescriptor(it,"r")
+            ?: throw FileNotFoundException("Download público não está disponível") }
+            ?: ParcelFileDescriptor.open(DownloadStore(context!!).partial(item.id),ParcelFileDescriptor.MODE_READ_ONLY)
     }
     override fun insert(uri: Uri,values: ContentValues?): Uri?=null
     override fun delete(uri: Uri,selection: String?,args: Array<out String>?)=0
@@ -72,9 +75,9 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
         override fun getResponseHeaders(): Map<String,List<String>> = source?.responseHeaders ?: emptyMap()
         override fun close() { source?.close(); source=null }
     }
-    private class GrowingSource(context: Context): BaseDataSource(false) {
+    private class GrowingSource(private val context: Context): BaseDataSource(false) {
         private val store=DownloadStore(context)
-        private var file: RandomAccessFile?=null
+        private var file: DownloadRandomFile?=null
         private var item: DownloadItem?=null
         private var spec: DataSpec?=null
         private var position=0L
@@ -88,7 +91,7 @@ class DownloadDataSourceFactory(private val context: Context): DataSource.Factor
             val current=store.get(id) ?: throw IOException("Download não encontrado")
             if(current.state in setOf("CANCELLED","CORRUPT","ERROR")) throw IOException("Aguarde ou retome o download")
             item=current; cachedItem=current; refreshedAt=0L; spec=dataSpec; closed=false; position=dataSpec.position
-            file=RandomAccessFile(store.partial(id),"r")
+            file=DownloadTransferFile(context,store,id).open(false)
             file!!.seek(position)
             remaining=if(dataSpec.length!=C.LENGTH_UNSET.toLong()) dataSpec.length else if(current.total>=0) (current.total-position).coerceAtLeast(0) else C.LENGTH_UNSET.toLong()
             transferStarted(dataSpec)

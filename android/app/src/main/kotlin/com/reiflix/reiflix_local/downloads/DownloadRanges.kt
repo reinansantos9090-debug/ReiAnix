@@ -7,9 +7,9 @@ import java.io.RandomAccessFile
 
 /** Small parallel waves, committed in order: the player's available prefix is always contiguous. */
 internal object DownloadRanges {
-    suspend fun receive(context: android.content.Context,store: DownloadStore,id: String,url: String,headers: Map<String,String>,file: File,start: Long,total: Long,validator: String,connections: Int): Boolean = coroutineScope {
+    suspend fun receive(context: android.content.Context,store: DownloadStore,id: String,url: String,headers: Map<String,String>,target: DownloadTransferFile,start: Long,total: Long,validator: String,connections: Int): Boolean = coroutineScope {
         var position=start
-        RandomAccessFile(file,"rw").use { out ->
+        target.open().use { out ->
             out.setLength(start);out.seek(start)
             while(position<total) {
                 ensureActive(); if(store.get(id)?.state!="DOWNLOADING")return@coroutineScope false
@@ -30,9 +30,9 @@ internal object DownloadRanges {
                 } }
                 val values=parts.awaitAll()
                 if(store.get(id)?.state!="DOWNLOADING")return@coroutineScope false
-                values.forEach {out.write(it);position+=it.size};out.fd.sync()
+                values.forEach {out.write(it);position+=it.size};out.sync()
                 store.mutate(id){it.put("bytes",position).put("speed",(position-beginning)*1000/(android.os.SystemClock.elapsedRealtime()-time).coerceAtLeast(1))}
-                DownloadCaptureGuard.probe(context,store,id,file,position)
+                DownloadCaptureGuard.probe(context,store,id,target.readUri(),position)
             }
         }
         true
