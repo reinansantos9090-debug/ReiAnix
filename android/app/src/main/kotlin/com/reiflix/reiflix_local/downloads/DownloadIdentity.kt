@@ -4,8 +4,8 @@ import com.reiflix.reiflix_local.data.media.MediaFilenameParser
 
 /** A season/episode marker alone is not an anime title. Never match it against AniList. */
 object DownloadIdentity {
-    private val episodeMarker = Regex("(?i)(?:^|[\s._-])(?:epis[oó]dio|episode|ep)[\s._-]*\d{1,4}(?:$|[\s._-])")
-    private val genericFile = Regex("(?i)^(?:videoplayback|downloadfile|download|stream|playlist|master|index|video|file|media)(?:[-_ ]*\d+)?$")
+    private val episodeMarker = Regex("""(?i)(?:^|[\s._-])(?:epis[oó]dio|episode|ep)[\s._-]*\d{1,4}(?:$|[\s._-])""")
+    private val genericFile = Regex("""(?i)^(?:videoplayback|downloadfile|download|stream|playlist|master|index|video|file|media)(?:[-_ ]*\d+)?$""")
 
     /** Provider filenames such as videoplayback.bin.mp4 contain no anime identity. */
     fun isGenericMediaName(value: String): Boolean {
@@ -21,7 +21,7 @@ object DownloadIdentity {
 
     private fun cleanedPageTitle(title: String): String = title
         .substringBefore(" | ").substringBefore(" – ")
-        .replace(Regex("(?i)\s*-\s*Animes Online(?:\s*TV)?\s*$"), "")
+        .replace(Regex("""(?i)\s*-\s*Animes Online(?:\s*TV)?\s*$"""), "")
         .trim()
 
     private fun usefulPageTitle(value: String): Boolean {
@@ -30,7 +30,7 @@ object DownloadIdentity {
             title.equals("Assistir Animes Online", true) || title.equals("Home", true) ||
             isGenericMediaName(title)) return false
         // A title consisting only of "Episode 4" cannot identify its series.
-        val withoutEpisode = title.replace(Regex("(?i)\b(?:epis[oó]dio|episode|ep)\s*\d{1,4}\b"), "")
+        val withoutEpisode = title.replace(Regex("""(?i)\b(?:epis[oó]dio|episode|ep)\s*\d{1,4}\b"""), "")
         return withoutEpisode.count(Char::isLetter) >= 3
     }
 
@@ -44,14 +44,14 @@ object DownloadIdentity {
         val episodeIndex = parts.indexOfLast { episodeMarker.containsMatchIn(it.replace('-', ' ').replace('_', ' ')) }
         if (episodeIndex < 0) return ""
         val episode = parts[episodeIndex].replace(Regex("[-_]+"), " ").trim()
-        val meaningfulEpisode = episode.replace(Regex("(?i)\b(?:epis[oó]dio|episode|ep)\s*\d{1,4}\b"), "")
+        val meaningfulEpisode = episode.replace(Regex("""(?i)\b(?:epis[oó]dio|episode|ep)\s*\d{1,4}\b"""), "")
             .count(Char::isLetter) >= 3
         val series = if (meaningfulEpisode) "" else parts.getOrNull(episodeIndex-1).orEmpty()
             .takeUnless { it.lowercase() in setOf("anime", "animes", "watch", "assistir", "episodios", "episodio", "episode") }
             ?.replace(Regex("[-_]+"), " ")?.takeIf { it.count(Char::isLetter)>=3 }.orEmpty()
         if (!meaningfulEpisode && series.isBlank()) return ""
         val text = listOf(series,episode).filter(String::isNotBlank).joinToString(" ")
-        return text.split(Regex("\s+")).joinToString(" ") { word ->
+        return text.split(Regex("""\s+""")).joinToString(" ") { word ->
             if (word.equals("episodio", true)) "Episódio"
             else word.replaceFirstChar { it.titlecase() }
         }.take(180)
