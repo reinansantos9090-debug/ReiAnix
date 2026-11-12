@@ -1,9 +1,9 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.storage.BroadStorageAccessLevel
-import com.reiflix.reiflix_local.storage.MediaAccessLevel
-import com.reiflix.reiflix_local.storage.SafAccessLevel
-import com.reiflix.reiflix_local.storage.StorageAuthorization
+import com.reianix.reianix_local.storage.BroadStorageAccessLevel
+import com.reianix.reianix_local.storage.MediaAccessLevel
+import com.reianix.reianix_local.storage.SafAccessLevel
+import com.reianix.reianix_local.storage.StorageAuthorization
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

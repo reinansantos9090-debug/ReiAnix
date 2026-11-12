@@ -1,9 +1,9 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixLocalMediaUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixLocalMediaUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test

@@ -1,14 +1,14 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixLocalMediaUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
-import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
-import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixLocalMediaUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.ui.model.ReiAnixMetadataAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
+import com.reianix.reianix_local.ui.search.ReiAnixSearchEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

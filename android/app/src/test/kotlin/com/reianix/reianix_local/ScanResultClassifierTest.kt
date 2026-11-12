@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.scanner.ScanResultClassifier
+import com.reianix.reianix_local.scanner.ScanResultClassifier
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

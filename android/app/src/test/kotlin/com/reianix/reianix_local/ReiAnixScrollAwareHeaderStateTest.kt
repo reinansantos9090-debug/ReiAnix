@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.scroll
+package com.reianix.reianix_local.ui.scroll
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource

@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
+import com.reianix.reianix_local.storage.VideoThumbnailExtractor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse

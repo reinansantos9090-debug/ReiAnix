@@ -1,7 +1,7 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingKind
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
+import com.reianix.reianix_local.data.settings.ReiAnixSettingKind
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows

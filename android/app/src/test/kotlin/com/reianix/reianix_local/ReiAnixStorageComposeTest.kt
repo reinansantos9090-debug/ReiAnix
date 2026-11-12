@@ -1,10 +1,10 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 import android.app.Application
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
+import com.reianix.reianix_local.data.library.ReiAnixLibrarySnapshotCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -69,7 +69,7 @@ class ReiAnixStorageComposeTest {
 
     @Test
     fun revoked_configured_saf_source_stays_visible() {
-        val source = com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel(
+        val source = com.reianix.reianix_local.ui.model.ReiAnixStorageSourceUiModel(
             reference = "content://com.example/tree/primary%3AAnime",
             name = "Anime",
             kind = "saf",
@@ -77,7 +77,7 @@ class ReiAnixStorageComposeTest {
             status = "revoked",
             safIdentity = "saf:com.example:primary:Anime",
         )
-        val state = com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState(
+        val state = com.reianix.reianix_local.ui.model.ReiAnixStorageUiState(
             configuredSources = listOf(source),
         )
 

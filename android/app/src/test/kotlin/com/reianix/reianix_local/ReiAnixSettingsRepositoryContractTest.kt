@@ -1,10 +1,10 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsRepository
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsAccountUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsStorageUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsRepository
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsAccountUiState
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsStorageUiState
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsUiState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
