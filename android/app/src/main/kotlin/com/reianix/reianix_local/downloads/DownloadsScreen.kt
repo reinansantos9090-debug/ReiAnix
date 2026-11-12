@@ -293,7 +293,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
             if(!suggested.isNullOrBlank() && !DownloadIdentity.isGenericMediaName(suggested)) {
                 val currentStem=name.substringBeforeLast('.',name)
                 val suggestedStem=suggested.substringBeforeLast('.',suggested)
-                val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\\s._-]*\\d+""")
+                val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\s._-]*\d+""")
                     .containsMatchIn(name)
                 if(!episodeContext && (DownloadIdentity.isGenericMediaName(name) ||
                     currentStem.equals(suggestedStem,true))) name=suggested
