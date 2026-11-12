@@ -8,6 +8,10 @@ import kotlin.concurrent.thread
 
 /** A local HTTP server validates real request headers and response fallback. */
 class DownloadHttpNaviBehaviorTest {
+    private inline fun <R> java.net.HttpURLConnection.withDisconnect(
+        block:(java.net.HttpURLConnection)->R
+    ):R=try {block(this)} finally {disconnect()}
+
     private data class Seen(val line:String,val headers:Map<String,String>) {
         fun get(name:String)=headers[name.lowercase()].orEmpty()
     }
@@ -49,7 +53,7 @@ class DownloadHttpNaviBehaviorTest {
         listOf("HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-3/4\r\nContent-Length: 4\r\nConnection: close\r\n\r\nDATA")
     ) {url,seen ->
         DownloadHttp.connect(url,emptyMap(),0,null,
-            preferInitialRange=true,closeAfterResponse=true).use {response ->
+            preferInitialRange=true,closeAfterResponse=true).withDisconnect {response ->
             assertEquals(206,response.responseCode)
             assertEquals(4L,DownloadHttp.range(response.getHeaderField("Content-Range"))?.total)
         }
@@ -65,7 +69,7 @@ class DownloadHttpNaviBehaviorTest {
         val headers=mapOf("Cookie" to "valid=own","User-Agent" to "ReiAnix-Test",
             "Accept-Language" to "pt-BR","X-Source-App" to "ReiAnix")
         DownloadHttp.connect(url,headers,0,null,
-            preferInitialRange=true).use {response ->
+            preferInitialRange=true).withDisconnect {response ->
             assertEquals(200,response.responseCode)
             assertEquals("DATA",response.inputStream.bufferedReader().readText())
         }
@@ -80,7 +84,7 @@ class DownloadHttpNaviBehaviorTest {
     @Test fun authorizationDenialIsNotRetriedWithAlternateRequest() = serve(
         listOf("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
     ) {url,seen ->
-        DownloadHttp.connect(url,emptyMap(),0,null,preferInitialRange=true).use {
+        DownloadHttp.connect(url,emptyMap(),0,null,preferInitialRange=true).withDisconnect {
             assertEquals(403,it.responseCode)
         }
         assertEquals(1,seen.size)
@@ -91,7 +95,7 @@ class DownloadHttpNaviBehaviorTest {
         listOf("HTTP/1.1 206 Partial Content\r\nContent-Range: bytes */*\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
             "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nDATA")
     ) {url,seen ->
-        DownloadHttp.connect(url,emptyMap(),0,null,preferInitialRange=true).use {
+        DownloadHttp.connect(url,emptyMap(),0,null,preferInitialRange=true).withDisconnect {
             assertEquals(200,it.responseCode)
         }
         assertEquals(2,seen.size)
@@ -139,7 +143,7 @@ class DownloadHttpNaviBehaviorTest {
                     "Origin" to "https://example.com",
                     "X-Private-Session" to "secret",
                     "User-Agent" to "ReiAnix-Test"
-                ),0,null,preferInitialRange=true).use {
+                ),0,null,preferInitialRange=true).withDisconnect {
                     assertEquals(200,it.responseCode)
                 }
                 firstWorker.join(8_000);secondWorker.join(8_000)
