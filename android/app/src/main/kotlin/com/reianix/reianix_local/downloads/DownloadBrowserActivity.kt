@@ -246,7 +246,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                     Text("Nenhum link de vídeo foi encontrado na página atual. Algumas fontes só são disponibilizadas após abrir o player ou iniciar a reprodução.")
                 } else LazyColumn {
                     items(candidates,key={it.url}) { item ->
-                        val supported=item.format!="dash"
+                        val supported=true // DASH VOD now uses Media3 MP4 export when supported
                         val formatLabel=when(item.format) {
                             "hls" -> "HLS"
                             "dash" -> "DASH"
@@ -257,7 +257,11 @@ class DownloadBrowserActivity: ComponentActivity() {
                             onClick={
                                 showMedia=false
                                 offer(item.url,browser.settings.userAgentString,null,
-                                    if(item.format=="hls")"application/vnd.apple.mpegurl" else null,
+                                    when(item.format) {
+                                        "hls" -> "application/vnd.apple.mpegurl"
+                                        "dash" -> "application/dash+xml"
+                                        else -> null
+                                    },
                                     title,item.page,item.capture)
                             },
                         ) {
