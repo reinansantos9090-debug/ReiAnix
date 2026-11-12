@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.bridge
+package com.reianix.reianix_local.bridge
 import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONArray
@@ -34,7 +34,7 @@ class NativeRequestState {
     private var preferences:SharedPreferences?=null
 
     fun bind(context:Context){
-        preferences=context.applicationContext.getSharedPreferences("reiflix_native_request_state",Context.MODE_PRIVATE)
+        preferences=context.applicationContext.getSharedPreferences("reianix_native_request_state",Context.MODE_PRIVATE)
         val serialized=preferences?.getString("seen_request_ids",null)
         if(!serialized.isNullOrBlank()) restoreSeenRequestIds(serialized)
         val serializedStates=preferences?.getString("request_states",null)

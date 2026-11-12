@@ -1,33 +1,33 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.Context
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClient
-import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService
-import com.reiflix.reiflix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
-import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
-import com.reiflix.reiflix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
-import com.reiflix.reiflix_local.data.catalog.ReiAnixAniPubCatalogProvider
-import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogProviderRegistry
-import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
-import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalRequestCoordinator
-import com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProvider
-import com.reiflix.reiflix_local.data.collector.ReiAnixCollectorJourneyService
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
-import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
+import com.reianix.reianix_local.data.anilist.ReiAnixAniListIntegrationService
+import com.reianix.reianix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
+import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
+import com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
+import com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProvider
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogProviderRegistry
+import com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
+import com.reianix.reianix_local.data.catalog.ReiAnixExternalRequestCoordinator
+import com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProvider
+import com.reianix.reianix_local.data.collector.ReiAnixCollectorJourneyService
+import com.reianix.reianix_local.data.library.ReiAnixLibraryDiscoveryService
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.organize.ReiAnixGenreRegistry
+import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeClient
 import java.io.File
 import java.util.UUID
 import org.json.JSONObject
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteAccountRepository
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import com.reianix.reianix_local.data.sqlite.ReiAnixConsumptionService
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryService
+import com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteAccountRepository
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 
 /**
  * Process-scoped composition root for native services that safely share state.
@@ -95,7 +95,7 @@ class ReiAnixAppDependencies(context: Context) {
     }
 
     val aniListAccountService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        com.reiflix.reiflix_local.data.anilist.ReiAnixAniListAccountService(appContext, sqliteLibraryRepository)
+        com.reianix.reianix_local.data.anilist.ReiAnixAniListAccountService(appContext, sqliteLibraryRepository)
     }
 
     val consumptionService: ReiAnixConsumptionService by lazy(

@@ -1,13 +1,13 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.Context
 import android.util.Log
-import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
-import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.scanner.NativeScanRunner
-import com.reiflix.reiflix_local.storage.NativeIndex
+import com.reianix.reianix_local.bridge.NativeCommandDispatcher
+import com.reianix.reianix_local.data.backup.ReiAnixBackupService
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.scanner.NativeScanRunner
+import com.reianix.reianix_local.storage.NativeIndex
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -624,7 +624,7 @@ class ReiAnixAppBootstrap internal constructor(
 
     private fun initializeCanonicalDatabase(
         allowCreate: Boolean,
-    ): com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot {
+    ): com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot {
         val canonicalFile = ReiAnixSqliteDatabase.canonicalFile(appContext)
         val existedBefore = canonicalFile.exists()
         Log.i(
@@ -655,8 +655,8 @@ class ReiAnixAppBootstrap internal constructor(
     }
 
     private fun logCanonicalSqliteValidation(
-        migrationSnapshot: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot,
-        schemaSnapshot: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot,
+        migrationSnapshot: com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot,
+        schemaSnapshot: com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSchemaSnapshot,
         integrityHealthy: Boolean,
     ) {
         Log.i(

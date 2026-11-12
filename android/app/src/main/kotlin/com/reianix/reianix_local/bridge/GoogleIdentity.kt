@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.bridge
+package com.reianix.reianix_local.bridge
 
 import android.content.Context
 import org.json.JSONObject

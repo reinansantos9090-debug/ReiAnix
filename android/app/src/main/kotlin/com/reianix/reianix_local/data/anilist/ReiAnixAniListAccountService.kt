@@ -1,12 +1,12 @@
-package com.reiflix.reiflix_local.data.anilist
+package com.reianix.reianix_local.data.anilist
 
 import android.content.Context
 import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import com.reiflix.reiflix_local.BuildConfig
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reianix.reianix_local.BuildConfig
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.KeyStore

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.anilist
+package com.reianix.reianix_local.data.anilist
 
 /**
  * AniList's documented implicit-grant URL uses client_id and response_type=token.

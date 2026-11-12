@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.util.Log
 import android.app.Application
@@ -19,15 +19,15 @@ class ReiAnixApplication : Application() {
         dependencies.bootstrap.start()
         CoroutineScope(SupervisorJob()+Dispatchers.IO).launch {
             try {
-                val downloads=com.reiflix.reiflix_local.downloads.DownloadStore(this@ReiAnixApplication)
+                val downloads=com.reianix.reianix_local.downloads.DownloadStore(this@ReiAnixApplication)
                 downloads.ready()
-                if(runCatching {com.reiflix.reiflix_local.downloads.DownloadCaptureGuard.removeLegacyBanners(this@ReiAnixApplication,downloads)}.getOrDefault(false))com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
-                if(com.reiflix.reiflix_local.downloads.DownloadCatalogBridge.reconcile(dependencies.sqliteDatabase)) {
-                    com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+                if(runCatching {com.reianix.reianix_local.downloads.DownloadCaptureGuard.removeLegacyBanners(this@ReiAnixApplication,downloads)}.getOrDefault(false))com.reianix.reianix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+                if(com.reianix.reianix_local.downloads.DownloadCatalogBridge.reconcile(dependencies.sqliteDatabase)) {
+                    com.reianix.reianix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
                 }
-                com.reiflix.reiflix_local.downloads.DownloadSnapshots.refresh(this@ReiAnixApplication)
-                if(downloads.all().any { it.state in com.reiflix.reiflix_local.downloads.DownloadState.pending }) {
-                    com.reiflix.reiflix_local.downloads.DownloadScheduling.schedule(this@ReiAnixApplication,userInitiated=false)
+                com.reianix.reianix_local.downloads.DownloadSnapshots.refresh(this@ReiAnixApplication)
+                if(downloads.all().any { it.state in com.reianix.reianix_local.downloads.DownloadState.pending }) {
+                    com.reianix.reianix_local.downloads.DownloadScheduling.schedule(this@ReiAnixApplication,userInitiated=false)
                 }
             } catch(cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { /* Recovery mode must not be bypassed by download startup. */ }

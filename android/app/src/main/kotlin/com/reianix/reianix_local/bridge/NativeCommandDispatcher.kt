@@ -1,12 +1,12 @@
-package com.reiflix.reiflix_local.bridge
+package com.reianix.reianix_local.bridge
 
-import com.reiflix.reiflix_local.MainActivity
+import com.reianix.reianix_local.MainActivity
 
-import com.reiflix.reiflix_local.scanner.BroadStorageScanner
-import com.reiflix.reiflix_local.scanner.MediaStoreScanner
-import com.reiflix.reiflix_local.scanner.SafScanner
-import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
-import com.reiflix.reiflix_local.player.NativePlayerRequest
+import com.reianix.reianix_local.scanner.BroadStorageScanner
+import com.reianix.reianix_local.scanner.MediaStoreScanner
+import com.reianix.reianix_local.scanner.SafScanner
+import com.reianix.reianix_local.storage.VideoThumbnailExtractor
+import com.reianix.reianix_local.player.NativePlayerRequest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -32,7 +32,7 @@ import java.util.concurrent.ThreadFactory
  */
 object NativeCommandDispatcher {
     private const val TAG = "[REIANIX][NATIVE_COMMAND]"
-    private const val QUEUE = "reiflix-native-commands"
+    private const val QUEUE = "reianix-native-commands"
     private const val TEMP_SUFFIX = ".tmp"
     private const val FILE_PREFIX = "command-"
 

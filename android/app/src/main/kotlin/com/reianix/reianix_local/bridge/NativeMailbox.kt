@@ -1,12 +1,12 @@
-package com.reiflix.reiflix_local.bridge
+package com.reianix.reianix_local.bridge
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
-import com.reiflix.reiflix_local.data.contract.booleanOrDefault
-import com.reiflix.reiflix_local.data.contract.longOrDefault
-import com.reiflix.reiflix_local.data.contract.objectOrNull
-import com.reiflix.reiflix_local.data.contract.stringOrDefault
-import com.reiflix.reiflix_local.data.contract.stringOrNull
+import com.reianix.reianix_local.data.contract.booleanOrDefault
+import com.reianix.reianix_local.data.contract.longOrDefault
+import com.reianix.reianix_local.data.contract.objectOrNull
+import com.reianix.reianix_local.data.contract.stringOrDefault
+import com.reianix.reianix_local.data.contract.stringOrNull
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit
 
 /** Crash-safe, atomic queue between the native Android host and embedded Python. */
 object NativeMailbox {
-    private const val TAG = "[REIFLIX][ANDROID]"
-    private const val QUEUE = "reiflix-native-events"
+    private const val TAG = "[REIANIX][ANDROID]"
+    private const val QUEUE = "reianix-native-events"
     private const val PREFIX = "event-"
     private const val EVENT_VERSION = 2
     private const val BEST_EFFORT_QUEUE_CAPACITY = 128
@@ -33,7 +33,7 @@ object NativeMailbox {
         TimeUnit.MILLISECONDS,
         ArrayBlockingQueue(BEST_EFFORT_QUEUE_CAPACITY),
         { runnable ->
-            Thread(runnable, "ReiFlix-MailboxTelemetry").apply { isDaemon = true }
+            Thread(runnable, "ReiAnix-MailboxTelemetry").apply { isDaemon = true }
         },
         ThreadPoolExecutor.AbortPolicy(),
     )
