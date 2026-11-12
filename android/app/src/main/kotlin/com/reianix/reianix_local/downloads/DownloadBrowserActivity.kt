@@ -43,6 +43,7 @@ private data class BrowserDownloadOffer(
     val capture: PlayerMediaCandidate?,
     val hlsHint: Boolean,
     val browserLength: Long? = null,
+    val providerEstimatedSize:Long?=null,
 )
 
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
@@ -236,6 +237,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 },
                 hlsHint=offer.hlsHint,
                 initialKnownSize=offer.browserLength,
+                initialEstimatedSize=offer.providerEstimatedSize,
             )
         }
         if(showMedia) AlertDialog(
@@ -262,7 +264,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                                         "dash" -> "application/dash+xml"
                                         else -> null
                                     },
-                                    title,item.page,item.capture)
+                                    title,item.page,item.capture,
+                                    providerEstimatedSize=DownloadSizeIntelligence
+                                        .fromSharedMetadata(item.quality)?.bytes)
                             },
                         ) {
                             Column(Modifier.fillMaxWidth()) {
@@ -283,7 +287,8 @@ class DownloadBrowserActivity: ComponentActivity() {
         )
     }
     private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String,
-        capture: PlayerMediaCandidate? = null,browserLength:Long?=null) {
+        capture: PlayerMediaCandidate? = null,browserLength:Long?=null,
+        providerEstimatedSize:Long?=null) {
         if(!url.startsWith("https://") && !url.startsWith("http://")) return
         CookieManager.getInstance().flush()
         val headers=Bundle().apply {
@@ -314,6 +319,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 it>0 && mime?.contains("mpegurl",true)!=true &&
                 !url.substringBefore('?').endsWith(".m3u8",true)
             },
+            providerEstimatedSize=providerEstimatedSize?.takeIf {it>0},
         )
     }
     override fun onPause() { web?.onPause(); super.onPause() }
