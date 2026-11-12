@@ -5,6 +5,7 @@ import android.app.job.*
 import android.content.*
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import com.reiflix.reiflix_local.R
 import androidx.work.*
 import kotlinx.coroutines.*
 import java.util.concurrent.TimeUnit
@@ -38,12 +39,18 @@ object DownloadScheduling {
         WorkManager.getInstance(context).enqueueUniqueWork("reianix.native-downloads",
             if(userInitiated) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,request)
     }
+    /** A small, single-color status-bar icon; do not use the adaptive launcher icon here. */
+    internal fun iconForState(state: String?): Int = when {
+        state == "COMPLETE" -> R.drawable.ic_reianix_download_complete
+        state == null || state in DownloadState.pending -> R.drawable.ic_reianix_notification
+        else -> android.R.drawable.stat_sys_download
+    }
     private val covers=java.util.concurrent.ConcurrentHashMap<String,android.graphics.Bitmap>()
     private fun itemNotification(context: Context,item: DownloadItem?,text: String): Notification {
         val manager=context.getSystemService(NotificationManager::class.java)
         if(Build.VERSION.SDK_INT>=26) manager.createNotificationChannel(NotificationChannel("downloads","Downloads",NotificationManager.IMPORTANCE_LOW))
         val open=PendingIntent.getActivity(context,0,Intent(context,DownloadsActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val builder=NotificationCompat.Builder(context,"downloads").setSmallIcon(android.R.drawable.stat_sys_download)
+        val builder=NotificationCompat.Builder(context,"downloads").setSmallIcon(iconForState(item?.state))
             .setContentIntent(open).setGroup("reianix.downloads").setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_PROGRESS)
         if(item==null) return builder.setContentTitle("Downloads do ReiAnix").setContentText(text).setOngoing(true).build()
         val active=item.state in DownloadState.pending
@@ -73,8 +80,7 @@ object DownloadScheduling {
             // leave a 100% "downloading" progress indicator on Android.
             builder.setProgress(0,0,false).setAutoCancel(true)
             if(item.state=="COMPLETE") {
-                builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
-                    .setContentText("Download concluído • ${item.name}")
+                builder.setContentText("Download concluído • ${item.name}")
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
                     .setTimeoutAfter(20_000)
             }
@@ -92,7 +98,7 @@ object DownloadScheduling {
     }
     fun notification(context: Context,text: String): Notification {
         itemNotification(context,null,text) // Ensure the channel exists before foreground startup.
-        return NotificationCompat.Builder(context,"downloads").setSmallIcon(android.R.drawable.stat_sys_download)
+        return NotificationCompat.Builder(context,"downloads").setSmallIcon(iconForState(null))
             .setContentTitle("Downloads do ReiAnix").setContentText(text).setOnlyAlertOnce(true).setOngoing(true)
             .setGroup("reianix.downloads").setGroupSummary(true).build()
     }
