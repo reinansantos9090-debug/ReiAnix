@@ -53,4 +53,16 @@ class DownloadSizeIntelligenceTest {
         assertFalse(title.contains("TAMANHO"))
     }
 
+    @Test fun urlSizeMustBeExplicitAndPlausible() {
+        val hint=DownloadSizeIntelligence.fromUrlMetadata(
+            "https://cdn.example/media.bin?sign=abc&file_size=141000000")!!
+        assertFalse(hint.exact)
+        assertEquals(141_000_000L,hint.bytes)
+        assertEquals(140_000_000L,DownloadSizeIntelligence.roundedForDisplay(hint.bytes))
+        assertNull(DownloadSizeIntelligence.fromUrlMetadata(
+            "https://cdn.example/video.mp4?size=720&quality=1080p"))
+        assertNull(DownloadSizeIntelligence.fromUrlMetadata(
+            "https://cdn.example/video.mp4?sign=abc"))
+    }
+
 }
