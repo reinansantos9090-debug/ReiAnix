@@ -1537,6 +1537,33 @@ class ReiAnixSqliteLibraryRepository(
             require(snapshot.operationId.isNotBlank()) { "A scan operation ID is required." }
             require(snapshot.scopeRoot.isNotBlank()) { "An explicit scope root is required." }
             val bridge=com.reiflix.reiflix_local.downloads.DownloadCatalogBridge
+            // A public MediaStore file is visible to other applications while
+            // downloading. Scans from SAF, MediaStore and broad storage must
+            // not index that same unfinished file as an independent episode.
+            val activeTransfers=runCatching {
+                com.reiflix.reiflix_local.downloads.DownloadStore(database.appContext).all()
+                    .filter { it.state !in setOf("COMPLETE","CANCELLED") }
+            }.getOrDefault(emptyList())
+            val activeMediaIds=activeTransfers.mapNotNull {
+                Uri.parse(it.json.optString("transferUri"))
+                    .takeIf { uri -> uri.authority=="media" }
+                    ?.lastPathSegment?.toLongOrNull()
+            }.toSet()
+            val activeUris=activeTransfers.map { it.json.optString("transferUri") }
+                .filter(String::isNotBlank).toSet()
+            val activeRelativeNames=activeTransfers.filter {
+                it.json.optString("destination").isBlank()
+            }.map {
+                "download/reianix/" + it.name.lowercase(java.util.Locale.ROOT)
+            }.toSet()
+            fun stillDownloading(item:NativeDiscoveredMedia):Boolean {
+                val uri=Uri.parse(item.location)
+                if(item.location in activeUris) return true
+                if(uri.authority=="media" && uri.lastPathSegment?.toLongOrNull() in activeMediaIds) return true
+                return item.relativePath?.replace('\\', '/')?.trimStart('/')
+                    ?.lowercase(java.util.Locale.ROOT) in activeRelativeNames
+            }
+            val scanContainsActiveTransfers=snapshot.items.any(::stillDownloading)
             if(bridge.reconcile(database))com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
             val downloadAliases=bridge.aliases(database,snapshot.items.map {it.location})
             var transactionReport: NativeLibraryIndexReport? = null
@@ -1562,7 +1589,7 @@ class ReiAnixSqliteLibraryRepository(
                 val oldUnnumberedMovieAlbums = linkedSetOf<Long>()
 
                 val indexedItems = recognizeUnnumberedSeriesSiblings(
-                    normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items)
+                    normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items.filterNot(::stillDownloading))
                 )
                 for (item in indexedItems) {
                     db.execSQL("SAVEPOINT native_index_item")
@@ -1787,7 +1814,8 @@ class ReiAnixSqliteLibraryRepository(
                 // into one album without renumbering or overwriting playback.
                 SeriesAnimeCoalescer.mergeVerified(db)
 
-                val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence && ambiguous == 0
+                val reconcile = snapshot.mayReconcile && !scanContainsActiveTransfers &&
+                    rejected == 0 && !invalidScopeEvidence && ambiguous == 0
                 var missing = 0
                 if (reconcile) {
                     // scopeRoot is scanner evidence (e.g. SAF document ID); scopeReference is the
