@@ -109,6 +109,7 @@ jobs:
               --tests com.reiflix.reiflix_local.data.catalog.ReiAnixAniPubCatalogProviderTest \
               --tests com.reiflix.reiflix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
               --tests com.reiflix.reiflix_local.downloads.DownloadDisplaySizeTest \
+              --tests com.reiflix.reiflix_local.downloads.DownloadRandomFileTest \
               --tests com.reiflix.reiflix_local.downloads.DownloadIdentityPersistenceTest \
               --tests com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsNavigationTest \
               --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListSearchTermsTest \
