@@ -61,9 +61,9 @@ internal object DownloadDashMetadata {
     }
     private fun expand(template:String,number:Long,indexTime:Long,
         id:String,bandwidth:Long):String {
-        var result=template.replace("$$","__DOLLAR__")
-            .replace("$RepresentationID$",id)
-            .replace("$Bandwidth$",bandwidth.toString())
+        var result=template.replace("\$\$","__DOLLAR__")
+            .replace("\$RepresentationID\$",id)
+            .replace("\$Bandwidth\$",bandwidth.toString())
         result=Regex("""\$(Number|Time)(?:%0(\d{1,2})d)?\$""").replace(result){m ->
             val n=if(m.groupValues[1]=="Time")indexTime else number
             val pad=m.groupValues[2].toIntOrNull()?.coerceIn(1,16) ?: 0
