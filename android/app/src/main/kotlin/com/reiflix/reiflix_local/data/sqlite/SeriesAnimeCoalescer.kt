@@ -50,7 +50,8 @@ internal object SeriesAnimeCoalescer {
         var changed=false
         // Refresh after each successful merge: a group of three seasons must
         // converge and must not reference rows deleted in the previous pass.
-        repeat(64) {
+        val maxMerges=albums(db).size
+        repeat(maxMerges) {
             val rows=albums(db)
                 .filter { it.episodeCount>0 && !it.protected && it.id !in busyAnimeIds }
             var merged=false
@@ -193,11 +194,15 @@ internal object SeriesAnimeCoalescer {
             )
 
             val selected=ContentValues()
-            for(field in listOf(
+            val inheritedFields=if(season==null) listOf(
                 "cover_url","cover_cache","banner_url","description",
                 "description_original","genres","studio","romaji","english","native"
-            )) if(a.getAsString(field).isNullOrBlank() && !b.getAsString(field).isNullOrBlank())
-                selected.put(field,b.getAsString(field))
+            ) else listOf("cover_url","cover_cache","banner_url")
+            // A sequel's description and airing metadata belong to that specific
+            // season, not the first-season overview. Retain them in provenance.
+            for(field in inheritedFields)
+                if(a.getAsString(field).isNullOrBlank() && !b.getAsString(field).isNullOrBlank())
+                    selected.put(field,b.getAsString(field))
             for(field in listOf("favorite","is_pinned"))
                 selected.put(field,maxOf(a.getAsInteger(field) ?: 0,b.getAsInteger(field) ?: 0))
             fun strings(raw:String?):List<String> = runCatching {
@@ -246,21 +251,22 @@ internal object SeriesAnimeCoalescer {
                     }
                 }
             }
-            // Preserve different AniList season IDs and the removed album's
-            // editorial metadata for future re-identification/recovery.
-            runCatching {
-                db.insertWithOnConflict("preferences",null,ContentValues().apply {
-                    put("key","reianix.series.merged.${keep.id}.${donor.id}")
-                    put("value",JSONObject().apply {
-                        put("fromId",donor.id);put("toId",keep.id)
-                        put("season",season ?: JSONObject.NULL)
-                        put("anilistId",donor.remoteId ?: JSONObject.NULL)
-                        put("title",b.getAsString("title"))
-                        put("coverUrl",b.getAsString("cover_url"))
-                    }.toString())
-                    put("updated_at",System.currentTimeMillis()/1000.0)
-                },SQLiteDatabase.CONFLICT_REPLACE)
-            }
+            // Preserve ALL original editorial/season metadata, including
+            // different AniList IDs, so regrouping is reversible and never
+            // silently discards a sequel's synopsis or manual information.
+            val originalMetadata=JSONObject()
+            for(entry in b.valueSet()) originalMetadata.put(entry.key,entry.value)
+            val provenance=JSONObject()
+                .put("fromId",donor.id).put("toId",keep.id)
+                .put("season",season ?: JSONObject.NULL)
+                .put("anilistId",donor.remoteId ?: JSONObject.NULL)
+                .put("originalMetadata",originalMetadata)
+            val saved=db.insertWithOnConflict("preferences",null,ContentValues().apply {
+                put("key","reianix.series.merged.${keep.id}.${donor.id}")
+                put("value",provenance.toString())
+                put("updated_at",System.currentTimeMillis()/1000.0)
+            },SQLiteDatabase.CONFLICT_REPLACE)
+            check(saved!=-1L) { "Failed to preserve original season metadata" }
             db.delete("anime","id=?",arrayOf(donor.id.toString()))
             db.execSQL("RELEASE intelligent_series_merge")
             Log.i(TAG,"Grouped local series album=${keep.id} from=${donor.id} season=${season ?: "same"}")
