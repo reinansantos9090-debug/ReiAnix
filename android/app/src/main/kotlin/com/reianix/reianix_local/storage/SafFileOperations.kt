@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.storage
+package com.reianix.reianix_local.storage
 
-import com.reiflix.reiflix_local.scanner.SafScanner
+import com.reianix.reianix_local.scanner.SafScanner
 
 import android.content.ContentResolver
 import android.content.Context

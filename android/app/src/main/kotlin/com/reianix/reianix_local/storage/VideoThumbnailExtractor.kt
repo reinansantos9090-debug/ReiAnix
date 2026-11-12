@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local.storage
+package com.reianix.reianix_local.storage
 
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -274,7 +274,7 @@ object VideoThumbnailExtractor {
         modifiedAt: Long = 0L,
         mediaIdentity: String? = null,
     ): Result? {
-        val cacheDir = File(context.cacheDir, "reiflix/thumbnails")
+        val cacheDir = File(context.cacheDir, "reianix/thumbnails")
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
             ReiAnixDiagnosticTimeline.record(
                 name = "THUMBNAIL_CACHE_DIRECTORY_FAILED",

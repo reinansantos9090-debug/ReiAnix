@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.storage
+package com.reianix.reianix_local.storage
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader

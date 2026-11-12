@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
 /**
  * Pure allow-list classification for scanner output.

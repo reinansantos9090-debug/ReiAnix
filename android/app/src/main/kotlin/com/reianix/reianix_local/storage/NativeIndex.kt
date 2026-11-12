@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.storage
+package com.reianix.reianix_local.storage
 
-import com.reiflix.reiflix_local.storage.NativeBatch
+import com.reianix.reianix_local.storage.NativeBatch
 import android.content.Context
 import android.os.Build
 import android.os.storage.StorageManager
@@ -24,7 +24,7 @@ object NativeIndex {
     const val SOURCE_SAF = "saf"
     const val SOURCE_BROAD = "broad_storage"
     private const val VERSION = 4
-    private const val FILE_NAME = "reiflix-native-index.json"
+    private const val FILE_NAME = "reianix-native-index.json"
     private const val DATA_DIR = "data"
     private const val BATCH_DIR = "native-batches"
     const val BATCH_SIZE = NativeBatch.DEFAULT_SIZE
@@ -833,7 +833,7 @@ object NativeIndex {
         source: String,
         scopeKey: String,
         generation: Long,
-        report: com.reiflix.reiflix_local.data.sqlite.NativeLibraryIndexReport,
+        report: com.reianix.reianix_local.data.sqlite.NativeLibraryIndexReport,
     ): Boolean = updateNativeCatalogWriteOutcome(
         context, source, scopeKey, generation,
         outcome = "COMMITTED",

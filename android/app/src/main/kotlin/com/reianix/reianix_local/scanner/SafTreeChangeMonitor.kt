@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
 import android.content.Context
 import android.database.ContentObserver
@@ -45,7 +45,7 @@ internal fun hasNewOrChangedVideoDocuments(
 }
 
 object SafTreeChangeMonitor {
-    private const val TAG = "[REIFLIX][SAF_CHANGE]"
+    private const val TAG = "[REIANIX][SAF_CHANGE]"
     private const val PREFS_NAME = "reianix_saf_change_monitor"
     private const val PENDING_CHANGES_KEY = "pending_video_tree_changes"
     private const val INVENTORY_PREFIX = "video_inventory_v1_"

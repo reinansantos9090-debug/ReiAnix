@@ -1,7 +1,7 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
-import com.reiflix.reiflix_local.storage.NativeBatch
-import com.reiflix.reiflix_local.storage.StorageAuthorization
+import com.reianix.reianix_local.storage.NativeBatch
+import com.reianix.reianix_local.storage.StorageAuthorization
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -13,7 +13,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object SafScanner {
-    private const val TAG = "[REIFLIX][SAF]"
+    private const val TAG = "[REIANIX][SAF]"
     const val STATUS_EMPTY_COMPLETE = "EMPTY_COMPLETE"
     const val STATUS_PARTIAL = "PARTIAL"
     const val STATUS_CANCELLED = "CANCELLED"
