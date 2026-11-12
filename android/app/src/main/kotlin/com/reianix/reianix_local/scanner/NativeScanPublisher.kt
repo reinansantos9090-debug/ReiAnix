@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.storage.NativeIndex
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.storage.NativeIndex
 import android.content.Context
 import android.util.Log
 import org.json.JSONArray
@@ -10,7 +10,7 @@ import org.json.JSONObject
 import java.util.UUID
 
 object NativeScanPublisher {
-    private const val TAG = "[REIFLIX][ANDROID][SCAN]"
+    private const val TAG = "[REIANIX][ANDROID][SCAN]"
     fun publish(appContext: Context, eventType: String, source: String, scanId: String, requestId: String?, scopeKind: String, scopeRef: String, scopeKey: String, generation: Long, batchEvent: JSONObject) {
         try {
             val raw = batchEvent.optJSONArray("documents") ?: JSONArray()

@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
-import com.reiflix.reiflix_local.MainActivity
+import com.reianix.reianix_local.MainActivity
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -9,7 +9,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 object MediaStoreRetryScheduler {
-    private const val TAG = "[REIFLIX][ANDROID]"
+    private const val TAG = "[REIANIX][ANDROID]"
     private val handler = Handler(Looper.getMainLooper())
     private val scheduled = AtomicBoolean(false)
     fun schedule(appContext: Context, reason: String, triggerRequestId: String? = null) {

@@ -1,13 +1,13 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
 import android.content.ContentUris
 import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
-import com.reiflix.reiflix_local.data.media.MediaFilenameParser
-import com.reiflix.reiflix_local.data.sqlite.NativeDiscoveredMedia
-import com.reiflix.reiflix_local.data.sqlite.NativeLibraryScanSnapshot
+import com.reianix.reianix_local.data.media.MediaFilenameParser
+import com.reianix.reianix_local.data.sqlite.NativeDiscoveredMedia
+import com.reianix.reianix_local.data.sqlite.NativeLibraryScanSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

@@ -1,9 +1,9 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
-import com.reiflix.reiflix_local.storage.NativeBatch
-import com.reiflix.reiflix_local.storage.NativeIndex
-import com.reiflix.reiflix_local.storage.StorageAuthorization
-import com.reiflix.reiflix_local.storage.BroadStorageAccessLevel
+import com.reianix.reianix_local.storage.NativeBatch
+import com.reianix.reianix_local.storage.NativeIndex
+import com.reianix.reianix_local.storage.StorageAuthorization
+import com.reianix.reianix_local.storage.BroadStorageAccessLevel
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -17,7 +17,7 @@ import java.util.ArrayDeque
 import java.util.HashSet
 
 object BroadStorageScanner {
-    private const val TAG = "[REIFLIX][SCANNER]"
+    private const val TAG = "[REIANIX][SCANNER]"
 
     internal data class LocalFileMetadata(
         val fileReadable: Boolean,

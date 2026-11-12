@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean

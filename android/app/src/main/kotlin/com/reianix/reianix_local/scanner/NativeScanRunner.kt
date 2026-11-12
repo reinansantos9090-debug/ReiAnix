@@ -1,15 +1,15 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
 import android.content.Context
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.ReiAnixAppDependencies
 import android.net.Uri
 import android.util.Log
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.storage.NativeIndex
-import com.reiflix.reiflix_local.data.sqlite.NativeDiscoveredMedia
-import com.reiflix.reiflix_local.data.sqlite.NativeLibraryScanSnapshot
-import com.reiflix.reiflix_local.data.sqlite.NativeLibraryIndexReport
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteTransactionOutcome
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.storage.NativeIndex
+import com.reianix.reianix_local.data.sqlite.NativeDiscoveredMedia
+import com.reianix.reianix_local.data.sqlite.NativeLibraryScanSnapshot
+import com.reianix.reianix_local.data.sqlite.NativeLibraryIndexReport
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteTransactionOutcome
 import org.json.JSONObject
 import org.json.JSONArray
 import kotlinx.coroutines.CancellationException

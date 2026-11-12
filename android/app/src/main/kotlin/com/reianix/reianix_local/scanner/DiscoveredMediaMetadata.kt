@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
-import com.reiflix.reiflix_local.data.media.MediaFilenameParser
+import com.reianix.reianix_local.data.media.MediaFilenameParser
 import org.json.JSONArray
 import org.json.JSONObject
 

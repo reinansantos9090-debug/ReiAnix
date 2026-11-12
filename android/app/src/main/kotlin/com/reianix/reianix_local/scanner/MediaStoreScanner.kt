@@ -1,9 +1,9 @@
-package com.reiflix.reiflix_local.scanner
+package com.reianix.reianix_local.scanner
 
-import com.reiflix.reiflix_local.storage.NativeBatch
-import com.reiflix.reiflix_local.storage.NativeIndex
-import com.reiflix.reiflix_local.storage.StorageAuthorization
-import com.reiflix.reiflix_local.storage.MediaAccessLevel
+import com.reianix.reianix_local.storage.NativeBatch
+import com.reianix.reianix_local.storage.NativeIndex
+import com.reianix.reianix_local.storage.StorageAuthorization
+import com.reianix.reianix_local.storage.MediaAccessLevel
 import android.Manifest
 import android.content.Context
 import android.database.ContentObserver
@@ -23,7 +23,7 @@ object MediaStoreScanner {
     const val SOURCE = "mediastore:external:video"
     data class LibraryScope(val authority: String, val volumeId: String, val treeDocumentId: String)
     const val DISPLAY_NAME = "Vídeos do dispositivo"
-    private const val TAG = "[REIFLIX][MEDIASTORE]"
+    private const val TAG = "[REIANIX][MEDIASTORE]"
     // Match Nova's broad local video extension surface; provider MIME values
     // remain authoritative when available.
     private val videoExtensions = setOf(
