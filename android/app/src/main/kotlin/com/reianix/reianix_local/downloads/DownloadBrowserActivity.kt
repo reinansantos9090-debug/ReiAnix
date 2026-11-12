@@ -42,6 +42,7 @@ private data class BrowserDownloadOffer(
     val filename: String,
     val capture: PlayerMediaCandidate?,
     val hlsHint: Boolean,
+    val browserLength: Long? = null,
 )
 
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
@@ -143,11 +144,16 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 popup.destroy(); return true
                             }
                         }
-                        popup.setDownloadListener { url,ua,cd,mime,_ -> offer(url,ua,cd,mime,title,view.url.orEmpty()); popup.destroy() }
+                        popup.setDownloadListener { url,ua,cd,mime,length ->
+                            offer(url,ua,cd,mime,title,view.url.orEmpty(),browserLength=length.takeIf{it>0});
+                            popup.destroy()
+                        }
                         (resultMsg.obj as WebView.WebViewTransport).webView=popup; resultMsg.sendToTarget(); return true
                     }
                 }
-                setDownloadListener { url,ua,cd,mime,_ -> offer(url,ua,cd,mime,title,this.url.orEmpty()) }
+                setDownloadListener { url,ua,cd,mime,length ->
+                    offer(url,ua,cd,mime,title,this.url.orEmpty(),browserLength=length.takeIf{it>0})
+                }
             }
         }
         LaunchedEffect(requested) { if(requested.isNotBlank()) try { DownloadHttp.validateUrl(requested); browser.loadUrl(requested) } catch(_: Exception) { error="Endereço inválido" } }
@@ -229,6 +235,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                     }
                 },
                 hlsHint=offer.hlsHint,
+                initialKnownSize=offer.browserLength,
             )
         }
         if(showMedia) AlertDialog(
@@ -239,7 +246,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                     Text("Nenhum link de vídeo foi encontrado na página atual. Algumas fontes só são disponibilizadas após abrir o player ou iniciar a reprodução.")
                 } else LazyColumn {
                     items(candidates,key={it.url}) { item ->
-                        val supported=item.format!="dash" && !item.separateAudio
+                        val supported=item.format!="dash"
                         val formatLabel=when(item.format) {
                             "hls" -> "HLS"
                             "dash" -> "DASH"
@@ -259,7 +266,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                     if(item.capture!=null) " • Player confirmado" else " • Fonte encontrada",
                                     maxLines=2)
                                 if(!supported) Text(
-                                    if(item.separateAudio) "Faixas de áudio separadas ainda não suportadas"
+                                    if(item.separateAudio) "Faixas HLS separadas: MP4 quando o dispositivo suportar"
                                     else "DASH ainda não é compatível com o downloader",
                                     style=MaterialTheme.typography.bodySmall,
                                 )
@@ -271,7 +278,8 @@ class DownloadBrowserActivity: ComponentActivity() {
             confirmButton={TextButton(onClick={showMedia=false}){Text("Fechar")}},
         )
     }
-    private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String,capture: PlayerMediaCandidate? = null) {
+    private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String,
+        capture: PlayerMediaCandidate? = null,browserLength:Long?=null) {
         if(!url.startsWith("https://") && !url.startsWith("http://")) return
         CookieManager.getInstance().flush()
         val headers=Bundle().apply {
@@ -298,6 +306,10 @@ class DownloadBrowserActivity: ComponentActivity() {
             url=url,headers=headers.keySet().associateWith {headers.getString(it).orEmpty()},
             title=pageTitle.ifBlank { title },filename=filename,capture=capture,
             hlsHint=mime?.contains("mpegurl",ignoreCase=true)==true,
+            browserLength=browserLength?.takeIf{
+                it>0 && mime?.contains("mpegurl",true)!=true &&
+                !url.substringBefore('?').endsWith(".m3u8",true)
+            },
         )
     }
     override fun onPause() { web?.onPause(); super.onPause() }
