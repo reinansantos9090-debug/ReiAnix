@@ -1782,6 +1782,11 @@ class ReiAnixSqliteLibraryRepository(
                     } finally { db.execSQL("RELEASE cleanup_empty_movie") }
                 }
 
+                // Multiple episode-title groups may later share the same
+                // verified AniList media ID. Move their physical episode rows
+                // into one album without renumbering or overwriting playback.
+                SeriesAnimeCoalescer.mergeVerified(db)
+
                 val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence && ambiguous == 0
                 var missing = 0
                 if (reconcile) {
