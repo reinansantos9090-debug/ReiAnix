@@ -32,7 +32,6 @@ internal object ReiAnixLegacyIdentity {
                 }
             }
         }
-        return success
     }
 }
 
@@ -97,5 +96,6 @@ internal object ReiAnixLegacyStorageMigration {
                 Log.w("ReiAnixMigration", "Could not preserve previous private preferences")
             }
         }
+        return success
     }
 }
