@@ -141,7 +141,7 @@ class DownloadEngine(private val context: Context) {
                         candidate.none { char -> char=='/' || char=='\\' || char.code<32 } &&
                         !DownloadIdentity.isGenericMediaName(candidate)) {
                         val previous=it.optString("name")
-                        val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\\s._-]*\\d+""")
+                        val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\s._-]*\d+""")
                             .containsMatchIn(previous)
                         val matchingStem=previous.substringBeforeLast('.',previous)
                             .equals(candidate.substringBeforeLast('.',candidate),true)
