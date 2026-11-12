@@ -71,7 +71,7 @@ object DownloadScheduling {
         } else {
             // A completed file is not an active foreground transfer. Do not
             // leave a 100% "downloading" progress indicator on Android.
-            builder.setProgress(0,0,false).setAutoCancel(true)
+            builder.setProgress(0,0,false).setAutoCancel(item.state!="COMPLETE")
             if(item.state=="COMPLETE") {
                 // Completed notifications stay visible until the user dismisses
                 // them. An automatic timeout hid the only completion feedback.
