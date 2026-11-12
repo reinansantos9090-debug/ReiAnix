@@ -22,6 +22,8 @@ import org.json.JSONObject
  */
 internal object SeriesAnimeCoalescer {
     private const val TAG="ReiAnixSeriesMerge"
+    private val nonRegularTypes=setOf("movie","film","special","ova","oad","ona","extra")
+    private data class EpisodeFact(val season:Int,val kind:String,val number:Double?)
     private data class Album(
         val id: Long,
         val remoteId: Long?,
@@ -31,16 +33,22 @@ internal object SeriesAnimeCoalescer {
         val manualFields: String,
         val manualMatch: Boolean,
         val forms: Set<SeriesTitleIdentity.TitleForm>,
+        val primaryTitleKey: String?,
+        val expectedEpisodes: Int?,
+        val episodeNumbers: Map<Int,Set<Int>>,
         val primarySeason: Int,
         val primaryTagged: Boolean,
         val episodeCount: Int,
         val regularCount: Int,
         val seasons: Set<Int>,
     ) {
-        val protected: Boolean get() =
-            kind !in setOf("", "series", "tv") ||
-            manualMatch || source=="manual" || status=="manual" ||
-            manualFields.trim() !in setOf("", "[]")
+        val protected: Boolean get() = kind !in setOf("", "series", "tv")
+        // A custom cover, description or note must not veto merging episodes.
+        // Preserve the user's edits by favouring the curated row as survivor.
+        val curated: Boolean get() = manualMatch || source=="manual" ||
+            status=="manual" || manualFields.trim() !in setOf("", "[]")
+        val identityManual: Boolean get() = manualMatch ||
+            source=="manual" || status=="manual"
         val exactKeys: Set<String> get() = forms.map { it.key }.toSet()
     }
     private data class Candidate(val keep: Album,val donor: Album,val donorSeason: Int?)
@@ -92,19 +100,55 @@ internal object SeriesAnimeCoalescer {
         return id
     }
 
+    /**
+     * A split 1..6 / 7..12 series may have TWO different AniList IDs when the
+     * matching algorithm associated one half incorrectly. A common display
+     * title alone must never win over conflicting IDs. Require a numbered,
+     * non-overlapping continuation AND the same known episode total.
+     *
+     * This is a general rule for any title, not an anime-specific exception.
+     */
+    private fun verifiedContinuation(a: Album,b: Album):Boolean {
+        if(a.primaryTagged || b.primaryTagged) return false
+        if(a.primaryTitleKey.isNullOrBlank() || a.primaryTitleKey!=b.primaryTitleKey) return false
+        if(a.identityManual || b.identityManual) return false
+        val expected=a.expectedEpisodes ?: return false
+        if(expected<4 || expected>2000 || b.expectedEpisodes!=expected) return false
+        if(a.episodeNumbers.size!=1 || b.episodeNumbers.size!=1) return false
+        val (aSeason,aNumbers)=a.episodeNumbers.entries.single()
+        val (bSeason,bNumbers)=b.episodeNumbers.entries.single()
+        if(aSeason!=bSeason || aSeason !in 1..20) return false
+        if(aNumbers.size<2 || bNumbers.size<2 ||
+            aNumbers.any {it !in 1..expected} || bNumbers.any {it !in 1..expected}) return false
+        if(aNumbers.intersect(bNumbers).isNotEmpty()) return false
+        val before=if(aNumbers.min()<bNumbers.min())aNumbers else bNumbers
+        val after=if(before===aNumbers)bNumbers else aNumbers
+        return before.min()==1 && before.max()<after.min() &&
+            before.size+after.size<=expected
+    }
+
     private fun resolve(a: Album,b: Album,preferredId:Long?):Candidate? {
         if(a.regularCount==0 || b.regularCount==0) return null
         val sameRemote=a.remoteId!=null && a.remoteId==b.remoteId
-
-        // The suffix must explicitly express a season ("Youjo Senki II",
-        // "Youjo Senki Season 2"). Do not infer sequels from vague similarity
-        // or from a broadcaster's calendar season ("Autumn", "Winter").
         val seasonPair=seasonEvidence(a,b)
-        if(seasonPair!=null) return seasonPair
+        if(seasonPair!=null && !a.identityManual && !b.identityManual) return seasonPair
         val sameTitle=a.exactKeys.intersect(b.exactKeys).isNotEmpty()
         if(!sameRemote && !sameTitle) return null
-        if(!sameRemote && a.remoteId!=null && b.remoteId!=null) return null
+        val continuation=verifiedContinuation(a,b)
+        if(!sameRemote && a.remoteId!=null && b.remoteId!=null && !continuation) return null
+        // Manually selected AniList links with contradictory identity are never
+        // rewritten by a background organizer, even if titles look alike.
+        if(!sameRemote && (a.identityManual || b.identityManual)) return null
         val keep=when {
+            // For disjoint numbered halves, retain the original first episode's
+            // album (and its cover), not whichever half was imported last.
+            continuation -> {
+                val aFirst=a.episodeNumbers.values.single().min()
+                val bFirst=b.episodeNumbers.values.single().min()
+                if(aFirst<=bFirst)a else b
+            }
+            a.curated && !b.curated -> a
+            b.curated && !a.curated -> b
             a.id==preferredId -> a
             b.id==preferredId -> b
             a.remoteId!=null && b.remoteId==null -> a
@@ -140,18 +184,19 @@ internal object SeriesAnimeCoalescer {
     }
 
     private fun albums(db:SQLiteDatabase):List<Album> {
-        val counts=mutableMapOf<Long,MutableList<Pair<Int,String>>>()
+        val counts=mutableMapOf<Long,MutableList<EpisodeFact>>()
         db.rawQuery(
-            "SELECT anime_id,COALESCE(season,0),COALESCE(episode_type,'') FROM episodes",null
+            "SELECT anime_id,COALESCE(season,0),COALESCE(episode_type,''),number FROM episodes",null
         ).use {c ->
             while(c.moveToNext()) counts.getOrPut(c.getLong(0)){mutableListOf()}
-                .add(c.getInt(1) to c.getString(2).lowercase())
+                .add(EpisodeFact(c.getInt(1),c.getString(2).lowercase(),
+                    if(c.isNull(3))null else c.getDouble(3)))
         }
         return db.rawQuery(
             """SELECT id,anilist_id,COALESCE(media_kind,'series'),
                COALESCE(metadata_source,''),COALESCE(metadata_status,''),
                COALESCE(metadata_manual_fields,'[]'),COALESCE(anilist_match_manual,0),
-               title,lookup_title,romaji,english,native,aliases
+               title,lookup_title,romaji,english,native,aliases,episodes_count
                FROM anime ORDER BY id""",null,
         ).use { c ->
             buildList {
@@ -174,13 +219,20 @@ internal object SeriesAnimeCoalescer {
                         source=c.getString(3).lowercase(),status=c.getString(4).lowercase(),
                         manualFields=c.getString(5),manualMatch=c.getInt(6)!=0,
                         forms=forms,
+                        primaryTitleKey=primary?.key,
+                        expectedEpisodes=if(c.isNull(13))null else c.getInt(13).takeIf {it>0},
+                        episodeNumbers=episodeData.asSequence()
+                            .filter {it.kind !in nonRegularTypes}
+                            .filter {it.number!=null && it.number.isFinite() &&
+                                it.number>0 && it.number<=2000 &&
+                                it.number==it.number.toInt().toDouble()}
+                            .groupBy({it.season},{it.number!!.toInt()})
+                            .mapValues {(_,values)->values.toSet()},
                         primarySeason=primary?.season ?: 1,
                         primaryTagged=primary?.tagged == true,
                         episodeCount=episodeData.size,
-                        regularCount=episodeData.count{(_,kind) ->
-                            kind !in setOf("movie","film","special","ova","oad","ona","extra")
-                        },
-                        seasons=episodeData.map{it.first}.toSet(),
+                        regularCount=episodeData.count{it.kind !in nonRegularTypes},
+                        seasons=episodeData.map{it.season}.toSet(),
                     ))
                 }
             }
