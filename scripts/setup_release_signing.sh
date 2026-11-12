@@ -47,20 +47,20 @@ if [[ ! -e "$keystore" ]]; then
     exit 1
   fi
   unset confirmation
-  export REIFLIX_ANDROID_KEYSTORE_PASSWORD="$signing_password"
+  export REIANIX_ANDROID_KEYSTORE_PASSWORD="$signing_password"
   keytool -genkeypair -noprompt \
     -keystore "$keystore" -storetype PKCS12 \
     -alias "$alias_name" -keyalg RSA -keysize 3072 -validity 10000 \
     -dname "CN=ReiAnix, OU=Android, O=ReiAnix" \
-    -storepass:env REIFLIX_ANDROID_KEYSTORE_PASSWORD \
-    -keypass:env REIFLIX_ANDROID_KEYSTORE_PASSWORD
+    -storepass:env REIANIX_ANDROID_KEYSTORE_PASSWORD \
+    -keypass:env REIANIX_ANDROID_KEYSTORE_PASSWORD
 fi
 
 chmod 600 "$keystore"
-export REIFLIX_ANDROID_KEYSTORE_PASSWORD="$signing_password"
+export REIANIX_ANDROID_KEYSTORE_PASSWORD="$signing_password"
 fingerprint="$(keytool -exportcert -rfc \
   -keystore "$keystore" -alias "$alias_name" \
-  -storepass:env REIFLIX_ANDROID_KEYSTORE_PASSWORD |
+  -storepass:env REIANIX_ANDROID_KEYSTORE_PASSWORD |
   openssl x509 -noout -fingerprint -sha256 |
   cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
 if [[ ! "$fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
@@ -69,7 +69,7 @@ if [[ ! "$fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
 fi
 
 # If this repository already has a pinned identity, never rotate it silently.
-previous="$(gh variable get REIFLIX_ANDROID_EXPECTED_CERT_SHA256 --repo "$repo" 2>/dev/null || true)"
+previous="$(gh variable get REIANIX_ANDROID_EXPECTED_CERT_SHA256 --repo "$repo" 2>/dev/null || true)"
 if [[ -n "$previous" && "${previous,,}" != "$fingerprint" ]]; then
   echo "The repository already pins a different signing certificate. Aborting." >&2
   echo "Use the ORIGINAL keystore to update, not a new key." >&2
@@ -77,13 +77,13 @@ if [[ -n "$previous" && "${previous,,}" != "$fingerprint" ]]; then
 fi
 
 echo "Uploading encrypted signing values to GitHub Actions secrets..."
-base64 < "$keystore" | tr -d '\r\n' | gh secret set REIFLIX_ANDROID_KEYSTORE_B64 --repo "$repo"
-printf '%s' "$signing_password" | gh secret set REIFLIX_ANDROID_KEYSTORE_PASSWORD --repo "$repo"
-printf '%s' "$signing_password" | gh secret set REIFLIX_ANDROID_KEY_PASSWORD --repo "$repo"
-printf '%s' "$alias_name" | gh secret set REIFLIX_ANDROID_KEY_ALIAS --repo "$repo"
-gh variable set REIFLIX_ANDROID_EXPECTED_CERT_SHA256 --body "$fingerprint" --repo "$repo"
+base64 < "$keystore" | tr -d '\r\n' | gh secret set REIANIX_ANDROID_KEYSTORE_B64 --repo "$repo"
+printf '%s' "$signing_password" | gh secret set REIANIX_ANDROID_KEYSTORE_PASSWORD --repo "$repo"
+printf '%s' "$signing_password" | gh secret set REIANIX_ANDROID_KEY_PASSWORD --repo "$repo"
+printf '%s' "$alias_name" | gh secret set REIANIX_ANDROID_KEY_ALIAS --repo "$repo"
+gh variable set REIANIX_ANDROID_EXPECTED_CERT_SHA256 --body "$fingerprint" --repo "$repo"
 
-unset signing_password REIFLIX_ANDROID_KEYSTORE_PASSWORD
+unset signing_password REIANIX_ANDROID_KEYSTORE_PASSWORD
 echo "Release signing configured for $repo."
 echo "Pinned public certificate SHA-256: $fingerprint"
 echo "PRIVATE KEY BACKUP REQUIRED: $keystore"

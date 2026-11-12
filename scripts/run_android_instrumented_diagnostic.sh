@@ -6,19 +6,19 @@ set -Eeuo pipefail
 
 WORKSPACE="${GITHUB_WORKSPACE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 PACKAGE="com.reiflix.reiflix_local"
-API_LEVEL="${REIFLIX_ANDROID_API_LEVEL:-}"
+API_LEVEL="${REIANIX_ANDROID_API_LEVEL:-}"
 case "${API_LEVEL}" in
     30|31|32|33|34|35|36) ;;
     *)
-        printf 'REIFLIX_ANDROID_API_LEVEL must be 34, 35, or 36 (got %q)\n' "${API_LEVEL}" >&2
+        printf 'REIANIX_ANDROID_API_LEVEL must be 34, 35, or 36 (got %q)\n' "${API_LEVEL}" >&2
         exit 2
         ;;
 esac
 CERT_ROOT="${WORKSPACE}/build/android${API_LEVEL}-certification"
 DIAG_ROOT="${CERT_ROOT}/gestural"
-CLASS_TIMEOUT_SECONDS="${REIFLIX_ANDROID_CLASS_TIMEOUT_SECONDS:-120}"
-METHOD_TIMEOUT_SECONDS="${REIFLIX_ANDROID_METHOD_TIMEOUT_SECONDS:-90}"
-FULL_TIMEOUT_SECONDS="${REIFLIX_ANDROID_FULL_TIMEOUT_SECONDS:-300}"
+CLASS_TIMEOUT_SECONDS="${REIANIX_ANDROID_CLASS_TIMEOUT_SECONDS:-120}"
+METHOD_TIMEOUT_SECONDS="${REIANIX_ANDROID_METHOD_TIMEOUT_SECONDS:-90}"
+FULL_TIMEOUT_SECONDS="${REIANIX_ANDROID_FULL_TIMEOUT_SECONDS:-300}"
 
 mkdir -p "${DIAG_ROOT}"
 printf 'Android %s instrumentation diagnostic run\n' "${API_LEVEL}" > "${DIAG_ROOT}/summary.txt"
@@ -62,7 +62,7 @@ collect_diagnostics() {
     capture "${dir}/surfaceflinger.txt" adb shell dumpsys SurfaceFlinger
     capture "${dir}/gfxinfo.txt" adb shell dumpsys gfxinfo "${PACKAGE}"
     capture "${dir}/logcat_all.txt" adb logcat -d -b all -v threadtime
-    if grep -Ei 'ActivityTaskManager|WindowManager|InputDispatcher|system_server|com\.android\.settings|DocumentsUI|com\.reiflix\.reiflix_local|Media3|ExoPlayer|MediaCodec|Surface|TextureView' "${dir}/logcat_all.txt" > "${dir}/logcat_focus.txt"; then
+    if grep -Ei 'ActivityTaskManager|WindowManager|InputDispatcher|system_server|com\.android\.settings|DocumentsUI|com\.reianix\.reianix_local|Media3|ExoPlayer|MediaCodec|Surface|TextureView' "${dir}/logcat_all.txt" > "${dir}/logcat_focus.txt"; then
         :
     else
         grep_status=$?
@@ -253,7 +253,7 @@ extract_failed_classes_from_log() {
         "NativeMailboxInstrumentedTest" \
         "NativePlayerPlaybackInstrumentedTest"; do
         if grep -Eq "$class_name.*(FAILED|FAILURE)|FAILURE.*$class_name|$class_name#.*FAILED" "$log"; then
-            printf 'com.reiflix.reiflix_local.%s|\n' "$class_name" >> "$output"
+            printf 'com.reianix.reianix_local.%s|\n' "$class_name" >> "$output"
         fi
     done
 }
