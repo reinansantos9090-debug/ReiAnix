@@ -48,6 +48,13 @@ data class DownloadItem(val json: JSONObject) {
         val mimeExtension = when (json.optString("mime").substringBefore(';').lowercase()) {
             "video/mp4" -> "mp4"
             "video/mp2t" -> "ts"
+            "video/x-matroska" -> "mkv"
+            "video/webm" -> "webm"
+            "video/x-msvideo" -> "avi"
+            "video/quicktime" -> "mov"
+            "video/x-ms-wmv" -> "wmv"
+            "video/x-flv" -> "flv"
+            "video/3gpp" -> "3gp"
             else -> null
         }
         val storedExtension = stored.substringAfterLast('.', "").lowercase()
