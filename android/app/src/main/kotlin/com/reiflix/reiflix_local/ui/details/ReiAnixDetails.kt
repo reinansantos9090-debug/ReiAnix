@@ -554,9 +554,14 @@ private fun ColumnScope.ReiAnixDetailsReady(
 
     fun selectSeason(seasonKey: String) {
         if (anime.seasons.none { it.stableKey == seasonKey }) return
-        if (seasonKey == selectedSeasonKey) return
+        // Selection must update instantly and remain reversible. Animating the
+        // parent LazyColumn while the nested LazyRow's clickable cards are still
+        // under the user's finger races recomposition and can swallow taps when
+        // returning to the previous season.
         savedSeasonKey = seasonKey
-        scrollToDetailsSection(episodeHeadingIndex)
+        selectedSection = DetailsSection.EPISODES
+        // Keep the season selector visible: no automatic scroll on a card tap.
+        // The explicit "Ver todas" / "Episódios" actions still scroll.
     }
 
     LazyColumn(
@@ -1608,9 +1613,12 @@ private fun DetailsSeasonCard(
     Surface(
         modifier = Modifier
             .width(minOf(ReiAnixTokens.Dimensions.detailsSeasonCardWidth, availableWidth))
-            .clickable(onClick = onClick)
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton,
+            )
             .semantics {
-                role = Role.RadioButton
                 this.selected = selected
                 contentDescription = title + ", " + episodeCountLabel(season.episodes.size)
                 stateDescription = if (selected) "Selecionada" else "Não selecionada"
