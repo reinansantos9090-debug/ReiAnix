@@ -56,3 +56,15 @@ As 34 opções selecionadas foram adicionadas como estratégias **condicionais**
 ## Referências de protocolo
 
 RFC 9110 (HTTP Range/416/multipart), RFC 8216 (HLS), MPEG-DASH ISO 23009-1, ISO BMFF/14496-12, Matroska EBML, RFC 4918 (WebDAV) e RFC 5854 (Metalink). Estratégias gerais de servidores foram comparadas com Gopeed, Download Navi e AB Download Manager, sem copiar seu código.
+
+## Tamanho aproximado e transferência sem tamanho conhecido
+
+- O **tamanho real da transferência** continua vindo de `Content-Length`, `Content-Range` ou da contagem de bytes ao EOF. Nunca é substituído por estimativas.
+- Se o aplicativo de origem fornecer um texto explícito como `Tamanho 141 MB`, ou a fonte do navegador integrado incluir essa indicação, o ReiAnix pode guardar um **valor aproximado**.
+- Uma sondagem de rede exata substitui qualquer estimativa. Quando duas estimativas próximas estão disponíveis, o ReiAnix combina os dados, sem transformá-los em tamanho confirmado.
+- Estimativas são arredondadas **somente na interface**. Exemplo: 141 MB de origem pode aparecer como `≈ 140 MB`; o arquivo completo é sempre recebido até o fim da resposta.
+- Sem qualquer evidência de tamanho, aparece **“Tamanho a confirmar”**, não “Indisponível”; o botão **Iniciar** e o motor de download são independentes da sonda.
+- Quando o download está em **0 B por erro de conexão**, o sistema mostra diagnóstico de rede ou destino e mantém tentativas automáticas. Arredondamento não consegue corrigir uma URL expirada, HTTP 403, servidor indisponível ou dados que outro aplicativo não compartilha.
+- O ReiAnix **não lê a tela de outro aplicativo**: se o Nuvio exibe 141 MB mas compartilha somente o link, o tamanho não pode ser recuperado diretamente daquele texto exibido. O usuário precisa compartilhar metadados, ou a URL precisa expor indícios suficientes ao próprio ReiAnix.
+- Campos explicitamente compartilhados como `contentLength`, `downloadSize`, `fileSize` e `size` também são interpretados como dicas de exibição, sem estabelecer um limite de transferência.
+- Não há promessa de paridade com o ADM sem testes reais no mesmo arquivo, rede, headers, sessão e dispositivo.
