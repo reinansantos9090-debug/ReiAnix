@@ -97,4 +97,60 @@ class DownloadHttpNaviBehaviorTest {
         assertEquals(2,seen.size)
         assertEquals("",seen[1].get("Range"))
     }
+    @Test fun crossOriginRedirectDropsCookiesAuthorizationAndCustomHeaders() {
+        ServerSocket(0,10,InetAddress.getLoopbackAddress()).use {first ->
+            ServerSocket(0,10,InetAddress.getLoopbackAddress()).use {second ->
+                first.soTimeout=8_000
+                second.soTimeout=8_000
+                val received=java.util.Collections.synchronizedMap(mutableMapOf<String,String>())
+                fun request(socket:java.net.Socket):Map<String,String> {
+                    val input=socket.getInputStream().bufferedReader(Charsets.ISO_8859_1)
+                    input.readLine()
+                    val headers=linkedMapOf<String,String>()
+                    while(true) {
+                        val row=input.readLine() ?: break
+                        if(row.isEmpty())break
+                        headers[row.substringBefore(':').lowercase()]=row.substringAfter(':').trim()
+                    }
+                    return headers
+                }
+                val firstWorker=thread(isDaemon=true) {
+                    first.accept().use {socket ->
+                        request(socket)
+                        val location="http://127.0.0.1:"+second.localPort+"/final.mp4"
+                        socket.getOutputStream().write((
+                            "HTTP/1.1 302 Found\r\nLocation: "+location+
+                            "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        ).toByteArray())
+                    }
+                }
+                val secondWorker=thread(isDaemon=true) {
+                    second.accept().use {socket ->
+                        received.putAll(request(socket))
+                        socket.getOutputStream().write(
+                            "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nDATA".toByteArray()
+                        )
+                    }
+                }
+                val url="http://127.0.0.1:"+first.localPort+"/media.mp4"
+                DownloadHttp.connect(url,mapOf(
+                    "Cookie" to "secret=session",
+                    "Authorization" to "Bearer secret",
+                    "Origin" to "https://example.com",
+                    "X-Private-Session" to "secret",
+                    "User-Agent" to "ReiAnix-Test"
+                ),0,null,preferInitialRange=true).use {
+                    assertEquals(200,it.responseCode)
+                }
+                firstWorker.join(8_000);secondWorker.join(8_000)
+                assertFalse(firstWorker.isAlive);assertFalse(secondWorker.isAlive)
+                assertNull(received["cookie"])
+                assertNull(received["authorization"])
+                assertNull(received["origin"])
+                assertNull(received["x-private-session"])
+                assertEquals("ReiAnix-Test",received["user-agent"])
+            }
+        }
+    }
+
 }
