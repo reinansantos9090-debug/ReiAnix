@@ -281,12 +281,22 @@ internal object DownloadSizeProbe {
             val initSize=plan.init?.let {probe(it,headers,credentialOrigin=url).length}
             if(plan.init!=null && initSize==null)return Result(
                 bitrate ?: rawTotal,false,"hls-estimate")
-            val bytes=rawTotal+(initSize ?: 0)
+            // AES-128/CBC PKCS#7 adds 1..16 bytes of ciphertext padding
+            // per encrypted segment. Subtract a midpoint ONLY from the
+            // approximate output estimate; original source byte totals remain
+            // available through diagnostics and are never claimed exact.
+            val encryptedPadding=if(plan.encrypted)
+                (DownloadHlsMetadata.encryptedTransportOverhead(segments.size) ?: 0L)/2
+                else 0L
+            val bytes=(rawTotal-encryptedPadding).coerceAtLeast(1L)+(initSize ?: 0L)
             if(bytes>0) {
-                // TS may be remuxed to MP4 (different exact output bytes);
-                // encrypted segments also change length after decryption.
+                // TS may be remuxed to MP4 (different exact output bytes).
                 val exact=indices.size==segments.size && !plan.encrypted && plan.init!=null
-                return Result(bytes,exact,if(exact)"hls-fmp4" else "hls-estimate")
+                return Result(bytes,exact,when {
+                    exact -> "hls-fmp4"
+                    plan.encrypted -> "hls-encrypted-adjusted-estimate"
+                    else -> "hls-estimate"
+                })
             }
         }
         if(bitrate!=null) return Result(bitrate,false,
@@ -302,7 +312,35 @@ internal object DownloadSizeProbe {
             }}.awaitAll()
         }
         val sampled=sampledSegmentEstimate(sampleSizes,segments.size)
-        return sampled?.let { Result(it,false,"hls-sampled") } ?: Result.Unknown
+        if(sampled!=null)return Result(sampled,false,"hls-sampled")
+        val tsRate=segments.firstOrNull()?.takeIf {
+            it.substringBefore('?').endsWith(".ts",true) ||
+                it.substringBefore('?').endsWith(".m2ts",true)
+        }?.let {sampleTransportBitrate(it,headers,url)}
+        return bitrateEstimate(plan.durationSeconds,tsRate)?.let{
+            Result(it,false,"hls-transport-pcr")
+        } ?: Result.Unknown
+    }
+
+    private fun sampleTransportBitrate(url:String,headers:Map<String,String>,origin:String):Long? {
+        var c:HttpURLConnection?=null
+        return try {
+            c=DownloadHttp.connect(url,headers,0,null,credentialOrigin=origin,
+                probeRange="bytes=0-65535",connectTimeoutMs=1800,readTimeoutMs=1900)
+            if(c.responseCode !in setOf(200,206))return null
+            val bytes=ByteArray(65536)
+            var count=0
+            c.inputStream.use {input ->
+                while(count<bytes.size) {
+                    currentThreadCheck()
+                    val n=input.read(bytes,count,bytes.size-count)
+                    if(n<0)break
+                    count+=n
+                }
+            }
+            DownloadContainerMetadata.tsPcrBitsPerSecond(bytes.copyOf(count))
+        }catch(_:java.io.IOException){null}
+        finally{c?.disconnect()}
     }
 
     private fun sampleCompleteSegment(url: String, headers: Map<String,String>, origin: String): Long? {
