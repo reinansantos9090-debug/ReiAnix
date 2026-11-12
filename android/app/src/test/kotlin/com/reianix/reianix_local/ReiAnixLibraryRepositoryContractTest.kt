@@ -1,13 +1,13 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 import android.app.Application
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryCommandCodec
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
-import com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.data.library.ReiAnixLibraryCommandCodec
+import com.reianix.reianix_local.data.library.ReiAnixLibraryRepository
+import com.reianix.reianix_local.data.library.ReiAnixLibrarySnapshotCodec
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -1,20 +1,20 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixLocalMediaUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
-import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
+import com.reianix.reianix_local.data.library.ReiAnixLibraryRepository
+import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilters
+import com.reianix.reianix_local.ui.library.ReiAnixLibrarySort
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixArtworkUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiState
+import com.reianix.reianix_local.ui.model.ReiAnixLocalMediaUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.ui.model.ReiAnixMetadataAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -89,7 +89,7 @@ class ReiAnixLibraryPaginationReconciliationTest {
     @Test
     fun stale_generation_page_result_is_rejected() {
         val current = state(108, loadedPage = 2, total = 500, hasMore = true).copy(generation = 11L)
-        val stale = com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec.LibraryPageResult(
+        val stale = com.reianix.reianix_local.data.library.ReiAnixLibrarySnapshotCodec.LibraryPageResult(
             generation = 10L,
             page = 3,
             pageSize = 36,
@@ -126,7 +126,7 @@ class ReiAnixLibraryPaginationReconciliationTest {
         assertEquals("Action", reset.genreKey)
         assertTrue(reset.favoritesOnly)
 
-        val page0 = com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec.LibraryPageResult(
+        val page0 = com.reianix.reianix_local.data.library.ReiAnixLibrarySnapshotCodec.LibraryPageResult(
             generation = 11L,
             page = 0,
             pageSize = 36,
@@ -140,7 +140,7 @@ class ReiAnixLibraryPaginationReconciliationTest {
         assertEquals(0, loaded.loadedPage)
         assertTrue(loaded.hasMore)
 
-        val page1 = com.reiflix.reiflix_local.data.library.ReiAnixLibrarySnapshotCodec.LibraryPageResult(
+        val page1 = com.reianix.reianix_local.data.library.ReiAnixLibrarySnapshotCodec.LibraryPageResult(
             generation = 11L,
             page = 1,
             pageSize = 36,

@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 import android.app.Application
 import org.robolectric.annotation.Config
 
-import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
+import com.reianix.reianix_local.player.PlayerLocalMetadataStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
