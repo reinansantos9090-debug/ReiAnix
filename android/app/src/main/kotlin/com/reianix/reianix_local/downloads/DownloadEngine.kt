@@ -273,25 +273,32 @@ class DownloadEngine(private val context: Context) {
             }
         }
         if(store.get(id)?.state !in DownloadState.pending) return
-        // Optional lossless remux only after downloading and verifying the TS.
-        // Keep the original .part untouched so existing player readers can
-        // finish; incompatible media simply retains the original TS file.
+        // Inspect the actual downloaded bytes, not the provider's .bin suffix.
+        // Prefer a lossless container conversion for compatible codecs. An
+        // unsupported video remains in its real container, never a fake MP4.
         val beforePublication=store.get(id) ?: return
-        // Keep the source-container identity across interruptions between remux
-        // and export. A retry must NEVER publish raw TS bytes with an .mp4 name.
         val savedOriginal=beforePublication.json.optString("remuxSourceName")
-        val isTs=savedOriginal.isNotBlank() ||
-            beforePublication.mime.equals("video/mp2t",true) ||
-            beforePublication.name.endsWith(".ts",true)
         val originalName=savedOriginal.ifBlank {
             if(beforePublication.mime.equals("video/mp2t",true) &&
                 !beforePublication.name.endsWith(".ts",true))
-                beforePublication.name.substringBeforeLast('.',beforePublication.name)+".ts"
+                DownloadContainerDetector.outputName(beforePublication.name,"ts")
             else beforePublication.name
         }
-        // MediaStore and the selected SAF directory both hold the growing source.
-        // Remux is still lossless; on success its candidate also lives in public
-        // storage, never in the app's private data directory.
+        val actualContainer=runCatching {
+            target.inputStream().use(DownloadContainerDetector::sniff)
+        }.getOrNull()
+        val originalExtension=originalName.substringAfterLast('.', "").lowercase()
+        // A .bin response may contain valid MP4/TS/MKV data, but an arbitrary
+        // binary is not an episode. Do not publish it as a playable video.
+        if(originalExtension=="bin" && actualContainer==null)
+            throw PermanentFailure("O arquivo .bin não contém um formato de vídeo reconhecido; não foi renomeado para MP4.")
+        val sourceExtension=actualContainer?.extension ?: originalExtension
+        val sourceMime=actualContainer?.mime ?: beforePublication.mime
+        val realSourceName=if(actualContainer!=null && originalExtension!=sourceExtension)
+            DownloadContainerDetector.outputName(originalName,sourceExtension)
+            else originalName
+        val needsRemux=sourceExtension in DownloadContainerDetector.convertibleExtensions
+        // Crash recovery must never leave a raw TS/MKV/AVI labeled MP4.
         var publicRemux:Uri?=null
         var privateRemux:File?=null
         var committed=false
@@ -300,7 +307,7 @@ class DownloadEngine(private val context: Context) {
                 target.discard(Uri.parse(stale))
                 store.mutate(id){it.remove("remuxCandidateUri")}
             }
-            if(isTs) {
+            if(needsRemux) {
                 if(target.isPublic) {
                     val candidate=target.sibling("remux.mp4")
                     store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
@@ -315,18 +322,15 @@ class DownloadEngine(private val context: Context) {
                 }
             }
             val didRemux=publicRemux!=null || privateRemux!=null
-            if(didRemux) {
-                val mp4Name=originalName.substringBeforeLast('.',originalName)+".mp4"
+            val outputName=if(didRemux || sourceExtension=="mp4")
+                DownloadContainerDetector.outputName(realSourceName,"mp4") else realSourceName
+            val outputMime=if(didRemux || sourceExtension=="mp4") "video/mp4" else sourceMime
+            if(didRemux || outputName!=beforePublication.name || outputMime!=beforePublication.mime ||
+                savedOriginal.isNotBlank()) {
                 store.mutate(id) {
-                    it.put("remuxSourceName",originalName)
-                    it.put("name",mp4Name).put("mime","video/mp4")
-                }
-                store.registerMedia(id)
-            } else if(savedOriginal.isNotBlank() || (isTs && originalName!=beforePublication.name)) {
-                // Never publish raw MPEG-TS bytes under an MP4 label.
-                store.mutate(id) {
-                    it.put("name",originalName).put("mime","video/mp2t")
-                    it.remove("remuxSourceName")
+                    it.put("name",outputName).put("mime",outputMime)
+                    if(didRemux) it.put("remuxSourceName",originalName)
+                    else it.remove("remuxSourceName")
                 }
                 store.registerMedia(id)
             }
