@@ -84,6 +84,9 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                 it.put("name","$base.$extension")
                 if(it.optLong("episodeId")==0L) it.put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode("$base.$extension")}")
             }
+            // Playlist detection may change .mp4 to .ts (or vice versa).
+            // Keep the visible My Files entry in sync with the selected extension.
+            runCatching { target.syncName() }
             DownloadCaptureGuard.approveHls(context,store,id,playlist.duration)
             store.registerMedia(id)
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let {DownloadMetadata.offer(context,it.animeId)}

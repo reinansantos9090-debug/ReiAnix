@@ -22,4 +22,25 @@ class DownloadHlsPolicyTest {
         assertEquals("",DownloadIdentity.title("downloadfile.bin"))
         assertTrue(DownloadIdentity.title("One Piece - Episódio 877.mp4").contains("One Piece",true))
     }
+    @Test fun videoPlaybackNamesAreNotTreatedAsAnimeTitles() {
+        assertTrue(DownloadIdentity.isGenericMediaName("videoplayback.bin.mp4"))
+        assertTrue(DownloadIdentity.isGenericMediaName("videoplayback.bin"))
+        assertEquals("", DownloadIdentity.title("videoplayback.bin.mp4"))
+        assertEquals("", DownloadIdentity.title("Animes Online"))
+        assertFalse(DownloadIdentity.isGenericMediaName("One Piece Dublado Episódio 4.mp4"))
+    }
+    @Test fun capturesEpisodeFromSourcePageInsteadOfOpaqueCdnName() {
+        assertEquals("One Piece Dublado Episódio 4",
+            DownloadIdentity.episodeTitleFromPage(
+                "Animes Online", "https://site.example/one-piece-dublado-episodio-4/"))
+        assertEquals("One Piece Dublado Episódio 4",
+            DownloadIdentity.episodeTitleFromPage(
+                "One Piece Dublado Episódio 4 - Animes Online",
+                "https://site.example/watch/123"))
+        assertEquals("", DownloadIdentity.episodeTitleFromPage(
+            "Animes Online", "https://rr2.googlevideo.com/videoplayback?id=opaque"))
+        assertEquals("", DownloadIdentity.episodeTitleFromPage(
+            "Animes Online", "https://site.example/watch/123"))
+    }
+
 }
