@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.ClipData
 import android.content.Intent
@@ -9,8 +9,8 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
-import com.reiflix.reiflix_local.player.NativePlayerRequest
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import com.reianix.reianix_local.player.NativePlayerRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

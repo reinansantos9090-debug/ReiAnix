@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.Intent
 import android.os.Bundle
@@ -25,13 +25,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.account.ReiAnixAccountAvatar
-import com.reiflix.reiflix_local.ui.settings.settingsClickable
-import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoot
-import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsTheme
-import com.reiflix.reiflix_local.ui.settings.SettingsHeader
-import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.account.ReiAnixAccountAvatar
+import com.reianix.reianix_local.ui.settings.settingsClickable
+import com.reianix.reianix_local.ui.settings.ReiAnixSettingsRoot
+import com.reianix.reianix_local.ui.settings.ReiAnixSettingsTheme
+import com.reianix.reianix_local.ui.settings.SettingsHeader
+import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -166,7 +166,7 @@ private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Uni
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        com.reiflix.reiflix_local.ui.settings.SettingsLeadingIcon(label)
+        com.reianix.reianix_local.ui.settings.SettingsLeadingIcon(label)
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
             modifier = Modifier.size(28.dp))

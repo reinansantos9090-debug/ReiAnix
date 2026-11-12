@@ -1,20 +1,20 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
-import com.reiflix.reiflix_local.player.DeviceInteractionProfile
-import com.reiflix.reiflix_local.player.LocalSubtitleResolver
-import com.reiflix.reiflix_local.player.NativePlayerRequest
-import com.reiflix.reiflix_local.player.PlayerLocalMetadataStore
-import com.reiflix.reiflix_local.player.PlayerMediaPolicy
-import com.reiflix.reiflix_local.player.PlayerStartupMetrics
-import com.reiflix.reiflix_local.player.PlayerTimeFormatter
-import com.reiflix.reiflix_local.player.SystemUiController
-import com.reiflix.reiflix_local.scanner.BroadStorageScanner
-import com.reiflix.reiflix_local.scanner.MediaStoreScanner
-import com.reiflix.reiflix_local.scanner.SafScanner
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import com.reianix.reianix_local.player.DeviceInteractionProfile
+import com.reianix.reianix_local.player.LocalSubtitleResolver
+import com.reianix.reianix_local.player.NativePlayerRequest
+import com.reianix.reianix_local.player.PlayerLocalMetadataStore
+import com.reianix.reianix_local.player.PlayerMediaPolicy
+import com.reianix.reianix_local.player.PlayerStartupMetrics
+import com.reianix.reianix_local.player.PlayerTimeFormatter
+import com.reianix.reianix_local.player.SystemUiController
+import com.reianix.reianix_local.scanner.BroadStorageScanner
+import com.reianix.reianix_local.scanner.MediaStoreScanner
+import com.reianix.reianix_local.scanner.SafScanner
 
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
@@ -61,14 +61,14 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.Dp
-import com.reiflix.reiflix_local.ui.motion.ReiAnixMotionPolicy
-import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerTopControls
-import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerCenterControls
-import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerBottomControls
-import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerOptionsPanel
-import com.reiflix.reiflix_local.ui.player.ReiAnixNativePlayerUiState
-import com.reiflix.reiflix_local.ui.theme.ReiAnixComposeTheme
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
+import com.reianix.reianix_local.ui.player.ReiAnixNativePlayerTopControls
+import com.reianix.reianix_local.ui.player.ReiAnixNativePlayerCenterControls
+import com.reianix.reianix_local.ui.player.ReiAnixNativePlayerBottomControls
+import com.reianix.reianix_local.ui.player.ReiAnixNativePlayerOptionsPanel
+import com.reianix.reianix_local.ui.player.ReiAnixNativePlayerUiState
+import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -90,7 +90,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import com.reiflix.reiflix_local.player.PlayerMediaControls
+import com.reianix.reianix_local.player.PlayerMediaControls
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
@@ -487,7 +487,7 @@ class NativePlayerActivity : ComponentActivity() {
                 centerControls.visibility = View.GONE
                 bottomBar.visibility = View.GONE
                 moreVisible = false
-                findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
+                findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
             }
         }
     }
@@ -970,8 +970,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer("MEDIA3_PLAYER_CREATE_START requestId=" + requestId.ifEmpty { "-" })
             player = ExoPlayer.Builder(this)
                 .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this,
-                    com.reiflix.reiflix_local.downloads.DownloadExtractorsFactory(this))
-                    .setDataSourceFactory(com.reiflix.reiflix_local.downloads.DownloadDataSourceFactory(this)))
+                    com.reianix.reianix_local.downloads.DownloadExtractorsFactory(this))
+                    .setDataSourceFactory(com.reianix.reianix_local.downloads.DownloadDataSourceFactory(this)))
                 .build()
             PerformanceDiagnostics.markPlayer(this, "player_created", requestId,
                 commandCreatedAtMs, reused = false)
@@ -1281,7 +1281,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         applyAdvancedTrackConstraints()
         applySubtitlePreferences()
         zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", zoomEnabled)
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.resetZoomToFit()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
         val incomingAspectRatio = newIntent.getStringExtra("setting_player_aspect_ratio")
         playerView.resizeMode = if (incomingAspectRatio != null) {
             resizeModeFromSetting(newIntent.getStringExtra("setting_player_aspect_ratio"))
@@ -1289,26 +1289,26 @@ override fun onCreate(savedInstanceState: Bundle?) {
             resizeModeFromSetting(aspectModeLabel)
         }
         aspectModeLabel = aspectLabelFromSetting(incomingAspectRatio ?: aspectModeLabel)
-        findViewByTag<TextView>("reiflix_aspect_button")?.apply {
+        findViewByTag<TextView>("reianix_aspect_button")?.apply {
             text = aspectModeLabel
             isSelected = aspectModeLabel == "Preencher"
         }
-        findViewByTag<TextView>("reiflix_gesture_horizontal_seek")?.apply {
+        findViewByTag<TextView>("reianix_gesture_horizontal_seek")?.apply {
             text = gestureSettingLabel("Gestos", horizontalSeekEnabled)
             isSelected = horizontalSeekEnabled
         }
-        findViewByTag<TextView>("reiflix_gesture_double_tap")?.apply {
+        findViewByTag<TextView>("reianix_gesture_double_tap")?.apply {
             text = gestureSettingLabel("Double tap", doubleTapEnabled)
             isSelected = doubleTapEnabled
         }
 
-        findViewByTag<TextView>("reiflix_player_title")?.text =
+        findViewByTag<TextView>("reianix_player_title")?.text =
             newIntent.getStringExtra("title") ?: "Episódio"
         updateEpisodeNavigationButtons()
-        findViewByTag<View>("reiflix_error_panel")?.visibility = View.GONE
+        findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
         moreVisible = false
-        findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
+        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
         setControlsVisible(true)
 
         try {
@@ -2108,7 +2108,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         override fun onPlaybackParametersChanged(playbackParameters: androidx.media3.common.PlaybackParameters) {
             if (!isCurrent()) return
             val speedLabel = String.format(Locale.US, "%.2fx", playbackParameters.speed)
-            findViewByTag<TextView>("reiflix_speed_button")?.apply {
+            findViewByTag<TextView>("reianix_speed_button")?.apply {
                 text = speedLabel
                 isSelected = true
             }
@@ -2608,7 +2608,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             false,
         ) as PlayerView
         playerView.apply {
-            tag = "reiflix_player_view"
+            tag = "reianix_player_view"
             useController = false
             controllerAutoShow = false
             controllerHideOnTouch = false
@@ -2620,7 +2620,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         root.addView(playerView)
 
         preparingIndicator = ProgressBar(this).apply {
-            tag = "reiflix_player_preparing"
+            tag = "reianix_player_preparing"
             isIndeterminate = true
             indeterminateTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
             visibility = View.VISIBLE
@@ -2636,7 +2636,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun installGestureLayer() {
         val gestureLayer = GestureLayer(this).apply {
-            tag = "reiflix_gesture_layer"
+            tag = "reianix_gesture_layer"
         }
         root.addView(
             gestureLayer,
@@ -2649,7 +2649,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun installControls() {
         controls = FrameLayout(this).apply {
-            tag = "reiflix_controls_root"
+            tag = "reianix_controls_root"
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
         }
@@ -2663,7 +2663,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         controls.bringToFront()
 
         topBar = LinearLayout(this).apply {
-            tag = "reiflix_top_bar"
+            tag = "reianix_top_bar"
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), dp(6), dp(8), dp(6))
@@ -2679,7 +2679,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer("PLAYER_BACK BACK_BUTTON_TOUCH requestId=" + requestId.ifEmpty { "-" })
             finishPlayer("back_button")
         }
-        back.tag = "reiflix_back_button"
+        back.tag = "reianix_back_button"
         back.contentDescription = "Voltar"
         topBar.addView(back, weightParams(44))
 
@@ -2691,7 +2691,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL
-            tag = "reiflix_player_title"
+            tag = "reianix_player_title"
             contentDescription = "Título do episódio"
         }
         topBar.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
@@ -2699,7 +2699,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         lockButton = actionButton(if (locked) "Desbloquear" else "Bloquear", 48) {
             setLocked(!locked)
         }.apply {
-            tag = "reiflix_lock_button"
+            tag = "reianix_lock_button"
             contentDescription = if (locked) "Desbloquear controles" else "Bloquear controles"
         }
         topBar.addView(lockButton, weightParams(48))
@@ -2708,7 +2708,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             toggleMorePanel()
         }
         moreButton.contentDescription = "Mais opções"
-        moreButton.tag = "reiflix_more_button"
+        moreButton.tag = "reianix_more_button"
         topBar.addView(moreButton, weightParams(48))
 
         centerControls = LinearLayout(this).apply {
@@ -2722,7 +2722,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         controls.addView(centerControls, centerParams)
 
         feedback = TextView(this).apply {
-            tag = "reiflix_feedback"
+            tag = "reianix_feedback"
             textSize = 18f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -2741,7 +2741,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         })
 
         errorPanel = LinearLayout(this).apply {
-            tag = "reiflix_error_panel"
+            tag = "reianix_error_panel"
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(20), dp(18), dp(20), dp(18))
@@ -2750,7 +2750,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             isFocusable = true
         }
         errorPanel.addView(TextView(this).apply {
-            tag = "reiflix_error_text"
+            tag = "reianix_error_text"
             textSize = 17f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
@@ -2760,7 +2760,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
         errorPanel.addView(TextView(this).apply {
-            tag = "reiflix_error_reason"
+            tag = "reianix_error_reason"
             textSize = 10f
             setTextColor(0xFFB8B8B8.toInt())
             gravity = Gravity.CENTER
@@ -2773,7 +2773,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val errorRetry = actionButton("Tentar novamente", 170) {
             retryCurrentMedia()
         }
-        errorRetry.tag = "reiflix_error_retry"
+        errorRetry.tag = "reianix_error_retry"
         errorPanel.addView(errorRetry, LinearLayout.LayoutParams(dp(190), dp(48)).apply {
             gravity = Gravity.CENTER_HORIZONTAL
             topMargin = dp(14)
@@ -2782,7 +2782,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val errorBack = actionButton("Voltar ao ReiAnix", 170) {
             finishPlayer("player_error_back")
         }
-        errorBack.tag = "reiflix_error_back"
+        errorBack.tag = "reianix_error_back"
         errorPanel.addView(errorBack, LinearLayout.LayoutParams(dp(190), dp(48)).apply {
             gravity = Gravity.CENTER_HORIZONTAL
             topMargin = dp(8)
@@ -2799,13 +2799,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val previousButton = actionButton("−10", 70) { seekBy(-10_000L, "−10s") }.apply {
             contentDescription = "Voltar 10 segundos"
         }
-        previousButton.tag = "reiflix_seek_back"
+        previousButton.tag = "reianix_seek_back"
         centerControls.addView(previousButton, weightParams(70))
 
         playPauseButton = actionButton("Reproduzir", 84) { togglePlayPause() }.apply {
             contentDescription = "Reproduzir ou pausar"
             textSize = 26f
-            tag = "reiflix_play_pause"
+            tag = "reianix_play_pause"
             minHeight = dp(72)
             minWidth = dp(72)
         }
@@ -2814,11 +2814,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val nextButton = actionButton("+10", 70) { seekBy(10_000L, "+10s") }.apply {
             contentDescription = "Avançar 10 segundos"
         }
-        nextButton.tag = "reiflix_seek_forward"
+        nextButton.tag = "reianix_seek_forward"
         centerControls.addView(nextButton, weightParams(70))
 
         bottomBar = LinearLayout(this).apply {
-            tag = "reiflix_bottom_bar"
+            tag = "reianix_bottom_bar"
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), dp(4), dp(8), dp(8))
             setBackgroundColor(0x88000000.toInt())
@@ -2837,18 +2837,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
             text = "00:00"
             textSize = 11f
             setTextColor(Color.WHITE)
-            tag = "reiflix_position"
+            tag = "reianix_position"
         }
         durationLabel = TextView(this).apply {
             text = "00:00"
             textSize = 11f
             setTextColor(Color.WHITE)
-            tag = "reiflix_duration"
+            tag = "reianix_duration"
         }
         seekBar = SeekBar(this).apply {
             max = SEEK_PROGRESS_MAX
             contentDescription = "Barra de progresso"
-            tag = "reiflix_seekbar"
+            tag = "reianix_seekbar"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (fromUser && ::player.isInitialized && player.duration > 0L) {
@@ -2877,21 +2877,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
         bottomBar.addView(seekRow)
 
         val markerRow = LinearLayout(this).apply {
-            tag = "reiflix_marker_row"
+            tag = "reianix_marker_row"
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
         val skipOpening = actionButton("Pular abertura", 132) {
             localMetadata.opening?.let { seekToMarker(it.endMs, "Abertura pulada") }
         }.apply {
-            tag = "reiflix_skip_opening"
+            tag = "reianix_skip_opening"
             visibility = View.GONE
             contentDescription = "Pular abertura"
         }
         val skipEnding = actionButton("Pular encerramento", 150) {
             localMetadata.ending?.let { seekToMarker(it.endMs, "Encerramento pulado") }
         }.apply {
-            tag = "reiflix_skip_ending"
+            tag = "reianix_skip_ending"
             visibility = View.GONE
             contentDescription = "Pular encerramento"
         }
@@ -2900,7 +2900,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         bottomBar.addView(markerRow)
 
         val morePanel = ComposeView(this).apply {
-            tag = "reiflix_more_panel"
+            tag = "reianix_more_panel"
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 ReiAnixComposeTheme {
@@ -2997,7 +2997,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         topBar.visibility = View.GONE
         centerControls.visibility = View.GONE
         bottomBar.visibility = View.GONE
-        findViewByTag<View>("reiflix_marker_row")?.visibility = View.GONE
+        findViewByTag<View>("reianix_marker_row")?.visibility = View.GONE
         installComposePlayerControls()
         controls.bringToFront()
     }
@@ -3006,7 +3006,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         composeControlsEnabled = true
 
         composeTopView = ComposeView(this).apply {
-            tag = "reiflix_compose_player_top"
+            tag = "reianix_compose_player_top"
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 ReiAnixComposeTheme {
@@ -3018,7 +3018,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
         composeCenterView = ComposeView(this).apply {
-            tag = "reiflix_compose_player_center"
+            tag = "reianix_compose_player_center"
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 ReiAnixComposeTheme {
@@ -3036,7 +3036,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
         composeBottomView = ComposeView(this).apply {
-            tag = "reiflix_compose_player_bottom"
+            tag = "reianix_compose_player_bottom"
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 ReiAnixComposeTheme {
@@ -3223,9 +3223,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun toggleMorePanel() {
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
         moreVisible = !moreVisible
-        val panel = findViewByTag<View>("reiflix_more_panel")
+        val panel = findViewByTag<View>("reianix_more_panel")
         panel?.visibility = if (moreVisible) View.VISIBLE else View.GONE
         if (moreVisible) {
             optionsPanelResetSignal.value += 1
@@ -3292,7 +3292,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     logPlayer("PLAYER_BACK ANDROID_BACK requestId=" + requestId.ifEmpty { "-" })
                     if (moreVisible) {
                         moreVisible = false
-                        findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
+                        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
                         touchControls()
                         return
                     }
@@ -3429,8 +3429,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // A single audio track has no useful selection UI. Subtitles retain the
         // button even with one track because the existing selector can turn the
         // subtitle track off explicitly.
-        findViewByTag<View>("reiflix_audio_button")?.isEnabled = audioAvailable && audioCount > 1
-        findViewByTag<View>("reiflix_subtitle_button")?.isEnabled = subtitleAvailable
+        findViewByTag<View>("reianix_audio_button")?.isEnabled = audioAvailable && audioCount > 1
+        findViewByTag<View>("reianix_subtitle_button")?.isEnabled = subtitleAvailable
     }
 
     private fun updateProgressUi() {
@@ -3482,7 +3482,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun showSpeedSelection(button: TextView) {
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
         if (!::player.isInitialized) return
         val speeds = floatArrayOf(.5f, .75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
         val labels = speeds.map { String.format(java.util.Locale.US, "%.2fx", it) }.toTypedArray()
@@ -3519,7 +3519,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val rows = ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository
                     .loadLibraryCatalogRows(setOf(animeId))
                 val anime = withContext(Dispatchers.IO) {
-                    com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(rows)
+                    com.reianix.reianix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(rows)
                         .animes.firstOrNull()
                 } ?: return@launch
                 if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) || sourceSession != playerSessionId || isFinishing || episodeChangePending || episodePlaylistOverlay != null) return@launch
@@ -3532,7 +3532,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
                     setContent {
                         ReiAnixComposeTheme {
-                            com.reiflix.reiflix_local.ui.player.ReiAnixEpisodePlaylist(
+                            com.reianix.reianix_local.ui.player.ReiAnixEpisodePlaylist(
                                 episodes = anime.contentEpisodes, currentId = currentEpisodeId().toLongOrNull() ?: -1L,
                                 onClose = { closeEpisodePlaylist() },
                                 onSelect = { id ->
@@ -3568,7 +3568,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun applyAspectMode(mode: String) {
         if (!::playerView.isInitialized) return
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.resetZoomToFit()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
 
         playerView.resizeMode = when (mode) {
             "Preencher" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -3580,7 +3580,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         aspectModeLabel = if (isFill) "Preencher" else "Ajustar"
         val settingValue = if (isFill) "fill" else "fit"
         intent.putExtra("setting_player_aspect_ratio", settingValue)
-        findViewByTag<TextView>("reiflix_aspect_button")?.apply {
+        findViewByTag<TextView>("reianix_aspect_button")?.apply {
             text = aspectModeLabel
             isSelected = isFill
         }
@@ -3860,7 +3860,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .show()
     }
     private fun showTrackSelection(trackType: Int, label: String) {
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
         if (!::player.isInitialized) return
 
         data class TrackOption(
@@ -4013,7 +4013,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (inPictureInPicture) {
             handler.removeCallbacks(controlsHider)
             moreVisible = false
-            findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
+            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
             controls.visibility = View.INVISIBLE
             hideLegacyPrimaryControls()
             syncComposePlayerUiState()
@@ -4025,9 +4025,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             topBar.visibility = View.GONE
             bottomBar.visibility = View.GONE
             centerControls.visibility = View.GONE
-            findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
-            findViewByTag<View>("reiflix_back_button")?.visibility = View.GONE
-            findViewByTag<View>("reiflix_more_button")?.visibility = View.GONE
+            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+            findViewByTag<View>("reianix_back_button")?.visibility = View.GONE
+            findViewByTag<View>("reianix_more_button")?.visibility = View.GONE
             if (visible) {
                 handler.removeCallbacks(lockAffordanceHider)
                 handler.postDelayed(lockAffordanceHider, LOCK_AFFORDANCE_TIMEOUT_MS)
@@ -4046,12 +4046,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             bottomBar.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
             centerControls.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
         }
-        findViewByTag<View>("reiflix_back_button")?.visibility =
+        findViewByTag<View>("reianix_back_button")?.visibility =
             if (composeControlsEnabled) View.GONE else View.VISIBLE
-        findViewByTag<View>("reiflix_more_button")?.visibility =
+        findViewByTag<View>("reianix_more_button")?.visibility =
             if (composeControlsEnabled) View.GONE else View.VISIBLE
         moreVisible = false
-        findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
+        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
         syncComposePlayerUiState()
     }
 
@@ -4083,15 +4083,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (persist) {
             persistCanonicalPlayerSetting("player.lock_mode", locked.toString())
         }
-        findViewByTag<View>("reiflix_gesture_layer")?.let {
+        findViewByTag<View>("reianix_gesture_layer")?.let {
             (it as? GestureLayer)?.cancelInteractions()
         }
         if (locked) {
             handler.removeCallbacks(controlsHider)
             moreVisible = false
-            findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
-            findViewByTag<View>("reiflix_back_button")?.visibility = View.GONE
-            findViewByTag<View>("reiflix_more_button")?.visibility = View.GONE
+            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+            findViewByTag<View>("reianix_back_button")?.visibility = View.GONE
+            findViewByTag<View>("reianix_more_button")?.visibility = View.GONE
             controls.visibility = View.VISIBLE
             hideLegacyPrimaryControls()
             topBar.visibility = View.GONE
@@ -4102,8 +4102,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             handler.postDelayed(lockAffordanceHider, LOCK_AFFORDANCE_TIMEOUT_MS)
             controlsVisible = true
         } else {
-            findViewByTag<View>("reiflix_back_button")?.visibility = View.VISIBLE
-            findViewByTag<View>("reiflix_more_button")?.visibility = View.VISIBLE
+            findViewByTag<View>("reianix_back_button")?.visibility = View.VISIBLE
+            findViewByTag<View>("reianix_more_button")?.visibility = View.VISIBLE
             setControlsVisible(true)
         }
         updateLockUi()
@@ -4245,8 +4245,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         errorVisible = false
         playbackErrorForGeneration = false
         moreVisible = false
-        findViewByTag<View>("reiflix_error_panel")?.visibility = View.GONE
-        findViewByTag<View>("reiflix_more_panel")?.visibility = View.GONE
+        findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
+        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
         logPlayer(
             "PLAYER_RETRY requestId=" + requestId.ifEmpty { "-" } +
@@ -4356,15 +4356,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
         if (::player.isInitialized) player.pause()
         setControlsVisible(true)
-        findViewByTag<View>("reiflix_error_text")?.let { (it as TextView).text = userMessageForFailure(resolvedFailureKind, fallback = message) }
-        findViewByTag<View>("reiflix_error_reason")?.let {
+        findViewByTag<View>("reianix_error_text")?.let { (it as TextView).text = userMessageForFailure(resolvedFailureKind, fallback = message) }
+        findViewByTag<View>("reianix_error_reason")?.let {
             (it as TextView).text = "Detalhe: " + userFailureDetailForFailure(resolvedFailureKind)
         }
-        findViewByTag<View>("reiflix_error_retry")?.visibility =
+        findViewByTag<View>("reianix_error_retry")?.visibility =
             if (::player.isInitialized && resolvedRetryable) View.VISIBLE else View.GONE
-        findViewByTag<View>("reiflix_error_panel")?.visibility = View.VISIBLE
-        findViewByTag<View>("reiflix_error_panel")?.bringToFront()
-        findViewByTag<View>("reiflix_error_back")?.requestFocus()
+        findViewByTag<View>("reianix_error_panel")?.visibility = View.VISIBLE
+        findViewByTag<View>("reianix_error_panel")?.bringToFront()
+        findViewByTag<View>("reianix_error_back")?.requestFocus()
         syncComposePlayerUiState()
         if (::feedback.isInitialized) feedback.visibility = View.GONE
 
@@ -4539,7 +4539,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
                         persistedNatively = true
                         payload.put("nativeProgressPersisted", true)
-                        com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService.publishCommittedProgress(
+                        com.reianix.reianix_local.data.sqlite.ReiAnixConsumptionService.publishCommittedProgress(
                             episodeId = canonicalEpisodeId,
                             eventType = "player_exited",
                             playerSessionId = playerSessionId,
@@ -4611,7 +4611,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         invalidateTransition("finish_player")
         pendingPreparation?.cancel(true)
         cancelFirstFrameDiagnostics("finish_player")
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
         handler.removeCallbacks(controlsHider)
         handler.removeCallbacks(lockAffordanceHider)
         handler.removeCallbacks(feedbackHider)
@@ -4631,9 +4631,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun updateEpisodeNavigationButtons() {
         val enabled = !episodeChangePending && !errorVisible
-        findViewByTag<TextView>("reiflix_next_episode")?.isEnabled =
+        findViewByTag<TextView>("reianix_next_episode")?.isEnabled =
             enabled && intent.getBooleanExtra("canNext", false)
-        findViewByTag<TextView>("reiflix_previous_episode")?.isEnabled =
+        findViewByTag<TextView>("reianix_previous_episode")?.isEnabled =
             enabled && intent.getBooleanExtra("canPrevious", false)
         syncComposePlayerUiState()
     }
@@ -5181,7 +5181,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
                 val createdAtMs = System.currentTimeMillis()
                 val successorRequestId = UUID.randomUUID().toString()
-                val successorUri = Uri.parse("reiflix://native").buildUpon()
+                val successorUri = Uri.parse("reianix://native").buildUpon()
                     .appendQueryParameter("action", "play")
                     .appendQueryParameter("request_id", successorRequestId)
                     .appendQueryParameter("protocol_version", "2")
@@ -5462,7 +5462,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             "player_exited",
                         ))
                     ) {
-                        com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService.publishCommittedProgress(
+                        com.reianix.reianix_local.data.sqlite.ReiAnixConsumptionService.publishCommittedProgress(
                             episodeId = episodeId,
                             eventType = eventType,
                             playerSessionId = payload?.optString("playerSessionId").orEmpty(),
@@ -5516,7 +5516,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         publishPlayerLifecycle("onResume")
         logPlayer("onResume requestId=" + requestId.ifEmpty { "-" })
         if (!inPictureInPicture) applyImmersiveAfterLayout()
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.refreshZoomForLayout()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
         if (::player.isInitialized && !errorVisible && !playbackErrorForGeneration) {
             if (!sleepTimerPaused && !isPictureInPictureActive() && playbackWasRequestedBeforeStop &&
                 player.playbackState != Player.STATE_ENDED
@@ -5549,7 +5549,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     override fun onStop() {
         closeEpisodePlaylist()
         publishPlayerLifecycle("onStop")
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
         val screenInteractive = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
         val screenLocked = (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked
         if (pictureInPictureSession && !isChangingConfigurations && screenInteractive && !screenLocked) {
@@ -5601,7 +5601,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (isInPictureInPictureMode) {
             pictureInPictureSession = true
             handler.removeCallbacks(controlsHider)
-            findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+            findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
             setControlsVisible(false)
         } else {
             // PiP exit is a lifecycle/configuration boundary. Reapply the
@@ -5618,11 +5618,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         super.onConfigurationChanged(newConfig)
         updateComposeOverlayBounds()
         logPlayer("onConfigurationChanged orientation=" + newConfig.orientation)
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
         cancelFirstFrameDiagnostics("configuration_change")
         ViewCompat.requestApplyInsets(root)
         applyImmersiveAfterLayout()
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.refreshZoomForLayout()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
         window.decorView.post {
             if (::player.isInitialized &&
                 player.playbackState == Player.STATE_READY &&
@@ -5689,8 +5689,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         invalidateTransition("destroy")
         transitionGeneration += 1L
         sessionState = SessionState.DESTROYED
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.resetZoomToFit()
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.dispose()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.dispose()
         handler.removeCallbacks(progressReporter)
         handler.removeCallbacks(controlsHider)
         handler.removeCallbacks(lockAffordanceHider)
@@ -5820,9 +5820,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val duration = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
         val opening = localMetadata.opening?.takeIf { duration == null || it.endMs <= duration }
         val ending = localMetadata.ending?.takeIf { duration == null || it.endMs <= duration }
-        findViewByTag<TextView>("reiflix_skip_opening")?.visibility =
+        findViewByTag<TextView>("reianix_skip_opening")?.visibility =
             if (opening != null && position >= opening.startMs && position < opening.endMs) View.VISIBLE else View.GONE
-        findViewByTag<TextView>("reiflix_skip_ending")?.visibility =
+        findViewByTag<TextView>("reianix_skip_ending")?.visibility =
             if (ending != null && position >= ending.startMs && position < ending.endMs) View.VISIBLE else View.GONE
     }
 
@@ -5837,7 +5837,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun showLocalMetadataEditor() {
         if (!::localMetadataStore.isInitialized || !::uri.isInitialized) return
-        findViewByTag<GestureLayer>("reiflix_gesture_layer")?.cancelInteractions()
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -6052,7 +6052,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (localUri.authority == "$packageName.downloads") {
                     val id = localUri.pathSegments.firstOrNull().orEmpty()
                     val item = runCatching {
-                        com.reiflix.reiflix_local.downloads.DownloadStore(this).get(id)
+                        com.reianix.reianix_local.downloads.DownloadStore(this).get(id)
                     }.getOrNull()
                     when {
                         item == null || item.state in setOf("CANCELLED", "CORRUPT") ->
@@ -6083,7 +6083,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val ownedFinishedOutput = if (!safAuthorized && !mediaStoreAuthorized &&
                     localUri.authority == MediaStore.AUTHORITY
                 ) runCatching {
-                    com.reiflix.reiflix_local.downloads.DownloadStore(this).all().any { download ->
+                    com.reianix.reianix_local.downloads.DownloadStore(this).all().any { download ->
                         download.state == "COMPLETE" && download.output == localUri.toString()
                     }
                 }.getOrDefault(false) else false
@@ -6972,7 +6972,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         private fun updateAspectButtonFromZoom() {
-            val button = findViewByTag<TextView>("reiflix_aspect_button") ?: return
+            val button = findViewByTag<TextView>("reianix_aspect_button") ?: return
             if (zoomScale <= ZOOM_SNAP_THRESHOLD) {
                 val label = aspectLabelFromSetting(intent.getStringExtra("setting_player_aspect_ratio"))
                 button.text = label
@@ -6989,7 +6989,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             val value = "fit"
             val label = aspectLabelFromSetting(value)
             playerView.resizeMode = resizeModeFromSetting(value)
-            findViewByTag<TextView>("reiflix_aspect_button")?.apply {
+            findViewByTag<TextView>("reianix_aspect_button")?.apply {
                 text = label
                 isSelected = label == "Preencher"
             }
@@ -7169,7 +7169,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         private val PLAYER_EVENT_CLOCK_MS = AtomicLong(0L)
 
-        private const val TAG = "[REIFLIX][PLAYER]"
+        private const val TAG = "[REIANIX][PLAYER]"
         private const val PROGRESS_INTERVAL_MS = 250L
         private const val PROGRESS_PERSIST_INTERVAL_MS = 15_000L
         private const val CONTROL_TIMEOUT_MS = 3_500L

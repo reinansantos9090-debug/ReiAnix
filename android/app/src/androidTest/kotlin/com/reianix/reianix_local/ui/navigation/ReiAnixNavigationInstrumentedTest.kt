@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.navigation
+package com.reianix.reianix_local.ui.navigation
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
@@ -29,7 +29,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.navigation.compose.ComposeNavigator
 import androidx.navigation.testing.TestNavHostController
-import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
+import com.reianix.reianix_local.ui.ReiAnixComposeRoot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before

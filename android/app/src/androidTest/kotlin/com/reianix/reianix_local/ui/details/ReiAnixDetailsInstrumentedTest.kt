@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.details
+package com.reianix.reianix_local.ui.details
 
 import android.graphics.Bitmap
 import java.io.File
@@ -13,19 +13,19 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
-import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.ui.ReiAnixComposeRoot
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import androidx.compose.runtime.mutableStateOf
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationStatus
-import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationUiState
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixArtworkUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsUiState
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
+import com.reianix.reianix_local.viewmodel.ReiAnixTraceMoeIdentificationStatus
+import com.reianix.reianix_local.viewmodel.ReiAnixTraceMoeIdentificationUiState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -431,7 +431,7 @@ class ReiAnixDetailsInstrumentedTest {
         detailsStateWithSeasons(listOf(season(1, episodeCount)))
 
     private fun detailsStateWithSeasons(
-        seasons: List<com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel>,
+        seasons: List<com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel>,
     ) = ReiAnixDetailsUiState(
         status = ReiAnixDetailsLoadStatus.READY,
         sourceAvailable = true,
@@ -454,8 +454,8 @@ class ReiAnixDetailsInstrumentedTest {
     private fun season(
         number: Int,
         count: Int,
-    ): com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel =
-        com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel(
+    ): com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel =
+        com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel(
             animeId = 700L,
             number = number,
             title = "Temporada $number",
@@ -468,13 +468,13 @@ class ReiAnixDetailsInstrumentedTest {
                     number = id.toDouble(),
                     title = "Episode $id",
                     fileName = "Episode-$id.mkv",
-                    media = com.reiflix.reiflix_local.ui.model.ReiAnixLocalMediaUiModel(
+                    media = com.reianix.reianix_local.ui.model.ReiAnixLocalMediaUiModel(
                         reference = "content://episode/$id",
                         uri = "content://episode/$id",
                         path = null,
                         mediaIdentity = "episode-$id",
                         sourceAvailabilityState = "available",
-                        availability = com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE,
+                        availability = com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE,
                     ),
                     progressSeconds = 0.0,
                     durationSeconds = 100.0,

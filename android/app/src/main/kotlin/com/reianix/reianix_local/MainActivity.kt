@@ -1,33 +1,33 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.bridge.GoogleIdentity
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.player.NativePlayerRequest
-import com.reiflix.reiflix_local.bridge.NativeRequestState
-import com.reiflix.reiflix_local.player.DeviceInteractionProfile
-import com.reiflix.reiflix_local.player.SystemUiController
-import com.reiflix.reiflix_local.scanner.BroadStorageScanner
-import com.reiflix.reiflix_local.scanner.DefaultReiAnixFolderScanner
-import com.reiflix.reiflix_local.scanner.MediaStoreRetryScheduler
-import com.reiflix.reiflix_local.scanner.MediaStoreScanner
-import com.reiflix.reiflix_local.scanner.NativeScanController
-import com.reiflix.reiflix_local.scanner.NativeScanRunner
-import com.reiflix.reiflix_local.scanner.ScanLifecycleState
-import com.reiflix.reiflix_local.scanner.SafScanner
-import com.reiflix.reiflix_local.scanner.SafTreeChangeMonitor
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import com.reiflix.reiflix_local.storage.NativeIndex
-import com.reiflix.reiflix_local.storage.StorageAuthorization
-import com.reiflix.reiflix_local.storage.StorageLifecycleState
-import com.reiflix.reiflix_local.storage.NativeStorageOnboardingState
-import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
-import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
-import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
-import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixManualDiagnostics
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.bridge.GoogleIdentity
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.player.NativePlayerRequest
+import com.reianix.reianix_local.bridge.NativeRequestState
+import com.reianix.reianix_local.player.DeviceInteractionProfile
+import com.reianix.reianix_local.player.SystemUiController
+import com.reianix.reianix_local.scanner.BroadStorageScanner
+import com.reianix.reianix_local.scanner.DefaultReiAnixFolderScanner
+import com.reianix.reianix_local.scanner.MediaStoreRetryScheduler
+import com.reianix.reianix_local.scanner.MediaStoreScanner
+import com.reianix.reianix_local.scanner.NativeScanController
+import com.reianix.reianix_local.scanner.NativeScanRunner
+import com.reianix.reianix_local.scanner.ScanLifecycleState
+import com.reianix.reianix_local.scanner.SafScanner
+import com.reianix.reianix_local.scanner.SafTreeChangeMonitor
+import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.storage.NativeIndex
+import com.reianix.reianix_local.storage.StorageAuthorization
+import com.reianix.reianix_local.storage.StorageLifecycleState
+import com.reianix.reianix_local.storage.NativeStorageOnboardingState
+import com.reianix.reianix_local.storage.VideoThumbnailExtractor
+import com.reianix.reianix_local.ui.host.ReiAnixComposeLibraryHost
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsFileService
+import com.reianix.reianix_local.data.backup.ReiAnixBackupService
+import com.reianix.reianix_local.data.backup.ReiAnixDiagnosticsService
+import com.reianix.reianix_local.data.diagnostics.ReiAnixManualDiagnostics
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -54,10 +54,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.whenStarted
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModelFactory
-import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModelFactory
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModelFactory
+import com.reianix.reianix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixSettingsViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
@@ -94,7 +94,7 @@ data class ReiAnixWelcomeFolderPaths(
 )
 
 class MainActivity : ComponentActivity() {
-    private val tag = "[REIFLIX][ANDROID]"
+    private val tag = "[REIANIX][ANDROID]"
     private val MAX_SETTINGS_FILE_BYTES = 1024 * 1024
     private val SETTINGS_FILE_REQUEST_ID_REGEX = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     private lateinit var systemUiController: SystemUiController
@@ -230,7 +230,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val BRIDGE_PROTOCOL_VERSION = 2
-        private const val NATIVE_STORAGE_ONBOARDING_PREFS = "reiflix_native_storage_onboarding"
+        private const val NATIVE_STORAGE_ONBOARDING_PREFS = "reianix_native_storage_onboarding"
         private const val NATIVE_STORAGE_ONBOARDING_DISMISSED = "dismissed"
         private const val WELCOME_INITIALIZED = "welcome_initialized_v2"
         private const val WELCOME_COMPLETED = "welcome_completed_v2"
@@ -259,7 +259,7 @@ class MainActivity : ComponentActivity() {
             require(normalized != "release_tree" || !treeUri.isNullOrBlank()) {
                 "The SAF tree URI is required for release_tree."
             }
-            val builder = Uri.parse("reiflix://native").buildUpon()
+            val builder = Uri.parse("reianix://native").buildUpon()
                 .appendQueryParameter("action", normalized)
                 .appendQueryParameter("request_id", requestId?.trim()?.takeIf { it.isNotEmpty() } ?: UUID.randomUUID().toString())
                 .appendQueryParameter("protocol_version", BRIDGE_PROTOCOL_VERSION.toString())
@@ -273,40 +273,40 @@ class MainActivity : ComponentActivity() {
             return Intent(Intent.ACTION_VIEW, builder.build(), context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        private const val STATE_LAST_NATIVE_REQUEST_ID = "reiflix.lastNativeRequestId"
-        private const val STATE_PENDING_LIFECYCLE_ACTION = "reiflix.pendingLifecycleAction"
-        private const val STATE_BROAD_SETTINGS_PENDING = "reiflix.broadSettingsPending"
-        private const val STATE_PENDING_LIFECYCLE_REQUEST_ID = "reiflix.pendingLifecycleRequestId"
-        private const val STATE_PENDING_MEDIA_REQUEST_ID = "reiflix.pendingMediaRequestId"
-        private const val STATE_PENDING_BROAD_REQUEST_ID = "reiflix.pendingBroadRequestId"
-        private const val STATE_PENDING_SAF_REQUEST_ID = "reiflix.pendingSafRequestId"
-        private const val STATE_PENDING_PLAY_URI = "reiflix.pendingPlayUri"
-        private const val STATE_PENDING_PLAY_INTENT_DATA = "reiflix.pendingPlayIntentData"
-        private const val STATE_PENDING_PLAY_TITLE = "reiflix.pendingPlayTitle"
-        private const val STATE_PENDING_PLAY_POSITION_MS = "reiflix.pendingPlayPositionMs"
-        private const val STATE_PENDING_PLAY_POSITION_SPECIFIED = "reiflix.pendingPlayPositionSpecified"
-        private const val STATE_PENDING_PLAY_POSITION_INVALID = "reiflix.pendingPlayPositionInvalid"
-        private const val STATE_PENDING_PLAY_CAN_NEXT = "reiflix.pendingPlayCanNext"
-        private const val STATE_PENDING_PLAY_CAN_PREVIOUS = "reiflix.pendingPlayCanPrevious"
-        private const val STATE_PENDING_PLAY_AUTOPLAY = "reiflix.pendingPlayAutoplay"
-        private const val STATE_PENDING_PLAY_EPISODE_ID = "reiflix.pendingPlayEpisodeId"
-        private const val STATE_PENDING_PLAY_ANIME_ID = "reiflix.pendingPlayAnimeId"
-        private const val STATE_PENDING_PLAY_COMMAND_CREATED_AT_MS = "reiflix.pendingPlayCommandCreatedAtMs"
-        private const val STATE_PENDING_PLAY_REQUEST_ID = "reiflix.pendingPlayRequestId"
-        private const val STATE_ACTIVE_PLAYER_REQUEST_ID = "reiflix.activePlayerRequestId"
-        private const val STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS = "reiflix.activePlayerCommandCreatedAtMs"
-        private const val STATE_SAF_PICKER_PENDING = "reiflix.safPickerPending"
-        private const val STATE_SAF_PICKER_DEFAULT = "reiflix.safPickerDefaultReiAnix"
-        private const val STATE_WELCOME_SELECTED_FOLDER = "reiflix.welcomeSelectedFolder"
-        private const val STATE_WELCOME_REIANIX_FOLDER = "reiflix.welcomeReiAnixFolder"
-        private const val STATE_SAF_PICKER_STARTED_AT_MS = "reiflix.safPickerStartedAtMs"
-        private const val STATE_SAF_PICKER_FOCUS_LOST = "reiflix.safPickerFocusLost"
-        private const val STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS = "reiflix.safPickerFocusRegainedAtMs"
-        private const val STATE_SAF_PICKER_PHASE = "reiflix.safPickerPhase"
-        private const val STATE_SEEN_NATIVE_REQUEST_IDS = "reiflix.seenNativeRequestIds"
-        private const val STATE_LAST_OBSERVED_MEDIA_ACCESS = "reiflix.lastObservedMediaAccess"
-        private const val STATE_LAST_OBSERVED_BROAD_ACCESS = "reiflix.lastObservedBroadAccess"
-        private const val LOG_TAG = "[REIFLIX][ANDROID]"
+        private const val STATE_LAST_NATIVE_REQUEST_ID = "reianix.lastNativeRequestId"
+        private const val STATE_PENDING_LIFECYCLE_ACTION = "reianix.pendingLifecycleAction"
+        private const val STATE_BROAD_SETTINGS_PENDING = "reianix.broadSettingsPending"
+        private const val STATE_PENDING_LIFECYCLE_REQUEST_ID = "reianix.pendingLifecycleRequestId"
+        private const val STATE_PENDING_MEDIA_REQUEST_ID = "reianix.pendingMediaRequestId"
+        private const val STATE_PENDING_BROAD_REQUEST_ID = "reianix.pendingBroadRequestId"
+        private const val STATE_PENDING_SAF_REQUEST_ID = "reianix.pendingSafRequestId"
+        private const val STATE_PENDING_PLAY_URI = "reianix.pendingPlayUri"
+        private const val STATE_PENDING_PLAY_INTENT_DATA = "reianix.pendingPlayIntentData"
+        private const val STATE_PENDING_PLAY_TITLE = "reianix.pendingPlayTitle"
+        private const val STATE_PENDING_PLAY_POSITION_MS = "reianix.pendingPlayPositionMs"
+        private const val STATE_PENDING_PLAY_POSITION_SPECIFIED = "reianix.pendingPlayPositionSpecified"
+        private const val STATE_PENDING_PLAY_POSITION_INVALID = "reianix.pendingPlayPositionInvalid"
+        private const val STATE_PENDING_PLAY_CAN_NEXT = "reianix.pendingPlayCanNext"
+        private const val STATE_PENDING_PLAY_CAN_PREVIOUS = "reianix.pendingPlayCanPrevious"
+        private const val STATE_PENDING_PLAY_AUTOPLAY = "reianix.pendingPlayAutoplay"
+        private const val STATE_PENDING_PLAY_EPISODE_ID = "reianix.pendingPlayEpisodeId"
+        private const val STATE_PENDING_PLAY_ANIME_ID = "reianix.pendingPlayAnimeId"
+        private const val STATE_PENDING_PLAY_COMMAND_CREATED_AT_MS = "reianix.pendingPlayCommandCreatedAtMs"
+        private const val STATE_PENDING_PLAY_REQUEST_ID = "reianix.pendingPlayRequestId"
+        private const val STATE_ACTIVE_PLAYER_REQUEST_ID = "reianix.activePlayerRequestId"
+        private const val STATE_ACTIVE_PLAYER_COMMAND_CREATED_AT_MS = "reianix.activePlayerCommandCreatedAtMs"
+        private const val STATE_SAF_PICKER_PENDING = "reianix.safPickerPending"
+        private const val STATE_SAF_PICKER_DEFAULT = "reianix.safPickerDefaultReiAnix"
+        private const val STATE_WELCOME_SELECTED_FOLDER = "reianix.welcomeSelectedFolder"
+        private const val STATE_WELCOME_REIANIX_FOLDER = "reianix.welcomeReiAnixFolder"
+        private const val STATE_SAF_PICKER_STARTED_AT_MS = "reianix.safPickerStartedAtMs"
+        private const val STATE_SAF_PICKER_FOCUS_LOST = "reianix.safPickerFocusLost"
+        private const val STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS = "reianix.safPickerFocusRegainedAtMs"
+        private const val STATE_SAF_PICKER_PHASE = "reianix.safPickerPhase"
+        private const val STATE_SEEN_NATIVE_REQUEST_IDS = "reianix.seenNativeRequestIds"
+        private const val STATE_LAST_OBSERVED_MEDIA_ACCESS = "reianix.lastObservedMediaAccess"
+        private const val STATE_LAST_OBSERVED_BROAD_ACCESS = "reianix.lastObservedBroadAccess"
+        private const val LOG_TAG = "[REIANIX][ANDROID]"
         @Volatile
         private var lastPlayerExitRequestId: String? = null
         @Volatile
@@ -1322,13 +1322,13 @@ class MainActivity : ComponentActivity() {
         )
         nativeRequestState.restoreSeenRequestIds(savedInstanceState?.getString(STATE_SEEN_NATIVE_REQUEST_IDS))
         broadStoragePermissionPending = savedInstanceState?.getBoolean(STATE_BROAD_SETTINGS_PENDING) ?: false
-        externalSettingsKind = savedInstanceState?.getString("reiflix.externalSettingsKind")
-        externalSettingsRequestId = savedInstanceState?.getString("reiflix.externalSettingsRequestId")
-        pendingSettingsFileAction = savedInstanceState?.getString("reiflix.settingsFileAction")
-        pendingSettingsFileRequestId = savedInstanceState?.getString("reiflix.settingsFileRequestId")
+        externalSettingsKind = savedInstanceState?.getString("reianix.externalSettingsKind")
+        externalSettingsRequestId = savedInstanceState?.getString("reianix.externalSettingsRequestId")
+        pendingSettingsFileAction = savedInstanceState?.getString("reianix.settingsFileAction")
+        pendingSettingsFileRequestId = savedInstanceState?.getString("reianix.settingsFileRequestId")
         settingsFileProcessing = false
-        val restoredSettingsStorageIds = savedInstanceState?.getStringArrayList("reiflix.settingsStorageIds").orEmpty()
-        val restoredSettingsStorageActions = savedInstanceState?.getStringArrayList("reiflix.settingsStorageActions").orEmpty()
+        val restoredSettingsStorageIds = savedInstanceState?.getStringArrayList("reianix.settingsStorageIds").orEmpty()
+        val restoredSettingsStorageActions = savedInstanceState?.getStringArrayList("reianix.settingsStorageActions").orEmpty()
         composeSettingsStorageActions.clear()
         restoredSettingsStorageIds.zip(restoredSettingsStorageActions).forEach { (id, action) ->
             if (SETTINGS_FILE_REQUEST_ID_REGEX.matches(id) && action in SETTINGS_STORAGE_ACTIONS) {
@@ -1555,14 +1555,14 @@ class MainActivity : ComponentActivity() {
                     when (action) {
                         "settings_export" -> {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
-                            settingsExportLauncher.launch("reiflix-settings-" + stamp + ".json")
+                            settingsExportLauncher.launch("reianix-settings-" + stamp + ".json")
                         }
                         "settings_import" -> settingsImportLauncher.launch(
                             arrayOf("application/json", "text/json", "application/octet-stream"),
                         )
                         "backup_create" -> {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
-                            backupExportLauncher.launch("reiflix-backup-" + stamp + ".zip")
+                            backupExportLauncher.launch("reianix-backup-" + stamp + ".zip")
                         }
                         "backup_restore", "backup_recovery_restore" -> backupImportLauncher.launch(
                             arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
@@ -1571,7 +1571,7 @@ class MainActivity : ComponentActivity() {
                         "diagnostic_export" -> {
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.ROOT).format(Date())
                             val uniqueSuffix = UUID.randomUUID().toString().take(8)
-                            diagnosticExportLauncher.launch("reiflix-diagnostic-" + stamp + "-" + uniqueSuffix + ".json")
+                            diagnosticExportLauncher.launch("reianix-diagnostic-" + stamp + "-" + uniqueSuffix + ".json")
                         }
                         "diagnostic_import_logcat" -> diagnosticImportLauncher.launch(
                             arrayOf("text/plain", "application/octet-stream", "*/*"),
@@ -2705,7 +2705,7 @@ class MainActivity : ComponentActivity() {
                                     clearPendingPlay()
                                     return
                                 }
-                                val playData = preservedPlayData ?: Uri.parse("reiflix://native").buildUpon()
+                                val playData = preservedPlayData ?: Uri.parse("reianix://native").buildUpon()
                                     .appendQueryParameter("action", "play")
                                     .appendQueryParameter("request_id", pendingRequestId.orEmpty())
                                     .appendQueryParameter("uri", uri)
@@ -2818,12 +2818,12 @@ class MainActivity : ComponentActivity() {
         outState.putBoolean(STATE_SAF_PICKER_FOCUS_LOST, safPickerFocusLost)
         outState.putLong(STATE_SAF_PICKER_FOCUS_REGAINED_AT_MS, safPickerFocusRegainedAtMs)
         outState.putString(STATE_SAF_PICKER_PHASE, safPickerPhase.name)
-        outState.putString("reiflix.externalSettingsKind", externalSettingsKind)
-        outState.putString("reiflix.externalSettingsRequestId", externalSettingsRequestId)
-        outState.putString("reiflix.settingsFileAction", pendingSettingsFileAction)
-        outState.putString("reiflix.settingsFileRequestId", pendingSettingsFileRequestId)
-        outState.putStringArrayList("reiflix.settingsStorageIds", ArrayList(composeSettingsStorageActions.keys))
-        outState.putStringArrayList("reiflix.settingsStorageActions", ArrayList(composeSettingsStorageActions.values))
+        outState.putString("reianix.externalSettingsKind", externalSettingsKind)
+        outState.putString("reianix.externalSettingsRequestId", externalSettingsRequestId)
+        outState.putString("reianix.settingsFileAction", pendingSettingsFileAction)
+        outState.putString("reianix.settingsFileRequestId", pendingSettingsFileRequestId)
+        outState.putStringArrayList("reianix.settingsStorageIds", ArrayList(composeSettingsStorageActions.keys))
+        outState.putStringArrayList("reianix.settingsStorageActions", ArrayList(composeSettingsStorageActions.values))
         outState.putString(STATE_LAST_OBSERVED_MEDIA_ACCESS, lastObservedMediaAccess)
         lastObservedBroadAccess?.let { outState.putBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS, it) }
         outState.putString(STATE_SEEN_NATIVE_REQUEST_IDS, nativeRequestState.seenRequestIdsState())
@@ -3075,7 +3075,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleNativeIntent(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme != "reiflix" || data.host != "native") {
+        if (data.scheme != "reianix" || data.host != "native") {
             Log.w(tag, "Ignoring unsupported native intent scheme/host")
             return
         }
@@ -4404,7 +4404,7 @@ class MainActivity : ComponentActivity() {
      * Publish the authoritative SAF grant set after Activity resume/recreation.
      *
      * Python previously tried to verify every persisted tree by launching the
-     * app's own reiflix://native intent during startup. That is an avoidable
+     * app's own reianix://native intent during startup. That is an avoidable
      * task/lifecycle transition: with MainActivity singleTask, Android may
      * bring the existing task to the foreground and route the new intent to
      * onNewIntent(). The native Activity already owns the persisted grant set,
@@ -4692,7 +4692,7 @@ class MainActivity : ComponentActivity() {
                 } else null
                 if (report != null && (report.inserted > 0 || report.updated > 0)) {
                     // The native catalog is authoritative. Only invalidate on changes.
-                    com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+                    com.reianix.reianix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
                 }
                 val finalRevision = DefaultReiAnixFolderScanner.revision(appContext)
                 if (discovery.errors.isEmpty() && revision == finalRevision) {
@@ -5756,7 +5756,7 @@ class MainActivity : ComponentActivity() {
             var accountStateChanged = false
             try {
                 val accountRepository = ReiAnixAppDependencies.from(applicationContext).sqliteAccountRepository
-                val clientId = getString(R.string.reiflix_google_web_client_id).trim()
+                val clientId = getString(R.string.reianix_google_web_client_id).trim()
                 val signedOut = action == "logout" || action == "switch"
                 if (signedOut) {
                     val cleared = GoogleIdentity.signOut(
@@ -5803,7 +5803,7 @@ class MainActivity : ComponentActivity() {
                     }
                     withContext(Dispatchers.IO) {
                         accountRepository.saveProfile(
-                            com.reiflix.reiflix_local.data.sqlite.ReiAnixAccountProfile(
+                            com.reianix.reianix_local.data.sqlite.ReiAnixAccountProfile(
                                 id = signedInProfile!!.id,
                                 name = signedInProfile!!.name,
                                 email = signedInProfile!!.email,

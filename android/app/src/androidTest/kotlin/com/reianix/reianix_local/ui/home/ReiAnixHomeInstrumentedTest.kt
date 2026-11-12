@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.home
+package com.reianix.reianix_local.ui.home
 
 import android.graphics.Bitmap
 import androidx.compose.runtime.mutableStateOf
@@ -16,17 +16,17 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixLocalArtwork
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.ui.artwork.ReiAnixLocalArtwork
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
-import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
+import com.reianix.reianix_local.ui.ReiAnixComposeRoot
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixArtworkUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixContinueWatchingUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.ui.model.ReiAnixMetadataAvailability
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
