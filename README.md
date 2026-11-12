@@ -36,7 +36,7 @@ O player inclui retomada de progresso, velocidade de 0,5x a 2x, ajuste de imagem
 
 ## Login Google opcional
 
-O login Android usa Credential Manager. O workflow de release aceita o Web Client ID público pela variável de repositório `REIFLIX_GOOGLE_WEB_CLIENT_ID` (ou secret com o mesmo nome). Não armazene client secrets ou tokens no repositório ou no APK. Sem o identificador, o aplicativo permanece compilável e informa que o login precisa ser configurado.
+O login Android usa Credential Manager. O workflow de release aceita o Web Client ID público pela variável de repositório `REIANIX_GOOGLE_WEB_CLIENT_ID` (ou secret com o mesmo nome). Não armazene client secrets ou tokens no repositório ou no APK. Sem o identificador, o aplicativo permanece compilável e informa que o login precisa ser configurado.
 
 ## Privacidade e dados
 

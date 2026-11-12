@@ -19,7 +19,7 @@ A transição é por operação. No caminho Compose/Android, inclusão pessoal/f
 - `NativeMailbox` continua sendo a fronteira Android/Python já existente.
 - `main.py` executa mutações e consultas bloqueantes dos fluxos híbridos que ainda passam pela mailbox, com `asyncio.to_thread`; isso não o torna writer de uma mutação já transferida para Kotlin.
 - `refresh` continua pertencendo ao `ScanCoordinator`; Compose não dispara scanners diretamente.
-- A abertura de mídia do Compose consulta diretamente `ReiAnixSqliteLibraryRepository.getEpisode()`, lê as preferências persistidas e encaminha uma URI `reiflix://native?action=play` para `MainActivity`. Ela não publica mais `open_media` pela `NativeMailbox`. O caminho Python `play_episode`/`AndroidBridge.play` permanece para consumidores Flet legados e para transições que ainda dependem do runtime híbrido; a validação e o player continuam na implementação nativa existente.
+- A abertura de mídia do Compose consulta diretamente `ReiAnixSqliteLibraryRepository.getEpisode()`, lê as preferências persistidas e encaminha uma URI `reianix://native?action=play` para `MainActivity`. Ela não publica mais `open_media` pela `NativeMailbox`. O caminho Python `play_episode`/`AndroidBridge.play` permanece para consumidores Flet legados e para transições que ainda dependem do runtime híbrido; a validação e o player continuam na implementação nativa existente.
 
 ## Atualização da UI
 
