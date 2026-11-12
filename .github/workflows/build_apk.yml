@@ -102,7 +102,7 @@ jobs:
             exit 1
           fi
           test -n "$(find android/app/src/main/kotlin -type f -name '*.kt' -print -quit)"
-          grep -Fq 'android:name=".MainActivity"' android/app/src/main/AndroidManifest.xml
+          grep -Fq 'android:name="com.reianix.reianix_local.MainActivity"' android/app/src/main/AndroidManifest.xml
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
