@@ -1560,7 +1560,9 @@ class ReiAnixSqliteLibraryRepository(
                 val seenIdentities = linkedSetOf<String>()
                 val inputIdentities = hashSetOf<String>()
 
-                val indexedItems = normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items)
+                val indexedItems = recognizeUnnumberedSeriesSiblings(
+                    normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items)
+                )
                 for (item in indexedItems) {
                     db.execSQL("SAVEPOINT native_index_item")
                     try {
@@ -1691,27 +1693,9 @@ class ReiAnixSqliteLibraryRepository(
                         db.insertOrThrow("anime", null, localAnime)
                     }
                     val season = item.season ?: 0
-                    val logicalCount = when {
-                        isMovie -> db.rawQuery(
-                            "SELECT id FROM episodes WHERE anime_id = ? AND lower(COALESCE(episode_type, '')) = 'movie'",
-                            arrayOf(animeId.toString()),
-                        ).use { it.count }
-                        item.episodeNumber != null -> db.rawQuery(
-                            "SELECT id FROM episodes WHERE anime_id = ? AND season = ? AND number = ?",
-                            arrayOf(animeId.toString(), season.toString(), item.episodeNumber.toString()),
-                        ).use { it.count }
-                        item.absoluteNumber != null -> db.rawQuery(
-                            "SELECT id FROM episodes WHERE anime_id = ? AND absolute_number = ?",
-                            arrayOf(animeId.toString(), item.absoluteNumber.toString()),
-                        ).use { it.count }
-                        else -> 0
-                    }
-                    // A second release for an existing logical episode is a conflict,
-                    // not permission to replace its path or playback history.
-                    if (logicalCount > 0) {
-                        ambiguous++
-                        continue
-                    }
+                    // Every distinct physical file belongs in the library. Different
+                    // releases (MP4/MKV) may legitimately share a season/episode number.
+                    // Earlier identity/path checks already reject the same file twice.
                     val values = ContentValues().apply {
                         put("anime_id", animeId)
                         put("path", item.location)
