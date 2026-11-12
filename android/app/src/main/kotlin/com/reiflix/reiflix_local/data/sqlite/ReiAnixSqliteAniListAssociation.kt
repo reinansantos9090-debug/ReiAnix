@@ -108,6 +108,10 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
             }
             connection.update("anime", values, "id = ?", arrayOf(patch.animeId.toString()))
+            // Automatically reconcile previously split halves (numbered episodes
+            // versus named episodes) as soon as both share a verified AniList ID.
+            // The current album survives so this method can return its record.
+            if(!manual) SeriesAnimeCoalescer.mergeVerified(connection, preferredId=patch.animeId)
             connection.rawQuery(
                 "SELECT * FROM anime WHERE id = ? LIMIT 1",
                 arrayOf(patch.animeId.toString()),
