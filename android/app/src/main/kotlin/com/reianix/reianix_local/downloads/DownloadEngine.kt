@@ -66,6 +66,7 @@ class DownloadEngine(private val context: Context) {
     }
     private suspend fun transfer(id: String) {
         var connection: HttpURLConnection?=null
+        var phase=DownloadFailureMessage.Phase.DESTINATION
         try {
             var item=store.get(id) ?: return
             if(item.state !in DownloadState.pending) return
@@ -81,6 +82,7 @@ class DownloadEngine(private val context: Context) {
             target.open().use { it.setLength(offset); it.sync() }
             val secret=store.secret(item); val headers=secret.optJSONObject("headers") ?: JSONObject()
             val requestHeaders=headers.keys().asSequence().associateWith { headers.getString(it) }
+            phase=DownloadFailureMessage.Phase.CONNECTION
             var resume=offset
             var validator=item.json.optString("validator").takeIf { it.isNotBlank() }
             val sourcePath=android.net.Uri.parse(secret.getString("url")).path.orEmpty()
@@ -90,12 +92,20 @@ class DownloadEngine(private val context: Context) {
             store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","DOWNLOADING").put("message","") }
             if(!isDownloading(id)) return
             if(hls) {
-                if(receiveHls(id,secret.getString("url"),requestHeaders,target)) verifyAndSave(id,target)
+                phase=DownloadFailureMessage.Phase.TRANSFER
+                if(receiveHls(id,secret.getString("url"),requestHeaders,target)) {
+                    phase=DownloadFailureMessage.Phase.FINISHING
+                    verifyAndSave(id,target)
+                }
                 return
             }
             if(dash) {
+                phase=DownloadFailureMessage.Phase.TRANSFER
                 if(DownloadAdaptiveTransfer(context,store).receiveDash(
-                    id,secret.getString("url"),target)) verifyAndSave(id,target)
+                    id,secret.getString("url"),target)) {
+                    phase=DownloadFailureMessage.Phase.FINISHING
+                    verifyAndSave(id,target)
+                }
                 return
             }
             // Fully received files interrupted during verification/export need no redownload.
@@ -127,12 +137,14 @@ class DownloadEngine(private val context: Context) {
             if(item.json.has("playerCapture") && contentType.startsWith("image/"))throw DownloadCaptureGuard.Rejected("A captura retornou uma imagem, não o episódio")
             if(contentType in setOf("text/html","application/xhtml+xml")) throw PermanentFailure("Este link abre uma página. Informe o link direto do arquivo.")
             if(contentType.contains("mpegurl",true)) {
+                phase=DownloadFailureMessage.Phase.TRANSFER
                 connection.disconnect(); connection=null
                 restart(id,target); store.mutate(id){it.put("hls",true)}
                 if(receiveHls(id,secret.getString("url"),requestHeaders,target)) verifyAndSave(id,target)
                 return
             }
             if(contentType.contains("dash+xml",true)) {
+                phase=DownloadFailureMessage.Phase.TRANSFER
                 connection.disconnect();connection=null
                 restart(id,target)
                 store.mutate(id){it.put("adaptiveDash",true)}
@@ -180,6 +192,7 @@ class DownloadEngine(private val context: Context) {
             runCatching { target.syncName() }
             try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let { DownloadMetadata.offer(context,it.animeId) }
+            phase=DownloadFailureMessage.Phase.TRANSFER
             val prefs=ReiAnixAppDependencies.from(context).sqliteSettingsRepository
             val connections=(prefs.getPreference("downloads.connections","4")?.toIntOrNull() ?: 4).coerceIn(1,16)
             if(connections>1 && total>=4*1024*1024 && !store.get(id)!!.json.optBoolean("parallelDisabled") &&
@@ -275,6 +288,7 @@ class DownloadEngine(private val context: Context) {
                     if(chunked)it.put("sizeSource","chunked-eof")
                 }
             }
+            phase=DownloadFailureMessage.Phase.FINISHING
             verifyAndSave(id,target)
         } catch(cancelled: CancellationException) {
             withContext(NonCancellable+Dispatchers.IO) {
@@ -296,7 +310,15 @@ class DownloadEngine(private val context: Context) {
             store.mutate(id) {
                 it.put("state",if(permanent) "ERROR" else "WAITING").put("attempts",attempts).put("speed",0)
                     .put("nextAttempt",System.currentTimeMillis()+minOf(60_000L,2000L*(1L shl attempts.coerceAtMost(5))))
-                    .put("message",when(error) { is DownloadCaptureGuard.Rejected -> error.message; is PermanentFailure -> error.message; is SecurityException -> "Permissão de destino indisponível. Escolha novamente a pasta."; else -> if(permanent) "Não foi possível concluir. Confira a conexão e tente retomar." else "Aguardando conexão ou servidor; a retomada é automática." })
+                    .put("lastFailureKind",error.javaClass.simpleName.take(64))
+                    .put("lastFailurePhase",phase.name)
+                    .put("message",when(error) {
+                        is DownloadCaptureGuard.Rejected -> error.message
+                        is PermanentFailure -> error.message
+                        is SecurityException -> "Permissão de destino indisponível. Escolha novamente a pasta."
+                        else -> if(permanent) "Não foi possível concluir. Confira o link, a conexão e tente retomar."
+                        else DownloadFailureMessage.pending(error,phase,attempts,item.bytes)
+                    })
             }
         } finally { connection?.disconnect() }
     }
