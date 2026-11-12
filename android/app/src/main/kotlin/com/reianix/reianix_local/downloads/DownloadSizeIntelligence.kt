@@ -47,6 +47,36 @@ internal object DownloadSizeIntelligence {
         return null
     }
 
+    /**
+     * Opportunistic URI metadata is a hint, never a verified response size.
+     * Restrict to explicit byte-count parameters and plausible video lengths.
+     * Small "size=720" quality selectors must never become 720 bytes.
+     */
+    fun fromUrlMetadata(url:String):Evidence? {
+        val uri=runCatching{java.net.URI(url)}.getOrNull() ?: return null
+        if(uri.scheme?.lowercase() !in setOf("http","https"))return null
+        val query=uri.rawQuery?.takeIf{it.length<=16384} ?: return null
+        val names=setOf("file_size","filesize","download_size","content_length",
+            "content-length","contentlength","response-content-length",
+            "clen","size")
+        for(param in query.split('&').take(100)) {
+            val rawKey=param.substringBefore('=')
+            val rawValue=param.substringAfter('=',"")
+            val key=runCatching {
+                java.net.URLDecoder.decode(rawKey,"UTF-8").lowercase()
+            }.getOrNull() ?: continue
+            if(key !in names || rawValue.length>48)continue
+            val value=runCatching{
+                java.net.URLDecoder.decode(rawValue,"UTF-8")
+            }.getOrNull() ?: continue
+            val bytes=value.toLongOrNull()
+                ?: fromSharedMetadata("size $value")?.bytes
+            if(bytes!=null && bytes in 1_048_576L..(2L*1024*1024*1024*1024))
+                return Evidence(bytes,false,"url-metadata")
+        }
+        return null
+    }
+
     /** Prefer a verified server value to any provider hint or approximation. */
     fun best(primary:Evidence?,secondary:Evidence?):Evidence? = when {
         primary==null -> secondary
