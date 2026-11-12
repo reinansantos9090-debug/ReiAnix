@@ -44,7 +44,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             require(segments.isNotEmpty()); return Playlist(segments,init,duration)
         }
     }
-    suspend fun receive(id: String,url: String,headers: Map<String,String>,file: File): Boolean {
+    suspend fun receive(id: String,url: String,headers: Map<String,String>,target: DownloadTransferFile): Boolean {
         suspend fun fetch(link: String,max: Int): ByteArray = withContext(Dispatchers.IO) {
             val c=DownloadHttp.connect(link,headers,0,null,credentialOrigin=url)
             try {
@@ -73,8 +73,8 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             val playlist=parse(text,manifest)
             val fingerprint=DownloadStore.digest(text.toByteArray())
             var item=store.get(id) ?: return false
-            if(item.bytes>file.length() || item.json.optString("hlsFingerprint")!=fingerprint) {
-                RandomAccessFile(file,"rw").use {it.setLength(0);it.fd.sync()}
+            if(item.bytes>target.size() || item.json.optString("hlsFingerprint")!=fingerprint) {
+                target.open().use {it.setLength(0);it.sync()}
                 item=store.mutate(id) { it.put("bytes",0).put("hlsIndex",0).put("generation",it.optLong("generation")+1).put("hlsFingerprint",fingerprint).put("hlsEstimatedTotal",0) }
             }
             val extension=if(playlist.init==null) "ts" else "mp4"
@@ -89,42 +89,58 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let {DownloadMetadata.offer(context,it.animeId)}
             var count=item.bytes; var index=item.json.optInt("hlsIndex")
             val keys=mutableMapOf<String,ByteArray>()
-            RandomAccessFile(file,"rw").use { out ->
+            target.open().use { out ->
                 out.setLength(count); out.seek(count)
-                if(count==0L && playlist.init!=null) {val bytes=fetch(playlist.init,16*1024*1024); out.write(bytes);out.fd.sync();count=bytes.size.toLong();store.mutate(id){it.put("bytes",count)}}
+                if(count==0L && playlist.init!=null) {val bytes=fetch(playlist.init,16*1024*1024); out.write(bytes);out.sync();count=bytes.size.toLong();store.mutate(id){it.put("bytes",count)}}
                 while(index<playlist.segments.size) {
                     currentCoroutineContext().ensureActive(); if(store.get(id)?.state!="DOWNLOADING")return false
                     val start=android.os.SystemClock.elapsedRealtime();val segment=playlist.segments[index]
-                    val temporary=File(store.directory,"$id.segment")
+                    // Stream each HLS segment directly to the public target. An
+                    // interrupted or corrupt segment is truncated back to the
+                    // last committed boundary; no full segment is cached in app data.
+                    val segmentStart=count
                     var received=0L
                     try {
-                        val c=DownloadHttp.connect(segment.url,headers,0,null,credentialOrigin=url)
-                        try {
-                            require(c.responseCode==200) {"Não foi possível obter o segmento"}
-                            temporary.outputStream().use { target -> c.inputStream.use { input ->
-                                val buffer=ByteArray(128*1024)
-                                while(true) {
-                                    currentCoroutineContext().ensureActive();if(store.get(id)?.state!="DOWNLOADING")throw Paused()
-                                    val n=input.read(buffer);if(n<0)break;received+=n
-                                    require(received<=1024L*1024*1024) {"Segmento excede o limite seguro"};target.write(buffer,0,n)
-                                }
-                            } }
-                            require(received>0 && (c.contentLengthLong<0 || received==c.contentLengthLong)) {"Segmento incompleto"}
-                        } finally {c.disconnect()}
                         val cipher=if(segment.key!=null) {
                             val key=keys[segment.key] ?: fetch(segment.key,16).also {require(it.size==16);keys[segment.key]=it}
                             val iv=ByteArray(16)
-                            if(segment.iv!=null) {val hex=segment.iv.removePrefix("0x").padStart(32,'0');require(hex.length==32);for(i in 0..15)iv[i]=hex.substring(i*2,i*2+2).toInt(16).toByte()}
-                            else for(i in 0..7)iv[15-i]=(segment.sequence ushr (8*i)).toByte()
-                            Cipher.getInstance("AES/CBC/PKCS5Padding").apply {init(Cipher.DECRYPT_MODE,SecretKeySpec(key,"AES"),IvParameterSpec(iv))}
+                            if(segment.iv!=null) {
+                                val hex=segment.iv.removePrefix("0x").padStart(32,'0')
+                                require(hex.length==32)
+                                for(i in 0..15)iv[i]=hex.substring(i*2,i*2+2).toInt(16).toByte()
+                            } else for(i in 0..7)iv[15-i]=(segment.sequence ushr (8*i)).toByte()
+                            Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
+                                init(Cipher.DECRYPT_MODE,SecretKeySpec(key,"AES"),IvParameterSpec(iv))
+                            }
                         } else null
-                        val source=temporary.inputStream()
-                        (if(cipher==null) source else javax.crypto.CipherInputStream(source,cipher)).use { input ->
-                            val buffer=ByteArray(128*1024)
-                            while(true) {currentCoroutineContext().ensureActive();if(store.get(id)?.state!="DOWNLOADING")throw Paused();val n=input.read(buffer);if(n<0)break;out.write(buffer,0,n)}
-                        }
-                        out.fd.sync();count=out.filePointer;index++
-                    } finally {temporary.delete()}
+                        val c=DownloadHttp.connect(segment.url,headers,0,null,credentialOrigin=url)
+                        try {
+                            require(c.responseCode==200) {"Não foi possível obter o segmento"}
+                            val counting=object:java.io.FilterInputStream(c.inputStream) {
+                                override fun read():Int = super.read().also {if(it>=0) received++}
+                                override fun read(buffer:ByteArray,off:Int,len:Int):Int =
+                                    super.read(buffer,off,len).also {if(it>0)received+=it}
+                            }
+                            (if(cipher==null) counting else javax.crypto.CipherInputStream(counting,cipher)).use { input ->
+                                val buffer=ByteArray(128*1024)
+                                while(true) {
+                                    currentCoroutineContext().ensureActive()
+                                    if(store.get(id)?.state!="DOWNLOADING") throw Paused()
+                                    val n=input.read(buffer)
+                                    if(n<0)break
+                                    require(received<=1024L*1024*1024) {"Segmento excede o limite seguro"}
+                                    out.write(buffer,0,n)
+                                }
+                            }
+                            require(received>0 && (c.contentLengthLong<0 || received==c.contentLengthLong)) {"Segmento incompleto"}
+                            out.sync()
+                            count=out.filePointer
+                            index++
+                        } finally {c.disconnect()}
+                    } catch(error:Exception) {
+                        out.setLength(segmentStart);out.seek(segmentStart);out.sync()
+                        throw error
+                    }
                     val speed=received*1000L/(android.os.SystemClock.elapsedRealtime()-start).coerceAtLeast(1)
                     store.mutate(id){it.put("bytes",count).put("hlsIndex",index).put("speed",speed)
                         if(index>=3) it.put("hlsEstimatedTotal",(count.toDouble()*playlist.segments.size/index).toLong())}
