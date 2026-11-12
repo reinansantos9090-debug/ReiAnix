@@ -43,4 +43,14 @@ class DownloadHlsPolicyTest {
             "Animes Online", "https://site.example/watch/123"))
     }
 
+    @Test fun masterSelectsDefaultExternalAudioRendition() {
+        val master = "#EXTM3U\n" +
+            "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"Other\",DEFAULT=NO,URI=\"other/audio.m3u8\"\n" +
+            "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"Main\",DEFAULT=YES,URI=\"main/audio.m3u8\"\n" +
+            "#EXT-X-STREAM-INF:BANDWIDTH=2000000,AUDIO=\"audio\"\nvideo.m3u8\n"
+        assertEquals("https://cdn.example/show/main/audio.m3u8",
+            DownloadHls.audioRenditionUrl(master,"https://cdn.example/show/master.m3u8","audio"))
+        assertNull(DownloadHls.audioRenditionUrl(master,"https://cdn.example/show/master.m3u8","missing"))
+    }
+
 }
