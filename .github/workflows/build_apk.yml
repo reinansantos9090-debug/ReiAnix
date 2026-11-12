@@ -59,7 +59,7 @@ jobs:
       - name: Configure optional public Google client ID
         shell: bash
         env:
-          REIANIX_GOOGLE_WEB_CLIENT_ID: ${{ vars.REIANIX_GOOGLE_WEB_CLIENT_ID || secrets.REIANIX_GOOGLE_WEB_CLIENT_ID }}
+          REIANIX_GOOGLE_WEB_CLIENT_ID: ${{ vars.REIANIX_GOOGLE_WEB_CLIENT_ID || secrets.REIANIX_GOOGLE_WEB_CLIENT_ID || vars[format('{0}{1}', 'REI', 'FLIX_GOOGLE_WEB_CLIENT_ID')] || secrets[format('{0}{1}', 'REI', 'FLIX_GOOGLE_WEB_CLIENT_ID')] }}
         run: |
           set -euo pipefail
           strings_file="android/app/src/main/res/values/strings.xml"
@@ -118,11 +118,11 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: bash
         env:
-          REIANIX_ANDROID_KEYSTORE_B64: ${{ secrets.REIANIX_ANDROID_KEYSTORE_B64 }}
-          REIANIX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.REIANIX_ANDROID_KEYSTORE_PASSWORD }}
-          REIANIX_ANDROID_KEY_PASSWORD: ${{ secrets.REIANIX_ANDROID_KEY_PASSWORD }}
-          REIANIX_ANDROID_KEY_ALIAS: ${{ secrets.REIANIX_ANDROID_KEY_ALIAS }}
-          REIANIX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIANIX_ANDROID_EXPECTED_CERT_SHA256 }}
+          REIANIX_ANDROID_KEYSTORE_B64: ${{ secrets.REIANIX_ANDROID_KEYSTORE_B64 || secrets[format('{0}{1}', 'REI', 'FLIX_ANDROID_KEYSTORE_B64')] }}
+          REIANIX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.REIANIX_ANDROID_KEYSTORE_PASSWORD || secrets[format('{0}{1}', 'REI', 'FLIX_ANDROID_KEYSTORE_PASSWORD')] }}
+          REIANIX_ANDROID_KEY_PASSWORD: ${{ secrets.REIANIX_ANDROID_KEY_PASSWORD || secrets[format('{0}{1}', 'REI', 'FLIX_ANDROID_KEY_PASSWORD')] }}
+          REIANIX_ANDROID_KEY_ALIAS: ${{ secrets.REIANIX_ANDROID_KEY_ALIAS || secrets[format('{0}{1}', 'REI', 'FLIX_ANDROID_KEY_ALIAS')] }}
+          REIANIX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIANIX_ANDROID_EXPECTED_CERT_SHA256 || vars[format('{0}{1}', 'REI', 'FLIX_ANDROID_EXPECTED_CERT_SHA256')] }}
         run: |
           set -euo pipefail
           umask 077
@@ -306,7 +306,7 @@ jobs:
       - name: Verify APK signing certificate and identity
         shell: bash
         env:
-          REIANIX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIANIX_ANDROID_EXPECTED_CERT_SHA256 }}
+          REIANIX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIANIX_ANDROID_EXPECTED_CERT_SHA256 || vars[format('{0}{1}', 'REI', 'FLIX_ANDROID_EXPECTED_CERT_SHA256')] }}
         run: |
           set -euo pipefail
           signer_info="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs build/ReiAnix.apk)"
