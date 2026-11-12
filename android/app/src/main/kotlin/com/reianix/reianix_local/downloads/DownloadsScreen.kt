@@ -235,7 +235,7 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
 @Composable
 internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
     onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean,DownloadSizeProbe.Result?)->Unit,
-    hlsHint: Boolean = false) {
+    hlsHint: Boolean = false,initialKnownSize:Long? = null) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(editing?.name ?: DownloadIdentity.suggestedName(initialTitle,initialUrl,initialName)) }
@@ -258,8 +258,12 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     var originalHeaders by remember { mutableStateOf(initialHeaders) }
     var sourceLoading by remember { mutableStateOf(editing!=null) }
     var sessionOrigin by remember { mutableStateOf(runCatching { java.net.URL(initialUrl) }.getOrNull()) }
-    var sizeResult by remember { mutableStateOf<DownloadSizeProbe.Result?>(null) }
-    var sizeProbeUrl by remember { mutableStateOf("") }
+    var sizeResult by remember(initialUrl,initialKnownSize) { mutableStateOf<DownloadSizeProbe.Result?>(
+        initialKnownSize?.takeIf{it>0}?.let{DownloadSizeProbe.Result(it,true,"webview-content-length")}
+    ) }
+    var sizeProbeUrl by remember(initialUrl,initialKnownSize) {
+        mutableStateOf(if(initialKnownSize!=null && initialKnownSize>0)initialUrl.trim() else "")
+    }
     var storageBytes by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(Unit) {
         storageBytes=withContext(Dispatchers.IO) {
@@ -268,7 +272,13 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     }
     // Debounce user edits and do not block WebView or the "Iniciar" button.
     // The exact same authenticated redirect policy applies as in downloads.
-    LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint) {
+    LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint,initialKnownSize) {
+        if(initialKnownSize!=null && initialKnownSize>0 && url.trim()==initialUrl.trim() &&
+            !hlsHint && editing==null) {
+            sizeResult=DownloadSizeProbe.Result(initialKnownSize,true,"webview-content-length")
+            sizeProbeUrl=url.trim()
+            return@LaunchedEffect
+        }
         sizeResult=null
         sizeProbeUrl=""
         delay(350)
