@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import kotlinx.coroutines.*
 import java.io.File

@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
-import com.reiflix.reiflix_local.data.media.MediaFilenameParser
+import com.reianix.reianix_local.data.media.MediaFilenameParser
 
 /** A season/episode marker alone is not an anime title. Never match it against AniList. */
 object DownloadIdentity {

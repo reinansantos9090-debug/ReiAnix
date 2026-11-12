@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,7 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.*
 import org.json.JSONObject
 

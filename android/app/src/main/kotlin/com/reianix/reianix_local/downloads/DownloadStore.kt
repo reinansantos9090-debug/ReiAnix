@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import android.content.ContentValues
 import android.content.Context
@@ -7,9 +7,9 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.webkit.MimeTypeMap
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import com.reiflix.reiflix_local.data.media.MediaFilenameParser
-import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.data.media.MediaFilenameParser
+import com.reianix.reianix_local.data.media.MediaTitleNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow

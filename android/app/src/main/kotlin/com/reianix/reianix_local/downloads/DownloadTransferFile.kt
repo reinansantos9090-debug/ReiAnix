@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import android.content.ContentValues
 import android.content.Context

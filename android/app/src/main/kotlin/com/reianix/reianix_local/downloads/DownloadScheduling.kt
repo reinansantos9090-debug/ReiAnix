@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.downloads
+package com.reianix.reianix_local.downloads
 
 import android.app.*
 import android.app.job.*
@@ -20,7 +20,7 @@ object DownloadScheduling {
         schedule(context)
     }
     suspend fun schedule(context: Context, userInitiated: Boolean = true) {
-        val wifi=com.reiflix.reiflix_local.ReiAnixAppDependencies.from(context).sqliteSettingsRepository.getPreference("downloads.wifi_only","false")=="true"
+        val wifi=com.reianix.reianix_local.ReiAnixAppDependencies.from(context).sqliteSettingsRepository.getPreference("downloads.wifi_only","false")=="true"
         var uidt=hasUserJob(context)
         if(Build.VERSION.SDK_INT>=34 && userInitiated && !uidt) {
             try {
