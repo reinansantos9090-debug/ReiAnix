@@ -330,7 +330,9 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         if(user.isNotBlank())probeHeaders["Authorization"]="Basic "+
             android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP)
         val inspected=withTimeoutOrNull(8_000) {
-            DownloadSizeProbe.inspect(target,probeHeaders,hlsHint && target==initialUrl)
+            DownloadSizeProbe.inspect(target,
+                DownloadSessionHeaders.resolve(context,target,probeHeaders),
+                hlsHint && target==initialUrl)
         } ?: DownloadSizeProbe.Result.Unknown
         // The probe may fail even though the source app supplied an estimated
         // size. Keep useful evidence; never turn an estimate into Content-Length.
