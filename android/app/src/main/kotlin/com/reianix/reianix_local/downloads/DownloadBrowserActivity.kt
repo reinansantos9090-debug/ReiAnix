@@ -316,8 +316,11 @@ class DownloadBrowserActivity: ComponentActivity() {
             title=pageTitle.ifBlank { title },filename=filename,capture=capture,
             hlsHint=mime?.contains("mpegurl",ignoreCase=true)==true,
             browserLength=browserLength?.takeIf{
+                val extension=url.substringBefore('?').lowercase()
                 it>0 && mime?.contains("mpegurl",true)!=true &&
-                !url.substringBefore('?').endsWith(".m3u8",true)
+                    mime?.contains("dash+xml",true)!=true &&
+                    !listOf(".m3u8",".mpd",".meta4",".metalink",".torrent")
+                        .any(extension::endsWith)
             },
             providerEstimatedSize=providerEstimatedSize?.takeIf {it>0},
         )
