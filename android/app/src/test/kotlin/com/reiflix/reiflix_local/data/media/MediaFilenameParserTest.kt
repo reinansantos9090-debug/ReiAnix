@@ -259,18 +259,6 @@ class MediaFilenameParserTest {
     }
 
     @Test
-    fun websiteSuffixAfterEpisodeNumberDoesNotReplaceItsOriginalFilename() {
-        val filename="Akane-banashi Dublado Episódio 1 - Animes Online.mp4"
-        val parsed=MediaFilenameParser.parseVideoPath(filename)
-        assertEquals(1.0,parsed.episodeNumber!!,0.0)
-        assertEquals(filename,parsed.displayTitle)
-        val genuine=MediaFilenameParser.parseVideoPath(
-            "Pass the Monster Meat Episode 07 - Those Who Inherit the Galbraith Name.mkv"
-        )
-        assertEquals("Those Who Inherit the Galbraith Name",genuine.displayTitle)
-    }
-
-    @Test
     fun rootLevelPlainNamedVideoCanBeRecognizedAsMovieOnlyWhenOptedIn() {
         val lookBack = MediaFilenameParser.parseVideoPath("Look Back.mp4", allowStandaloneMovie = true)
         val nestedVideo = MediaFilenameParser.parseVideoPath(

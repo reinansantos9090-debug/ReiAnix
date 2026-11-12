@@ -146,9 +146,6 @@ class DownloadEngine(private val context: Context) {
                 if(resume==0L) { it.remove("serverHash"); it.remove("serverHashType"); it.put("hlsIndex",0); it.remove("hlsFingerprint") }
                 if(serverHash!=null) it.put("serverHash",serverHash.first).put("serverHashType",serverHash.second)
             }
-            // The browser/server may refine the name or extension after enqueue.
-            // Reflect that on the public row without changing the virtual player URI.
-            runCatching { target.syncName() }
             try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let { DownloadMetadata.offer(context,it.animeId) }
             val prefs=ReiAnixAppDependencies.from(context).sqliteSettingsRepository
