@@ -1,9 +1,9 @@
-package com.reiflix.reiflix_local.data.library
+package com.reianix.reianix_local.data.library
 
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixDurationObservationRecord
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixTimelineSourceRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixDurationObservationRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixEpisodeRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reianix.reianix_local.data.sqlite.ReiAnixTimelineSourceRecord
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.round

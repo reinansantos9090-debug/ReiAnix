@@ -1,22 +1,22 @@
-package com.reiflix.reiflix_local.data.library
+package com.reianix.reianix_local.data.library
 
-import com.reiflix.reiflix_local.data.contract.arrayOrDefault
-import com.reiflix.reiflix_local.data.contract.booleanOrDefault
-import com.reiflix.reiflix_local.data.contract.booleanRequired
-import com.reiflix.reiflix_local.data.contract.intOrNull
-import com.reiflix.reiflix_local.data.contract.intRequired
-import com.reiflix.reiflix_local.data.contract.longRequired
-import com.reiflix.reiflix_local.data.contract.objectOrDefault
-import com.reiflix.reiflix_local.data.contract.objectOrNull
-import com.reiflix.reiflix_local.data.contract.requiredArray
-import com.reiflix.reiflix_local.data.contract.stringList
-import com.reiflix.reiflix_local.data.contract.stringOrDefault
-import com.reiflix.reiflix_local.data.contract.stringOrNull
-import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixStorageSourceUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState
+import com.reianix.reianix_local.data.contract.arrayOrDefault
+import com.reianix.reianix_local.data.contract.booleanOrDefault
+import com.reianix.reianix_local.data.contract.booleanRequired
+import com.reianix.reianix_local.data.contract.intOrNull
+import com.reianix.reianix_local.data.contract.intRequired
+import com.reianix.reianix_local.data.contract.longRequired
+import com.reianix.reianix_local.data.contract.objectOrDefault
+import com.reianix.reianix_local.data.contract.objectOrNull
+import com.reianix.reianix_local.data.contract.requiredArray
+import com.reianix.reianix_local.data.contract.stringList
+import com.reianix.reianix_local.data.contract.stringOrDefault
+import com.reianix.reianix_local.data.contract.stringOrNull
+import com.reianix.reianix_local.ui.mapper.LibraryUiMappers
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixStorageSourceUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixStorageUiState
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -216,7 +216,7 @@ internal object ReiAnixLibrarySnapshotCodec {
         val pageSize: Int,
         val total: Int,
         val hasMore: Boolean,
-        val items: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
+        val items: List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>,
     )
 }
 

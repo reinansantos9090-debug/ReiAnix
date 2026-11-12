@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.diagnostics
+package com.reianix.reianix_local.data.diagnostics
 
 import android.Manifest
 import android.content.Context
@@ -11,11 +11,11 @@ import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
 import android.provider.DocumentsContract
-import com.reiflix.reiflix_local.BuildConfig
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import com.reiflix.reiflix_local.PerformanceDiagnostics
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
-import com.reiflix.reiflix_local.scanner.NativeScanController
+import com.reianix.reianix_local.BuildConfig
+import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.PerformanceDiagnostics
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.scanner.NativeScanController
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -583,7 +583,7 @@ object ReiAnixManualDiagnostics {
             if (name.contains("CACHE", true) && isFailure) cacheFailures++
             if (name.contains("ARTWORK_LOAD_FAILED", true) || name.contains("ARTWORK_SOURCE_NOT_FOUND", true)) presentationFailures++
         }
-        val cacheDirectory = File(context.cacheDir, "reiflix/thumbnails")
+        val cacheDirectory = File(context.cacheDir, "reianix/thumbnails")
         return JSONObject()
             .put("available", true)
             .put("timeline_event_count", selected.length())

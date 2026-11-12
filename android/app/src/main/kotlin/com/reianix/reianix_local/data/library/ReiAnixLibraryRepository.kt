@@ -1,15 +1,15 @@
-package com.reiflix.reiflix_local.data.library
+package com.reianix.reianix_local.data.library
 
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.FileObserver
-import com.reiflix.reiflix_local.MainActivity
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilterEngine
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
+import com.reianix.reianix_local.MainActivity
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiState
+import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilterEngine
+import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilters
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,7 +51,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             // last known canonical catalog from the UI. Keep the snapshot that was
             // last known-good while surfacing the new ERROR state so Compose can
             // show the failure without making the library visually disappear.
-            val preserveCatalogOnError = decoded.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
+            val preserveCatalogOnError = decoded.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
                 decoded.animes.isEmpty() &&
                 previous.animes.isNotEmpty()
             val preserveCatalogDuringScan = decoded.scanInProgress &&
@@ -97,7 +97,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
 
         internal fun reconcilePagedState(
             current: ReiAnixLibraryPagedUiState,
-            canonicalAnimes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
+            canonicalAnimes: List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>,
             recountTotal: Boolean = false,
             includeNewCandidates: Boolean = false,
         ): ReiAnixLibraryPagedUiState {
@@ -178,7 +178,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             completedOnly: Boolean,
         ): ReiAnixLibraryPagedUiState =
             current.copy(
-                status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+                status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
                 animes = emptyList(),
                 totalCount = 0,
                 hasMore = false,
@@ -215,9 +215,9 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             }
             return current.copy(
                 status = if (page.total > 0) {
-                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                    com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.READY
                 } else {
-                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                    com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
                 },
                 animes = merged,
                 totalCount = page.total,
@@ -290,7 +290,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             if (!refreshInFlight.compareAndSet(false, true)) return
             activeRefreshRequestId = requestId
         }
-        val commandUri = Uri.parse("reiflix://native").buildUpon()
+        val commandUri = Uri.parse("reianix://native").buildUpon()
             .appendQueryParameter("action", "scan_library")
             .appendQueryParameter("request_id", requestId)
             .appendQueryParameter("protocol_version", "2")
@@ -590,7 +590,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         }.getOrElse { error ->
             stateMutex.withLock {
                 _state.value = _state.value.copy(
-                    status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
+                    status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
                     error = error.message ?: error::class.java.simpleName,
                 )
             }
@@ -615,8 +615,8 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                     _pagedLibraryState.value = reconciled.copy(
                         status = when {
                             reconciled.animes.isEmpty() &&
-                                _state.value.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY ->
-                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                                _state.value.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY ->
+                                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
                             else -> reconciled.status
                         },
                         error = null,
@@ -626,7 +626,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
                 val message = error.message.orEmpty()
                 if (message.startsWith("Stale Compose library snapshot")) return@onFailure
                 _state.value = _state.value.copy(
-                    status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
+                    status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
                     error = message.ifBlank { error::class.java.simpleName },
                 )
             }

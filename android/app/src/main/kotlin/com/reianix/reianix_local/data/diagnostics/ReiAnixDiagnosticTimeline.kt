@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.diagnostics
+package com.reianix.reianix_local.data.diagnostics
 
 import android.os.SystemClock
 import android.util.Log

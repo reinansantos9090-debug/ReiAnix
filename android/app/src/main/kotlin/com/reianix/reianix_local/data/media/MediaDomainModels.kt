@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.media
+package com.reianix.reianix_local.data.media
 
 /** Domain identifiers mirror existing persisted identifiers; they create no new database keys. */
 @JvmInline

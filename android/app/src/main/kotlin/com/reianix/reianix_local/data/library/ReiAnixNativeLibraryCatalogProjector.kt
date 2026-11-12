@@ -1,15 +1,15 @@
-package com.reiflix.reiflix_local.data.library
+package com.reianix.reianix_local.data.library
 
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow
-import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.data.sqlite.ReiAnixEpisodeRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryCatalogRow
+import com.reianix.reianix_local.ui.mapper.LibraryUiMappers
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixContinueWatchingUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
 import org.json.JSONArray
-import com.reiflix.reiflix_local.ui.artwork.localArtworkSourceRevision
+import com.reianix.reianix_local.ui.artwork.localArtworkSourceRevision
 
 /** A single canonical SQLite read projected into the existing immutable Compose models. */
 internal data class ReiAnixNativeLibraryCatalogSnapshot(

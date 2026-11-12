@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.library
+package com.reianix.reianix_local.data.library
 
 import org.json.JSONObject
 

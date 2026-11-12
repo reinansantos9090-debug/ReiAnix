@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.media
+package com.reianix.reianix_local.data.media
 
 import java.net.URI
 import java.net.URLDecoder
