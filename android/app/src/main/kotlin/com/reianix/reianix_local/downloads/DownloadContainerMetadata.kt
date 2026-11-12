@@ -37,7 +37,7 @@ internal object DownloadContainerMetadata {
 
     private val asfGuid=byteArrayOf(0xa1.toByte(),0xdc.toByte(),0xab.toByte(),0x8c.toByte(),
         0x47,0xa9.toByte(),0xcf.toByte(),0x11,0x8e.toByte(),0xe4.toByte(),0,
-        0xc0.toByte(),0,0xc0.toByte(),0x20,0x53,0x65)
+        0xc0.toByte(),0x0c,0x20,0x53,0x65)
     fun asfSize(b:ByteArray):Hint? {
         if(b.size<64)return null
         val last=(b.size-48).coerceAtMost(LIMIT-48)
@@ -129,7 +129,7 @@ internal object DownloadContainerMetadata {
             if(control !in setOf(2,3))continue
             val adaptation=b[pos+4].toInt() and 255
             if(adaptation<7 || pos+11>=b.size)continue
-            if(b[pos+5].toInt() and 0x10==0)continue
+            if((b[pos+5].toInt() and 0x10)==0)continue
             val a=pos+6
             val base=((b[a].toLong() and 255) shl 25) or
                 ((b[a+1].toLong() and 255) shl 17) or
