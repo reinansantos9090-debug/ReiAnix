@@ -129,6 +129,8 @@ internal object SeriesAnimeCoalescer {
 
     private fun resolve(a: Album,b: Album,preferredId:Long?):Candidate? {
         if(a.regularCount==0 || b.regularCount==0) return null
+        // Explicitly user-selected AniList identity is never re-parented.
+        if(a.manualMatch || b.manualMatch) return null
         val sameRemote=a.remoteId!=null && a.remoteId==b.remoteId
         val seasonPair=seasonEvidence(a,b)
         if(seasonPair!=null && !a.identityManual && !b.identityManual) return seasonPair
