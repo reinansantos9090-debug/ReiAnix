@@ -301,6 +301,7 @@ class DownloadEngine(private val context: Context) {
         // Crash recovery must never leave a raw TS/MKV/AVI labeled MP4.
         var publicRemux:Uri?=null
         var privateRemux:File?=null
+        var stagedTranscode:File?=null
         var committed=false
         try {
             beforePublication.json.optString("remuxCandidateUri").takeIf { it.isNotBlank() }?.let { stale ->
@@ -319,6 +320,42 @@ class DownloadEngine(private val context: Context) {
                     }
                 } else {
                     privateRemux=DownloadTsRemux.tryRemux(context,file)
+                }
+            }
+            // A source with unsupported MP4 sample types may still be converted
+            // by the Android device's codecs. Media3 transcodes H.264/AAC only
+            // when lossless remux cannot work; it may not decode every legacy format.
+            if(needsRemux && publicRemux==null && privateRemux==null) {
+                stagedTranscode=DownloadMediaTranscoder.tryTranscode(context,target.readUri(),beforePublication.bytes)
+                stagedTranscode?.let { converted ->
+                    if(target.isPublic) {
+                        val candidate=target.sibling("transcoded.mp4")
+                        store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
+                        try {
+                            val output=context.contentResolver.openOutputStream(candidate,"wt")
+                                ?: throw IOException("Não foi possível salvar MP4 convertido")
+                            output.use { stream ->
+                                converted.inputStream().use { input ->
+                                    val buffer=ByteArray(256*1024)
+                                    while(true) {
+                                        currentCoroutineContext().ensureActive()
+                                        val read=input.read(buffer)
+                                        if(read<0) break
+                                        stream.write(buffer,0,read)
+                                    }
+                                }
+                                stream.flush()
+                            }
+                            if(target.sizeOf(candidate)!=converted.length())
+                                throw IOException("O MP4 convertido não foi gravado por completo")
+                            publicRemux=candidate
+                        } catch(cancelled: CancellationException) {
+                            throw cancelled
+                        } catch(error: Exception) {
+                            target.discard(candidate)
+                            store.mutate(id){it.remove("remuxCandidateUri")}
+                        }
+                    } else privateRemux=converted
                 }
             }
             val didRemux=publicRemux!=null || privateRemux!=null
@@ -366,6 +403,7 @@ class DownloadEngine(private val context: Context) {
             store.mutate(id){it.remove("remuxCandidateUri")}
         } finally {
             privateRemux?.delete()
+            stagedTranscode?.delete()
             if(!committed && publicRemux!=null) {
                 publicRemux?.let(target::discard)
                 runCatching {store.mutate(id){it.remove("remuxCandidateUri")}}
