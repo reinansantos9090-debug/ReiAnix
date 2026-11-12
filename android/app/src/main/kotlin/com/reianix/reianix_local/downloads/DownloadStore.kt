@@ -218,14 +218,42 @@ class DownloadStore(context: Context) {
             data.put("detectedSize",size).put("detectedSizeExact",detectedExact)
         }
         if(playerCapture!=null) {val evidence=JSONObject(playerCapture.toString());evidence.remove("url");evidence.remove("page");data.put("playerCapture",evidence)}
-        db.transaction { connection ->
+        // Sharing the same URL twice must reopen its existing job instead of
+        // creating a duplicate file, restarting bytes, or throwing an error.
+        // The decision and insertion are atomic in the same SQLite transaction.
+        val existingId=db.transaction { connection ->
             val duplicate = connection.rawQuery("SELECT data FROM native_downloads", null).use { c ->
-                var found = false
-                while(c.moveToNext()) { val j=JSONObject(c.getString(0)); if(j.optString("signature")==signature && j.optString("state") !in setOf("CANCELLED", "CORRUPT", "ERROR")) found=true }
+                var found: String? = null
+                while(c.moveToNext()) {
+                    val old=JSONObject(c.getString(0))
+                    if(old.optString("signature")==signature &&
+                        old.optString("state") !in setOf("CANCELLED","CORRUPT","ERROR")) {
+                        found=old.optString("id")
+                        break
+                    }
+                }
                 found
             }
-            require(!duplicate) { "Este link já está na lista de downloads" }
-            connection.insertOrThrow("native_downloads", null, ContentValues().apply { put("id", id); put("data", data.toString()) })
+            if(duplicate==null) {
+                connection.insertOrThrow("native_downloads", null, ContentValues().apply {
+                    put("id", id); put("data", data.toString())
+                })
+            }
+            duplicate
+        }
+        if(existingId!=null) {
+            // A fresh share can include refreshed headers for the same URL.
+            // Wake a waiting/paused job, but never modify an actively writing
+            // or already finished download. Keep resumable files and ETag.
+            val earlier=get(existingId) ?: error("Download existente não encontrado")
+            if(earlier.state in setOf("WAITING","PAUSED")) {
+                mutate(existingId) {
+                    it.put("secret",DownloadSecrets.encrypt(payload.toString()))
+                        .put("state","QUEUED").put("nextAttempt",0).put("attempts",0)
+                        .put("message","")
+                }
+            }
+            return@withContext get(existingId) ?: earlier
         }
         // No private .part is allocated for new Android 10+ downloads; the
         // transfer target is created in the selected/public destination on demand.
