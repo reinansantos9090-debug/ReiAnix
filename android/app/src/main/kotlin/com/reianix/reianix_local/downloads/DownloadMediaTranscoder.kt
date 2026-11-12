@@ -93,4 +93,69 @@ internal object DownloadMediaTranscoder {
                 if(!success) output.delete()
             }
         }
+    /**
+     * Standard adaptive HLS media (including an external audio rendition) can
+     * be exported into one MP4 by Media3. This is attempted only if the regular
+     * HLS downloader rejects separated audio; normal fast HLS remains untouched.
+     *
+     * The platform decoder must support the input, and sufficient cache space
+     * is required for the temporary MP4. No DRM or access-control bypass.
+     */
+    suspend fun tryAdaptiveHls(context: Context, source: String): File? =
+        conversionLock.withLock {
+            val folder=context.externalCacheDir ?: context.cacheDir
+            if(StatFs(folder.absolutePath).availableBytes < 256L*1024*1024)
+                return@withLock null
+            val output=File(folder,"reianix-adaptive-"+UUID.randomUUID()+".mp4")
+            var success=false
+            try {
+                val item=MediaItem.Builder().setUri(source)
+                    .setMimeType(MimeTypes.APPLICATION_M3U8).build()
+                val converted=withContext(Dispatchers.Main) {
+                    suspendCancellableCoroutine<Boolean> { continuation ->
+                        val transformer=Transformer.Builder(context)
+                            .setVideoMimeType(MimeTypes.VIDEO_H264)
+                            .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                            .addListener(object:Transformer.Listener {
+                                override fun onCompleted(composition: Composition,result: ExportResult) {
+                                    if(continuation.isActive)continuation.resume(true)
+                                }
+                                override fun onError(composition: Composition,result: ExportResult,exception: ExportException) {
+                                    Log.i(TAG,"Adaptive HLS export unsupported: "+exception.javaClass.simpleName)
+                                    if(continuation.isActive)continuation.resume(false)
+                                }
+                            }).build()
+                        continuation.invokeOnCancellation {
+                            Handler(Looper.getMainLooper()).post {transformer.cancel()}
+                        }
+                        try { transformer.start(item,output.absolutePath) }
+                        catch(error:Exception) {
+                            Log.i(TAG,"Cannot begin adaptive HLS export: "+error.javaClass.simpleName)
+                            if(continuation.isActive)continuation.resume(false)
+                        }
+                    }
+                }
+                if(!converted || !output.isFile || output.length()<=0L)return@withLock null
+                val check=MediaExtractor()
+                try {
+                    check.setDataSource(output.absolutePath)
+                    val mimes=(0 until check.trackCount).map {
+                        check.getTrackFormat(it).getString(MediaFormat.KEY_MIME).orEmpty()
+                    }
+                    // Separate audio must survive the export; never silently
+                    // publish a silent video with an .mp4 label.
+                    if(mimes.none {it.startsWith("video/")} || mimes.none {it.startsWith("audio/")})
+                        return@withLock null
+                } finally {check.release()}
+                success=true
+                output
+            } catch(cancelled:CancellationException) {throw cancelled}
+            catch(error:Exception) {
+                Log.i(TAG,"Adaptive HLS remains unavailable: "+error.javaClass.simpleName)
+                null
+            } finally {
+                if(!success)output.delete()
+            }
+        }
+
 }
