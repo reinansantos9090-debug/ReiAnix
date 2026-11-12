@@ -23,7 +23,7 @@ import java.util.Locale
  * existing redirect policy (no cross-origin cookie/authorization forwarding).
  */
 internal object DownloadSizeProbe {
-    data class Result(val bytes: Long?, val exact: Boolean, val source: String) {
+    data class Result(val bytes: Long?, val exact: Boolean, val source: String, val name: String? = null, val mime: String? = null) {
         companion object { val Unknown = Result(null, false, "unknown") }
     }
     internal data class HlsPlan(val segments: List<String>, val init: String?, val durationSeconds: Double,
@@ -141,45 +141,65 @@ internal object DownloadSizeProbe {
 
     suspend fun inspect(url: String, headers: Map<String,String>, hlsHint: Boolean = false): Result =
         withContext(Dispatchers.IO) {
+            val hint=DownloadResourceIdentity.bestName(null,url,null)
             try {
                 DownloadHttp.validateUrl(url)
                 val path=URL(url).path.lowercase(Locale.ROOT)
-                val isManifest=hlsHint || path.endsWith(".m3u8")
-                if(isManifest) return@withContext inspectHls(url,headers)
-                trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen") }
-                val first=probe(url,headers)
-                if(first.manifest) return@withContext inspectHls(url,headers)
-                first.length?.let { return@withContext Result(it,true,"http") }
-                Result.Unknown
+                val manifest=hlsHint || path.endsWith(".m3u8")
+                if(manifest) return@withContext inspectHls(url,headers).copy(name=hint)
+                trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen",hint) }
+                val response=probe(url,headers)
+                if(response.manifest) return@withContext inspectHls(url,headers)
+                    .copy(name=response.name ?: hint, mime=response.mime)
+                if(response.length!=null)
+                    return@withContext Result(response.length,true,response.source,response.name ?: hint,response.mime)
+                Result(null,false,"unknown",response.name ?: hint,response.mime)
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
-            catch(_: Exception) { Result.Unknown }
+            catch(_: Exception) { Result(null,false,"unknown",hint) }
         }
 
-    private data class Headers(val length: Long?, val manifest: Boolean)
+    private data class Headers(
+        val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String
+    )
+
+    /**
+     * Gopeed/Download Navi style: first request headers without a body, then
+     * one-byte Range, then a plain GET when servers reject HEAD or Range.
+     * Plain GET is disconnected after headers; the video is NOT downloaded here.
+     * Name and MIME remain useful even when size is unavailable.
+     */
     private fun probe(url: String, headers: Map<String,String>, credentialOrigin: String = url): Headers {
+        var bestName=DownloadResourceIdentity.bestName(null,url,null)
+        var bestMime:String?=null
         var manifest=false
-        for(method in listOf("HEAD","GET")) {
+        for(phase in listOf("HEAD","GET_RANGE","GET")) {
             currentThreadCheck()
-            var c: HttpURLConnection?=null
+            var c:HttpURLConnection?=null
             try {
                 c=DownloadHttp.connect(url,headers,0,null,
-                    end=if(method=="GET")0 else null,credentialOrigin=credentialOrigin,
-                    method=method,connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
-                val mime=c.contentType.orEmpty().substringBefore(';').lowercase(Locale.ROOT)
+                    end=if(phase=="GET_RANGE")0 else null,
+                    credentialOrigin=credentialOrigin,
+                    method=if(phase=="HEAD")"HEAD" else "GET",
+                    connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
+                val code=c.responseCode
+                val mime=c.contentType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
+                if(mime.startsWith("video/") || mime.contains("mpegurl")) bestMime=mime
+                val resolved=DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
+                    c.url.toString(),c.contentType)
+                if(resolved!=null && (bestName==null ||
+                    DownloadResourceIdentity.opaque(bestName) || resolved.contains("Episódio",true)))
+                    bestName=resolved
                 if(mime.contains("mpegurl")) {manifest=true;break}
-                val size=directLength(
-                    c.responseCode,c.getHeaderFieldLong("Content-Length",-1),
-                    c.getHeaderField("Content-Range"),c.getHeaderField("Content-Encoding"),
-                    c.contentType)
-                if(size!=null)return Headers(size,false)
-                // Many CDNs reject HEAD even when a one-byte GET Range is
-                // allowed. Do not abandon the GET fallback after a HEAD 403.
-                if(method=="GET" && (c.responseCode==HttpURLConnection.HTTP_UNAUTHORIZED ||
-                    c.responseCode==HttpURLConnection.HTTP_FORBIDDEN))break
-            } catch(_: java.io.IOException) { /* HEAD may be unsupported; try a one-byte Range. */ }
-            finally { c?.disconnect() }
+                val size=directLength(code,c.getHeaderFieldLong("Content-Length",-1),
+                    c.getHeaderField("Content-Range"),c.getHeaderField("Content-Encoding"),c.contentType)
+                if(size!=null)return Headers(size,false,bestName,bestMime,phase.lowercase(Locale.ROOT))
+                // Some CDNs reject ranges but permit GET. A missing Content-Length
+                // in a 200 chunked response cannot be treated as an exact size.
+                if(phase=="GET" && code in setOf(401,403))break
+            } catch(_:java.io.IOException) { /* try the next header-only strategy */ }
+            finally {c?.disconnect()}
         }
-        return Headers(null,manifest)
+        return Headers(null,manifest,bestName,bestMime,"unknown")
     }
 
     private suspend fun inspectHls(url: String, headers: Map<String,String>): Result {
