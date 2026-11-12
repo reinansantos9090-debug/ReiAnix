@@ -387,9 +387,11 @@ class DownloadStore(context: Context) {
         val encrypted=DownloadSecrets.encrypt(JSONObject().put("url",url).put("headers",JSONObject(headers)).toString())
         var previousOutput=""
         var previousTransfer=""
+        var destinationChanged=false
         mutate(id) {
             require(it.optString("state") in setOf("ERROR","PAUSED"))
             if(it.optString("destination")!=destination) {
+                destinationChanged=true
                 previousOutput=it.optString("output")
                 previousTransfer=it.optString("transferUri")
                 it.put("destination",destination).put("output","").remove("transferUri")
@@ -412,6 +414,7 @@ class DownloadStore(context: Context) {
         if(previousTransfer.isNotBlank() && previousTransfer!=previousOutput) runCatching {
             context.contentResolver.delete(Uri.parse(previousTransfer),null,null)
         }
+        if(destinationChanged) partial(id).delete()
         available(id,true)
     }
     fun forget(id: String) {
