@@ -2114,6 +2114,16 @@ class ReiAnixLibraryViewModel(
         // New publication events are buffered while this runs, so older saved images
         // enter the per-anime stream before thumbnails published during startup.
         viewModelScope.launch {
+            // Repair existing duplicate anime/season records once after a healthy
+            // bootstrap. Keep heavy SQLite work off the Compose/main thread,
+            // and never slow poster or thumbnail publication on later refreshes.
+            try {
+                nativeLibraryRepository.reconcileExistingSeries()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Existing series reconciliation was skipped", error)
+            }
             refreshNativeCatalog()
             for (publication in traceMoePublicationQueue) {
                 processPublishedEpisodeThumbnail(publication)
