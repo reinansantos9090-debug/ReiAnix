@@ -54,6 +54,22 @@ internal object DownloadSizeIntelligence {
     }
 
     /**
+     * Combine independent approximations only when they are reasonably
+     * consistent. A label supplied by the originating app carries more weight
+     * than a bitrate extrapolation; neither can override an exact HTTP length.
+     * Inconsistent observations are not averaged into a fabricated certainty.
+     */
+    fun reconcile(provider:Evidence?,probe:Evidence?):Evidence? {
+        if(provider==null || probe==null)return provider ?: probe
+        if(provider.exact || probe.exact)return best(provider,probe)
+        val low=minOf(provider.bytes,probe.bytes).toDouble()
+        val high=maxOf(provider.bytes,probe.bytes).toDouble()
+        if(low<=0 || high/low>1.6)return provider
+        val combined=provider.bytes.toDouble()*0.75+probe.bytes.toDouble()*0.25
+        return Evidence(combined.roundToLong(),false,"combined-provider-probe")
+    }
+
+    /**
      * Round *display-only* approximations to intuitive MB buckets.
      * Ex: a provided 141 MB displays as ~140 MB; the download still receives
      * every byte until the server reaches EOF.
