@@ -219,7 +219,8 @@ class DownloadStore(context: Context) {
             require(!duplicate) { "Este link já está na lista de downloads" }
             connection.insertOrThrow("native_downloads", null, ContentValues().apply { put("id", id); put("data", data.toString()) })
         }
-        partial(id).createNewFile()
+        // No private .part is allocated for new Android 10+ downloads; the
+        // transfer target is created in the selected/public destination on demand.
         try { registerMedia(id) } catch (e: Exception) {
             mutate(id) { it.put("state", "ERROR").put("message", "Não foi possível adicionar o vídeo à biblioteca") }
             throw e
@@ -364,6 +365,10 @@ class DownloadStore(context: Context) {
                     }.getOrDefault(false)
                     mutate(id) { if(removed) it.put("output","") else it.put("message","Autorize novamente a pasta para remover o arquivo temporário.") }
                 }
+                DownloadTransferFile(context,this,id).let { target ->
+                    target.uri?.let { target.discard(it) }
+                }
+                mutate(id) { it.remove("transferUri") }
                 available(id,false)
             }
             "restart" -> { require(before.state !in setOf("DOWNLOADING","SAVING","VERIFYING","COMPLETE")); mutate(id) { require(it.optString("state") in setOf("PAUSED","ERROR","CORRUPT","CANCELLED")); it.put("restart",true).put("state","QUEUED").put("bytes",0).put("total",-1).put("attempts",0).put("nextAttempt",0) }; available(id,true) }
@@ -381,9 +386,15 @@ class DownloadStore(context: Context) {
         val previousUrl=runCatching { secret(item).getString("url") }.getOrNull()
         val encrypted=DownloadSecrets.encrypt(JSONObject().put("url",url).put("headers",JSONObject(headers)).toString())
         var previousOutput=""
+        var previousTransfer=""
         mutate(id) {
             require(it.optString("state") in setOf("ERROR","PAUSED"))
-            if(it.optString("destination")!=destination) { previousOutput=it.optString("output"); it.put("destination",destination).put("output","") }
+            if(it.optString("destination")!=destination) {
+                previousOutput=it.optString("output")
+                previousTransfer=it.optString("transferUri")
+                it.put("destination",destination).put("output","").remove("transferUri")
+                it.put("restart",true).put("bytes",0).put("total",-1)
+            }
             if(previousUrl!=url) {
                 it.put("restart",true).put("bytes",0).put("total",-1).put("parallelDisabled",false)
                 it.remove("hls");it.remove("playerCapture");it.remove("captureApproved");it.remove("captureProbeStage")
@@ -397,6 +408,9 @@ class DownloadStore(context: Context) {
         if(previousOutput.isNotBlank()) runCatching {
             val uri=Uri.parse(previousOutput)
             if(uri.scheme=="file") java.io.File(uri.path!!).delete() else context.contentResolver.delete(uri,null,null)
+        }
+        if(previousTransfer.isNotBlank() && previousTransfer!=previousOutput) runCatching {
+            context.contentResolver.delete(Uri.parse(previousTransfer),null,null)
         }
         available(id,true)
     }
@@ -413,6 +427,9 @@ class DownloadStore(context: Context) {
                 },"id=? AND media_identity=?",arrayOf(item.episodeId.toString(),"download:$id"))
             }
             connection.delete("native_downloads","id=?",arrayOf(id))
+        }
+        if(item.state!="COMPLETE") DownloadTransferFile(context,this,id).let { target ->
+            target.uri?.let { target.discard(it) }
         }
         partial(id).delete()
         DownloadEvents.catalog.tryEmit(Unit)
