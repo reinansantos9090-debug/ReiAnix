@@ -16,7 +16,8 @@ object DownloadHttp {
     fun sameOrigin(a: URL,b: URL): Boolean = a.protocol.equals(b.protocol,true) && a.host.equals(b.host,true) &&
         (if(a.port<0) a.defaultPort else a.port)==(if(b.port<0)b.defaultPort else b.port)
     fun connect(url: String, headers: Map<String,String>, offset: Long, validator: String?, end: Long? = null, credentialOrigin: String = url,
-        method: String = "GET", connectTimeoutMs: Int = 20_000, readTimeoutMs: Int = 25_000): HttpURLConnection {
+        method: String = "GET", connectTimeoutMs: Int = 20_000, readTimeoutMs: Int = 25_000,
+        probeRange: String? = null, conditionalEtag: String? = null): HttpURLConnection {
         require(method in setOf("GET","HEAD"))
         val origin=URL(validateUrl(credentialOrigin).toASCIIString()); var target=URL(validateUrl(url).toASCIIString())
         repeat(8) {
@@ -41,9 +42,19 @@ object DownloadHttp {
                     }
                 }
             }
-            if(end!=null || (offset>0 && !validator.isNullOrBlank())) {
-                connection.setRequestProperty("Range","bytes=$offset-${end ?: ""}"); if(!validator.isNullOrBlank()) connection.setRequestProperty("If-Range",validator)
+            if(method=="GET" && !probeRange.isNullOrBlank()) {
+                require(probeRange.length<=64 && probeRange.startsWith("bytes=") &&
+                    probeRange.drop(6).all { it.isDigit() || it==',' || it=='-' })
+                connection.setRequestProperty("Range",probeRange)
+            } else if(end!=null || (offset>0 && !validator.isNullOrBlank())) {
+                connection.setRequestProperty("Range","bytes="+offset+"-"+(end?.toString() ?: ""))
+                if(!validator.isNullOrBlank()) connection.setRequestProperty("If-Range",validator)
             }
+            // Validators are used only for metadata checks, not for cross-origin
+            // authentication or to change a download's byte representation.
+            if(!conditionalEtag.isNullOrBlank() && conditionalEtag.length<=256 &&
+                conditionalEtag.none { it=='\r' || it=='\n' } && sameOrigin(origin,target))
+                connection.setRequestProperty("If-None-Match",conditionalEtag)
             val code=try { connection.responseCode } catch(error: Exception) { connection.disconnect(); throw error }
             if(code in setOf(301,302,303,307,308)) {
                 val location=connection.getHeaderField("Location"); connection.disconnect()
