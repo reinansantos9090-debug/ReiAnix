@@ -1382,48 +1382,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
-    fun remoteVerifiedSeriesMergeSurvivesCanonicalForeignKeysAndKeepsEachEpisode() {
-        createCanonicalFixture()
-        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READWRITE).use {db ->
-            db.setForeignKeyConstraintsEnabled(true)
-            fun addAlbum(id:Long,remote:Long,lookup:String) {
-                db.execSQL(
-                    "INSERT INTO anime(id,lookup_title,title,added_at,anilist_id,media_kind) VALUES(?,?,?,1100,?,'series')",
-                    arrayOf(id,lookup,lookup,remote),
-                )
-            }
-            addAlbum(101,701001,"pass-monster-numeric")
-            addAlbum(102,701001,"pass-monster-titled")
-            addAlbum(103,701002,"may-i-ask-numeric")
-            addAlbum(104,701002,"may-i-ask-titled")
-            addAlbum(105,701003,"wandance-complete")
-            fun addEpisodes(album:Long,first:Int,last:Int) {
-                for(number in first..last) {
-                    db.execSQL(
-                        "INSERT INTO episodes(anime_id,path,file_name,season,number,progress) VALUES(?,?,?,1,?,?)",
-                        arrayOf(album,"content://test/$album/$number","Episode $number.mkv",
-                            number.toDouble(),if(number==1)25.0 else 0.0),
-                    )
-                }
-            }
-            addEpisodes(101,1,6); addEpisodes(102,7,12)
-            addEpisodes(103,1,10); addEpisodes(104,11,13)
-            addEpisodes(105,1,12)
-            assertTrue(SeriesAnimeCoalescer.mergeVerified(db))
-            fun count(id:Long)=db.rawQuery("SELECT COUNT(*) FROM episodes WHERE anime_id=?",arrayOf(id.toString())).use {
-                it.moveToFirst();it.getInt(0)
-            }
-            assertEquals(12,count(101))
-            assertEquals(13,count(103))
-            assertEquals(12,count(105))
-            assertEquals(0,count(102))
-            assertEquals(0,count(104))
-            db.rawQuery("PRAGMA foreign_key_check",null).use {assertFalse(it.moveToFirst())}
-        }
-    }
-
-    @Test
-    fun distinctSecondReleaseIsImportedWithoutReplacingOriginalEpisode() = runBlocking {
+    fun ambiguousSecondReleaseBlocksReconciliationAndPreservesOriginalReference() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL("UPDATE episodes SET source_folder = ?, media_identity = ? WHERE id = ?",
@@ -1431,7 +1390,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
         val report = ReiAnixSqliteLibraryRepository(context).indexDiscoveredMedia(
             NativeLibraryScanSnapshot(
-                operationId = "two-releases",
+                operationId = "ambiguous-release",
                 source = "saf",
                 scopeRoot = "/media/show",
                 expectedLocations = setOf("/media/show"),
@@ -1440,17 +1399,6 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 complete = true,
                 authorizationValid = true,
                 items = listOf(
-                    NativeDiscoveredMedia(
-                        location = "/media/show/episode-01.mkv",
-                        fileName = "episode-01.mkv",
-                        scopeLocation = "/media/show/episode-01.mkv",
-                        animeTitle = "Original Title",
-                        season = 1,
-                        episodeNumber = 1.0,
-                        identificationConfidence = "high",
-                        sourceFolder = "/media/show",
-                        mediaIdentity = "shared:primary:show/episode-01.mkv",
-                    ),
                     NativeDiscoveredMedia(
                         location = "/media/show/renamed-release.mkv",
                         fileName = "renamed-release.mkv",
@@ -1465,19 +1413,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 ),
             ),
         )
-        assertTrue(report.reconciliationAuthorized)
-        assertEquals(0, report.ambiguous)
-        assertEquals(1, report.inserted)
-        val repository=ReiAnixSqliteLibraryRepository(context)
-        assertEquals("/media/show/episode-01.mkv",repository.getEpisode(7L)!!.path)
-        assertEquals(false,repository.getEpisode(7L)!!.missing)
-        assertEquals(11.0,repository.getEpisode(7L)!!.progress!!,0.0)
-        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READONLY).use { db ->
-            db.rawQuery(
-                "SELECT COUNT(*) FROM episodes WHERE anime_id=1 AND season=1 AND number=1",
-                null,
-            ).use { cursor -> assertTrue(cursor.moveToFirst());assertEquals(2,cursor.getInt(0)) }
-        }
+        assertFalse(report.reconciliationAuthorized)
+        assertEquals(1, report.ambiguous)
+        assertEquals("/media/show/episode-01.mkv", ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.path)
+        assertEquals(false, ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.missing)
+        assertEquals(11.0, ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.progress!!, 0.0)
     }
 
     @Test

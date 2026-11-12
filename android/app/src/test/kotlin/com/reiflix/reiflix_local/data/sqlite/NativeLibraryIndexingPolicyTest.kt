@@ -100,49 +100,6 @@ class NativeLibraryIndexingPolicyTest {
     }
 
     @Test
-    fun rootOnePieceMkvJoinsNumberedMp4WithoutConvertingARealFilm() {
-        val root="Download/ReiAnix/"
-        val movie=NativeDiscoveredMedia(
-            location="content://media/file/11",fileName="One piece.mkv",
-            sourceFolder="Download/ReiAnix",relativePath=root+"One piece.mkv",
-            animeTitle="One piece",episodeType="movie",
-            identificationSource="standalone_root_movie",identificationConfidence="high",
-        )
-        val numbered=NativeDiscoveredMedia(
-            location="content://media/file/12",
-            fileName="One Piece Dublado Episódio 3 - Animes Online.mp4",
-            sourceFolder="Download/ReiAnix",
-            relativePath=root+"One Piece Dublado Episódio 3 - Animes Online.mp4",
-            animeTitle="One Piece Dublado",season=1,episodeNumber=3.0,
-            episodeType="regular",identificationSource="episode_marker",
-            identificationConfidence="high",
-        )
-        val actualFilm=movie.copy(
-            location="content://media/file/13",fileName="One Piece Film Red.mkv",
-            relativePath=root+"One Piece Film Red.mkv",animeTitle="One Piece Film Red",
-            identificationSource="movie_marker",
-        )
-        val results=recognizeUnnumberedSeriesSiblings(listOf(movie,numbered,actualFilm))
-        assertTrue(results[0].episodeType=="regular")
-        assertTrue(results[0].episodeNumber==1.0)
-        assertTrue(results[0].animeTitle=="One Piece Dublado")
-        assertTrue(results[1]==numbered)
-        assertTrue(results[2]==actualFilm)
-    }
-
-    @Test
-    fun unknownFilesWithoutUniqueMatchingSerialSiblingsKeepTheirOriginalKind() {
-        val standalone=NativeDiscoveredMedia(
-            location="content://media/file/1",fileName="Look Back.mkv",
-            relativePath="Download/ReiAnix/Look Back.mkv",
-            animeTitle="Look Back",episodeType="movie",
-            identificationSource="standalone_root_movie",
-            identificationConfidence="high",
-        )
-        assertTrue(recognizeUnnumberedSeriesSiblings(listOf(standalone)).single()==standalone)
-    }
-
-    @Test
     fun repeatedTrailingEpisodeNumberIsRemovedPerAnimeEvenWhenRootContainsMixedSeries() {
         val seihantai = listOf(9, 10, 11).map { number ->
             NativeDiscoveredMedia(

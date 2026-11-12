@@ -34,12 +34,7 @@ internal class DownloadTransferFile(private val context: Context, private val st
     val isPublic: Boolean get() = uri != null
 
     fun prepare() {
-        if(uri != null) {
-            // Resume downloads created by an older ReiAnix build without
-            // keeping their MediaStore row hidden under "pending-...part".
-            runCatching { syncName() }
-            return
-        }
+        if(uri != null) return
         val item = store.get(id) ?: throw IOException("Download não encontrado")
         // A previously started private transfer must continue from its committed bytes.
         if ((item.bytes > 0L || legacyFile.length() > 0L) && legacyFile.exists()) return
@@ -53,17 +48,14 @@ internal class DownloadTransferFile(private val context: Context, private val st
         val created = if(destination.isNotBlank()) {
             val parent = DocumentFile.fromTreeUri(context, Uri.parse(destination))
                 ?: throw IOException("Pasta de download indisponível")
-            parent.createFile(item.mime, item.name)?.uri
+            parent.createFile("application/octet-stream", "ReiAnix-$id.part")?.uri
                 ?: throw IOException("Não foi possível criar arquivo na pasta selecionada")
         } else {
             context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,ContentValues().apply {
-                // The public download is deliberately visible with its actual filename
-                // from the first byte. Keep unfinished rows out of the ReiAnix
-                // library using their persisted transfer URI, not a .part name.
-                put(MediaStore.Downloads.DISPLAY_NAME,item.name)
-                put(MediaStore.Downloads.MIME_TYPE,item.mime)
+                put(MediaStore.Downloads.DISPLAY_NAME,".ReiAnix-$id.part")
+                put(MediaStore.Downloads.MIME_TYPE,"application/octet-stream")
                 put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/ReiAnix/")
-                put(MediaStore.Downloads.IS_PENDING,0)
+                put(MediaStore.Downloads.IS_PENDING,1)
             }) ?: throw IOException("Não foi possível iniciar arquivo em Downloads/ReiAnix")
         }
         try {
@@ -77,27 +69,6 @@ internal class DownloadTransferFile(private val context: Context, private val st
         } catch(error:Exception) {
             runCatching {context.contentResolver.delete(created,null,null)}
             throw error
-        }
-    }
-
-    /**
-     * Keep the name in Samsung My Files synchronized when the server later
-     * identifies a different extension/filename. The content URI remains stable.
-     */
-    fun syncName() {
-        val transfer=uri ?: return
-        val item=store.get(id) ?: return
-        if(transfer.authority==MediaStore.AUTHORITY && Build.VERSION.SDK_INT>=29) {
-            val changed=context.contentResolver.update(transfer,ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME,item.name)
-                put(MediaStore.Downloads.MIME_TYPE,item.mime)
-                put(MediaStore.Downloads.IS_PENDING,0)
-            },null,null)
-            if(changed<=0) throw IOException("Não foi possível atualizar o nome público do download")
-        } else if(transfer.scheme=="content") {
-            val renamed=DocumentsContract.renameDocument(context.contentResolver,transfer,item.name)
-                ?: throw IOException("Não foi possível atualizar o nome do download")
-            if(renamed!=transfer) store.mutate(id) { it.put("transferUri",renamed.toString()) }
         }
     }
 

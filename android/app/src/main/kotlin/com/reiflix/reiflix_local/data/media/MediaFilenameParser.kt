@@ -344,12 +344,7 @@ object MediaFilenameParser {
             kind = kind,
             identificationSource = if (kind == ParsedMediaKind.UNKNOWN && folderSeason != null) "folder_context" else source,
             confidence = if (kind == ParsedMediaKind.UNKNOWN) MediaIdentificationConfidence.LOW else confidence,
-            // A website/release-group suffix is not an episode title. After app
-            // data is cleared, only the filename survives on disk; retain that
-            // complete name instead of showing "Animes Online" for every episode.
-            displayTitle = if(episode!=null && tail.matches(Regex("(?i)animes?[ ._-]*online(?:[ ._-]*(?:tv|br))?"))) {
-                fileName
-            } else tail.takeIf { it.isNotBlank() && !it.matches(Regex("(?i)v?\\d+")) } ?: title,
+            displayTitle = tail.takeIf { it.isNotBlank() && !it.matches(Regex("(?i)v?\\d+")) } ?: title,
             extension = extension,
             evidence = evidence.toList(),
             unresolved = unresolved.toList(),
