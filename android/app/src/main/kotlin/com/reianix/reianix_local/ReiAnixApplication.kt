@@ -15,6 +15,7 @@ class ReiAnixApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ReiAnixLegacyStorageMigration.migrate(this)
         dependencies = ReiAnixAppDependencies(this)
         dependencies.bootstrap.start()
         CoroutineScope(SupervisorJob()+Dispatchers.IO).launch {

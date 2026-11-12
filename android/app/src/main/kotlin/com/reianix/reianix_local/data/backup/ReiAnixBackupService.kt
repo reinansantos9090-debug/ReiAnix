@@ -13,6 +13,7 @@ import android.content.Context
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import android.database.sqlite.SQLiteDatabase
 import com.reianix.reianix_local.BuildConfig
+import com.reianix.reianix_local.ReiAnixLegacyIdentity
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import org.json.JSONArray
@@ -1159,7 +1160,7 @@ class ReiAnixBackupService(context: Context) {
     private fun validateManifestHeader(manifest: JSONObject) {
         require(manifest.stringOrNull("app") == APP_NAME) { "Este arquivo não é um backup do ReiAnix." }
         require(
-            manifest.stringOrNull("format") == FORMAT &&
+            manifest.stringOrNull("format") in setOf(FORMAT, ReiAnixLegacyIdentity.previousBackupFormat) &&
                 manifest.intRequired("format_version") == FORMAT_VERSION,
         ) {
             "Formato de backup incompatível."

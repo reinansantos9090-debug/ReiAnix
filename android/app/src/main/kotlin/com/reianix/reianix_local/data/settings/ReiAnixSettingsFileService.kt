@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.data.settings
 
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import com.reianix.reianix_local.ReiAnixLegacyIdentity
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -41,7 +42,7 @@ class ReiAnixSettingsFileService(
         } catch (error: JSONException) {
             throw IllegalArgumentException("JSON de configurações inválido.", error)
         }
-        require(payload.optString("format") == EXPORT_FORMAT) {
+        require(payload.optString("format") in setOf(EXPORT_FORMAT, ReiAnixLegacyIdentity.previousSettingsFormat)) {
             "Formato de configurações incompatível."
         }
         val versionValue = payload.opt("schema_version")
