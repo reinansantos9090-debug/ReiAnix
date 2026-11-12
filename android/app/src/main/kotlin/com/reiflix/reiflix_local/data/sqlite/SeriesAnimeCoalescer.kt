@@ -31,6 +31,8 @@ internal object SeriesAnimeCoalescer {
         val manualFields: String,
         val manualMatch: Boolean,
         val forms: Set<SeriesTitleIdentity.TitleForm>,
+        val primarySeason: Int,
+        val primaryTagged: Boolean,
         val episodeCount: Int,
         val regularCount: Int,
         val seasons: Set<Int>,
@@ -96,20 +98,10 @@ internal object SeriesAnimeCoalescer {
         // justify joining anything without an explicit matching base title.
         val shared=a.forms.map {it.key}.intersect(b.forms.map {it.key}.toSet())
         if(shared.isEmpty()) return null
-        val choices=buildList {
-            for(key in shared) for(x in a.forms.filter{it.key==key})
-                for(y in b.forms.filter{it.key==key}) {
-                    if(!x.tagged && !y.tagged) continue
-                    if(x.season==y.season) continue
-                    add(x.season to y.season)
-                }
-        }
-        if(choices.isEmpty()) return null
-        val distinct=choices.distinct()
-        // Conflicting English/Japanese aliases must not move an episode into an
-        // arbitrary season.
-        if(distinct.size!=1) return null
-        val (left,right)=distinct.single()
+        val left=a.primarySeason
+        val right=b.primarySeason
+        if(!a.primaryTagged && !b.primaryTagged) return null
+        if(left==right) return null
         val keep=if(left<right)a else b
         val donor=if(keep.id==a.id)b else a
         val donorSeason=if(keep.id==a.id)right else left
@@ -141,6 +133,8 @@ internal object SeriesAnimeCoalescer {
                     val episodeData=counts[c.getLong(0)].orEmpty()
                     val forms=linkedSetOf<SeriesTitleIdentity.TitleForm>()
                     for(n in 7..11) SeriesTitleIdentity.form(c.getString(n))?.let(forms::add)
+                    val primary=SeriesTitleIdentity.form(c.getString(7))
+                        ?: SeriesTitleIdentity.form(c.getString(8))
                     val aliases=c.getString(12)
                     runCatching {
                         val array=JSONArray(aliases?.ifBlank{"[]"} ?: "[]")
@@ -154,6 +148,8 @@ internal object SeriesAnimeCoalescer {
                         source=c.getString(3).lowercase(),status=c.getString(4).lowercase(),
                         manualFields=c.getString(5),manualMatch=c.getInt(6)!=0,
                         forms=forms,
+                        primarySeason=primary?.season ?: 1,
+                        primaryTagged=primary?.tagged == true,
                         episodeCount=episodeData.size,
                         regularCount=episodeData.count{(_,kind) ->
                             kind !in setOf("movie","film","special","ova","oad","ona","extra")
@@ -181,8 +177,8 @@ internal object SeriesAnimeCoalescer {
         val (keep,donor,season)=candidate
         db.execSQL("SAVEPOINT intelligent_series_merge")
         try {
-            val a=animeValues(db,keep.id) ?: return false
-            val b=animeValues(db,donor.id) ?: return false
+            val a=animeValues(db,keep.id) ?: error("Series album missing during merge")
+            val b=animeValues(db,donor.id) ?: error("Source album missing during merge")
 
             // An original season-2 album often has episode rows labelled season 1
             // because the parser had only the file's local episode number.
@@ -190,7 +186,7 @@ internal object SeriesAnimeCoalescer {
                 "UPDATE episodes SET season=? WHERE anime_id=? AND COALESCE(season,0) IN (0,1)",
                 arrayOf(season,donor.id),
             )
-            val keepSeason=(keep.forms.firstOrNull{it.tagged}?.season ?: 1)
+            val keepSeason=keep.primarySeason
             if(season!=null && keepSeason>1) db.execSQL(
                 "UPDATE episodes SET season=? WHERE anime_id=? AND COALESCE(season,0) IN (0,1)",
                 arrayOf(keepSeason,keep.id),
