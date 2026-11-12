@@ -57,7 +57,8 @@ internal class DownloadTransferFile(private val context: Context, private val st
             // Reject non-seekable cloud/tree providers; pause, ranges and player
             // depend on true positional I/O rather than an app-private fallback.
             context.contentResolver.openFileDescriptor(created,"rw")?.use { descriptor ->
-                FileOutputStream(descriptor.fileDescriptor).channel.use { it.position(0) }
+                // The ParcelFileDescriptor owns the FD for this probe.
+                FileOutputStream(descriptor.fileDescriptor).channel.position(0)
             } ?: throw IOException("Destino não permite gravação direta")
             store.mutate(id) { it.put("transferUri",created.toString()) }
         } catch(error:Exception) {
@@ -170,10 +171,11 @@ internal class DownloadRandomFile private constructor(
         channel.read(ByteBuffer.wrap(bytes,offset,length))
     fun sync() {channel.force(true)}
     override fun close() {
-        try {channel.close()} finally {
-            try {stream?.close()} finally {
-                try {legacy?.close()} finally {descriptor?.close()}
-            }
-        }
+        // The stream/channel and ParcelFileDescriptor share the native FD.
+        // Closing one may implicitly close the others; clean up every owner.
+        runCatching {channel.close()}
+        runCatching {stream?.close()}
+        runCatching {legacy?.close()}
+        runCatching {descriptor?.close()}
     }
 }
