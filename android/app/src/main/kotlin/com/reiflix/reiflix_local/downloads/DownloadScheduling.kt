@@ -31,7 +31,7 @@ object DownloadScheduling {
         }
         val request=OneTimeWorkRequestBuilder<DownloadWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(if(wifi)NetworkType.UNMETERED else NetworkType.CONNECTED).build())
-            .setInitialDelay(if(uidt) 15 else 0,TimeUnit.SECONDS)
+            .setInitialDelay(0,TimeUnit.SECONDS)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL,10,TimeUnit.SECONDS).build()
         // A successor closes the enqueue-versus-runner-finish race. A KEEP-only queue can
         // strand a new download when a previous worker is just returning success.
@@ -148,14 +148,27 @@ class DownloadTransferJob: JobService() {
         }
         return true
     }
-    override fun onStopJob(params: JobParameters): Boolean { stopped=true; running?.cancel(); running=null; return true }
+    override fun onStopJob(params: JobParameters): Boolean {
+        stopped=true
+        running?.cancel()
+        running=null
+        // Android may defer this user-initiated job under competing network/system
+        // work. Start the durable fallback immediately, without waiting for an
+        // unrelated browser download to finish.
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching { DownloadScheduling.schedule(applicationContext,userInitiated=false) }
+        }
+        return true
+    }
     override fun onDestroy() { stopped=true; running?.cancel(); super.onDestroy() }
 }
 
 @androidx.annotation.Keep
 class DownloadWorker(context: Context,parameters: WorkerParameters): CoroutineWorker(context,parameters) {
     override suspend fun doWork(): Result {
-        if(DownloadScheduling.hasUserJob(applicationContext)) return Result.retry()
+        // A merely pending JobScheduler entry does not mean an actual transfer
+        // is running. Do not block the foreground fallback behind it.
+        if(DownloadScheduling.hasUserJob(applicationContext) && DownloadEngine.isRunning()) return Result.retry()
         return try {
             // On modern Android the durable fallback uses bounded, resumable work. Explicit
             // user transfers use UIDT above; older Android uses WorkManager's foreground API.
