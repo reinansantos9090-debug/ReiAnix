@@ -1,7 +1,7 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.storage.NativeBatch
-import com.reiflix.reiflix_local.storage.NativeIndex
+import com.reianix.reianix_local.storage.NativeBatch
+import com.reianix.reianix_local.storage.NativeIndex
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,7 +20,7 @@ class DeviceFlowInstrumentedTest {
 
     @Before fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
-        File(File(context.filesDir, "data"), "reiflix-native-index.json").delete()
+        File(File(context.filesDir, "data"), "reianix-native-index.json").delete()
     }
 
     @Test fun runtimeApiAndNativeBatchContract() {

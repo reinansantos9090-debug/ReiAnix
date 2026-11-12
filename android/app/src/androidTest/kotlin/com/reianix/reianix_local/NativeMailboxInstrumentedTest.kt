@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.bridge.NativeMailbox
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject
@@ -19,7 +19,7 @@ class NativeMailboxInstrumentedTest {
     @Before
     fun cleanMailboxQueue() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        queue = File(File(context.filesDir, "data"), "reiflix-native-events")
+        queue = File(File(context.filesDir, "data"), "reianix-native-events")
         queue.deleteRecursively()
     }
 

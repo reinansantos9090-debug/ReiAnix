@@ -1,7 +1,7 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.Intent
-import com.reiflix.reiflix_local.bridge.NativeRequestState
+import com.reianix.reianix_local.bridge.NativeRequestState
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -80,7 +80,7 @@ class BackAndSettingsReturnInstrumentedTest {
     fun mainActivitySelectTreeDeepLink_opensDocumentsUi_andBackClearsPending() {
         val requestId = "instrumented-main-activity-select-tree"
         val commandUri = android.net.Uri.Builder()
-            .scheme("reiflix")
+            .scheme("reianix")
             .authority("native")
             .appendQueryParameter("action", "select_tree")
             .appendQueryParameter("request_id", requestId)
@@ -168,7 +168,7 @@ class BackAndSettingsReturnInstrumentedTest {
     fun appSystemBackFromChildActivityReturnsToReiAnix() {
         val intent = Intent(target, NativePlayerActivity::class.java)
             .putExtra("requestId", "instrumented-system-back")
-            .putExtra("uri", "content://invalid/reiflix-system-back")
+            .putExtra("uri", "content://invalid/reianix-system-back")
             .putExtra("title", "Invalid fixture")
             .putExtra("autoplay", false)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -184,7 +184,7 @@ class BackAndSettingsReturnInstrumentedTest {
 
     private fun nativeCommandUri(action: String, requestId: String): android.net.Uri =
         android.net.Uri.Builder()
-            .scheme("reiflix")
+            .scheme("reianix")
             .authority("native")
             .appendQueryParameter("action", action)
             .appendQueryParameter("request_id", requestId)

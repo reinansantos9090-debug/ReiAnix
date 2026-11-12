@@ -1,18 +1,18 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
-import com.reiflix.reiflix_local.ui.ReiAnixArtwork
-import com.reiflix.reiflix_local.ui.ReiAnixCard
-import com.reiflix.reiflix_local.ui.ReiAnixChip
-import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
-import com.reiflix.reiflix_local.ui.ReiAnixPrimaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixProgressIndicator
-import com.reiflix.reiflix_local.ui.ReiAnixSecondaryButton
-import com.reiflix.reiflix_local.ui.ReiAnixSectionTitle
+import com.reianix.reianix_local.ui.ReiAnixArtwork
+import com.reianix.reianix_local.ui.ReiAnixCard
+import com.reianix.reianix_local.ui.ReiAnixChip
+import com.reianix.reianix_local.ui.ReiAnixComposeRoot
+import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
+import com.reianix.reianix_local.ui.ReiAnixProgressIndicator
+import com.reianix.reianix_local.ui.ReiAnixSecondaryButton
+import com.reianix.reianix_local.ui.ReiAnixSectionTitle
 import org.junit.Rule
 import org.junit.Test
 

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.ContentValues
 import android.graphics.Matrix
@@ -41,8 +41,8 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class NativePlayerPlaybackInstrumentedTest {
     private companion object {
-        const val TEST_TAG = "[REIFLIX][TEST][PLAYER]"
-        const val FIXTURE_DISPLAY_NAME = "reiflix-player-fixture.mp4"
+        const val TEST_TAG = "[REIANIX][TEST][PLAYER]"
+        const val FIXTURE_DISPLAY_NAME = "reianix-player-fixture.mp4"
         const val MAIN_THREAD_TIMEOUT_MS = 2_000L
     }
 
@@ -90,7 +90,7 @@ class NativePlayerPlaybackInstrumentedTest {
             }
         }
 
-        val playerView = awaitView<PlayerView>("reiflix_player_view")
+        val playerView = awaitView<PlayerView>("reianix_player_view")
         val player = onMain { requireNotNull(playerView.player) }
         await("PiP player must reach READY") { player.playbackState == Player.STATE_READY }
         onMain { player.repeatMode = Player.REPEAT_MODE_ONE }
@@ -126,7 +126,7 @@ class NativePlayerPlaybackInstrumentedTest {
             "The original ExoPlayer instance must remain attached after PiP entry",
             onMain { playerView.player === player },
         )
-        val controls = awaitView<View>("reiflix_controls_root")
+        val controls = awaitView<View>("reianix_controls_root")
         assertFalse("Player controls must be hidden while in PiP", onMain { controls.isShown })
         await("Video playback must continue without a pause during PiP entry") {
             player.isPlaying
@@ -191,7 +191,7 @@ class NativePlayerPlaybackInstrumentedTest {
                 false
             }
         }
-        val reopenedPlayerView = awaitView<PlayerView>("reiflix_player_view")
+        val reopenedPlayerView = awaitView<PlayerView>("reianix_player_view")
         val reopenedPlayer = onMain { requireNotNull(reopenedPlayerView.player) }
         await("Reopened player must reach READY after PiP dismissal") {
             reopenedPlayer.playbackState == Player.STATE_READY
@@ -212,7 +212,7 @@ class NativePlayerPlaybackInstrumentedTest {
 
         val requestId = "instrumented-main-activity-play"
         val commandUri = android.net.Uri.Builder()
-            .scheme("reiflix")
+            .scheme("reianix")
             .authority("native")
             .appendQueryParameter("action", "play")
             .appendQueryParameter("request_id", requestId)
@@ -246,7 +246,7 @@ class NativePlayerPlaybackInstrumentedTest {
             }
         }
 
-        val playerView = awaitView<PlayerView>("reiflix_player_view")
+        val playerView = awaitView<PlayerView>("reianix_player_view")
         val player = onMain {
             requireNotNull(playerView.player) {
                 "MainActivity play handoff must attach the Media3 player to PlayerView"
@@ -270,7 +270,7 @@ class NativePlayerPlaybackInstrumentedTest {
 
         val requestId = "instrumented-native-command-play"
         val commandUri = android.net.Uri.Builder()
-            .scheme("reiflix")
+            .scheme("reianix")
             .authority("native")
             .appendQueryParameter("action", "play")
             .appendQueryParameter("request_id", requestId)
@@ -300,7 +300,7 @@ class NativePlayerPlaybackInstrumentedTest {
             }
         }
         assertEquals(requestId, onMain { requireNotNull(activity).intent.getStringExtra("requestId") })
-        val playerView = awaitView<PlayerView>("reiflix_player_view")
+        val playerView = awaitView<PlayerView>("reianix_player_view")
         val player = onMain { requireNotNull(playerView.player) }
         await("Native command player must reach READY") {
             player.playbackState == Player.STATE_READY
@@ -329,14 +329,14 @@ class NativePlayerPlaybackInstrumentedTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(playIntent) as NativePlayerActivity
 
-        val playerView = awaitView<PlayerView>("reiflix_player_view")
+        val playerView = awaitView<PlayerView>("reianix_player_view")
         val player = onMain { requireNotNull(playerView.player) }
         await("Player must reach READY before thumbnail command") {
             player.playbackState == Player.STATE_READY
         }
         val requestId = "instrumented-native-command-thumbnail"
         val commandUri = android.net.Uri.Builder()
-            .scheme("reiflix")
+            .scheme("reianix")
             .authority("native")
             .appendQueryParameter("action", "extract_thumbnail")
             .appendQueryParameter("request_id", requestId)
@@ -372,7 +372,7 @@ class NativePlayerPlaybackInstrumentedTest {
         val requestId = "instrumented-main-activity-resume"
         val resumeMs = 1_500L
         val commandUri = android.net.Uri.Builder()
-            .scheme("reiflix")
+            .scheme("reianix")
             .authority("native")
             .appendQueryParameter("action", "play")
             .appendQueryParameter("request_id", requestId)
@@ -406,7 +406,7 @@ class NativePlayerPlaybackInstrumentedTest {
             }
         }
 
-        val playerView = awaitView<PlayerView>("reiflix_player_view")
+        val playerView = awaitView<PlayerView>("reianix_player_view")
         val player = onMain { requireNotNull(playerView.player) }
         await("Resume test player must reach READY") {
             player.playbackState == Player.STATE_READY
@@ -425,8 +425,8 @@ class NativePlayerPlaybackInstrumentedTest {
     @Test
     fun mainActivityPlay_duplicateSameUriIsSuppressed_butDifferentUriIsAccepted() {
         launchMainActivityForPlayer()
-        val firstUri = "content://reiflix.test/player-first"
-        val secondUri = "content://reiflix.test/player-second"
+        val firstUri = "content://reianix.test/player-first"
+        val secondUri = "content://reianix.test/player-second"
 
         sendPlayDeepLink("instrumented-duplicate-first", firstUri)
         await("First play request must create the native player") {
@@ -450,7 +450,7 @@ class NativePlayerPlaybackInstrumentedTest {
     @Test
     fun mainActivityPlay_reopenSameUriAfterClosingPlayerIsAccepted() {
         launchMainActivityForPlayer()
-        val uri = "content://reiflix.test/reopen"
+        val uri = "content://reianix.test/reopen"
 
         sendPlayDeepLink("instrumented-reopen-first", uri)
         await("Initial reopen test player must launch") {
@@ -485,11 +485,11 @@ class NativePlayerPlaybackInstrumentedTest {
             .putExtra("autoplay", false)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent) as NativePlayerActivity
-        val playerView = awaitView<PlayerView>("reiflix_player_view")
+        val playerView = awaitView<PlayerView>("reianix_player_view")
         await("Disabled-by-default player must reach READY") {
             onMain { playerView.player?.playbackState == Player.STATE_READY }
         }
-        val gestureLayer = awaitView<View>("reiflix_gesture_layer")
+        val gestureLayer = awaitView<View>("reianix_gesture_layer")
         val size = onMain { gestureLayer.width to gestureLayer.height }
         pinch(gestureLayer, zoom = true)
         await("Zoom disabled by default must leave resize mode on FIT") {
@@ -538,12 +538,12 @@ class NativePlayerPlaybackInstrumentedTest {
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent) as NativePlayerActivity
 
         logStage("PLAYER_VIEW_WAIT")
-        val playerView = awaitView<PlayerView>("reiflix_player_view")
+        val playerView = awaitView<PlayerView>("reianix_player_view")
         val player = onMain {
             requireNotNull(playerView.player) { "Media3 PlayerView did not receive a player" }
         }
 
-        val preparing = awaitView<View>("reiflix_player_preparing")
+        val preparing = awaitView<View>("reianix_player_preparing")
         assertTrue(
             "Preparation indicator must be visible until the first frame is rendered",
             onMain {
@@ -559,7 +559,7 @@ class NativePlayerPlaybackInstrumentedTest {
         assertTrue("Native player Activity must remain alive after READY", !activity!!.isFinishing)
 
         logStage("WAIT_FIRST_FRAME")
-        val playPause = awaitView<View>("reiflix_play_pause")
+        val playPause = awaitView<View>("reianix_play_pause")
         assertTrue("Play control must be present", onMain { playPause.performClick() })
         await("Play button must start playback") { player.isPlaying }
         await("The real video must render its first frame") { activity!!.firstFrameRenderedForTesting }
@@ -573,7 +573,7 @@ class NativePlayerPlaybackInstrumentedTest {
         assertTrue("Native player Activity must remain alive after first frame", !activity!!.isFinishing && !activity!!.isDestroyed)
 
         logStage("SEEK_BAR")
-        val seekBar = awaitView<android.widget.SeekBar>("reiflix_seekbar")
+        val seekBar = awaitView<android.widget.SeekBar>("reianix_seekbar")
         val initialDuration = onMain { player.duration }
         assertTrue("Fixture must expose a positive duration", initialDuration > 0L)
         runOnMainBounded {
@@ -660,7 +660,7 @@ class NativePlayerPlaybackInstrumentedTest {
         assertTrue("Seek position should move from the pre-seek position", beforeSeek >= 0L)
 
         logStage("GESTURES_START")
-        val gestureLayer = awaitView<View>("reiflix_gesture_layer")
+        val gestureLayer = awaitView<View>("reianix_gesture_layer")
 
         onMain {
             player.pause()
@@ -668,7 +668,7 @@ class NativePlayerPlaybackInstrumentedTest {
         }
         await("Gesture precondition must be reachable") { player.currentPosition >= 2_500L }
 
-        val controls = awaitView<View>("reiflix_controls_root")
+        val controls = awaitView<View>("reianix_controls_root")
         val gestureSize = onMain { gestureLayer.width to gestureLayer.height }
         val controlsBefore = onMain { controls.visibility }
 
@@ -677,11 +677,11 @@ class NativePlayerPlaybackInstrumentedTest {
             controls.visibility != controlsBefore
         }
 
-        val moreButton = awaitView<View>("reiflix_more_button")
+        val moreButton = awaitView<View>("reianix_more_button")
         onMain { moreButton.performClick() }
-        val volumeGesture = awaitView<View>("reiflix_gesture_volume")
-        val brightnessGesture = awaitView<View>("reiflix_gesture_brightness")
-        val doubleTapGesture = awaitView<View>("reiflix_gesture_double_tap")
+        val volumeGesture = awaitView<View>("reianix_gesture_volume")
+        val brightnessGesture = awaitView<View>("reianix_gesture_brightness")
+        val doubleTapGesture = awaitView<View>("reianix_gesture_double_tap")
         onMain {
             volumeGesture.performClick()
             brightnessGesture.performClick()
@@ -707,7 +707,7 @@ class NativePlayerPlaybackInstrumentedTest {
             onMain { player.currentPosition <= 750L },
         )
 
-        val feedback = awaitView<TextView>("reiflix_feedback")
+        val feedback = awaitView<TextView>("reianix_feedback")
         val systemAudio = target.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
 
         swipe(
@@ -794,15 +794,15 @@ class NativePlayerPlaybackInstrumentedTest {
         )
 
         logStage("VISUAL_BACK")
-        val lockButton = awaitView<View>("reiflix_lock_button")
-        val backBeforeLock = awaitView<View>("reiflix_back_button")
+        val lockButton = awaitView<View>("reianix_lock_button")
+        val backBeforeLock = awaitView<View>("reianix_back_button")
         onMain { lockButton.performClick() }
         await("Lock button must keep the player in a locked interaction state") {
             !backBeforeLock.isShown
         }
         onMain { lockButton.performClick() }
 
-        val back = awaitView<View>("reiflix_back_button")
+        val back = awaitView<View>("reianix_back_button")
         assertTrue("Visual Back control must be clickable", onMain { back.performClick() })
         // Once finish() is dispatched, the Activity can be detached from the
         // instrumentation main thread while Android is completing the transition.
@@ -826,7 +826,7 @@ class NativePlayerPlaybackInstrumentedTest {
             .putExtra("autoplay", false)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(secondIntent) as NativePlayerActivity
-        awaitView<View>("reiflix_back_button")
+        awaitView<View>("reianix_back_button")
         assertTrue(
             "UiDevice.pressBack() must dispatch the real system Back action",
             device.pressBack(),
@@ -848,8 +848,8 @@ class NativePlayerPlaybackInstrumentedTest {
         val safeTop = maxOf(bars.top, cutout.top, gestures.top)
         val safeRight = maxOf(bars.right, cutout.right, gestures.right)
         val safeBottom = maxOf(bars.bottom, cutout.bottom, gestures.bottom)
-        val topBar = awaitView<View>("reiflix_top_bar")
-        val bottomBar = awaitView<View>("reiflix_bottom_bar")
+        val topBar = awaitView<View>("reianix_top_bar")
+        val bottomBar = awaitView<View>("reianix_bottom_bar")
         assertTrue("Top player controls must stay outside system/cutout gesture inset", topBar.top >= safeTop)
         assertTrue("Bottom player controls must stay outside system/gesture inset", root.height - bottomBar.bottom >= safeBottom)
         assertTrue("Player control container must reserve left safe inset", controlsReservedLeftInset(safeLeft))
@@ -859,19 +859,19 @@ class NativePlayerPlaybackInstrumentedTest {
     private fun controlsReservedLeftInset(safeLeft: Int): Boolean =
         onMain {
             val controls = requireNotNull(activity!!.findViewById<View>(android.R.id.content)
-                .findViewWithTag<View>("reiflix_controls_root"))
+                .findViewWithTag<View>("reianix_controls_root"))
             controls.paddingLeft >= safeLeft
         }
 
     private fun controlsReservedRightInset(safeRight: Int): Boolean =
         onMain {
             val controls = requireNotNull(activity!!.findViewById<View>(android.R.id.content)
-                .findViewWithTag<View>("reiflix_controls_root"))
+                .findViewWithTag<View>("reianix_controls_root"))
             controls.paddingRight >= safeRight
         }
 
     private fun nativeMailboxEventExists(requestId: String, type: String): Boolean {
-        val dir = File(target.filesDir, "data/reiflix-native-events")
+        val dir = File(target.filesDir, "data/reianix-native-events")
         val files = dir.listFiles()?.filter { it.isFile && it.extension == "json" } ?: return false
         return files.any { file ->
             runCatching {
@@ -882,7 +882,7 @@ class NativePlayerPlaybackInstrumentedTest {
     }
 
     private fun writeInternalNativeCommand(requestId: String, action: String, commandUri: android.net.Uri) {
-        val queue = File(target.filesDir, "data/reiflix-native-commands")
+        val queue = File(target.filesDir, "data/reianix-native-commands")
         check(queue.isDirectory || queue.mkdirs()) {
             "Unable to create native command queue: ${queue.absolutePath}"
         }
@@ -918,7 +918,7 @@ class NativePlayerPlaybackInstrumentedTest {
         autoplay: Boolean = false,
     ) {
         val commandUri = android.net.Uri.Builder()
-            .scheme("reiflix")
+            .scheme("reianix")
             .authority("native")
             .appendQueryParameter("action", "play")
             .appendQueryParameter("request_id", requestId)

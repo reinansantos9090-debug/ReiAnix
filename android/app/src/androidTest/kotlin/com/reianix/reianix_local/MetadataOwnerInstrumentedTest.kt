@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase

@@ -1,10 +1,10 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
+import com.reianix.reianix_local.ui.ReiAnixComposeRoot
 import org.junit.Rule
 import org.junit.Test
 

@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.storage.NativeIndex
+import com.reianix.reianix_local.storage.NativeIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONArray
@@ -15,7 +15,7 @@ import java.io.File
 class NativeIndexInstrumentedTest {
     @Before fun clean() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        File(File(context.filesDir, "data"), "reiflix-native-index.json").delete()
+        File(File(context.filesDir, "data"), "reianix-native-index.json").delete()
     }
     @Test fun partialScanKeepsCommittedSnapshot() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

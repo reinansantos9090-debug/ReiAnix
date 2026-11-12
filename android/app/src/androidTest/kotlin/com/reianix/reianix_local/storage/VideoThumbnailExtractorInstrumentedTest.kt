@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.storage
+package com.reianix.reianix_local.storage
 
 import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,7 +13,7 @@ class VideoThumbnailExtractorInstrumentedTest {
     @Test
     fun missingThumbnailCacheDirectoryIsCreatedBeforeExtraction() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val thumbnailCache = File(context.cacheDir, "reiflix/thumbnails")
+        val thumbnailCache = File(context.cacheDir, "reianix/thumbnails")
         thumbnailCache.deleteRecursively()
         assertTrue(!thumbnailCache.exists())
 

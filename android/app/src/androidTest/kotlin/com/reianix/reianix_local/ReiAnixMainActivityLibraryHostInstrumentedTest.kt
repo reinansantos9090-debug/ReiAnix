@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.Intent
 import android.net.Uri
@@ -18,7 +18,7 @@ class ReiAnixMainActivityLibraryHostInstrumentedTest {
         val intent = Intent(
             Intent.ACTION_VIEW,
             Uri.parse(
-                "reiflix://native?action=open_library" +
+                "reianix://native?action=open_library" +
                     "&request_id=compose-host-runtime" +
                     "",
             ),
@@ -38,7 +38,7 @@ class ReiAnixMainActivityLibraryHostInstrumentedTest {
         val intent = Intent(
             Intent.ACTION_VIEW,
             Uri.parse(
-                "reiflix://native?action=open_library" +
+                "reianix://native?action=open_library" +
                     "&request_id=compose-host-runtime-back" +
                     "",
             ),
