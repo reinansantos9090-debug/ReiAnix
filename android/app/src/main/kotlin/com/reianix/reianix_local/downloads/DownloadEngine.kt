@@ -132,17 +132,28 @@ class DownloadEngine(private val context: Context) {
                 throw PermanentFailure("Espaço insuficiente para baixar o arquivo")
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             val disposition=connection.getHeaderField("Content-Disposition")
+            val resolvedUrl=connection.url.toString()
             store.mutate(id) {
-                if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L &&
-                    !it.has("playerCapture")) {
-                    val serverName=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
-                    // Never replace an already selected episode filename with an
-                    // opaque CDN name such as videoplayback.bin.
-                    val proposed=serverName
-                    if(!DownloadIdentity.isGenericMediaName(proposed) && proposed.isNotBlank() &&
-                        proposed !in setOf(".","..") && proposed.length<=200 &&
-                        proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
-                        it.put("name",proposed).put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(proposed)}")
+                if(it.optBoolean("automaticName") && !it.has("playerCapture")) {
+                    val candidate=DownloadResourceIdentity.bestName(disposition,
+                        resolvedUrl,contentType)
+                        ?: DownloadResourceIdentity.bestName(null,secret.getString("url"),contentType)
+                    if(!candidate.isNullOrBlank() && candidate.length<=200 &&
+                        candidate.none { char -> char=='/' || char=='\\' || char.code<32 } &&
+                        !DownloadIdentity.isGenericMediaName(candidate)) {
+                        val previous=it.optString("name")
+                        val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\s._-]*\d+""")
+                            .containsMatchIn(previous)
+                        val matchingStem=previous.substringBeforeLast('.',previous)
+                            .equals(candidate.substringBeforeLast('.',candidate),true)
+                        if(!episodeContext &&
+                            (DownloadIdentity.isGenericMediaName(previous) || matchingStem)) {
+                            it.put("name",candidate).put("serverNameResolved",true)
+                            // Do not change the virtual player URI of an already
+                            // registered library episode. Only its final display name.
+                            if(it.optLong("episodeId")==0L)
+                                it.put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(candidate)}")
+                        }
                     }
                 }
                 it.put("total",total).put("validator",newValidator ?: "")
@@ -193,6 +204,25 @@ class DownloadEngine(private val context: Context) {
                             if(prefix.startsWith("<!doctype html") || prefix.startsWith("<html") ||
                                 (store.get(id)?.mime?.startsWith("video/")==true && (prefix.startsWith("{") || prefix.startsWith("[")))) {
                                 throw PermanentFailure("O link retornou uma página ou mensagem de erro, não o vídeo")
+                            }
+                        }
+                        // A binary CDN response may be an actual MP4/TS/MKV.
+                        // Identify the file by its first bytes while the transfer is
+                        // already running; this adds NO network request or waiting.
+                        if(count==0L && read>=512) {
+                            val current=store.get(id)
+                            if(current!=null && (current.name.endsWith(".bin",true) ||
+                                current.mime.equals("application/octet-stream",true))) {
+                                val found=DownloadContainerDetector.sniff(buffer.copyOf(minOf(read,4096)))
+                                if(found!=null) {
+                                    val corrected=DownloadContainerDetector.outputName(current.name,found.extension)
+                                    store.mutate(id) {
+                                        it.put("sourceWasOpaque",true).put("name",corrected)
+                                            .put("mime",found.mime).put("serverNameResolved",true)
+                                    }
+                                    runCatching { target.syncName() }
+                                    store.registerMedia(id)
+                                }
                             }
                         }
                         if(total>=0 && count+read>total) throw PermanentFailure("O servidor enviou mais dados que o tamanho informado")
@@ -273,34 +303,59 @@ class DownloadEngine(private val context: Context) {
             }
         }
         if(store.get(id)?.state !in DownloadState.pending) return
-        // Optional lossless remux only after downloading and verifying the TS.
-        // Keep the original .part untouched so existing player readers can
-        // finish; incompatible media simply retains the original TS file.
+        // Inspect the actual downloaded bytes, not the provider's .bin suffix.
+        // Prefer a lossless container conversion for compatible codecs. An
+        // unsupported video remains in its real container, never a fake MP4.
         val beforePublication=store.get(id) ?: return
-        // Keep the source-container identity across interruptions between remux
-        // and export. A retry must NEVER publish raw TS bytes with an .mp4 name.
         val savedOriginal=beforePublication.json.optString("remuxSourceName")
-        val isTs=savedOriginal.isNotBlank() ||
-            beforePublication.mime.equals("video/mp2t",true) ||
-            beforePublication.name.endsWith(".ts",true)
         val originalName=savedOriginal.ifBlank {
             if(beforePublication.mime.equals("video/mp2t",true) &&
                 !beforePublication.name.endsWith(".ts",true))
-                beforePublication.name.substringBeforeLast('.',beforePublication.name)+".ts"
+                DownloadContainerDetector.outputName(beforePublication.name,"ts")
             else beforePublication.name
         }
-        // MediaStore and the selected SAF directory both hold the growing source.
-        // Remux is still lossless; on success its candidate also lives in public
-        // storage, never in the app's private data directory.
+        val actualContainer=runCatching {
+            target.inputStream().use(DownloadContainerDetector::sniff)
+        }.getOrNull()
+        val originalExtension=originalName.substringAfterLast('.', "").lowercase()
+        // A .bin response may contain valid MP4/TS/MKV data, but an arbitrary
+        // binary is not an episode. Do not publish it as a playable video.
+        if((originalExtension=="bin" || beforePublication.json.optBoolean("sourceWasOpaque")) && actualContainer==null)
+            throw PermanentFailure("O arquivo .bin não contém um formato de vídeo reconhecido; não foi renomeado para MP4.")
+        // A recognizable ftyp header alone does not make an arbitrary .bin
+        // playable. Confirm a genuine video track before publishing as MP4.
+        if((originalExtension=="bin" || beforePublication.json.optBoolean("sourceWasOpaque")) && actualContainer?.extension=="mp4") {
+            val playable=runCatching {
+                val extractor=android.media.MediaExtractor()
+                try {
+                    extractor.setDataSource(context,target.readUri(),null)
+                    (0 until extractor.trackCount).any { index ->
+                        extractor.getTrackFormat(index)
+                            .getString(android.media.MediaFormat.KEY_MIME)
+                            .orEmpty().startsWith("video/")
+                    }
+                } finally {extractor.release()}
+            }.getOrDefault(false)
+            if(!playable)
+                throw PermanentFailure("O arquivo .bin possui assinatura MP4, mas não contém vídeo reproduzível.")
+        }
+        val sourceExtension=actualContainer?.extension ?: originalExtension
+        val sourceMime=actualContainer?.mime ?: beforePublication.mime
+        val realSourceName=if(actualContainer!=null && originalExtension!=sourceExtension)
+            DownloadContainerDetector.outputName(originalName,sourceExtension)
+            else originalName
+        val needsRemux=sourceExtension in DownloadContainerDetector.convertibleExtensions
+        // Crash recovery must never leave a raw TS/MKV/AVI labeled MP4.
         var publicRemux:Uri?=null
         var privateRemux:File?=null
+        var stagedTranscode:File?=null
         var committed=false
         try {
             beforePublication.json.optString("remuxCandidateUri").takeIf { it.isNotBlank() }?.let { stale ->
                 target.discard(Uri.parse(stale))
                 store.mutate(id){it.remove("remuxCandidateUri")}
             }
-            if(isTs) {
+            if(needsRemux) {
                 if(target.isPublic) {
                     val candidate=target.sibling("remux.mp4")
                     store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
@@ -314,19 +369,52 @@ class DownloadEngine(private val context: Context) {
                     privateRemux=DownloadTsRemux.tryRemux(context,file)
                 }
             }
-            val didRemux=publicRemux!=null || privateRemux!=null
-            if(didRemux) {
-                val mp4Name=originalName.substringBeforeLast('.',originalName)+".mp4"
-                store.mutate(id) {
-                    it.put("remuxSourceName",originalName)
-                    it.put("name",mp4Name).put("mime","video/mp4")
+            // A source with unsupported MP4 sample types may still be converted
+            // by the Android device's codecs. Media3 transcodes H.264/AAC only
+            // when lossless remux cannot work; it may not decode every legacy format.
+            if(needsRemux && publicRemux==null && privateRemux==null) {
+                stagedTranscode=DownloadMediaTranscoder.tryTranscode(context,target.readUri(),beforePublication.bytes)
+                stagedTranscode?.let { converted ->
+                    if(target.isPublic) {
+                        val candidate=target.sibling("transcoded.mp4")
+                        store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
+                        try {
+                            val output=context.contentResolver.openOutputStream(candidate,"wt")
+                                ?: throw IOException("Não foi possível salvar MP4 convertido")
+                            output.use { stream ->
+                                converted.inputStream().use { input ->
+                                    val buffer=ByteArray(256*1024)
+                                    while(true) {
+                                        currentCoroutineContext().ensureActive()
+                                        val read=input.read(buffer)
+                                        if(read<0) break
+                                        stream.write(buffer,0,read)
+                                    }
+                                }
+                                stream.flush()
+                            }
+                            if(target.sizeOf(candidate)!=converted.length())
+                                throw IOException("O MP4 convertido não foi gravado por completo")
+                            publicRemux=candidate
+                        } catch(cancelled: CancellationException) {
+                            throw cancelled
+                        } catch(error: Exception) {
+                            target.discard(candidate)
+                            store.mutate(id){it.remove("remuxCandidateUri")}
+                        }
+                    } else privateRemux=converted
                 }
-                store.registerMedia(id)
-            } else if(savedOriginal.isNotBlank() || (isTs && originalName!=beforePublication.name)) {
-                // Never publish raw MPEG-TS bytes under an MP4 label.
+            }
+            val didRemux=publicRemux!=null || privateRemux!=null
+            val outputName=if(didRemux || sourceExtension=="mp4")
+                DownloadContainerDetector.outputName(realSourceName,"mp4") else realSourceName
+            val outputMime=if(didRemux || sourceExtension=="mp4") "video/mp4" else sourceMime
+            if(didRemux || outputName!=beforePublication.name || outputMime!=beforePublication.mime ||
+                savedOriginal.isNotBlank()) {
                 store.mutate(id) {
-                    it.put("name",originalName).put("mime","video/mp2t")
-                    it.remove("remuxSourceName")
+                    it.put("name",outputName).put("mime",outputMime)
+                    if(didRemux) it.put("remuxSourceName",originalName)
+                    else it.remove("remuxSourceName")
                 }
                 store.registerMedia(id)
             }
@@ -362,6 +450,7 @@ class DownloadEngine(private val context: Context) {
             store.mutate(id){it.remove("remuxCandidateUri")}
         } finally {
             privateRemux?.delete()
+            stagedTranscode?.delete()
             if(!committed && publicRemux!=null) {
                 publicRemux?.let(target::discard)
                 runCatching {store.mutate(id){it.remove("remuxCandidateUri")}}

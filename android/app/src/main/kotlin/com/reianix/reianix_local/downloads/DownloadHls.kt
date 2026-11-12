@@ -17,6 +17,21 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
     data class Playlist(val segments: List<Segment>,val init: String?,val duration: Double)
     companion object {
         fun attributes(line: String): Map<String,String> = Regex("([A-Z0-9-]+)=(\"[^\"]*\"|[^,]*)").findAll(line.substringAfter(':')).associate {it.groupValues[1] to it.groupValues[2].trim('"')}
+        /** RFC 8216: choose the default audio rendition of the selected group. */
+        fun audioRenditionUrl(master: String, masterUrl: String, group: String): String? {
+            val matches=master.lineSequence().map(String::trim)
+                .filter {it.startsWith("#EXT-X-MEDIA:",true)}
+                .map(::attributes).filter {
+                    it["TYPE"]?.equals("AUDIO",true)==true && it["GROUP-ID"]==group &&
+                        !it["URI"].isNullOrBlank()
+                }.toList()
+            val chosen=matches.firstOrNull {it["DEFAULT"]?.equals("YES",true)==true}
+                ?: matches.firstOrNull() ?: return null
+            val resolved=runCatching {URL(URL(masterUrl),chosen.getValue("URI")).toString()}.getOrNull()
+                ?: return null
+            return resolved.takeIf {runCatching {DownloadHttp.validateUrl(it)}.isSuccess}
+        }
+
         fun parse(text: String,url: String): Playlist {
             require(text.trimStart().startsWith("#EXTM3U")) {"Playlist HLS inválida"}
             require(text.contains("#EXT-X-ENDLIST")) {"Transmissões ao vivo ainda não são suportadas para download"}
@@ -67,7 +82,62 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                     Triple(a["BANDWIDTH"]?.toLongOrNull() ?: 0,URL(URL(manifest),relative.trim()).toString(),a["AUDIO"])
                 }
                 val chosen=variants.maxByOrNull {it.first} ?: error("Nenhuma qualidade disponível")
-                require(chosen.third==null) {"Playlist com áudio separado ainda não suportada"}
+                if(chosen.third!=null) {
+                    val audio=audioRenditionUrl(text,manifest,chosen.third!!)
+                        ?: throw IllegalStateException("Playlist HLS com faixa de áudio inválida")
+                    // Export only finite VOD, not live streams of unknown duration.
+                    val videoText=String(fetch(chosen.second,2*1024*1024),Charsets.UTF_8)
+                    val audioText=String(fetch(audio,2*1024*1024),Charsets.UTF_8)
+                    require(videoText.contains("#EXT-X-ENDLIST") && audioText.contains("#EXT-X-ENDLIST")) {
+                        "A conversão de playlists ao vivo não está disponível"
+                    }
+                    val converted=DownloadMediaTranscoder.tryAdaptiveHls(context,url)
+                        ?: throw IllegalStateException("Este aparelho ou servidor não permitiu montar as faixas HLS em MP4")
+                    try {
+                        if(store.get(id)?.state!="DOWNLOADING")return false
+                        var copied=0L
+                        target.open().use {out ->
+                            out.setLength(0);out.seek(0)
+                            converted.inputStream().use {input ->
+                                val buffer=ByteArray(256*1024)
+                                while(true) {
+                                    currentCoroutineContext().ensureActive()
+                                    if(store.get(id)?.state!="DOWNLOADING")throw Paused()
+                                    val n=input.read(buffer)
+                                    if(n<0)break
+                                    out.write(buffer,0,n);copied+=n
+                                }
+                            }
+                            out.sync()
+                        }
+                        require(copied==converted.length() && copied>0L) {"MP4 HLS incompleto"}
+                        val duration=runCatching {
+                            val meta=android.media.MediaMetadataRetriever()
+                            try {
+                                meta.setDataSource(converted.absolutePath)
+                                meta.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                    ?.toDoubleOrNull()?.div(1000.0) ?: 0.0
+                            } finally {meta.release()}
+                        }.getOrDefault(0.0)
+                        val current=store.get(id) ?: return false
+                        val outputName=DownloadContainerDetector.outputName(current.name,"mp4")
+                        store.mutate(id) {
+                            it.put("hls",true).put("mime","video/mp4").put("name",outputName)
+                                .put("serverNameResolved",true).put("bytes",copied).put("total",copied)
+                                .put("hlsCount",1).put("hlsIndex",1).put("speed",0)
+                            if(it.optLong("episodeId")==0L)
+                                it.put("virtualUri","content://" + context.packageName +
+                                    ".downloads/" + id + "/" + Uri.encode(outputName))
+                        }
+                        DownloadCaptureGuard.approveHls(context,store,id,duration)
+                        runCatching {target.syncName()}
+                        store.registerMedia(id)
+                        store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let {
+                            DownloadMetadata.offer(context,it.animeId)
+                        }
+                        return true
+                    } finally {converted.delete()}
+                }
                 manifest=chosen.second; text=String(fetch(manifest,2*1024*1024),Charsets.UTF_8)
             }
             val playlist=parse(text,manifest)

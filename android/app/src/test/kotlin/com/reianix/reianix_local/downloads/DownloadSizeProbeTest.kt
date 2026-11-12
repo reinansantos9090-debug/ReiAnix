@@ -93,4 +93,12 @@ class DownloadSizeProbeTest {
             "https://example.org/show/list.m3u8")
         assertTrue(p?.encrypted==true)
     }
+    @Test fun hlsSegmentSamplingNeverClaimsExactLength() {
+        assertEquals(140_000_000L,DownloadSizeProbe.sampledSegmentEstimate(
+            listOf(700_000L,700_000L,700_000L),200))
+        assertNull(DownloadSizeProbe.sampledSegmentEstimate(listOf(null,null),200))
+        assertNull(DownloadSizeProbe.sampledSegmentEstimate(listOf(5L,null,null),200))
+        assertNull(DownloadSizeProbe.sampledSegmentEstimate(listOf(5L,5L),0))
+    }
+
 }

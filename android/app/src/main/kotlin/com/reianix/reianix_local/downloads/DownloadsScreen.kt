@@ -71,7 +71,15 @@ class DownloadsActivity: ComponentActivity() {
     private fun accept(intent: Intent) {
         val raw=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else intent.dataString.orEmpty()
         incoming=Regex("https?://[^\\s]+",RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
-        incomingTitle=sequenceOf(Intent.EXTRA_TITLE,Intent.EXTRA_SUBJECT,"title","name").mapNotNull { intent.getStringExtra(it) }.firstOrNull {it.isNotBlank()}.orEmpty()
+        // Some sharing apps put the episode label next to the link in EXTRA_TEXT,
+        // not EXTRA_TITLE. Keep only the text; do not treat the CDN path as a title.
+        val sharedText=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else ""
+        val textLabel=sharedText.replace(Regex("""https?://[^\s]+""",RegexOption.IGNORE_CASE),"")
+            .trim().trim('-','–',':',' ').take(200)
+        incomingTitle=sequenceOf(Intent.EXTRA_TITLE,Intent.EXTRA_SUBJECT,"title","name")
+            .mapNotNull { intent.getStringExtra(it) }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty().ifBlank { textLabel }
         incomingName=intent.getStringExtra("downloadName").orEmpty()
         incomingCapture=intent.getStringExtra("playerCapture")?.takeIf {it.length<=32768}
         incomingHlsHint=intent.getBooleanExtra("hlsHint",false)
@@ -230,7 +238,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     hlsHint: Boolean = false) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
-    var name by remember { mutableStateOf(editing?.name ?: initialName.takeIf { it.isNotBlank() } ?: runCatching { URLUtil.guessFileName(initialUrl,null,null) }.getOrDefault("episodio.mp4")) }
+    var name by remember { mutableStateOf(editing?.name ?: DownloadIdentity.suggestedName(initialTitle,initialUrl,initialName)) }
     // Names passed by the ReiAnix browser are deliberate; a CDN header must not replace them.
     // A fallback CDN name is not a deliberate user choice. Allow a meaningful
     // Content-Disposition to correct it when the server responds.
@@ -280,6 +288,17 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
             DownloadSizeProbe.inspect(target,probeHeaders,hlsHint && target==initialUrl)
         } ?: DownloadSizeProbe.Result.Unknown
         sizeProbeUrl=target
+        if(!nameTouched && editing==null) {
+            val suggested=sizeResult?.name
+            if(!suggested.isNullOrBlank() && !DownloadIdentity.isGenericMediaName(suggested)) {
+                val currentStem=name.substringBeforeLast('.',name)
+                val suggestedStem=suggested.substringBeforeLast('.',suggested)
+                val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\s._-]*\d+""")
+                    .containsMatchIn(name)
+                if(!episodeContext && (DownloadIdentity.isGenericMediaName(name) ||
+                    currentStem.equals(suggestedStem,true))) name=suggested
+            }
+        }
     }
     LaunchedEffect(editing?.id) {
         if(editing!=null) try {
@@ -382,9 +401,8 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                                 sessionOrigin=nextOrigin
                             }
                             url=next
-                            if(!nameTouched && editing==null) name=runCatching {
-                                URLUtil.guessFileName(next.trim(),null,null)
-                            }.getOrDefault("episodio.mp4")
+                            if(!nameTouched && editing==null)
+                                name=DownloadIdentity.suggestedName(initialTitle,next.trim(),"")
                         },
                         modifier=Modifier.fillMaxWidth(),
                         enabled=canEdit,

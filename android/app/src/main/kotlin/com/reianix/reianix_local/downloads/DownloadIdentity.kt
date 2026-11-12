@@ -13,10 +13,10 @@ object DownloadIdentity {
             .substringAfterLast('/').trim()
         repeat(3) {
             val ext = stem.substringAfterLast('.', "").lowercase()
-            if (ext in setOf("bin", "mp4", "ts", "mkv", "m4v", "webm", "mov", "m3u8"))
+            if (ext in DownloadContainerDetector.knownExtensions + setOf("bin", "m3u8", "mpd"))
                 stem = stem.substringBeforeLast('.')
         }
-        return stem.isBlank() || genericFile.matches(stem.trim())
+        return stem.isBlank() || genericFile.matches(stem.trim()) || DownloadResourceIdentity.opaque(value)
     }
 
     private fun cleanedPageTitle(title: String): String = title
@@ -76,6 +76,42 @@ object DownloadIdentity {
             .takeIf {it in setOf("mp4","mkv","webm","mov","m4v","ts")} ?: "mp4"
         return "$title.$extension"
     }
+    /** A sharing app may supply a series/episode title while its CDN URL is only index.m3u8.
+     * Do not fabricate an episode number when the sender provides no episode metadata. */
+    fun suggestedName(sharedTitle: String, url: String, providedName: String): String {
+        if (providedName.isNotBlank() && !isGenericMediaName(providedName)) return providedName
+        val fromContext=DownloadResourceIdentity.contextualEpisodeName(url)
+        val episode=episodeTitleFromPage(sharedTitle,url).takeIf {
+            episodeMarker.containsMatchIn(it) && usefulPageTitle(it)
+        } ?: fromContext
+        if (!episode.isNullOrBlank()) {
+            val normalized=episode.replace(
+                Regex("""(?i)\b(?:epis[oó]dio|episode|ep)[\s._-]*(\d{1,4})\b"""),
+            ) { match -> "Episódio " + match.groupValues[1].padStart(2,'0') }
+                .replace(Regex("""\s+""")," ").trim()
+            val safe=normalized.map {
+                if(it.isISOControl() || it in "\\/:*?\"<>|") ' ' else it
+            }.joinToString("").take(180).trim()
+            if(safe.isNotBlank()) {
+                val ext=providedName.substringAfterLast('.', "").lowercase()
+                    .takeIf { it in DownloadContainerDetector.knownExtensions } ?: "mp4"
+                return safe+"."+ext
+            }
+        }
+        DownloadResourceIdentity.bestName(null,url,null)?.let { return it }
+        val plainTitle=sharedTitle.trim().takeIf { usefulPageTitle(it) }
+        if(plainTitle!=null) {
+            val clean=plainTitle.map {
+                if(it.isISOControl() || it in "\\/:*?\"<>|") ' ' else it
+            }.joinToString("").trim().take(180)
+            if(clean.isNotBlank())return clean+".mp4"
+        }
+        return providedName.ifBlank {
+            runCatching { android.webkit.URLUtil.guessFileName(url,null,null) }
+                .getOrDefault("episodio.mp4")
+        }
+    }
+
     fun title(value: String): String {
         val clean=value.substringBefore(" | ").substringBefore(" – ").trim()
         if (!usefulPageTitle(clean)) return ""

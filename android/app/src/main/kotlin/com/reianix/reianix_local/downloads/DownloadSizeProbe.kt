@@ -23,7 +23,7 @@ import java.util.Locale
  * existing redirect policy (no cross-origin cookie/authorization forwarding).
  */
 internal object DownloadSizeProbe {
-    data class Result(val bytes: Long?, val exact: Boolean, val source: String) {
+    data class Result(val bytes: Long?, val exact: Boolean, val source: String, val name: String? = null, val mime: String? = null) {
         companion object { val Unknown = Result(null, false, "unknown") }
     }
     internal data class HlsPlan(val segments: List<String>, val init: String?, val durationSeconds: Double,
@@ -34,6 +34,7 @@ internal object DownloadSizeProbe {
     private const val MAX_MANIFEST_BYTES = 1024 * 1024
     private const val MAX_EXACT_SEGMENTS = 40
     private const val MAX_SAMPLE_SEGMENTS = 12
+    private const val MAX_SAMPLE_BYTES = 4 * 1024 * 1024
 
     fun internalAvailableBytes(context: Context): Long? = runCatching {
         val folder = runCatching { Environment.getExternalStorageDirectory() }
@@ -123,6 +124,15 @@ internal object DownloadSizeProbe {
             ?.substringAfter('=',"")?.toLongOrNull()?.takeIf { it>0L }
     }.getOrNull()
 
+    /** Samples of complete media fragments produce an estimate, never an exact byte count. */
+    fun sampledSegmentEstimate(sizes: List<Long?>, segmentCount: Int): Long? {
+        if (segmentCount <= 0 || sizes.isEmpty()) return null
+        val known = sizes.filterNotNull().filter { it > 0 }
+        if (known.size < minOf(2, sizes.size)) return null
+        val estimate = known.average() * segmentCount
+        return estimate.takeIf { it.isFinite() && it in 1.0..Long.MAX_VALUE.toDouble() }?.toLong()
+    }
+
     fun bitrateEstimate(durationSeconds: Double, bitsPerSecond: Long?): Long? {
         if(!durationSeconds.isFinite() || durationSeconds<=0 || bitsPerSecond==null || bitsPerSecond<=0)return null
         val total=durationSeconds*bitsPerSecond/8.0
@@ -131,45 +141,65 @@ internal object DownloadSizeProbe {
 
     suspend fun inspect(url: String, headers: Map<String,String>, hlsHint: Boolean = false): Result =
         withContext(Dispatchers.IO) {
+            val hint=DownloadResourceIdentity.bestName(null,url,null)
             try {
                 DownloadHttp.validateUrl(url)
                 val path=URL(url).path.lowercase(Locale.ROOT)
-                val isManifest=hlsHint || path.endsWith(".m3u8")
-                if(isManifest) return@withContext inspectHls(url,headers)
-                trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen") }
-                val first=probe(url,headers)
-                if(first.manifest) return@withContext inspectHls(url,headers)
-                first.length?.let { return@withContext Result(it,true,"http") }
-                Result.Unknown
+                val manifest=hlsHint || path.endsWith(".m3u8")
+                if(manifest) return@withContext inspectHls(url,headers).copy(name=hint)
+                trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen",hint) }
+                val response=probe(url,headers)
+                if(response.manifest) return@withContext inspectHls(url,headers)
+                    .copy(name=response.name ?: hint, mime=response.mime)
+                if(response.length!=null)
+                    return@withContext Result(response.length,true,response.source,response.name ?: hint,response.mime)
+                Result(null,false,"unknown",response.name ?: hint,response.mime)
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
-            catch(_: Exception) { Result.Unknown }
+            catch(_: Exception) { Result(null,false,"unknown",hint) }
         }
 
-    private data class Headers(val length: Long?, val manifest: Boolean)
+    private data class Headers(
+        val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String
+    )
+
+    /**
+     * Gopeed/Download Navi style: first request headers without a body, then
+     * one-byte Range, then a plain GET when servers reject HEAD or Range.
+     * Plain GET is disconnected after headers; the video is NOT downloaded here.
+     * Name and MIME remain useful even when size is unavailable.
+     */
     private fun probe(url: String, headers: Map<String,String>, credentialOrigin: String = url): Headers {
+        var bestName=DownloadResourceIdentity.bestName(null,url,null)
+        var bestMime:String?=null
         var manifest=false
-        for(method in listOf("HEAD","GET")) {
+        for(phase in listOf("HEAD","GET_RANGE","GET")) {
             currentThreadCheck()
-            var c: HttpURLConnection?=null
+            var c:HttpURLConnection?=null
             try {
                 c=DownloadHttp.connect(url,headers,0,null,
-                    end=if(method=="GET")0 else null,credentialOrigin=credentialOrigin,
-                    method=method,connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
-                val mime=c.contentType.orEmpty().substringBefore(';').lowercase(Locale.ROOT)
+                    end=if(phase=="GET_RANGE")0 else null,
+                    credentialOrigin=credentialOrigin,
+                    method=if(phase=="HEAD")"HEAD" else "GET",
+                    connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
+                val code=c.responseCode
+                val mime=c.contentType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
+                if(mime.startsWith("video/") || mime.contains("mpegurl")) bestMime=mime
+                val resolved=DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
+                    c.url.toString(),c.contentType)
+                if(resolved!=null && (bestName==null ||
+                    DownloadResourceIdentity.opaque(bestName) || resolved.contains("Episódio",true)))
+                    bestName=resolved
                 if(mime.contains("mpegurl")) {manifest=true;break}
-                val size=directLength(
-                    c.responseCode,c.getHeaderFieldLong("Content-Length",-1),
-                    c.getHeaderField("Content-Range"),c.getHeaderField("Content-Encoding"),
-                    c.contentType)
-                if(size!=null)return Headers(size,false)
-                // Many CDNs reject HEAD even when a one-byte GET Range is
-                // allowed. Do not abandon the GET fallback after a HEAD 403.
-                if(method=="GET" && (c.responseCode==HttpURLConnection.HTTP_UNAUTHORIZED ||
-                    c.responseCode==HttpURLConnection.HTTP_FORBIDDEN))break
-            } catch(_: java.io.IOException) { /* HEAD may be unsupported; try a one-byte Range. */ }
-            finally { c?.disconnect() }
+                val size=directLength(code,c.getHeaderFieldLong("Content-Length",-1),
+                    c.getHeaderField("Content-Range"),c.getHeaderField("Content-Encoding"),c.contentType)
+                if(size!=null)return Headers(size,false,bestName,bestMime,phase.lowercase(Locale.ROOT))
+                // Some CDNs reject ranges but permit GET. A missing Content-Length
+                // in a 200 chunked response cannot be treated as an exact size.
+                if(phase=="GET" && code in setOf(401,403))break
+            } catch(_:java.io.IOException) { /* try the next header-only strategy */ }
+            finally {c?.disconnect()}
         }
-        return Headers(null,manifest)
+        return Headers(null,manifest,bestName,bestMime,"unknown")
     }
 
     private suspend fun inspectHls(url: String, headers: Map<String,String>): Result {
@@ -209,7 +239,42 @@ internal object DownloadSizeProbe {
                 return Result(bytes,exact,if(exact)"hls-fmp4" else "hls-estimate")
             }
         }
-        return Result(bitrate,false,"hls-bitrate").takeIf { bitrate!=null } ?: Result.Unknown
+        if(bitrate!=null) return Result(bitrate,false,"hls-bitrate")
+        // Some video hosts reject HEAD and Range requests, but permit normal
+        // segment GETs. Sample only three *complete*, bounded segments. This
+        // is expressly an estimate and is never used as a download limit.
+        val sampleIndices=listOf(0,segments.size/2,segments.lastIndex).distinct()
+        val sampleSizes=coroutineScope {
+            sampleIndices.map { index -> async(Dispatchers.IO) {
+                currentCoroutineContext().ensureActive()
+                sampleCompleteSegment(segments[index],headers,url)
+            }}.awaitAll()
+        }
+        val sampled=sampledSegmentEstimate(sampleSizes,segments.size)
+        return sampled?.let { Result(it,false,"hls-sampled") } ?: Result.Unknown
+    }
+
+    private fun sampleCompleteSegment(url: String, headers: Map<String,String>, origin: String): Long? {
+        var connection: HttpURLConnection?=null
+        return try {
+            connection=DownloadHttp.connect(url,headers,0,null,credentialOrigin=origin,
+                connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
+            if(connection.responseCode!=200 || connection.contentType.orEmpty().startsWith("text/") ||
+                connection.getHeaderFieldLong("Content-Length",-1)>MAX_SAMPLE_BYTES) return null
+            var total=0L
+            connection.inputStream.use { input ->
+                val buffer=ByteArray(32*1024)
+                while(true) {
+                    currentThreadCheck()
+                    val n=input.read(buffer)
+                    if(n<0) break
+                    total+=n
+                    if(total>MAX_SAMPLE_BYTES) return null
+                }
+            }
+            total.takeIf { it>0L }
+        } catch(_:java.io.IOException) { null }
+        finally {connection?.disconnect()}
     }
 
     private suspend fun readManifest(url: String,headers: Map<String,String>,credentialOrigin: String): String? =
