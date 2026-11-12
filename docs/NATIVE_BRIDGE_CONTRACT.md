@@ -54,7 +54,7 @@ Preserva comandos de storage/scanner (`select_tree`, `scan_tree`, `verify_tree`,
 
 Os comandos de navegação visual antigos (`open_library`, `open_organize`, `open_settings`, `hide_library`, `hide_settings`) permanecem somente como compatibilidade para callers legados. No Android atual, eles convergem para o único `ReiAnixComposeLibraryHost`; não montam uma segunda UI.
 
-Entrada: URI `reiflix://native` ou mailbox interno quando o comando é player/thumbnail.
+Entrada: URI `reianix://native` ou mailbox interno quando o comando é player/thumbnail.
 
 Correlação: `request_id` + `protocol_version` + `created_at` quando disponíveis.
 
