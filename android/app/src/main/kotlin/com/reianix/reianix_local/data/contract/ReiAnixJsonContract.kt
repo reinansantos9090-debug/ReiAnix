@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.contract
+package com.reianix.reianix_local.data.contract
 
 import org.json.JSONArray
 import org.json.JSONObject

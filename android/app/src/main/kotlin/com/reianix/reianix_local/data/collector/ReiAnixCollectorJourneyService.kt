@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local.data.collector
+package com.reianix.reianix_local.data.collector
 
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixCollectorEpisodeRow
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import com.reianix.reianix_local.data.sqlite.ReiAnixCollectorEpisodeRow
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import java.util.Calendar
 import java.util.Locale
 import kotlinx.coroutines.sync.Mutex
