@@ -23,8 +23,9 @@ internal object SeriesTitleIdentity {
         "vi" to 6, "vii" to 7, "viii" to 8, "ix" to 9, "x" to 10,
     )
     private val prohibited = setOf(
-        "episode", "episodio", "anime", "animes online", "unknown",
-        "arquivo nao identificado", "sem titulo", "untitled"
+        "episode", "episodio", "episódio", "anime", "animes online", "unknown",
+        "arquivo nao identificado", "arquivo não identificado",
+        "sem titulo", "sem título", "untitled"
     )
 
     fun form(raw: String?): TitleForm? {
@@ -50,7 +51,7 @@ internal object SeriesTitleIdentity {
 
     private fun useful(value:String):Boolean =
         value.length>=4 && value.any(Char::isLetter) && value !in prohibited &&
-            !value.matches(Regex("""(?i)(?:ep|episode|episodio)\s*\d+"""))
+            !value.matches(Regex("""(?i)(?:ep|episode|epis[oó]dio|cap[ií]tulo|season|temporada|temp|s)[\s._-]*\d+"""))
 
     private fun normal(value:String):String = MediaTitleNormalizer.normalizeTitle(value)
         .replace(Regex("""\s+""")," ").trim()
