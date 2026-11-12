@@ -171,7 +171,7 @@ internal fun recognizeUnnumberedSeriesSiblings(
         .replace(Regex("\\b(?:dublado|legendado|dub|sub|pt br)\\b"), " ")
         .replace(Regex("\\s+"), " ").trim()
     fun folder(item: NativeDiscoveredMedia): String =
-        (item.relativePath ?: item.scopeLocation)?.replace('\\\\', '/')
+        (item.relativePath ?: item.scopeLocation)?.replace('\\', '/')
             ?.substringBeforeLast('/', "")
             ?.trim()?.lowercase()
             ?: item.sourceFolder.orEmpty().trim().lowercase()
