@@ -1382,6 +1382,49 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun seasonAlbumsAutomaticallyReorganizeIntoSinglePosterWithActualSeasonRows() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.setForeignKeyConstraintsEnabled(true)
+            fun album(id:Long,remote:Long,title:String,favorite:Int=0) {
+                db.execSQL(
+                    "INSERT INTO anime(id,lookup_title,title,added_at,anilist_id,media_kind,favorite) VALUES(?,?,?,1100,?,'series',?)",
+                    arrayOf(id,title.lowercase(),title,remote,favorite),
+                )
+            }
+            album(201,810001,"Youjo Senki")
+            album(202,810002,"Youjo Senki II",1)
+            album(203,810003,"Youjo Senki Season 3")
+            fun episodes(albumId:Long,first:Int,last:Int) {
+                for(number in first..last) db.execSQL(
+                    "INSERT INTO episodes(anime_id,path,file_name,season,number,progress) VALUES(?,?,?,1,?,?)",
+                    arrayOf(albumId,"content://test/$albumId/$number",
+                        "Episode $number.mkv",number.toDouble(),if(number==1)37.0 else 0.0),
+                )
+            }
+            episodes(201,1,12)
+            episodes(202,1,7)
+            episodes(203,1,3)
+        }
+        val repository=ReiAnixSqliteLibraryRepository(context)
+        assertTrue(repository.reconcileExistingSeries())
+        val merged=repository.loadLibraryCatalogRows().single {it.anime.id==201L}
+        assertEquals(22,merged.episodes.size)
+        assertEquals(12,merged.episodes.count{it.season==1})
+        assertEquals(7,merged.episodes.count{it.season==2})
+        assertEquals(3,merged.episodes.count{it.season==3})
+        assertEquals(true,merged.anime.favorite)
+        assertEquals(37.0,merged.episodes.first{it.path=="content://test/202/1"}.progress!!,0.0)
+        assertFalse(repository.reconcileExistingSeries())
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("PRAGMA foreign_key_check",null).use {assertFalse(it.moveToFirst())}
+            db.rawQuery("SELECT COUNT(*) FROM anime WHERE id IN (201,202,203)",null).use {
+                assertTrue(it.moveToFirst());assertEquals(1,it.getInt(0))
+            }
+        }
+    }
+
+    @Test
     fun remoteVerifiedSeriesMergeSurvivesCanonicalForeignKeysAndKeepsEachEpisode() {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READWRITE).use {db ->
