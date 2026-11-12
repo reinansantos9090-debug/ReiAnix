@@ -153,6 +153,12 @@ internal object DownloadSizeProbe {
                     .copy(name=response.name ?: hint, mime=response.mime)
                 if(response.length!=null)
                     return@withContext Result(response.length,true,response.source,response.name ?: hint,response.mime)
+                // Only after the fast, low-cost strategies fail: the advanced
+                // bounded probes cover 416, suffix, multipart and validated
+                // same-origin metadata. A vendor hint is not exact.
+                DownloadAdvancedHttp.inspect(url,headers)?.let { return@withContext it.copy(
+                    name=it.name ?: response.name ?: hint,mime=it.mime ?: response.mime
+                ) }
                 Result(null,false,"unknown",response.name ?: hint,response.mime)
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
             catch(_: Exception) { Result(null,false,"unknown",hint) }
