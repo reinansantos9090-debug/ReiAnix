@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.anilist
+package com.reianix.reianix_local.data.anilist
 
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject

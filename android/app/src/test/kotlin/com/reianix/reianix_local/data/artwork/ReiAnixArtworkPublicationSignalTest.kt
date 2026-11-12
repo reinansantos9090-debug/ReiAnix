@@ -1,12 +1,12 @@
-package com.reiflix.reiflix_local.data.artwork
+package com.reianix.reianix_local.data.artwork
 
-import com.reiflix.reiflix_local.data.anilist.shouldDiscoverMissingArtwork
-import com.reiflix.reiflix_local.data.anilist.boundedAniListSearchTerms
-import com.reiflix.reiflix_local.data.anilist.rotateArtworkDiscoveryIds
-import com.reiflix.reiflix_local.data.anilist.MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
-import com.reiflix.reiflix_local.data.anilist.artworkDiscoveryAttemptPreferenceKey
-import com.reiflix.reiflix_local.data.anilist.shouldDeferArtworkDiscoveryAttempt
-import com.reiflix.reiflix_local.data.sqlite.shouldIncludeArtworkRecord
+import com.reianix.reianix_local.data.anilist.shouldDiscoverMissingArtwork
+import com.reianix.reianix_local.data.anilist.boundedAniListSearchTerms
+import com.reianix.reianix_local.data.anilist.rotateArtworkDiscoveryIds
+import com.reianix.reianix_local.data.anilist.MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
+import com.reianix.reianix_local.data.anilist.artworkDiscoveryAttemptPreferenceKey
+import com.reianix.reianix_local.data.anilist.shouldDeferArtworkDiscoveryAttempt
+import com.reianix.reianix_local.data.sqlite.shouldIncludeArtworkRecord
 
 import java.io.File
 import java.util.UUID
