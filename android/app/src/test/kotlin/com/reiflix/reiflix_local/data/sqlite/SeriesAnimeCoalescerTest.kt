@@ -23,7 +23,8 @@ class SeriesAnimeCoalescerTest {
                 metadata_manual_fields TEXT, anilist_match_manual INTEGER,
                 favorite INTEGER, is_pinned INTEGER,user_tags TEXT, personal_note TEXT,
                 cover_url TEXT, cover_cache TEXT,banner_url TEXT,description TEXT,
-                description_original TEXT,genres TEXT,studio TEXT
+                description_original TEXT,genres TEXT,studio TEXT,
+                episodes_count INTEGER
             )"""
         )
         execSQL(
@@ -46,13 +47,14 @@ class SeriesAnimeCoalescerTest {
 
     private fun add(db:SQLiteDatabase,id:Long,remote:Long?,name:String,first:Int,last:Int,
         season:Int=1,manual:Boolean=false,kind:String="series",
-        episodeKind:String="regular") {
+        episodeKind:String="regular",expected:Int?=null,
+        manualFields:String="[]") {
         db.execSQL(
             """INSERT INTO anime(
                 id,anilist_id,title,lookup_title,media_kind,
-                metadata_source,metadata_manual_fields,anilist_match_manual,user_tags
-            ) VALUES(?,?,?,?,?,'anilist','[]',?,'[]')""",
-            arrayOf(id,remote,name,name.lowercase(),kind,if(manual)1 else 0),
+                metadata_source,metadata_manual_fields,anilist_match_manual,user_tags,episodes_count
+            ) VALUES(?,?,?,?,?,'anilist',?,?,'[]',?)""",
+            arrayOf(id,remote,name,name.lowercase(),kind,manualFields,if(manual)1 else 0,expected),
         )
         for(n in first..last)db.execSQL(
             "INSERT INTO episodes(id,anime_id,media_identity,file_name,progress,season,number,episode_type) VALUES(?,?,?,?,?,?,?,?)",
@@ -89,6 +91,63 @@ class SeriesAnimeCoalescerTest {
             database.rawQuery("SELECT progress FROM episodes WHERE id=1001",null).use {
                 assertTrue(it.moveToFirst());assertEquals(12.5,it.getDouble(0),0.0)
             }
+            assertFalse(SeriesAnimeCoalescer.mergeVerified(database))
+        }
+    }
+
+    @Test fun conflictingAniListIdsMergeOnlyWithCompleteNumericContinuationAndSameExpectedTotal() {
+        db().use {database ->
+            // The user's 6+6 case has two visually identical series names, but
+            // provider associations may have inconsistent remote IDs.
+            add(database,1,521001,"Pass the Monster Meat, Milady!",1,6,expected=12)
+            add(database,2,521099,"Pass the Monster Meat, Milady!",7,12,expected=12)
+            assertTrue(SeriesAnimeCoalescer.mergeVerified(database))
+            assertEquals(12,count(database,1))
+            assertEquals(0,count(database,2))
+            database.rawQuery("SELECT value FROM preferences WHERE key=?",
+                arrayOf("reianix.series.merged.1.2")).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(521099,JSONObject(it.getString(0)).getInt("anilistId"))
+            }
+            assertFalse(SeriesAnimeCoalescer.mergeVerified(database))
+        }
+    }
+
+    @Test fun customCoverFieldsDoNotPreventMergingTwoHalvesWithSameVerifiedIdentity() {
+        db().use {database ->
+            add(database,1,77,"Pass the Monster Meat, Milady!",1,6)
+            add(database,2,77,"Pass the Monster Meat, Milady!",7,12,
+                manualFields="""["cover_url","description"]""")
+            database.execSQL(
+                "UPDATE anime SET cover_url='https://example.org/manual.png' WHERE id=2"
+            )
+            assertTrue(SeriesAnimeCoalescer.mergeVerified(database))
+            assertEquals(12,count(database,2))
+            database.rawQuery("SELECT cover_url FROM anime WHERE id=2",null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals("https://example.org/manual.png",it.getString(0))
+            }
+        }
+    }
+
+    @Test fun differentSeriesAndConflictingEpisodeRangesNeverMergeOnTitleAlone() {
+        db().use {database ->
+            add(database,1,101,"Shared Anime Title",1,6,expected=12)
+            add(database,2,102,"Shared Anime Title",1,6,expected=12)
+            add(database,3,103,"Shared Anime Title",7,13,expected=13)
+            add(database,4,104,"Other Anime Title",7,12,expected=12)
+            assertFalse(SeriesAnimeCoalescer.mergeVerified(database))
+            assertEquals(6,count(database,1))
+            assertEquals(6,count(database,2))
+            assertEquals(7,count(database,3))
+            assertEquals(6,count(database,4))
+        }
+    }
+
+    @Test fun sameTitleWithDifferentRemoteIdsAndMissingExpectedTotalRemainsUnmerged() {
+        db().use {database ->
+            add(database,1,201,"Shared Anime Title",1,6)
+            add(database,2,202,"Shared Anime Title",7,12)
             assertFalse(SeriesAnimeCoalescer.mergeVerified(database))
         }
     }
