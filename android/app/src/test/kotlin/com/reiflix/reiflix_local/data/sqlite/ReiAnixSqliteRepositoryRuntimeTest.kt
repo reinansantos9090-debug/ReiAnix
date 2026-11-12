@@ -1382,6 +1382,36 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun newlyMatchedAniListSequelReturnsSurvivingAlbumAndDoesNotRollbackTheMerge() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READWRITE).use {db ->
+            db.execSQL(
+                "INSERT INTO anime(id,lookup_title,title,added_at,anilist_id,media_kind) VALUES(201,'youjo senki','Youjo Senki',1100,810001,'series')"
+            )
+            db.execSQL(
+                "INSERT INTO anime(id,lookup_title,title,added_at,media_kind) VALUES(202,'youjo senki ii','Youjo Senki II',1100,'series')"
+            )
+            db.execSQL("INSERT INTO episodes(anime_id,path,file_name,season,number) VALUES(201,'/media/youjo/s1e01.mkv','s1e01.mkv',1,1)")
+            db.execSQL("INSERT INTO episodes(anime_id,path,file_name,season,number) VALUES(202,'/media/youjo/s2e01.mkv','s2e01.mkv',1,1)")
+        }
+        val repo=ReiAnixSqliteLibraryRepository(context)
+        val persisted=repo.updateAniListMetadataAndAssociation(
+            patch=ReiAnixAnimeMetadataPatch(animeId=202L,title="Youjo Senki II"),
+            anilistId=810002L,
+            manual=false,
+            score=0.97,
+            margin=0.14,
+        )
+        assertEquals(201L,persisted.id)
+        assertEquals(2,repo.listEpisodes(201L).size)
+        assertEquals(setOf(1,2),repo.listEpisodes(201L).map{it.season}.toSet())
+        assertNull(repo.getAnime(202L))
+        assertEquals(201L,repo.database.read { db ->
+            SeriesAnimeCoalescer.survivingAlbumId(db,202L)
+        })
+    }
+
+    @Test
     fun seasonAlbumsAutomaticallyReorganizeIntoSinglePosterWithActualSeasonRows() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READWRITE).use { db ->
