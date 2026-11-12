@@ -1382,7 +1382,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
-    fun ambiguousSecondReleaseBlocksReconciliationAndPreservesOriginalReference() = runBlocking {
+    fun distinctSecondReleaseIsImportedWithoutReplacingOriginalEpisode() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL("UPDATE episodes SET source_folder = ?, media_identity = ? WHERE id = ?",
@@ -1390,7 +1390,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         }
         val report = ReiAnixSqliteLibraryRepository(context).indexDiscoveredMedia(
             NativeLibraryScanSnapshot(
-                operationId = "ambiguous-release",
+                operationId = "two-releases",
                 source = "saf",
                 scopeRoot = "/media/show",
                 expectedLocations = setOf("/media/show"),
@@ -1399,6 +1399,17 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 complete = true,
                 authorizationValid = true,
                 items = listOf(
+                    NativeDiscoveredMedia(
+                        location = "/media/show/episode-01.mkv",
+                        fileName = "episode-01.mkv",
+                        scopeLocation = "/media/show/episode-01.mkv",
+                        animeTitle = "Original Title",
+                        season = 1,
+                        episodeNumber = 1.0,
+                        identificationConfidence = "high",
+                        sourceFolder = "/media/show",
+                        mediaIdentity = "shared:primary:show/episode-01.mkv",
+                    ),
                     NativeDiscoveredMedia(
                         location = "/media/show/renamed-release.mkv",
                         fileName = "renamed-release.mkv",
@@ -1413,11 +1424,19 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 ),
             ),
         )
-        assertFalse(report.reconciliationAuthorized)
-        assertEquals(1, report.ambiguous)
-        assertEquals("/media/show/episode-01.mkv", ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.path)
-        assertEquals(false, ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.missing)
-        assertEquals(11.0, ReiAnixSqliteLibraryRepository(context).getEpisode(7L)!!.progress!!, 0.0)
+        assertTrue(report.reconciliationAuthorized)
+        assertEquals(0, report.ambiguous)
+        assertEquals(1, report.inserted)
+        val repository=ReiAnixSqliteLibraryRepository(context)
+        assertEquals("/media/show/episode-01.mkv",repository.getEpisode(7L)!!.path)
+        assertEquals(false,repository.getEpisode(7L)!!.missing)
+        assertEquals(11.0,repository.getEpisode(7L)!!.progress!!,0.0)
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                "SELECT COUNT(*) FROM episodes WHERE anime_id=1 AND season=1 AND number=1",
+                null,
+            ).use { cursor -> assertTrue(cursor.moveToFirst());assertEquals(2,cursor.getInt(0)) }
+        }
     }
 
     @Test
