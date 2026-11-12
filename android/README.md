@@ -1,6 +1,6 @@
 # ReiAnix Native Android
 
-O diretório `android/` contém a aplicação Android standalone. O launcher é `com.reiflix.reiflix_local.MainActivity`, uma `ComponentActivity` que hospeda a navegação Jetpack Compose. `ReiAnixApplication` mantém o grafo de dependências e o bootstrap durante a vida do processo.
+O diretório `android/` contém a aplicação Android standalone. O launcher é `com.reianix.reianix_local.MainActivity`, uma `ComponentActivity` que hospeda a navegação Jetpack Compose. `ReiAnixApplication` mantém o grafo de dependências e o bootstrap durante a vida do processo.
 
 A aplicação usa Kotlin, Jetpack Compose, SQLite, SAF/MediaStore e Media3. O build oficial compila diretamente com Gradle e não usa Python, Flet ou Flutter.
 

@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.reiflix.reiflix_local"
+    namespace = "com.reianix.reianix_local"
     compileSdk = 36
 
     buildFeatures {
@@ -38,12 +38,12 @@ android {
 
     signingConfigs {
         create("ciRelease") {
-            val keystorePath = System.getenv("REIFLIX_ANDROID_KEYSTORE_PATH")
+            val keystorePath = System.getenv("REIANIX_ANDROID_KEYSTORE_PATH")
             if (!keystorePath.isNullOrBlank()) {
                 storeFile = file(keystorePath)
-                storePassword = System.getenv("REIFLIX_ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("REIFLIX_ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("REIFLIX_ANDROID_KEY_PASSWORD")
+                storePassword = System.getenv("REIANIX_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("REIANIX_ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("REIANIX_ANDROID_KEY_PASSWORD")
             }
         }
     }
@@ -53,9 +53,9 @@ android {
             // Release APKs must never silently inherit a changing debug key.
             // Only PR preview artifacts opt in to debug signing explicitly.
             signingConfig = when {
-                !System.getenv("REIFLIX_ANDROID_KEYSTORE_PATH").isNullOrBlank() ->
+                !System.getenv("REIANIX_ANDROID_KEYSTORE_PATH").isNullOrBlank() ->
                     signingConfigs.getByName("ciRelease")
-                System.getenv("REIFLIX_ALLOW_DEBUG_RELEASE_FOR_PR") == "true" &&
+                System.getenv("REIANIX_ALLOW_DEBUG_RELEASE_FOR_PR") == "true" &&
                     System.getenv("GITHUB_EVENT_NAME") == "pull_request" ->
                     signingConfigs.getByName("debug")
                 else -> null // Local release without a key remains unsigned, not debug-signed.
