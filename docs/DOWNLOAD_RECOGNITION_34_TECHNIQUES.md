@@ -17,11 +17,11 @@ As 34 opções selecionadas foram adicionadas como estratégias **condicionais**
 | 23 | HLS AVERAGE-BANDWIDTH | DownloadSizeProbe.parseMaster | Estimativa |
 | 25 | Cabeçalhos de todos os segmentos de playlist pequena | DownloadSizeProbe.inspectHls | 40 segmentos antes do download; playlists maiores amostradas; bytes reais ao terminar |
 | 27 | HLS tamanho médio ponderado por duração | DownloadHlsMetadata.weightedEstimate | Estimativa |
-| 29 | EXT-X-MAP e BYTERANGE | DownloadHlsMetadata.parse | Tamanho exato *do conteúdo de origem* se todos os ranges conhecidos |
+| 29 | EXT-X-MAP e BYTERANGE | DownloadHlsMetadata.parse e DownloadHls.parse/receive | Intervalos de origem com offset validado; download HLS VOD lê somente bytes solicitados |
 | 31 | Padding AES-CBC, impacto no MP4 final | DownloadSizeProbe.inspectHls | Estimativa, nunca forçar valor exato |
 | 32 | Low-Latency HLS EXT-X-PART | DownloadHlsMetadata.parse | Apenas VOD / sem somar duplicado |
 | 34 | Cache em memória por segmento | DownloadHlsMetadata | 60 segundos, limite de entradas |
-| 35 | Manifestos MPEG-DASH MPD | DownloadDashMetadata.parse/inspect | Somente reconhecimento de metadados; download DASH ainda é independente |
+| 35 | Manifestos MPEG-DASH MPD | DownloadDashMetadata.parse/inspect, DownloadAdaptiveTransfer e Media3 | Reconhecimento de MPD e tentativa de baixar/exportar VOD sem DRM para MP4 em aparelhos compatíveis |
 | 36 | SegmentTemplate + SegmentTimeline | DownloadDashMetadata.parse | URLs, números e durações limitadas |
 | 37 | SegmentList | DownloadDashMetadata.parse | Soma ranges explícitos |
 | 38 | SegmentBase/indexRange | DownloadDashMetadata.parse | Identificação de índice |
@@ -46,8 +46,9 @@ As 34 opções selecionadas foram adicionadas como estratégias **condicionais**
 - Servidor que não fornece tamanho e arquivo sem tamanho interno confiável **não permite saber valor exato antes de baixar**.
 - O valor de um manifesto HLS/DASH pode não corresponder ao tamanho depois de remux/transcodificação.
 - Um metadata endpoint público pode exigir autorização; nunca violar autenticação, proteção anti-bot ou DRM para descobrir o tamanho.
+- A exportação de DASH/HLS adaptativo usa Media3 Transformer com módulos ExoPlayer HLS/DASH; somente fontes e codecs compatíveis e sem proteção DRM funcionam. Fontes que exigem sessão por cabeçalhos HTTP no Transformer podem continuar incompatíveis.
 - O Media3 de Android não converte universalmente qualquer vídeo/codec.
-- O total HLS de arquivos grandes é amostrado para não gerar centenas de requisições ao abrir uma caixa de diálogo.
+- O total HLS de arquivos grandes é amostrado para não gerar centenas de requisições ao abrir uma caixa de diálogo. A opção #25 verifica todos os segmentos somente em listas pequenas; em listas extensas a leitura integral custaria tempo e banda e não pode ser aplicada de modo irrestrito sem violar o requisito de velocidade.
 - O reconhecimento de metadata de torrent/Metalink não significa implementação de um cliente torrent.
 - O método PROPFIND requer OkHttp; só é acionado em fontes WebDAV detectadas.
 - Testar com exemplos locais conhecidos (URL HTTP range, HLS VOD simples/segmentado, DASH, AVI, ASF, MP4, MKV, FLV, HTML) e depois com links reais autorizados.
