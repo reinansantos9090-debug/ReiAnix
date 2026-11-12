@@ -32,4 +32,18 @@ class DownloadSizeIntelligenceTest {
         assertEquals("Tamanho aproximado",DownloadSizeIntelligence.dialogLabel(141_000_000L,false))
         assertEquals("Tamanho confirmado",DownloadSizeIntelligence.dialogLabel(141_000_000L,true))
     }
+    @Test fun combinesCloseEstimatesWithoutEverClaimingExactSize() {
+        val provider=DownloadSizeIntelligence.Evidence(141_000_000L,false,"shared-metadata")
+        val probe=DownloadSizeIntelligence.Evidence(139_000_000L,false,"hls-estimate")
+        val joined=DownloadSizeIntelligence.reconcile(provider,probe)!!
+        assertFalse(joined.exact)
+        assertEquals(140_500_000L,joined.bytes)
+        assertEquals(140_000_000L,DownloadSizeIntelligence.roundedForDisplay(joined.bytes))
+    }
+    @Test fun rejectsInconsistentBitrateExtrapolation() {
+        val provider=DownloadSizeIntelligence.Evidence(141_000_000L,false,"provider")
+        val extrapolated=DownloadSizeIntelligence.Evidence(25_000_000L,false,"bitrate")
+        assertEquals(provider,DownloadSizeIntelligence.reconcile(provider,extrapolated))
+    }
+
 }
