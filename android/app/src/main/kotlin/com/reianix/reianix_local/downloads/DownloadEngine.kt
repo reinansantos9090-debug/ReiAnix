@@ -215,6 +215,11 @@ class DownloadEngine(private val context: Context) {
                                 store.mutate(id){it.put("hls",true)}
                                 throw IOException("Playlist detectada; preparando download HLS")
                             }
+                            if(prefix.startsWith("<mpd") ||
+                                (prefix.startsWith("<?xml") && prefix.contains("<mpd"))) {
+                                store.mutate(id){it.put("adaptiveDash",true)}
+                                throw IOException("Manifesto DASH detectado; preparando MP4")
+                            }
                             if(prefix.startsWith("<!doctype html") || prefix.startsWith("<html") ||
                                 (store.get(id)?.mime?.startsWith("video/")==true && (prefix.startsWith("{") || prefix.startsWith("[")))) {
                                 throw PermanentFailure("O link retornou uma página ou mensagem de erro, não o vídeo")
