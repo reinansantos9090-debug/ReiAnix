@@ -53,4 +53,31 @@ class DownloadHlsPolicyTest {
         assertNull(DownloadHls.audioRenditionUrl(master,"https://cdn.example/show/master.m3u8","missing"))
     }
 
+    @Test fun byterangePlaylistUsesExplicitAndImplicitOffsets() {
+        val src="#EXTM3U\n#EXT-X-MAP:URI=\"media.mp4\",BYTERANGE=\"400@0\"\n"+
+            "#EXT-X-MEDIA-SEQUENCE:2\n#EXTINF:4,\n#EXT-X-BYTERANGE:800@400\nmedia.mp4\n"+
+            "#EXTINF:4,\n#EXT-X-BYTERANGE:600\nmedia.mp4\n#EXT-X-ENDLIST"
+        val p=DownloadHls.parse(src,"https://cdn.example/show/playlist.m3u8")
+        assertEquals(400L,p.initByteSpan?.length)
+        assertEquals(400L,p.segments[0].byteSpan?.start)
+        assertEquals(1200L,p.segments[1].byteSpan?.start)
+        assertEquals(1799L,p.segments[1].byteSpan?.end)
+    }
+
+    @Test fun implicitOffsetAcrossDifferentResourceIsRejected() {
+        val src="#EXTM3U\n#EXTINF:3,\n#EXT-X-BYTERANGE:100\nother.m4s\n#EXT-X-ENDLIST"
+        try {
+            DownloadHls.parse(src,"https://cdn.example/show/playlist.m3u8")
+            fail("Playlist without a defined byte offset must be rejected")
+        } catch(_:IllegalArgumentException) {}
+    }
+
+    @Test fun encryptedRangeKeepsKeyAndSpan() {
+        val src="#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\"\n"+
+            "#EXTINF:3,\n#EXT-X-BYTERANGE:188@0\nsegment.ts\n#EXT-X-ENDLIST"
+        val p=DownloadHls.parse(src,"https://cdn.example/show/master.m3u8")
+        assertEquals(188L,p.segments.single().byteSpan?.length)
+        assertEquals("https://cdn.example/show/key.bin",p.segments.single().key)
+    }
+
 }
