@@ -291,7 +291,8 @@ class DownloadBrowserActivity: ComponentActivity() {
             .ifBlank { DownloadIdentity.episodeTitleFromPage(title, page) }
         val filename=if(pageTitle.isNotBlank())
             DownloadIdentity.capturedFileName(pageTitle,url,mime)
-        else URLUtil.guessFileName(url,disposition,mime)
+        else DownloadResourceIdentity.bestName(disposition,url,mime)
+            ?: URLUtil.guessFileName(url,disposition,mime)
         offerError=""
         pendingOffer=BrowserDownloadOffer(
             url=url,headers=headers.keySet().associateWith {headers.getString(it).orEmpty()},
@@ -304,7 +305,7 @@ class DownloadBrowserActivity: ComponentActivity() {
     companion object {
         fun isVideoLink(url: String): Boolean {
             val path=Uri.parse(url).path.orEmpty().lowercase()
-            return listOf(".mp4",".mkv",".webm",".m4v",".mov",".avi",".ts",".m2ts",".flv",".wmv",".m3u8",".mpd").any {path.endsWith(it)}
+            return listOf(".mp4",".mkv",".webm",".m4v",".mov",".avi",".ts",".m2ts",".flv",".wmv",".3gp",".m3u8",".mpd").any {path.endsWith(it)}
         }
     }
 }
