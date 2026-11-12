@@ -17,7 +17,7 @@ class SeriesAnimeCoalescerTest {
     private fun db():SQLiteDatabase = SQLiteDatabase.create(null).apply {
         execSQL(
             """CREATE TABLE anime (
-                id INTEGER PRIMARY KEY, anilist_id INTEGER, title TEXT, lookup_title TEXT,
+                id INTEGER PRIMARY KEY, anilist_id INTEGER, title TEXT, lookup_title TEXT UNIQUE,
                 romaji TEXT, english TEXT, native TEXT, aliases TEXT,
                 media_kind TEXT, metadata_source TEXT, metadata_status TEXT,
                 metadata_manual_fields TEXT, anilist_match_manual INTEGER,
@@ -54,7 +54,7 @@ class SeriesAnimeCoalescerTest {
                 id,anilist_id,title,lookup_title,media_kind,
                 metadata_source,metadata_manual_fields,anilist_match_manual,user_tags,episodes_count
             ) VALUES(?,?,?,?,?,'anilist',?,?,'[]',?)""",
-            arrayOf(id,remote,name,name.lowercase(),kind,manualFields,if(manual)1 else 0,expected),
+            arrayOf(id,remote,name,"test-library-lookup-$id",kind,manualFields,if(manual)1 else 0,expected),
         )
         for(n in first..last)db.execSQL(
             "INSERT INTO episodes(id,anime_id,media_identity,file_name,progress,season,number,episode_type) VALUES(?,?,?,?,?,?,?,?)",
