@@ -38,7 +38,12 @@ internal class DownloadTransferFile(private val context: Context, private val st
         val item = store.get(id) ?: throw IOException("Download não encontrado")
         // A previously started private transfer must continue from its committed bytes.
         if ((item.bytes > 0L || legacyFile.length() > 0L) && legacyFile.exists()) return
-        if(Build.VERSION.SDK_INT < 29) return // Preserve original Android 7-9 path and remux compatibility.
+        if(Build.VERSION.SDK_INT < 29) {
+            // Android 7-9 continue using the existing private staging/export
+            // path; create the old placeholder only for those devices.
+            if(!legacyFile.exists()) legacyFile.createNewFile()
+            return
+        }
         val destination=item.json.optString("destination")
         val created = if(destination.isNotBlank()) {
             val parent = DocumentFile.fromTreeUri(context, Uri.parse(destination))
