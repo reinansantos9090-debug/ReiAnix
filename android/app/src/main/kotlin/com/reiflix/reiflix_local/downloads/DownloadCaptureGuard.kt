@@ -24,14 +24,14 @@ internal object DownloadCaptureGuard {
         } catch(_: Exception) {null} finally {runCatching {retriever.release()}}
     }
     private fun valid(facts: Facts)=facts.duration>=120 && facts.width.toDouble()/facts.height in 0.45..3.2
-    fun probe(context: Context,store: DownloadStore,id: String,file: File,bytes: Long,complete: Boolean = false) {
+    fun probe(context: Context,store: DownloadStore,id: String,source: Uri,bytes: Long,complete: Boolean = false) {
         val item=store.get(id) ?: return
         if(!item.json.has("playerCapture") || item.json.optBoolean("captureApproved"))return
         val stage=item.json.optInt("captureProbeStage")
         val thresholds=longArrayOf(256L*1024,2L*1024*1024,16L*1024*1024,128L*1024*1024)
         if(!complete && (stage>=thresholds.size || bytes<thresholds[stage]))return
         store.mutate(id){it.put("captureProbeStage",stage+1)}
-        val actual=facts(context,file,null)
+        val actual=if(source.scheme=="file") facts(context,File(source.path.orEmpty()),null) else facts(context,null,source)
         val expected=item.json.getJSONObject("playerCapture").optDouble("duration")
         val matches=actual!=null && valid(actual) && PlayerMediaCandidate.durationMatches(expected,actual.duration)
         if(actual!=null && (actual.width.toDouble()/actual.height !in 0.45..3.2 || (complete && !matches)))throw Rejected("O recurso capturado não corresponde a um episódio: vídeo curto ou formato de banner. Use o download do próprio site.")
