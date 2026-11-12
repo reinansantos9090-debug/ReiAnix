@@ -56,13 +56,15 @@ class DownloadsActivity: ComponentActivity() {
     private var incomingHlsHint by mutableStateOf(false)
     private var incomingName by mutableStateOf("")
     private var incomingHeaders by mutableStateOf<Map<String,String>>(emptyMap())
+    private var incomingSizeHint by mutableStateOf<Long?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); accept(intent)
         setContent { ReiAnixComposeTheme {
             Surface(Modifier.fillMaxSize()) {
                 Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
                     DownloadsScreen(incoming,incomingHeaders,incomingTitle,incomingName,
-                        playerCapture=incomingCapture,hlsHint=incomingHlsHint,onBack={ finish() })
+                        playerCapture=incomingCapture,hlsHint=incomingHlsHint,
+                        initialEstimatedSize=incomingSizeHint,onBack={ finish() })
                 }
             }
         } }
@@ -81,6 +83,14 @@ class DownloadsActivity: ComponentActivity() {
             .firstOrNull { it.isNotBlank() }
             .orEmpty().ifBlank { textLabel }
         incomingName=intent.getStringExtra("downloadName").orEmpty()
+        // An external app can share "Tamanho 141 MB" as text or title.
+        // UI text visible only in that other app is NOT accessible to ReiAnix.
+        incomingSizeHint=DownloadSizeIntelligence.fromSharedMetadata(
+            sharedText,
+            incomingTitle,
+            intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty(),
+            intent.getStringExtra("description").orEmpty()
+        )?.bytes
         incomingCapture=intent.getStringExtra("playerCapture")?.takeIf {it.length<=32768}
         incomingHlsHint=intent.getBooleanExtra("hlsHint",false)
         intent.removeExtra("playerCapture")
@@ -92,7 +102,8 @@ class DownloadsActivity: ComponentActivity() {
 }
 
 @Composable
-fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",playerCapture: String? = null,hlsHint: Boolean = false,onBack: (() -> Unit)? = null) {
+fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",playerCapture: String? = null,hlsHint: Boolean = false,
+initialEstimatedSize:Long?=null,onBack: (() -> Unit)? = null) {
     val context=LocalContext.current
     val store=remember(context) { DownloadStore(context) }
     val scope=rememberCoroutineScope()
@@ -162,14 +173,18 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
                         val displayTotal=downloadDisplaySize(item)
                         val hlsCount=item.json.optInt("hlsCount")
                         val total=if(displayTotal!=null) {
-                            (if(displayTotal.exact)"" else "≈ ")+Formatter.formatFileSize(context,displayTotal.bytes)
-                        } else "calculando tamanho…"
+                            (if(displayTotal.exact)"" else "≈ ")+
+                                Formatter.formatFileSize(context,if(displayTotal.exact)displayTotal.bytes
+                                    else DownloadSizeIntelligence.roundedForDisplay(displayTotal.bytes))
+                        } else "tamanho a confirmar"
                         val parts=if(item.total<=0 && hlsCount>0)
                             " • ${item.json.optInt("hlsIndex")} / $hlsCount partes"
                         else ""
-                        val subtitle=if(item.state=="QUEUED" && item.bytes==0L)
-                            item.json.optString("displayAnime").ifBlank {"Na fila"}
-                        else "$received / $total$parts"
+                        val subtitle=when {
+                            item.state=="QUEUED" && item.bytes==0L -> "Na fila • $total"
+                            item.state=="WAITING" && item.bytes==0L -> "0 B • $total"
+                            else -> "$received / $total$parts"
+                        }
                         Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
                         if(item.state in setOf("ERROR","CORRUPT","PAUSED","WAITING")) Text(item.json.optString("message").ifBlank {DownloadState.labels[item.state].orEmpty()},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)
                     }
@@ -229,13 +244,15 @@ fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String>
             catch(_: Exception) { error="Não foi possível adicionar o download. Confira o link, a pasta e o nome do arquivo." }
             finally { busy=false }
         }
-    },hlsHint=hlsHint && initialUrl.isNotBlank()) }
+    },hlsHint=hlsHint && initialUrl.isNotBlank(),
+        initialEstimatedSize=initialEstimatedSize) }
 }
 
 @Composable
 internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
     onSubmit: (String,String,String,String,String,Map<String,String>,String,Boolean,DownloadSizeProbe.Result?)->Unit,
-    hlsHint: Boolean = false,initialKnownSize:Long? = null) {
+    hlsHint: Boolean = false,initialKnownSize:Long? = null,
+    initialEstimatedSize:Long? = null) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf(editing?.name ?: DownloadIdentity.suggestedName(initialTitle,initialUrl,initialName)) }
@@ -258,11 +275,18 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     var originalHeaders by remember { mutableStateOf(initialHeaders) }
     var sourceLoading by remember { mutableStateOf(editing!=null) }
     var sessionOrigin by remember { mutableStateOf(runCatching { java.net.URL(initialUrl) }.getOrNull()) }
-    var sizeResult by remember(initialUrl,initialKnownSize) { mutableStateOf<DownloadSizeProbe.Result?>(
-        initialKnownSize?.takeIf{it>0}?.let{DownloadSizeProbe.Result(it,true,"webview-content-length")}
-    ) }
-    var sizeProbeUrl by remember(initialUrl,initialKnownSize) {
-        mutableStateOf(if(initialKnownSize!=null && initialKnownSize>0)initialUrl.trim() else "")
+    val providedSize=remember(initialUrl,initialKnownSize,initialEstimatedSize) {
+        initialKnownSize?.takeIf{it>0}?.let {
+            DownloadSizeProbe.Result(it,true,"webview-content-length")
+        } ?: initialEstimatedSize?.takeIf{it>0}?.let {
+            DownloadSizeProbe.Result(it,false,"shared-metadata")
+        }
+    }
+    var sizeResult by remember(initialUrl,initialKnownSize,initialEstimatedSize) {
+        mutableStateOf<DownloadSizeProbe.Result?>(providedSize)
+    }
+    var sizeProbeUrl by remember(initialUrl,initialKnownSize,initialEstimatedSize) {
+        mutableStateOf(if(providedSize!=null)initialUrl.trim() else "")
     }
     var storageBytes by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(Unit) {
@@ -272,16 +296,16 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     }
     // Debounce user edits and do not block WebView or the "Iniciar" button.
     // The exact same authenticated redirect policy applies as in downloads.
-    LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint,initialKnownSize) {
+    LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint,initialKnownSize,initialEstimatedSize) {
         if(initialKnownSize!=null && initialKnownSize>0 && url.trim()==initialUrl.trim() &&
             !hlsHint && editing==null) {
             sizeResult=DownloadSizeProbe.Result(initialKnownSize,true,"webview-content-length")
             sizeProbeUrl=url.trim()
             return@LaunchedEffect
         }
-        sizeResult=null
-        sizeProbeUrl=""
-        delay(350)
+        sizeResult=providedSize?.takeIf {url.trim()==initialUrl.trim()}
+        sizeProbeUrl=if(sizeResult!=null)url.trim() else ""
+        delay(200)
         val target=url.trim()
         if(runCatching { DownloadHttp.validateUrl(target) }.isFailure) {
             sizeResult=DownloadSizeProbe.Result.Unknown
@@ -294,9 +318,18 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         if(referer.isNotBlank())probeHeaders["Referer"]=referer.trim()
         if(user.isNotBlank())probeHeaders["Authorization"]="Basic "+
             android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP)
-        sizeResult=withTimeoutOrNull(15_000) {
+        val inspected=withTimeoutOrNull(8_000) {
             DownloadSizeProbe.inspect(target,probeHeaders,hlsHint && target==initialUrl)
         } ?: DownloadSizeProbe.Result.Unknown
+        // The probe may fail even though the source app supplied an estimated
+        // size. Keep useful evidence; never turn an estimate into Content-Length.
+        val fallback=providedSize?.takeIf{target==initialUrl.trim()}
+        sizeResult=when {
+            (inspected.bytes ?: 0L)<=0L -> fallback ?: inspected
+            fallback==null -> inspected
+            inspected.exact || !fallback.exact -> inspected
+            else -> fallback
+        }
         sizeProbeUrl=target
         if(!nameTouched && editing==null) {
             val suggested=sizeResult?.name
@@ -428,10 +461,11 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                             style=MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.width(5.dp))
                         val videoSize=when {
-                            sizeResult==null -> "Calculando…"
-                            sizeResult?.bytes==null -> "Indisponível"
-                            sizeResult?.exact==true -> Formatter.formatFileSize(context,sizeResult!!.bytes!!)
-                            else -> "≈"+Formatter.formatFileSize(context,sizeResult!!.bytes!!)
+                            sizeResult?.bytes==null -> "Tamanho a confirmar"
+                            sizeResult?.exact==true ->
+                                Formatter.formatFileSize(context,sizeResult!!.bytes!!)
+                            else -> "≈"+Formatter.formatFileSize(context,
+                                DownloadSizeIntelligence.roundedForDisplay(sizeResult!!.bytes!!))
                         }
                         val availableSize=storageBytes?.let { Formatter.formatFileSize(context,it) } ?: "—"
                         Text(
