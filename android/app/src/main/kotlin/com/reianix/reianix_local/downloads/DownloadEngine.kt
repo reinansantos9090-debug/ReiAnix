@@ -122,7 +122,8 @@ class DownloadEngine(private val context: Context) {
             if(code==403) throw PermanentFailure("O servidor recusou o download (HTTP 403). Capture novamente o vídeo no navegador; a sessão ou as regras do servidor podem impedir esta transferência.")
             if(code==404 || code==410) throw PermanentFailure("Arquivo não encontrado ou link expirado")
             if(code==416) { restart(id,target); throw IOException("Faixa anterior indisponível; reiniciando") }
-            if(code==429 || code>=500) throw IOException("Servidor temporariamente indisponível")
+            if(code==408 || code==425 || code==429 || code>=500)
+                throw DownloadRetryableHttpFailure(code,connection.getHeaderField("Retry-After"))
             if(code !in setOf(200,206)) throw PermanentFailure("O servidor recusou o download (HTTP $code)")
             if(connection.getHeaderField("Content-Encoding")?.let { it!="identity" }==true) throw PermanentFailure("O servidor enviou uma representação comprimida incompatível com a retomada")
             val range=DownloadHttp.range(connection.getHeaderField("Content-Range"))
@@ -313,7 +314,10 @@ class DownloadEngine(private val context: Context) {
                 (!retryable && attempts>=12)
             store.mutate(id) {
                 it.put("state",if(permanent) "ERROR" else "WAITING").put("attempts",attempts).put("speed",0)
-                    .put("nextAttempt",System.currentTimeMillis()+minOf(60_000L,2000L*(1L shl attempts.coerceAtMost(5))))
+                    .put("nextAttempt",DownloadRetryPolicy.nextAttempt(
+                        attempts,id,(error as? DownloadRetryableHttpFailure)?.retryAfter,
+                        System.currentTimeMillis()))
+                    .put("lastHttpStatus",(error as? DownloadRetryableHttpFailure)?.status ?: -1)
                     .put("lastFailureKind",error.javaClass.simpleName.take(64))
                     .put("lastFailurePhase",phase.name)
                     .put("message",when(error) {
