@@ -73,10 +73,12 @@ object DownloadScheduling {
             // leave a 100% "downloading" progress indicator on Android.
             builder.setProgress(0,0,false).setAutoCancel(true)
             if(item.state=="COMPLETE") {
+                // Completed notifications stay visible until the user dismisses
+                // them. An automatic timeout hid the only completion feedback.
                 builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
                     .setContentText("Download concluído • ${item.name}")
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
-                    .setTimeoutAfter(20_000)
+                    .setOngoing(false)
             }
         }
         val path=item.json.optString("coverCache")
