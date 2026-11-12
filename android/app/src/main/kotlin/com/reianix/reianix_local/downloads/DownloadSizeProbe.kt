@@ -202,7 +202,9 @@ internal object DownloadSizeProbe {
         var bestName=DownloadResourceIdentity.bestName(null,url,null)
         var bestMime:String?=null
         var manifest=false
-        for(phase in listOf("HEAD","GET_RANGE","GET")) {
+        // Start with the same open-ended Range that direct transfers use.
+        // Some CDNs reject HEAD and a one-byte range but serve bytes=0-.
+        for(phase in listOf("GET_OPEN_RANGE","HEAD","GET_RANGE","GET")) {
             currentThreadCheck()
             var c:HttpURLConnection?=null
             try {
@@ -210,6 +212,7 @@ internal object DownloadSizeProbe {
                     end=if(phase=="GET_RANGE")0 else null,
                     credentialOrigin=credentialOrigin,
                     method=if(phase=="HEAD")"HEAD" else "GET",
+                    probeRange=if(phase=="GET_OPEN_RANGE")"bytes=0-" else null,
                     connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
                 val code=c.responseCode
                 val mime=c.contentType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
@@ -230,7 +233,7 @@ internal object DownloadSizeProbe {
                 if(size!=null)return Headers(size,false,bestName,bestMime,phase.lowercase(Locale.ROOT))
                 // Some CDNs reject ranges but permit GET. A missing Content-Length
                 // in a 200 chunked response cannot be treated as an exact size.
-                if(phase=="GET" && code in setOf(401,403))break
+                if(code in setOf(401,403))break
             } catch(_:java.io.IOException) { /* try the next header-only strategy */ }
             finally {c?.disconnect()}
         }
