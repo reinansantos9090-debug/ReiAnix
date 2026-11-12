@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.mylist
+package com.reianix.reianix_local.ui.mylist
 
 enum class ReiAnixMyListFilter(
     val label: String,

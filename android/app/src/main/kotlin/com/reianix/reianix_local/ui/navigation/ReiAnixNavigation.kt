@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.navigation
+package com.reianix.reianix_local.ui.navigation
 
 import android.net.Uri
 import androidx.annotation.Keep
@@ -26,17 +26,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navOptions
-import com.reiflix.reiflix_local.ui.details.ReiAnixDetailsRoute
-import com.reiflix.reiflix_local.ui.details.ReiAnixAniListDetailsRoute
-import com.reiflix.reiflix_local.ui.collector.ReiAnixCollectorJourneyRoute
-import com.reiflix.reiflix_local.ui.home.ReiAnixHomeRoute
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryRoute
-import com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListRoute
-import com.reiflix.reiflix_local.ui.player.ReiAnixPlayerRoute
-import com.reiflix.reiflix_local.ui.search.ReiAnixSearchRoute
-import com.reiflix.reiflix_local.ui.shell.ReiAnixAppShell
-import com.reiflix.reiflix_local.ui.shell.ReiAnixBottomNavDestination
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.details.ReiAnixDetailsRoute
+import com.reianix.reianix_local.ui.details.ReiAnixAniListDetailsRoute
+import com.reianix.reianix_local.ui.collector.ReiAnixCollectorJourneyRoute
+import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
+import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
+import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
+import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
+import com.reianix.reianix_local.ui.search.ReiAnixSearchRoute
+import com.reianix.reianix_local.ui.shell.ReiAnixAppShell
+import com.reianix.reianix_local.ui.shell.ReiAnixBottomNavDestination
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 
 @Keep
 object ReiAnixRoutes {
@@ -227,7 +227,7 @@ fun NavHostController.navigateToPlayer(
 fun ReiAnixNavigationHost(
     navController: NavHostController = rememberNavController(),
     homeViewModel: ReiAnixLibraryViewModel =
-        com.reiflix.reiflix_local.ui.library.rememberReiAnixLibraryViewModel(),
+        com.reianix.reianix_local.ui.library.rememberReiAnixLibraryViewModel(),
     library: @Composable () -> Unit = {},
     myList: @Composable () -> Unit = {
         ReiAnixMyListRoute(
@@ -399,7 +399,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.MY_LIST) { myList() }
             composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
-            composable(ReiAnixRoutes.DOWNLOADS) { com.reiflix.reiflix_local.downloads.DownloadsScreen() }
+            composable(ReiAnixRoutes.DOWNLOADS) { com.reianix.reianix_local.downloads.DownloadsScreen() }
             composable(ReiAnixRoutes.SETTINGS) { settings() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }

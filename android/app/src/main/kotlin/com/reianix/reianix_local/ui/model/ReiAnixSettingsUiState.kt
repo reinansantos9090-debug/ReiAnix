@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local.ui.model
+package com.reianix.reianix_local.ui.model
 
 import androidx.annotation.Keep
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsSnapshot
-import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsCategoryUiModel
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsSnapshot
+import com.reianix.reianix_local.ui.settings.ReiAnixSettingsCategoryUiModel
 
 @Keep
 enum class ReiAnixSettingsLoadStatus {

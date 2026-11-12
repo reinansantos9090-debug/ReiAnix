@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.motion
+package com.reianix.reianix_local.ui.motion
 
 import android.animation.ValueAnimator
 import android.os.Build

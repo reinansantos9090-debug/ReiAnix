@@ -1,11 +1,11 @@
-package com.reiflix.reiflix_local.ui.organize
+package com.reianix.reianix_local.ui.organize
 
 import androidx.annotation.Keep
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilterEngine
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
-import com.reiflix.reiflix_local.ui.search.ReiAnixSearchIndex
+import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilterEngine
+import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilters
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.ui.search.ReiAnixSearchIndex
 
 @Keep
 data class ReiAnixOrganizeFilters(

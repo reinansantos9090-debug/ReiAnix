@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.player
+package com.reianix.reianix_local.ui.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -33,8 +33,8 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
-import com.reiflix.reiflix_local.player.PlayerTimeFormatter
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.player.PlayerTimeFormatter
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.organize
+package com.reianix.reianix_local.ui.organize
 
 import android.net.Uri
 
@@ -58,33 +58,33 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
-import com.reiflix.reiflix_local.ui.ReiAnixBadge
-import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
-import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
-import com.reiflix.reiflix_local.ui.ReiAnixChip
-import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyState
-import com.reiflix.reiflix_local.ui.ReiAnixLoadingState
-import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
-import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
-import com.reiflix.reiflix_local.ui.ReiAnixSearchField
-import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
-import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.ReiAnixAnimeCard
+import com.reianix.reianix_local.ui.ReiAnixBadge
+import com.reianix.reianix_local.ui.ReiAnixIconActionButton
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.ReiAnixBadgeTone
+import com.reianix.reianix_local.ui.ReiAnixChip
+import com.reianix.reianix_local.ui.ReiAnixCompactButton
+import com.reianix.reianix_local.ui.ReiAnixEmptyLibraryState
+import com.reianix.reianix_local.ui.ReiAnixEmptyState
+import com.reianix.reianix_local.ui.ReiAnixLoadingState
+import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
+import com.reianix.reianix_local.ui.ReiAnixScannerInProgressState
+import com.reianix.reianix_local.ui.ReiAnixSearchField
+import com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.widthIn
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.ui.storage.ReiAnixSafFileManagerRoute
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.storage.ReiAnixSafFileManagerRoute
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material.icons.filled.Folder
 
@@ -723,7 +723,7 @@ private fun OrganizeTopBar(
                 },
             ) {
                 if (isRefreshing) {
-                    com.reiflix.reiflix_local.ui.ReiAnixLoadingIndicator()
+                    com.reianix.reianix_local.ui.ReiAnixLoadingIndicator()
                 } else {
                     Icon(Icons.Filled.Refresh, contentDescription = null)
                 }
@@ -1074,7 +1074,7 @@ private fun OrganizeCollectionContent(
                         onDismissRequest = { sortMenuExpanded = false },
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
-                        com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort.OPTIONS.forEach { sort ->
+                        com.reianix.reianix_local.ui.library.ReiAnixLibrarySort.OPTIONS.forEach { sort ->
                             DropdownMenuItem(
                                 text = { Text(sort.label) },
                                 onClick = {

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.player
+package com.reianix.reianix_local.ui.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,8 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.artwork.ReiAnixEpisodeThumbnail
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.artwork.ReiAnixEpisodeThumbnail
 
 @Composable
 fun ReiAnixEpisodePlaylist(
