@@ -1537,6 +1537,33 @@ class ReiAnixSqliteLibraryRepository(
             require(snapshot.operationId.isNotBlank()) { "A scan operation ID is required." }
             require(snapshot.scopeRoot.isNotBlank()) { "An explicit scope root is required." }
             val bridge=com.reiflix.reiflix_local.downloads.DownloadCatalogBridge
+            // A public MediaStore file is visible to other applications while
+            // downloading. Scans from SAF, MediaStore and broad storage must
+            // not index that same unfinished file as an independent episode.
+            val activeTransfers=runCatching {
+                com.reiflix.reiflix_local.downloads.DownloadStore(database.appContext).all()
+                    .filter { it.state !in setOf("COMPLETE","CANCELLED") }
+            }.getOrDefault(emptyList())
+            val activeMediaIds=activeTransfers.mapNotNull {
+                Uri.parse(it.json.optString("transferUri"))
+                    .takeIf { uri -> uri.authority=="media" }
+                    ?.lastPathSegment?.toLongOrNull()
+            }.toSet()
+            val activeUris=activeTransfers.map { it.json.optString("transferUri") }
+                .filter(String::isNotBlank).toSet()
+            val activeRelativeNames=activeTransfers.filter {
+                it.json.optString("destination").isBlank()
+            }.map {
+                "download/reianix/" + it.name.lowercase(java.util.Locale.ROOT)
+            }.toSet()
+            fun stillDownloading(item:NativeDiscoveredMedia):Boolean {
+                val uri=Uri.parse(item.location)
+                if(item.location in activeUris) return true
+                if(uri.authority=="media" && uri.lastPathSegment?.toLongOrNull() in activeMediaIds) return true
+                return item.relativePath?.replace('\\', '/')?.trimStart('/')
+                    ?.lowercase(java.util.Locale.ROOT) in activeRelativeNames
+            }
+            val scanContainsActiveTransfers=snapshot.items.any(::stillDownloading)
             if(bridge.reconcile(database))com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
             val downloadAliases=bridge.aliases(database,snapshot.items.map {it.location})
             var transactionReport: NativeLibraryIndexReport? = null
@@ -1559,8 +1586,11 @@ class ReiAnixSqliteLibraryRepository(
                 val seenLocations = linkedSetOf<String>()
                 val seenIdentities = linkedSetOf<String>()
                 val inputIdentities = hashSetOf<String>()
+                val oldUnnumberedMovieAlbums = linkedSetOf<Long>()
 
-                val indexedItems = normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items)
+                val indexedItems = recognizeUnnumberedSeriesSiblings(
+                    normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items.filterNot(::stillDownloading))
+                )
                 for (item in indexedItems) {
                     db.execSQL("SAVEPOINT native_index_item")
                     try {
@@ -1618,6 +1648,22 @@ class ReiAnixSqliteLibraryRepository(
                         item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
                         item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity?.startsWith("download:")!=true && current.mediaIdentity != it) patch.put("media_identity", it) }
                         if (current.manualOverride != true && !ownedDownload) {
+                            // A formerly standalone "One Piece.mkv" can be recognized
+                            // as a serial episode when a numbered sibling proves it.
+                            // Preserve its original path, progress, artwork and ID.
+                            if(item.identificationSource=="verified_series_sibling" &&
+                                current.episodeType=="movie" && item.episodeNumber!=null) {
+                                patch.put("number",item.episodeNumber)
+                                patch.put("season",item.season ?: 1)
+                                val target= db.rawQuery(
+                                    "SELECT id FROM anime WHERE lookup_title=? AND LOWER(COALESCE(media_kind,'series'))='series'",
+                                    arrayOf(item.normalizedAnimeTitle()),
+                                ).use {c ->buildList { while(c.moveToNext())add(c.getLong(0)) }}
+                                if(target.size==1 && target.single()!=current.animeId) {
+                                    patch.put("anime_id",target.single())
+                                    oldUnnumberedMovieAlbums += current.animeId
+                                }
+                            }
                             item.episodeType?.takeIf { it.isNotBlank() }?.let { if (current.episodeType != it) patch.put("episode_type", it) }
                             item.episodeTitle?.takeIf { it.isNotBlank() }?.let { if (current.episodeTitle != it) patch.put("episode_title", it) }
                             item.identificationSource?.takeIf { it.isNotBlank() }?.let { if (current.identificationSource != it) patch.put("identification_source", it) }
@@ -1691,27 +1737,9 @@ class ReiAnixSqliteLibraryRepository(
                         db.insertOrThrow("anime", null, localAnime)
                     }
                     val season = item.season ?: 0
-                    val logicalCount = when {
-                        isMovie -> db.rawQuery(
-                            "SELECT id FROM episodes WHERE anime_id = ? AND lower(COALESCE(episode_type, '')) = 'movie'",
-                            arrayOf(animeId.toString()),
-                        ).use { it.count }
-                        item.episodeNumber != null -> db.rawQuery(
-                            "SELECT id FROM episodes WHERE anime_id = ? AND season = ? AND number = ?",
-                            arrayOf(animeId.toString(), season.toString(), item.episodeNumber.toString()),
-                        ).use { it.count }
-                        item.absoluteNumber != null -> db.rawQuery(
-                            "SELECT id FROM episodes WHERE anime_id = ? AND absolute_number = ?",
-                            arrayOf(animeId.toString(), item.absoluteNumber.toString()),
-                        ).use { it.count }
-                        else -> 0
-                    }
-                    // A second release for an existing logical episode is a conflict,
-                    // not permission to replace its path or playback history.
-                    if (logicalCount > 0) {
-                        ambiguous++
-                        continue
-                    }
+                    // Every distinct physical file belongs in the library. Different
+                    // releases (MP4/MKV) may legitimately share a season/episode number.
+                    // Earlier identity/path checks already reject the same file twice.
                     val values = ContentValues().apply {
                         put("anime_id", animeId)
                         put("path", item.location)
@@ -1756,7 +1784,33 @@ class ReiAnixSqliteLibraryRepository(
                     }
                 }
 
-                val reconcile = snapshot.mayReconcile && rejected == 0 && !invalidScopeEvidence && ambiguous == 0
+                // Remove only automatic empty movie shells after their actual
+                // episodes have moved. Never erase user-curated albums or files.
+                for(old in oldUnnumberedMovieAlbums) {
+                    db.execSQL("SAVEPOINT cleanup_empty_movie")
+                    try {
+                        val permitted=db.rawQuery(
+                            """SELECT 1 FROM anime WHERE id=? AND LOWER(COALESCE(media_kind,''))='movie'
+                               AND COALESCE(favorite,0)=0 AND COALESCE(is_pinned,0)=0
+                               AND COALESCE(anilist_match_manual,0)=0
+                               AND TRIM(COALESCE(personal_note,''))=''
+                               AND COALESCE(user_tags,'[]') IN ('','[]')
+                               AND COALESCE(metadata_manual_fields,'[]') IN ('','[]')
+                               AND NOT EXISTS(SELECT 1 FROM episodes WHERE anime_id=?)""",
+                            arrayOf(old.toString(),old.toString()),
+                        ).use {it.moveToFirst()}
+                        if(permitted) {
+                            db.delete("artwork","entity_type='anime' AND entity_id=?",arrayOf(old.toString()))
+                            db.delete("anime_genres","anime_id=?",arrayOf(old.toString()))
+                            db.delete("anime","id=?",arrayOf(old.toString()))
+                        }
+                    } catch(_:Exception) {
+                        db.execSQL("ROLLBACK TO cleanup_empty_movie")
+                    } finally { db.execSQL("RELEASE cleanup_empty_movie") }
+                }
+
+                val reconcile = snapshot.mayReconcile && !scanContainsActiveTransfers &&
+                    rejected == 0 && !invalidScopeEvidence && ambiguous == 0
                 var missing = 0
                 if (reconcile) {
                     // scopeRoot is scanner evidence (e.g. SAF document ID); scopeReference is the

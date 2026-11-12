@@ -12,6 +12,9 @@ import java.util.concurrent.TimeUnit
 object DownloadScheduling {
     const val NOTICE=8701
     private const val JOB=8702
+    // Completed notifications must outlive the temporary WorkManager/UIDT
+    // foreground group, which Android removes when the transfer job ends.
+    private const val COMPLETED_CHANNEL="downloads_complete"
     fun hasUserJob(context: Context): Boolean = Build.VERSION.SDK_INT>=34 &&
         context.getSystemService(JobScheduler::class.java).getPendingJob(JOB)!=null
     suspend fun reconfigure(context: Context) = withContext(Dispatchers.IO) {
@@ -41,10 +44,19 @@ object DownloadScheduling {
     private val covers=java.util.concurrent.ConcurrentHashMap<String,android.graphics.Bitmap>()
     private fun itemNotification(context: Context,item: DownloadItem?,text: String): Notification {
         val manager=context.getSystemService(NotificationManager::class.java)
-        if(Build.VERSION.SDK_INT>=26) manager.createNotificationChannel(NotificationChannel("downloads","Downloads",NotificationManager.IMPORTANCE_LOW))
+        if(Build.VERSION.SDK_INT>=26) {
+            manager.createNotificationChannel(NotificationChannel("downloads","Downloads",NotificationManager.IMPORTANCE_LOW))
+            manager.createNotificationChannel(NotificationChannel(COMPLETED_CHANNEL,"Downloads concluídos",NotificationManager.IMPORTANCE_DEFAULT))
+        }
         val open=PendingIntent.getActivity(context,0,Intent(context,DownloadsActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val builder=NotificationCompat.Builder(context,"downloads").setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentIntent(open).setGroup("reianix.downloads").setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_PROGRESS)
+        val completed=item?.state=="COMPLETE"
+        val builder=NotificationCompat.Builder(context,if(completed) COMPLETED_CHANNEL else "downloads")
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentIntent(open).setOnlyAlertOnce(true)
+            .setCategory(if(completed) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_PROGRESS)
+        // Active transfers belong to the foreground-job group. Completion must
+        // not: the OS may dismiss grouped children when it stops that job.
+        if(!completed) builder.setGroup("reianix.downloads")
         if(item==null) return builder.setContentTitle("Downloads do ReiAnix").setContentText(text).setOngoing(true).build()
         val active=item.state in DownloadState.pending
         val progress=downloadPercent(item)
@@ -71,12 +83,14 @@ object DownloadScheduling {
         } else {
             // A completed file is not an active foreground transfer. Do not
             // leave a 100% "downloading" progress indicator on Android.
-            builder.setProgress(0,0,false).setAutoCancel(true)
+            builder.setProgress(0,0,false).setAutoCancel(item.state!="COMPLETE")
             if(item.state=="COMPLETE") {
+                // Completed notifications stay visible until the user dismisses
+                // them. An automatic timeout hid the only completion feedback.
                 builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
                     .setContentText("Download concluído • ${item.name}")
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
-                    .setTimeoutAfter(20_000)
+                    .setOngoing(false)
             }
         }
         val path=item.json.optString("coverCache")
@@ -105,7 +119,6 @@ object DownloadScheduling {
                 ":"+item.json.optBoolean("detectedSizeExact")+":"+item.json.optLong("hlsEstimatedTotal")+
                 ":"+item.json.optLong("speed")+":"+item.json.optString("coverCache")
             if(posted[item.id]==marker)return@forEach
-            posted[item.id]=marker
             val path=item.json.optString("coverCache")
             if(path.isNotBlank() && !covers.containsKey(path) && covers.size<30) runCatching {
                 val file=if(path.startsWith("file:"))android.net.Uri.parse(path).path else path
@@ -114,15 +127,38 @@ object DownloadScheduling {
                 val options=android.graphics.BitmapFactory.Options().apply {inSampleSize=(maxOf(bounds.outWidth,bounds.outHeight)/160).coerceAtLeast(1)}
                 android.graphics.BitmapFactory.decodeFile(file,options)?.let {covers[path]=it}
             }
+            val manager=context.getSystemService(NotificationManager::class.java)
             if(item.state in setOf("CANCELLED","CORRUPT")) {
-                context.getSystemService(NotificationManager::class.java).cancel(noticeId(item.id))
+                manager.cancel(noticeId(item.id))
+                manager.cancel(completedNoticeId(item.id))
+                posted[item.id]=marker
                 return@forEach
             }
-            else runCatching {context.getSystemService(NotificationManager::class.java).notify(noticeId(item.id),itemNotification(context,item,""))}
+            if(item.state=="COMPLETE") {
+                // An independent, non-foreground notification survives jobFinished()
+                // and ForegroundInfo teardown. It stays until user dismissal.
+                runCatching {
+                    manager.cancel(noticeId(item.id))
+                    manager.notify(completedNoticeId(item.id),itemNotification(context,item,""))
+                }.onSuccess {posted[item.id]=marker}
+            } else {
+                runCatching {
+                    manager.cancel(completedNoticeId(item.id))
+                    manager.notify(noticeId(item.id),itemNotification(context,item,""))
+                }.onSuccess {posted[item.id]=marker}
+            }
         }
     }
-    fun clear(context: Context,id: String) { posted.remove(id);context.getSystemService(NotificationManager::class.java).cancel(noticeId(id)) }
+    fun clear(context: Context,id: String) {
+        posted.remove(id)
+        context.getSystemService(NotificationManager::class.java).let {
+            it.cancel(noticeId(id))
+            it.cancel(completedNoticeId(id))
+        }
+    }
     private fun noticeId(id: String)=10000+(id.hashCode() and 0x3fffffff)
+    // Negative IDs cannot collide with transfer notifications or NOTICE=8701.
+    private fun completedNoticeId(id: String)=Int.MIN_VALUE or (id.hashCode() and 0x3fffffff)
 
 }
 

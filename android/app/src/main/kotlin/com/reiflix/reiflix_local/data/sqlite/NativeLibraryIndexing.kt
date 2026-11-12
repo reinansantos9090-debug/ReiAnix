@@ -155,3 +155,55 @@ internal fun normalizeDuplicateReleaseEpisodeTitleSuffixes(
         replacements[index]?.let { item.copy(animeTitle = it) } ?: item
     }
 }
+
+
+/**
+ * A plain filename such as "One piece.mkv" is not proof of a movie when an
+ * explicitly numbered "One Piece Dublado Episódio 03.mp4" lives beside it.
+ * Promote only a single, unnumbered root-level candidate with a unique, exact
+ * normalized series title in the same directory. No extension or fuzzy title
+ * matching is used; explicit Movie/Film markers and unrelated titles are safe.
+ */
+internal fun recognizeUnnumberedSeriesSiblings(
+    items: List<NativeDiscoveredMedia>,
+): List<NativeDiscoveredMedia> {
+    fun titleKey(value: String?): String = MediaTitleNormalizer.normalizeMediaTitle(value)
+        .replace(Regex("\\b(?:dublado|legendado|dub|sub|pt br)\\b"), " ")
+        .replace(Regex("\\s+"), " ").trim()
+    fun folder(item: NativeDiscoveredMedia): String =
+        (item.relativePath ?: item.scopeLocation)?.replace('\\', '/')
+            ?.substringBeforeLast('/', "")
+            ?.trim()?.lowercase()
+            ?: item.sourceFolder.orEmpty().trim().lowercase()
+
+    val seeds = items.filter {
+        it.episodeNumber != null &&
+            it.episodeType?.equals("regular", ignoreCase = true) == true &&
+            !it.ambiguous && !it.animeTitle.isNullOrBlank() &&
+            it.identificationConfidence?.lowercase() in setOf("high", "medium")
+    }.groupBy { folder(it) to titleKey(it.animeTitle) }
+    val candidates=items.withIndex().filter { (_, item) ->
+        item.identificationSource == "standalone_root_movie" &&
+            item.episodeNumber == null && item.episodeType == "movie" &&
+            !item.animeTitle.isNullOrBlank() &&
+            !item.fileName.contains(Regex("(?i)\\b(?:movie|film)\\b"))
+    }.groupBy { (_,item) -> folder(item) to titleKey(item.animeTitle) }
+    val updates = mutableMapOf<Int,NativeDiscoveredMedia>()
+    for ((key, group) in candidates) {
+        if(group.size != 1 || key.second.isBlank()) continue
+        val sameSeries=seeds[key].orEmpty()
+        if(sameSeries.isEmpty()) continue
+        val seasons=sameSeries.mapNotNull { it.season }.distinct()
+        if(seasons.size>1) continue
+        val seed=sameSeries.first()
+        updates[group.single().index] = group.single().value.copy(
+            animeTitle=seed.animeTitle,
+            season=seasons.singleOrNull() ?: 1,
+            episodeNumber=1.0,
+            episodeType="regular",
+            identificationSource="verified_series_sibling",
+            identificationConfidence="high",
+        )
+    }
+    return items.mapIndexed { index,item -> updates[index] ?: item }
+}
