@@ -274,19 +274,41 @@ class DownloadEngine(private val context: Context) {
                 beforePublication.name.substringBeforeLast('.',beforePublication.name)+".ts"
             else beforePublication.name
         }
-        val remuxed=if(isTs) DownloadTsRemux.tryRemux(context,file) else null
+        // MediaStore and the selected SAF directory both hold the growing source.
+        // Remux is still lossless; on success its candidate also lives in public
+        // storage, never in the app's private data directory.
+        var publicRemux:Uri?=null
+        var privateRemux:File?=null
+        var committed=false
         try {
-            if(remuxed!=null) {
-                val original=originalName
-                val mp4Name=original.substringBeforeLast('.',original)+".mp4"
+            beforePublication.json.optString("remuxCandidateUri").takeIf { it.isNotBlank() }?.let { stale ->
+                target.discard(Uri.parse(stale))
+                store.mutate(id){it.remove("remuxCandidateUri")}
+            }
+            if(isTs) {
+                if(target.isPublic) {
+                    val candidate=target.sibling("remux.mp4")
+                    store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
+                    if(DownloadTsRemux.tryRemux(context,target.readUri(),candidate)) {
+                        publicRemux=candidate
+                    } else {
+                        target.discard(candidate)
+                        store.mutate(id){it.remove("remuxCandidateUri")}
+                    }
+                } else {
+                    privateRemux=DownloadTsRemux.tryRemux(context,file)
+                }
+            }
+            val didRemux=publicRemux!=null || privateRemux!=null
+            if(didRemux) {
+                val mp4Name=originalName.substringBeforeLast('.',originalName)+".mp4"
                 store.mutate(id) {
-                    it.put("remuxSourceName",original)
+                    it.put("remuxSourceName",originalName)
                     it.put("name",mp4Name).put("mime","video/mp4")
                 }
                 store.registerMedia(id)
             } else if(savedOriginal.isNotBlank() || (isTs && originalName!=beforePublication.name)) {
-                // An interrupted remux or a TS URL carrying an .mp4 label must
-                // never leave the original MPEG-TS data mislabeled as MP4.
+                // Never publish raw MPEG-TS bytes under an MP4 label.
                 store.mutate(id) {
                     it.put("name",originalName).put("mime","video/mp2t")
                     it.remove("remuxSourceName")
@@ -294,16 +316,33 @@ class DownloadEngine(private val context: Context) {
                 store.registerMedia(id)
             }
             if(store.get(id)?.state !in DownloadState.pending) return
-            store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","SAVING") }
+            store.mutate(id){if(it.optString("state") in DownloadState.pending)it.put("state","SAVING")}
             if(store.get(id)?.state!="SAVING") return
-            val publishedFile=remuxed ?: file
-            val destination=export(id,publishedFile)
-            // Commit the final published file size, which may differ after
-            // changing container headers without recompressing the video.
-            store.complete(id,destination,publishedFile.length())
-            file.delete() // Original TS is deleted only after durable publication.
-        } finally { remuxed?.delete() }
+            val finalItem=store.get(id) ?: return
+            val destination=if(target.isPublic) {
+                target.publish(publicRemux ?: (target.uri ?: error("Arquivo público ausente")),
+                    finalItem.name,finalItem.mime)
+            } else {
+                export(id,privateRemux ?: file)
+            }
+            val finalBytes=if(target.isPublic)target.sizeOf(destination)
+                else (privateRemux ?: file).length()
+            // Commit the already-published URI before removing a remux source.
+            store.complete(id,destination,finalBytes)
+            committed=true
+            if(target.isPublic) {
+                if(publicRemux!=null) target.discardSource()
+            } else file.delete()
+            store.mutate(id){it.remove("remuxCandidateUri")}
+        } finally {
+            privateRemux?.delete()
+            if(!committed && publicRemux!=null) {
+                publicRemux?.let(target::discard)
+                runCatching {store.mutate(id){it.remove("remuxCandidateUri")}}
+            }
+        }
     }
+
     private suspend fun export(id: String,file: File): Uri {
         var item=store.get(id)!!
         val tree=item.json.optString("destination")
