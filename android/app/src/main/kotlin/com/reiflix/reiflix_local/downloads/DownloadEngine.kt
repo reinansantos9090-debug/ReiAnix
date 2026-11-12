@@ -335,6 +335,17 @@ class DownloadEngine(private val context: Context) {
             }
             val finalBytes=if(target.isPublic)target.sizeOf(destination)
                 else (privateRemux ?: file).length()
+            if(target.isPublic) {
+                // The old export path recorded canonical output aliases before
+                // completion so reconciliation could merge a scanner duplicate.
+                // Keep exactly that behavior for direct-to-public publication.
+                val keys=DownloadCatalogBridge.fileKeys(context,destination.toString())
+                store.mutate(id) {
+                    it.put("output",destination.toString())
+                        .put("outputKeys",org.json.JSONArray(keys.toList()))
+                        .put("outputKeysAt",System.currentTimeMillis())
+                }
+            }
             // Commit the already-published URI before removing a remux source.
             store.complete(id,destination,finalBytes)
             committed=true
