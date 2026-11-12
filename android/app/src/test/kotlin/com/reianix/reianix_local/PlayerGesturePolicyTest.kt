@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

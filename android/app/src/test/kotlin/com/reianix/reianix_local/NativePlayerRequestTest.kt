@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.player.NativePlayerRequest
+import com.reianix.reianix_local.player.NativePlayerRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -174,9 +174,9 @@ class NativePlayerRequestTest {
     }
 
     @Test
-    fun parsesARealisticReiflixNativeUrlWithoutAndroidUi() {
+    fun parsesARealisticReiAnixNativeUrlWithoutAndroidUi() {
         val url = URI(
-            "reiflix://native?action=play" +
+            "reianix://native?action=play" +
                 "&request_id=req%2F789" +
                 "&created_at=1700000000789" +
                 "&uri=content%3A%2F%2Fmedia%2Fexternal%2Fvideo%2F7" +

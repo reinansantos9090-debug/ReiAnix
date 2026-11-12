@@ -1,11 +1,11 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 import android.app.Application
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-import com.reiflix.reiflix_local.scanner.NativeScanController
-import com.reiflix.reiflix_local.scanner.ScanLifecycleState
+import com.reianix.reianix_local.scanner.NativeScanController
+import com.reianix.reianix_local.scanner.ScanLifecycleState
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals

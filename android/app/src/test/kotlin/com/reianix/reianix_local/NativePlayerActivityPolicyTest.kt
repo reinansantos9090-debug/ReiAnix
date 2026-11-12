@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import android.content.res.Configuration
 import org.junit.Assert.assertFalse

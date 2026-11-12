@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import androidx.media3.common.TrackSelectionParameters
 import org.junit.Assert.assertEquals
