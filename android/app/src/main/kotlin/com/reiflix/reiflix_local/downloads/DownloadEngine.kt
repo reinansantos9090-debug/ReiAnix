@@ -242,6 +242,7 @@ class DownloadEngine(private val context: Context) {
         store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1); it.remove("validator"); it.remove("serverHash"); it.remove("serverHashType");it.put("hlsIndex",0);it.remove("hlsFingerprint");if(it.has("playerCapture"))it.put("captureApproved",false).put("captureProbeStage",0) }
     }
     private suspend fun verifyAndSave(id: String,target: DownloadTransferFile) {
+        val file=target.legacyFile // Pre-Android 10 and previously started private downloads.
         val item=store.get(id) ?: return
         if(item.state !in DownloadState.pending) return
         DownloadCaptureGuard.probe(context,store,id,target.readUri(),item.bytes,complete=true)
