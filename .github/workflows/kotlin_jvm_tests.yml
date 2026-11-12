@@ -119,6 +119,7 @@ jobs:
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.distinctSecondReleaseIsImportedWithoutReplacingOriginalEpisode' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.remoteVerifiedSeriesMergeSurvivesCanonicalForeignKeysAndKeepsEachEpisode' \
               --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.seasonAlbumsAutomaticallyReorganizeIntoSinglePosterWithActualSeasonRows' \
+              --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.newlyMatchedAniListSequelReturnsSurvivingAlbumAndDoesNotRollbackTheMerge' \
               --tests com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsNavigationTest \
               --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListSearchTermsTest \
               --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
