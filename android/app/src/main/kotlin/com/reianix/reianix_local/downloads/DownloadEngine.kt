@@ -292,6 +292,23 @@ class DownloadEngine(private val context: Context) {
         // binary is not an episode. Do not publish it as a playable video.
         if(originalExtension=="bin" && actualContainer==null)
             throw PermanentFailure("O arquivo .bin não contém um formato de vídeo reconhecido; não foi renomeado para MP4.")
+        // A recognizable ftyp header alone does not make an arbitrary .bin
+        // playable. Confirm a genuine video track before publishing as MP4.
+        if(originalExtension=="bin" && actualContainer?.extension=="mp4") {
+            val playable=runCatching {
+                val extractor=android.media.MediaExtractor()
+                try {
+                    extractor.setDataSource(context,target.readUri(),null)
+                    (0 until extractor.trackCount).any { index ->
+                        extractor.getTrackFormat(index)
+                            .getString(android.media.MediaFormat.KEY_MIME)
+                            .orEmpty().startsWith("video/")
+                    }
+                } finally {extractor.release()}
+            }.getOrDefault(false)
+            if(!playable)
+                throw PermanentFailure("O arquivo .bin possui assinatura MP4, mas não contém vídeo reproduzível.")
+        }
         val sourceExtension=actualContainer?.extension ?: originalExtension
         val sourceMime=actualContainer?.mime ?: beforePublication.mime
         val realSourceName=if(actualContainer!=null && originalExtension!=sourceExtension)
