@@ -5,6 +5,7 @@ import android.app.job.*
 import android.content.*
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import com.reiflix.reiflix_local.R
 import androidx.work.*
 import kotlinx.coroutines.*
 import java.util.concurrent.TimeUnit
@@ -42,6 +43,17 @@ object DownloadScheduling {
             if(userInitiated) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,request)
     }
     private val covers=java.util.concurrent.ConcurrentHashMap<String,android.graphics.Bitmap>()
+
+    // Match CloudStream's state-specific notification icon approach using our own
+    // monochrome vector resources, instead of Android's platform download glyphs.
+    // Android/One UI may still show the app's launcher icon on notification cards.
+    private fun downloadStateIcon(state: String?): Int = when (state) {
+        "COMPLETE" -> R.drawable.ic_reianix_download_done
+        "PAUSED", "WAITING" -> R.drawable.ic_reianix_download_paused
+        "ERROR", "CORRUPT" -> R.drawable.ic_reianix_download_error
+        else -> R.drawable.ic_reianix_download_active
+    }
+
     private fun itemNotification(context: Context,item: DownloadItem?,text: String): Notification {
         val manager=context.getSystemService(NotificationManager::class.java)
         if(Build.VERSION.SDK_INT>=26) {
@@ -51,7 +63,7 @@ object DownloadScheduling {
         val open=PendingIntent.getActivity(context,0,Intent(context,DownloadsActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val completed=item?.state=="COMPLETE"
         val builder=NotificationCompat.Builder(context,if(completed) COMPLETED_CHANNEL else "downloads")
-            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setSmallIcon(downloadStateIcon(item?.state))
             .setContentIntent(open).setOnlyAlertOnce(true)
             .setCategory(if(completed) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_PROGRESS)
         // Active transfers belong to the foreground-job group. Completion must
@@ -87,14 +99,10 @@ object DownloadScheduling {
             if(item.state=="COMPLETE") {
                 // Completed notifications stay visible until the user dismisses
                 // them. An automatic timeout hid the only completion feedback.
-                // Explicit completion symbol for the status bar and for Android
-                // notification cards that support preferring the small icon.
-                // Some Samsung One UI versions enforce the launcher icon on cards.
-                builder.setSmallIcon(android.R.drawable.stat_sys_download_done)
-                    .addExtras(android.os.Bundle().apply {
-                        putBoolean("android.app.preferSmallIcon", true)
-                    })
-                    .setContentText("Download concluído • ${item.name}")
+                // Our dedicated completion glyph is already selected above.
+                // No unsupported notification extras: notification card avatar
+                // selection is owned by Android/One UI, not by the app.
+                builder.setContentText("Download concluído • ${item.name}")
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
                     .setOngoing(false)
             }
@@ -112,7 +120,7 @@ object DownloadScheduling {
     }
     fun notification(context: Context,text: String): Notification {
         itemNotification(context,null,text) // Ensure the channel exists before foreground startup.
-        return NotificationCompat.Builder(context,"downloads").setSmallIcon(android.R.drawable.stat_sys_download)
+        return NotificationCompat.Builder(context,"downloads").setSmallIcon(downloadStateIcon(null))
             .setContentTitle("Downloads do ReiAnix").setContentText(text).setOnlyAlertOnce(true).setOngoing(true)
             .setGroup("reianix.downloads").setGroupSummary(true).build()
     }
