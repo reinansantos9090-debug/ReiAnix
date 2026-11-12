@@ -69,46 +69,48 @@ class DownloadEngine(private val context: Context) {
         try {
             var item=store.get(id) ?: return
             if(item.state !in DownloadState.pending) return
-            val file=store.partial(id)
+            val target=DownloadTransferFile(context,store,id)
+            target.prepare()
+            val file=store.partial(id) // Only used for previously started legacy transfers.
             if(item.json.optBoolean("restart")) {
-                RandomAccessFile(file,"rw").use { it.setLength(0) }
+                target.open().use { it.setLength(0); it.sync() }
                 item=store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1).put("restart",false).remove("validator"); it.remove("serverHash"); it.put("hlsIndex",0); it.remove("hlsFingerprint");if(it.has("playerCapture"))it.put("captureApproved",false).put("captureProbeStage",0) }
             }
             // A crash can leave uncommitted bytes. Only persisted, fsynced bytes are reusable.
-            val offset=minOf(item.bytes,file.length())
-            RandomAccessFile(file,"rw").use { it.setLength(offset) }
+            val offset=minOf(item.bytes,target.size())
+            target.open().use { it.setLength(offset); it.sync() }
             val secret=store.secret(item); val headers=secret.optJSONObject("headers") ?: JSONObject()
             val requestHeaders=headers.keys().asSequence().associateWith { headers.getString(it) }
             var resume=offset
             var validator=item.json.optString("validator").takeIf { it.isNotBlank() }
             val hls=item.json.optBoolean("hls") || android.net.Uri.parse(secret.getString("url")).path.orEmpty().endsWith(".m3u8",true)
-            if(resume>0 && validator==null && !hls) { restart(id,file); resume=0 }
+            if(resume>0 && validator==null && !hls) { restart(id,target); resume=0 }
             store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","DOWNLOADING").put("message","") }
             if(!isDownloading(id)) return
             if(hls) {
-                if(receiveHls(id,secret.getString("url"),requestHeaders,file)) verifyAndSave(id,file)
+                if(receiveHls(id,secret.getString("url"),requestHeaders,target)) verifyAndSave(id,target)
                 return
             }
             // Fully received files interrupted during verification/export need no redownload.
             if(item.total>=0 && resume==item.total && resume>0) {
-                verifyAndSave(id,file); return
+                verifyAndSave(id,target); return
             }
             connection=DownloadHttp.connect(secret.getString("url"),requestHeaders,resume,validator)
             val code=connection.responseCode
             if(code==401) throw PermanentFailure("O servidor solicitou autenticação (HTTP 401). Abra novamente o vídeo no navegador e capture o link.")
             if(code==403) throw PermanentFailure("O servidor recusou o download (HTTP 403). Capture novamente o vídeo no navegador; a sessão ou as regras do servidor podem impedir esta transferência.")
             if(code==404 || code==410) throw PermanentFailure("Arquivo não encontrado ou link expirado")
-            if(code==416) { restart(id,file); throw IOException("Faixa anterior indisponível; reiniciando") }
+            if(code==416) { restart(id,target); throw IOException("Faixa anterior indisponível; reiniciando") }
             if(code==429 || code>=500) throw IOException("Servidor temporariamente indisponível")
             if(code !in setOf(200,206)) throw PermanentFailure("O servidor recusou o download (HTTP $code)")
             if(connection.getHeaderField("Content-Encoding")?.let { it!="identity" }==true) throw PermanentFailure("O servidor enviou uma representação comprimida incompatível com a retomada")
             val range=DownloadHttp.range(connection.getHeaderField("Content-Range"))
             if(code==206 && (range==null || range.start!=resume)) throw PermanentFailure("O servidor retornou uma faixa de bytes inválida")
-            if(resume>0 && code==200) { restart(id,file); resume=0 }
+            if(resume>0 && code==200) { restart(id,target); resume=0 }
             val newValidator=connection.getHeaderField("ETag")?.takeUnless { it.startsWith("W/") }
                 ?: connection.getHeaderField("Last-Modified")
             if(resume>0 && validator!=null && newValidator!=null && validator!=newValidator) {
-                restart(id,file); throw IOException("O arquivo no servidor mudou; reiniciando com segurança")
+                restart(id,target); throw IOException("O arquivo no servidor mudou; reiniciando com segurança")
             }
             val length=connection.getHeaderFieldLong("Content-Length",-1)
             if(range!=null && length>=0 && length!=range.end-range.start+1) throw PermanentFailure("O tamanho e a faixa retornados pelo servidor não conferem")
@@ -119,12 +121,15 @@ class DownloadEngine(private val context: Context) {
             if(contentType in setOf("text/html","application/xhtml+xml")) throw PermanentFailure("Este link abre uma página. Informe o link direto do arquivo.")
             if(contentType.contains("mpegurl",true)) {
                 connection.disconnect(); connection=null
-                restart(id,file); store.mutate(id){it.put("hls",true)}
-                if(receiveHls(id,secret.getString("url"),requestHeaders,file)) verifyAndSave(id,file)
+                restart(id,target); store.mutate(id){it.put("hls",true)}
+                if(receiveHls(id,secret.getString("url"),requestHeaders,target)) verifyAndSave(id,target)
                 return
             }
             if(contentType.contains("dash+xml",true)) throw PermanentFailure("Esta playlist DASH exige montagem de faixas ainda não suportada. Abra o site e escolha uma versão de arquivo ou HLS compatível.")
-            if(total>0 && StatFs(store.directory.path).availableBytes < (total-resume).coerceAtLeast(0)+16L*1024*1024) throw PermanentFailure("Espaço insuficiente para baixar o arquivo")
+            if(total>0 && (item.json.optString("destination").isBlank() || !target.isPublic) &&
+                StatFs(if(target.isPublic) Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).path else store.directory.path)
+                    .availableBytes < (total-resume).coerceAtLeast(0)+16L*1024*1024)
+                throw PermanentFailure("Espaço insuficiente para baixar o arquivo")
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             val disposition=connection.getHeaderField("Content-Disposition")
             store.mutate(id) {
@@ -149,16 +154,16 @@ class DownloadEngine(private val context: Context) {
                 newValidator?.startsWith("\"")==true && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
                 connection.disconnect(); connection=null
                 try {
-                    if(DownloadRanges.receive(context,store,id,secret.getString("url"),requestHeaders,file,resume,total,newValidator,connections)) verifyAndSave(id,file)
+                    if(DownloadRanges.receive(context,store,id,secret.getString("url"),requestHeaders,target,resume,total,newValidator,connections)) verifyAndSave(id,target)
                 } catch(cancelled: CancellationException) { throw cancelled }
                 catch(rejected: DownloadCaptureGuard.Rejected) {throw rejected}
                 catch(_: DownloadRanges.Paused) { return }
-                catch(error: Exception) { if(store.get(id)?.state=="DOWNLOADING") { restart(id,file);store.mutate(id){it.put("parallelDisabled",true)};throw IOException("Retomando com uma conexão",error) } }
+                catch(error: Exception) { if(store.get(id)?.state=="DOWNLOADING") { restart(id,target);store.mutate(id){it.put("parallelDisabled",true)};throw IOException("Retomando com uma conexão",error) } }
                 return
             }
             val bufferSize=(prefs.getPreference("downloads.buffer_kb","256")?.toIntOrNull() ?: 256).coerceIn(64,512)*1024
             var count=resume; var committedAt=android.os.SystemClock.elapsedRealtime(); var previous=resume; var checkedAt=0L
-            RandomAccessFile(file,"rw").use { output ->
+            target.open().use { output ->
                 output.seek(resume)
                 connection.inputStream.use { input ->
                     val buffer=ByteArray(bufferSize)
@@ -167,7 +172,7 @@ class DownloadEngine(private val context: Context) {
                         val controlNow=android.os.SystemClock.elapsedRealtime()
                         if(controlNow-checkedAt>=250) {
                             checkedAt=controlNow
-                            if(!isDownloading(id)) { output.fd.sync(); store.mutate(id) { it.put("bytes",count) }; return }
+                            if(!isDownloading(id)) { output.sync(); store.mutate(id) { it.put("bytes",count) }; return }
                         }
                         val read=input.read(buffer)
                         if(read<0) break
@@ -187,22 +192,22 @@ class DownloadEngine(private val context: Context) {
                         output.write(buffer,0,read); count+=read
                         val now=android.os.SystemClock.elapsedRealtime()
                         if(now-committedAt>=1000) {
-                            output.fd.sync()
+                            output.sync()
                             val speed=(count-previous)*1000/(now-committedAt).coerceAtLeast(1)
                             store.mutate(id) { it.put("bytes",count).put("speed",speed) }
-                            DownloadCaptureGuard.probe(context,store,id,file,count)
+                            DownloadCaptureGuard.probe(context,store,id,target.readUri(),count)
                             previous=count; committedAt=now
                         }
                     }
                 }
-                output.fd.sync()
+                output.sync()
             }
             store.mutate(id) { it.put("bytes",count).put("speed",0) }
             if(total>=0 && count!=total) throw IOException("Transferência interrompida antes do fim")
             if(count==0L) throw PermanentFailure("O arquivo recebido está vazio")
             if(!isDownloading(id)) return
             if(total<0) store.mutate(id) { it.put("total",count) }
-            verifyAndSave(id,file)
+            verifyAndSave(id,target)
         } catch(cancelled: CancellationException) {
             withContext(NonCancellable+Dispatchers.IO) {
                 runCatching { store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","QUEUED").put("speed",0) } }
@@ -220,26 +225,26 @@ class DownloadEngine(private val context: Context) {
             }
         } finally { connection?.disconnect() }
     }
-    private suspend fun receiveHls(id: String,url: String,headers: Map<String,String>,file: File): Boolean = try {
-        DownloadHls(context,store).receive(id,url,headers,file)
+    private suspend fun receiveHls(id: String,url: String,headers: Map<String,String>,target: DownloadTransferFile): Boolean = try {
+        DownloadHls(context,store).receive(id,url,headers,target)
     } catch(error: IllegalArgumentException) { throw PermanentFailure(error.message ?: "Playlist HLS incompatível") }
     catch(error: IllegalStateException) { throw PermanentFailure(error.message ?: "Playlist HLS incompatível") }
     private fun isDownloading(id: String)=store.get(id)?.state=="DOWNLOADING"
-    private fun restart(id: String,file: File) {
-        RandomAccessFile(file,"rw").use { it.setLength(0); it.fd.sync() }
+    private fun restart(id: String,target: DownloadTransferFile) {
+        target.open().use { it.setLength(0); it.sync() }
         store.mutate(id) { it.put("generation",it.optLong("generation")+1).put("bytes",0).put("total",-1); it.remove("validator"); it.remove("serverHash"); it.remove("serverHashType");it.put("hlsIndex",0);it.remove("hlsFingerprint");if(it.has("playerCapture"))it.put("captureApproved",false).put("captureProbeStage",0) }
     }
-    private suspend fun verifyAndSave(id: String,file: File) {
+    private suspend fun verifyAndSave(id: String,target: DownloadTransferFile) {
         val item=store.get(id) ?: return
         if(item.state !in DownloadState.pending) return
-        DownloadCaptureGuard.probe(context,store,id,file,item.bytes,complete=true)
+        DownloadCaptureGuard.probe(context,store,id,target.readUri(),item.bytes,complete=true)
         store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","VERIFYING") }
         // Reference-entry UI was removed. Honor a whole-file digest supplied by the server,
         // but do not hash every unreferenced file merely to display a checksum.
         val expected=item.json.optString("serverHash")
         if(expected.isNotBlank()) {
             val requested=MessageDigest.getInstance(item.json.optString("serverHashType","SHA-256"))
-            file.inputStream().use {input ->
+            target.inputStream().use {input ->
                 val buffer=ByteArray(256*1024)
                 while(true) {
                     currentCoroutineContext().ensureActive();if(store.get(id)?.state !in DownloadState.pending)return
