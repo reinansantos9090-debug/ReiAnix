@@ -210,6 +210,26 @@ initialEstimatedSize:Long?=null,onBack: (() -> Unit)? = null) {
                             if(item.state=="CORRUPT") DropdownMenuItem(text={Text("Baixar novamente")},onClick={menu=false;action(item,"restart")})
                             if(item.state!="SAVING") DropdownMenuItem(text={Text("Cancelar")},leadingIcon={Icon(Icons.Filled.Close,null)},onClick={menu=false;action(item,"cancel")})
                             if(!item.json.optBoolean("identityKnown")) DropdownMenuItem(text={Text("Identificar anime")},leadingIcon={Icon(Icons.Filled.Edit,null)},onClick={menu=false;identify=item;identityTitle=""})
+                            if(item.state in setOf("ERROR","WAITING")) DropdownMenuItem(
+                                text={Text("Copiar diagnóstico")},
+                                leadingIcon={Icon(Icons.Filled.ContentCopy,null)},
+                                onClick={
+                                    menu=false
+                                    // No URL, signatures, authorization or cookies are ever copied.
+                                    val snapshot=listOf(
+                                        "Estado: "+item.state,
+                                        "Etapa: "+item.json.optString("lastFailurePhase","unknown"),
+                                        "Falha: "+item.json.optString("lastFailureKind","unknown"),
+                                        "HTTP: "+item.json.optInt("lastHttpStatus",-1),
+                                        "Tentativas: "+item.json.optInt("attempts"),
+                                        "Bytes: "+item.bytes
+                                    ).joinToString("\n")
+                                    val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                        as? android.content.ClipboardManager
+                                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText(
+                                        "Diagnóstico ReiAnix",snapshot))
+                                }
+                            )
                             if(item.state in setOf("ERROR","PAUSED")) DropdownMenuItem(text={Text("Atualizar link")},onClick={menu=false;edit=item;add=true})
                             if(item.mime.startsWith("video/") && item.bytes>128*1024 && item.state !in setOf("ERROR","CORRUPT")) DropdownMenuItem(text={Text("Assistir")},leadingIcon={Icon(Icons.Filled.PlayCircle,null)},onClick={
                                 menu=false
