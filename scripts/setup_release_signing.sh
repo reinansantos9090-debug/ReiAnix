@@ -20,6 +20,28 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
+# Preserve the installed app's existing signature during the namespace rename.
+# Discover the earlier GitHub certificate pin from the unchanged applicationId.
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+original_brand="$(sed -nE 's/.*applicationId = "com\.([^.]+)\.[^"]+".*/\1/p' "$project_root/android/app/build.gradle.kts" | head -n 1)"
+if [[ -z "$original_brand" ]]; then
+  echo "Unable to resolve the unchanged Android application ID." >&2
+  exit 1
+fi
+old_pin_name="$(printf '%s' "$original_brand" | tr '[:lower:]' '[:upper:]')_ANDROID_EXPECTED_CERT_SHA256"
+new_pin="$(gh variable get REIANIX_ANDROID_EXPECTED_CERT_SHA256 --repo "$repo" 2>/dev/null || true)"
+old_pin="$(gh variable get "$old_pin_name" --repo "$repo" 2>/dev/null || true)"
+if [[ -n "$new_pin" && -n "$old_pin" && "${new_pin,,}" != "${old_pin,,}" ]]; then
+  echo "Existing and renamed certificate pins disagree. Aborting." >&2
+  exit 1
+fi
+previous="${new_pin:-$old_pin}"
+if [[ ! -f "$keystore" && -n "$previous" ]]; then
+  echo "An installed release identity already exists; supply the ORIGINAL keystore path." >&2
+  echo "Refusing to generate a new certificate that would prevent app updates." >&2
+  exit 1
+fi
+
 mkdir -p "$(dirname "$keystore")"
 if [[ -e "$keystore" && ! -f "$keystore" ]]; then
   echo "Refusing to overwrite a non-file keystore path." >&2
@@ -69,7 +91,6 @@ if [[ ! "$fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
 fi
 
 # If this repository already has a pinned identity, never rotate it silently.
-previous="$(gh variable get REIANIX_ANDROID_EXPECTED_CERT_SHA256 --repo "$repo" 2>/dev/null || true)"
 if [[ -n "$previous" && "${previous,,}" != "$fingerprint" ]]; then
   echo "The repository already pins a different signing certificate. Aborting." >&2
   echo "Use the ORIGINAL keystore to update, not a new key." >&2
