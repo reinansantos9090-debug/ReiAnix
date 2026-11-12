@@ -72,8 +72,9 @@ internal object DownloadLinkMetadata {
             return when(data[pos].toInt().toChar()) {
                 'i' -> {
                     pos++
-                    val end=data.indexOf('e'.code.toByte(),pos)
-                    if(end<=pos)return null
+                    var end=pos
+                    while(end<data.size && data[end]!='e'.code.toByte())end++
+                    if(end<=pos || end>=data.size)return null
                     val number=String(data,pos,end-pos,Charsets.US_ASCII)
                         .toLongOrNull()
                     pos=end+1;number
