@@ -363,6 +363,20 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithText("E12 • Episode 12").assertIsDisplayed()
         composeRule.onNodeWithText("E13 • Episode 13").assertIsDisplayed()
         composeRule.onNodeWithText("E01 • Episode 1").assertIsNotDisplayed()
+
+        // Regression: repeatedly switching BACK was previously ignored because
+        // selecting a season triggered a competing LazyColumn scroll animation.
+        repeat(3) {
+            composeRule.onNodeWithContentDescription("Selecionar Temporada 1").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("E01 • Episode 1").assertIsDisplayed()
+            composeRule.onNodeWithText("E11 • Episode 11").assertIsNotDisplayed()
+
+            composeRule.onNodeWithContentDescription("Selecionar Temporada 2").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("E11 • Episode 11").assertIsDisplayed()
+            composeRule.onNodeWithText("E01 • Episode 1").assertIsNotDisplayed()
+        }
     }
 
     @Test
