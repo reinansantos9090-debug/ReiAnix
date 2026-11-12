@@ -132,10 +132,11 @@ class DownloadEngine(private val context: Context) {
                 throw PermanentFailure("Espaço insuficiente para baixar o arquivo")
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             val disposition=connection.getHeaderField("Content-Disposition")
+            val resolvedUrl=connection.url.toString()
             store.mutate(id) {
                 if(it.optBoolean("automaticName") && !it.has("playerCapture")) {
                     val candidate=DownloadResourceIdentity.bestName(disposition,
-                        connection.url.toString(),contentType)
+                        resolvedUrl,contentType)
                         ?: DownloadResourceIdentity.bestName(null,secret.getString("url"),contentType)
                     if(!candidate.isNullOrBlank() && candidate.length<=200 &&
                         candidate.none { char -> char=='/' || char=='\\' || char.code<32 } &&
