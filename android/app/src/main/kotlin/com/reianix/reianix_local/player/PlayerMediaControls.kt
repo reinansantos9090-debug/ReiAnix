@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.player
+package com.reianix.reianix_local.player
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

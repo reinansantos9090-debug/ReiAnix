@@ -1,22 +1,22 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
 import androidx.activity.ComponentActivity
 import android.util.Log
 import android.graphics.BitmapFactory
 import androidx.lifecycle.lifecycleScope
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.data.backup.ReiAnixBackupService
-import com.reiflix.reiflix_local.data.backup.ReiAnixDiagnosticsService
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsFileService
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.backup.ReiAnixBackupService
+import com.reianix.reianix_local.data.backup.ReiAnixDiagnosticsService
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsFileService
 import java.util.UUID
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
-import com.reiflix.reiflix_local.data.sqlite.getAnimeByLookupTitle
-import com.reiflix.reiflix_local.data.sqlite.findEpisodeByPathOrFileUri
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
+import com.reianix.reianix_local.data.sqlite.getAnimeByLookupTitle
+import com.reianix.reianix_local.data.sqlite.findEpisodeByPathOrFileUri
 import java.io.File
-import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.ui.host.ReiAnixComposeLibraryHost
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.ui.host.ReiAnixComposeLibraryHost
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -39,18 +39,18 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import com.reiflix.reiflix_local.bridge.NativeCommandDispatcher
-import com.reiflix.reiflix_local.scanner.NativeScanController
-import com.reiflix.reiflix_local.scanner.SafScanner
+import com.reianix.reianix_local.bridge.NativeCommandDispatcher
+import com.reianix.reianix_local.scanner.NativeScanController
+import com.reianix.reianix_local.scanner.SafScanner
 import android.os.Environment
-import com.reiflix.reiflix_local.scanner.MediaStoreScanner
-import com.reiflix.reiflix_local.scanner.ScanProgressSnapshot
-import com.reiflix.reiflix_local.scanner.ScanLifecycleState
-import com.reiflix.reiflix_local.scanner.BroadStorageScanner
-import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
-import com.reiflix.reiflix_local.storage.SafAccessLevel
-import com.reiflix.reiflix_local.storage.StorageAuthorization
-import com.reiflix.reiflix_local.storage.NativeStorageOnboardingState
+import com.reianix.reianix_local.scanner.MediaStoreScanner
+import com.reianix.reianix_local.scanner.ScanProgressSnapshot
+import com.reianix.reianix_local.scanner.ScanLifecycleState
+import com.reianix.reianix_local.scanner.BroadStorageScanner
+import com.reianix.reianix_local.storage.VideoThumbnailExtractor
+import com.reianix.reianix_local.storage.SafAccessLevel
+import com.reianix.reianix_local.storage.StorageAuthorization
+import com.reianix.reianix_local.storage.NativeStorageOnboardingState
 import android.net.Uri
 import android.provider.DocumentsContract
 import kotlinx.coroutines.CoroutineScope
@@ -806,7 +806,7 @@ internal class NativeMainRuntimePort(
     private val lock = Any()
     private val nativeMailboxPollLock = Any()
     private val nativeMailboxEventLedgerLock = Any()
-    private val nativeMailboxDirectory = File(File(activity.filesDir, "data"), "reiflix-native-events")
+    private val nativeMailboxDirectory = File(File(activity.filesDir, "data"), "reianix-native-events")
     private val nativeMailboxEventIds = LinkedHashSet<String>()
     @Volatile private var nativeMailboxLedgerLoaded = false
     @Volatile private var nativeMailboxPollJob: Job? = null
@@ -4707,8 +4707,8 @@ internal class NativeMainRuntimePort(
         }
         val dataDirectory = nativeMailboxDirectory.parentFile
         if (dataDirectory != null) {
-            val legacy = File(dataDirectory, "reiflix-native-events.json")
-            val legacyClaimed = File(dataDirectory, "reiflix-native-events.consumed")
+            val legacy = File(dataDirectory, "reianix-native-events.json")
+            val legacyClaimed = File(dataDirectory, "reianix-native-events.consumed")
             if (legacyClaimed.exists() && !legacy.exists()) legacyClaimed.renameTo(legacy)
             if (legacy.exists() && legacy.renameTo(legacyClaimed)) {
                 try {
@@ -6934,9 +6934,9 @@ internal class NativeMainRuntimePort(
                 var completionMessage = "Metadados AniList atualizados."
                 var completionPayload = org.json.JSONObject().put("animeId", animeId)
 
-                if (result is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure) {
+                if (result is com.reianix.reianix_local.data.anilist.AniListResult.Failure) {
                     val error = result.error
-                    val invalidRequest = error as? com.reiflix.reiflix_local.data.anilist.AniListError.InvalidRequest
+                    val invalidRequest = error as? com.reianix.reianix_local.data.anilist.AniListError.InvalidRequest
                     if (invalidRequest?.message?.contains("disabled in settings", ignoreCase = true) == true) {
                         val message = "O AniList está desativado nas configurações."
                         completionPayload.put("result", "disabled")
@@ -6959,25 +6959,25 @@ internal class NativeMainRuntimePort(
                         ?.contains("no valid AniList association", ignoreCase = true) == true
                     if (missingAssociation) {
                         when (val matchResult = integration.autoMatch(animeId, force = true)) {
-                            is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure -> {
+                            is com.reianix.reianix_local.data.anilist.AniListResult.Failure -> {
                                 throw IllegalStateException(matchResult.error.toString())
                             }
-                            is com.reiflix.reiflix_local.data.anilist.AniListResult.Success -> {
+                            is com.reianix.reianix_local.data.anilist.AniListResult.Success -> {
                                 when (val match = matchResult.value) {
-                                    is com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.Matched -> {
-                                        result = com.reiflix.reiflix_local.data.anilist.AniListResult.Success(match.anime)
+                                    is com.reianix.reianix_local.data.anilist.AniListAutoMatchResult.Matched -> {
+                                        result = com.reianix.reianix_local.data.anilist.AniListResult.Success(match.anime)
                                         completionMessage = "Metadados AniList encontrados e atualizados."
                                         completionPayload
                                             .put("match", "matched")
                                             .put("anilistId", match.remote.id)
                                     }
-                                    is com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.AlreadyMatched,
-                                    is com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.AlreadyManuallyMatched -> {
+                                    is com.reianix.reianix_local.data.anilist.AniListAutoMatchResult.AlreadyMatched,
+                                    is com.reianix.reianix_local.data.anilist.AniListAutoMatchResult.AlreadyManuallyMatched -> {
                                         result = integration.refreshMetadata(animeId)
                                         completionMessage = "Associação AniList existente verificada."
                                         completionPayload.put("match", "already_matched")
                                     }
-                                    is com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.Ambiguous -> {
+                                    is com.reianix.reianix_local.data.anilist.AniListAutoMatchResult.Ambiguous -> {
                                         val candidates = org.json.JSONArray().apply {
                                             match.candidates.forEach { candidate ->
                                                 put(
@@ -7008,7 +7008,7 @@ internal class NativeMainRuntimePort(
                                         })
                                         return@launchTracked
                                     }
-                                    com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.NoMatch -> {
+                                    com.reianix.reianix_local.data.anilist.AniListAutoMatchResult.NoMatch -> {
                                         completionPayload.put("match", "no_match")
                                         completionMessage = "Nenhuma correspondência AniList confiável foi encontrada."
                                         publishOperationResult(
@@ -7024,7 +7024,7 @@ internal class NativeMainRuntimePort(
                                         })
                                         return@launchTracked
                                     }
-                                    com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.RecentlyAttempted -> {
+                                    com.reianix.reianix_local.data.anilist.AniListAutoMatchResult.RecentlyAttempted -> {
                                         completionPayload.put("match", "recently_attempted")
                                         completionMessage = "A correspondência AniList foi tentada recentemente. Tente novamente mais tarde."
                                         publishOperationResult(
@@ -7040,7 +7040,7 @@ internal class NativeMainRuntimePort(
                                         })
                                         return@launchTracked
                                     }
-                                    com.reiflix.reiflix_local.data.anilist.AniListAutoMatchResult.Disabled -> {
+                                    com.reianix.reianix_local.data.anilist.AniListAutoMatchResult.Disabled -> {
                                         publishOperationResult(
                                             requestId = correlatedRequestId,
                                             action = operation,
@@ -7060,7 +7060,7 @@ internal class NativeMainRuntimePort(
                 }
 
                 when (val finalResult = result) {
-                    is com.reiflix.reiflix_local.data.anilist.AniListResult.Success -> {
+                    is com.reianix.reianix_local.data.anilist.AniListResult.Success -> {
                         val refreshedRecord = finalResult.value
                         val stale = refreshedRecord?.metadataStatus.equals("stale", ignoreCase = true)
                         if (stale) {
@@ -7092,7 +7092,7 @@ internal class NativeMainRuntimePort(
                             context = mapOf("anime_id" to animeId),
                         )
                     }
-                    is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure -> {
+                    is com.reianix.reianix_local.data.anilist.AniListResult.Failure -> {
                         throw IllegalStateException(finalResult.error.toString())
                     }
                 }
@@ -7996,7 +7996,7 @@ internal class NativeMainRuntimePort(
     }
 
     private fun projectNativeLibraryPageEpisode(
-        episode: com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel,
+        episode: com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel,
     ): org.json.JSONObject {
         val artwork = episode.artwork
         return org.json.JSONObject()
@@ -8042,7 +8042,7 @@ internal class NativeMainRuntimePort(
     }
 
     private fun projectNativeLibraryPageAnime(
-        anime: com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel,
+        anime: com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel,
         lookupTitle: String?,
         descriptionOriginal: String?,
         fallbackCoverCache: String?,
@@ -8102,7 +8102,7 @@ internal class NativeMainRuntimePort(
                     org.json.JSONArray().apply {
                         anime.specials
                             .sortedWith(
-                                compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel> {
+                                compareBy<com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel> {
                                     it.number ?: -1.0
                                 }.thenBy { it.fileName.lowercase(Locale.ROOT) },
                             )
@@ -8224,7 +8224,7 @@ internal class NativeMainRuntimePort(
 
                 val expectedFilters = libraryViewModel.libraryFilters.value
                 fun matchesRequestedFilters(
-                    state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState,
+                    state: com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiState,
                 ): Boolean =
                     state.query == query &&
                         state.genreKey == expectedFilters.selectedGenreKey &&
@@ -9031,10 +9031,10 @@ internal class NativeMainRuntimePort(
                                 resolvedAnimeId,
                                 remoteId,
                             )
-                            if (result is com.reiflix.reiflix_local.data.anilist.AniListResult.Failure) {
+                            if (result is com.reianix.reianix_local.data.anilist.AniListResult.Failure) {
                                 val associationError = result.error
                                 val integrationDisabled =
-                                    associationError is com.reiflix.reiflix_local.data.anilist.AniListError.InvalidRequest &&
+                                    associationError is com.reianix.reianix_local.data.anilist.AniListError.InvalidRequest &&
                                         associationError.message.contains("disabled in settings", ignoreCase = true)
                                 if (integrationDisabled) {
                                     publishOperationResult(
@@ -10204,7 +10204,7 @@ internal class NativeMainRuntimePort(
                             )
                         } else if (volumeReturned) {
                             val scanRequestId = UUID.randomUUID().toString()
-                            val scanUri = Uri.parse("reiflix://native").buildUpon()
+                            val scanUri = Uri.parse("reianix://native").buildUpon()
                                 .appendQueryParameter("action", "scan_all_storage")
                                 .appendQueryParameter("request_id", scanRequestId)
                                 .appendQueryParameter("protocol_version", "2")
@@ -10945,7 +10945,7 @@ internal class NativeMainRuntimePort(
                                 return@launchTracked
                             }
                             dependencies.sqliteAccountRepository.saveProfile(
-                                com.reiflix.reiflix_local.data.sqlite.ReiAnixAccountProfile(
+                                com.reianix.reianix_local.data.sqlite.ReiAnixAccountProfile(
                                     id = profileId.trim(),
                                     name = (payload.opt("name") as? String).orEmpty(),
                                     email = profileEmail.trim(),

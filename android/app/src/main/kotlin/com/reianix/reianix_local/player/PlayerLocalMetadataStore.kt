@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.player
+package com.reianix.reianix_local.player
 import android.content.Context
 import android.util.Log
 import org.json.JSONArray
@@ -118,7 +118,7 @@ class PlayerLocalMetadataStore(context: Context) {
         metadata.opening != null || metadata.ending != null
 
     companion object {
-        private const val TAG = "[REIFLIX][PLAYER_METADATA]"
+        private const val TAG = "[REIANIX][PLAYER_METADATA]"
         private const val FILE_NAME = "player_metadata.json"
         private const val VERSION = 1
         private const val MAX_NOTES_PER_MEDIA = 100

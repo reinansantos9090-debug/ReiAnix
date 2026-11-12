@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.player
+package com.reianix.reianix_local.player
 
-import com.reiflix.reiflix_local.NativePlayerActivity
+import com.reianix.reianix_local.NativePlayerActivity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.player
+package com.reianix.reianix_local.player
 
 /**
  * Pure startup timing model for the existing Media3 player pipeline.
