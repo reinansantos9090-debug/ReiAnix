@@ -81,7 +81,10 @@ class DownloadEngine(private val context: Context) {
             val offset=minOf(item.bytes,target.size())
             target.open().use { it.setLength(offset); it.sync() }
             val secret=store.secret(item); val headers=secret.optJSONObject("headers") ?: JSONObject()
-            val requestHeaders=headers.keys().asSequence().associateWith { headers.getString(it) }
+            val sourceUrl=secret.getString("url")
+            val requestHeaders=DownloadSessionHeaders.resolve(
+                context,sourceUrl,headers.keys().asSequence().associateWith {headers.getString(it)}
+            )
             phase=DownloadFailureMessage.Phase.CONNECTION
             var resume=offset
             var validator=item.json.optString("validator").takeIf { it.isNotBlank() }
@@ -112,7 +115,8 @@ class DownloadEngine(private val context: Context) {
             if(item.total>=0 && resume==item.total && resume>0) {
                 verifyAndSave(id,target); return
             }
-            connection=DownloadHttp.connect(secret.getString("url"),requestHeaders,resume,validator)
+            connection=DownloadHttp.connect(sourceUrl,requestHeaders,resume,validator,
+                preferInitialRange=(resume==0L),closeAfterResponse=true)
             val code=connection.responseCode
             if(code==401) throw PermanentFailure("O servidor solicitou autenticação (HTTP 401). Abra novamente o vídeo no navegador e capture o link.")
             if(code==403) throw PermanentFailure("O servidor recusou o download (HTTP 403). Capture novamente o vídeo no navegador; a sessão ou as regras do servidor podem impedir esta transferência.")
