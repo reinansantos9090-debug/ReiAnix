@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.model
+package com.reianix.reianix_local.ui.model
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

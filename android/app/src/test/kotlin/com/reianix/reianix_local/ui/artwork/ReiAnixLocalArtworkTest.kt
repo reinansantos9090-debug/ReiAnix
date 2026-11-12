@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.artwork
+package com.reianix.reianix_local.ui.artwork
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals

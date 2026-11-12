@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.settings
+package com.reianix.reianix_local.ui.settings
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
