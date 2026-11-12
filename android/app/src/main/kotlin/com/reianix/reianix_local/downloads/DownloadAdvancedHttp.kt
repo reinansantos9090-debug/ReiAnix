@@ -87,7 +87,7 @@ internal object DownloadAdvancedHttp {
                 try {
                     c=DownloadHttp.connect(url,headers,0,null,probeRange=range,
                         conditionalEtag=if(phase=="suffix")saved?.etag else null,
-                        connectTimeoutMs=2100,readTimeoutMs=2500)
+                        connectTimeoutMs=1500,readTimeoutMs=1600)
                     val code=c.responseCode
                     if(code==304 && saved!=null)
                         return DownloadSizeProbe.Result(saved.size,true,"http-etag",metadataName)
@@ -96,8 +96,6 @@ internal object DownloadAdvancedHttp {
                     if(newName!=null)metadataName=newName
                     if(!looksLikeVideo(c))break
                     val vendor=vendorLength(snapshot(c))
-                    if(vendor!=null)
-                        return DownloadSizeProbe.Result(vendor,false,"http-vendor",metadataName)
                     var length=unsatisfiedLength(code,c.getHeaderField("Content-Range"))
                     if(code==206 && length==null)
                         length=DownloadHttp.range(c.getHeaderField("Content-Range"))?.total
@@ -120,6 +118,11 @@ internal object DownloadAdvancedHttp {
                         }
                         return DownloadSizeProbe.Result(length,true,"http-"+phase,metadataName)
                     }
+                    // A vendor header may refer to a stored/encoded object
+                    // instead of this HTTP representation. Never prefer it
+                    // over a real Content-Length / Content-Range.
+                    if(vendor!=null)
+                        return DownloadSizeProbe.Result(vendor,false,"http-vendor",metadataName)
                     if(phase=="suffix") {
                         resolveContentLocation(c.url.toString(),c.getHeaderField("Content-Location"))
                             ?.let { other ->
