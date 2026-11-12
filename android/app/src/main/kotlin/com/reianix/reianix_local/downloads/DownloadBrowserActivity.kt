@@ -320,7 +320,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 it>0 && mime?.contains("mpegurl",true)!=true &&
                     mime?.contains("dash+xml",true)!=true &&
                     !listOf(".m3u8",".mpd",".meta4",".metalink",".torrent")
-                        .any(extension::endsWith)
+                        .any{suffix -> extension.endsWith(suffix)}
             },
             providerEstimatedSize=providerEstimatedSize?.takeIf {it>0},
         )
