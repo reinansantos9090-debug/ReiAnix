@@ -13,6 +13,8 @@ internal object DownloadFailureMessage {
 
     fun pending(error:Exception,phase:Phase,attempts:Int,received:Long):String {
         val detail=when {
+            error is DownloadRetryableHttpFailure ->
+                "O servidor respondeu HTTP ${error.status} e solicitou nova tentativa."
             phase==Phase.DESTINATION ->
                 "O destino não respondeu à gravação. Verifique o espaço e a permissão da pasta."
             error is UnknownHostException ->
