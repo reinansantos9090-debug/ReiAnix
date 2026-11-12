@@ -103,6 +103,8 @@ dependencies {
     implementation("androidx.media3:media3-session:1.11.1")
     implementation("androidx.media3:media3-transformer:1.11.1")
     implementation("androidx.media3:media3-effect:1.11.1")
+    // RFC 4918 WebDAV PROPFIND (HttpURLConnection does not support custom methods).
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
     // Robolectric exercises Android SQLiteDatabase on the JVM; no emulator or instrumentation runner.
