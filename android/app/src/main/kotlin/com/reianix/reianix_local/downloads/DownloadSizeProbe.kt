@@ -28,7 +28,7 @@ internal object DownloadSizeProbe {
     }
     internal data class HlsPlan(val segments: List<String>, val init: String?, val durationSeconds: Double,
         val encrypted: Boolean)
-    internal data class MasterChoice(val url: String, val bandwidth: Long?)
+    internal data class MasterChoice(val url: String, val bandwidth: Long?,val averageBandwidth: Long? = null)
 
     private const val NETWORK_TIMEOUT_MS = 4_000
     private const val MAX_MANIFEST_BYTES = 1024 * 1024
@@ -70,7 +70,7 @@ internal object DownloadSizeProbe {
                     ?: return@mapNotNull null
                 if (runCatching { DownloadHttp.validateUrl(url) }.isFailure) return@mapNotNull null
                 // The existing downloader chooses the largest BANDWIDTH variant.
-                MasterChoice(url,attrs["BANDWIDTH"]?.toLongOrNull())
+                MasterChoice(url,attrs["BANDWIDTH"]?.toLongOrNull(),attrs["AVERAGE-BANDWIDTH"]?.toLongOrNull())
             }.maxByOrNull { it.bandwidth ?: 0L }
     }
 
@@ -213,9 +213,17 @@ internal object DownloadSizeProbe {
         val choice=parseMaster(first,url)
         val mediaUrl=choice?.url ?: url
         val playlist=if(choice!=null) readManifest(mediaUrl,headers,url) else first
+        val richer=playlist?.let {DownloadHlsMetadata.parse(it,mediaUrl)}
+        // Exact source bytes for HLS BYTERANGE and EXT-X-MAP are available
+        // from the manifest, but remux/crypto may change final MP4 bytes.
+        richer?.knownRangeSize?.let {
+            return Result(it,false,"hls-ranges")
+        }
         val plan=playlist?.let {parseVod(it,mediaUrl)}
-        if(plan==null)return Result.Unknown
-        val bitrate=bitrateEstimate(plan.durationSeconds,choice?.bandwidth)
+        val duration=plan?.durationSeconds ?: richer?.duration ?: 0.0
+        val bitrate=bitrateEstimate(duration,choice?.averageBandwidth ?: choice?.bandwidth)
+        if(plan==null)return bitrate?.let{Result(it,false,"hls-average-bandwidth")}
+            ?: Result.Unknown
         val segments=plan.segments
         // Inspect all small playlists or sample long ones. Keep network work
         // bounded so opening the dialog never starts hundreds of downloads.
@@ -226,14 +234,21 @@ internal object DownloadSizeProbe {
             indices.chunked(6).flatMap { chunk ->
                 chunk.map { index -> async(Dispatchers.IO) {
                     currentCoroutineContext().ensureActive()
-                    probe(segments[index],headers,credentialOrigin=url).length
+                    DownloadHlsMetadata.cachedSize(segments[index]) ?: 
+                        probe(segments[index],headers,credentialOrigin=url).length?.also {
+                            DownloadHlsMetadata.rememberSize(segments[index],it)
+                        }
                 }}.awaitAll()
             }
         }
         val successes=sizes.filterNotNull()
         if(successes.size==indices.size && successes.isNotEmpty()) {
+            val estimates=indices.zip(sizes).mapNotNull { (i,size) ->
+                size?.let{i to it}
+            }.toMap()
             val rawTotal=if(indices.size==segments.size) successes.sumOf { it }
-            else (successes.average()*segments.size).toLong()
+            else richer?.let { DownloadHlsMetadata.weightedEstimate(it.pieces,estimates) }
+                ?: (successes.average()*segments.size).toLong()
             val initSize=plan.init?.let {probe(it,headers,credentialOrigin=url).length}
             if(plan.init!=null && initSize==null)return Result(
                 bitrate ?: rawTotal,false,"hls-estimate")
@@ -245,7 +260,8 @@ internal object DownloadSizeProbe {
                 return Result(bytes,exact,if(exact)"hls-fmp4" else "hls-estimate")
             }
         }
-        if(bitrate!=null) return Result(bitrate,false,"hls-bitrate")
+        if(bitrate!=null) return Result(bitrate,false,
+            if(choice?.averageBandwidth!=null) "hls-average-bandwidth" else "hls-bitrate")
         // Some video hosts reject HEAD and Range requests, but permit normal
         // segment GETs. Sample only three *complete*, bounded segments. This
         // is expressly an estimate and is never used as a download limit.
