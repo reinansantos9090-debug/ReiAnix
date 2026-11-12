@@ -258,6 +258,47 @@ internal object DownloadDashMetadata {
                 val known=plan.manifestBytes
                 if(known!=null)return@withContext DownloadSizeProbe.Result(
                     known,false,"dash-range-bytes")
+                // SegmentBase may carry a tiny SIDX index. Parse it to obtain
+                // reference sizes without fetching the whole media resource.
+                val indexed=plan.segments.filter{it.indexRange!=null}
+                if(indexed.isNotEmpty() && indexed.size<=4) {
+                    var indexTotal=0L
+                    var supported=true
+                    for(segment in indexed) {
+                        val match=Regex("""^(\d+)-(\d+)$""")
+                            .matchEntire(segment.indexRange.orEmpty())
+                        val start=match?.groupValues?.get(1)?.toLongOrNull()
+                        val end=match?.groupValues?.get(2)?.toLongOrNull()
+                        if(start==null || end==null || end<start ||
+                            end-start>64*1024) {supported=false;break}
+                        var indexResponse:HttpURLConnection?=null
+                        try {
+                            val c=DownloadHttp.connect(segment.url,headers,0,null,
+                                credentialOrigin=url,probeRange="bytes="+start+"-"+end,
+                                connectTimeoutMs=2000,readTimeoutMs=2000)
+                            indexResponse=c
+                            if(c.responseCode!=206){supported=false;break}
+                            val data=c.inputStream.use{input->
+                                val buffer=ByteArray((end-start+1).toInt())
+                                var read=0
+                                while(read<buffer.size){
+                                    val n=input.read(buffer,read,buffer.size-read)
+                                    if(n<0)break
+                                    read+=n
+                                }
+                                buffer.copyOf(read)
+                            }
+                            val size=sidxBytes(data)
+                            if(size==null){supported=false;break}
+                            indexTotal+=size
+                        }catch(_:Exception){supported=false;break}
+                        finally {indexResponse?.disconnect()}
+                    }
+                    if(supported && indexTotal>0)
+                        return@withContext DownloadSizeProbe.Result(
+                            indexTotal,false,"dash-sidx-media-references")
+                }
+
                 // Bounded: for short lists only, inspect the initial media segment
                 // headers. Complete MPD can refer to thousands of segments.
                 if(plan.segments.size in 1..20) {
