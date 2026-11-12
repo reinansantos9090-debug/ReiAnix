@@ -1382,6 +1382,47 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun remoteVerifiedSeriesMergeSurvivesCanonicalForeignKeysAndKeepsEachEpisode() {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath,null,SQLiteDatabase.OPEN_READWRITE).use {db ->
+            db.setForeignKeyConstraintsEnabled(true)
+            fun addAlbum(id:Long,remote:Long,lookup:String) {
+                db.execSQL(
+                    "INSERT INTO anime(id,lookup_title,title,added_at,anilist_id,media_kind) VALUES(?,?,?,1100,?,'series')",
+                    arrayOf(id,lookup,lookup,remote),
+                )
+            }
+            addAlbum(101,701001,"pass-monster-numeric")
+            addAlbum(102,701001,"pass-monster-titled")
+            addAlbum(103,701002,"may-i-ask-numeric")
+            addAlbum(104,701002,"may-i-ask-titled")
+            addAlbum(105,701003,"wandance-complete")
+            fun addEpisodes(album:Long,first:Int,last:Int) {
+                for(number in first..last) {
+                    db.execSQL(
+                        "INSERT INTO episodes(anime_id,path,file_name,season,number,progress) VALUES(?,?,?,1,?,?)",
+                        arrayOf(album,"content://test/$album/$number","Episode $number.mkv",
+                            number.toDouble(),if(number==1)25.0 else 0.0),
+                    )
+                }
+            }
+            addEpisodes(101,1,6); addEpisodes(102,7,12)
+            addEpisodes(103,1,10); addEpisodes(104,11,13)
+            addEpisodes(105,1,12)
+            assertTrue(SeriesAnimeCoalescer.mergeVerified(db))
+            fun count(id:Long)=db.rawQuery("SELECT COUNT(*) FROM episodes WHERE anime_id=?",arrayOf(id.toString())).use {
+                it.moveToFirst();it.getInt(0)
+            }
+            assertEquals(12,count(101))
+            assertEquals(13,count(103))
+            assertEquals(12,count(105))
+            assertEquals(0,count(102))
+            assertEquals(0,count(104))
+            db.rawQuery("PRAGMA foreign_key_check",null).use {assertFalse(it.moveToFirst())}
+        }
+    }
+
+    @Test
     fun distinctSecondReleaseIsImportedWithoutReplacingOriginalEpisode() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
