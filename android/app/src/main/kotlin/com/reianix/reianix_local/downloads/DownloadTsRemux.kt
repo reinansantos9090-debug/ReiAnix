@@ -15,9 +15,10 @@ import java.io.FileInputStream
 import java.nio.ByteBuffer
 
 /**
- * Optional container-only remux. MPEG-TS -> MP4 is supported only for formats
- * that Android's platform MediaExtractor and MediaMuxer both expose without
- * decoding. No FFmpeg/native binaries, no codec transcoding, no loss of quality.
+ * Lossless media-container remux into MP4. TS, Matroska, MOV, WebM and other
+ * platform-readable sources work only when MediaExtractor and MediaMuxer expose
+ * compatible H.264/H.265 + AAC tracks. Media3 handles optional transcoding
+ * separately after this fast path fails. No tracks are silently discarded.
  *
  * The original .part is never mutated; playback while downloading is unchanged.
  * On ANY unsupported track, disk pressure or bad timestamp, return null and
@@ -115,7 +116,7 @@ internal object DownloadTsRemux {
         } catch(cancelled:kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch(error:Exception) {
-            Log.i(TAG,"Mantendo MPEG-TS original: ${error.javaClass.simpleName}")
+            Log.i(TAG,"Mantendo contêiner original: ${error.javaClass.simpleName}")
         }
         return success
     }
