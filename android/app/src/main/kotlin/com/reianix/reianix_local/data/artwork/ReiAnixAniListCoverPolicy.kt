@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.artwork
+package com.reianix.reianix_local.data.artwork
 
 import java.net.URI
 import java.security.MessageDigest

@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.artwork
+package com.reianix.reianix_local.data.artwork
 
 import android.content.ContentValues
 import android.content.ContentUris
@@ -11,11 +11,11 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import android.graphics.BitmapFactory
 import android.util.Log
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
-import com.reiflix.reiflix_local.scanner.MediaStoreScanner
-import com.reiflix.reiflix_local.scanner.SafScanner
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.scanner.MediaStoreScanner
+import com.reianix.reianix_local.scanner.SafScanner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
@@ -662,7 +662,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             // files are left alone, matching ArtworkEngine's orphan cleanup contract.
             cacheDirectory.listFiles()?.forEach { file ->
                 if (!file.isFile || file.name.endsWith(".tmp")) return@forEach
-                if (file.name.startsWith(".reiflix-palette-")) {
+                if (file.name.startsWith(".reianix-palette-")) {
                     if (file.delete()) removed++
                 } else if (!isArtworkPathReferenced(file.absolutePath) && file.delete()) {
                     removed++
@@ -1961,7 +1961,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val uri = mediaUri.trim()
         val file = File(thumbnailPath).absoluteFile
         if (uri.isEmpty() || !file.isFile || !validImage(file)) return false
-        if (!com.reiflix.reiflix_local.storage.VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)) {
+        if (!com.reianix.reianix_local.storage.VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)) {
             ReiAnixDiagnosticTimeline.record(
                 name = "NATIVE_ARTWORK_THUMBNAIL_REJECTED",
                 severity = "WARN",
@@ -2129,7 +2129,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             return 0
         }
         val invalidPaths = invalidGeneratedThumbnailPaths(paths) {
-            com.reiflix.reiflix_local.storage.VideoThumbnailExtractor.isUsableThumbnailFile(it)
+            com.reianix.reianix_local.storage.VideoThumbnailExtractor.isUsableThumbnailFile(it)
         }
         var invalidatedCount = 0
         invalidPaths.forEach { path ->

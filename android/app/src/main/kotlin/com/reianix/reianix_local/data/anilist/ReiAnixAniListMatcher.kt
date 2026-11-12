@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.data.anilist
+package com.reianix.reianix_local.data.anilist
 
-import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+import com.reianix.reianix_local.data.media.MediaTitleNormalizer
 import java.text.Normalizer
 import java.util.ArrayDeque
 import java.util.Locale

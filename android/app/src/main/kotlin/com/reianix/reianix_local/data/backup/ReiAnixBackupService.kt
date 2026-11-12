@@ -1,20 +1,20 @@
-package com.reiflix.reiflix_local.data.backup
+package com.reianix.reianix_local.data.backup
 
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.data.contract.arrayOrDefault
-import com.reiflix.reiflix_local.data.contract.intOrNull
-import com.reiflix.reiflix_local.data.contract.intRequired
-import com.reiflix.reiflix_local.data.contract.longRequired
-import com.reiflix.reiflix_local.data.contract.objectOrNull
-import com.reiflix.reiflix_local.data.contract.stringOrNull
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.contract.arrayOrDefault
+import com.reianix.reianix_local.data.contract.intOrNull
+import com.reianix.reianix_local.data.contract.intRequired
+import com.reianix.reianix_local.data.contract.longRequired
+import com.reianix.reianix_local.data.contract.objectOrNull
+import com.reianix.reianix_local.data.contract.stringOrNull
 
 import android.content.ContentValues
 import android.content.Context
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import android.database.sqlite.SQLiteDatabase
-import com.reiflix.reiflix_local.BuildConfig
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
+import com.reianix.reianix_local.BuildConfig
+import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -126,9 +126,9 @@ class ReiAnixBackupService(context: Context) {
 
     private fun createBackupFileLocked(destination: File?): File {
         requireCanonicalDatabase()
-        val base = destination ?: File(backupDirectory, "reiflix-backup-" + timestamp() + ".zip")
+        val base = destination ?: File(backupDirectory, "reianix-backup-" + timestamp() + ".zip")
         val target = uniqueFile(if (base.extension.isBlank()) File(base.path + ".zip") else base)
-        val snapshot = File(dataDirectory, ".reiflix-backup-" + UUID.randomUUID() + ".sqlite3")
+        val snapshot = File(dataDirectory, ".reianix-backup-" + UUID.randomUUID() + ".sqlite3")
         val temporaryZip = File(target.parentFile ?: backupDirectory, "." + target.name + "." + UUID.randomUUID() + ".tmp")
         try {
             createSanitizedSnapshot(snapshot)
@@ -202,7 +202,7 @@ class ReiAnixBackupService(context: Context) {
                 }
                 validateManifestHeader(manifest)
                 val invalidOptional = validateIntegrity(zip, entries, manifest)
-                val snapshot = File(dataDirectory, ".reiflix-inspect-" + UUID.randomUUID() + ".sqlite3")
+                val snapshot = File(dataDirectory, ".reianix-inspect-" + UUID.randomUUID() + ".sqlite3")
                 try {
                     zip.getInputStream(entries.getValue("library.sqlite3")).use { input ->
                         FileOutputStream(snapshot).use { output -> copyBounded(input, output, MAX_MEMBER_BYTES) }
@@ -280,7 +280,7 @@ class ReiAnixBackupService(context: Context) {
     private fun restoreBackupLocked(file: File): RestoreResult {
         val preview = inspectBackup(file)
         val safety = createBackupFile(File(backupDirectory, "pre-restore-" + timestamp() + ".zip"))
-        val staging = File(backupDirectory, ".reiflix-restore-" + UUID.randomUUID())
+        val staging = File(backupDirectory, ".reianix-restore-" + UUID.randomUUID())
         check(staging.mkdirs()) { "Não foi possível preparar a restauração." }
         val createdAssets = mutableListOf<File>()
         var canonicalCommitCompleted = false
@@ -766,7 +766,7 @@ class ReiAnixBackupService(context: Context) {
                 .put("created_at", utcTimestamp())
                 .put("database_present", databaseFile.isFile)
                 .put("files", manifestEntries)
-                .put("note", "Cópia bruta de segurança; não é um backup restaurável do formato rei-flix-backup-v1.")
+                .put("note", "Cópia bruta de segurança; não é um backup restaurável do formato reianix-backup-v1.")
             FileOutputStream(File(directory, "recovery-snapshot.json")).use { output ->
                 output.write(prettyJson(metadata).toByteArray(Charsets.UTF_8))
                 output.fd.sync()
@@ -1425,7 +1425,7 @@ class ReiAnixBackupService(context: Context) {
         const val DATABASE_NAME = ReiAnixSqliteDatabase.DATABASE_FILE_NAME
         const val SCHEMA_VERSION = 29
         const val SETTINGS_SCHEMA_VERSION = 2
-        const val FORMAT = "rei-flix-backup-v1"
+        const val FORMAT = "reianix-backup-v1"
         const val FORMAT_VERSION = 1
         const val APP_NAME = "ReiAnix"
         const val MANUAL_ARTWORK_PREFIX = "artwork/manual/"

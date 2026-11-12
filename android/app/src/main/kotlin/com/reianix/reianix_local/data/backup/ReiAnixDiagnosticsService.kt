@@ -1,15 +1,15 @@
-package com.reiflix.reiflix_local.data.backup
+package com.reianix.reianix_local.data.backup
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.os.Build
-import com.reiflix.reiflix_local.BuildConfig
-import com.reiflix.reiflix_local.PerformanceDiagnostics
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixManualDiagnostics
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
-import com.reiflix.reiflix_local.scanner.MediaStoreScanner
-import com.reiflix.reiflix_local.scanner.NativeScanController
+import com.reianix.reianix_local.BuildConfig
+import com.reianix.reianix_local.PerformanceDiagnostics
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.diagnostics.ReiAnixManualDiagnostics
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.scanner.MediaStoreScanner
+import com.reianix.reianix_local.scanner.NativeScanController
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat

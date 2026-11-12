@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.anilist
+package com.reianix.reianix_local.data.anilist
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -7,13 +7,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.job
-import com.reiflix.reiflix_local.data.contract.arrayOrNull
-import com.reiflix.reiflix_local.data.contract.intOrNull
-import com.reiflix.reiflix_local.data.contract.objectOrNull
-import com.reiflix.reiflix_local.data.contract.stringOrNull
-import com.reiflix.reiflix_local.data.artwork.validReiAnixArtworkHttpUrl
-import com.reiflix.reiflix_local.data.artwork.resolveAniListCoverCandidates
-import com.reiflix.reiflix_local.data.artwork.ReiAnixAniListCoverCandidate
+import com.reianix.reianix_local.data.contract.arrayOrNull
+import com.reianix.reianix_local.data.contract.intOrNull
+import com.reianix.reianix_local.data.contract.objectOrNull
+import com.reianix.reianix_local.data.contract.stringOrNull
+import com.reianix.reianix_local.data.artwork.validReiAnixArtworkHttpUrl
+import com.reianix.reianix_local.data.artwork.resolveAniListCoverCandidates
+import com.reianix.reianix_local.data.artwork.ReiAnixAniListCoverCandidate
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
