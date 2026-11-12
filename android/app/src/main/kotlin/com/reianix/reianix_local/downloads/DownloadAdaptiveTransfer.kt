@@ -14,9 +14,10 @@ internal class DownloadAdaptiveTransfer(
     private val context:Context,
     private val store:DownloadStore
 ) {
+    class Unsupported(message:String):IllegalArgumentException(message)
     suspend fun receiveDash(id:String,url:String,target:DownloadTransferFile):Boolean {
         val converted=DownloadMediaTranscoder.tryAdaptiveDash(context,url)
-            ?: throw IOException("DASH: conversão MP4 indisponível neste aparelho ou nesta fonte")
+            ?: throw Unsupported("Esta fonte DASH não pôde ser convertida em MP4 neste aparelho. Escolha outra qualidade compatível.")
         try {
             if(store.get(id)?.state!="DOWNLOADING")return false
             var received=0L
