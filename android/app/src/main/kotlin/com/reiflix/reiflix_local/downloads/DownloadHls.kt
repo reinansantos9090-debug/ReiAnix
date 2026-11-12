@@ -44,7 +44,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             require(segments.isNotEmpty()); return Playlist(segments,init,duration)
         }
     }
-    suspend fun receive(id: String,url: String,headers: Map<String,String>,target: DownloadTransferFile): Boolean {
+    internal suspend fun receive(id: String,url: String,headers: Map<String,String>,target: DownloadTransferFile): Boolean {
         suspend fun fetch(link: String,max: Int): ByteArray = withContext(Dispatchers.IO) {
             val c=DownloadHttp.connect(link,headers,0,null,credentialOrigin=url)
             try {
