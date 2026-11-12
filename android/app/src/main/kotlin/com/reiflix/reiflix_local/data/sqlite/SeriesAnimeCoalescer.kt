@@ -70,6 +70,28 @@ internal object SeriesAnimeCoalescer {
         return changed
     }
 
+    /**
+     * AniList metadata updates may identify the sequel currently being moved
+     * into an existing first-season record. Return the surviving album ID so
+     * that the enclosing metadata transaction does not roll back the merge.
+     */
+    fun survivingAlbumId(db:SQLiteDatabase,originalId:Long):Long {
+        var id=originalId
+        repeat(16) {
+            val exists=db.rawQuery("SELECT 1 FROM anime WHERE id=?",
+                arrayOf(id.toString())).use {it.moveToFirst()}
+            if(exists) return id
+            val prior=db.rawQuery(
+                "SELECT value FROM preferences WHERE key LIKE ? ORDER BY updated_at DESC LIMIT 1",
+                arrayOf("reianix.series.merged.%.$id")
+            ).use { if(it.moveToFirst())it.getString(0) else null }
+            val next=prior?.let {JSONObject(it).optLong("toId")} ?: 0L
+            if(next<=0 || next==id)return originalId
+            id=next
+        }
+        return id
+    }
+
     private fun resolve(a: Album,b: Album,preferredId:Long?):Candidate? {
         if(a.regularCount==0 || b.regularCount==0) return null
         val sameRemote=a.remoteId!=null && a.remoteId==b.remoteId
