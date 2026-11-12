@@ -71,7 +71,15 @@ class DownloadsActivity: ComponentActivity() {
     private fun accept(intent: Intent) {
         val raw=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else intent.dataString.orEmpty()
         incoming=Regex("https?://[^\\s]+",RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
-        incomingTitle=sequenceOf(Intent.EXTRA_TITLE,Intent.EXTRA_SUBJECT,"title","name").mapNotNull { intent.getStringExtra(it) }.firstOrNull {it.isNotBlank()}.orEmpty()
+        // Some sharing apps put the episode label next to the link in EXTRA_TEXT,
+        // not EXTRA_TITLE. Keep only the text; do not treat the CDN path as a title.
+        val sharedText=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else ""
+        val textLabel=sharedText.replace(Regex("""https?://[^\\s]+""",RegexOption.IGNORE_CASE),"")
+            .trim().trim('-','–',':',' ').take(200)
+        incomingTitle=sequenceOf(Intent.EXTRA_TITLE,Intent.EXTRA_SUBJECT,"title","name")
+            .mapNotNull { intent.getStringExtra(it) }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty().ifBlank { textLabel }
         incomingName=intent.getStringExtra("downloadName").orEmpty()
         incomingCapture=intent.getStringExtra("playerCapture")?.takeIf {it.length<=32768}
         incomingHlsHint=intent.getBooleanExtra("hlsHint",false)
