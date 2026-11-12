@@ -217,7 +217,14 @@ class DownloadEngine(private val context: Context) {
             val item=store.get(id) ?: return
             if(item.state !in DownloadState.pending) return
             val attempts=item.json.optInt("attempts")+1
-            val permanent=error is DownloadCaptureGuard.Rejected || error is PermanentFailure || error is SecurityException || error is IllegalArgumentException || attempts>=12
+            // Congestion, network preemption and temporary stalls must remain
+            // resumable even after many attempts. Only definitive bad sources,
+            // invalid destinations and rejected captured media are terminal.
+            val retryable=error is IOException && error !is PermanentFailure &&
+                error !is DownloadCaptureGuard.Rejected
+            val permanent=error is DownloadCaptureGuard.Rejected || error is PermanentFailure ||
+                error is SecurityException || error is IllegalArgumentException ||
+                (!retryable && attempts>=12)
             store.mutate(id) {
                 it.put("state",if(permanent) "ERROR" else "WAITING").put("attempts",attempts).put("speed",0)
                     .put("nextAttempt",System.currentTimeMillis()+minOf(60_000L,2000L*(1L shl attempts.coerceAtMost(5))))
@@ -431,5 +438,8 @@ class DownloadEngine(private val context: Context) {
         return connection.getHeaderField("Content-MD5")?.let { raw -> runCatching { Base64.decode(raw,Base64.DEFAULT) }.getOrNull()?.takeIf { it.size==16 }?.let { bytes -> bytes.joinToString("") { "%02x".format(it) } to "MD5" } }
     }
     private class PermanentFailure(message: String): IOException(message)
-    companion object { private val runner=Mutex() }
+    companion object {
+        private val runner=Mutex()
+        internal fun isRunning():Boolean=runner.isLocked
+    }
 }
