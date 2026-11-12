@@ -253,6 +253,9 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey("reianix_anilist_token_v1", null) as? SecretKey)?.let { return it }
+        val previousAlias = com.reianix.reianix_local.ReiAnixLegacyIdentity.previousPrefix + "_anilist_token_v1"
+        // Keep previously encrypted AniList credentials usable after upgrading.
+        (store.getKey(previousAlias, null) as? SecretKey)?.let { return it }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
             init(KeyGenParameterSpec.Builder("reianix_anilist_token_v1", KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())

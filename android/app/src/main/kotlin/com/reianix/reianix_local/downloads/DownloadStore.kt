@@ -446,7 +446,13 @@ class DownloadStore(context: Context) {
 internal object DownloadSecrets {
     @Synchronized private fun key(): SecretKey {
         val store=KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        return (store.getKey("reianix.downloads",null) as? SecretKey) ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore").apply {
+        val currentAlias = "reianix.downloads"
+        val previousAlias = com.reianix.reianix_local.ReiAnixLegacyIdentity.previousPrefix + ".downloads"
+        (store.getKey(currentAlias,null) as? SecretKey)?.let { return it }
+        // AndroidKeyStore AES keys are non-exportable: reuse an existing alias
+        // so downloads queued before the branding change remain decryptable.
+        (store.getKey(previousAlias,null) as? SecretKey)?.let { return it }
+        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore").apply {
             init(KeyGenParameterSpec.Builder("reianix.downloads",KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
         }.generateKey()
