@@ -16,7 +16,7 @@ class DownloadHttpNaviBehaviorTest {
         fun get(name:String)=headers[name.lowercase()].orEmpty()
     }
     private fun serve(responses:List<String>,client:(String,List<Seen>)->Unit) {
-        ServerSocket(0,10,InetAddress.getLoopbackAddress()).use {server ->
+        ServerSocket(0,10,InetAddress.getByName("127.0.0.1")).use {server ->
             server.soTimeout=8_000
             val received=java.util.Collections.synchronizedList(mutableListOf<Seen>())
             val worker=thread(isDaemon=true) {
@@ -102,8 +102,8 @@ class DownloadHttpNaviBehaviorTest {
         assertEquals("",seen[1].get("Range"))
     }
     @Test fun crossOriginRedirectDropsCookiesAuthorizationAndCustomHeaders() {
-        ServerSocket(0,10,InetAddress.getLoopbackAddress()).use {first ->
-            ServerSocket(0,10,InetAddress.getLoopbackAddress()).use {second ->
+        ServerSocket(0,10,InetAddress.getByName("127.0.0.1")).use {first ->
+            ServerSocket(0,10,InetAddress.getByName("127.0.0.1")).use {second ->
                 first.soTimeout=8_000
                 second.soTimeout=8_000
                 val received=java.util.Collections.synchronizedMap(mutableMapOf<String,String>())
