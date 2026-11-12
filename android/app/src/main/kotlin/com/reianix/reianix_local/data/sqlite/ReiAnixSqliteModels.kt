@@ -1,7 +1,7 @@
-package com.reiflix.reiflix_local.data.sqlite
+package com.reianix.reianix_local.data.sqlite
 
 import android.database.Cursor
-import com.reiflix.reiflix_local.data.contract.ReiAnixContractValues
+import com.reianix.reianix_local.data.contract.ReiAnixContractValues
 
 /**
  * Persistence records mirror columns in LibraryStore's existing schema.

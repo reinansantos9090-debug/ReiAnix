@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.sqlite
+package com.reianix.reianix_local.data.sqlite
 
 import java.io.File
 import android.content.ContentValues
@@ -9,7 +9,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import org.json.JSONArray
 import org.json.JSONObject
-import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+import com.reianix.reianix_local.data.media.MediaTitleNormalizer
 import org.json.JSONException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1536,8 +1536,8 @@ class ReiAnixSqliteLibraryRepository(
     ): NativeLibraryIndexReport = withContext(Dispatchers.IO) {
             require(snapshot.operationId.isNotBlank()) { "A scan operation ID is required." }
             require(snapshot.scopeRoot.isNotBlank()) { "An explicit scope root is required." }
-            val bridge=com.reiflix.reiflix_local.downloads.DownloadCatalogBridge
-            if(bridge.reconcile(database))com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+            val bridge=com.reianix.reianix_local.downloads.DownloadCatalogBridge
+            if(bridge.reconcile(database))com.reianix.reianix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
             val downloadAliases=bridge.aliases(database,snapshot.items.map {it.location})
             var transactionReport: NativeLibraryIndexReport? = null
             val report = database.transaction(

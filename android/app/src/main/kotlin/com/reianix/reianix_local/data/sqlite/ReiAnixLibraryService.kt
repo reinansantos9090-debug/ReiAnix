@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.sqlite
+package com.reianix.reianix_local.data.sqlite
 
 import kotlinx.coroutines.sync.Mutex
 import org.json.JSONObject
