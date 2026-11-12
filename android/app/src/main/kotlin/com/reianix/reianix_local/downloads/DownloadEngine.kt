@@ -133,16 +133,26 @@ class DownloadEngine(private val context: Context) {
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             val disposition=connection.getHeaderField("Content-Disposition")
             store.mutate(id) {
-                if(it.optBoolean("automaticName") && it.optLong("episodeId")==0L &&
-                    !it.has("playerCapture")) {
-                    val serverName=android.webkit.URLUtil.guessFileName(secret.getString("url"),disposition,contentType)
-                    // Never replace an already selected episode filename with an
-                    // opaque CDN name such as videoplayback.bin.
-                    val proposed=serverName
-                    if(!DownloadIdentity.isGenericMediaName(proposed) && proposed.isNotBlank() &&
-                        proposed !in setOf(".","..") && proposed.length<=200 &&
-                        proposed.none { c -> c=='/' || c=='\\' || c.code<32 }) {
-                        it.put("name",proposed).put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(proposed)}")
+                if(it.optBoolean("automaticName") && !it.has("playerCapture")) {
+                    val candidate=DownloadResourceIdentity.bestName(disposition,
+                        connection.url.toString(),contentType)
+                        ?: DownloadResourceIdentity.bestName(null,secret.getString("url"),contentType)
+                    if(!candidate.isNullOrBlank() && candidate.length<=200 &&
+                        candidate.none { char -> char=='/' || char=='\\' || char.code<32 } &&
+                        !DownloadIdentity.isGenericMediaName(candidate)) {
+                        val previous=it.optString("name")
+                        val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\\s._-]*\\d+""")
+                            .containsMatchIn(previous)
+                        val matchingStem=previous.substringBeforeLast('.',previous)
+                            .equals(candidate.substringBeforeLast('.',candidate),true)
+                        if(!episodeContext &&
+                            (DownloadIdentity.isGenericMediaName(previous) || matchingStem)) {
+                            it.put("name",candidate).put("serverNameResolved",true)
+                            // Do not change the virtual player URI of an already
+                            // registered library episode. Only its final display name.
+                            if(it.optLong("episodeId")==0L)
+                                it.put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode(candidate)}")
+                        }
                     }
                 }
                 it.put("total",total).put("validator",newValidator ?: "")
