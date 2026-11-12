@@ -146,9 +146,13 @@ internal object DownloadSizeProbe {
                 DownloadHttp.validateUrl(url)
                 val path=URL(url).path.lowercase(Locale.ROOT)
                 val manifest=hlsHint || path.endsWith(".m3u8")
+                if(path.endsWith(".mpd"))
+                    return@withContext DownloadDashMetadata.inspect(url,headers).copy(name=hint)
                 if(manifest) return@withContext inspectHls(url,headers).copy(name=hint)
                 trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen",hint) }
                 val response=probe(url,headers)
+                if(response.dash) return@withContext DownloadDashMetadata.inspect(url,headers)
+                    .copy(name=response.name ?: hint, mime=response.mime)
                 if(response.manifest) return@withContext inspectHls(url,headers)
                     .copy(name=response.name ?: hint, mime=response.mime)
                 if(response.length!=null)
@@ -165,7 +169,8 @@ internal object DownloadSizeProbe {
         }
 
     private data class Headers(
-        val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String
+        val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String,
+        val dash:Boolean = false
     )
 
     /**
@@ -189,7 +194,10 @@ internal object DownloadSizeProbe {
                     connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
                 val code=c.responseCode
                 val mime=c.contentType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
-                if(mime.startsWith("video/") || mime.contains("mpegurl")) bestMime=mime
+                if(mime.startsWith("video/") || mime.contains("mpegurl") || mime.contains("dash+xml"))
+                    bestMime=mime
+                if(mime.contains("dash+xml"))
+                    return Headers(null,false,bestName,bestMime,"dash-manifest",dash=true)
                 val resolved=DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
                     c.url.toString(),c.contentType)
                 if(resolved!=null && (bestName==null ||
