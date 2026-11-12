@@ -85,12 +85,20 @@ class DownloadsActivity: ComponentActivity() {
         incomingName=intent.getStringExtra("downloadName").orEmpty()
         // An external app can share "Tamanho 141 MB" as text or title.
         // UI text visible only in that other app is NOT accessible to ReiAnix.
+        val declaredSize=sequenceOf("contentLength","downloadSize","fileSize","size")
+            .mapNotNull {key ->
+                when(val candidate=runCatching {intent.extras?.get(key)}.getOrNull()) {
+                    is Number -> candidate.toLong()
+                    is String -> candidate.toLongOrNull()
+                    else -> null
+                }?.takeIf{it in 1024L..(2L*1024*1024*1024*1024)}
+            }.firstOrNull()
         incomingSizeHint=DownloadSizeIntelligence.fromSharedMetadata(
             sharedText,
             incomingTitle,
             intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty(),
             intent.getStringExtra("description").orEmpty()
-        )?.bytes
+        )?.bytes ?: declaredSize
         incomingCapture=intent.getStringExtra("playerCapture")?.takeIf {it.length<=32768}
         incomingHlsHint=intent.getBooleanExtra("hlsHint",false)
         intent.removeExtra("playerCapture")
@@ -324,12 +332,18 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         // The probe may fail even though the source app supplied an estimated
         // size. Keep useful evidence; never turn an estimate into Content-Length.
         val fallback=providedSize?.takeIf{target==initialUrl.trim()}
-        sizeResult=when {
-            (inspected.bytes ?: 0L)<=0L -> fallback ?: inspected
-            fallback==null -> inspected
-            inspected.exact || !fallback.exact -> inspected
-            else -> fallback
-        }
+        val combined=DownloadSizeIntelligence.reconcile(
+            fallback?.bytes?.takeIf{it>0L}?.let{
+                DownloadSizeIntelligence.Evidence(it,fallback.exact,fallback.source)
+            },
+            inspected.bytes?.takeIf{it>0L}?.let {
+                DownloadSizeIntelligence.Evidence(it,inspected.exact,inspected.source)
+            }
+        )
+        sizeResult=combined?.let {
+            DownloadSizeProbe.Result(it.bytes,it.exact,it.source,
+                inspected.name ?: fallback?.name,inspected.mime ?: fallback?.mime)
+        } ?: inspected
         sizeProbeUrl=target
         if(!nameTouched && editing==null) {
             val suggested=sizeResult?.name
