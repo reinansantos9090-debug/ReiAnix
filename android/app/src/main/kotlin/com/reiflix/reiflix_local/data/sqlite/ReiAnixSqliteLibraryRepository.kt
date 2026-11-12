@@ -28,6 +28,15 @@ class ReiAnixSqliteLibraryRepository(
 ) {
     constructor(context: Context) : this(ReiAnixSqliteDatabase(context))
 
+    /**
+     * One light background pass on app start repairs already-imported seasons and
+     * episode-title groups without clearing app data, rescanning media, or
+     * touching the poster/thumbnail generation queues.
+     */
+    suspend fun reconcileExistingSeries(): Boolean = withContext(Dispatchers.IO) {
+        database.transaction { connection -> SeriesAnimeCoalescer.mergeVerified(connection) }
+    }
+
     suspend fun inspectSchema(): ReiAnixSqliteSchemaSnapshot = withContext(Dispatchers.IO) {
         database.inspectSchema()
     }
