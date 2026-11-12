@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local.data.library
+package com.reianix.reianix_local.data.library
 
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixDurationObservationRecord
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixTimelineSourceRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixDurationObservationRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixEpisodeRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixTimelineSourceRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

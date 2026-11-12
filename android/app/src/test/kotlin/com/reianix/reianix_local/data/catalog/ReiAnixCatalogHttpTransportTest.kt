@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.catalog
+package com.reianix.reianix_local.data.catalog
 
 import java.io.IOException
 import java.net.URI

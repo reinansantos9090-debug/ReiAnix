@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.settings
+package com.reianix.reianix_local.data.settings
 import android.app.Application
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
