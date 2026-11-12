@@ -1621,8 +1621,9 @@ private fun DetailsSeasonCard(
             )
             .semantics {
                 this.selected = selected
-                contentDescription = title + ", " + episodeCountLabel(season.episodes.size)
-                stateDescription = if (selected) "Selecionada" else "Não selecionada"
+                contentDescription = "Selecionar $title"
+                stateDescription = (if (selected) "Selecionada" else "Não selecionada") +
+                    " • " + episodeCountLabel(season.episodes.size)
             },
         shape = ReiAnixTokens.Shapes.card,
         color = if (selected) {
