@@ -160,9 +160,16 @@ internal object DownloadSizeProbe {
                 // Only after the fast, low-cost strategies fail: the advanced
                 // bounded probes cover 416, suffix, multipart and validated
                 // same-origin metadata. A vendor hint is not exact.
-                DownloadAdvancedHttp.inspect(url,headers)?.let { return@withContext it.copy(
-                    name=it.name ?: response.name ?: hint,mime=it.mime ?: response.mime
-                ) }
+                val advanced=DownloadAdvancedHttp.inspect(url,headers)
+                if(advanced?.exact==true)
+                    return@withContext advanced.copy(name=advanced.name ?: response.name ?: hint,
+                        mime=advanced.mime ?: response.mime)
+                val native=DownloadContainerMetadata.inspect(url,headers)
+                if(native!=null && native.exact)
+                    return@withContext Result(native.bytes,true,native.source,response.name ?: hint,response.mime)
+                if(advanced!=null) return@withContext advanced.copy(name=advanced.name ?: response.name ?: hint,
+                    mime=advanced.mime ?: response.mime)
+                native?.let {return@withContext Result(it.bytes,false,it.source,response.name ?: hint,response.mime)}
                 Result(null,false,"unknown",response.name ?: hint,response.mime)
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
             catch(_: Exception) { Result(null,false,"unknown",hint) }
