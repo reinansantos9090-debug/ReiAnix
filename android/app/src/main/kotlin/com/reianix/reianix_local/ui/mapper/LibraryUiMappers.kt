@@ -1,18 +1,18 @@
-package com.reiflix.reiflix_local.ui.mapper
+package com.reianix.reianix_local.ui.mapper
 
-import com.reiflix.reiflix_local.data.contract.ReiAnixContractValues
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixLocalMediaUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind
-import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState
-import com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel
+import com.reianix.reianix_local.data.contract.ReiAnixContractValues
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixContinueWatchingUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixArtworkUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixLocalMediaUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.ui.model.ReiAnixMetadataAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixPresentationState
+import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
 import org.json.JSONArray
 import org.json.JSONException
 

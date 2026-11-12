@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.library
+package com.reianix.reianix_local.ui.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -68,36 +68,36 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import kotlinx.coroutines.flow.collect
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import com.reiflix.reiflix_local.ui.ReiAnixAnimeCard
-import com.reiflix.reiflix_local.ui.ReiAnixIconActionButton
-import com.reiflix.reiflix_local.ui.ReiAnixTopBar
-import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeader
-import com.reiflix.reiflix_local.ui.scroll.ReiAnixScrollAwareHeaderState
-import com.reiflix.reiflix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
-import com.reiflix.reiflix_local.ui.ReiAnixBadge
-import com.reiflix.reiflix_local.ui.ReiAnixBadgeTone
-import com.reiflix.reiflix_local.ui.ReiAnixChip
-import com.reiflix.reiflix_local.ui.ReiAnixCompactButton
-import com.reiflix.reiflix_local.ui.ReiAnixEmptyLibraryState
-import com.reiflix.reiflix_local.ui.ReiAnixRecoverableErrorState
-import com.reiflix.reiflix_local.ui.ReiAnixSearchField
-import com.reiflix.reiflix_local.ui.ReiAnixScannerInProgressState
-import com.reiflix.reiflix_local.ui.ReiAnixSourceUnavailableState
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.presentationStateLabel
-import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
-import com.reiflix.reiflix_local.ui.navigation.navigateToDetails
-import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
-import com.reiflix.reiflix_local.ui.theme.ReiAnixTokens
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixResponsiveMetrics
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
-import com.reiflix.reiflix_local.ui.theme.ReiAnixResponsiveRoot
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixMissingArtworkRetryUiState
+import com.reianix.reianix_local.ui.ReiAnixAnimeCard
+import com.reianix.reianix_local.ui.ReiAnixIconActionButton
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeader
+import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeaderState
+import com.reianix.reianix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
+import com.reianix.reianix_local.ui.ReiAnixBadge
+import com.reianix.reianix_local.ui.ReiAnixBadgeTone
+import com.reianix.reianix_local.ui.ReiAnixChip
+import com.reianix.reianix_local.ui.ReiAnixCompactButton
+import com.reianix.reianix_local.ui.ReiAnixEmptyLibraryState
+import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
+import com.reianix.reianix_local.ui.ReiAnixSearchField
+import com.reianix.reianix_local.ui.ReiAnixScannerInProgressState
+import com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.presentationStateLabel
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
+import com.reianix.reianix_local.ui.navigation.navigateToTopLevel
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.LocalReiAnixPosterSize
+import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixMissingArtworkRetryUiState
 
 @Composable
 fun ReiAnixLibraryRoute(
@@ -235,7 +235,7 @@ fun ReiAnixLibraryScreen(
     onLoadMore: () -> Unit = {},
     onSelectSource: () -> Unit = onRefresh,
 ) {
-    val presentation = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState(
+    val presentation = com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState(
         status = state.status,
         sourceAvailable = state.sourceAvailable,
         sourceState = state.sourceState,
@@ -274,7 +274,7 @@ fun ReiAnixLibraryScreen(
 
 @Composable
 private fun ReiAnixLibraryPresentationScreen(
-    state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
+    state: com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState,
     filters: ReiAnixLibraryFilters,
     cardSize: String = "medium",
     gridDensity: String = "medium",
@@ -487,7 +487,7 @@ private fun LibraryHeader(
 
 @Composable
 private fun ColumnScope.LibraryReadyContent(
-    state: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState,
+    state: com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState,
     cardSize: String = "medium",
     gridDensity: String = "medium",
     filters: ReiAnixLibraryFilters,
@@ -941,7 +941,7 @@ private fun ColumnScope.LibraryReadyContent(
                                 .padding(vertical = ReiAnixTokens.Spacing.lg),
                             contentAlignment = Alignment.Center,
                         ) {
-                            com.reiflix.reiflix_local.ui.ReiAnixLoadingIndicator()
+                            com.reianix.reianix_local.ui.ReiAnixLoadingIndicator()
                         }
                     }
                 }
@@ -1150,7 +1150,7 @@ private fun LibraryAnimeCard(
             }?.progressFraction,
             favorite = anime.favorite,
             watching = episodes.any {
-                it.consumptionState == com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
+                it.consumptionState == com.reianix.reianix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
             },
             watched = episodes.any { it.isWatched },
             completed = completed,
@@ -1169,8 +1169,8 @@ private fun LibraryAnimeCard(
         completed = renderData.completed,
         modifier = modifier,
         onClick = onClick,
-        bottomBadgeText = com.reiflix.reiflix_local.downloads.downloadLibraryLabel(animeId = anime.id) ?: presentationStateLabel(anime.presentationState) ?: when {
-            anime.mediaKind == com.reiflix.reiflix_local.ui.model.ReiAnixMediaKind.MOVIE -> "Filme"
+        bottomBadgeText = com.reianix.reianix_local.downloads.downloadLibraryLabel(animeId = anime.id) ?: presentationStateLabel(anime.presentationState) ?: when {
+            anime.mediaKind == com.reianix.reianix_local.ui.model.ReiAnixMediaKind.MOVIE -> "Filme"
             renderData.availableCount > 0 -> renderData.availableCount.toString() + if (renderData.availableCount == 1) " episódio" else " episódios"
             else -> null
         },

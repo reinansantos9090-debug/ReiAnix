@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.ui.host
+package com.reianix.reianix_local.ui.host
 
 import android.os.SystemClock
 import android.view.View
@@ -19,25 +19,25 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.reiflix.reiflix_local.MainActivity
-import com.reiflix.reiflix_local.ReiAnixBootstrapPhase
-import com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus
-import com.reiflix.reiflix_local.R
-import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
-import com.reiflix.reiflix_local.ui.theme.LocalReiAnixPosterSize
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixNavigationHost
-import com.reiflix.reiflix_local.ui.navigation.ReiAnixRoutes
-import com.reiflix.reiflix_local.ui.navigation.navigateToMyList
-import com.reiflix.reiflix_local.ui.navigation.navigateToCollector
-import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeRoute
-import com.reiflix.reiflix_local.ui.navigation.navigateToTopLevel
-import com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsRoute
-import com.reiflix.reiflix_local.ui.recovery.ReiAnixRecoveryRoute
-import com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFolderOnboarding
-import com.reiflix.reiflix_local.ui.storage.ReiAnixStorageRoute
-import com.reiflix.reiflix_local.viewmodel.ReiAnixLibraryViewModel
-import com.reiflix.reiflix_local.viewmodel.ReiAnixSettingsViewModel
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.MainActivity
+import com.reianix.reianix_local.ReiAnixBootstrapPhase
+import com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus
+import com.reianix.reianix_local.R
+import com.reianix.reianix_local.ui.ReiAnixComposeRoot
+import com.reianix.reianix_local.ui.theme.LocalReiAnixPosterSize
+import com.reianix.reianix_local.ui.navigation.ReiAnixNavigationHost
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToMyList
+import com.reianix.reianix_local.ui.navigation.navigateToCollector
+import com.reianix.reianix_local.ui.organize.ReiAnixOrganizeRoute
+import com.reianix.reianix_local.ui.navigation.navigateToTopLevel
+import com.reianix.reianix_local.ui.settings.ReiAnixSettingsRoute
+import com.reianix.reianix_local.ui.recovery.ReiAnixRecoveryRoute
+import com.reianix.reianix_local.ui.storage.ReiAnixLibraryFolderOnboarding
+import com.reianix.reianix_local.ui.storage.ReiAnixStorageRoute
+import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.viewmodel.ReiAnixSettingsViewModel
+import com.reianix.reianix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -276,7 +276,7 @@ class ReiAnixComposeLibraryHost(
                         navController = navController,
                         homeViewModel = libraryViewModel,
                         myList = {
-                            com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListRoute(
+                            com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute(
                                 navController = navController,
                                 viewModel = libraryViewModel,
                                 cardSize = appearanceCardSize,
@@ -347,7 +347,7 @@ class ReiAnixComposeLibraryHost(
                                 scanState = libraryState.scanState,
                                 lastScanStatus = libraryState.lastScanStatus,
                                 libraryFoldersContent = { onFoldersBack ->
-                                    com.reiflix.reiflix_local.ui.storage.ReiAnixLibraryFoldersRoute(
+                                    com.reianix.reianix_local.ui.storage.ReiAnixLibraryFoldersRoute(
                                         libraryViewModel,
                                         onBack = onFoldersBack,
                                         onSelectDefaultReiAnixFolder = {

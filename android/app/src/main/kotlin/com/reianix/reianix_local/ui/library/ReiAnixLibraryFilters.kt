@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local.ui.library
+package com.reianix.reianix_local.ui.library
 
-import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
 
 data class ReiAnixLibraryFilters(
     val query: String = "",
@@ -115,7 +115,7 @@ object ReiAnixLibraryFilterEngine {
             } else {
                 episodes.map { episode ->
                     val duration = episode.durationSeconds
-                    if (episode.media.availability == com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE &&
+                    if (episode.media.availability == com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE &&
                         duration != null && duration.isFinite() && duration > 0.0
                     ) {
                         ((episode.progressSeconds ?: 0.0).coerceAtLeast(0.0) / duration).coerceIn(0.0, 1.0)
