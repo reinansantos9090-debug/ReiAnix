@@ -108,13 +108,13 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
             }
             connection.update("anime", values, "id = ?", arrayOf(patch.animeId.toString()))
-            // Automatically reconcile previously split halves (numbered episodes
-            // versus named episodes) as soon as both share a verified AniList ID.
-            // The current album survives so this method can return its record.
+            // Combine identified episode groups and sequels without undoing the
+            // association if the updated season is absorbed into its first season.
             if(!manual) SeriesAnimeCoalescer.mergeVerified(connection, preferredId=patch.animeId)
+            val canonicalId=SeriesAnimeCoalescer.survivingAlbumId(connection,patch.animeId)
             connection.rawQuery(
                 "SELECT * FROM anime WHERE id = ? LIMIT 1",
-                arrayOf(patch.animeId.toString()),
+                arrayOf(canonicalId.toString()),
             ).use { cursor ->
                 if (cursor.moveToFirst()) cursor.toAnimeRecord()
                 else throw NoSuchElementException("Anime disappeared while applying AniList metadata.")
