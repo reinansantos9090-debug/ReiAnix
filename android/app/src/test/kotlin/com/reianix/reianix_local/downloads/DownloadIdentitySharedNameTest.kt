@@ -22,7 +22,8 @@ class DownloadIdentitySharedNameTest {
     }
 
     @Test fun unknownEpisodeNumberIsNotInvented() {
-        assertEquals("index.m3u8",DownloadIdentity.suggestedName(
+        // Series name is useful even without a known episode number.
+        assertEquals("Solo Leveling.mp4",DownloadIdentity.suggestedName(
             "Solo Leveling",
             "https://cdn.example/index.m3u8", "index.m3u8"))
         assertTrue(DownloadIdentity.isGenericMediaName("videoplayback.bin.mp4"))
