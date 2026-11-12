@@ -1463,9 +1463,12 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 db.execSQL(
                     """INSERT INTO anime(id,lookup_title,title,added_at,anilist_id,
                        media_kind,episodes_count) VALUES(
-                       ?,'pass the monster meat milady','Pass the Monster Meat, Milady!',
+                       ? , ? ,'Pass the Monster Meat, Milady!',
                        1100,?,'series',12)""",
-                    arrayOf(id,remote),
+                    // The canonical schema enforces UNIQUE lookup_title. Two
+                    // posters can display the same resolved AniList title while
+                    // retaining distinct original local lookup identities.
+                    arrayOf(id,"pass-the-monster-meat-local-group-$id",remote),
                 )
             }
             album(301,80001)
