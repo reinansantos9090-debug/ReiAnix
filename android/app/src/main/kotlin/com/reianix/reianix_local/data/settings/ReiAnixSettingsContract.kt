@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.settings
+package com.reianix.reianix_local.data.settings
 
 /**
  * Typed compatibility contract for the preference keys currently defined by

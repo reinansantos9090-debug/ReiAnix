@@ -1,8 +1,8 @@
-package com.reiflix.reiflix_local.data.organize
+package com.reianix.reianix_local.data.organize
 
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

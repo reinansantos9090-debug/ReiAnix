@@ -1,24 +1,24 @@
-package com.reiflix.reiflix_local.data.settings
+package com.reianix.reianix_local.data.settings
 
 import android.content.Context
 import android.content.Intent
-import com.reiflix.reiflix_local.MainActivity
+import com.reianix.reianix_local.MainActivity
 import android.os.FileObserver
 import android.util.Log
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteDatabase
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteAccountRepository
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsAccountUiState
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteAccountRepository
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsAccountUiState
 import android.net.Uri
-import com.reiflix.reiflix_local.R
+import com.reianix.reianix_local.R
 import org.json.JSONObject
 import java.util.UUID
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationState
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsOperationUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsOperationState
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsOperationUiState
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -689,7 +689,7 @@ class ReiAnixSettingsRepository(
                     "logout" -> "google_sign_out"
                     else -> "google_account_switch"
                 }
-                val target = Uri.parse("reiflix://native").buildUpon()
+                val target = Uri.parse("reianix://native").buildUpon()
                     .appendQueryParameter("action", nativeAction)
                     .appendQueryParameter("request_id", requestId)
                     .appendQueryParameter("native_account_owner", "true")
@@ -723,7 +723,7 @@ class ReiAnixSettingsRepository(
     }
 
     private fun isNativeGoogleConfigured(): Boolean = runCatching {
-        val clientId = appContext.getString(R.string.reiflix_google_web_client_id).trim()
+        val clientId = appContext.getString(R.string.reianix_google_web_client_id).trim()
         clientId.endsWith(".apps.googleusercontent.com") &&
             clientId.substringBefore(".apps.googleusercontent.com").isNotBlank()
     }.getOrDefault(false)
@@ -1016,7 +1016,7 @@ class ReiAnixSettingsRepository(
                             snapshotState.status
                         },
                         categories = if (persistedPreferences != null && snapshotState.categories.isEmpty()) {
-                            com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsCategoryUiModel.defaultCategories()
+                            com.reianix.reianix_local.ui.settings.ReiAnixSettingsCategoryUiModel.defaultCategories()
                         } else {
                             snapshotState.categories
                         },
@@ -1089,7 +1089,7 @@ class ReiAnixSettingsRepository(
                 status = ReiAnixSettingsLoadStatus.READY,
                 account = canonicalAccountState ?: current.account,
                 categories = current.categories.ifEmpty {
-                    com.reiflix.reiflix_local.ui.settings.ReiAnixSettingsCategoryUiModel.defaultCategories()
+                    com.reianix.reianix_local.ui.settings.ReiAnixSettingsCategoryUiModel.defaultCategories()
                 },
                 settings = ReiAnixSettingsContract.withDefaults(persistedPreferences),
                 error = null,

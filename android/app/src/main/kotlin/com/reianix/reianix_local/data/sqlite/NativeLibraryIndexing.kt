@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.data.sqlite
+package com.reianix.reianix_local.data.sqlite
 
-import com.reiflix.reiflix_local.data.media.MediaTitleNormalizer
+import com.reianix.reianix_local.data.media.MediaTitleNormalizer
 
 data class NativeLibraryScanSnapshot(
     val operationId: String,

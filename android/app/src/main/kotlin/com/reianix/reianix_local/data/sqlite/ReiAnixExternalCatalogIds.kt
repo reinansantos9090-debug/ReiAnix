@@ -1,12 +1,12 @@
-package com.reiflix.reiflix_local.data.sqlite
+package com.reianix.reianix_local.data.sqlite
 
-import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentity
-import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatch
-import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdMappingMatch
-import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogIdentityMatcher
-import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogMediaKind
-import com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogIds
-import com.reiflix.reiflix_local.data.catalog.ReiAnixCatalogAnime
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdentity
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdentityMatch
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdMappingMatch
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdentityMatcher
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogMediaKind
+import com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogIds
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogAnime
 import android.content.ContentValues
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

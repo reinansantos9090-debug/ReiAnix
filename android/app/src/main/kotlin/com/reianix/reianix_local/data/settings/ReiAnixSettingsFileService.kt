@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.data.settings
+package com.reianix.reianix_local.data.settings
 
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteSettingsRepository
+import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -149,7 +149,7 @@ class ReiAnixSettingsFileService(
     companion object {
         const val EXTRA_ACTION = "reianix.settings.file_action"
         const val EXTRA_REQUEST_ID = "reianix.settings.request_id"
-        private const val EXPORT_FORMAT = "reiflix-settings"
+        private const val EXPORT_FORMAT = "reianix-settings"
         const val SCHEMA_VERSION = 2
         val SUPPORTED_SCHEMA_VERSIONS = setOf(1, SCHEMA_VERSION)
         val EXPORT_KEYS = ReiAnixSettingsContract.definitions.keys.toSet()

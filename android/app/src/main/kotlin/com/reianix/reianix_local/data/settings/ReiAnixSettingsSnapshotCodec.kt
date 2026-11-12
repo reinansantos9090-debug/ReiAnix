@@ -1,13 +1,13 @@
-package com.reiflix.reiflix_local.data.settings
+package com.reianix.reianix_local.data.settings
 
-import com.reiflix.reiflix_local.data.contract.booleanOrDefault
-import com.reiflix.reiflix_local.data.contract.intOrDefault
-import com.reiflix.reiflix_local.data.contract.intOrNull
-import com.reiflix.reiflix_local.data.contract.intRequired
-import com.reiflix.reiflix_local.data.contract.longRequired
-import com.reiflix.reiflix_local.data.contract.objectOrDefault
-import com.reiflix.reiflix_local.data.contract.stringOrDefault
-import com.reiflix.reiflix_local.data.contract.stringOrNull
+import com.reianix.reianix_local.data.contract.booleanOrDefault
+import com.reianix.reianix_local.data.contract.intOrDefault
+import com.reianix.reianix_local.data.contract.intOrNull
+import com.reianix.reianix_local.data.contract.intRequired
+import com.reianix.reianix_local.data.contract.longRequired
+import com.reianix.reianix_local.data.contract.objectOrDefault
+import com.reianix.reianix_local.data.contract.stringOrDefault
+import com.reianix.reianix_local.data.contract.stringOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 

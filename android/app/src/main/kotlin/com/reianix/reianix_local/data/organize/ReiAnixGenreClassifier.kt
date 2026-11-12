@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.data.organize
+package com.reianix.reianix_local.data.organize
 
 import java.text.Normalizer
 import java.util.Locale
