@@ -1,45 +1,45 @@
-package com.reiflix.reiflix_local.viewmodel
+package com.reianix.reianix_local.viewmodel
 
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.reiflix.reiflix_local.MainActivity
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
-import com.reiflix.reiflix_local.resolveNativePlaybackStartPosition
-import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublication
-import com.reiflix.reiflix_local.ReiAnixBootstrapState
+import com.reianix.reianix_local.MainActivity
+import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.resolveNativePlaybackStartPosition
+import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import com.reianix.reianix_local.data.artwork.ReiAnixArtworkPublication
+import com.reianix.reianix_local.ReiAnixBootstrapState
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryRepository
-import com.reiflix.reiflix_local.data.library.ReiAnixLibraryDiscoveryService
-import com.reiflix.reiflix_local.data.organize.ReiAnixGenreRegistry
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryService
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryQueryResult
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixAnimeRecord
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixEpisodeRecord
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixFolderRecord
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixArtworkRecord
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
-import com.reiflix.reiflix_local.data.sqlite.toggleAnimePinned
-import com.reiflix.reiflix_local.data.sqlite.setAnimePersonalNote
-import com.reiflix.reiflix_local.data.sqlite.setAnimeUserTags
-import com.reiflix.reiflix_local.data.sqlite.setEpisodeManualIdentification
-import com.reiflix.reiflix_local.storage.SafFileOperations
-import com.reiflix.reiflix_local.data.tracemoe.ReiAnixTraceMoeClient
-import com.reiflix.reiflix_local.data.tracemoe.TraceMoeApiException
-import com.reiflix.reiflix_local.data.tracemoe.TraceMoeFailureKind
-import com.reiflix.reiflix_local.data.tracemoe.TraceMoeEpisodeSample
-import com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentificationProgress
+import com.reianix.reianix_local.data.library.ReiAnixLibraryRepository
+import com.reianix.reianix_local.data.library.ReiAnixLibraryDiscoveryService
+import com.reianix.reianix_local.data.organize.ReiAnixGenreRegistry
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryQueryService
+import com.reianix.reianix_local.data.sqlite.ReiAnixConsumptionService
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryService
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryQueryResult
+import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixEpisodeRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixFolderRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixArtworkRecord
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
+import com.reianix.reianix_local.data.sqlite.toggleAnimePinned
+import com.reianix.reianix_local.data.sqlite.setAnimePersonalNote
+import com.reianix.reianix_local.data.sqlite.setAnimeUserTags
+import com.reianix.reianix_local.data.sqlite.setEpisodeManualIdentification
+import com.reianix.reianix_local.storage.SafFileOperations
+import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeClient
+import com.reianix.reianix_local.data.tracemoe.TraceMoeApiException
+import com.reianix.reianix_local.data.tracemoe.TraceMoeFailureKind
+import com.reianix.reianix_local.data.tracemoe.TraceMoeEpisodeSample
+import com.reianix.reianix_local.data.tracemoe.TraceMoeIdentificationProgress
 import kotlinx.coroutines.flow.receiveAsFlow
-import com.reiflix.reiflix_local.storage.VideoThumbnailExtractor
-import com.reiflix.reiflix_local.bridge.NativeMailbox
-import com.reiflix.reiflix_local.scanner.NativeScanController
-import com.reiflix.reiflix_local.scanner.ScanLifecycleState
+import com.reianix.reianix_local.storage.VideoThumbnailExtractor
+import com.reianix.reianix_local.bridge.NativeMailbox
+import com.reianix.reianix_local.scanner.NativeScanController
+import com.reianix.reianix_local.scanner.ScanLifecycleState
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import kotlinx.coroutines.withContext
@@ -47,10 +47,10 @@ import android.net.Uri
 import java.io.File
 import java.util.Locale
 import java.util.UUID
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPresentationUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryDataState
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiState
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryDataState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -81,23 +81,23 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
-import com.reiflix.reiflix_local.ui.model.ReiAnixHomeLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixContinueWatchingUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjection
-import com.reiflix.reiflix_local.ui.model.ReiAnixSearchFilters
-import com.reiflix.reiflix_local.ui.model.ReiAnixSearchUiState
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilterEngine
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibraryFilters
-import com.reiflix.reiflix_local.ui.library.ReiAnixLibrarySort
-import com.reiflix.reiflix_local.ui.mylist.ReiAnixMyListFilter
-import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeFilters
-import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeCategory
-import com.reiflix.reiflix_local.ui.organize.ReiAnixOrganizeMode
-import com.reiflix.reiflix_local.ui.organize.buildOrganizeCategories
-import com.reiflix.reiflix_local.ui.organize.filterOrganizeAnimes
-import com.reiflix.reiflix_local.ui.search.ReiAnixSearchEngine
+import com.reianix.reianix_local.ui.model.ReiAnixHomeLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixContinueWatchingUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsUiState
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsUiStateProjection
+import com.reianix.reianix_local.ui.model.ReiAnixSearchFilters
+import com.reianix.reianix_local.ui.model.ReiAnixSearchUiState
+import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilterEngine
+import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilters
+import com.reianix.reianix_local.ui.library.ReiAnixLibrarySort
+import com.reianix.reianix_local.ui.mylist.ReiAnixMyListFilter
+import com.reianix.reianix_local.ui.organize.ReiAnixOrganizeFilters
+import com.reianix.reianix_local.ui.organize.ReiAnixOrganizeCategory
+import com.reianix.reianix_local.ui.organize.ReiAnixOrganizeMode
+import com.reianix.reianix_local.ui.organize.buildOrganizeCategories
+import com.reianix.reianix_local.ui.organize.filterOrganizeAnimes
+import com.reianix.reianix_local.ui.search.ReiAnixSearchEngine
 
 private const val REIANIX_PLAYER_ORDER_SENTINEL = 1_000_000.0
 private const val REIANIX_LIBRARY_ALL_ITEMS = 0
@@ -268,9 +268,9 @@ class ReiAnixLibraryViewModel(
             ReiAnixDetailsUiStateProjection.from(state, animeId)
 
         internal fun projectMyListAnimes(
-            animes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
+            animes: List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>,
             selectedFilter: ReiAnixMyListFilter,
-        ): List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel> {
+        ): List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel> {
             val saved = animes.asSequence().filter { it.favorite }
             val filtered = when (selectedFilter) {
                 ReiAnixMyListFilter.ALL,
@@ -283,7 +283,7 @@ class ReiAnixLibraryViewModel(
             }
             return filtered
                 .sortedWith(
-                    compareBy<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel> {
+                    compareBy<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel> {
                         it.title.trim().lowercase()
                     }.thenBy { it.id },
                 )
@@ -292,9 +292,9 @@ class ReiAnixLibraryViewModel(
     }
 
     private data class NativeCatalogState(
-        val status: com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus =
-            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
-        val animes: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel> = emptyList(),
+        val status: com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus =
+            com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+        val animes: List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel> = emptyList(),
         val continueWatching: List<ReiAnixContinueWatchingUiModel> = emptyList(),
         val error: String? = null,
     )
@@ -302,7 +302,7 @@ class ReiAnixLibraryViewModel(
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
     private val nativeCatalogReloadMutex = Mutex()
     // Snapshot rows are a projection cache of SQLite, never an independent writer.
-    private var nativeCatalogRows = emptyList<com.reiflix.reiflix_local.data.sqlite.ReiAnixLibraryCatalogRow>()
+    private var nativeCatalogRows = emptyList<com.reianix.reianix_local.data.sqlite.ReiAnixLibraryCatalogRow>()
     private val episodeThumbnailRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
     // Details can request a new batch after each published artwork projection.
     // Serialize batches per anime so only one Trace.moe stream owns its samples.
@@ -323,7 +323,7 @@ class ReiAnixLibraryViewModel(
     // newer request because that episode is still in flight.
     private val episodeThumbnailRerunRequested = ConcurrentHashMap.newKeySet<Long>()
     private data class EpisodeThumbnailWorkItem(
-        val episode: com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel,
+        val episode: com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel,
         val rawSource: String,
         val existingPath: String?,
         val existingIsUsable: Boolean,
@@ -344,7 +344,7 @@ class ReiAnixLibraryViewModel(
      * not yet been migrated; it is not the writer for favorite/watched mutations.
      */
     private val nativeLibraryRepository = dependencies?.sqliteLibraryRepository
-        ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteLibraryRepository(context)
+        ?: com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository(context)
     /** Shared native genre identity service; uses the same canonical SQLite object. */
     private val nativeGenreRegistry = dependencies?.genreRegistry
         ?: ReiAnixGenreRegistry(nativeLibraryRepository.database)
@@ -353,12 +353,12 @@ class ReiAnixLibraryViewModel(
     private val nativeLibraryService = dependencies?.libraryService
         ?: ReiAnixLibraryService(nativeLibraryRepository)
     private val personalListService = dependencies?.personalListService
-        ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService(
+        ?: com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService(
             nativeLibraryRepository.database,
             nativeLibraryRepository,
         )
     private val consumptionService = dependencies?.consumptionService
-        ?: com.reiflix.reiflix_local.data.sqlite.ReiAnixConsumptionService(nativeLibraryRepository)
+        ?: com.reianix.reianix_local.data.sqlite.ReiAnixConsumptionService(nativeLibraryRepository)
     /** Native projection-only discovery rules use the same canonical library repository. */
     private val nativeLibraryDiscovery = dependencies?.libraryDiscoveryService
         ?: ReiAnixLibraryDiscoveryService(nativeLibraryRepository)
@@ -561,15 +561,15 @@ class ReiAnixLibraryViewModel(
         NativeScanController.progress,
     ) { bridgeState, catalog, scans ->
         val mergedStatus = when {
-            catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING ->
-                if (bridgeState.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR) {
+            catalog.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING ->
+                if (bridgeState.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR) {
                     bridgeState.status
                 } else {
-                    com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
+                    com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
                 }
-            catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
+            catalog.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
                 catalog.animes.isNotEmpty() ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.READY
             else -> catalog.status
         }
 
@@ -622,7 +622,7 @@ class ReiAnixLibraryViewModel(
         viewModelScope,
         SharingStarted.Eagerly,
         repository.state.value.copy(
-            status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+            status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
             animes = emptyList(),
             continueWatching = emptyList(),
         ),
@@ -691,7 +691,7 @@ class ReiAnixLibraryViewModel(
      * The underlying entities still come exclusively from the repository's
      * single canonical snapshot.
      */
-    private val canonicalCatalog: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
+    private val canonicalCatalog: StateFlow<List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>> =
         uiState
             .map { it.animes }
             .distinctUntilChanged()
@@ -707,7 +707,7 @@ class ReiAnixLibraryViewModel(
             state.copy(
                 animes = emptyList(),
                 continueWatching = emptyList(),
-                storage = com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState(),
+                storage = com.reianix.reianix_local.ui.model.ReiAnixStorageUiState(),
                 scanInProgress = false,
                 scanState = "IDLE",
                 lastCommandId = null,
@@ -723,7 +723,7 @@ class ReiAnixLibraryViewModel(
             uiState.value.copy(
                 animes = emptyList(),
                 continueWatching = emptyList(),
-                storage = com.reiflix.reiflix_local.ui.model.ReiAnixStorageUiState(),
+                storage = com.reianix.reianix_local.ui.model.ReiAnixStorageUiState(),
                 scanInProgress = false,
                 scanState = "IDLE",
                 lastCommandId = null,
@@ -841,27 +841,27 @@ class ReiAnixLibraryViewModel(
                 ReiAnixLibraryDataState.CANONICAL_READY_PAGE_READY
             canonicalReady ->
                 ReiAnixLibraryDataState.CANONICAL_READY
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ||
+            source.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ||
                 source.sourceState.uppercase() in setOf("UNAVAILABLE", "NOT_CONFIGURED") ->
                 ReiAnixLibraryDataState.SOURCE_UNAVAILABLE
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR ->
+            source.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR ->
                 ReiAnixLibraryDataState.CANONICAL_ERROR
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING ->
+            source.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING ->
                 ReiAnixLibraryDataState.INITIAL_LOADING
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY ->
+            source.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY ->
                 ReiAnixLibraryDataState.CANONICAL_EMPTY
             else ->
                 ReiAnixLibraryDataState.INITIAL_LOADING
         }
         val status = when (dataState) {
             ReiAnixLibraryDataState.CANONICAL_ERROR ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
             ReiAnixLibraryDataState.CANONICAL_EMPTY ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
             ReiAnixLibraryDataState.SOURCE_UNAVAILABLE ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE
             else -> if (canonicalReady) {
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.READY
             } else {
                 source.status
             }
@@ -882,7 +882,7 @@ class ReiAnixLibraryViewModel(
             ReiAnixLibraryPresentationUiState(),
         )
 
-    val filteredLibraryAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
+    val filteredLibraryAnimes: StateFlow<List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>> =
         combine(
             canonicalCatalog,
             pagedLibraryState,
@@ -929,17 +929,17 @@ class ReiAnixLibraryViewModel(
     ) { source, animes ->
         val savedCount = animes.count { it.favorite }
         val status = when {
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE
-            source.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING &&
+            source.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR ->
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+            source.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE
+            source.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING &&
                 animes.isEmpty() ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
             savedCount > 0 ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.READY
             else ->
-                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
         }
         source.copy(
             status = status,
@@ -964,7 +964,7 @@ class ReiAnixLibraryViewModel(
      * Membership remains the existing favorite flag; the remaining filters
      * only derive subsets from that same immutable snapshot.
      */
-    val myListAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
+    val myListAnimes: StateFlow<List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>> =
         combine(
             canonicalCatalog,
             myListFilter,
@@ -1023,7 +1023,7 @@ class ReiAnixLibraryViewModel(
      * Details and Organize. Exposing this flow does not create a second source
      * of truth or duplicate the catalog in memory.
      */
-    val searchCatalog: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>>
+    val searchCatalog: StateFlow<List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>>
         get() = canonicalCatalog
 
     /**
@@ -1091,7 +1091,7 @@ class ReiAnixLibraryViewModel(
             emptyList(),
         )
 
-    val organizeVisibleAnimes: StateFlow<List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>> =
+    val organizeVisibleAnimes: StateFlow<List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>> =
         combine(
             canonicalCatalog,
             searchIndex,
@@ -1231,7 +1231,7 @@ class ReiAnixLibraryViewModel(
     }
 
     private data class SearchRequest(
-        val catalog: List<com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel>,
+        val catalog: List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>,
         val requestedQuery: String,
         val settledQuery: String,
         val filters: ReiAnixSearchFilters,
@@ -1657,7 +1657,7 @@ class ReiAnixLibraryViewModel(
 
     private suspend fun runTraceMoeIdentificationAttempt(
         animeId: Long,
-        integration: com.reiflix.reiflix_local.data.anilist.ReiAnixAniListIntegrationService,
+        integration: com.reianix.reianix_local.data.anilist.ReiAnixAniListIntegrationService,
         prepareMissingThumbnails: Boolean,
     ): Boolean = coroutineScope {
         val channel = Channel<TraceMoeEpisodeSample>(Channel.UNLIMITED)
@@ -1987,7 +1987,7 @@ class ReiAnixLibraryViewModel(
         }
     }
 
-    private fun episodeThumbnailSource(episode: com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel): String? =
+    private fun episodeThumbnailSource(episode: com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel): String? =
         episode.media.reference?.trim()?.takeIf(String::isNotEmpty)
             ?: episode.media.uri?.trim()?.takeIf(String::isNotEmpty)
             ?: episode.media.path?.trim()?.takeIf(String::isNotEmpty)
@@ -2066,10 +2066,10 @@ class ReiAnixLibraryViewModel(
             if (dependencies != null) {
                 dependencies.bootstrap.state.first { state ->
                     !state.recoveryRequired &&
-                        state.stage == com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY &&
+                        state.stage == com.reianix.reianix_local.ReiAnixBootstrapStage.READY &&
                         state.persistenceStatus in setOf(
-                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
-                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+                            com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                            com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
                         )
                 }
             }
@@ -2094,10 +2094,10 @@ class ReiAnixLibraryViewModel(
             viewModelScope.launch {
                 dependencies.bootstrap.state.first { state ->
                     !state.recoveryRequired &&
-                        state.stage == com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY &&
+                        state.stage == com.reianix.reianix_local.ReiAnixBootstrapStage.READY &&
                         state.persistenceStatus in setOf(
-                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
-                            com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+                            com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                            com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
                         )
                 }
                 startCanonicalConsumersAfterDatabaseValidation()
@@ -2221,7 +2221,7 @@ class ReiAnixLibraryViewModel(
         }
 
         viewModelScope.launch {
-            com.reiflix.reiflix_local.downloads.DownloadEvents.catalog.collectLatest {
+            com.reianix.reianix_local.downloads.DownloadEvents.catalog.collectLatest {
                 refreshNativeCatalog()
             }
         }
@@ -2256,17 +2256,17 @@ class ReiAnixLibraryViewModel(
         val state = appDependencies?.bootstrap?.state?.value ?: return false
         if (
             state.recoveryRequired ||
-            state.stage != com.reiflix.reiflix_local.ReiAnixBootstrapStage.READY ||
+            state.stage != com.reianix.reianix_local.ReiAnixBootstrapStage.READY ||
             state.persistenceStatus !in setOf(
-                com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
-                com.reiflix.reiflix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
+                com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus.HEALTHY,
+                com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus.NOT_CREATED,
             )
         ) return false
 
         startCanonicalConsumersAfterDatabaseValidation()
         refreshNativeCatalog()
-        return nativeCatalogState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
-            nativePagedLibraryState.value.status != com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+        return nativeCatalogState.value.status != com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR &&
+            nativePagedLibraryState.value.status != com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
     }
 
     private suspend fun refreshNativeCatalog(affectedAnimeIds: Set<Long>? = null) {
@@ -2306,14 +2306,14 @@ class ReiAnixLibraryViewModel(
                 val unchanged = if (canPatch) nativeCatalogState.value.animes
                     .filterNot { it.id in affectedAnimeIds.orEmpty() }.associateBy { it.id } else emptyMap()
                 val projected = withContext(Dispatchers.IO) {
-                    com.reiflix.reiflix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(rows, unchanged)
+                    com.reianix.reianix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(rows, unchanged)
                 }
                 nativeCatalogRows = rows
                 nativeCatalogState.value = NativeCatalogState(
                     status = if (projected.animes.isEmpty()) {
-                        com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                        com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
                     } else {
-                        com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                        com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.READY
                     },
                     animes = projected.animes,
                     continueWatching = projected.continueWatching,
@@ -2343,12 +2343,12 @@ class ReiAnixLibraryViewModel(
                 Log.e(TAG, "Native canonical library projection failed", error)
                 val previous = nativeCatalogState.value
                 nativeCatalogState.value = previous.copy(
-                    status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
+                    status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
                     error = error.message ?: error::class.java.simpleName,
                 )
                 if (previous.animes.isEmpty()) {
                     nativePagedLibraryState.value = nativePagedLibraryState.value.copy(
-                        status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
+                        status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR,
                         isLoading = false,
                         error = error.message ?: "Não foi possível ler a biblioteca SQLite.",
                     )
@@ -2390,7 +2390,7 @@ class ReiAnixLibraryViewModel(
         val previous = nativePagedLibraryState.value
         nativePagedLibraryState.value = if (reset) {
             ReiAnixLibraryPagedUiState(
-                status = com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+                status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
                 isLoading = true,
                 pageSize = normalizedPageSize,
                 generation = generation,
@@ -2419,7 +2419,7 @@ class ReiAnixLibraryViewModel(
 
         viewModelScope.launch(Dispatchers.Default) {
             val catalog = nativeCatalogState.value
-            if (catalog.status == com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING) return@launch
+            if (catalog.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING) return@launch
             if (generation != nativePageGeneration.get()) return@launch
 
             val offsetLong = requestedPage.toLong() * normalizedPageSize.toLong()
@@ -2452,7 +2452,7 @@ class ReiAnixLibraryViewModel(
                     if (missingIds.isNotEmpty()) {
                         nativePagedLibraryState.value = current.copy(
                             status = if (current.animes.isEmpty()) {
-                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
                             } else current.status,
                             isLoading = false,
                             error = "A consulta SQLite encontrou alterações concorrentes; a biblioteca será relida.",
@@ -2471,9 +2471,9 @@ class ReiAnixLibraryViewModel(
                     }
                     nativePagedLibraryState.value = currentState.copy(
                         status = if (pageResult.totalCount > 0) {
-                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.READY
+                            com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.READY
                         } else {
-                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                            com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
                         },
                         animes = pageAnimes,
                         totalCount = pageResult.totalCount,
@@ -2491,7 +2491,7 @@ class ReiAnixLibraryViewModel(
                     if (currentState.generation != generation) return@launch
                     nativePagedLibraryState.value = currentState.copy(
                         status = if (requestedPage == 0) {
-                            com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
+                            com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
                         } else currentState.status,
                         animes = if (requestedPage == 0) emptyList() else currentState.animes,
                         totalCount = if (requestedPage == 0) 0 else currentState.totalCount,
@@ -2508,7 +2508,7 @@ class ReiAnixLibraryViewModel(
                     if (currentState.generation == generation) {
                         nativePagedLibraryState.value = currentState.copy(
                             status = if (currentState.animes.isEmpty()) {
-                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
                             } else currentState.status,
                             isLoading = false,
                             requestId = null,
@@ -2523,7 +2523,7 @@ class ReiAnixLibraryViewModel(
                     if (currentState.generation == generation) {
                         nativePagedLibraryState.value = currentState.copy(
                             status = if (currentState.animes.isEmpty()) {
-                                com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
+                                com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
                             } else currentState.status,
                             isLoading = false,
                             requestId = null,
@@ -2639,15 +2639,15 @@ class ReiAnixLibraryViewModel(
         viewModelScope.launch {
             _personalListMutationError.value = null
             when (val result = personalListService.toggle(animeId)) {
-                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> {
+                is com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> {
                     refreshNativeCatalog()
                     repository.publishCatalog()
                 }
-                com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
+                com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
                     _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
-                com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
+                com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
                     _personalListMutationError.value = "Minha Lista foi alterada por outra operação. Atualize e tente novamente."
-                is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Failure ->
+                is com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result.Failure ->
                     _personalListMutationError.value = result.cause.message
                         ?.takeIf(String::isNotBlank)
                         ?.let { "Não foi possível salvar Minha Lista: $it" }
@@ -2667,20 +2667,20 @@ class ReiAnixLibraryViewModel(
     }
 
     private suspend fun updatePersonalListMembership(
-        operation: suspend () -> com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result<Boolean>,
-    ): com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result<Boolean> {
+        operation: suspend () -> com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result<Boolean>,
+    ): com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result<Boolean> {
         _personalListMutationError.value = null
         val result = operation()
         when (result) {
-            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> {
+            is com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result.Success -> {
                 refreshNativeCatalog()
                 repository.publishCatalog()
             }
-            com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
+            com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result.NotFound ->
                 _personalListMutationError.value = "Este anime não existe mais na biblioteca local."
-            com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
+            com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result.Conflict ->
                 _personalListMutationError.value = "Minha Lista foi alterada por outra operação. Atualize e tente novamente."
-            is com.reiflix.reiflix_local.data.sqlite.ReiAnixPersonalListService.Result.Failure ->
+            is com.reianix.reianix_local.data.sqlite.ReiAnixPersonalListService.Result.Failure ->
                 _personalListMutationError.value = result.cause.message
                     ?.takeIf(String::isNotBlank)
                     ?.let { "Não foi possível salvar Minha Lista: $it" }
@@ -3017,7 +3017,7 @@ class ReiAnixLibraryViewModel(
                     ?: episode.fileName.trim().takeIf { it.isNotEmpty() }
                     ?: "Episódio"
 
-                val commandUri = Uri.parse("reiflix://native").buildUpon()
+                val commandUri = Uri.parse("reianix://native").buildUpon()
                     .appendQueryParameter("action", "play")
                     .appendQueryParameter("request_id", requestId)
                     .appendQueryParameter("protocol_version", "2")

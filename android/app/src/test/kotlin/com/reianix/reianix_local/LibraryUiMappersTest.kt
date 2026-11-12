@@ -1,13 +1,13 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 
-import com.reiflix.reiflix_local.ui.mapper.LibraryUiMappers
-import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
-import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiStateProjection
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryLoadStatus
-import com.reiflix.reiflix_local.ui.model.ReiAnixLibraryUiState
-import com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixMetadataAvailability
-import com.reiflix.reiflix_local.ui.model.ReiAnixPresentationState
+import com.reianix.reianix_local.ui.mapper.LibraryUiMappers
+import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsUiStateProjection
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixMetadataAvailability
+import com.reianix.reianix_local.ui.model.ReiAnixPresentationState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -166,10 +166,10 @@ class LibraryUiMappersTest {
 
     @Test
     fun durationFormatterDistinguishesUnknownFromKnownDuration() {
-        assertEquals("—", com.reiflix.reiflix_local.ui.formatDurationLabel(0.0))
-        assertEquals("1:05", com.reiflix.reiflix_local.ui.formatDurationLabel(65.0))
-        assertEquals("2:05", com.reiflix.reiflix_local.ui.formatDurationLabel(125.0))
-        assertEquals("1:02:05", com.reiflix.reiflix_local.ui.formatDurationLabel(3725.0))
+        assertEquals("—", com.reianix.reianix_local.ui.formatDurationLabel(0.0))
+        assertEquals("1:05", com.reianix.reianix_local.ui.formatDurationLabel(65.0))
+        assertEquals("2:05", com.reianix.reianix_local.ui.formatDurationLabel(125.0))
+        assertEquals("1:02:05", com.reianix.reianix_local.ui.formatDurationLabel(3725.0))
     }
 
     @Test
@@ -223,7 +223,7 @@ class LibraryUiMappersTest {
     }
 
     private fun readyDetailsLibraryState(
-        anime: com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel,
+        anime: com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel,
     ) = ReiAnixLibraryUiState(
         status = ReiAnixLibraryLoadStatus.READY,
         revision = 1L,

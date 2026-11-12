@@ -1,4 +1,4 @@
-package com.reiflix.reiflix_local.viewmodel
+package com.reianix.reianix_local.viewmodel
 
 import androidx.annotation.Keep
 import androidx.lifecycle.ViewModel

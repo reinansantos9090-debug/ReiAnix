@@ -1,7 +1,7 @@
-package com.reiflix.reiflix_local.viewmodel
+package com.reianix.reianix_local.viewmodel
 
 import android.content.Context
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.ReiAnixAppDependencies
 import androidx.annotation.Keep
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider

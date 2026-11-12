@@ -1,12 +1,12 @@
-package com.reiflix.reiflix_local.viewmodel
+package com.reianix.reianix_local.viewmodel
 
 import android.content.Context
-import com.reiflix.reiflix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.ReiAnixAppDependencies
 import androidx.annotation.Keep
 import androidx.lifecycle.viewModelScope
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsRepository
-import com.reiflix.reiflix_local.data.settings.ReiAnixSettingsContract
-import com.reiflix.reiflix_local.ui.model.ReiAnixSettingsUiState
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsRepository
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
+import com.reianix.reianix_local.ui.model.ReiAnixSettingsUiState
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged

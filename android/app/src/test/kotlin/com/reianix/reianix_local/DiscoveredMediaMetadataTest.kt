@@ -1,11 +1,11 @@
-package com.reiflix.reiflix_local
+package com.reianix.reianix_local
 import android.app.Application
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-import com.reiflix.reiflix_local.scanner.BroadStorageScanner
-import com.reiflix.reiflix_local.scanner.DiscoveredMediaMetadata
+import com.reianix.reianix_local.scanner.BroadStorageScanner
+import com.reianix.reianix_local.scanner.DiscoveredMediaMetadata
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

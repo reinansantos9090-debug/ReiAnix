@@ -1,6 +1,6 @@
-package com.reiflix.reiflix_local.data.collector
+package com.reianix.reianix_local.data.collector
 
-import com.reiflix.reiflix_local.data.sqlite.ReiAnixCollectorEpisodeRow
+import com.reianix.reianix_local.data.sqlite.ReiAnixCollectorEpisodeRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
