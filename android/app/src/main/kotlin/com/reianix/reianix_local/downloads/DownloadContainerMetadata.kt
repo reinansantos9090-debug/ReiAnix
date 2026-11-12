@@ -168,7 +168,7 @@ internal object DownloadContainerMetadata {
         var c:HttpURLConnection?=null
         return try {
             c=DownloadHttp.connect(url,headers,0,null,probeRange="bytes=0-65535",
-                connectTimeoutMs=2200,readTimeoutMs=2400)
+                connectTimeoutMs=1600,readTimeoutMs=1800)
             if(c.responseCode !in setOf(200,206))return null
             val mime=c.contentType.orEmpty().lowercase()
             if(mime.startsWith("text/") || mime.contains("mpegurl") ||
