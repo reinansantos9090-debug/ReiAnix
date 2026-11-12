@@ -289,6 +289,8 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
             DownloadSizeProbe.Result(it,true,"webview-content-length")
         } ?: initialEstimatedSize?.takeIf{it>0}?.let {
             DownloadSizeProbe.Result(it,false,"shared-metadata")
+        } ?: DownloadSizeIntelligence.fromUrlMetadata(initialUrl)?.let {
+            DownloadSizeProbe.Result(it.bytes,false,it.source)
         }
     }
     var sizeResult by remember(initialUrl,initialKnownSize,initialEstimatedSize) {
@@ -333,6 +335,9 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         // The probe may fail even though the source app supplied an estimated
         // size. Keep useful evidence; never turn an estimate into Content-Length.
         val fallback=providedSize?.takeIf{target==initialUrl.trim()}
+            ?: DownloadSizeIntelligence.fromUrlMetadata(target)?.let {
+                DownloadSizeProbe.Result(it.bytes,it.exact,it.source)
+            }
         val combined=DownloadSizeIntelligence.reconcile(
             fallback?.bytes?.takeIf{it>0L}?.let{
                 DownloadSizeIntelligence.Evidence(it,fallback.exact,fallback.source)
