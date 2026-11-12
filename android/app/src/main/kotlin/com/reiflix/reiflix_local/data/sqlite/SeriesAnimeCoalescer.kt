@@ -132,7 +132,10 @@ internal object SeriesAnimeCoalescer {
         if(keeperSeason !in 1..20 || donorSeason !in 2..20) return null
         // Explicit already-indexed season values must not be overwritten.
         if(donor.seasons.any {it !in setOf(0,1,donorSeason)}) return null
-        if(keep.seasons.any {it !in setOf(0,1,keeperSeason)}) return null
+        // The survivor may ALREADY contain seasons 1+2. Their presence is
+        // positive evidence of a multi-season library, not a conflict when
+        // another confirmed season 3, 4, ... is being appended.
+        if(keep.seasons.any {it !in 0..20}) return null
         return Candidate(keep,donor,donorSeason)
     }
 
