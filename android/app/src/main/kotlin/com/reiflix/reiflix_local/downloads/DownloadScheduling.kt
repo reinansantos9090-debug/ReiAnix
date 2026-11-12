@@ -44,12 +44,13 @@ object DownloadScheduling {
     }
     private val covers=java.util.concurrent.ConcurrentHashMap<String,android.graphics.Bitmap>()
 
-    // Match CloudStream's state-specific notification icon approach using our own
-    // monochrome vector resources, instead of Android's platform download glyphs.
-    // Android/One UI may still show the app's launcher icon on notification cards.
-    private fun downloadStateIcon(state: String?): Int = when (state) {
+    // CloudStream-style, state-specific icons: show the official ReiAnix
+    // mark during pending/running downloads and the dedicated checked
+    // completion icon after success. Keep existing completed notifications.
+    // Android/One UI may still show the launcher icon on notification cards.
+    internal fun downloadStateIcon(state: String?): Int = when (state) {
         "COMPLETE" -> R.drawable.ic_reianix_download_done
-        "PAUSED", "WAITING" -> R.drawable.ic_reianix_download_paused
+        "PAUSED" -> R.drawable.ic_reianix_download_paused
         "ERROR", "CORRUPT" -> R.drawable.ic_reianix_download_error
         else -> R.drawable.ic_reianix_download_active
     }
