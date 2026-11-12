@@ -33,8 +33,8 @@ internal object SeriesTitleIdentity {
         val unfolded=Normalizer.normalize(value, Normalizer.Form.NFKC)
         val match=seasonSuffix.matchEntire(unfolded)
         if(match!=null) {
-            val n=match.groupValues.drop(2).firstOrNull(String::isNotBlank)?.lowercase()
-            val season=n?.toIntOrNull() ?: roman[n]
+            val n=match.groupValues.drop(2).firstOrNull { it.isNotBlank() }?.lowercase()
+            val season=n?.toIntOrNull() ?: n?.let { roman[it] }
             val base=normal(match.groupValues[1])
             if(season!=null && season in 1..20 && useful(base)) {
                 return TitleForm(base,season,true)
