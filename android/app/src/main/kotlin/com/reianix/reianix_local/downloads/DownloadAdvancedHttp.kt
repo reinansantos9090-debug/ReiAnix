@@ -61,8 +61,8 @@ internal object DownloadAdvancedHttp {
         bytesRead.takeIf {reachedEof && it>0}
 
     private fun snapshot(c:HttpURLConnection):Map<String,String> =
-        c.headerFields.filterKeys {it!=null}.mapNotNull { (key,values) ->
-            values?.firstOrNull()?.let {key to it}
+        c.headerFields.mapNotNull { (key,values) ->
+            key?.let { safe -> values?.firstOrNull()?.let { safe to it } }
         }.toMap()
 
     private fun looksLikeVideo(c:HttpURLConnection):Boolean {
@@ -127,14 +127,15 @@ internal object DownloadAdvancedHttp {
                                 // representation URI. Never forward cross-origin credentials.
                                 var alternate:HttpURLConnection?=null
                                 try {
-                                    alternate=DownloadHttp.connect(other,headers,0,null,
+                                    val response=DownloadHttp.connect(other,headers,0,null,
                                         credentialOrigin=url,method="HEAD",
                                         connectTimeoutMs=1500,readTimeoutMs=1500)
+                                    alternate=response
                                     val alternateLength=DownloadSizeProbe.directLength(
-                                        alternate.responseCode,
-                                        alternate.getHeaderFieldLong("Content-Length",-1),
-                                        alternate.getHeaderField("Content-Range"),
-                                        alternate.getHeaderField("Content-Encoding"),alternate.contentType)
+                                        response.responseCode,
+                                        response.getHeaderFieldLong("Content-Length",-1),
+                                        response.getHeaderField("Content-Range"),
+                                        response.getHeaderField("Content-Encoding"),response.contentType)
                                     if(alternateLength!=null)
                                         return DownloadSizeProbe.Result(alternateLength,true,
                                             "http-content-location",metadataName)
