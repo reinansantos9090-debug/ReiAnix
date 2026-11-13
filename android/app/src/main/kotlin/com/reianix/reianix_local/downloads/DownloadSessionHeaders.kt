@@ -12,6 +12,14 @@ import java.net.URL
  * DownloadHttp enforces origin separation during HTTP redirects.
  */
 internal object DownloadSessionHeaders {
+    /** CookieManager applies target host/path and Secure scoping itself. */
+    fun cookieForTarget(url:String):String? {
+        if(runCatching{DownloadHttp.validateUrl(url)}.isFailure)return null
+        return runCatching {CookieManager.getInstance().getCookie(url)}.getOrNull()
+            ?.takeIf{it.isNotBlank() && it.length<=16384 &&
+                it.none{c->c=='\r'||c=='\n'}}
+    }
+
     fun resolve(context:Context,url:String,provided:Map<String,String>):Map<String,String> {
         val result=LinkedHashMap<String,String>()
         for((name,value) in provided) {
