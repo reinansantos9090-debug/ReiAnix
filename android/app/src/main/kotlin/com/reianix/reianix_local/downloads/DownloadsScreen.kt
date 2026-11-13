@@ -57,6 +57,7 @@ class DownloadsActivity: ComponentActivity() {
     private var incomingName by mutableStateOf("")
     private var incomingHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     private var incomingSizeHint by mutableStateOf<Long?>(null)
+    private var incomingChoices by mutableStateOf<List<DownloadSourceSelection.Candidate>>(emptyList())
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); accept(intent)
         setContent { ReiAnixComposeTheme {
@@ -64,7 +65,8 @@ class DownloadsActivity: ComponentActivity() {
                 Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
                     DownloadsScreen(incoming,incomingHeaders,incomingTitle,incomingName,
                         playerCapture=incomingCapture,hlsHint=incomingHlsHint,
-                        initialEstimatedSize=incomingSizeHint,onBack={ finish() })
+                        initialEstimatedSize=incomingSizeHint,
+                        initialCandidates=incomingChoices,onBack={ finish() })
                 }
             }
         } }
@@ -72,7 +74,28 @@ class DownloadsActivity: ComponentActivity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); accept(intent) }
     private fun accept(intent: Intent) {
         val raw=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else intent.dataString.orEmpty()
-        incoming=Regex("https?://[^\\s]+",RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
+        val directFields=listOfNotNull(intent.dataString) +
+            listOf("url","downloadUrl","mediaUrl","videoUrl","streamUrl",
+                "fileUrl","sourceUrl","download_url","media_url").mapNotNull { key ->
+                intent.getStringExtra(key)
+            }
+        val copiedItems=buildList {
+            intent.clipData?.let { clip ->
+                for(i in 0 until minOf(clip.itemCount,16)) {
+                    clip.getItemAt(i).uri?.toString()?.let(::add)
+                    clip.getItemAt(i).text?.toString()?.let(::add)
+                }
+            }
+        }
+        incomingChoices=DownloadSourceSelection.choose(
+            texts=listOfNotNull(
+                raw,
+                intent.getStringExtra(Intent.EXTRA_TEXT),
+                intent.getStringExtra(Intent.EXTRA_SUBJECT)
+            )+copiedItems,
+            explicitUrls=directFields
+        )
+        incoming=incomingChoices.firstOrNull()?.url.orEmpty()
         // Some sharing apps put the episode label next to the link in EXTRA_TEXT,
         // not EXTRA_TITLE. Keep only the text; do not treat the CDN path as a title.
         val sharedText=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else ""
@@ -112,7 +135,9 @@ class DownloadsActivity: ComponentActivity() {
 
 @Composable
 fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",playerCapture: String? = null,hlsHint: Boolean = false,
-initialEstimatedSize:Long?=null,onBack: (() -> Unit)? = null) {
+initialEstimatedSize:Long?=null,
+initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList(),
+onBack: (() -> Unit)? = null) {
     val context=LocalContext.current
     val store=remember(context) { DownloadStore(context) }
     val scope=rememberCoroutineScope()
@@ -122,6 +147,10 @@ initialEstimatedSize:Long?=null,onBack: (() -> Unit)? = null) {
     var initialized by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var add by remember { mutableStateOf(false) }
+    var selectedSource by remember(initialUrl,initialCandidates) {mutableStateOf(initialUrl)}
+    var sourcePicker by remember(initialUrl,initialCandidates) {
+        mutableStateOf(initialCandidates.size>1)
+    }
     var identify by remember { mutableStateOf<DownloadItem?>(null) }
     var identityTitle by remember { mutableStateOf("") }
     var edit by remember { mutableStateOf<DownloadItem?>(null) }
@@ -248,7 +277,34 @@ initialEstimatedSize:Long?=null,onBack: (() -> Unit)? = null) {
         try {withContext(Dispatchers.IO){store.relink(item.id,identityTitle.trim());DownloadSnapshots.refresh(context)};identify=null}
         catch(_: Exception){error="Não foi possível identificar o anime"}
     }}){Text("Salvar")}},dismissButton={TextButton(onClick={identify=null}){Text("Cancelar")}})
-    if(add) key(initialUrl,initialTitle,initialName,edit?.id) { DownloadDialog(initialUrl,suppliedHeaders,initialTitle,initialName,edit,busy,error,onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName,detected ->
+    if(add && sourcePicker && edit==null) AlertDialog(
+        onDismissRequest={sourcePicker=false},
+        title={Text("Escolher endereço do vídeo")},
+        text={
+            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                Text("O compartilhamento contém vários links. Escolha o arquivo direto quando disponível. Endereços intermediários podem não baixar.")
+                LazyColumn(modifier=Modifier.heightIn(max=280.dp)) {
+                    items(initialCandidates,key={it.url}) { candidate ->
+                        TextButton(onClick={
+                            selectedSource=candidate.url
+                            sourcePicker=false
+                        },modifier=Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(candidate.label)
+                                Text(candidate.host,
+                                    style=MaterialTheme.typography.bodySmall,
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton={TextButton(onClick={sourcePicker=false}){Text("Manter sugerido")}}
+    )
+    if(add && !sourcePicker) key(selectedSource,initialTitle,initialName,edit?.id) {
+        DownloadDialog(selectedSource,suppliedHeaders,initialTitle,initialName,edit,busy,error,
+            onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName,detected ->
         busy=true; error=""
         scope.launch {
             try {
@@ -273,8 +329,8 @@ initialEstimatedSize:Long?=null,onBack: (() -> Unit)? = null) {
             catch(_: Exception) { error="Não foi possível adicionar o download. Confira o link, a pasta e o nome do arquivo." }
             finally { busy=false }
         }
-    },hlsHint=hlsHint && initialUrl.isNotBlank(),
-        initialEstimatedSize=initialEstimatedSize) }
+    },hlsHint=hlsHint && initialUrl.isNotBlank() && selectedSource==initialUrl,
+        initialEstimatedSize=initialEstimatedSize?.takeIf {selectedSource==initialUrl}) }
 }
 
 @Composable
