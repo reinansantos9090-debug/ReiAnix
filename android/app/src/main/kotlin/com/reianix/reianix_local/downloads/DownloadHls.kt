@@ -101,7 +101,8 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
         suspend fun fetch(link: String,max: Int,span:ByteSpan?=null): ByteArray =
             withContext(Dispatchers.IO) {
             val c=DownloadHttp.connect(link,headers,span?.start ?: 0L,null,
-                end=span?.end,credentialOrigin=url,allowMediaHttpDowngrade=true)
+                end=span?.end,credentialOrigin=url,allowMediaHttpDowngrade=true,
+                redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
             try {
                 require(c.responseCode==if(span==null)200 else 206) {
                     "Resposta HTTP não corresponde à faixa HLS solicitada"
@@ -241,7 +242,8 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                         } else null
                         val span=segment.byteSpan
                         val c=DownloadHttp.connect(segment.url,headers,span?.start ?: 0L,null,
-                            end=span?.end,credentialOrigin=url,allowMediaHttpDowngrade=true)
+                            end=span?.end,credentialOrigin=url,allowMediaHttpDowngrade=true,
+                redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
                         try {
                             require(c.responseCode==if(span==null)200 else 206) {
                                 "O servidor não forneceu o intervalo do segmento HLS"
