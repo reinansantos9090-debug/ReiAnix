@@ -51,6 +51,8 @@ private data class BrowserDownloadOffer(
 
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
 class DownloadBrowserActivity: ComponentActivity() {
+    private val tabs=mutableStateListOf<BrowserTab>()
+    private var activeTabId by mutableStateOf("")
     private var requested by mutableStateOf("")
     private var sourceHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     private var pendingOffer by mutableStateOf<BrowserDownloadOffer?>(null)
@@ -59,9 +61,16 @@ class DownloadBrowserActivity: ComponentActivity() {
     private val mediaRequests=ConcurrentHashMap<String,Pair<Long,Map<String,String>>>()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); accept(intent)
-        setContent { ReiAnixComposeTheme { Browser() } }
+        val restored=savedInstanceState?.getStringArrayList("browser.urls").orEmpty()
+        if(restored.isNotEmpty())restored.forEach {tabs.add(BrowserTab(it))}
+        if(tabs.isEmpty())tabs.add(BrowserTab(requested,sourceHeaders))
+        activeTabId=tabs.getOrElse(savedInstanceState?.getInt("browser.selected") ?: 0){tabs.first()}.id
+        setContent { ReiAnixComposeTheme { BrowserShell() } }
     }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); accept(intent) }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent);accept(intent)
+        if(requested.isNotBlank()) {val tab=BrowserTab(requested,sourceHeaders);tabs.add(tab);activeTabId=tab.id}
+    }
     private fun accept(intent: Intent) {
         // Nuvio's external-player ACTION_VIEW can also land in the browser,
         // which has a separate Android VIEW intent filter. Preserve the same
@@ -78,18 +87,42 @@ class DownloadBrowserActivity: ComponentActivity() {
         requested=candidates.firstOrNull()?.url.orEmpty()
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT)
     }
-    @Composable private fun Browser() {
+    override fun onSaveInstanceState(outState:Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putStringArrayList("browser.urls",ArrayList(tabs.map {if(it.home)"" else it.url}))
+        outState.putInt("browser.selected",tabs.indexOfFirst {it.id==activeTabId}.coerceAtLeast(0))
+    }
+    @Composable private fun BrowserShell() {
+        var overview by remember {mutableStateOf(false)}
+        fun newTab(url:String="") {
+            val tab=BrowserTab(url,if(url==requested)sourceHeaders else emptyMap())
+            tabs.add(tab);activeTabId=tab.id;overview=false
+        }
+        LaunchedEffect(requested) {
+            if(requested.isNotBlank() && tabs.none {it.initialUrl==requested})newTab(requested)
+        }
+        if(overview) BrowserTabOverview(tabs.toList(),activeTabId,
+            onSelect={activeTabId=it.id;overview=false},
+            onClose={tab ->
+                val index=tabs.indexOf(tab);tabs.remove(tab)
+                if(tabs.isEmpty())newTab()
+                else if(activeTabId==tab.id)activeTabId=tabs[(index-1).coerceAtLeast(0).coerceAtMost(tabs.lastIndex)].id
+            },onNew={newTab()},onBack={overview=false})
+        else tabs.firstOrNull {it.id==activeTabId}?.let {tab ->
+            key(tab.id) {Browser(tab,onTabs={overview=true},onNewTab={newTab()})}
+        }
+    }
+    @Composable private fun Browser(tab:BrowserTab,onTabs:()->Unit,onNewTab:()->Unit) {
+        val requested=tab.initialUrl
         var menu by remember {mutableStateOf(false)}
         var showSettings by remember {mutableStateOf(false)}
-        var externalPopup by remember {mutableStateOf<String?>(null)}
-        LaunchedEffect(showSettings) {
-            BrowserAdBlock.mode=withContext(Dispatchers.IO) {
-                val deps=com.reianix.reianix_local.ReiAnixAppDependencies.from(applicationContext)
-                deps.bootstrap.awaitStarted()
-                deps.sqliteSettingsRepository.getPreference("browser.ad_mode","balanced") ?: "balanced"
-            }
-        }
-        var address by remember { mutableStateOf(requested) }
+        var protectionReady by remember {mutableStateOf(false)}
+        var protectionError by remember {mutableStateOf("")}
+        var rememberedMode by remember {mutableStateOf(BrowserAdBlock.mode)}
+        var address by remember { mutableStateOf(if(tab.home)"" else tab.url) }
+        var backAvailable by remember {mutableStateOf(false)}
+        var forwardAvailable by remember {mutableStateOf(false)}
+        var restoreScroll by remember {mutableStateOf(!tab.saved.isEmpty)}
         var title by remember { mutableStateOf("") }
         var progress by remember { mutableIntStateOf(0) }
         var showMedia by remember { mutableStateOf(false) }
@@ -160,6 +193,7 @@ class DownloadBrowserActivity: ComponentActivity() {
         val browser=remember {
             WebView(this).apply {
                 web=this
+                BrowserAdBlock.install(applicationContext,this,scope)
                 BrowserMediaCapture.install(
                     this,
                     onMedia = { frame,item ->
@@ -189,7 +223,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this,true)
                 webViewClient=object: WebViewClient() {
                     override fun shouldInterceptRequest(view: WebView,request: WebResourceRequest): WebResourceResponse? {
-                        if(!request.isForMainFrame && BrowserAdBlock.blocked(request.url.toString()))
+                        if(!request.isForMainFrame && BrowserAdBlock.blocked(request,tab.url))
                             return WebResourceResponse("text/plain","UTF-8",java.io.ByteArrayInputStream(byteArrayOf()))
                         if(request.method=="GET" && request.url.scheme in setOf("http","https")) {
                             val headers=request.requestHeaders.filter { (key,value) ->
@@ -203,17 +237,19 @@ class DownloadBrowserActivity: ComponentActivity() {
                     }
                     override fun shouldOverrideUrlLoading(view: WebView,request: WebResourceRequest): Boolean {
                         if(request.url.scheme !in setOf("http","https")) { return true }
-                        if(BrowserAdBlock.blocked(request.url.toString()))return true
+                        if(BrowserAdBlock.blocked(request,tab.url))return true
                         return false
                     }
                     override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) {
                         discoveryGeneration++;discoveryRequested=false
                         hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
-                        address=url;observed.clear();sourceOptions.clear();mediaRequests.clear();error=""
+                        if(!tab.home)address=url;tab.url=url;observed.clear();sourceOptions.clear();mediaRequests.clear();error=""
                     }
                     override fun onPageFinished(view: WebView,url: String) {
-                        address=url;title=view.title.orEmpty()
-                        if(BrowserAdBlock.mode=="advanced")view.evaluateJavascript(BrowserAdBlock.cosmeticScript,null)
+                        if(!tab.home)address=url
+                        tab.url=url;title=view.title.orEmpty();tab.title=title.ifBlank {BrowserAdBlock.host(url)}
+                        backAvailable=view.canGoBack();forwardAvailable=view.canGoForward()
+                        if(restoreScroll) {restoreScroll=false;view.post {view.scrollTo(tab.scrollX,tab.scrollY)}}
                     }
                     override fun onReceivedError(view:WebView,request:WebResourceRequest,failure:WebResourceError) {
                         if(request.isForMainFrame)error="Não foi possível carregar a página: ${failure.description}"
@@ -233,11 +269,12 @@ class DownloadBrowserActivity: ComponentActivity() {
                             override fun shouldOverrideUrlLoading(v: WebView,r: WebResourceRequest): Boolean {
                                 if(r.url.toString()=="about:blank")return false
                                 val target=r.url.toString()
-                                if(r.url.scheme in setOf("http","https") && !BrowserAdBlock.blocked(target)) {
+                                if(r.url.scheme in setOf("http","https") && !BrowserAdBlock.blocked(target,
+                                    page=tab.url,type=io.github.edsuns.adblockclient.ResourceType.POPUP)) {
                                     when {
                                         BrowserAdBlock.mode=="off" || BrowserAdBlock.related(view.url.orEmpty(),target) -> view.loadUrl(target)
-                                        BrowserAdBlock.mode=="balanced" -> externalPopup=target
-                                        else -> Toast.makeText(this@DownloadBrowserActivity,"Janela externa bloqueada",Toast.LENGTH_SHORT).show()
+                                        // Unknown third-party popup windows are silently denied.
+                                        else -> Unit
                                     }
                                 }
                                 popup.destroy(); return true
@@ -255,11 +292,51 @@ class DownloadBrowserActivity: ComponentActivity() {
                 }
             }
         }
-        LaunchedEffect(requested) { if(requested.isNotBlank()) try { DownloadHttp.validateUrl(requested); browser.loadUrl(requested) } catch(_: Exception) { error="Endereço inválido" } }
-        DisposableEffect(browser) { onDispose { browser.stopLoading(); browser.destroy(); web=null } }
+        LaunchedEffect(tab.id) {
+            try {
+                val deps=com.reianix.reianix_local.ReiAnixAppDependencies.from(applicationContext)
+                BrowserAdBlock.mode=withContext(Dispatchers.IO) {
+                    deps.bootstrap.awaitStarted()
+                    deps.sqliteSettingsRepository.getPreference("browser.ad_mode","balanced") ?: "balanced"
+                }
+                rememberedMode=BrowserAdBlock.mode
+                if(BrowserAdBlock.mode!="off")BrowserAdBlock.prepare(applicationContext)
+                protectionReady=true
+                if(tab.saved.isEmpty || browser.restoreState(tab.saved)==null) {
+                    if(tab.url.isNotBlank()) {DownloadHttp.validateUrl(tab.url);browser.loadUrl(tab.url)}
+                }
+            }catch(c:CancellationException){throw c}
+            catch(_:Exception){protectionError="Não foi possível iniciar o bloqueador. Abra Configurações para desativar ou tentar novamente."}
+        }
+        LaunchedEffect(showSettings) {
+            if(!showSettings && rememberedMode!=BrowserAdBlock.mode) {
+                protectionReady=false
+                try {
+                    if(BrowserAdBlock.mode!="off")BrowserAdBlock.prepare(applicationContext)
+                    rememberedMode=BrowserAdBlock.mode;protectionError="";protectionReady=true
+                    if(!tab.home)browser.reload()
+                }catch(c:CancellationException){throw c}
+                catch(_:Exception){protectionError="Não foi possível carregar os filtros. Tente atualizar em Configurações."}
+            }
+        }
+        DisposableEffect(browser) {onDispose {
+            tab.saved=Bundle();browser.saveState(tab.saved)
+            tab.scrollX=browser.scrollX;tab.scrollY=browser.scrollY
+            browser.onPause();browser.stopLoading();browser.destroy();web=null
+            mediaRequests.clear();pendingOffer=null
+        }}
+        fun captureTab() {
+            if(browser.width>0 && browser.height>0 && !tab.home)runCatching {
+                val bitmap=Bitmap.createBitmap(240,420,Bitmap.Config.RGB_565)
+                val canvas=android.graphics.Canvas(bitmap)
+                canvas.scale(240f/browser.width,420f/browser.height)
+                browser.draw(canvas);tab.preview=bitmap
+            }
+        }
         BackHandler {
             when {
                 showSettings -> showSettings=false
+                tab.home && browser.url!=null -> {tab.home=false;browser.onResume();address=tab.url}
                 pendingOffer!=null -> { if(!submitting)pendingOffer=null }
                 showMedia -> showMedia=false
                 browser.canGoBack() -> browser.goBack()
@@ -270,18 +347,12 @@ class DownloadBrowserActivity: ComponentActivity() {
             DownloadSettingsScreen {showSettings=false}
             return
         }
-        externalPopup?.let { target ->
-            AlertDialog(onDismissRequest={externalPopup=null},title={Text("Abrir link externo?")},
-                text={Text(BrowserAdBlock.host(target))},
-                confirmButton={TextButton(onClick={externalPopup=null;browser.loadUrl(target)}){Text("Abrir")}},
-                dismissButton={TextButton(onClick={externalPopup=null}){Text("Cancelar")}})
-        }
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     OutlinedTextField(address,{address=it},singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")},
                         keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),keyboardActions=KeyboardActions(onGo={
-                            try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
+                            try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);tab.home=false;browser.onResume();browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
                         }))
                     IconButton(onClick={
                         discoveryGeneration++
@@ -316,6 +387,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                     Box {
                         IconButton(onClick={menu=true}) {Icon(Icons.Filled.MoreVert,"Menu do navegador")}
                         DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                            DropdownMenuItem(text={Text("Nova guia")},onClick={menu=false;captureTab();onNewTab()})
                             DropdownMenuItem(text={Text("Downloads")},onClick={menu=false;startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))})
                             DropdownMenuItem(text={Text("Configurações")},onClick={menu=false;showSettings=true})
                             DropdownMenuItem(text={Text("Recarregar")},onClick={menu=false;error="";browser.reload()})
@@ -324,7 +396,30 @@ class DownloadBrowserActivity: ComponentActivity() {
                 }
                 if(progress<100) LinearProgressIndicator(progress={progress/100f},modifier=Modifier.fillMaxWidth())
                 if(error.isNotBlank()) Text(error,Modifier.padding(8.dp),color=MaterialTheme.colorScheme.error)
-                AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                if(protectionError.isNotBlank())Text(protectionError,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error)
+                if(!protectionReady) Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) {
+                    CircularProgressIndicator()
+                } else if(tab.home) Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp),
+                    verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.Public,null,Modifier.size(64.dp),tint=MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(16.dp))
+                    Text("ReiAnix Browser",style=MaterialTheme.typography.headlineMedium)
+                    Text("Digite um endereço acima para navegar",style=MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(24.dp))
+                    TextButton(onClick={startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))}) {
+                        Icon(Icons.Filled.Download,null);Spacer(Modifier.width(8.dp));Text("Downloads")
+                    }
+                    TextButton(onClick=onNewTab) {Icon(Icons.Filled.Add,null);Text("Nova guia")}
+                } else AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
+                    IconButton(enabled=backAvailable || tab.home,onClick={
+                        if(tab.home){tab.home=false;address=tab.url;browser.onResume()}else browser.goBack()
+                    }){Icon(Icons.Filled.ArrowBack,"Voltar página")}
+                    IconButton(enabled=forwardAvailable && !tab.home,onClick={browser.goForward()}){Icon(Icons.Filled.ArrowForward,"Avançar página")}
+                    IconButton(onClick={captureTab();tab.home=true;address="";browser.onPause()}){Icon(Icons.Filled.Home,"Início do navegador")}
+                    OutlinedButton(onClick={captureTab();onTabs()}){Icon(Icons.Filled.Tab,"Guias");Spacer(Modifier.width(6.dp));Text("${tabs.size}")}
+                    IconButton(onClick={captureTab();onNewTab()}){Icon(Icons.Filled.Add,"Nova guia")}
+                }
             }
         }
         val offer=pendingOffer
@@ -456,9 +551,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                 putString(canonical,value)
             }
             val sameSource=runCatching {
-                DownloadHttp.sameOrigin(java.net.URL(requested),java.net.URL(url))
+                DownloadHttp.sameOrigin(java.net.URL(tabs.firstOrNull {it.id==activeTabId}?.initialUrl.orEmpty()),java.net.URL(url))
             }.getOrDefault(false)
-            if(sameSource)sourceHeaders.forEach {(key,value)->
+            if(sameSource)tabs.firstOrNull {it.id==activeTabId}?.headers.orEmpty().forEach {(key,value)->
                 // Observed WebView request headers take precedence for their
                 // exact resource; Nuvio's headers fill missing values.
                 if(!keySet().any{it.equals(key,true)})putString(key,value)

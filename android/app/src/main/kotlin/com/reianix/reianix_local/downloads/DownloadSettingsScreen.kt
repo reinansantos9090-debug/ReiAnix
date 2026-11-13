@@ -23,6 +23,8 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
     val store=remember { DownloadStore(context) }
     val prefs=remember { ReiAnixAppDependencies.from(context).sqliteSettingsRepository }
     var adMode by remember {mutableStateOf("balanced")}
+    var filterStatus by remember {mutableStateOf(BrowserAdBlock.status)}
+    var filterBusy by remember {mutableStateOf(false)}
     var adPicker by remember {mutableStateOf(false)}
     var parallel by remember { mutableIntStateOf(2) }
     var buffer by remember { mutableIntStateOf(256) }
@@ -45,15 +47,15 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
     }
     fun save(key: String,value: String) { scope.launch { try { withContext(Dispatchers.IO) { prefs.setPreference(key,value); if(key=="downloads.wifi_only")DownloadScheduling.reconfigure(context) } } catch(_: Exception) { message="Não foi possível salvar" } } }
     if(adPicker) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Row(verticalAlignment=Alignment.CenterVertically) {
                 IconButton(onClick={adPicker=false}) {Icon(Icons.Filled.ArrowBack,"Voltar")}
                 Text("Bloquear anúncios",style=MaterialTheme.typography.titleLarge)
             }
             listOf(
                 Triple("off","Desativado","Permite anúncios e links externos."),
-                Triple("balanced","Equilibrado (recomendado)","Bloqueia redes comuns de anúncios e pede confirmação para links em novas janelas externas."),
-                Triple("advanced","Avançado","Amplia os filtros, oculta banners conhecidos e bloqueia novas janelas externas. Alguns sites podem ser afetados.")
+                Triple("balanced","Equilibrado (recomendado)","Bloqueia anúncios e banners com listas amplas e atualizadas, priorizando a compatibilidade."),
+                Triple("advanced","Avançado","Acrescenta filtros de rastreamento, incômodos e regras avançadas. Alguns sites podem ser afetados.")
             ).forEach { (value,label,description) ->
                 TextButton(enabled=!busy,onClick={adMode=value;BrowserAdBlock.mode=value;save("browser.ad_mode",value)}) {
                     RadioButton(selected=adMode==value,onClick=null)
@@ -63,6 +65,21 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
                     }
                 }
             }
+            Text(filterStatus,Modifier.padding(20.dp),style=MaterialTheme.typography.bodySmall)
+            TextButton(enabled=!filterBusy,onClick={scope.launch {
+                filterBusy=true
+                try {filterStatus=BrowserAdBlock.refresh(context)}
+                catch(c:CancellationException){throw c}
+                catch(_:Exception){filterStatus="Não foi possível atualizar. As listas salvas continuam ativas."}
+                finally {filterBusy=false}
+            }}) {Icon(Icons.Filled.Refresh,null);Text(if(filterBusy)"Atualizando…" else "Atualizar filtros")}
+            Text("Os anúncios são bloqueados silenciosamente. Ao mudar o modo, recarregue a página.",
+                Modifier.padding(20.dp),style=MaterialTheme.typography.bodySmall)
+        }
+        LaunchedEffect(Unit) {
+            try {filterStatus=BrowserAdBlock.prepare(context)}
+            catch(c:CancellationException){throw c}
+            catch(_:Exception){filterStatus="Não foi possível carregar os filtros"}
         }
         androidx.activity.compose.BackHandler {adPicker=false}
         return
