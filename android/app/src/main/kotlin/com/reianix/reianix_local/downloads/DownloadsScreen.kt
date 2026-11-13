@@ -247,6 +247,8 @@ onBack: (() -> Unit)? = null) {
                                     // No URL, signatures, authorization or cookies are ever copied.
                                     val snapshot=listOf(
                                         "Estado: "+item.state,
+                                        "Fonte: "+item.json.optString("sourceHost","não registrada"),
+                                        "Servidor final: "+item.json.optString("effectiveHost","não confirmado"),
                                         "Etapa: "+item.json.optString("lastFailurePhase","unknown"),
                                         "Falha: "+item.json.optString("lastFailureKind","unknown"),
                                         "HTTP: "+item.json.optInt("lastHttpStatus",-1),
