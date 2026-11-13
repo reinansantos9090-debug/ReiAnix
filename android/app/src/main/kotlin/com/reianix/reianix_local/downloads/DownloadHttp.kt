@@ -20,7 +20,8 @@ object DownloadHttp {
         probeRange: String? = null, conditionalEtag: String? = null,
         preferInitialRange: Boolean = false, closeAfterResponse: Boolean = false,
         retryHtmlWithSelfReferer: Boolean = false,
-        allowMediaHttpDowngrade: Boolean = false): HttpURLConnection {
+        allowMediaHttpDowngrade: Boolean = false,
+        redirectCookieProvider: ((String)->String?)? = null): HttpURLConnection {
         require(method in setOf("GET","HEAD"))
         val origin=URL(validateUrl(credentialOrigin).toASCIIString())
         var target=URL(validateUrl(url).toASCIIString())
@@ -57,6 +58,13 @@ object DownloadHttp {
                     connection.setRequestProperty(key,value)
             }
             if(!sameOrigin(origin,target)) {
+                // Cookies are fetched *for this redirect target*, never
+                // forwarded from the original server. This matches Navi's
+                // per-domain CookieManager policy.
+                redirectCookieProvider?.invoke(target.toString())
+                    ?.takeIf {it.isNotBlank() && it.length<=16384 &&
+                        it.none{c->c=='\r'||c=='\n'}}
+                    ?.let{connection.setRequestProperty("Cookie",it)}
                 headers.entries.firstOrNull {it.key.equals("user-agent",true)}
                     ?.value?.takeIf {it.length<=1024 && it.none {c->c=='\r'||c=='\n'}}
                     ?.let {connection.setRequestProperty("User-Agent",it)}
