@@ -22,6 +22,10 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
     val scope=rememberCoroutineScope()
     val store=remember { DownloadStore(context) }
     val prefs=remember { ReiAnixAppDependencies.from(context).sqliteSettingsRepository }
+    var adMode by remember {mutableStateOf("balanced")}
+    var filterStatus by remember {mutableStateOf(BrowserAdBlock.status)}
+    var filterBusy by remember {mutableStateOf(false)}
+    var adPicker by remember {mutableStateOf(false)}
     var parallel by remember { mutableIntStateOf(2) }
     var buffer by remember { mutableIntStateOf(256) }
     var connections by remember { mutableIntStateOf(4) }
@@ -35,19 +39,66 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
     var busy by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         try { withContext(Dispatchers.IO) {
-            store.ready(); parallel=prefs.getPreference("downloads.parallel","2")?.toIntOrNull() ?: 2
+            store.ready(); adMode=prefs.getPreference("browser.ad_mode","balanced") ?: "balanced"; parallel=prefs.getPreference("downloads.parallel","2")?.toIntOrNull() ?: 2
             buffer=prefs.getPreference("downloads.buffer_kb","256")?.toIntOrNull() ?: 256
             connections=prefs.getPreference("downloads.connections","4")?.toIntOrNull() ?: 4
             wifi=prefs.getPreference("downloads.wifi_only","false")=="true"
         } } catch(_: Exception) { message="Não foi possível carregar as configurações" } finally { busy=false }
     }
     fun save(key: String,value: String) { scope.launch { try { withContext(Dispatchers.IO) { prefs.setPreference(key,value); if(key=="downloads.wifi_only")DownloadScheduling.reconfigure(context) } } catch(_: Exception) { message="Não foi possível salvar" } } }
+    if(adPicker) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                IconButton(onClick={adPicker=false}) {Icon(Icons.Filled.ArrowBack,"Voltar")}
+                Text("Bloquear anúncios",style=MaterialTheme.typography.titleLarge)
+            }
+            listOf(
+                Triple("off","Desativado","Permite anúncios e links externos."),
+                Triple("balanced","Equilibrado (recomendado)","Bloqueia anúncios e banners com listas amplas e atualizadas, priorizando a compatibilidade."),
+                Triple("advanced","Avançado","Acrescenta filtros de rastreamento, incômodos e regras avançadas. Alguns sites podem ser afetados.")
+            ).forEach { (value,label,description) ->
+                TextButton(enabled=!busy,onClick={adMode=value;BrowserAdBlock.mode=value;save("browser.ad_mode",value)}) {
+                    RadioButton(selected=adMode==value,onClick=null)
+                    Column(Modifier.weight(1f).padding(12.dp)) {
+                        Text(label,color=MaterialTheme.colorScheme.onSurface)
+                        Text(description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Text(filterStatus,Modifier.padding(20.dp),style=MaterialTheme.typography.bodySmall)
+            if(BrowserAdBlock.diagnostic.isNotBlank())
+                Text("Diagnóstico do motor nativo: "+BrowserAdBlock.diagnostic,
+                    Modifier.padding(horizontal=20.dp),style=MaterialTheme.typography.bodySmall)
+            TextButton(enabled=!filterBusy,onClick={scope.launch {
+                filterBusy=true
+                try {filterStatus=BrowserAdBlock.refresh(context)}
+                catch(c:CancellationException){throw c}
+                catch(_:Exception){filterStatus="Não foi possível atualizar. As listas salvas continuam ativas."}
+                finally {filterBusy=false}
+            }}) {Icon(Icons.Filled.Refresh,null);Text(if(filterBusy)"Atualizando…" else "Atualizar filtros")}
+            Text("Os anúncios são bloqueados silenciosamente. Ao mudar o modo, recarregue a página.",
+                Modifier.padding(20.dp),style=MaterialTheme.typography.bodySmall)
+        }
+        LaunchedEffect(Unit) {
+            try {filterStatus=BrowserAdBlock.prepare(context)}
+            catch(c:CancellationException){throw c}
+            catch(_:Exception){filterStatus="Não foi possível carregar os filtros"}
+        }
+        androidx.activity.compose.BackHandler {adPicker=false}
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             IconButton(onClick=onBack) { Icon(Icons.Filled.ArrowBack,"Voltar") }
             Text("Downloads",style=MaterialTheme.typography.titleLarge)
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            DownloadSection("Navegador")
+            TextButton(enabled=!busy,onClick={adPicker=true}) {
+                Icon(Icons.Filled.Shield,null,Modifier.padding(end=16.dp).size(22.dp))
+                Text("Bloquear anúncios",Modifier.weight(1f))
+                Text(when(adMode) {"off"->"Desativado";"advanced"->"Avançado";else->"Equilibrado"})
+            }
             DownloadSection("Fila e rede")
             DownloadOption("Downloads simultâneos",Icons.Filled.Queue)
             Row(Modifier.padding(start=38.dp)) { (1..4).forEach { n -> FilterChip(selected=parallel==n,onClick={ parallel=n; save("downloads.parallel",n.toString()) },label={ Text("$n") },enabled=!busy) } }

@@ -51,6 +51,9 @@ private data class BrowserDownloadOffer(
 
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
 class DownloadBrowserActivity: ComponentActivity() {
+    private val tabs=mutableStateListOf<BrowserTab>()
+    private var activeTabId by mutableStateOf("")
+    private var incomingGeneration by mutableIntStateOf(0)
     private var requested by mutableStateOf("")
     private var sourceHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     private var pendingOffer by mutableStateOf<BrowserDownloadOffer?>(null)
@@ -59,9 +62,16 @@ class DownloadBrowserActivity: ComponentActivity() {
     private val mediaRequests=ConcurrentHashMap<String,Pair<Long,Map<String,String>>>()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); accept(intent)
-        setContent { ReiAnixComposeTheme { Browser() } }
+        val restored=savedInstanceState?.getStringArrayList("browser.urls").orEmpty()
+        if(restored.isNotEmpty())restored.forEach {tabs.add(BrowserTab(it))}
+        if(tabs.isEmpty())tabs.add(BrowserTab(requested,sourceHeaders))
+        activeTabId=tabs.getOrElse(savedInstanceState?.getInt("browser.selected") ?: 0){tabs.first()}.id
+        setContent { ReiAnixComposeTheme { BrowserShell() } }
     }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); accept(intent) }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent);accept(intent)
+        if(requested.isNotBlank()) {val tab=BrowserTab(requested,sourceHeaders);tabs.add(tab);activeTabId=tab.id}
+    }
     private fun accept(intent: Intent) {
         // Nuvio's external-player ACTION_VIEW can also land in the browser,
         // which has a separate Android VIEW intent filter. Preserve the same
@@ -76,14 +86,51 @@ class DownloadBrowserActivity: ComponentActivity() {
                 intent.getStringExtra("mediaUrl"))
         )
         requested=candidates.firstOrNull()?.url.orEmpty()
+        incomingGeneration++
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT)
     }
-    @Composable private fun Browser() {
-        var address by remember { mutableStateOf(requested) }
+    override fun onSaveInstanceState(outState:Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putStringArrayList("browser.urls",ArrayList(tabs.map {if(it.home)"" else it.url}))
+        outState.putInt("browser.selected",tabs.indexOfFirst {it.id==activeTabId}.coerceAtLeast(0))
+    }
+    @Composable private fun BrowserShell() {
+        var overview by remember {mutableStateOf(false)}
+        fun newTab(url:String="") {
+            val tab=BrowserTab(url,if(url==requested)sourceHeaders else emptyMap())
+            tabs.add(tab);activeTabId=tab.id;overview=false
+        }
+        LaunchedEffect(incomingGeneration) {
+            overview=false
+            if(requested.isNotBlank() && tabs.none {it.initialUrl==requested})newTab(requested)
+        }
+        if(overview) BrowserTabOverview(tabs.toList(),activeTabId,
+            onSelect={activeTabId=it.id;overview=false},
+            onClose={tab ->
+                val index=tabs.indexOf(tab);tabs.remove(tab)
+                if(tabs.isEmpty())newTab()
+                else if(activeTabId==tab.id)activeTabId=tabs[(index-1).coerceAtLeast(0).coerceAtMost(tabs.lastIndex)].id
+            },onNew={newTab()},onBack={overview=false})
+        else tabs.firstOrNull {it.id==activeTabId}?.let {tab ->
+            key(tab.id) {Browser(tab,onTabs={overview=true},onNewTab={newTab()})}
+        }
+    }
+    @Composable private fun Browser(tab:BrowserTab,onTabs:()->Unit,onNewTab:()->Unit) {
+        val requested=tab.initialUrl
+        var menu by remember {mutableStateOf(false)}
+        var showSettings by remember {mutableStateOf(false)}
+        var protectionReady by remember {mutableStateOf(false)}
+        var protectionError by remember {mutableStateOf("")}
+        var rememberedMode by remember {mutableStateOf(BrowserAdBlock.mode)}
+        var address by remember { mutableStateOf(if(tab.home)"" else tab.url) }
+        var backAvailable by remember {mutableStateOf(false)}
+        var forwardAvailable by remember {mutableStateOf(false)}
+        var restoreScroll by remember {mutableStateOf(!tab.saved.isEmpty)}
         var title by remember { mutableStateOf("") }
         var progress by remember { mutableIntStateOf(0) }
         var showMedia by remember { mutableStateOf(false) }
         var submitting by remember { mutableStateOf(false) }
+        var preparingSiteDownload by remember {mutableStateOf(false)}
         val downloadStore=remember {DownloadStore(applicationContext)}
         val scope=rememberCoroutineScope()
         val notificationPermission=rememberLauncherForActivityResult(
@@ -95,6 +142,8 @@ class DownloadBrowserActivity: ComponentActivity() {
         val sourceOptions=remember {ConcurrentHashMap<String,BrowserMediaOption>()}
         val inspectedHls=remember {mutableSetOf<String>()}
         val hlsJobs=remember {mutableListOf<Job>()}
+        val popupViews=remember {mutableListOf<WebView>()}
+        val fullscreen=remember {BrowserFullscreen(this@DownloadBrowserActivity)}
         var discoveryRequested by remember {mutableStateOf(false)}
         var discoveryGeneration by remember {mutableIntStateOf(0)}
         var discoveringHls by remember {mutableIntStateOf(0)}
@@ -150,11 +199,46 @@ class DownloadBrowserActivity: ComponentActivity() {
         val browser=remember {
             WebView(this).apply {
                 web=this
+                try { BrowserAdBlock.install(applicationContext,this,scope) }
+                catch(e:Exception) { android.util.Log.w("ReiAnixBrowser","Filtro visual indisponível",e) }
+                catch(e:LinkageError) { android.util.Log.w("ReiAnixBrowser","Filtro visual não suportado",e) }
                 BrowserMediaCapture.install(
                     this,
                     onMedia = { frame,item ->
                         if(item==null)observed.remove(frame)
                         else if(observed.size<20 || observed.containsKey(frame))observed[frame]=item
+                    },
+                    onDownload = { source,downloadTitle ->
+                        if(pendingOffer==null && !submitting && !preparingSiteDownload) {
+                            preparingSiteDownload=true
+                            val generation=discoveryGeneration
+                            scope.launch {
+                            fullscreen.hide()
+                            try {
+                                val provided=mediaRequests[source.url]?.second.orEmpty().toMutableMap()
+                                if(provided.keys.none {it.equals("Referer",true)})provided["Referer"]=source.page
+                                provided["User-Agent"]=settings.userAgentString
+                                val headers=DownloadSessionHeaders.resolve(applicationContext,source.url,provided)
+                                // Prefer variants read by the page's authenticated fetch/XHR.
+                                // Inspect over HTTP only when the page has not exposed them yet.
+                                val captured=sourceOptions.values.firstOrNull {
+                                    it.frame==source.frame && it.masterUrl==source.url && it.quality==source.quality
+                                }
+                                val selected=captured ?: withTimeoutOrNull(8000) {
+                                    BrowserHlsDiscovery.inspect(source,headers)
+                                }.orEmpty().firstOrNull {it.quality==source.quality}
+                                if(generation!=discoveryGeneration)return@launch
+                                if(selected!=null)offer(selected.url,settings.userAgentString,null,
+                                    "application/vnd.apple.mpegurl",downloadTitle.ifBlank {title},source.page)
+                                else {
+                                    error="Não foi possível consultar essa qualidade. Tente novamente pelo botão de download."
+                                    discoveryRequested=true;discoverHls();updateCandidates();showMedia=true
+                                }
+                            } catch(c:CancellationException){throw c}
+                            catch(_:Exception){if(generation==discoveryGeneration)error="Não foi possível preparar o download. Tente novamente."}
+                            finally {preparingSiteDownload=false}
+                            }
+                        }
                     },
                     onOption = { item ->
                         val key=item.frame+"::"+item.url
@@ -172,13 +256,25 @@ class DownloadBrowserActivity: ComponentActivity() {
                 )
                 settings.javaScriptEnabled=true; settings.domStorageEnabled=true
                 settings.allowFileAccess=false; settings.allowContentAccess=false
-                settings.useWideViewPort=true; settings.loadWithOverviewMode=true
+                // Respect the mobile viewport without zooming the whole page out when
+                // a player/popover temporarily reports wider overflow content.
+                settings.useWideViewPort=true; settings.loadWithOverviewMode=false
+                settings.textZoom=100
+                settings.setSupportZoom(true);settings.builtInZoomControls=true;settings.displayZoomControls=false
+                // Some sites serve a broken embedded-WebView experience when they
+                // see Android's `; wv` / `Version/4.0` markers. Keep WebView's
+                // current Chromium version, but present it as the ReiAnix browser.
+                settings.userAgentString=settings.userAgentString
+                    .replace("; wv", "")
+                    .replace("Version/4.0 ", "")
                 settings.setSupportMultipleWindows(true)
-                settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                settings.mixedContentMode=WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this,true)
                 webViewClient=object: WebViewClient() {
                     override fun shouldInterceptRequest(view: WebView,request: WebResourceRequest): WebResourceResponse? {
+                        if(!request.isForMainFrame && BrowserAdBlock.blocked(request,tab.url))
+                            return WebResourceResponse("text/plain","UTF-8",java.io.ByteArrayInputStream(byteArrayOf()))
                         if(request.method=="GET" && request.url.scheme in setOf("http","https")) {
                             val headers=request.requestHeaders.filter { (key,value) ->
                                 key.lowercase() in setOf("origin","referer","user-agent","authorization","cookie") &&
@@ -191,31 +287,69 @@ class DownloadBrowserActivity: ComponentActivity() {
                     }
                     override fun shouldOverrideUrlLoading(view: WebView,request: WebResourceRequest): Boolean {
                         if(request.url.scheme !in setOf("http","https")) { return true }
+                        if(BrowserAdBlock.blocked(request,tab.url))return true
                         return false
                     }
                     override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) {
                         discoveryGeneration++;discoveryRequested=false
                         hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
-                        address=url;observed.clear();sourceOptions.clear();mediaRequests.clear();error=""
+                        progress=1
+                        if(!tab.home)address=url;tab.url=url;observed.clear();sourceOptions.clear();mediaRequests.clear();error=""
                     }
-                    override fun onPageFinished(view: WebView,url: String) { address=url; title=view.title.orEmpty() }
+                    override fun onPageFinished(view: WebView,url: String) {
+                        if(!tab.home)address=url
+                        progress=100
+                        tab.url=url;title=view.title.orEmpty();tab.title=title.ifBlank {BrowserAdBlock.host(url)}
+                        backAvailable=view.canGoBack();forwardAvailable=view.canGoForward()
+                        if(restoreScroll) {restoreScroll=false;view.post {view.scrollTo(tab.scrollX,tab.scrollY)}}
+                    }
+                    override fun onReceivedError(view:WebView,request:WebResourceRequest,failure:WebResourceError) {
+                        if(request.isForMainFrame) {progress=100;error="Não foi possível carregar a página: "+failure.description}
+                    }
 
                 }
                 webChromeClient=object: WebChromeClient() {
+                    override fun onShowCustomView(view:android.view.View,callback:CustomViewCallback) {fullscreen.show(view,callback)}
+                    override fun onHideCustomView() {fullscreen.hide()}
                     override fun onProgressChanged(view: WebView,n: Int) { progress=n }
                     // Open a requested new window within this browser instead of silently dropping download links.
                     override fun onCreateWindow(view: WebView,isDialog: Boolean,isUserGesture: Boolean,resultMsg: android.os.Message): Boolean {
                         if(!isUserGesture) return false
                         val popup=WebView(this@DownloadBrowserActivity)
+                        popupViews.add(popup)
+                        fun closePopup() {
+                            if(popupViews.remove(popup)) {popup.stopLoading();popup.destroy()}
+                        }
+                        view.postDelayed({closePopup()},5000)
+                        popup.webChromeClient=object:WebChromeClient() {
+                            override fun onCloseWindow(window:WebView) {closePopup()}
+                        }
+                        popup.settings.javaScriptEnabled=true
+                        popup.settings.domStorageEnabled=true
+                        popup.settings.allowFileAccess=false;popup.settings.allowContentAccess=false
                         popup.webViewClient=object: WebViewClient() {
+                            override fun shouldInterceptRequest(v:WebView,r:WebResourceRequest):WebResourceResponse? =
+                                if(BrowserAdBlock.blocked(r,tab.url))
+                                    WebResourceResponse("text/plain","UTF-8",java.io.ByteArrayInputStream(byteArrayOf())) else null
                             override fun shouldOverrideUrlLoading(v: WebView,r: WebResourceRequest): Boolean {
-                                if(r.url.scheme in setOf("http","https")) view.loadUrl(r.url.toString())
-                                popup.destroy(); return true
+                                if(r.url.toString()=="about:blank")return false
+                                val target=r.url.toString()
+                                if(r.url.scheme in setOf("http","https") && !BrowserAdBlock.blocked(target,
+                                    page=tab.url,type=io.github.edsuns.adblockclient.ResourceType.POPUP)) {
+                                    // Unknown cross-site popups are usually ad redirects. Only
+                                    // let a popup navigate the tab when filtering is disabled
+                                    // or the destination belongs to the current site.
+                                    if(BrowserAdBlock.mode=="off" ||
+                                        BrowserAdBlock.related(view.url.orEmpty(),target)) {
+                                        view.loadUrl(target,mapOf("Referer" to view.url.orEmpty()))
+                                    }
+                                }
+                                closePopup(); return true
                             }
                         }
                         popup.setDownloadListener { url,ua,cd,mime,length ->
                             offer(url,ua,cd,mime,title,view.url.orEmpty(),browserLength=length.takeIf{it>0});
-                            popup.destroy()
+                            closePopup()
                         }
                         (resultMsg.obj as WebView.WebViewTransport).webView=popup; resultMsg.sendToTarget(); return true
                     }
@@ -225,24 +359,101 @@ class DownloadBrowserActivity: ComponentActivity() {
                 }
             }
         }
-        LaunchedEffect(requested) { if(requested.isNotBlank()) try { DownloadHttp.validateUrl(requested); browser.loadUrl(requested) } catch(_: Exception) { error="Endereço inválido" } }
-        DisposableEffect(browser) { onDispose { browser.stopLoading(); browser.destroy(); web=null } }
+        LaunchedEffect(tab.id) {
+            // Preferences and filter preparation are independent: neither failure may
+            // prevent a tab from loading. The WebView always stays usable.
+            try {
+                val deps=com.reianix.reianix_local.ReiAnixAppDependencies.from(applicationContext)
+                BrowserAdBlock.mode=withContext(Dispatchers.IO) {
+                    deps.bootstrap.awaitStarted()
+                    deps.sqliteSettingsRepository.getPreference("browser.ad_mode","balanced") ?: "balanced"
+                }
+            } catch(c:CancellationException) {throw c}
+            catch(e:Exception) {android.util.Log.w("ReiAnixBrowser","Não foi possível ler o modo de proteção",e)}
+            rememberedMode=BrowserAdBlock.mode
+            try {
+                if(BrowserAdBlock.mode!="off")BrowserAdBlock.prepare(applicationContext)
+                protectionError=""
+            } catch(c:CancellationException) {throw c}
+            catch(e:Exception) {
+                protectionError="Bloqueador indisponível. A navegação continua."
+                android.util.Log.e("ReiAnixBrowser","Falha na inicialização dos filtros",e)
+            } catch(e:LinkageError) {
+                protectionError="Bloqueador indisponível. A navegação continua."
+                android.util.Log.e("ReiAnixBrowser","Biblioteca nativa do bloqueador indisponível",e)
+            } finally {
+                protectionReady=true
+                if(tab.saved.isEmpty || runCatching {browser.restoreState(tab.saved)}.getOrNull()==null) {
+                    if(tab.url.isNotBlank()) {
+                        val destination=BrowserAddress.resolve(tab.url)
+                        if(destination!=null) {tab.home=false;browser.loadUrl(destination)}
+                        else error="Endereço inválido"
+                    }
+                }
+            }
+        }
+        LaunchedEffect(showSettings) {
+            if(!showSettings && rememberedMode!=BrowserAdBlock.mode) {
+                rememberedMode=BrowserAdBlock.mode
+                try {
+                    if(BrowserAdBlock.mode!="off")BrowserAdBlock.prepare(applicationContext)
+                    protectionError=""
+                } catch(c:CancellationException) {throw c}
+                catch(e:Exception) {
+                    protectionError="Bloqueador indisponível. A navegação continua."
+                    android.util.Log.e("ReiAnixBrowser","Falha ao alternar modo de filtros",e)
+                } catch(e:LinkageError) {
+                    protectionError="Bloqueador indisponível. A navegação continua."
+                    android.util.Log.e("ReiAnixBrowser","Biblioteca nativa do bloqueador indisponível",e)
+                } finally {
+                    protectionReady=true
+                    if(!tab.home && browser.url!=null)browser.reload()
+                }
+            }
+        }
+        DisposableEffect(browser) {onDispose {
+            fullscreen.hide()
+            tab.saved=Bundle();browser.saveState(tab.saved)
+            tab.scrollX=browser.scrollX;tab.scrollY=browser.scrollY
+            popupViews.toList().forEach {it.stopLoading();it.destroy()};popupViews.clear()
+            browser.onPause();browser.stopLoading()
+            (browser.parent as? android.view.ViewGroup)?.removeView(browser)
+            browser.destroy();web=null
+            mediaRequests.clear();pendingOffer=null
+        }}
+        fun captureTab() {
+            if(browser.width>0 && browser.height>0 && !tab.home)runCatching {
+                val bitmap=Bitmap.createBitmap(240,420,Bitmap.Config.RGB_565)
+                val canvas=android.graphics.Canvas(bitmap)
+                canvas.scale(240f/browser.width,420f/browser.height)
+                browser.draw(canvas);tab.preview=bitmap
+            }
+        }
         BackHandler {
             when {
+                fullscreen.active -> fullscreen.hide()
+                showSettings -> showSettings=false
+                tab.home && browser.url!=null -> {tab.home=false;browser.onResume();address=tab.url}
                 pendingOffer!=null -> { if(!submitting)pendingOffer=null }
                 showMedia -> showMedia=false
                 browser.canGoBack() -> browser.goBack()
                 else -> finish()
             }
         }
+        if(showSettings) {
+            DownloadSettingsScreen {showSettings=false}
+            return
+        }
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     OutlinedTextField(address,{address=it},singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")},
                         keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),keyboardActions=KeyboardActions(onGo={
-                            try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
+                            val destination=BrowserAddress.resolve(address)
+                            if(destination==null)error="Endereço inválido"
+                            else {error="";tab.home=false;browser.onResume();browser.loadUrl(destination)}
                         }))
-                    IconButton(onClick={
+                    IconButton(enabled=protectionReady && !tab.home && !preparingSiteDownload,onClick={
                         discoveryGeneration++
                         hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
                         discoveryRequested=true
@@ -271,12 +482,44 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 discoverHls();updateCandidates()
                             } },2600)
                         }
-                    }) { Icon(Icons.Filled.Download,"Vídeos encontrados") }
-                    IconButton(onClick={ startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java)) }) { Icon(Icons.Filled.List,"Fila de downloads") }
+                    }) { if(preparingSiteDownload)CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)
+                        else Icon(Icons.Filled.Download,"Vídeos encontrados") }
+                    Box {
+                        IconButton(onClick={menu=true}) {Icon(Icons.Filled.MoreVert,"Menu do navegador")}
+                        DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                            DropdownMenuItem(text={Text("Nova guia")},onClick={menu=false;captureTab();onNewTab()})
+                            DropdownMenuItem(text={Text("Downloads")},onClick={menu=false;startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))})
+                            DropdownMenuItem(text={Text("Configurações")},onClick={menu=false;showSettings=true})
+                            DropdownMenuItem(text={Text("Recarregar")},onClick={menu=false;error="";browser.reload()})
+                        }
+                    }
                 }
-                if(progress<100) LinearProgressIndicator(progress={progress/100f},modifier=Modifier.fillMaxWidth())
+                if(progress in 1..99 && !tab.home) LinearProgressIndicator(progress={progress/100f},modifier=Modifier.fillMaxWidth())
                 if(error.isNotBlank()) Text(error,Modifier.padding(8.dp),color=MaterialTheme.colorScheme.error)
-                AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                // Startup diagnostics are shown in Settings, never over the visited page.
+                if(!protectionReady) Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) {
+                    CircularProgressIndicator()
+                } else if(tab.home) Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp),
+                    verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.Public,null,Modifier.size(64.dp),tint=MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(16.dp))
+                    Text("ReiAnix Browser",style=MaterialTheme.typography.headlineMedium)
+                    Text("Digite um endereço acima para navegar",style=MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(24.dp))
+                    TextButton(onClick={startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))}) {
+                        Icon(Icons.Filled.Download,null);Spacer(Modifier.width(8.dp));Text("Downloads")
+                    }
+                    TextButton(onClick=onNewTab) {Icon(Icons.Filled.Add,null);Text("Nova guia")}
+                } else AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
+                    IconButton(enabled=backAvailable || (tab.home && tab.url.isNotBlank()),onClick={
+                        if(tab.home){tab.home=false;address=tab.url;browser.onResume()}else browser.goBack()
+                    }){Icon(Icons.Filled.ArrowBack,"Voltar página")}
+                    IconButton(enabled=forwardAvailable && !tab.home,onClick={browser.goForward()}){Icon(Icons.Filled.ArrowForward,"Avançar página")}
+                    IconButton(onClick={captureTab();tab.home=true;address="";browser.onPause()}){Icon(Icons.Filled.Home,"Início do navegador")}
+                    OutlinedButton(onClick={captureTab();onTabs()}){Icon(Icons.Filled.Tab,"Guias");Spacer(Modifier.width(6.dp));Text("${tabs.size}")}
+                    IconButton(onClick={captureTab();onNewTab()}){Icon(Icons.Filled.Add,"Nova guia")}
+                }
             }
         }
         val offer=pendingOffer
@@ -408,9 +651,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                 putString(canonical,value)
             }
             val sameSource=runCatching {
-                DownloadHttp.sameOrigin(java.net.URL(requested),java.net.URL(url))
+                DownloadHttp.sameOrigin(java.net.URL(tabs.firstOrNull {it.id==activeTabId}?.initialUrl.orEmpty()),java.net.URL(url))
             }.getOrDefault(false)
-            if(sameSource)sourceHeaders.forEach {(key,value)->
+            if(sameSource)tabs.firstOrNull {it.id==activeTabId}?.headers.orEmpty().forEach {(key,value)->
                 // Observed WebView request headers take precedence for their
                 // exact resource; Nuvio's headers fill missing values.
                 if(!keySet().any{it.equals(key,true)})putString(key,value)
