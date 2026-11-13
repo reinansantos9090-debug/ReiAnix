@@ -43,7 +43,12 @@ internal object BrowserFilterLists {
         val text=data.toString(Charsets.UTF_8)
         require(!text.trimStart().startsWith('<') && (text.startsWith('!') || text.startsWith('[')))
         val engine=AdBlockClient(s.id)
-        try {engine.loadBasicData(data,true);require(engine.getFiltersCount()>100);return Loaded(s,engine)}
+        try {
+            engine.loadBasicData(data,true)
+            engine.isGenericElementHidingEnabled=true
+            require(engine.getFiltersCount()>100)
+            return Loaded(s,engine)
+        }
         catch(t:Throwable) {engine.close();throw t}
     }
     suspend fun prepare(context:Context)=withContext(Dispatchers.IO) {

@@ -5,14 +5,17 @@
 #include <iostream>
 int main(int argc,char** argv){
   AdBlockClient fixture;
-  const char* rules="||ad.example^$script,third-party\n@@||ad.example/allowed.js$script\n||popup.example^$popup\nsite.example##.advert\n";
+  const char* rules="||ad.example^$script,third-party\n@@||ad.example/allowed.js$script\n||popup.example^$popup\nsite.example##.advert\n##.generic-ad\n";
   fixture.parse(rules,true);
+  fixture.isGenericElementHidingEnabled=true;
   assert(fixture.matches("https://ad.example/banner.js",FOScript,"site.example"));
   assert(!fixture.matches("https://ad.example/allowed.js",FOScript,"site.example"));
   assert(!fixture.matches("https://ad.example/banner.js",FOImage,"site.example"));
   assert(fixture.matches("https://popup.example/path",FOPopup,"site.example"));
   assert(!fixture.matches("https://popup.example/path",FOScript,"site.example"));
   const char* css=fixture.getElementHidingSelectors("https://site.example");assert(css && std::string(css).find(".advert")!=std::string::npos);
+  const char* generic=fixture.getElementHidingSelectors("https://other.example");
+  assert(generic && std::string(generic).find(".generic-ad")!=std::string::npos);
   if(argc>1)for(auto name:{"easylist","mobile","portuguese","easyprivacy","annoyances"}) {
     std::ifstream in(std::string(argv[1])+"/"+name+".txt");std::ostringstream data;data<<in.rdbuf();auto text=data.str();
     AdBlockClient client;client.parse(text.c_str(),true);
