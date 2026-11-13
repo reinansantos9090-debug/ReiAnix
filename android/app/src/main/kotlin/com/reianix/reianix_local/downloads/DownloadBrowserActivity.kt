@@ -165,10 +165,10 @@ class DownloadBrowserActivity: ComponentActivity() {
         fun discoverHls() {
             if(!discoveryRequested)return
             val generation=discoveryGeneration
-            sourceOptions.values.filter {it.format=="hls" && it.masterUrl.isBlank() &&
-                BrowserMediaOption.eligible(it)}.sortedBy {it.url}.forEach { source ->
+            sourceOptions.values.filter {it.masterUrl.isBlank() &&
+                BrowserHlsDiscovery.isProbeCandidate(it)}.sortedBy {it.url}.forEach { source ->
                 val key=source.frame+"::"+source.url
-                if(inspectedHls.size>=4 || !inspectedHls.add(key))return@forEach
+                if(inspectedHls.size>=8 || !inspectedHls.add(key))return@forEach
                 discoveringHls++
                 hlsJobs+=scope.launch {
                     try {
