@@ -18,7 +18,8 @@ object DownloadHttp {
     fun connect(url: String, headers: Map<String,String>, offset: Long, validator: String?, end: Long? = null, credentialOrigin: String = url,
         method: String = "GET", connectTimeoutMs: Int = 20_000, readTimeoutMs: Int = 25_000,
         probeRange: String? = null, conditionalEtag: String? = null,
-        preferInitialRange: Boolean = false, closeAfterResponse: Boolean = false): HttpURLConnection {
+        preferInitialRange: Boolean = false, closeAfterResponse: Boolean = false,
+        retryHtmlWithSelfReferer: Boolean = false): HttpURLConnection {
         require(method in setOf("GET","HEAD"))
         val origin=URL(validateUrl(credentialOrigin).toASCIIString())
         var target=URL(validateUrl(url).toASCIIString())
@@ -28,6 +29,8 @@ object DownloadHttp {
         var initialRange=preferInitialRange && method=="GET" && offset==0L &&
             end==null && probeRange==null
         var redirects=0
+        var selfReferer=false
+        val alreadyHasReferer=headers.keys.any {it.equals("Referer",true)}
         repeat(12) {
             val connection=target.openConnection() as HttpURLConnection
             connection.instanceFollowRedirects=false
@@ -67,6 +70,12 @@ object DownloadHttp {
                         }
                     }
             }
+            // Navi's metadata discovery retries some HTML landing responses
+            // with the original source as Referer. Only the original same
+            // origin receives the full referer; never resend a signed query to
+            // a cross-origin redirect.
+            if(selfReferer && sameOrigin(origin,target))
+                connection.setRequestProperty("Referer",origin.toString())
             if(initialRange) {
                 connection.setRequestProperty("Range","bytes=0-")
             } else if(method=="GET" && !probeRange.isNullOrBlank()) {
@@ -100,6 +109,15 @@ object DownloadHttp {
                 if(target.protocol=="https" && next.protocol!="https")
                     throw IOException("Redirecionamento HTTPS para HTTP recusado")
                 target=next
+                return@repeat
+            }
+            if(retryHtmlWithSelfReferer && !selfReferer && !alreadyHasReferer &&
+                code==200 && method=="GET" && sameOrigin(origin,target) &&
+                connection.contentType.orEmpty().substringBefore(';')
+                    .trim().equals("text/html",true)) {
+                connection.disconnect()
+                selfReferer=true
+                initialRange=false
                 return@repeat
             }
             if(initialRange && shouldRetryWithoutInitialRange(code,
