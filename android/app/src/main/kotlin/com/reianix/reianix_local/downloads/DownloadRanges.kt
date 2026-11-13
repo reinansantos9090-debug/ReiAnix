@@ -16,7 +16,7 @@ internal object DownloadRanges {
                 val time=android.os.SystemClock.elapsedRealtime(); val beginning=position
                 val ranges=(0 until connections).map { beginning+it*1024L*1024 }.filter {it<total}.map { it to minOf(total-1,it+1024*1024-1) }
                 val parts=ranges.map { (offset,end) -> async(Dispatchers.IO) {
-                    val c=DownloadHttp.connect(url,headers,offset,validator,end)
+                    val c=DownloadHttp.connect(url,headers,offset,validator,end,allowMediaHttpDowngrade=true)
                     try {
                         val r=DownloadHttp.range(c.getHeaderField("Content-Range"))
                         if(c.responseCode!=206 || r?.start!=offset || r.end!=end || r.total!=total || c.getHeaderField("ETag")!=validator)throw IOException("Servidor não confirmou as faixas paralelas")
