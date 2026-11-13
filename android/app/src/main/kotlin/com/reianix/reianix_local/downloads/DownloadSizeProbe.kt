@@ -219,7 +219,8 @@ internal object DownloadSizeProbe {
                     method=if(phase=="HEAD")"HEAD" else "GET",
                     probeRange=if(phase=="GET_OPEN_RANGE")"bytes=0-" else null,
                     connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
-                    retryHtmlWithSelfReferer=(phase=="GET_OPEN_RANGE"))
+                    retryHtmlWithSelfReferer=(phase=="GET_OPEN_RANGE"),
+                    allowMediaHttpDowngrade=true)
                 val code=c.responseCode
                 val mime=c.contentType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
                 val endpoint=c.url.toString()
