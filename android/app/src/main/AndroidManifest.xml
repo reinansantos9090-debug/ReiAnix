@@ -31,7 +31,7 @@
     <service android:name="com.reianix.reianix_local.downloads.DownloadTransferJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
     <service android:name="androidx.work.impl.foreground.SystemForegroundService" android:foregroundServiceType="dataSync" tools:node="merge" />
     <receiver android:name="com.reianix.reianix_local.downloads.DownloadPauseReceiver" android:exported="false" />
-    <activity android:name="com.reianix.reianix_local.downloads.DownloadBrowserActivity" android:label="ReiAnix Browser" android:exported="true" android:launchMode="singleTop">
+    <activity android:name="com.reianix.reianix_local.downloads.DownloadBrowserActivity" android:label="ReiAnix Browser" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden">
       <intent-filter>
         <action android:name="android.intent.action.SEND" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="text/plain" />
       </intent-filter>

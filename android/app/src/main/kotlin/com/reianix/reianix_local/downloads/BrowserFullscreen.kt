@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.downloads
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
@@ -18,6 +19,7 @@ internal class BrowserFullscreen(private val activity:Activity) {
     private var callback:WebChromeClient.CustomViewCallback?=null
     private var barsWereVisible=true
     private var previousBehavior=0
+    private var previousOrientation=ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     private var fullscreenWasSet=false
     val active:Boolean get()=container!=null
 
@@ -27,8 +29,12 @@ internal class BrowserFullscreen(private val activity:Activity) {
         barsWereVisible=ViewCompat.getRootWindowInsets(decor)?.isVisible(WindowInsetsCompat.Type.systemBars()) ?: true
         val controls=WindowCompat.getInsetsController(activity.window,decor)
         previousBehavior=controls.systemBarsBehavior
+        previousOrientation=activity.requestedOrientation
         fullscreenWasSet=activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_FULLSCREEN != 0
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        // A landscape video kept inside a portrait WebView leaves most of the
+        // screen black. Match normal mobile browser behavior while fullscreen.
+        activity.requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         callback=result
         container=FrameLayout(activity).apply {
             setBackgroundColor(Color.BLACK)
@@ -44,6 +50,7 @@ internal class BrowserFullscreen(private val activity:Activity) {
         container=null
         holder.removeAllViews()
         (holder.parent as? ViewGroup)?.removeView(holder)
+        activity.requestedOrientation=previousOrientation
         if(!fullscreenWasSet)activity.window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         val controls=WindowCompat.getInsetsController(activity.window,activity.window.decorView)
         controls.systemBarsBehavior=previousBehavior
