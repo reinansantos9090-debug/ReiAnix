@@ -265,8 +265,8 @@ class DownloadBrowserActivity: ComponentActivity() {
                             enabled=supported,
                             onClick={
                                 showMedia=false
-                                if(DownloadSourceSelection.kind(item.url)==
-                                    DownloadSourceSelection.Kind.PAGE_OR_GATEWAY) {
+                                if(item.capture==null &&
+                                    DownloadSourceSelection.clearlyPage(item.url)) {
                                     // Follow the page inside the authorized WebView,
                                     // then rediscover the actual media used by the player.
                                     browser.loadUrl(item.url)
