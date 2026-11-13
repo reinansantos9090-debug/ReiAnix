@@ -46,7 +46,7 @@ internal object BrowserMediaCapture {
   if(window.__reiMainPlayer)return;window.__reiMainPlayer=true;
   const frameId=Math.random().toString(36).slice(2)+Date.now().toString(36);
   let frame={known:window===window.top,allowed:window===window.top,width:innerWidth,height:innerHeight};
-  let lastKey='',lastSent=0,scheduled=false;
+  let lastKey='',lastSent=0,scheduled=false,lastEmbeddedScan=0;
   const manifests=new Map(),masters=new Map(),emittedOptions=new Map(),directMedia=new Map();
   const badUrl=raw=>{try{const u=new URL(raw,location.href),d=/(?:^|[\/_.-])(\d{2,4})x(\d{2,4})(?=[\/_. -]|${'$'})/i.exec(u.pathname);
     return !/^https?:${'$'}/.test(u.protocol)||/(^|\.)(doubleclick\.net|googlesyndication\.com|adnxs\.com|adsterra\.com|popads\.net)${'$'}/.test(u.hostname)||/(?:^|\/)(ads?|advert(isement)?s?|banners?|preroll)(?:\/|[_.-]|${'$'})/i.test(u.pathname)||(d&&Number(d[1])/Number(d[2])>4);
@@ -114,6 +114,51 @@ internal object BrowserMediaCapture {
       if(format==='hls')pendingMasters.add(url);
       sendOption(url,label,origin,false,hint);
     }catch(e){}};
+    // Many pages keep every rendition in an inline player configuration and
+    // only attach the selected rendition to <video> after Play. Read bounded,
+    // already-loaded page data without executing scripts or interacting with
+    // the player. Require a media URL and, for direct files, a nearby quality
+    // label so unrelated links in scripts are not offered as downloads.
+    const qualityIn=snippet=>{
+      const values=Array.from((snippet||'').matchAll(/(?:label|quality|resolution|res|height)["']?\s*[:=]\s*["']?\s*(2160|1440|1080|720|480|360|240)\s*p?/gi),match=>match[1]+'p');
+      const unique=Array.from(new Set(values));
+      return unique.length===1?unique[0]:'';
+    };
+    const embedded=(raw,context)=>{
+      const url=String(raw||'').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
+      const format=mediaFormat(url);
+      if(!format)return;
+      const quality=qualityIn(context)||qualityFrom('',url);
+      if(format!=='hls'&&quality==='Qualidade não informada')return;
+      offer(url,quality,'source',format==='hls'?'application/vnd.apple.mpegurl':format==='dash'?'application/dash+xml':'video/mp4');
+    };
+    if(prepareMasters||Date.now()-lastEmbeddedScan>=1500){
+      lastEmbeddedScan=Date.now();
+      let scriptBudget=0;
+      Array.from(document.scripts).slice(0,64).forEach(script=>{
+        let text=script.textContent||'';
+        if(!text||text.length>131072||scriptBudget+text.length>524288||!/(?:\.m3u8|\.mpd|\.mp4|\.mkv|\.webm|\.m4v)/i.test(text))return;
+        scriptBudget+=text.length;
+        text=text.replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
+        const pattern=/(?:https?:\/\/|\/\/|\/)[^"'\\\s<>]{1,1536}?\.(?:m3u8|mpd|mp4|mkv|webm|mov|m4v|ts|m2ts)(?:\?[^"'\\\s<>]{0,2048})?/gi;
+        let match,count=0;
+        while((match=pattern.exec(text))&&count++<48){
+          const context=text.slice(Math.max(0,match.index-320),Math.min(text.length,pattern.lastIndex+320));
+          embedded(match[0],context);
+        }
+      });
+      // Resource Timing also sees manifests/files loaded by page scripts and
+      // players that do not use fetch/XHR. A master playlist is useful even
+      // before the video element is mounted; its renditions are expanded after
+      // the user explicitly requests intelligent download.
+      try{
+        performance.getEntriesByType('resource').slice(-160).forEach(entry=>{
+          const url=entry&&entry.name||'',format=mediaFormat(url);
+          if(format==='hls'||format==='dash')embedded(url,'');
+          else if(format==='video'&&qualityFrom('',url)!=='Qualidade não informada')embedded(url,'');
+        });
+      }catch(e){}
+    }
     visible.forEach(v=>{
       offer(v.currentSrc||v.src,v.getAttribute('data-quality')||v.getAttribute('data-res')||(v.readyState>=1&&v.videoHeight?v.videoHeight+'p':''),'visible-video');
       v.querySelectorAll('source[src]').forEach(source=>{
