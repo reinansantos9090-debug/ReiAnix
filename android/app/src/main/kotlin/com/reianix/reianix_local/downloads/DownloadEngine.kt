@@ -118,6 +118,10 @@ class DownloadEngine(private val context: Context) {
             connection=DownloadHttp.connect(sourceUrl,requestHeaders,resume,validator,
                 preferInitialRange=(resume==0L),closeAfterResponse=true)
             val code=connection.responseCode
+            store.mutate(id) {
+                it.put("lastHttpStatus",code)
+                it.put("effectiveHost",connection.url.host.orEmpty().take(255))
+            }
             if(code==401) throw PermanentFailure("O servidor solicitou autenticação (HTTP 401). Abra novamente o vídeo no navegador e capture o link.")
             if(code==403) throw PermanentFailure("O servidor recusou o download (HTTP 403). Capture novamente o vídeo no navegador; a sessão ou as regras do servidor podem impedir esta transferência.")
             if(code==404 || code==410) throw PermanentFailure("Arquivo não encontrado ou link expirado")
