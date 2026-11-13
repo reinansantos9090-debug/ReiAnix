@@ -71,13 +71,15 @@ internal object BrowserMediaCapture {
     if(['.mp4','.mkv','.webm','.mov','.m4v','.ts','.m2ts'].some(x=>path.endsWith(x)))return 'video';
     return '';
   }catch(e){return ''}};
-  const qualityFrom=(label,url)=>{const text=String(label||'')+' '+String(url||'');
+  const qualityFrom=(label,url)=>{const text=(/^(2160|1440|1080|720|480|360|240)$/.test(String(label||'').trim())?String(label).trim()+'p':String(label||''))+' '+String(url||'');
     let m=/(?:^|[^0-9])(2160|1440|1080|720|480|360|240)\s*p(?:[^a-z]|$)/i.exec(text);
     if(m)return m[1]+'p';
     m=/(?:quality|res|height|q)[=:/_-](2160|1440|1080|720|480|360|240)(?:[^0-9]|$)/i.exec(text);
+    if(m)return m[1]+'p';
+    try{m=/(?:^|[-_/])(2160|1440|1080|720|480|360|240)\.(?:m3u8|mp4|webm)(?:[?#]|$)/i.exec(String(url||''));}catch(e){}
     return m?m[1]+'p':'Qualidade não informada';
   };
-  const sendOption=(raw,label,origin,separateAudio=false,mimeHint='')=>{try{
+  const sendOption=(raw,label,origin,separateAudio=false,mimeHint='',masterUrl='',estimatedBytes=0)=>{try{
     if(!frame.known||!frame.allowed)return;
     const url=new URL(raw,location.href).href;
     const hint=String(mimeHint||'').toLowerCase();
@@ -86,11 +88,11 @@ internal object BrowserMediaCapture {
         hint.startsWith('video/')?'video':origin==='visible-video'?'video':'');
     if(!format||badUrl(url)||url.length>16384)return;
     const quality=qualityFrom(label,url);
-    const key=url+'|'+quality,now=Date.now();
+    const key=url+'|'+quality+'|'+masterUrl+'|'+estimatedBytes,now=Date.now();
     if(emittedOptions.get(key)&&now-emittedOptions.get(key)<4000)return;
     if(emittedOptions.size>=96)emittedOptions.clear();
     emittedOptions.set(key,now);
-    message({kind:'option',url,quality,format,origin,separateAudio:!!separateAudio,mimeHint:hint});
+    message({kind:'option',url,quality,format,origin,separateAudio:!!separateAudio,mimeHint:hint,masterUrl,estimatedBytes});
   }catch(e){}};
   const scanOptions=(prepareMasters=false)=>{try{
     if(!frame.known||!frame.allowed)return;
@@ -111,12 +113,42 @@ internal object BrowserMediaCapture {
       sendOption(url,label,origin,false,hint);
     }catch(e){}};
     visible.forEach(v=>{
-      offer(v.currentSrc||v.src,v.getAttribute('data-quality')||v.getAttribute('data-res')||'','visible-video');
+      offer(v.currentSrc||v.src,v.getAttribute('data-quality')||v.getAttribute('data-res')||(v.readyState>=1&&v.videoHeight?v.videoHeight+'p':''),'visible-video');
       v.querySelectorAll('source[src]').forEach(source=>{
         offer(source.src,source.getAttribute('label')||source.getAttribute('res')||
           source.getAttribute('data-quality')||source.getAttribute('size')||'','source',
           source.getAttribute('type')||'');
       });
+    });
+    // Read the existing player's declared renditions, including closed quality
+    // menus. Never click controls or manufacture a URL by replacing 720 with 360.
+    visible.forEach(v=>{
+      const root=v.closest('.jwplayer,.video-js,.plyr,.fluid_video_wrapper,[data-player]')||v.parentElement;
+      if(!root||adElement(root))return;
+      const declared=(raw,label,type='')=>offer(raw,label,'source',type||'video/mp4');
+      root.querySelectorAll('source[src],[data-src],[data-url],select option[value]')
+        .forEach(node=>{
+          const raw=node.getAttribute('src')||node.getAttribute('data-src')||node.getAttribute('data-url')||node.getAttribute('value');
+          if(!raw||!/^https?:|^\/|^\.\.\//i.test(raw))return;
+          // Unlike <source>, controls must carry an explicit quality label.
+          const label=node.getAttribute('label')||node.getAttribute('data-quality')||node.getAttribute('data-res')||node.getAttribute('res')||node.getAttribute('size')||node.textContent||'';
+          if(node.tagName!=='SOURCE'&&qualityFrom(label,'')==='Qualidade não informada')return;
+          declared(raw,label,node.getAttribute('type')||'');
+        });
+      try{
+        if(root.classList.contains('jwplayer')&&typeof window.jwplayer==='function'){
+          const player=window.jwplayer(root.id),entry=player.getPlaylistItem();
+          if(entry&&Array.isArray(entry.sources))entry.sources.slice(0,32).forEach(source=>
+            declared(source.file,source.label||source.height||'',source.type&&source.type.includes('/')?source.type:''));
+        }
+      }catch(e){}
+      try{
+        if(root.classList.contains('video-js')&&window.videojs&&window.videojs.getPlayer){
+          const player=window.videojs.getPlayer(root.id);
+          if(player&&player.currentSources)player.currentSources().slice(0,32).forEach(source=>
+            declared(source.src,source.label||source.res||source.height||'',source.type||''));
+        }
+      }catch(e){}
     });
     // Explicit quality controls can expose all renditions before Play. Accept
     // only media links that belong to visible controls, never arbitrary hrefs.
@@ -139,7 +171,7 @@ internal object BrowserMediaCapture {
     if(visible.length===1 && recentDirect.length===1 &&
       Number.isFinite(visible[0].duration) && visible[0].duration>=120)
       sendOption(recentDirect[0].url,
-        visible[0].getAttribute('data-quality')||'','visible-video',
+        visible[0].getAttribute('data-quality')||(visible[0].videoHeight?visible[0].videoHeight+'p':''),'visible-video',
         false,recentDirect[0].mime);
     const recent=Array.from(masters.values()).filter(m=>Date.now()-m.time<60000);
     recent.forEach(master=>{
@@ -147,13 +179,19 @@ internal object BrowserMediaCapture {
         master.children.some(child=>sources.has(child.url))||
         (visible.length===1&&recent.length===1);
       if(!related)return;
-      master.children.forEach(child=>sendOption(child.url,child.quality,'master',child.audio,'application/vnd.apple.mpegurl'));
+      master.children.forEach(child=>{
+        const vod=manifests.get(child.url),playing=visible[0];
+        const duration=vod?vod.duration:(visible.length===1&&Number.isFinite(playing.duration)&&playing.duration>=120?playing.duration:0);
+        const estimate=child.bandwidth>0&&duration>0?Math.round(child.bandwidth*duration/8):0;
+        sendOption(child.url,child.quality,'master',child.audio,'application/vnd.apple.mpegurl',master.url,estimate);
+      });
     });
-    // Only on an explicit toolbar request: inspect a few *same-origin*
-    // visible HLS playlists. Cross-origin/CORS/auth restrictions are respected.
+    // Only on an explicit toolbar request: inspect declared playlists, including
+    // a different CDN origin. Fetch still enforces CORS; native discovery can
+    // read the same declared playlist using the downloader's HTTP policy.
     if(prepareMasters){
       Array.from(pendingMasters).filter(url=>{
-        try{return new URL(url).origin===location.origin&&!masters.has(url);}catch(e){return false;}
+        try{return /^https?:$/.test(new URL(url).protocol)&&!masters.has(url);}catch(e){return false;}
       }).slice(0,4).forEach(async url=>{
         const ctl=new AbortController(),abort=setTimeout(()=>ctl.abort(),3000);
         try{
@@ -202,7 +240,8 @@ internal object BrowserMediaCapture {
         const audio=/(?:^|,)AUDIO=/i.test(info);
         for(let j=i+1;j<lines.length;j++)if(lines[j].trim()&&!lines[j].startsWith('#')){
           links.push({url:new URL(lines[j].trim(),url).href,
-            quality:resolution?resolution[2]+'p':'Qualidade não informada',audio});
+            quality:resolution?resolution[2]+'p':qualityFrom('',new URL(lines[j].trim(),url).href),audio,
+            bandwidth:Number((/(?:^|,)AVERAGE-BANDWIDTH=(\d+)/i.exec(info.substring(info.indexOf(':')+1))||/(?:^|,)BANDWIDTH=(\d+)/i.exec(info.substring(info.indexOf(':')+1))||[])[1])||0});
           break;
         }
       }
@@ -229,7 +268,7 @@ internal object BrowserMediaCapture {
     directMedia.set(url,{url,time:Date.now(),mime});
     if(Number.isFinite(players[0].duration)&&players[0].duration>=120 &&
       players[0].videoWidth>=160&&players[0].videoHeight>=90)
-      sendOption(url,players[0].getAttribute('data-quality')||'',
+      sendOption(url,players[0].getAttribute('data-quality')||(players[0].videoHeight?players[0].videoHeight+'p':''),
         'visible-video',false,mime);
     schedule();
   }catch(e){}};

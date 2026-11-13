@@ -60,6 +60,11 @@ object DownloadIdentity {
     /** Prefer actual episode metadata; never label the CDN videoplayback as an anime. */
     fun episodeTitleFromPage(pageTitle: String, pageUrl: String): String {
         val title = cleanedPageTitle(pageTitle)
+        // Episode pages often say "One Piece Dublado 005", without "Episódio".
+        // Require an audio marker so a series title ending in a number is preserved.
+        val numbered=Regex("""(?i)^(.+\b(?:dublado|legendado))\s+0*(\d{1,4})$""").matchEntire(title)
+        if(numbered!=null && usefulPageTitle(numbered.groupValues[1]))
+            return numbered.groupValues[1]+" Episódio "+numbered.groupValues[2].toInt()
         if (usefulPageTitle(title) && episodeMarker.containsMatchIn(title)) return title
         val fromUrl = episodeTitleFromPageUrl(pageUrl)
         if (fromUrl.isNotBlank()) return fromUrl

@@ -35,4 +35,11 @@ class DownloadIdentitySharedNameTest {
             DownloadIdentity.suggestedName("Hanaori-san Still Wants to Fight in the Next Life",
                 "https://cdn.example/$token",token))
     }
+    @Test fun numberedDubbedPageKeepsEpisodeInSavedFilename() {
+        val title=DownloadIdentity.episodeTitleFromPage("One Piece Dublado 005 - Animes Online", "https://site.example/1234/")
+        assertEquals("One Piece Dublado Episódio 5",title)
+        assertEquals("One Piece Dublado Episódio 5.mp4",
+            DownloadIdentity.capturedFileName(title,"https://cdn.example/video.mp4","video/mp4"))
+        assertFalse(DownloadIdentity.episodeTitleFromPage("86","https://site.example/86").contains("Episódio"))
+    }
 }
