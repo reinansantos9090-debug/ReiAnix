@@ -20,6 +20,8 @@ internal object BrowserFilterLists {
     private val maintenance=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val updateLock=Mutex()
     @Volatile private var loaded:List<Loaded> = emptyList()
+    @Volatile private var fallback:BrowserFallbackBlocker?=null
+    @Volatile var diagnostic:String=""; private set
     @Volatile var status="Carregando filtros…"; private set
     private const val MAX_BYTES=12*1024*1024
     @Volatile private var lastAttempt=0L
@@ -74,8 +76,10 @@ internal object BrowserFilterLists {
                             items+=loadSource(context,source)
                         } catch(c:CancellationException) {throw c}
                         catch(e:Exception) {
+                            diagnostic=e.javaClass.simpleName+": "+e.message.orEmpty().take(180)
                             android.util.Log.e("ReiAnixFilters","Falha ao carregar lista "+source.id,e)
                         } catch(e:LinkageError) {
+                            diagnostic=e.javaClass.simpleName+": "+e.message.orEmpty().take(180)
                             android.util.Log.e("ReiAnixFilters","Motor nativo indisponível para "+source.id,e)
                             break
                         }
@@ -87,9 +91,29 @@ internal object BrowserFilterLists {
                             " regras • "+items.size+"/"+inputs.size+" listas"
                     }
                 } catch(t:Throwable) {
-                    items.forEach {it.client.close()}
-                    status="Bloqueador indisponível"
-                    throw t
+                    items.forEach {runCatching {it.client.close()}}
+                    if(t is CancellationException)throw t
+                    diagnostic=(t.javaClass.simpleName+": "+t.message.orEmpty()).take(240)+
+                        (if(diagnostic.isNotBlank())" • "+diagnostic else "")
+                    android.util.Log.e("ReiAnixFilters","Motor nativo falhou; iniciando regras compatíveis",t)
+                    try {
+                        val readers=sources(context).map {source ->
+                            source.advanced to GZIPInputStream(
+                                context.assets.open("browser-filter/"+source.id+".txt.gz")
+                            ).reader(Charsets.UTF_8)
+                        }
+                        val compatible=BrowserFallbackBlocker.compile(readers)
+                        check(compatible.ruleCount>100) {"Nenhuma regra compatível disponível"}
+                        synchronized(lock) {
+                            fallback=compatible
+                            status="Bloqueio ativo (compatibilidade): "+compatible.ruleCount+
+                                " regras • "+compatible.listCount+" listas"
+                        }
+                    } catch(fallbackFailure:Throwable) {
+                        status="Bloqueador indisponível"
+                        android.util.Log.e("ReiAnixFilters","Falha no bloqueador alternativo",fallbackFailure)
+                        throw fallbackFailure
+                    }
                 }
             }
         }
@@ -99,6 +123,7 @@ internal object BrowserFilterLists {
     }
     suspend fun refresh(context:Context,force:Boolean=true):String=withContext(Dispatchers.IO) {
         if(loaded.isEmpty())prepare(context)
+        if(loaded.isEmpty() && fallback!=null)return@withContext status
         updateLock.withLock {
             val now=System.currentTimeMillis()
             if(!force && now-lastAttempt<24*60*60*1000L)return@withLock
@@ -151,6 +176,14 @@ internal object BrowserFilterLists {
         status
     }
     fun blocked(url:String,page:String,type:ResourceType,advanced:Boolean):Boolean=synchronized(lock) {
+        fallback?.let {
+            val kind=when(type) {
+                ResourceType.CSS -> "stylesheet"
+                ResourceType.UNKNOWN -> "other"
+                else -> type.name.lowercase()
+            }
+            return@synchronized it.blocks(url,page,kind,advanced)
+        }
         var block=false
         for(item in loaded) {
             if(item.source.advanced && !advanced)continue
@@ -162,6 +195,10 @@ internal object BrowserFilterLists {
         block
     }
     fun cosmetics(url:String,advanced:Boolean):String=synchronized(lock) {
+        fallback?.let {
+            return@synchronized JSONObject().put("css",it.css(url,advanced))
+                .put("extended",JSONArray()).put("scripts",JSONArray()).toString()
+        }
         val css=StringBuilder();val extended=JSONArray();val scripts=JSONArray()
         for(item in loaded) {
             if(item.source.advanced && !advanced)continue

@@ -24,6 +24,7 @@ internal object BrowserAdBlock {
     }
     suspend fun refresh(context:Context)=BrowserFilterLists.refresh(context)
     val status:String get()=BrowserFilterLists.status
+    val diagnostic:String get()=BrowserFilterLists.diagnostic
     fun host(url:String)=runCatching {URI(url).host.orEmpty().lowercase().trimEnd('.')}.getOrDefault("")
     fun related(a:String,b:String):Boolean {
         val x=host(a);val y=host(b)

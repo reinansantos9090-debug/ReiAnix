@@ -66,6 +66,9 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
                 }
             }
             Text(filterStatus,Modifier.padding(20.dp),style=MaterialTheme.typography.bodySmall)
+            if(BrowserAdBlock.diagnostic.isNotBlank())
+                Text("Diagnóstico do motor nativo: "+BrowserAdBlock.diagnostic,
+                    Modifier.padding(horizontal=20.dp),style=MaterialTheme.typography.bodySmall)
             TextButton(enabled=!filterBusy,onClick={scope.launch {
                 filterBusy=true
                 try {filterStatus=BrowserAdBlock.refresh(context)}

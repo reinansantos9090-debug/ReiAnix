@@ -445,7 +445,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 }
                 if(progress in 1..99 && !tab.home) LinearProgressIndicator(progress={progress/100f},modifier=Modifier.fillMaxWidth())
                 if(error.isNotBlank()) Text(error,Modifier.padding(8.dp),color=MaterialTheme.colorScheme.error)
-                if(protectionError.isNotBlank())Text(protectionError,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error)
+                // Startup diagnostics are shown in Settings, never over the visited page.
                 if(!protectionReady) Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) {
                     CircularProgressIndicator()
                 } else if(tab.home) Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp),
