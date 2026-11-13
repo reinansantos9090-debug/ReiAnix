@@ -384,6 +384,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     var sizeProbeUrl by remember(initialUrl,initialKnownSize,initialEstimatedSize) {
         mutableStateOf(if(providedSize!=null)initialUrl.trim() else "")
     }
+    var resolvedMediaUrl by remember(initialUrl) {mutableStateOf<String?>(null)}
     var storageBytes by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(Unit) {
         storageBytes=withContext(Dispatchers.IO) {
@@ -401,6 +402,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         }
         sizeResult=providedSize?.takeIf {url.trim()==initialUrl.trim()}
         sizeProbeUrl=if(sizeResult!=null)url.trim() else ""
+        resolvedMediaUrl=null
         delay(200)
         val target=url.trim()
         if(runCatching { DownloadHttp.validateUrl(target) }.isFailure) {
@@ -445,9 +447,13 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         )
         sizeResult=combined?.let {
             DownloadSizeProbe.Result(it.bytes,it.exact,it.source,
-                inspected.name ?: fallback?.name,inspected.mime ?: fallback?.mime)
+                inspected.name ?: fallback?.name,inspected.mime ?: fallback?.mime,
+                inspected.resolvedUrl)
         } ?: inspected
         sizeProbeUrl=target
+        resolvedMediaUrl=inspected.resolvedUrl?.takeIf {
+            it!=target && runCatching{DownloadHttp.validateUrl(it)}.isSuccess
+        }
         if(!nameTouched && editing==null) {
             val suggested=sizeResult?.name
             if(!suggested.isNullOrBlank() && !DownloadIdentity.isGenericMediaName(suggested)) {
@@ -572,6 +578,20 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                         textStyle=MaterialTheme.typography.bodyMedium,
                         placeholder={Text("https://…")},
                     )
+                    resolvedMediaUrl?.let {resolved ->
+                        val confirmedHost=runCatching {java.net.URL(resolved).host}
+                            .getOrDefault("")
+                        if(confirmedHost.isNotBlank()) {
+                            Text("Arquivo encontrado após redirecionamento: "+confirmedHost,
+                                color=Color.LightGray,
+                                style=MaterialTheme.typography.bodySmall)
+                            TextButton(onClick={
+                                (context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                    as? android.content.ClipboardManager)?.setPrimaryClip(
+                                    android.content.ClipData.newPlainText("Link do vídeo",resolved))
+                            }) {Text("Copiar endereço final")}
+                        }
+                    }
                     if(url.isNotBlank() &&
                         DownloadSourceSelection.kind(url)==DownloadSourceSelection.Kind.PAGE_OR_GATEWAY) {
                         Text(
