@@ -368,11 +368,11 @@ class DownloadBrowserActivity: ComponentActivity() {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    OutlinedTextField(address,{address=it},singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")},
+                    OutlinedTextField(address,{address=it},enabled=protectionReady,singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")},
                         keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),keyboardActions=KeyboardActions(onGo={
                             try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);tab.home=false;browser.onResume();browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
                         }))
-                    IconButton(onClick={
+                    IconButton(enabled=protectionReady && !tab.home,onClick={
                         discoveryGeneration++
                         hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
                         discoveryRequested=true
@@ -430,7 +430,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                     TextButton(onClick=onNewTab) {Icon(Icons.Filled.Add,null);Text("Nova guia")}
                 } else AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
-                    IconButton(enabled=backAvailable || tab.home,onClick={
+                    IconButton(enabled=backAvailable || (tab.home && tab.url.isNotBlank()),onClick={
                         if(tab.home){tab.home=false;address=tab.url;browser.onResume()}else browser.goBack()
                     }){Icon(Icons.Filled.ArrowBack,"Voltar página")}
                     IconButton(enabled=forwardAvailable && !tab.home,onClick={browser.goForward()}){Icon(Icons.Filled.ArrowForward,"Avançar página")}
