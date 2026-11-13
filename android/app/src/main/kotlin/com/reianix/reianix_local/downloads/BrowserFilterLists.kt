@@ -84,7 +84,7 @@ internal object BrowserFilterLists {
                             break
                         }
                     }
-                    check(items.isNotEmpty()) {"Não foi possível carregar nenhuma lista de filtros"}
+                    check(items.any {!it.source.advanced}) {"Nenhuma lista básica de anúncios foi carregada"}
                     synchronized(lock) {
                         loaded=items.toList()
                         status=items.sumOf {it.client.getFiltersCount()}.toString()+
