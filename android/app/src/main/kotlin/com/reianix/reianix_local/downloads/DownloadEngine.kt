@@ -116,7 +116,8 @@ class DownloadEngine(private val context: Context) {
                 verifyAndSave(id,target); return
             }
             connection=DownloadHttp.connect(sourceUrl,requestHeaders,resume,validator,
-                preferInitialRange=(resume==0L),closeAfterResponse=true)
+                preferInitialRange=(resume==0L),closeAfterResponse=true,
+                retryHtmlWithSelfReferer=(resume==0L))
             val code=connection.responseCode
             val actualHost=connection.url.host.orEmpty().take(255)
             store.mutate(id) {
