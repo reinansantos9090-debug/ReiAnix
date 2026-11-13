@@ -141,6 +141,7 @@ class DownloadBrowserActivity: ComponentActivity() {
         val sourceOptions=remember {ConcurrentHashMap<String,BrowserMediaOption>()}
         val inspectedHls=remember {mutableSetOf<String>()}
         val hlsJobs=remember {mutableListOf<Job>()}
+        val popupViews=remember {mutableListOf<WebView>()}
         var discoveryRequested by remember {mutableStateOf(false)}
         var discoveryGeneration by remember {mutableIntStateOf(0)}
         var discoveringHls by remember {mutableIntStateOf(0)}
@@ -265,10 +266,21 @@ class DownloadBrowserActivity: ComponentActivity() {
                     override fun onCreateWindow(view: WebView,isDialog: Boolean,isUserGesture: Boolean,resultMsg: android.os.Message): Boolean {
                         if(!isUserGesture) return false
                         val popup=WebView(this@DownloadBrowserActivity)
+                        popupViews.add(popup)
+                        fun closePopup() {
+                            if(popupViews.remove(popup)) {popup.stopLoading();popup.destroy()}
+                        }
+                        view.postDelayed({closePopup()},5000)
+                        popup.webChromeClient=object:WebChromeClient() {
+                            override fun onCloseWindow(window:WebView) {closePopup()}
+                        }
                         popup.settings.javaScriptEnabled=true
                         popup.settings.domStorageEnabled=true
                         popup.settings.allowFileAccess=false;popup.settings.allowContentAccess=false
                         popup.webViewClient=object: WebViewClient() {
+                            override fun shouldInterceptRequest(v:WebView,r:WebResourceRequest):WebResourceResponse? =
+                                if(BrowserAdBlock.blocked(r,tab.url))
+                                    WebResourceResponse("text/plain","UTF-8",java.io.ByteArrayInputStream(byteArrayOf())) else null
                             override fun shouldOverrideUrlLoading(v: WebView,r: WebResourceRequest): Boolean {
                                 if(r.url.toString()=="about:blank")return false
                                 val target=r.url.toString()
@@ -280,12 +292,12 @@ class DownloadBrowserActivity: ComponentActivity() {
                                         else -> Unit
                                     }
                                 }
-                                popup.destroy(); return true
+                                closePopup(); return true
                             }
                         }
                         popup.setDownloadListener { url,ua,cd,mime,length ->
                             offer(url,ua,cd,mime,title,view.url.orEmpty(),browserLength=length.takeIf{it>0});
-                            popup.destroy()
+                            closePopup()
                         }
                         (resultMsg.obj as WebView.WebViewTransport).webView=popup; resultMsg.sendToTarget(); return true
                     }
@@ -325,7 +337,10 @@ class DownloadBrowserActivity: ComponentActivity() {
         DisposableEffect(browser) {onDispose {
             tab.saved=Bundle();browser.saveState(tab.saved)
             tab.scrollX=browser.scrollX;tab.scrollY=browser.scrollY
-            browser.onPause();browser.stopLoading();browser.destroy();web=null
+            popupViews.toList().forEach {it.stopLoading();it.destroy()};popupViews.clear()
+            browser.onPause();browser.stopLoading()
+            (browser.parent as? android.view.ViewGroup)?.removeView(browser)
+            browser.destroy();web=null
             mediaRequests.clear();pendingOffer=null
         }}
         fun captureTab() {
