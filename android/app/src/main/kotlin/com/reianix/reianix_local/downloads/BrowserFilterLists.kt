@@ -51,7 +51,7 @@ internal object BrowserFilterLists {
         }
         catch(t:Throwable) {engine.close();throw t}
     }
-    suspend fun prepare(context:Context)=withContext(Dispatchers.IO) {
+    suspend fun prepare(context:Context):String=withContext(Dispatchers.IO) {
         // A refresh can take time on a slow network. Already loaded engines are
         // immediately usable; opening another tab must not wait for that work.
         if(loaded.isEmpty())updateLock.withLock {
@@ -67,7 +67,7 @@ internal object BrowserFilterLists {
         if(System.currentTimeMillis()-lastAttempt>24*60*60*1000L)maintenance.launch {refresh(context,false)}
         status
     }
-    suspend fun refresh(context:Context,force:Boolean=true)=withContext(Dispatchers.IO) {
+    suspend fun refresh(context:Context,force:Boolean=true):String=withContext(Dispatchers.IO) {
         if(loaded.isEmpty())prepare(context)
         updateLock.withLock {
             val now=System.currentTimeMillis()
