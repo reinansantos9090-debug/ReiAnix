@@ -127,8 +127,9 @@ class DownloadsActivity: ComponentActivity() {
         incomingHlsHint=intent.getBooleanExtra("hlsHint",false)
         intent.removeExtra("playerCapture")
         intent.removeExtra("hlsHint")
-        val bundle=intent.getBundleExtra("headers") ?: intent.getBundleExtra("com.android.browser.headers")
-        incomingHeaders=bundle?.keySet()?.mapNotNull { key -> (bundle.get(key) as? String)?.let { key to it } }?.toMap().orEmpty()
+        // Nuvio and several external players send Array<String> headers, not
+        // a Bundle. Parse both contracts without exposing values to logs.
+        incomingHeaders=DownloadIncomingHeaders.parse(intent)
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT); intent.removeExtra("headers"); intent.removeExtra("com.android.browser.headers")
     }
 }
