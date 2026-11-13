@@ -186,11 +186,12 @@ internal object BrowserMediaCapture {
         sendOption(child.url,child.quality,'master',child.audio,'application/vnd.apple.mpegurl',master.url,estimate);
       });
     });
-    // Only on an explicit toolbar request: inspect a few *same-origin*
-    // visible HLS playlists. Cross-origin/CORS/auth restrictions are respected.
+    // Only on an explicit toolbar request: inspect declared playlists, including
+    // a different CDN origin. Fetch still enforces CORS; native discovery can
+    // read the same declared playlist using the downloader's HTTP policy.
     if(prepareMasters){
       Array.from(pendingMasters).filter(url=>{
-        try{return new URL(url).origin===location.origin&&!masters.has(url);}catch(e){return false;}
+        try{return /^https?:$/.test(new URL(url).protocol)&&!masters.has(url);}catch(e){return false;}
       }).slice(0,4).forEach(async url=>{
         const ctl=new AbortController(),abort=setTimeout(()=>ctl.abort(),3000);
         try{

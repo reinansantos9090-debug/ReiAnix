@@ -9,6 +9,9 @@ import android.Manifest
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,6 +93,11 @@ class DownloadBrowserActivity: ComponentActivity() {
         var error by remember { mutableStateOf("") }
         val observed=remember {ConcurrentHashMap<String,PlayerMediaCandidate>()}
         val sourceOptions=remember {ConcurrentHashMap<String,BrowserMediaOption>()}
+        val inspectedHls=remember {mutableSetOf<String>()}
+        val hlsJobs=remember {mutableListOf<Job>()}
+        var discoveryRequested by remember {mutableStateOf(false)}
+        var discoveryGeneration by remember {mutableIntStateOf(0)}
+        var discoveringHls by remember {mutableIntStateOf(0)}
         fun updateCandidates() {
             val now=System.nanoTime()/1_000_000
             val confirmed=observed.values.filter {
@@ -101,7 +109,43 @@ class DownloadBrowserActivity: ComponentActivity() {
             val visible=sourceOptions.values.filter {
                 now-it.receivedAt in 0..60000 && BrowserMediaOption.eligible(it)
             }
-            candidates=BrowserMediaResults.combine(main,visible)
+            candidates=BrowserMediaResults.combine(main,visible).filter {
+                Regex("""\b\d{2,4}p\b""").containsMatchIn(it.quality)
+            }
+        }
+        fun discoverHls() {
+            if(!discoveryRequested)return
+            val generation=discoveryGeneration
+            sourceOptions.values.filter {it.format=="hls" && it.masterUrl.isBlank() &&
+                BrowserMediaOption.eligible(it)}.sortedBy {it.url}.forEach { source ->
+                val key=source.frame+"::"+source.url
+                if(inspectedHls.size>=4 || !inspectedHls.add(key))return@forEach
+                discoveringHls++
+                hlsJobs+=scope.launch {
+                    try {
+                        val provided=mediaRequests[source.url]?.second.orEmpty().toMutableMap()
+                        if(provided.keys.none {it.equals("Referer",true)})provided["Referer"]=source.page
+                        web?.settings?.userAgentString?.let {provided["User-Agent"]=it}
+                        val headers=DownloadSessionHeaders.resolve(applicationContext,source.url,provided)
+                        val variants=withTimeoutOrNull(8_000) {
+                            BrowserHlsDiscovery.inspect(source,headers)
+                        }.orEmpty()
+                        if(generation==discoveryGeneration && sourceOptions.containsKey(key)) {
+                            variants.forEach { variant ->
+                                val variantKey=variant.frame+"::"+variant.url
+                                if(sourceOptions.size<96 || sourceOptions.containsKey(variantKey)) {
+                                    val previous=sourceOptions[variantKey]
+                                    sourceOptions[variantKey]=variant.copy(
+                                        estimatedBytes=previous?.estimatedBytes)
+                                }
+                            }
+                            updateCandidates()
+                        }
+                    } catch(c:CancellationException) {throw c}
+                    catch(_:Exception) { /* Keep other resolved sources; allow a new toolbar retry. */ }
+                    finally {if(generation==discoveryGeneration)discoveringHls--}
+                }
+            }
         }
         val browser=remember {
             WebView(this).apply {
@@ -122,6 +166,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                             masterUrl=item.masterUrl.ifBlank {previous?.masterUrl.orEmpty()},
                             estimatedBytes=item.estimatedBytes ?: previous?.estimatedBytes,
                         )
+                        discoverHls()
                         if(showMedia)updateCandidates()
                     },
                 )
@@ -148,7 +193,11 @@ class DownloadBrowserActivity: ComponentActivity() {
                         if(request.url.scheme !in setOf("http","https")) { return true }
                         return false
                     }
-                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) { address=url; observed.clear();sourceOptions.clear();mediaRequests.clear();error="" }
+                    override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) {
+                        discoveryGeneration++;discoveryRequested=false
+                        hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
+                        address=url;observed.clear();sourceOptions.clear();mediaRequests.clear();error=""
+                    }
                     override fun onPageFinished(view: WebView,url: String) { address=url; title=view.title.orEmpty() }
 
                 }
@@ -194,6 +243,11 @@ class DownloadBrowserActivity: ComponentActivity() {
                             try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
                         }))
                     IconButton(onClick={
+                        discoveryGeneration++
+                        hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
+                        discoveryRequested=true
+                        val generation=discoveryGeneration
+                        discoverHls()
                         browser.evaluateJavascript("""
                             (() => {
                               window.__reiScanPlayers && window.__reiScanPlayers(true);
@@ -206,13 +260,16 @@ class DownloadBrowserActivity: ComponentActivity() {
                             val detected=runCatching {JSONArray("[$raw]").optString(0)}.getOrDefault("")
                             if(detected.isNotBlank())title=detected
                             browser.postDelayed({
-                                updateCandidates()
-                                showMedia=true
+                                if(generation==discoveryGeneration) {
+                                    discoverHls();updateCandidates();showMedia=true
+                                }
                             },700)
                             // A same-origin HLS master can finish loading after
                             // the first results. Update the open list without a
                             // second user tap or starting video playback.
-                            browser.postDelayed({ if(showMedia)updateCandidates() },2600)
+                            browser.postDelayed({ if(showMedia && generation==discoveryGeneration) {
+                                discoverHls();updateCandidates()
+                            } },2600)
                         }
                     }) { Icon(Icons.Filled.Download,"Vídeos encontrados") }
                     IconButton(onClick={ startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java)) }) { Icon(Icons.Filled.List,"Fila de downloads") }
@@ -274,7 +331,11 @@ class DownloadBrowserActivity: ComponentActivity() {
             title={Text("Fontes e qualidades disponíveis")},
             text={
                 if(candidates.isEmpty()) {
-                    Text("Nenhum link de vídeo foi encontrado na página atual. Algumas fontes só são disponibilizadas após abrir o player ou iniciar a reprodução.")
+                    if(discoveringHls>0) Row(verticalAlignment=Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Buscando qualidades disponíveis…")
+                    } else Text("Não foi possível identificar as resoluções. Toque novamente no botão de download para tentar outra consulta.")
                 } else LazyColumn {
                     items(candidates,key={it.url}) { item ->
                         val supported=true // DASH VOD now uses Media3 MP4 export when supported
@@ -317,9 +378,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                         "Página intermediária"
                                     else -> "Fonte encontrada"
                                 }
-                                val qualityLabel=item.quality.takeUnless {it.isBlank() || it=="Qualidade não informada"}
-                                    ?: if(item.format=="hls")"Automática" else "Resolução pendente"
-                                Text("$qualityLabel • $formatLabel • $sourceLabel",
+                                Text("${item.quality} • $formatLabel • $sourceLabel",
                                     maxLines=2)
                                 if(!supported) Text(
                                     if(item.separateAudio) "Faixas HLS separadas: MP4 quando o dispositivo suportar"
