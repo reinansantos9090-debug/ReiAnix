@@ -19,7 +19,8 @@ object DownloadHttp {
         method: String = "GET", connectTimeoutMs: Int = 20_000, readTimeoutMs: Int = 25_000,
         probeRange: String? = null, conditionalEtag: String? = null,
         preferInitialRange: Boolean = false, closeAfterResponse: Boolean = false,
-        retryHtmlWithSelfReferer: Boolean = false): HttpURLConnection {
+        retryHtmlWithSelfReferer: Boolean = false,
+        allowMediaHttpDowngrade: Boolean = false): HttpURLConnection {
         require(method in setOf("GET","HEAD"))
         val origin=URL(validateUrl(credentialOrigin).toASCIIString())
         var target=URL(validateUrl(url).toASCIIString())
@@ -106,8 +107,11 @@ object DownloadHttp {
                 if(location.isNullOrBlank())throw IOException("Redirecionamento sem destino")
                 if(++redirects>8)throw IOException("Redirecionamentos demais")
                 val next=URL(target,location);validateUrl(next.toString())
-                if(target.protocol=="https" && next.protocol!="https")
-                    throw IOException("Redirecionamento HTTPS para HTTP recusado")
+                if(!canFollowRedirect(target,next,allowMediaHttpDowngrade))
+                    throw IOException("Redirecionamento HTTPS para HTTP não permitido")
+                // All first-party cookies, Authorization and nonstandard
+                // headers are automatically withheld when scheme/host changes.
+                // Do not send the original HTTPS Referer to an HTTP target.
                 target=next
                 return@repeat
             }
@@ -130,6 +134,17 @@ object DownloadHttp {
         }
         throw IOException("Limite de tentativas HTTP excedido")
     }
+    /**
+     * Some public media CDNs redirect an HTTPS gateway to an HTTP file.
+     * Mirror download managers only for explicitly requested media; never
+     * downgrade by default for arbitrary API requests. Credential forwarding
+     * remains origin scoped, independent of this opt-in.
+     */
+    fun canFollowRedirect(from:URL,to:URL,allowMediaHttpDowngrade:Boolean):Boolean =
+        to.protocol in setOf("http","https") &&
+            (from.protocol!="https" || to.protocol=="https" ||
+                allowMediaHttpDowngrade)
+
     /** Never retry authentication denials with a different request shape. */
     fun shouldRetryWithoutInitialRange(code:Int,contentRange:String?):Boolean =
         code in setOf(400,405,416,501) ||
