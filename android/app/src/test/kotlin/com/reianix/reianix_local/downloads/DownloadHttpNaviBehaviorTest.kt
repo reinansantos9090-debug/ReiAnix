@@ -157,4 +157,43 @@ class DownloadHttpNaviBehaviorTest {
         }
     }
 
+    @Test fun htmlGatewayReceivesOneSameOriginRefererRetryThenRedirects() = serve(
+        listOf(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK",
+            "HTTP/1.1 302 Found\r\nLocation: /media-final.mp4\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nContent-Length: 4\r\nContent-Range: bytes 0-3/4\r\nConnection: close\r\n\r\nDATA"
+        )
+    ) {url,seen ->
+        DownloadHttp.connect(url,emptyMap(),0,null,preferInitialRange=true,
+            retryHtmlWithSelfReferer=true).withDisconnect {
+            assertEquals(206,it.responseCode)
+            assertEquals("/media-final.mp4",it.url.path)
+            assertEquals(4L,DownloadHttp.range(it.getHeaderField("Content-Range"))?.total)
+        }
+        assertEquals(3,seen.size)
+        assertEquals("",seen[0].get("Referer"))
+        assertEquals(url,seen[1].get("Referer"))
+        assertEquals(url,seen[2].get("Referer"))
+    }
+
+    @Test fun serverHtmlWithExplicitRefererIsNotRetried() = serve(
+        listOf("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK")
+    ) {url,seen ->
+        DownloadHttp.connect(url,mapOf("Referer" to "https://source.example/episode"),
+            0,null,preferInitialRange=true,retryHtmlWithSelfReferer=true)
+            .withDisconnect {assertEquals(200,it.responseCode)}
+        assertEquals(1,seen.size)
+        assertEquals("https://source.example/episode",seen[0].get("Referer"))
+    }
+
+    @Test fun selfRefererDoesNotRetry403() = serve(
+        listOf("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    ) {url,seen ->
+        DownloadHttp.connect(url,emptyMap(),0,null,preferInitialRange=true,
+            retryHtmlWithSelfReferer=true).withDisconnect {
+            assertEquals(403,it.responseCode)
+        }
+        assertEquals(1,seen.size)
+    }
+
 }
