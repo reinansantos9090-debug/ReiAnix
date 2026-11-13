@@ -95,18 +95,19 @@ internal object BrowserMediaResults {
                 // Prioritize the original, playable media resource over a
                 // gateway/player page. Keep all qualities selectable.
                 val kind=DownloadSourceSelection.kind(it.url)
-                when {
-                    it.capture!=null && kind==DownloadSourceSelection.Kind.DIRECT_FILE -> 0
-                    kind==DownloadSourceSelection.Kind.DIRECT_FILE -> 1
-                    it.capture!=null -> 2
-                    kind==DownloadSourceSelection.Kind.STREAM_MANIFEST -> 3
-                    kind==DownloadSourceSelection.Kind.POSSIBLE_MEDIA -> 4
-                    else -> 5
+                when(kind) {
+                    DownloadSourceSelection.Kind.DIRECT_FILE -> 0
+                    DownloadSourceSelection.Kind.STREAM_MANIFEST -> 1
+                    DownloadSourceSelection.Kind.POSSIBLE_MEDIA -> 2
+                    DownloadSourceSelection.Kind.PAGE_OR_GATEWAY -> 3
                 }
             }.thenByDescending {
                 Regex("(2160|1440|1080|720|480|360|240)p").find(it.quality)
                     ?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            }.thenBy {it.url},
+            }.thenBy {
+                if(it.url.substringBefore('?').endsWith(".mp4",true))0 else 1
+            }.thenByDescending {it.capture!=null}
+                .thenBy {it.url},
         )
     }
 }
