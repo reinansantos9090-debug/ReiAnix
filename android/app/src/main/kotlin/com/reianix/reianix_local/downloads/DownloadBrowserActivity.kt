@@ -79,6 +79,16 @@ class DownloadBrowserActivity: ComponentActivity() {
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT)
     }
     @Composable private fun Browser() {
+        var menu by remember {mutableStateOf(false)}
+        var showSettings by remember {mutableStateOf(false)}
+        var externalPopup by remember {mutableStateOf<String?>(null)}
+        LaunchedEffect(showSettings) {
+            BrowserAdBlock.mode=withContext(Dispatchers.IO) {
+                val deps=com.reianix.reianix_local.ReiAnixAppDependencies.from(applicationContext)
+                deps.bootstrap.awaitStarted()
+                deps.sqliteSettingsRepository.getPreference("browser.ad_mode","balanced") ?: "balanced"
+            }
+        }
         var address by remember { mutableStateOf(requested) }
         var title by remember { mutableStateOf("") }
         var progress by remember { mutableIntStateOf(0) }
@@ -174,11 +184,13 @@ class DownloadBrowserActivity: ComponentActivity() {
                 settings.allowFileAccess=false; settings.allowContentAccess=false
                 settings.useWideViewPort=true; settings.loadWithOverviewMode=true
                 settings.setSupportMultipleWindows(true)
-                settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                settings.mixedContentMode=WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this,true)
                 webViewClient=object: WebViewClient() {
                     override fun shouldInterceptRequest(view: WebView,request: WebResourceRequest): WebResourceResponse? {
+                        if(!request.isForMainFrame && BrowserAdBlock.blocked(request.url.toString()))
+                            return WebResourceResponse("text/plain","UTF-8",java.io.ByteArrayInputStream(byteArrayOf()))
                         if(request.method=="GET" && request.url.scheme in setOf("http","https")) {
                             val headers=request.requestHeaders.filter { (key,value) ->
                                 key.lowercase() in setOf("origin","referer","user-agent","authorization","cookie") &&
@@ -191,6 +203,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                     }
                     override fun shouldOverrideUrlLoading(view: WebView,request: WebResourceRequest): Boolean {
                         if(request.url.scheme !in setOf("http","https")) { return true }
+                        if(BrowserAdBlock.blocked(request.url.toString()))return true
                         return false
                     }
                     override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) {
@@ -198,7 +211,13 @@ class DownloadBrowserActivity: ComponentActivity() {
                         hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
                         address=url;observed.clear();sourceOptions.clear();mediaRequests.clear();error=""
                     }
-                    override fun onPageFinished(view: WebView,url: String) { address=url; title=view.title.orEmpty() }
+                    override fun onPageFinished(view: WebView,url: String) {
+                        address=url;title=view.title.orEmpty()
+                        if(BrowserAdBlock.mode=="advanced")view.evaluateJavascript(BrowserAdBlock.cosmeticScript,null)
+                    }
+                    override fun onReceivedError(view:WebView,request:WebResourceRequest,failure:WebResourceError) {
+                        if(request.isForMainFrame)error="Não foi possível carregar a página: ${failure.description}"
+                    }
 
                 }
                 webChromeClient=object: WebChromeClient() {
@@ -207,9 +226,20 @@ class DownloadBrowserActivity: ComponentActivity() {
                     override fun onCreateWindow(view: WebView,isDialog: Boolean,isUserGesture: Boolean,resultMsg: android.os.Message): Boolean {
                         if(!isUserGesture) return false
                         val popup=WebView(this@DownloadBrowserActivity)
+                        popup.settings.javaScriptEnabled=true
+                        popup.settings.domStorageEnabled=true
+                        popup.settings.allowFileAccess=false;popup.settings.allowContentAccess=false
                         popup.webViewClient=object: WebViewClient() {
                             override fun shouldOverrideUrlLoading(v: WebView,r: WebResourceRequest): Boolean {
-                                if(r.url.scheme in setOf("http","https")) view.loadUrl(r.url.toString())
+                                if(r.url.toString()=="about:blank")return false
+                                val target=r.url.toString()
+                                if(r.url.scheme in setOf("http","https") && !BrowserAdBlock.blocked(target)) {
+                                    when {
+                                        BrowserAdBlock.mode=="off" || BrowserAdBlock.related(view.url.orEmpty(),target) -> view.loadUrl(target)
+                                        BrowserAdBlock.mode=="balanced" -> externalPopup=target
+                                        else -> Toast.makeText(this@DownloadBrowserActivity,"Janela externa bloqueada",Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                                 popup.destroy(); return true
                             }
                         }
@@ -229,11 +259,22 @@ class DownloadBrowserActivity: ComponentActivity() {
         DisposableEffect(browser) { onDispose { browser.stopLoading(); browser.destroy(); web=null } }
         BackHandler {
             when {
+                showSettings -> showSettings=false
                 pendingOffer!=null -> { if(!submitting)pendingOffer=null }
                 showMedia -> showMedia=false
                 browser.canGoBack() -> browser.goBack()
                 else -> finish()
             }
+        }
+        if(showSettings) {
+            DownloadSettingsScreen {showSettings=false}
+            return
+        }
+        externalPopup?.let { target ->
+            AlertDialog(onDismissRequest={externalPopup=null},title={Text("Abrir link externo?")},
+                text={Text(BrowserAdBlock.host(target))},
+                confirmButton={TextButton(onClick={externalPopup=null;browser.loadUrl(target)}){Text("Abrir")}},
+                dismissButton={TextButton(onClick={externalPopup=null}){Text("Cancelar")}})
         }
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -272,7 +313,14 @@ class DownloadBrowserActivity: ComponentActivity() {
                             } },2600)
                         }
                     }) { Icon(Icons.Filled.Download,"Vídeos encontrados") }
-                    IconButton(onClick={ startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java)) }) { Icon(Icons.Filled.List,"Fila de downloads") }
+                    Box {
+                        IconButton(onClick={menu=true}) {Icon(Icons.Filled.MoreVert,"Menu do navegador")}
+                        DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                            DropdownMenuItem(text={Text("Downloads")},onClick={menu=false;startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))})
+                            DropdownMenuItem(text={Text("Configurações")},onClick={menu=false;showSettings=true})
+                            DropdownMenuItem(text={Text("Recarregar")},onClick={menu=false;error="";browser.reload()})
+                        }
+                    }
                 }
                 if(progress<100) LinearProgressIndicator(progress={progress/100f},modifier=Modifier.fillMaxWidth())
                 if(error.isNotBlank()) Text(error,Modifier.padding(8.dp),color=MaterialTheme.colorScheme.error)
