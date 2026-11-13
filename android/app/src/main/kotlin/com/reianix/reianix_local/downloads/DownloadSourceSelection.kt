@@ -46,7 +46,7 @@ internal object DownloadSourceSelection {
             path.endsWith(".html") || path.endsWith(".htm") ||
             path.endsWith(".php") || path.endsWith(".aspx"))
             return Kind.PAGE_OR_GATEWAY
-        if(ext=="bin" || ext=="mp4?")return Kind.POSSIBLE_MEDIA
+        if(ext=="bin")return Kind.POSSIBLE_MEDIA
         if(DownloadSignedLinkPolicy.avoidPrefetch(url))return Kind.POSSIBLE_MEDIA
         val query=uri.rawQuery.orEmpty()
         if(query.split('&').take(80).any {
@@ -58,8 +58,16 @@ internal object DownloadSourceSelection {
         return Kind.PAGE_OR_GATEWAY
     }
 
+    /** A definite page path; extensionless CDN endpoints are not assumed pages. */
+    fun clearlyPage(url:String):Boolean {
+        val path=runCatching{URI(url).path.orEmpty().lowercase(Locale.ROOT)}
+            .getOrDefault("")
+        return path.endsWith(".html") || path.endsWith(".htm") ||
+            pagePaths.containsMatchIn(path)
+    }
+
     private fun normalize(raw:String):String? {
-        val value=raw.trim().trimEnd('.',',',';',')',']','}','!','?')
+        val value=raw.trim().trimEnd('.',',',';',')',']','}','!')
         if(value.length !in 10..16384)return null
         return runCatching {DownloadHttp.validateUrl(value);value}.getOrNull()
     }
