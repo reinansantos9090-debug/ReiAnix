@@ -80,7 +80,15 @@ internal object BrowserMediaCapture {
     if(m)return m[2]+'p';
     m=/(?:quality|label|resolution|res|height|q)["']?\s*[=:/_-]\s*["']?(2160|1440|1080|720|480|360|240)(?:[^0-9]|$)/i.exec(text);
     if(m)return m[1]+'p';
-    try{m=/(?:^|[-_/])(2160|1440|1080|720|480|360|240)\.(?:m3u8|mp4|webm)(?:[?#]|$)/i.exec(String(url||''));}catch(e){}
+    try{
+      const parsed=new URL(String(url||''),location.href);
+      for(const key of ['quality','resolution','res','height','q','label']){
+        const value=parsed.searchParams.get(key)||'';
+        m=/(?:^|[^0-9])(2160|1440|1080|720|480|360|240)\s*p?(?:[^0-9]|$)/i.exec(value);
+        if(m)return m[1]+'p';
+      }
+      m=/(?:^|[-_/])(2160|1440|1080|720|480|360|240)\s*p?(?:[-_/]|\.(?:m3u8|mp4|webm)(?:[?#]|$))/i.exec(parsed.pathname);
+    }catch(e){}
     return m?m[1]+'p':'Qualidade não informada';
   };
   const sendOption=(raw,label,origin,separateAudio=false,mimeHint='',masterUrl='',estimatedBytes=0)=>{try{
@@ -92,11 +100,12 @@ internal object BrowserMediaCapture {
         hint.startsWith('video/')?'video':origin==='visible-video'?'video':'');
     if(!format||badUrl(url)||url.length>16384)return;
     const quality=qualityFrom(label,url);
+    const resolvedHint=hint||(format==='video'?'video/mp4':'');
     const key=url+'|'+quality+'|'+masterUrl+'|'+estimatedBytes,now=Date.now();
     if(emittedOptions.get(key)&&now-emittedOptions.get(key)<4000)return;
     if(emittedOptions.size>=96)emittedOptions.clear();
     emittedOptions.set(key,now);
-    message({kind:'option',url,quality,format,origin,separateAudio:!!separateAudio,mimeHint:hint,masterUrl,estimatedBytes});
+    message({kind:'option',url,quality,format,origin,separateAudio:!!separateAudio,mimeHint:resolvedHint,masterUrl,estimatedBytes});
   }catch(e){}};
   const qualityContext=snippet=>{
     const values=Array.from((snippet||'').matchAll(/(?:label|quality|resolution|res|height)["']?\s*[:=]\s*["']?\s*(2160|1440|1080|720|480|360|240)\s*p?/gi),m=>m[1]+'p');
@@ -105,7 +114,8 @@ internal object BrowserMediaCapture {
   const emitEmbedded=(raw,label='',mimeHint='')=>{try{
     const url=String(raw||'').replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
     const hint=String(mimeHint||'').toLowerCase(),format=mediaFormat(url)||
-      (hint.includes('mpegurl')?'hls':hint.includes('dash+xml')?'dash':hint.startsWith('video/')?'video':'');
+      (hint.includes('mpegurl')?'hls':hint.includes('dash+xml')?'dash':hint.startsWith('video/')?'video':
+        qualityFrom(label,url)!=='Qualidade não informada'?'video':'');
     if(!format)return;
     const quality=qualityFrom(label,url);
     if(format==='video'&&quality==='Qualidade não informada')return;
@@ -140,14 +150,16 @@ internal object BrowserMediaCapture {
         const child=value[key],normalizedKey=key.replace(/[_-]/g,'').toLowerCase(),keyQuality=qualityFrom(key,'');
         if(typeof child==='string'&&(/^(?:src|file|url|source|stream|manifest|playlist|hls|dash|video|media|link|srcurl|videourl|sources|files|renditions|variants|tracks)$/.test(normalizedKey)||keyQuality!=='Qualidade não informada')){
           const normalized=child.replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
-          if(mediaFormat(normalized)||localMime)walk(normalized,keyQuality!=='Qualidade não informada'?keyQuality:current,localMime,depth+1);
+          const sourceKey=/^(?:src|file|url|source|stream|manifest|playlist|hls|dash|video|media|link|srcurl|videourl|sources|files|renditions|variants|tracks)$/.test(normalizedKey);
+          if(mediaFormat(normalized)||localMime||(sourceKey&&qualityFrom(keyQuality!=='Qualidade não informada'?keyQuality:current,'')!=='Qualidade não informada'))
+            walk(normalized,keyQuality!=='Qualidade não informada'?keyQuality:current,localMime,depth+1);
         }else if(typeof child==='object'&&child!==null)walk(child,current,localMime,depth+1);
       });
     };
     walk(root,inherited,mimeHint,0);
   }catch(e){}};
   const scanTextForSources=raw=>{try{
-    if(typeof raw!=='string'||!raw||raw.length>524288)return;
+    if(typeof raw!=='string'||!raw||raw.length>1048576)return;
     try{scanStructured(JSON.parse(raw));}catch(e){}
     const text=raw.replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
     const pattern=/(?:https?:\/\/|\/\/|\/)[^"'\\\s<>]{1,1536}?\.(?:m3u8|mpd|mp4|mkv|webm|mov|m4v|ts|m2ts)(?:\?[^"'\\\s<>]{0,2048})?/gi;
@@ -155,6 +167,15 @@ internal object BrowserMediaCapture {
     while((match=pattern.exec(text))&&count++<48){
       const quality=qualityContext(text.slice(Math.max(0,match.index-320),Math.min(text.length,pattern.lastIndex+320)));
       emitEmbedded(match[0],quality);
+    }
+    // Extensionless signed player URLs only pass when the page exposes both a
+    // source field and an explicit quality label nearby.
+    const declared=/(?:"|')?(?:src|file|url|source|stream|playlist|hls|dash|videoUrl|srcUrl)(?:"|')?\s*[:=]\s*(?:"|')((?:https?:)?\/\/[^"'\\\s<>]{8,2048})(?:"|')/gi;
+    let entry,declaredCount=0;
+    while((entry=declared.exec(text))&&declaredCount++<48){
+      const context=text.slice(Math.max(0,entry.index-200),Math.min(text.length,declared.lastIndex+200));
+      const quality=qualityContext(context);
+      if(quality)emitEmbedded(entry[1],quality);
     }
   }catch(e){}};
   const readSmallText=async(response,limit=262144)=>{let reader;try{
@@ -175,7 +196,8 @@ internal object BrowserMediaCapture {
       const url=new URL(raw,location.href).href;
       const hint=String(mimeHint||'').toLowerCase();
       const format=mediaFormat(url)||
-        (hint.includes('mpegurl')?'hls':hint.includes('dash+xml')?'dash':hint.startsWith('video/')?'video':'');
+        (hint.includes('mpegurl')?'hls':hint.includes('dash+xml')?'dash':hint.startsWith('video/')?'video':
+          qualityFrom(label,url)!=='Qualidade não informada'&&['source','quality-link'].includes(origin)?'video':'');
       if(!format&&origin!=='visible-video')return;
       if(badUrl(url))return;
       sources.add(url);
@@ -215,6 +237,12 @@ internal object BrowserMediaCapture {
           if(format==='hls'||format==='dash')emitEmbedded(url,'');
           else if(format==='video'&&qualityFrom('',url)!=='Qualidade não informada')emitEmbedded(url,'');
         });
+      }catch(e){}
+      // Some embeds store rendition URLs in page markup instead of script
+      // blocks or data attributes. Inspect only the bounded loaded document.
+      try{
+        const markup=document.documentElement&&document.documentElement.outerHTML||'';
+        if(markup.length<=1048576)scanTextForSources(markup);
       }catch(e){}
     }
     visible.forEach(v=>{
