@@ -60,7 +60,14 @@ class DownloadBrowserActivity: ComponentActivity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); accept(intent) }
     private fun accept(intent: Intent) {
         val raw=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else intent.dataString.orEmpty()
-        requested=Regex("https?://[^\\s]+",RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
+        val candidates=DownloadSourceSelection.choose(
+            texts=listOf(raw,intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()),
+            explicitUrls=listOfNotNull(intent.dataString,
+                intent.getStringExtra("url"),
+                intent.getStringExtra("downloadUrl"),
+                intent.getStringExtra("mediaUrl"))
+        )
+        requested=candidates.firstOrNull()?.url.orEmpty()
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT)
     }
     @Composable private fun Browser() {
@@ -258,20 +265,37 @@ class DownloadBrowserActivity: ComponentActivity() {
                             enabled=supported,
                             onClick={
                                 showMedia=false
-                                offer(item.url,browser.settings.userAgentString,null,
-                                    when(item.format) {
-                                        "hls" -> "application/vnd.apple.mpegurl"
-                                        "dash" -> "application/dash+xml"
-                                        else -> null
-                                    },
-                                    title,item.page,item.capture,
-                                    providerEstimatedSize=DownloadSizeIntelligence
-                                        .fromSharedMetadata(item.quality)?.bytes)
+                                if(DownloadSourceSelection.kind(item.url)==
+                                    DownloadSourceSelection.Kind.PAGE_OR_GATEWAY) {
+                                    // Follow the page inside the authorized WebView,
+                                    // then rediscover the actual media used by the player.
+                                    browser.loadUrl(item.url)
+                                    Toast.makeText(this@DownloadBrowserActivity,
+                                        "Página intermediária: abra o player para encontrar o arquivo",
+                                        Toast.LENGTH_LONG).show()
+                                } else {
+                                    offer(item.url,browser.settings.userAgentString,null,
+                                        when(item.format) {
+                                            "hls" -> "application/vnd.apple.mpegurl"
+                                            "dash" -> "application/dash+xml"
+                                            else -> null
+                                        },
+                                        title,item.page,item.capture,
+                                        providerEstimatedSize=DownloadSizeIntelligence
+                                            .fromSharedMetadata(item.quality)?.bytes)
+                                }
                             },
                         ) {
                             Column(Modifier.fillMaxWidth()) {
-                                Text("${item.quality} • $formatLabel" +
-                                    if(item.capture!=null) " • Player confirmado" else " • Fonte encontrada",
+                                val mediaKind=DownloadSourceSelection.kind(item.url)
+                                val sourceLabel=when {
+                                    item.capture!=null -> "Player confirmado"
+                                    mediaKind==DownloadSourceSelection.Kind.DIRECT_FILE -> "Arquivo direto"
+                                    mediaKind==DownloadSourceSelection.Kind.PAGE_OR_GATEWAY ->
+                                        "Página intermediária"
+                                    else -> "Fonte encontrada"
+                                }
+                                Text("${item.quality} • $formatLabel • $sourceLabel",
                                     maxLines=2)
                                 if(!supported) Text(
                                     if(item.separateAudio) "Faixas HLS separadas: MP4 quando o dispositivo suportar"
