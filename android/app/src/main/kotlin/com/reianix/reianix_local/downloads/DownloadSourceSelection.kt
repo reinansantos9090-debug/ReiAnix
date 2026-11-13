@@ -9,7 +9,7 @@ import java.util.Locale
  * Does not scrape third-party pages, remove signatures, or guess new CDN URLs.
  * A working media URL is not interchangeable with a page/gateway URL.
  */
-internal object DownloadSourceSelection {
+object DownloadSourceSelection {
     enum class Kind { DIRECT_FILE, STREAM_MANIFEST, POSSIBLE_MEDIA, PAGE_OR_GATEWAY }
     data class Candidate(val url:String,val kind:Kind,val score:Int,val origin:String) {
         val label:String get()=when(kind) {
