@@ -8,7 +8,7 @@ import java.net.URLEncoder
  * are searches; only real web hosts are promoted to URLs.
  */
 internal object BrowserAddress {
-    private val domain=Regex("(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)$")
+    private val domain=Regex("(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
     private val ipv4=Regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$")
     private val forbidden=Regex("(?i)^(?:javascript|data|file|content|intent|about):")
     private fun isHost(host:String):Boolean =
