@@ -41,4 +41,11 @@ class DownloadResourceIdentityTest {
         assertEquals("Hanaori-san",DownloadResourceIdentity.bestName(
             null,"https://cdn.example/s/Hanaori-san","application/octet-stream"))
     }
+    @Test fun rejectsMixedCaseCdnCapabilityWithoutRejectingEpisodeFile() {
+        val token="v1.zW4qkAXt-NJKrGdCHKFzzfPFHquCg123K6aN6a9yNsAQdiftVMcDuJWCIAr.mp4"
+        assertTrue(DownloadResourceIdentity.opaque(token))
+        assertNull(DownloadResourceIdentity.bestName(null,"https://cdn.example/$token","video/mp4"))
+        assertFalse(DownloadResourceIdentity.opaque(
+            "Hanaori-san.Still.Wants.to.Fight.in.the.Next.Life.S01E01.720p.mp4"))
+    }
 }

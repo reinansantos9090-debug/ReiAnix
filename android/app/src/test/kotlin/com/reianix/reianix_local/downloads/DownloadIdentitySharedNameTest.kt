@@ -29,4 +29,10 @@ class DownloadIdentitySharedNameTest {
         assertTrue(DownloadIdentity.isGenericMediaName("videoplayback.bin.mp4"))
         assertTrue(DownloadIdentity.isGenericMediaName("index.avi"))
     }
+    @Test fun sharedAnimeTitleReplacesCdnTokenEverywhereBeforeEnqueue() {
+        val token="v1.zW4qkAXt-NJKrGdCHKFzzfPFHquCg123K6aN6a9yNsAQdiftVMcDuJWCIAr.mp4"
+        assertEquals("Hanaori-san Still Wants to Fight in the Next Life.mp4",
+            DownloadIdentity.suggestedName("Hanaori-san Still Wants to Fight in the Next Life",
+                "https://cdn.example/$token",token))
+    }
 }

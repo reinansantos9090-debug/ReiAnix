@@ -41,7 +41,17 @@ internal object DownloadResourceIdentity {
         val name=value.substringAfterLast('/').substringBefore('?').trim()
         val stem=name.substringBeforeLast('.',name).lowercase(Locale.ROOT)
         return stem.isBlank() || technical.matches(stem) || hexId.matches(stem) ||
-            uuid.matches(stem) || stem.length>190
+            uuid.matches(stem) || stem.length>190 ||
+            // CDN capability tokens are mixed-case IDs, sometimes with a v1. prefix.
+            // Check the original case: lowercasing first hides this signal.
+            name.substringBeforeLast('.',name).let { raw ->
+                raw.length>=40 && !raw.any(Char::isWhitespace) &&
+                    raw.any(Char::isUpperCase) && raw.any(Char::isLowerCase) &&
+                    raw.any(Char::isDigit) &&
+                    raw.all { it.isLetterOrDigit() || it in "-_.=" } &&
+                    !Regex("""(?i)(?:s\d{1,2}e\d{1,3}|epis[oó]dio|episode|720p|1080p|2160p)""")
+                        .containsMatchIn(raw)
+            }
     }
 
     private fun params(url:String):Map<String,String> {

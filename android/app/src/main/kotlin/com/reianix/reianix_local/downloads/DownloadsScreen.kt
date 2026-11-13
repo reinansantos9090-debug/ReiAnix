@@ -385,86 +385,82 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
         mutableStateOf(if(providedSize!=null)initialUrl.trim() else "")
     }
     var resolvedMediaUrl by remember(initialUrl) {mutableStateOf<String?>(null)}
+    var sizeLoading by remember { mutableStateOf(true) }
+    var sizeRetry by remember { mutableIntStateOf(0) }
     var storageBytes by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(Unit) {
         storageBytes=withContext(Dispatchers.IO) {
             DownloadSizeProbe.internalAvailableBytes(context)
         }
     }
-    // Debounce user edits and do not block WebView or the "Iniciar" button.
+    // Debounce edits; finish metadata inspection before enabling the new transfer.
     // The exact same authenticated redirect policy applies as in downloads.
-    LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint,initialKnownSize,initialEstimatedSize) {
-        if(initialKnownSize!=null && initialKnownSize>0 && url.trim()==initialUrl.trim() &&
-            !hlsHint && editing==null) {
-            sizeResult=DownloadSizeProbe.Result(initialKnownSize,true,"webview-content-length")
-            sizeProbeUrl=url.trim()
-            return@LaunchedEffect
-        }
-        sizeResult=providedSize?.takeIf {url.trim()==initialUrl.trim()}
-        sizeProbeUrl=if(sizeResult!=null)url.trim() else ""
-        resolvedMediaUrl=null
-        delay(200)
-        val target=url.trim()
-        if(runCatching { DownloadHttp.validateUrl(target) }.isFailure) {
-            sizeResult=DownloadSizeProbe.Result.Unknown
-            return@LaunchedEffect
-        }
-        if(DownloadSignedLinkPolicy.avoidPrefetch(target)) {
-            // A speculative metadata GET may consume a one-shot CDN token.
-            // Start the real transfer on the first authorized GET instead.
-            sizeResult=providedSize?.takeIf {target==initialUrl.trim()}
+    LaunchedEffect(url,originalHeaders,cookie,referer,user,password,hlsHint,initialKnownSize,initialEstimatedSize,sizeRetry) {
+        sizeLoading=true
+        try {
+            if(initialKnownSize!=null && initialKnownSize>0 && url.trim()==initialUrl.trim() &&
+                !hlsHint && editing==null) {
+                sizeResult=DownloadSizeProbe.Result(initialKnownSize,true,"webview-content-length")
+                sizeProbeUrl=url.trim()
+                return@LaunchedEffect
+            }
+            sizeResult=providedSize?.takeIf {url.trim()==initialUrl.trim()}
+            sizeProbeUrl=if(sizeResult!=null)url.trim() else ""
+            resolvedMediaUrl=null
+            delay(200)
+            val target=url.trim()
+            if(runCatching { DownloadHttp.validateUrl(target) }.isFailure) {
+                sizeResult=DownloadSizeProbe.Result.Unknown
+                return@LaunchedEffect
+            }
+            val probeHeaders=originalHeaders.filterKeys {
+                it.lowercase() !in setOf("cookie","referer","authorization")
+            }.toMutableMap()
+            if(cookie.isNotBlank())probeHeaders["Cookie"]=cookie.trim()
+            if(referer.isNotBlank())probeHeaders["Referer"]=referer.trim()
+            if(user.isNotBlank())probeHeaders["Authorization"]="Basic "+
+                android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP)
+            val inspected=withTimeoutOrNull(8_000) {
+                val sessionHeaders=DownloadSessionHeaders.resolve(context,target,probeHeaders)
+                if(DownloadSignedLinkPolicy.avoidPrefetch(target))
+                    DownloadSizeProbe.inspectSignedHeaders(target,sessionHeaders)
+                else DownloadSizeProbe.inspect(target,sessionHeaders,hlsHint && target==initialUrl)
+            } ?: DownloadSizeProbe.Result.Unknown
+            // The probe may fail even though the source app supplied an estimated
+            // size. Keep useful evidence; never turn an estimate into Content-Length.
+            val fallback=providedSize?.takeIf{target==initialUrl.trim()}
                 ?: DownloadSizeIntelligence.fromUrlMetadata(target)?.let {
-                    DownloadSizeProbe.Result(it.bytes,false,it.source)
-                } ?: DownloadSizeProbe.Result.Unknown
+                    DownloadSizeProbe.Result(it.bytes,it.exact,it.source)
+                }
+            val combined=DownloadSizeIntelligence.reconcile(
+                fallback?.bytes?.takeIf{it>0L}?.let{
+                    DownloadSizeIntelligence.Evidence(it,fallback.exact,fallback.source)
+                },
+                inspected.bytes?.takeIf{it>0L}?.let {
+                    DownloadSizeIntelligence.Evidence(it,inspected.exact,inspected.source)
+                }
+            )
+            sizeResult=combined?.let {
+                DownloadSizeProbe.Result(it.bytes,it.exact,it.source,
+                    inspected.name ?: fallback?.name,inspected.mime ?: fallback?.mime,
+                    inspected.resolvedUrl)
+            } ?: inspected
             sizeProbeUrl=target
-            return@LaunchedEffect
-        }
-        val probeHeaders=originalHeaders.filterKeys {
-            it.lowercase() !in setOf("cookie","referer","authorization")
-        }.toMutableMap()
-        if(cookie.isNotBlank())probeHeaders["Cookie"]=cookie.trim()
-        if(referer.isNotBlank())probeHeaders["Referer"]=referer.trim()
-        if(user.isNotBlank())probeHeaders["Authorization"]="Basic "+
-            android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP)
-        val inspected=withTimeoutOrNull(8_000) {
-            DownloadSizeProbe.inspect(target,
-                DownloadSessionHeaders.resolve(context,target,probeHeaders),
-                hlsHint && target==initialUrl)
-        } ?: DownloadSizeProbe.Result.Unknown
-        // The probe may fail even though the source app supplied an estimated
-        // size. Keep useful evidence; never turn an estimate into Content-Length.
-        val fallback=providedSize?.takeIf{target==initialUrl.trim()}
-            ?: DownloadSizeIntelligence.fromUrlMetadata(target)?.let {
-                DownloadSizeProbe.Result(it.bytes,it.exact,it.source)
+            resolvedMediaUrl=inspected.resolvedUrl?.takeIf {
+                it!=target && runCatching{DownloadHttp.validateUrl(it)}.isSuccess
             }
-        val combined=DownloadSizeIntelligence.reconcile(
-            fallback?.bytes?.takeIf{it>0L}?.let{
-                DownloadSizeIntelligence.Evidence(it,fallback.exact,fallback.source)
-            },
-            inspected.bytes?.takeIf{it>0L}?.let {
-                DownloadSizeIntelligence.Evidence(it,inspected.exact,inspected.source)
+            if(!nameTouched && editing==null) {
+                val suggested=sizeResult?.name
+                if(!suggested.isNullOrBlank() && !DownloadIdentity.isGenericMediaName(suggested)) {
+                    val currentStem=name.substringBeforeLast('.',name)
+                    val suggestedStem=suggested.substringBeforeLast('.',suggested)
+                    val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\s._-]*\d+""")
+                        .containsMatchIn(name)
+                    if(!episodeContext && (DownloadIdentity.isGenericMediaName(name) ||
+                        currentStem.equals(suggestedStem,true))) name=suggested
+                }
             }
-        )
-        sizeResult=combined?.let {
-            DownloadSizeProbe.Result(it.bytes,it.exact,it.source,
-                inspected.name ?: fallback?.name,inspected.mime ?: fallback?.mime,
-                inspected.resolvedUrl)
-        } ?: inspected
-        sizeProbeUrl=target
-        resolvedMediaUrl=inspected.resolvedUrl?.takeIf {
-            it!=target && runCatching{DownloadHttp.validateUrl(it)}.isSuccess
-        }
-        if(!nameTouched && editing==null) {
-            val suggested=sizeResult?.name
-            if(!suggested.isNullOrBlank() && !DownloadIdentity.isGenericMediaName(suggested)) {
-                val currentStem=name.substringBeforeLast('.',name)
-                val suggestedStem=suggested.substringBeforeLast('.',suggested)
-                val episodeContext=Regex("""(?i)(?:epis[oó]dio|episode|ep)[\s._-]*\d+""")
-                    .containsMatchIn(name)
-                if(!episodeContext && (DownloadIdentity.isGenericMediaName(name) ||
-                    currentStem.equals(suggestedStem,true))) name=suggested
-            }
-        }
+        } finally { sizeLoading=false }
     }
     LaunchedEffect(editing?.id) {
         if(editing!=null) try {
@@ -615,22 +611,26 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                         Text("Nome",color=Color.LightGray,
                             style=MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.width(5.dp))
-                        val videoSize=when {
-                            sizeResult?.bytes==null -> "Tamanho a confirmar"
-                            sizeResult?.exact==true ->
-                                Formatter.formatFileSize(context,sizeResult!!.bytes!!)
-                            else -> "≈"+Formatter.formatFileSize(context,
-                                DownloadSizeIntelligence.roundedForDisplay(sizeResult!!.bytes!!))
+                        val confirmed=sizeResult?.takeIf { it.exact && (it.bytes ?: 0L)>0L }
+                        if(!sizeLoading && confirmed!=null && storageBytes!=null) {
+                            Text(
+                                "${Formatter.formatFileSize(context,confirmed.bytes!!)} / " +
+                                    Formatter.formatFileSize(context,storageBytes!!),
+                                color=Color.LightGray,fontSize=9.sp,maxLines=1,
+                                overflow=TextOverflow.Ellipsis,
+                            )
                         }
-                        val availableSize=storageBytes?.let { Formatter.formatFileSize(context,it) } ?: "—"
-                        Text(
-                            "$videoSize / $availableSize",
-                            color=Color.LightGray,
-                            fontSize=9.sp,
-                            maxLines=1,
-                            overflow=TextOverflow.Ellipsis,
-                            modifier=Modifier.weight(1f),
-                        )
+                        Spacer(Modifier.weight(1f))
+                        if(sizeLoading) {
+                            CircularProgressIndicator(Modifier.size(16.dp),
+                                color=Color.LightGray,strokeWidth=2.dp)
+                            Spacer(Modifier.width(12.dp))
+                        } else if(confirmed==null) {
+                            IconButton(onClick={sizeRetry++},modifier=Modifier.size(32.dp)) {
+                                Icon(Icons.Filled.Refresh,"Consultar tamanho novamente",
+                                    tint=Color.LightGray,modifier=Modifier.size(20.dp))
+                            }
+                        }
                         IconButton(
                             modifier=Modifier.size(32.dp),
                             onClick={
@@ -641,6 +641,10 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                             Icon(Icons.Filled.ContentCopy,"Copiar nome",tint=Color.LightGray,
                                 modifier=Modifier.size(20.dp))
                         }
+                    }
+                    if(!sizeLoading && sizeResult?.exact!=true && url.isNotBlank()) {
+                        Text("Não foi possível consultar o tamanho. Toque em atualizar para tentar novamente.",
+                            color=Color.LightGray,style=MaterialTheme.typography.bodySmall)
                     }
                     TextField(
                         value=name,
@@ -680,7 +684,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                     TextButton(onClick=onDismiss,enabled=canEdit) {
                         Text("Cancelar",color=Color.LightGray)
                     }
-                    TextButton(onClick=::begin,enabled=canEdit) {
+                    TextButton(onClick=::begin,enabled=canEdit && !sizeLoading) {
                         Text(if(busy) "Iniciando…" else if(editing==null)"Iniciar" else "Retomar",
                             color=if(canEdit)Color.White else Color.Gray)
                     }
