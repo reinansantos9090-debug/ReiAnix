@@ -49,6 +49,7 @@ private data class BrowserDownloadOffer(
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
 class DownloadBrowserActivity: ComponentActivity() {
     private var requested by mutableStateOf("")
+    private var sourceHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     private var pendingOffer by mutableStateOf<BrowserDownloadOffer?>(null)
     private var offerError by mutableStateOf("")
     private var web: WebView?=null
@@ -59,6 +60,10 @@ class DownloadBrowserActivity: ComponentActivity() {
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); accept(intent) }
     private fun accept(intent: Intent) {
+        // Nuvio's external-player ACTION_VIEW can also land in the browser,
+        // which has a separate Android VIEW intent filter. Preserve the same
+        // String[] headers here as in DownloadsActivity.
+        sourceHeaders=DownloadIncomingHeaders.parse(intent)
         val raw=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else intent.dataString.orEmpty()
         val candidates=DownloadSourceSelection.choose(
             texts=listOf(raw,intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()),
@@ -323,6 +328,14 @@ class DownloadBrowserActivity: ComponentActivity() {
             mediaRequests[url]?.takeIf {android.os.SystemClock.elapsedRealtime()-it.first<120000}?.second?.forEach { (key,value) ->
                 val canonical=when(key.lowercase()) {"origin"->"Origin";"referer"->"Referer";"user-agent"->"User-Agent";"authorization"->"Authorization";"cookie"->"Cookie";else->key}
                 putString(canonical,value)
+            }
+            val sameSource=runCatching {
+                DownloadHttp.sameOrigin(java.net.URL(requested),java.net.URL(url))
+            }.getOrDefault(false)
+            if(sameSource)sourceHeaders.forEach {(key,value)->
+                // Observed WebView request headers take precedence for their
+                // exact resource; Nuvio's headers fill missing values.
+                if(!keySet().any{it.equals(key,true)})putString(key,value)
             }
         }
         // Prefer the actual page (top frame) when the video URL belongs to an
