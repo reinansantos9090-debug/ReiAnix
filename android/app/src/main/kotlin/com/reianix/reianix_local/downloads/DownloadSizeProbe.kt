@@ -23,7 +23,9 @@ import java.util.Locale
  * existing redirect policy (no cross-origin cookie/authorization forwarding).
  */
 internal object DownloadSizeProbe {
-    data class Result(val bytes: Long?, val exact: Boolean, val source: String, val name: String? = null, val mime: String? = null) {
+    data class Result(val bytes: Long?, val exact: Boolean, val source: String,
+        val name: String? = null, val mime: String? = null,
+        val resolvedUrl: String? = null) {
         companion object { val Unknown = Result(null, false, "unknown") }
     }
     internal data class HlsPlan(val segments: List<String>, val init: String?, val durationSeconds: Double,
@@ -159,7 +161,8 @@ internal object DownloadSizeProbe {
                 if(response.manifest) return@withContext inspectHls(url,headers)
                     .copy(name=response.name ?: hint, mime=response.mime)
                 if(response.length!=null)
-                    return@withContext Result(response.length,true,response.source,response.name ?: hint,response.mime)
+                    return@withContext Result(response.length,true,response.source,
+                        response.name ?: hint,response.mime,response.resolvedUrl)
                 if(response.page) DownloadSpecialMetadata.inspectPage(url,headers)?.let {
                     return@withContext it.copy(name=response.name ?: hint)
                 }
@@ -182,14 +185,15 @@ internal object DownloadSizeProbe {
                 DownloadSpecialMetadata.inspectWebDav(url,headers)?.let {
                     return@withContext it.copy(name=response.name ?: hint)
                 }
-                Result(null,false,"unknown",response.name ?: hint,response.mime)
+                Result(null,false,"unknown",response.name ?: hint,response.mime,
+                    response.resolvedUrl)
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
             catch(_: Exception) { Result(null,false,"unknown",hint) }
         }
 
     private data class Headers(
         val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String,
-        val dash:Boolean = false, val page:Boolean = false
+        val dash:Boolean = false, val page:Boolean = false, val resolvedUrl:String? = null
     )
 
     /**
@@ -202,6 +206,7 @@ internal object DownloadSizeProbe {
         var bestName=DownloadResourceIdentity.bestName(null,url,null)
         var bestMime:String?=null
         var manifest=false
+        var resolvedMediaUrl:String?=null
         // Start with the same open-ended Range that direct transfers use.
         // Some CDNs reject HEAD and a one-byte range but serve bytes=0-.
         for(phase in listOf("GET_OPEN_RANGE","HEAD","GET_RANGE","GET")) {
@@ -216,6 +221,13 @@ internal object DownloadSizeProbe {
                     connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
                 val code=c.responseCode
                 val mime=c.contentType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
+                val endpoint=c.url.toString()
+                if(code in setOf(200,206) && endpoint!=url &&
+                    (mime.startsWith("video/") ||
+                        DownloadSourceSelection.kind(endpoint)==
+                            DownloadSourceSelection.Kind.DIRECT_FILE)) {
+                    resolvedMediaUrl=endpoint
+                }
                 if(mime.startsWith("video/") || mime.contains("mpegurl") || mime.contains("dash+xml"))
                     bestMime=mime
                 if(mime.contains("dash+xml"))
@@ -230,14 +242,16 @@ internal object DownloadSizeProbe {
                 if(mime.contains("mpegurl")) {manifest=true;break}
                 val size=directLength(code,c.getHeaderFieldLong("Content-Length",-1),
                     c.getHeaderField("Content-Range"),c.getHeaderField("Content-Encoding"),c.contentType)
-                if(size!=null)return Headers(size,false,bestName,bestMime,phase.lowercase(Locale.ROOT))
+                if(size!=null)return Headers(size,false,bestName,bestMime,
+                    phase.lowercase(Locale.ROOT),resolvedUrl=resolvedMediaUrl)
                 // Some CDNs reject ranges but permit GET. A missing Content-Length
                 // in a 200 chunked response cannot be treated as an exact size.
                 if(code in setOf(401,403))break
             } catch(_:java.io.IOException) { /* try the next header-only strategy */ }
             finally {c?.disconnect()}
         }
-        return Headers(null,manifest,bestName,bestMime,"unknown")
+        return Headers(null,manifest,bestName,bestMime,"unknown",
+            resolvedUrl=resolvedMediaUrl)
     }
 
     private suspend fun inspectHls(url: String, headers: Map<String,String>): Result {
