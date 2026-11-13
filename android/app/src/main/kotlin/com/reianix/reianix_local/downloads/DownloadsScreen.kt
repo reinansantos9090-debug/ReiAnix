@@ -563,6 +563,24 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                         textStyle=MaterialTheme.typography.bodyMedium,
                         placeholder={Text("https://…")},
                     )
+                    if(url.isNotBlank() &&
+                        DownloadSourceSelection.kind(url)==DownloadSourceSelection.Kind.PAGE_OR_GATEWAY) {
+                        Text(
+                            "Este endereço parece uma página ou intermediário. " +
+                                "O link real do vídeo pode ser diferente.",
+                            color=Color.LightGray,
+                            style=MaterialTheme.typography.bodySmall
+                        )
+                        TextButton(
+                            onClick={
+                                context.startActivity(
+                                    Intent(context,DownloadBrowserActivity::class.java)
+                                        .setData(Uri.parse(url))
+                                )
+                            },
+                            enabled=canEdit
+                        ) {Text("Encontrar vídeo no navegador")}
+                    }
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                         Text("Nome",color=Color.LightGray,
