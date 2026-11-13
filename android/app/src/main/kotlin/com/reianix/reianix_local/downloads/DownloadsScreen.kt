@@ -303,7 +303,13 @@ onBack: (() -> Unit)? = null) {
         confirmButton={TextButton(onClick={sourcePicker=false}){Text("Manter sugerido")}}
     )
     if(add && !sourcePicker) key(selectedSource,initialTitle,initialName,edit?.id) {
-        DownloadDialog(selectedSource,suppliedHeaders,initialTitle,initialName,edit,busy,error,
+        val sameOrigin=runCatching {
+            DownloadHttp.sameOrigin(java.net.URL(initialUrl),java.net.URL(selectedSource))
+        }.getOrDefault(false)
+        val chosenHeaders=if(sameOrigin) suppliedHeaders else suppliedHeaders.filterKeys {
+            it.lowercase() !in setOf("authorization","cookie","referer","origin","proxy-authorization")
+        }
+        DownloadDialog(selectedSource,chosenHeaders,initialTitle,initialName,edit,busy,error,
             onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,anime,autoName,detected ->
         busy=true; error=""
         scope.launch {
