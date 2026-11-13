@@ -13,7 +13,7 @@ import kotlin.concurrent.thread
 
 /**
  * Reproduces Nuvio Mobile's buildExternalPlayerIntent contract: ACTION_VIEW,
- * setDataAndType(video/*) and putExtra("headers", Array<String>).
+ * setDataAndType with a video wildcard MIME type, plus an array of headers.
  *
  * Old ReiAnix code used getBundleExtra("headers") and lost the String[].
  */
