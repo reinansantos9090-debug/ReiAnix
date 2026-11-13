@@ -387,6 +387,9 @@ internal object BrowserMediaCapture {
   }catch(e){clear();}};
   const inspect=(raw,text)=>{try{
     const url=new URL(raw,location.href).href;if(badUrl(url)||typeof text!=='string'||text.length>1048576||!text.trimStart().startsWith('#EXTM3U'))return;
+    // A playlist can be fetched before any <video> exists. Forward the
+    // confirmed manifest itself so native discovery can expand its variants.
+    emitEmbedded(url,'','application/vnd.apple.mpegurl');
     if(text.includes('#EXT-X-STREAM-INF:')){
       const lines=text.split(/\r?\n/),links=[];
       for(let i=0;i<lines.length;i++)if(lines[i].startsWith('#EXT-X-STREAM-INF:')){
@@ -444,6 +447,11 @@ internal object BrowserMediaCapture {
         length=Number(response.headers.get('content-length')||0);
       if(hls(response.url,type)&&length<=1048576)readManifest(response);
       observeDirect(response.url,type,response.status);
+      if(/dash\+xml/i.test(type)){
+        emitEmbedded(response.url,'','application/dash+xml');
+        if(!length||length<=1048576)readSmallText(response,1048576);
+      }else if(type.toLowerCase().startsWith('video/')&&qualityFrom('',response.url)!=='Qualidade não informada')
+        emitEmbedded(response.url,'',type);
       if((/(?:application|text)\/(?:[^;]+\+)?json/i.test(type)||
           (/^(?:text\/plain|text\/html)/i.test(type)&&/(?:api|ajax|embed|episode|player|source|stream|video)/i.test(response.url)))&&(!length||length<=262144))
         readSmallText(response,262144);
@@ -456,6 +464,12 @@ internal object BrowserMediaCapture {
       if((this.responseType===''||this.responseType==='text')&&hls(this.responseURL,type))
         inspect(this.responseURL,this.responseText);
       observeDirect(this.responseURL,type,this.status);
+      if(/dash\+xml/i.test(type)){
+        emitEmbedded(this.responseURL,'','application/dash+xml');
+        if((this.responseType===''||this.responseType==='text')&&this.responseText.length<=1048576)
+          scanTextForSources(this.responseText);
+      }else if(type.toLowerCase().startsWith('video/')&&qualityFrom('',this.responseURL)!=='Qualidade não informada')
+        emitEmbedded(this.responseURL,'',type);
       if(/(?:application|text)\/(?:[^;]+\+)?json/i.test(type)||
         (/^(?:text\/plain|text\/html)/i.test(type)&&/(?:api|ajax|embed|episode|player|source|stream|video)/i.test(this.responseURL))){
         if(this.responseType==='json'&&this.response)scanStructured(this.response);
