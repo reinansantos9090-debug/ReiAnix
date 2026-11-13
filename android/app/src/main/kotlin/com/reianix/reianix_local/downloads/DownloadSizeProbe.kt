@@ -220,7 +220,8 @@ internal object DownloadSizeProbe {
                     probeRange=if(phase=="GET_OPEN_RANGE")"bytes=0-" else null,
                     connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
                     retryHtmlWithSelfReferer=(phase=="GET_OPEN_RANGE"),
-                    allowMediaHttpDowngrade=true)
+                    allowMediaHttpDowngrade=true,
+                    redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
                 val code=c.responseCode
                 val mime=c.contentType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
                 val endpoint=c.url.toString()
