@@ -129,18 +129,18 @@ internal object BrowserMediaCapture {
       if(typeof value!=='object')return;
       let localMime=mime;const qualityValues=[];
       Object.keys(value).slice(0,100).forEach(key=>{
-        const val=value[key];
-        if(/^(?:label|quality|resolution|res|height)$/i.test(key)&&['string','number'].includes(typeof val)){
+        const val=value[key],normalizedKey=key.replace(/[_-]/g,'').toLowerCase();
+        if(/^(?:label|quality|resolution|res|height)$/.test(normalizedKey)&&['string','number'].includes(typeof val)){
           const q=qualityFrom(key+':'+String(val),'');if(q!=='Qualidade não informada')qualityValues.push(q);
         }
-        if(/^(?:type|mime|mimeType|contentType)$/i.test(key)&&typeof val==='string'&&/(?:video\/|mpegurl|dash\+xml)/i.test(val))localMime=val;
+        if(/^(?:type|mime|mimetype|contenttype)$/.test(normalizedKey)&&typeof val==='string'&&/(?:video\/|mpegurl|dash\+xml)/i.test(val))localMime=val;
       });
       const unique=Array.from(new Set(qualityValues)),current=(unique.length===1?unique[0]:'')||quality;
       Object.keys(value).slice(0,100).forEach(key=>{
-        const child=value[key];
-        if(typeof child==='string'&&/^(?:src|file|url|source|stream|manifest|playlist|hls|dash|video|media|link|srcurl|videourl)$/i.test(key)){
+        const child=value[key],normalizedKey=key.replace(/[_-]/g,'').toLowerCase(),keyQuality=qualityFrom(key,'');
+        if(typeof child==='string'&&(/^(?:src|file|url|source|stream|manifest|playlist|hls|dash|video|media|link|srcurl|videourl|sources|files|renditions|variants|tracks)$/.test(normalizedKey)||keyQuality!=='Qualidade não informada')){
           const normalized=child.replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
-          if(mediaFormat(normalized)||localMime)walk(normalized,current,localMime,depth+1);
+          if(mediaFormat(normalized)||localMime)walk(normalized,keyQuality!=='Qualidade não informada'?keyQuality:current,localMime,depth+1);
         }else if(typeof child==='object'&&child!==null)walk(child,current,localMime,depth+1);
       });
     };
