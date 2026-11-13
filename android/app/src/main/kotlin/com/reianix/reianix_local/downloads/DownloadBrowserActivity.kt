@@ -53,6 +53,7 @@ private data class BrowserDownloadOffer(
 class DownloadBrowserActivity: ComponentActivity() {
     private val tabs=mutableStateListOf<BrowserTab>()
     private var activeTabId by mutableStateOf("")
+    private var incomingGeneration by mutableIntStateOf(0)
     private var requested by mutableStateOf("")
     private var sourceHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     private var pendingOffer by mutableStateOf<BrowserDownloadOffer?>(null)
@@ -85,6 +86,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 intent.getStringExtra("mediaUrl"))
         )
         requested=candidates.firstOrNull()?.url.orEmpty()
+        incomingGeneration++
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT)
     }
     override fun onSaveInstanceState(outState:Bundle) {
@@ -98,7 +100,8 @@ class DownloadBrowserActivity: ComponentActivity() {
             val tab=BrowserTab(url,if(url==requested)sourceHeaders else emptyMap())
             tabs.add(tab);activeTabId=tab.id;overview=false
         }
-        LaunchedEffect(requested) {
+        LaunchedEffect(incomingGeneration) {
+            overview=false
             if(requested.isNotBlank() && tabs.none {it.initialUrl==requested})newTab(requested)
         }
         if(overview) BrowserTabOverview(tabs.toList(),activeTabId,

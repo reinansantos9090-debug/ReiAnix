@@ -205,7 +205,7 @@ jobjectArray toStringArray(JNIEnv *env, const LinkedList<std::string> *rules) {
                                      env->FindClass("java/lang/String"), nullptr);
     int i = 0;
     for (auto r : *rules) {
-        env->SetObjectArrayElement(array, i, env->NewStringUTF(r.c_str()));
+        env->SetObjectArrayElement(array, i, bytesToStringUTF(env,r.c_str()));
         i++;
     }
     return array;

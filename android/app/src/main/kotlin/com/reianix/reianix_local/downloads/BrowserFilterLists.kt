@@ -90,7 +90,10 @@ internal object BrowserFilterLists {
                         val stream=atomic.startWrite()
                         try {
                             // finishWrite owns/closes the file stream, not the gzip wrapper.
-                            val gzip=GZIPOutputStream(stream);gzip.write(bytes);gzip.finish();atomic.finishWrite(stream)
+                            GZIPOutputStream(object:java.io.FilterOutputStream(stream) {
+                                override fun close() {flush()} // AtomicFile owns the descriptor.
+                            }).use {it.write(bytes)}
+                            atomic.finishWrite(stream)
                         }catch(t:Throwable){atomic.failWrite(stream);throw t}
                         synchronized(lock) {
                             val old=loaded.firstOrNull {it.source.id==s.id}
