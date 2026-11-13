@@ -132,6 +132,15 @@ internal object BrowserMediaCapture {
           control.getAttribute('data-quality')||control.getAttribute('data-res')||
           control.textContent||'','quality-link');
       });
+    // A direct file request may precede loadedmetadata. Offer it only after
+    // the page has exactly one visible, full-duration player.
+    const recentDirect=Array.from(directMedia.values())
+      .filter(m=>Date.now()-m.time<20000&&!badUrl(m.url));
+    if(visible.length===1 && recentDirect.length===1 &&
+      Number.isFinite(visible[0].duration) && visible[0].duration>=120)
+      sendOption(recentDirect[0].url,
+        visible[0].getAttribute('data-quality')||'','visible-video',
+        false,recentDirect[0].mime);
     const recent=Array.from(masters.values()).filter(m=>Date.now()-m.time<60000);
     recent.forEach(master=>{
       const related=sources.has(master.url)||
@@ -262,13 +271,15 @@ internal object BrowserMediaCapture {
     if(badUrl(url)||url.length>16384)return;
     const players=Array.from(document.querySelectorAll('video')).filter(v=>{
       const r=rect(v);return r&&r.width>=200&&r.height>=110&&
-        !adElement(v)&&Number.isFinite(v.duration)&&v.duration>=120&&
-        v.videoWidth>=160&&v.videoHeight>=90;
+        !adElement(v)&&!(v.autoplay&&v.muted&&v.loop);
     });
     if(players.length!==1)return;
     if(directMedia.size>=20)directMedia.clear();
     directMedia.set(url,{url,time:Date.now(),mime});
-    sendOption(url,players[0].getAttribute('data-quality')||'','visible-video',false,mime);
+    if(Number.isFinite(players[0].duration)&&players[0].duration>=120 &&
+      players[0].videoWidth>=160&&players[0].videoHeight>=90)
+      sendOption(url,players[0].getAttribute('data-quality')||'',
+        'visible-video',false,mime);
     schedule();
   }catch(e){}};
   const readManifest=async response=>{let reader;try{
