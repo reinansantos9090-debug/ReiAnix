@@ -121,4 +121,45 @@ class DownloadIncomingHeadersTest {
             assertEquals("bytes=0-",seen[1]["range"])
         }
     }
+    @Test fun metadataProbeIdentifiesRedirectedFinalMediaAndFullLength() {
+        ServerSocket(0,10,InetAddress.getByName("127.0.0.1")).use {server ->
+            server.soTimeout=6_000
+            val source="http://127.0.0.1:"+server.localPort+"/series/resource"
+            val direct="http://127.0.0.1:"+server.localPort+"/final.mp4"
+            val worker=thread(isDaemon=true) {
+                repeat(2) {index ->
+                    server.accept().use {socket ->
+                        socket.soTimeout=6_000
+                        val input=socket.getInputStream().bufferedReader()
+                        input.readLine()
+                        val headers=linkedMapOf<String,String>()
+                        while(true) {
+                            val line=input.readLine()?:break
+                            if(line.isBlank())break
+                            headers[line.substringBefore(':').lowercase()]=
+                                line.substringAfter(':').trim()
+                        }
+                        val response=if(headers["x-stream-session"]!="test-session")
+                            "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        else if(index==0)
+                            "HTTP/1.1 302 Found\r\nLocation: /final.mp4\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        else "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\n"+
+                            "Content-Range: bytes 0-3/400000000\r\nContent-Length: 4\r\n"+
+                            "Connection: close\r\n\r\nDATA"
+                        socket.getOutputStream().apply {write(response.toByteArray());flush()}
+                    }
+                }
+            }
+            val headers=DownloadIncomingHeaders.parse(nuvioIntent(source))
+            val result=kotlinx.coroutines.runBlocking {
+                DownloadSizeProbe.inspect(source,headers)
+            }
+            worker.join(6_000)
+            assertFalse(worker.isAlive)
+            assertEquals(400_000_000L,result.bytes)
+            assertTrue(result.exact)
+            assertEquals(direct,result.resolvedUrl)
+        }
+    }
+
 }
