@@ -191,6 +191,26 @@ internal object DownloadSizeProbe {
             catch(_: Exception) { Result(null,false,"unknown",hint) }
         }
 
+    /** Signed URLs must not receive speculative GETs; HEAD never reads a media body. */
+    suspend fun inspectSignedHeaders(url: String, headers: Map<String,String>): Result =
+        withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen") }
+                connection=DownloadHttp.connect(url,headers,0,null,method="HEAD",
+                    connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
+                    redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
+                val c=connection
+                val bytes=directLength(c.responseCode,c.getHeaderFieldLong("Content-Length",-1),
+                    c.getHeaderField("Content-Range"),c.contentEncoding,c.contentType)
+                Result(bytes,bytes!=null,"signed-head",
+                    DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
+                        c.url.toString(),c.contentType),c.contentType)
+            } catch(c: kotlinx.coroutines.CancellationException) { throw c }
+            catch(_: Exception) { Result.Unknown }
+            finally { connection?.disconnect() }
+        }
+
     private data class Headers(
         val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String,
         val dash:Boolean = false, val page:Boolean = false, val resolvedUrl:String? = null

@@ -98,7 +98,6 @@ object DownloadIdentity {
                 return safe+"."+ext
             }
         }
-        DownloadResourceIdentity.bestName(null,url,null)?.let { return it }
         val plainTitle=sharedTitle.trim().takeIf { usefulPageTitle(it) }
         if(plainTitle!=null) {
             val clean=plainTitle.map {
@@ -106,6 +105,7 @@ object DownloadIdentity {
             }.joinToString("").trim().take(180)
             if(clean.isNotBlank())return clean+".mp4"
         }
+        DownloadResourceIdentity.bestName(null,url,null)?.let { return it }
         return providedName.ifBlank {
             runCatching { android.webkit.URLUtil.guessFileName(url,null,null) }
                 .getOrDefault("episodio.mp4")
