@@ -42,11 +42,14 @@ private data class BrowserDownloadOffer(
     val filename: String,
     val capture: PlayerMediaCandidate?,
     val hlsHint: Boolean,
+    val browserLength: Long? = null,
+    val providerEstimatedSize:Long?=null,
 )
 
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
 class DownloadBrowserActivity: ComponentActivity() {
     private var requested by mutableStateOf("")
+    private var sourceHeaders by mutableStateOf<Map<String,String>>(emptyMap())
     private var pendingOffer by mutableStateOf<BrowserDownloadOffer?>(null)
     private var offerError by mutableStateOf("")
     private var web: WebView?=null
@@ -57,8 +60,19 @@ class DownloadBrowserActivity: ComponentActivity() {
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); accept(intent) }
     private fun accept(intent: Intent) {
+        // Nuvio's external-player ACTION_VIEW can also land in the browser,
+        // which has a separate Android VIEW intent filter. Preserve the same
+        // String[] headers here as in DownloadsActivity.
+        sourceHeaders=DownloadIncomingHeaders.parse(intent)
         val raw=if(intent.action==Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty() else intent.dataString.orEmpty()
-        requested=Regex("https?://[^\\s]+",RegexOption.IGNORE_CASE).find(raw)?.value.orEmpty()
+        val candidates=DownloadSourceSelection.choose(
+            texts=listOf(raw,intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()),
+            explicitUrls=listOfNotNull(intent.dataString,
+                intent.getStringExtra("url"),
+                intent.getStringExtra("downloadUrl"),
+                intent.getStringExtra("mediaUrl"))
+        )
+        requested=candidates.firstOrNull()?.url.orEmpty()
         intent.data=null; intent.removeExtra(Intent.EXTRA_TEXT)
     }
     @Composable private fun Browser() {
@@ -143,11 +157,16 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 popup.destroy(); return true
                             }
                         }
-                        popup.setDownloadListener { url,ua,cd,mime,_ -> offer(url,ua,cd,mime,title,view.url.orEmpty()); popup.destroy() }
+                        popup.setDownloadListener { url,ua,cd,mime,length ->
+                            offer(url,ua,cd,mime,title,view.url.orEmpty(),browserLength=length.takeIf{it>0});
+                            popup.destroy()
+                        }
                         (resultMsg.obj as WebView.WebViewTransport).webView=popup; resultMsg.sendToTarget(); return true
                     }
                 }
-                setDownloadListener { url,ua,cd,mime,_ -> offer(url,ua,cd,mime,title,this.url.orEmpty()) }
+                setDownloadListener { url,ua,cd,mime,length ->
+                    offer(url,ua,cd,mime,title,this.url.orEmpty(),browserLength=length.takeIf{it>0})
+                }
             }
         }
         LaunchedEffect(requested) { if(requested.isNotBlank()) try { DownloadHttp.validateUrl(requested); browser.loadUrl(requested) } catch(_: Exception) { error="Endereço inválido" } }
@@ -229,6 +248,8 @@ class DownloadBrowserActivity: ComponentActivity() {
                     }
                 },
                 hlsHint=offer.hlsHint,
+                initialKnownSize=offer.browserLength,
+                initialEstimatedSize=offer.providerEstimatedSize,
             )
         }
         if(showMedia) AlertDialog(
@@ -239,7 +260,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                     Text("Nenhum link de vídeo foi encontrado na página atual. Algumas fontes só são disponibilizadas após abrir o player ou iniciar a reprodução.")
                 } else LazyColumn {
                     items(candidates,key={it.url}) { item ->
-                        val supported=item.format!="dash" && !item.separateAudio
+                        val supported=true // DASH VOD now uses Media3 MP4 export when supported
                         val formatLabel=when(item.format) {
                             "hls" -> "HLS"
                             "dash" -> "DASH"
@@ -249,17 +270,40 @@ class DownloadBrowserActivity: ComponentActivity() {
                             enabled=supported,
                             onClick={
                                 showMedia=false
-                                offer(item.url,browser.settings.userAgentString,null,
-                                    if(item.format=="hls")"application/vnd.apple.mpegurl" else null,
-                                    title,item.page,item.capture)
+                                if(item.capture==null &&
+                                    DownloadSourceSelection.clearlyPage(item.url)) {
+                                    // Follow the page inside the authorized WebView,
+                                    // then rediscover the actual media used by the player.
+                                    browser.loadUrl(item.url)
+                                    Toast.makeText(this@DownloadBrowserActivity,
+                                        "Página intermediária: abra o player para encontrar o arquivo",
+                                        Toast.LENGTH_LONG).show()
+                                } else {
+                                    offer(item.url,browser.settings.userAgentString,null,
+                                        when(item.format) {
+                                            "hls" -> "application/vnd.apple.mpegurl"
+                                            "dash" -> "application/dash+xml"
+                                            else -> null
+                                        },
+                                        title,item.page,item.capture,
+                                        providerEstimatedSize=DownloadSizeIntelligence
+                                            .fromSharedMetadata(item.quality)?.bytes)
+                                }
                             },
                         ) {
                             Column(Modifier.fillMaxWidth()) {
-                                Text("${item.quality} • $formatLabel" +
-                                    if(item.capture!=null) " • Player confirmado" else " • Fonte encontrada",
+                                val mediaKind=DownloadSourceSelection.kind(item.url)
+                                val sourceLabel=when {
+                                    item.capture!=null -> "Player confirmado"
+                                    mediaKind==DownloadSourceSelection.Kind.DIRECT_FILE -> "Arquivo direto"
+                                    mediaKind==DownloadSourceSelection.Kind.PAGE_OR_GATEWAY ->
+                                        "Página intermediária"
+                                    else -> "Fonte encontrada"
+                                }
+                                Text("${item.quality} • $formatLabel • $sourceLabel",
                                     maxLines=2)
                                 if(!supported) Text(
-                                    if(item.separateAudio) "Faixas de áudio separadas ainda não suportadas"
+                                    if(item.separateAudio) "Faixas HLS separadas: MP4 quando o dispositivo suportar"
                                     else "DASH ainda não é compatível com o downloader",
                                     style=MaterialTheme.typography.bodySmall,
                                 )
@@ -271,7 +315,9 @@ class DownloadBrowserActivity: ComponentActivity() {
             confirmButton={TextButton(onClick={showMedia=false}){Text("Fechar")}},
         )
     }
-    private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String,capture: PlayerMediaCandidate? = null) {
+    private fun offer(url: String,agent: String?,disposition: String?,mime: String?,title: String,page: String,
+        capture: PlayerMediaCandidate? = null,browserLength:Long?=null,
+        providerEstimatedSize:Long?=null) {
         if(!url.startsWith("https://") && !url.startsWith("http://")) return
         CookieManager.getInstance().flush()
         val headers=Bundle().apply {
@@ -282,6 +328,14 @@ class DownloadBrowserActivity: ComponentActivity() {
             mediaRequests[url]?.takeIf {android.os.SystemClock.elapsedRealtime()-it.first<120000}?.second?.forEach { (key,value) ->
                 val canonical=when(key.lowercase()) {"origin"->"Origin";"referer"->"Referer";"user-agent"->"User-Agent";"authorization"->"Authorization";"cookie"->"Cookie";else->key}
                 putString(canonical,value)
+            }
+            val sameSource=runCatching {
+                DownloadHttp.sameOrigin(java.net.URL(requested),java.net.URL(url))
+            }.getOrDefault(false)
+            if(sameSource)sourceHeaders.forEach {(key,value)->
+                // Observed WebView request headers take precedence for their
+                // exact resource; Nuvio's headers fill missing values.
+                if(!keySet().any{it.equals(key,true)})putString(key,value)
             }
         }
         // Prefer the actual page (top frame) when the video URL belongs to an
@@ -298,6 +352,14 @@ class DownloadBrowserActivity: ComponentActivity() {
             url=url,headers=headers.keySet().associateWith {headers.getString(it).orEmpty()},
             title=pageTitle.ifBlank { title },filename=filename,capture=capture,
             hlsHint=mime?.contains("mpegurl",ignoreCase=true)==true,
+            browserLength=browserLength?.takeIf{
+                val extension=url.substringBefore('?').lowercase()
+                it>0 && mime?.contains("mpegurl",true)!=true &&
+                    mime?.contains("dash+xml",true)!=true &&
+                    !listOf(".m3u8",".mpd",".meta4",".metalink",".torrent")
+                        .any{suffix -> extension.endsWith(suffix)}
+            },
+            providerEstimatedSize=providerEstimatedSize?.takeIf {it>0},
         )
     }
     override fun onPause() { web?.onPause(); super.onPause() }

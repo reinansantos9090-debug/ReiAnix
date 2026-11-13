@@ -13,8 +13,13 @@ import javax.crypto.spec.SecretKeySpec
 
 /** VOD HLS: one muxed rendition, TS or fMP4, with optional identity AES-128 encryption. */
 class DownloadHls(private val context: Context,private val store: DownloadStore) {
-    data class Segment(val url: String,val key: String?,val iv: String?,val sequence: Long)
-    data class Playlist(val segments: List<Segment>,val init: String?,val duration: Double)
+    data class ByteSpan(val start:Long,val length:Long) {
+        init {require(start>=0 && length>0 && start<=Long.MAX_VALUE-length)}
+        val end:Long get() = start+length-1
+    }
+    data class Segment(val url: String,val key: String?,val iv: String?,val sequence: Long,
+        val byteSpan:ByteSpan?=null)
+    data class Playlist(val segments: List<Segment>,val init: String?,val duration: Double,val initByteSpan:ByteSpan?=null)
     companion object {
         fun attributes(line: String): Map<String,String> = Regex("([A-Z0-9-]+)=(\"[^\"]*\"|[^,]*)").findAll(line.substringAfter(':')).associate {it.groupValues[1] to it.groupValues[2].trim('"')}
         /** RFC 8216: choose the default audio rendition of the selected group. */
@@ -32,11 +37,26 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             return resolved.takeIf {runCatching {DownloadHttp.validateUrl(it)}.isSuccess}
         }
 
+        fun parseByteSpan(value:String,previous:ByteSpan?,sameResource:Boolean):ByteSpan {
+            val parts=value.trim().split('@')
+            require(parts.size in 1..2) {"Faixa HLS inválida"}
+            val bytes=parts[0].toLongOrNull()?.takeIf{it>0}
+                ?: throw IllegalArgumentException("Faixa HLS inválida")
+            val start=if(parts.size==2) parts[1].toLongOrNull()
+                else if(sameResource) previous?.end?.plus(1) else null
+            require(start!=null && start>=0 && start<=Long.MAX_VALUE-bytes) {
+                "Playlist HLS não informa deslocamento de faixa seguro"
+            }
+            return ByteSpan(start,bytes)
+        }
+
         fun parse(text: String,url: String): Playlist {
             require(text.trimStart().startsWith("#EXTM3U")) {"Playlist HLS inválida"}
             require(text.contains("#EXT-X-ENDLIST")) {"Transmissões ao vivo ainda não são suportadas para download"}
-            require(!text.contains("#EXT-X-BYTERANGE")) {"Esta playlist usa faixas internas ainda não suportadas"}
-            var key: String?=null; var iv: String?=null; var seq=0L; var init: String?=null
+            var key: String?=null; var iv: String?=null; var seq=0L
+            var init:String?=null; var initSpan:ByteSpan?=null
+            var pendingRange:String?=null
+            var previousSpan:ByteSpan?=null;var previousUri:String?=null
             val segments=mutableListOf<Segment>(); var duration=0.0
             text.lineSequence().map {it.trim()}.filter {it.isNotBlank()}.forEach { line ->
                 when {
@@ -47,28 +67,62 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                         require(a["METHOD"] in setOf("NONE","AES-128") && a["KEYFORMAT"].let {it==null || it=="identity"}) {"Vídeo com proteção DRM não é suportado"}
                         key=if(a["METHOD"]=="NONE")null else URL(URL(url),a["URI"] ?: error("Chave HLS ausente")).toString(); iv=a["IV"]
                     }
+                    line.startsWith("#EXT-X-BYTERANGE:") -> {
+                        pendingRange=line.substringAfter(':').trim()
+                    }
                     line.startsWith("#EXT-X-MAP:") -> {
-                        val a=attributes(line); require(a["BYTERANGE"]==null && key==null) {"Inicialização HLS protegida ou por faixa não suportada"}
+                        val a=attributes(line)
+                        require(key==null) {"Inicialização HLS protegida não suportada"}
                         val next=URL(URL(url),a["URI"] ?: error("Inicialização ausente")).toString()
-                        require(init==null || init==next) {"Playlist com mudanças de inicialização não suportada"}; init=next
+                        val span=a["BYTERANGE"]?.let{parseByteSpan(it,null,false)}
+                        require(init==null || (init==next && initSpan==span)) {
+                            "Playlist com mudanças de inicialização não suportada"
+                        }
+                        init=next;initSpan=span
                     }
                     line.startsWith("#EXT-X-DISCONTINUITY") -> error("Playlist com mudanças de linha do tempo não suportada")
-                    !line.startsWith('#') -> {require(segments.size<20000); segments+=Segment(URL(URL(url),line).toString(),key,iv,seq++)}
+                    line.isNotBlank() && !line.startsWith('#') -> {
+                        require(segments.size<20000)
+                        val resolved=URL(URL(url),line).toString()
+                        val span=pendingRange?.let {
+                            parseByteSpan(it,previousSpan,previousUri==resolved)
+                        }
+                        segments+=Segment(resolved,key,iv,seq++,span)
+                        pendingRange=null
+                        previousSpan=span;previousUri=resolved
+                    }
                 }
             }
-            require(segments.isNotEmpty()); return Playlist(segments,init,duration)
+            require(segments.isNotEmpty() && pendingRange==null)
+            return Playlist(segments,init,duration,initSpan)
         }
     }
     internal suspend fun receive(id: String,url: String,headers: Map<String,String>,target: DownloadTransferFile): Boolean {
-        suspend fun fetch(link: String,max: Int): ByteArray = withContext(Dispatchers.IO) {
-            val c=DownloadHttp.connect(link,headers,0,null,credentialOrigin=url)
+        suspend fun fetch(link: String,max: Int,span:ByteSpan?=null): ByteArray =
+            withContext(Dispatchers.IO) {
+            val c=DownloadHttp.connect(link,headers,span?.start ?: 0L,null,
+                end=span?.end,credentialOrigin=url,allowMediaHttpDowngrade=true,
+                redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
             try {
-                require(c.responseCode==200) {"Não foi possível obter parte da playlist"}
+                require(c.responseCode==if(span==null)200 else 206) {
+                    "Resposta HTTP não corresponde à faixa HLS solicitada"
+                }
+                if(span!=null) {
+                    val returned=DownloadHttp.range(c.getHeaderField("Content-Range"))
+                    require(returned!=null && returned.start==span.start &&
+                        returned.end==span.end && span.length<=max) {
+                        "Servidor não retornou a faixa HLS correta"
+                    }
+                }
                 c.inputStream.use { input ->
                     val out=java.io.ByteArrayOutputStream(); val buffer=ByteArray(64*1024)
                     while(true) { currentCoroutineContext().ensureActive(); if(store.get(id)?.state !in DownloadState.pending) throw Paused()
                         val n=input.read(buffer); if(n<0)break; require(out.size().toLong()+n<=max) {"Parte da playlist excede o limite seguro"}; out.write(buffer,0,n) }
-                    out.toByteArray()
+                    val result=out.toByteArray()
+                    require(span==null || result.size.toLong()==span.length) {
+                        "Faixa HLS incompleta"
+                    }
+                    result
                 }
             } finally {c.disconnect()}
         }
@@ -164,7 +218,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
             val keys=mutableMapOf<String,ByteArray>()
             target.open().use { out ->
                 out.setLength(count); out.seek(count)
-                if(count==0L && playlist.init!=null) {val bytes=fetch(playlist.init,16*1024*1024); out.write(bytes);out.sync();count=bytes.size.toLong();store.mutate(id){it.put("bytes",count)}}
+                if(count==0L && playlist.init!=null) {val bytes=fetch(playlist.init,16*1024*1024,playlist.initByteSpan); out.write(bytes);out.sync();count=bytes.size.toLong();store.mutate(id){it.put("bytes",count)}}
                 while(index<playlist.segments.size) {
                     currentCoroutineContext().ensureActive(); if(store.get(id)?.state!="DOWNLOADING")return false
                     val start=android.os.SystemClock.elapsedRealtime();val segment=playlist.segments[index]
@@ -186,9 +240,20 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                                 init(Cipher.DECRYPT_MODE,SecretKeySpec(key,"AES"),IvParameterSpec(iv))
                             }
                         } else null
-                        val c=DownloadHttp.connect(segment.url,headers,0,null,credentialOrigin=url)
+                        val span=segment.byteSpan
+                        val c=DownloadHttp.connect(segment.url,headers,span?.start ?: 0L,null,
+                            end=span?.end,credentialOrigin=url,allowMediaHttpDowngrade=true,
+                redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
                         try {
-                            require(c.responseCode==200) {"Não foi possível obter o segmento"}
+                            require(c.responseCode==if(span==null)200 else 206) {
+                                "O servidor não forneceu o intervalo do segmento HLS"
+                            }
+                            if(span!=null) {
+                                val actual=DownloadHttp.range(c.getHeaderField("Content-Range"))
+                                require(actual!=null && actual.start==span.start && actual.end==span.end) {
+                                    "O servidor retornou uma faixa HLS incorreta"
+                                }
+                            }
                             val counting=object:java.io.FilterInputStream(c.inputStream) {
                                 override fun read():Int = super.read().also {if(it>=0) received++}
                                 override fun read(buffer:ByteArray,off:Int,len:Int):Int =
@@ -205,7 +270,8 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                                     out.write(buffer,0,n)
                                 }
                             }
-                            require(received>0 && (c.contentLengthLong<0 || received==c.contentLengthLong)) {"Segmento incompleto"}
+                            require(received>0 && (c.contentLengthLong<0 || received==c.contentLengthLong) &&
+                                (span==null || received==span.length)) {"Segmento incompleto"}
                             out.sync()
                             count=out.filePointer
                             index++

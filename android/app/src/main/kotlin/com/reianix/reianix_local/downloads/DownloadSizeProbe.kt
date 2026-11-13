@@ -23,14 +23,16 @@ import java.util.Locale
  * existing redirect policy (no cross-origin cookie/authorization forwarding).
  */
 internal object DownloadSizeProbe {
-    data class Result(val bytes: Long?, val exact: Boolean, val source: String, val name: String? = null, val mime: String? = null) {
+    data class Result(val bytes: Long?, val exact: Boolean, val source: String,
+        val name: String? = null, val mime: String? = null,
+        val resolvedUrl: String? = null) {
         companion object { val Unknown = Result(null, false, "unknown") }
     }
     internal data class HlsPlan(val segments: List<String>, val init: String?, val durationSeconds: Double,
         val encrypted: Boolean)
-    internal data class MasterChoice(val url: String, val bandwidth: Long?)
+    internal data class MasterChoice(val url: String, val bandwidth: Long?,val averageBandwidth: Long? = null)
 
-    private const val NETWORK_TIMEOUT_MS = 4_000
+    private const val NETWORK_TIMEOUT_MS = 2_100
     private const val MAX_MANIFEST_BYTES = 1024 * 1024
     private const val MAX_EXACT_SEGMENTS = 40
     private const val MAX_SAMPLE_SEGMENTS = 12
@@ -70,7 +72,7 @@ internal object DownloadSizeProbe {
                     ?: return@mapNotNull null
                 if (runCatching { DownloadHttp.validateUrl(url) }.isFailure) return@mapNotNull null
                 // The existing downloader chooses the largest BANDWIDTH variant.
-                MasterChoice(url,attrs["BANDWIDTH"]?.toLongOrNull())
+                MasterChoice(url,attrs["BANDWIDTH"]?.toLongOrNull(),attrs["AVERAGE-BANDWIDTH"]?.toLongOrNull())
             }.maxByOrNull { it.bandwidth ?: 0L }
     }
 
@@ -145,21 +147,53 @@ internal object DownloadSizeProbe {
             try {
                 DownloadHttp.validateUrl(url)
                 val path=URL(url).path.lowercase(Locale.ROOT)
+                if(DownloadSpecialMetadata.isManifest(url))
+                    return@withContext DownloadSpecialMetadata.inspectManifest(url,headers)
+                        ?: Result.Unknown
                 val manifest=hlsHint || path.endsWith(".m3u8")
+                if(path.endsWith(".mpd"))
+                    return@withContext DownloadDashMetadata.inspect(url,headers).copy(name=hint)
                 if(manifest) return@withContext inspectHls(url,headers).copy(name=hint)
                 trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen",hint) }
                 val response=probe(url,headers)
+                if(response.dash) return@withContext DownloadDashMetadata.inspect(url,headers)
+                    .copy(name=response.name ?: hint, mime=response.mime)
                 if(response.manifest) return@withContext inspectHls(url,headers)
                     .copy(name=response.name ?: hint, mime=response.mime)
                 if(response.length!=null)
-                    return@withContext Result(response.length,true,response.source,response.name ?: hint,response.mime)
-                Result(null,false,"unknown",response.name ?: hint,response.mime)
+                    return@withContext Result(response.length,true,response.source,
+                        response.name ?: hint,response.mime,response.resolvedUrl)
+                if(response.page) DownloadSpecialMetadata.inspectPage(url,headers)?.let {
+                    return@withContext it.copy(name=response.name ?: hint)
+                }
+                DownloadSpecialMetadata.inspectCloud(url)?.let {
+                    return@withContext it.copy(name=it.name ?: response.name ?: hint)
+                }
+                // Only after the fast, low-cost strategies fail: the advanced
+                // bounded probes cover 416, suffix, multipart and validated
+                // same-origin metadata. A vendor hint is not exact.
+                val advanced=DownloadAdvancedHttp.inspect(url,headers)
+                if(advanced?.exact==true)
+                    return@withContext advanced.copy(name=advanced.name ?: response.name ?: hint,
+                        mime=advanced.mime ?: response.mime)
+                val native=DownloadContainerMetadata.inspect(url,headers)
+                if(native!=null && native.exact)
+                    return@withContext Result(native.bytes,true,native.source,response.name ?: hint,response.mime)
+                if(advanced!=null) return@withContext advanced.copy(name=advanced.name ?: response.name ?: hint,
+                    mime=advanced.mime ?: response.mime)
+                native?.let {return@withContext Result(it.bytes,false,it.source,response.name ?: hint,response.mime)}
+                DownloadSpecialMetadata.inspectWebDav(url,headers)?.let {
+                    return@withContext it.copy(name=response.name ?: hint)
+                }
+                Result(null,false,"unknown",response.name ?: hint,response.mime,
+                    response.resolvedUrl)
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
             catch(_: Exception) { Result(null,false,"unknown",hint) }
         }
 
     private data class Headers(
-        val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String
+        val length: Long?, val manifest: Boolean, val name: String?, val mime: String?, val source: String,
+        val dash:Boolean = false, val page:Boolean = false, val resolvedUrl:String? = null
     )
 
     /**
@@ -172,7 +206,10 @@ internal object DownloadSizeProbe {
         var bestName=DownloadResourceIdentity.bestName(null,url,null)
         var bestMime:String?=null
         var manifest=false
-        for(phase in listOf("HEAD","GET_RANGE","GET")) {
+        var resolvedMediaUrl:String?=null
+        // Start with the same open-ended Range that direct transfers use.
+        // Some CDNs reject HEAD and a one-byte range but serve bytes=0-.
+        for(phase in listOf("GET_OPEN_RANGE","HEAD","GET_RANGE","GET")) {
             currentThreadCheck()
             var c:HttpURLConnection?=null
             try {
@@ -180,10 +217,26 @@ internal object DownloadSizeProbe {
                     end=if(phase=="GET_RANGE")0 else null,
                     credentialOrigin=credentialOrigin,
                     method=if(phase=="HEAD")"HEAD" else "GET",
-                    connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
+                    probeRange=if(phase=="GET_OPEN_RANGE")"bytes=0-" else null,
+                    connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
+                    retryHtmlWithSelfReferer=(phase=="GET_OPEN_RANGE"),
+                    allowMediaHttpDowngrade=true,
+                    redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
                 val code=c.responseCode
                 val mime=c.contentType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
-                if(mime.startsWith("video/") || mime.contains("mpegurl")) bestMime=mime
+                val endpoint=c.url.toString()
+                if(code in setOf(200,206) && endpoint!=url &&
+                    (mime.startsWith("video/") ||
+                        DownloadSourceSelection.kind(endpoint)==
+                            DownloadSourceSelection.Kind.DIRECT_FILE)) {
+                    resolvedMediaUrl=endpoint
+                }
+                if(mime.startsWith("video/") || mime.contains("mpegurl") || mime.contains("dash+xml"))
+                    bestMime=mime
+                if(mime.contains("dash+xml"))
+                    return Headers(null,false,bestName,bestMime,"dash-manifest",dash=true)
+                if(mime.startsWith("text/html"))
+                    return Headers(null,false,bestName,bestMime,"html-page",page=true)
                 val resolved=DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
                     c.url.toString(),c.contentType)
                 if(resolved!=null && (bestName==null ||
@@ -192,14 +245,16 @@ internal object DownloadSizeProbe {
                 if(mime.contains("mpegurl")) {manifest=true;break}
                 val size=directLength(code,c.getHeaderFieldLong("Content-Length",-1),
                     c.getHeaderField("Content-Range"),c.getHeaderField("Content-Encoding"),c.contentType)
-                if(size!=null)return Headers(size,false,bestName,bestMime,phase.lowercase(Locale.ROOT))
+                if(size!=null)return Headers(size,false,bestName,bestMime,
+                    phase.lowercase(Locale.ROOT),resolvedUrl=resolvedMediaUrl)
                 // Some CDNs reject ranges but permit GET. A missing Content-Length
                 // in a 200 chunked response cannot be treated as an exact size.
-                if(phase=="GET" && code in setOf(401,403))break
+                if(code in setOf(401,403))break
             } catch(_:java.io.IOException) { /* try the next header-only strategy */ }
             finally {c?.disconnect()}
         }
-        return Headers(null,manifest,bestName,bestMime,"unknown")
+        return Headers(null,manifest,bestName,bestMime,"unknown",
+            resolvedUrl=resolvedMediaUrl)
     }
 
     private suspend fun inspectHls(url: String, headers: Map<String,String>): Result {
@@ -207,9 +262,17 @@ internal object DownloadSizeProbe {
         val choice=parseMaster(first,url)
         val mediaUrl=choice?.url ?: url
         val playlist=if(choice!=null) readManifest(mediaUrl,headers,url) else first
+        val richer=playlist?.let {DownloadHlsMetadata.parse(it,mediaUrl)}
+        // Exact source bytes for HLS BYTERANGE and EXT-X-MAP are available
+        // from the manifest, but remux/crypto may change final MP4 bytes.
+        richer?.knownRangeSize?.let {
+            return Result(it,false,"hls-ranges")
+        }
         val plan=playlist?.let {parseVod(it,mediaUrl)}
-        if(plan==null)return Result.Unknown
-        val bitrate=bitrateEstimate(plan.durationSeconds,choice?.bandwidth)
+        val duration=plan?.durationSeconds ?: richer?.duration ?: 0.0
+        val bitrate=bitrateEstimate(duration,choice?.averageBandwidth ?: choice?.bandwidth)
+        if(plan==null)return bitrate?.let{Result(it,false,"hls-average-bandwidth")}
+            ?: Result.Unknown
         val segments=plan.segments
         // Inspect all small playlists or sample long ones. Keep network work
         // bounded so opening the dialog never starts hundreds of downloads.
@@ -220,26 +283,44 @@ internal object DownloadSizeProbe {
             indices.chunked(6).flatMap { chunk ->
                 chunk.map { index -> async(Dispatchers.IO) {
                     currentCoroutineContext().ensureActive()
-                    probe(segments[index],headers,credentialOrigin=url).length
+                    DownloadHlsMetadata.cachedSize(segments[index]) ?: 
+                        probe(segments[index],headers,credentialOrigin=url).length?.also {
+                            DownloadHlsMetadata.rememberSize(segments[index],it)
+                        }
                 }}.awaitAll()
             }
         }
         val successes=sizes.filterNotNull()
         if(successes.size==indices.size && successes.isNotEmpty()) {
+            val estimates=indices.zip(sizes).mapNotNull { (i,size) ->
+                size?.let{i to it}
+            }.toMap()
             val rawTotal=if(indices.size==segments.size) successes.sumOf { it }
-            else (successes.average()*segments.size).toLong()
+            else richer?.let { DownloadHlsMetadata.weightedEstimate(it.pieces,estimates) }
+                ?: (successes.average()*segments.size).toLong()
             val initSize=plan.init?.let {probe(it,headers,credentialOrigin=url).length}
             if(plan.init!=null && initSize==null)return Result(
                 bitrate ?: rawTotal,false,"hls-estimate")
-            val bytes=rawTotal+(initSize ?: 0)
+            // AES-128/CBC PKCS#7 adds 1..16 bytes of ciphertext padding
+            // per encrypted segment. Subtract a midpoint ONLY from the
+            // approximate output estimate; original source byte totals remain
+            // available through diagnostics and are never claimed exact.
+            val encryptedPadding=if(plan.encrypted)
+                (DownloadHlsMetadata.encryptedTransportOverhead(segments.size) ?: 0L)/2
+                else 0L
+            val bytes=(rawTotal-encryptedPadding).coerceAtLeast(1L)+(initSize ?: 0L)
             if(bytes>0) {
-                // TS may be remuxed to MP4 (different exact output bytes);
-                // encrypted segments also change length after decryption.
+                // TS may be remuxed to MP4 (different exact output bytes).
                 val exact=indices.size==segments.size && !plan.encrypted && plan.init!=null
-                return Result(bytes,exact,if(exact)"hls-fmp4" else "hls-estimate")
+                return Result(bytes,exact,when {
+                    exact -> "hls-fmp4"
+                    plan.encrypted -> "hls-encrypted-adjusted-estimate"
+                    else -> "hls-estimate"
+                })
             }
         }
-        if(bitrate!=null) return Result(bitrate,false,"hls-bitrate")
+        if(bitrate!=null) return Result(bitrate,false,
+            if(choice?.averageBandwidth!=null) "hls-average-bandwidth" else "hls-bitrate")
         // Some video hosts reject HEAD and Range requests, but permit normal
         // segment GETs. Sample only three *complete*, bounded segments. This
         // is expressly an estimate and is never used as a download limit.
@@ -251,7 +332,35 @@ internal object DownloadSizeProbe {
             }}.awaitAll()
         }
         val sampled=sampledSegmentEstimate(sampleSizes,segments.size)
-        return sampled?.let { Result(it,false,"hls-sampled") } ?: Result.Unknown
+        if(sampled!=null)return Result(sampled,false,"hls-sampled")
+        val tsRate=segments.firstOrNull()?.takeIf {
+            it.substringBefore('?').endsWith(".ts",true) ||
+                it.substringBefore('?').endsWith(".m2ts",true)
+        }?.let {sampleTransportBitrate(it,headers,url)}
+        return bitrateEstimate(plan.durationSeconds,tsRate)?.let{
+            Result(it,false,"hls-transport-pcr")
+        } ?: Result.Unknown
+    }
+
+    private fun sampleTransportBitrate(url:String,headers:Map<String,String>,origin:String):Long? {
+        var c:HttpURLConnection?=null
+        return try {
+            c=DownloadHttp.connect(url,headers,0,null,credentialOrigin=origin,
+                probeRange="bytes=0-65535",connectTimeoutMs=1800,readTimeoutMs=1900)
+            if(c.responseCode !in setOf(200,206))return null
+            val bytes=ByteArray(65536)
+            var count=0
+            c.inputStream.use {input ->
+                while(count<bytes.size) {
+                    currentThreadCheck()
+                    val n=input.read(bytes,count,bytes.size-count)
+                    if(n<0)break
+                    count+=n
+                }
+            }
+            DownloadContainerMetadata.tsPcrBitsPerSecond(bytes.copyOf(count))
+        }catch(_:java.io.IOException){null}
+        finally{c?.disconnect()}
     }
 
     private fun sampleCompleteSegment(url: String, headers: Map<String,String>, origin: String): Long? {

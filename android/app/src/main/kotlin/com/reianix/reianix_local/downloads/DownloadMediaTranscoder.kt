@@ -102,6 +102,17 @@ internal object DownloadMediaTranscoder {
      * is required for the temporary MP4. No DRM or access-control bypass.
      */
     suspend fun tryAdaptiveHls(context: Context, source: String): File? =
+        tryAdaptiveStream(context,source,MimeTypes.APPLICATION_M3U8)
+
+    suspend fun tryAdaptiveDash(context: Context, source: String): File? =
+        tryAdaptiveStream(context,source,MimeTypes.APPLICATION_MPD)
+
+    /**
+     * ExoPlayer's media source is selected by the explicit MIME type.
+     * DASH requires media3-exoplayer-dash; HLS requires media3-exoplayer-hls.
+     * Only unprotected streams supported by the device can be exported.
+     */
+    private suspend fun tryAdaptiveStream(context:Context,source:String,mime:String):File? =
         conversionLock.withLock {
             val folder=context.externalCacheDir ?: context.cacheDir
             if(StatFs(folder.absolutePath).availableBytes < 256L*1024*1024)
@@ -109,8 +120,7 @@ internal object DownloadMediaTranscoder {
             val output=File(folder,"reianix-adaptive-"+UUID.randomUUID()+".mp4")
             var success=false
             try {
-                val item=MediaItem.Builder().setUri(source)
-                    .setMimeType(MimeTypes.APPLICATION_M3U8).build()
+                val item=MediaItem.Builder().setUri(source).setMimeType(mime).build()
                 val converted=withContext(Dispatchers.Main) {
                     suspendCancellableCoroutine<Boolean> { continuation ->
                         val transformer=Transformer.Builder(context)
@@ -121,7 +131,7 @@ internal object DownloadMediaTranscoder {
                                     if(continuation.isActive)continuation.resume(true)
                                 }
                                 override fun onError(composition: Composition,result: ExportResult,exception: ExportException) {
-                                    Log.i(TAG,"Adaptive HLS export unsupported: "+exception.javaClass.simpleName)
+                                    Log.i(TAG,"Adaptive export unsupported: "+exception.javaClass.simpleName)
                                     if(continuation.isActive)continuation.resume(false)
                                 }
                             }).build()
@@ -130,7 +140,7 @@ internal object DownloadMediaTranscoder {
                         }
                         try { transformer.start(item,output.absolutePath) }
                         catch(error:Exception) {
-                            Log.i(TAG,"Cannot begin adaptive HLS export: "+error.javaClass.simpleName)
+                            Log.i(TAG,"Cannot begin adaptive export: "+error.javaClass.simpleName)
                             if(continuation.isActive)continuation.resume(false)
                         }
                     }
@@ -142,16 +152,14 @@ internal object DownloadMediaTranscoder {
                     val mimes=(0 until check.trackCount).map {
                         check.getTrackFormat(it).getString(MediaFormat.KEY_MIME).orEmpty()
                     }
-                    // Separate audio must survive the export; never silently
-                    // publish a silent video with an .mp4 label.
-                    if(mimes.none {it.startsWith("video/")} || mimes.none {it.startsWith("audio/")})
-                        return@withLock null
+                    if(mimes.none {it.startsWith("video/")} ||
+                        mimes.none {it.startsWith("audio/")})return@withLock null
                 } finally {check.release()}
                 success=true
                 output
             } catch(cancelled:CancellationException) {throw cancelled}
             catch(error:Exception) {
-                Log.i(TAG,"Adaptive HLS remains unavailable: "+error.javaClass.simpleName)
+                Log.i(TAG,"Adaptive export unavailable: "+error.javaClass.simpleName)
                 null
             } finally {
                 if(!success)output.delete()

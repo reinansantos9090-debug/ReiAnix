@@ -66,6 +66,7 @@ class DownloadEngine(private val context: Context) {
     }
     private suspend fun transfer(id: String) {
         var connection: HttpURLConnection?=null
+        var phase=DownloadFailureMessage.Phase.DESTINATION
         try {
             var item=store.get(id) ?: return
             if(item.state !in DownloadState.pending) return
@@ -80,28 +81,57 @@ class DownloadEngine(private val context: Context) {
             val offset=minOf(item.bytes,target.size())
             target.open().use { it.setLength(offset); it.sync() }
             val secret=store.secret(item); val headers=secret.optJSONObject("headers") ?: JSONObject()
-            val requestHeaders=headers.keys().asSequence().associateWith { headers.getString(it) }
+            val sourceUrl=secret.getString("url")
+            val requestHeaders=DownloadSessionHeaders.resolve(
+                context,sourceUrl,headers.keys().asSequence().associateWith {headers.getString(it)}
+            )
+            phase=DownloadFailureMessage.Phase.CONNECTION
             var resume=offset
             var validator=item.json.optString("validator").takeIf { it.isNotBlank() }
-            val hls=item.json.optBoolean("hls") || android.net.Uri.parse(secret.getString("url")).path.orEmpty().endsWith(".m3u8",true)
-            if(resume>0 && validator==null && !hls) { restart(id,target); resume=0 }
+            val sourcePath=android.net.Uri.parse(secret.getString("url")).path.orEmpty()
+            val hls=item.json.optBoolean("hls") || sourcePath.endsWith(".m3u8",true)
+            val dash=item.json.optBoolean("adaptiveDash") || sourcePath.endsWith(".mpd",true)
+            if(resume>0 && validator==null && !hls && !dash) { restart(id,target); resume=0 }
             store.mutate(id) { if(it.optString("state") in DownloadState.pending) it.put("state","DOWNLOADING").put("message","") }
             if(!isDownloading(id)) return
             if(hls) {
-                if(receiveHls(id,secret.getString("url"),requestHeaders,target)) verifyAndSave(id,target)
+                phase=DownloadFailureMessage.Phase.TRANSFER
+                if(receiveHls(id,secret.getString("url"),requestHeaders,target)) {
+                    phase=DownloadFailureMessage.Phase.FINISHING
+                    verifyAndSave(id,target)
+                }
+                return
+            }
+            if(dash) {
+                phase=DownloadFailureMessage.Phase.TRANSFER
+                if(DownloadAdaptiveTransfer(context,store).receiveDash(
+                    id,secret.getString("url"),target)) {
+                    phase=DownloadFailureMessage.Phase.FINISHING
+                    verifyAndSave(id,target)
+                }
                 return
             }
             // Fully received files interrupted during verification/export need no redownload.
             if(item.total>=0 && resume==item.total && resume>0) {
                 verifyAndSave(id,target); return
             }
-            connection=DownloadHttp.connect(secret.getString("url"),requestHeaders,resume,validator)
+            connection=DownloadHttp.connect(sourceUrl,requestHeaders,resume,validator,
+                preferInitialRange=(resume==0L),closeAfterResponse=true,
+                retryHtmlWithSelfReferer=(resume==0L),
+                allowMediaHttpDowngrade=true,
+                redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
             val code=connection.responseCode
+            val actualHost=connection.url.host.orEmpty().take(255)
+            store.mutate(id) {
+                it.put("lastHttpStatus",code)
+                it.put("effectiveHost",actualHost)
+            }
             if(code==401) throw PermanentFailure("O servidor solicitou autenticação (HTTP 401). Abra novamente o vídeo no navegador e capture o link.")
             if(code==403) throw PermanentFailure("O servidor recusou o download (HTTP 403). Capture novamente o vídeo no navegador; a sessão ou as regras do servidor podem impedir esta transferência.")
             if(code==404 || code==410) throw PermanentFailure("Arquivo não encontrado ou link expirado")
             if(code==416) { restart(id,target); throw IOException("Faixa anterior indisponível; reiniciando") }
-            if(code==429 || code>=500) throw IOException("Servidor temporariamente indisponível")
+            if(code==408 || code==425 || code==429 || code>=500)
+                throw DownloadRetryableHttpFailure(code,connection.getHeaderField("Retry-After"))
             if(code !in setOf(200,206)) throw PermanentFailure("O servidor recusou o download (HTTP $code)")
             if(connection.getHeaderField("Content-Encoding")?.let { it!="identity" }==true) throw PermanentFailure("O servidor enviou uma representação comprimida incompatível com a retomada")
             val range=DownloadHttp.range(connection.getHeaderField("Content-Range"))
@@ -120,12 +150,21 @@ class DownloadEngine(private val context: Context) {
             if(item.json.has("playerCapture") && contentType.startsWith("image/"))throw DownloadCaptureGuard.Rejected("A captura retornou uma imagem, não o episódio")
             if(contentType in setOf("text/html","application/xhtml+xml")) throw PermanentFailure("Este link abre uma página. Informe o link direto do arquivo.")
             if(contentType.contains("mpegurl",true)) {
+                phase=DownloadFailureMessage.Phase.TRANSFER
                 connection.disconnect(); connection=null
                 restart(id,target); store.mutate(id){it.put("hls",true)}
                 if(receiveHls(id,secret.getString("url"),requestHeaders,target)) verifyAndSave(id,target)
                 return
             }
-            if(contentType.contains("dash+xml",true)) throw PermanentFailure("Esta playlist DASH exige montagem de faixas ainda não suportada. Abra o site e escolha uma versão de arquivo ou HLS compatível.")
+            if(contentType.contains("dash+xml",true)) {
+                phase=DownloadFailureMessage.Phase.TRANSFER
+                connection.disconnect();connection=null
+                restart(id,target)
+                store.mutate(id){it.put("adaptiveDash",true)}
+                if(DownloadAdaptiveTransfer(context,store).receiveDash(
+                    id,secret.getString("url"),target))verifyAndSave(id,target)
+                return
+            }
             if(total>0 && (item.json.optString("destination").isBlank() || !target.isPublic) &&
                 StatFs(if(target.isPublic) Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).path else store.directory.path)
                     .availableBytes < (total-resume).coerceAtLeast(0)+16L*1024*1024)
@@ -166,6 +205,7 @@ class DownloadEngine(private val context: Context) {
             runCatching { target.syncName() }
             try { store.registerMedia(id) } catch(_: IllegalArgumentException) { throw PermanentFailure("Já existe um episódio com este nome na biblioteca. Altere o nome antes de adicionar outro download.") }
             store.get(id)?.takeIf {it.json.optBoolean("identityKnown")}?.let { DownloadMetadata.offer(context,it.animeId) }
+            phase=DownloadFailureMessage.Phase.TRANSFER
             val prefs=ReiAnixAppDependencies.from(context).sqliteSettingsRepository
             val connections=(prefs.getPreference("downloads.connections","4")?.toIntOrNull() ?: 4).coerceIn(1,16)
             if(connections>1 && total>=4*1024*1024 && !store.get(id)!!.json.optBoolean("parallelDisabled") &&
@@ -200,6 +240,11 @@ class DownloadEngine(private val context: Context) {
                             if(prefix.startsWith("#extm3u")) {
                                 store.mutate(id){it.put("hls",true)}
                                 throw IOException("Playlist detectada; preparando download HLS")
+                            }
+                            if(prefix.startsWith("<mpd") ||
+                                (prefix.startsWith("<?xml") && prefix.contains("<mpd"))) {
+                                store.mutate(id){it.put("adaptiveDash",true)}
+                                throw IOException("Manifesto DASH detectado; preparando MP4")
                             }
                             if(prefix.startsWith("<!doctype html") || prefix.startsWith("<html") ||
                                 (store.get(id)?.mime?.startsWith("video/")==true && (prefix.startsWith("{") || prefix.startsWith("[")))) {
@@ -243,7 +288,20 @@ class DownloadEngine(private val context: Context) {
             if(total>=0 && count!=total) throw IOException("Transferência interrompida antes do fim")
             if(count==0L) throw PermanentFailure("O arquivo recebido está vazio")
             if(!isDownloading(id)) return
-            if(total<0) store.mutate(id) { it.put("total",count) }
+            // A chunked response has no authoritative Content-Length; only EOF
+            // establishes its actual byte count. Never present a guessed total
+            // while the stream is still being received.
+            if(total<0) {
+                val finished=DownloadAdvancedHttp.chunkedCompleteLength(count,true)
+                    ?: throw PermanentFailure("Fluxo recebido sem conteúdo completo")
+                val chunked=connection.getHeaderField("Transfer-Encoding")
+                    .orEmpty().contains("chunked",true)
+                store.mutate(id) {
+                    it.put("total",finished)
+                    if(chunked)it.put("sizeSource","chunked-eof")
+                }
+            }
+            phase=DownloadFailureMessage.Phase.FINISHING
             verifyAndSave(id,target)
         } catch(cancelled: CancellationException) {
             withContext(NonCancellable+Dispatchers.IO) {
@@ -264,8 +322,19 @@ class DownloadEngine(private val context: Context) {
                 (!retryable && attempts>=12)
             store.mutate(id) {
                 it.put("state",if(permanent) "ERROR" else "WAITING").put("attempts",attempts).put("speed",0)
-                    .put("nextAttempt",System.currentTimeMillis()+minOf(60_000L,2000L*(1L shl attempts.coerceAtMost(5))))
-                    .put("message",when(error) { is DownloadCaptureGuard.Rejected -> error.message; is PermanentFailure -> error.message; is SecurityException -> "Permissão de destino indisponível. Escolha novamente a pasta."; else -> if(permanent) "Não foi possível concluir. Confira a conexão e tente retomar." else "Aguardando conexão ou servidor; a retomada é automática." })
+                    .put("nextAttempt",DownloadRetryPolicy.nextAttempt(
+                        attempts,id,(error as? DownloadRetryableHttpFailure)?.retryAfter,
+                        System.currentTimeMillis()))
+                    .put("lastHttpStatus",(error as? DownloadRetryableHttpFailure)?.status ?: -1)
+                    .put("lastFailureKind",error.javaClass.simpleName.take(64))
+                    .put("lastFailurePhase",phase.name)
+                    .put("message",when(error) {
+                        is DownloadCaptureGuard.Rejected -> error.message
+                        is PermanentFailure -> error.message
+                        is SecurityException -> "Permissão de destino indisponível. Escolha novamente a pasta."
+                        else -> if(permanent) "Não foi possível concluir. Confira o link, a conexão e tente retomar."
+                        else DownloadFailureMessage.pending(error,phase,attempts,item.bytes)
+                    })
             }
         } finally { connection?.disconnect() }
     }
@@ -444,6 +513,20 @@ class DownloadEngine(private val context: Context) {
             // Commit the already-published URI before removing a remux source.
             store.complete(id,destination,finalBytes)
             committed=true
+            // Only opaque .bin sources benefit from this optional *local*
+            // platform metadata check. It never sends another HTTP request or
+            // blocks the initial name/size dialog.
+            if(beforePublication.json.optBoolean("sourceWasOpaque")) {
+                runCatching {
+                    DownloadContainerMetadata.nativeEstimate(context,destination)
+                        ?.let {hint ->
+                            store.mutate(id) {
+                                it.put("nativeMediaEstimate",hint.bytes)
+                                    .put("nativeMediaEstimateSource",hint.source)
+                            }
+                        }
+                }
+            }
             if(target.isPublic) {
                 if(publicRemux!=null) target.discardSource()
             } else file.delete()

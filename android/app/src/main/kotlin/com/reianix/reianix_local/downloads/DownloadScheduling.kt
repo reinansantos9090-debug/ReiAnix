@@ -80,8 +80,9 @@ object DownloadScheduling {
         // server supplies it; HLS estimates are always marked approximate.
         val displayTotal=downloadDisplaySize(item)
         val total=displayTotal?.let {
-            (if(it.exact) "" else "≈ ")+android.text.format.Formatter.formatFileSize(context,it.bytes)
-        } ?: "tamanho desconhecido"
+            val shown=if(it.exact)it.bytes else DownloadSizeIntelligence.roundedForDisplay(it.bytes)
+            (if(it.exact) "" else "≈ ")+android.text.format.Formatter.formatFileSize(context,shown)
+        } ?: "tamanho a confirmar"
         val eta=if(speed>0 && displayTotal?.exact==true && displayTotal.bytes>item.bytes) {
             val seconds=(displayTotal.bytes-item.bytes)/speed; " • ${seconds/60}m ${seconds%60}s"
         } else ""

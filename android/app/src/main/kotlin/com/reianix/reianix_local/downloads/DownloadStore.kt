@@ -210,6 +210,9 @@ class DownloadStore(context: Context) {
             .put("hashType", hashType).put("secret", DownloadSecrets.encrypt(payload.toString())).put("signature", signature)
             .put("created", System.currentTimeMillis()).put("animeTitle", animeTitle.trim()).put("automaticName",automaticName)
             .put("hls",hlsHint)
+            // Domain-only diagnostics. The URL path, query and tokens stay
+            // encrypted with the download request and are never logged here.
+            .put("sourceHost",DownloadHttp.validateUrl(url).host.orEmpty().take(255))
             .put("virtualUri", "content://${context.packageName}.downloads/$id/${Uri.encode(name)}")
             .put("mime", MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream")
         // Discovered size is display metadata only. Never use an HLS estimate
@@ -246,11 +249,22 @@ class DownloadStore(context: Context) {
             // Wake a waiting/paused job, but never modify an actively writing
             // or already finished download. Keep resumable files and ETag.
             val earlier=get(existingId) ?: error("Download existente não encontrado")
-            if(earlier.state in setOf("WAITING","PAUSED")) {
+            if(earlier.state !in setOf("COMPLETE","CANCELLED","CORRUPT","ERROR")) {
+                // New metadata from the originating app can improve the displayed
+                // size for an existing job. Never change the transfer's total.
                 mutate(existingId) {
-                    it.put("secret",DownloadSecrets.encrypt(payload.toString()))
-                        .put("state","QUEUED").put("nextAttempt",0).put("attempts",0)
-                        .put("message","")
+                    val existing=it.optLong("detectedSize")
+                    val isExact=it.optBoolean("detectedSizeExact")
+                    if(detectedSize!=null && detectedSize>0L &&
+                        (existing<=0L || (detectedExact && !isExact))) {
+                        it.put("detectedSize",detectedSize)
+                            .put("detectedSizeExact",detectedExact)
+                    }
+                    if(earlier.state in setOf("WAITING","PAUSED")) {
+                        it.put("secret",DownloadSecrets.encrypt(payload.toString()))
+                            .put("state","QUEUED").put("nextAttempt",0)
+                            .put("attempts",0).put("message","")
+                    }
                 }
             }
             return@withContext get(existingId) ?: earlier
