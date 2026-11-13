@@ -66,8 +66,12 @@ internal object DownloadSourceSelection {
             pagePaths.containsMatchIn(path)
     }
 
-    private fun normalize(raw:String):String? {
-        val value=raw.trim().trimEnd('.',',',';',')',']','}','!')
+    private fun normalize(raw:String,sharedText:Boolean):String? {
+        val trimmed=raw.trim()
+        // URL fields and decoded targets are already exact. Trim sentence
+        // punctuation only when extracting a link from surrounding prose.
+        val value=if(sharedText)trimmed.trimEnd('.',',',';',')',']','}','!')
+            else trimmed
         if(value.length !in 10..16384)return null
         return runCatching {DownloadHttp.validateUrl(value);value}.getOrNull()
     }
@@ -81,7 +85,7 @@ internal object DownloadSourceSelection {
     fun choose(texts:List<String>,explicitUrls:List<String> = emptyList()):List<Candidate> {
         val seen=LinkedHashMap<String,Candidate>()
         fun insert(value:String,origin:String,weight:Int) {
-            val url=normalize(value)?:return
+            val url=normalize(value,origin=="shared")?:return
             val classification=kind(url)
             val base=when(classification){
                 Kind.DIRECT_FILE -> 400
