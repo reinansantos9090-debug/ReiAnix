@@ -71,7 +71,7 @@ internal object BrowserMediaCapture {
     if(['.mp4','.mkv','.webm','.mov','.m4v','.ts','.m2ts'].some(x=>path.endsWith(x)))return 'video';
     return '';
   }catch(e){return ''}};
-  const qualityFrom=(label,url)=>{const text=String(label||'')+' '+String(url||'');
+  const qualityFrom=(label,url)=>{const text=(/^(2160|1440|1080|720|480|360|240)$/.test(String(label||'').trim())?String(label).trim()+'p':String(label||''))+' '+String(url||'');
     let m=/(?:^|[^0-9])(2160|1440|1080|720|480|360|240)\s*p(?:[^a-z]|$)/i.exec(text);
     if(m)return m[1]+'p';
     m=/(?:quality|res|height|q)[=:/_-](2160|1440|1080|720|480|360|240)(?:[^0-9]|$)/i.exec(text);
@@ -111,12 +111,42 @@ internal object BrowserMediaCapture {
       sendOption(url,label,origin,false,hint);
     }catch(e){}};
     visible.forEach(v=>{
-      offer(v.currentSrc||v.src,v.getAttribute('data-quality')||v.getAttribute('data-res')||'','visible-video');
+      offer(v.currentSrc||v.src,v.getAttribute('data-quality')||v.getAttribute('data-res')||(v.readyState>=1&&v.videoHeight?v.videoHeight+'p':''),'visible-video');
       v.querySelectorAll('source[src]').forEach(source=>{
         offer(source.src,source.getAttribute('label')||source.getAttribute('res')||
           source.getAttribute('data-quality')||source.getAttribute('size')||'','source',
           source.getAttribute('type')||'');
       });
+    });
+    // Read the existing player's declared renditions, including closed quality
+    // menus. Never click controls or manufacture a URL by replacing 720 with 360.
+    visible.forEach(v=>{
+      const root=v.closest('.jwplayer,.video-js,.plyr,.fluid_video_wrapper,[data-player]')||v.parentElement;
+      if(!root||adElement(root))return;
+      const declared=(raw,label,type='')=>offer(raw,label,'source',type||'video/mp4');
+      root.querySelectorAll('source[src],[data-src],[data-url],select option[value]')
+        .forEach(node=>{
+          const raw=node.getAttribute('src')||node.getAttribute('data-src')||node.getAttribute('data-url')||node.getAttribute('value');
+          if(!raw||!/^https?:|^\/|^\.\.\//i.test(raw))return;
+          // Unlike <source>, controls must carry an explicit quality label.
+          const label=node.getAttribute('label')||node.getAttribute('data-quality')||node.getAttribute('data-res')||node.getAttribute('res')||node.getAttribute('size')||node.textContent||'';
+          if(node.tagName!=='SOURCE'&&qualityFrom(label,'')==='Qualidade não informada')return;
+          declared(raw,label,node.getAttribute('type')||'');
+        });
+      try{
+        if(root.classList.contains('jwplayer')&&typeof window.jwplayer==='function'){
+          const player=window.jwplayer(root.id),entry=player.getPlaylistItem();
+          if(entry&&Array.isArray(entry.sources))entry.sources.slice(0,32).forEach(source=>
+            declared(source.file,source.label||source.height||'',source.type&&source.type.includes('/')?source.type:''));
+        }
+      }catch(e){}
+      try{
+        if(root.classList.contains('video-js')&&window.videojs&&window.videojs.getPlayer){
+          const player=window.videojs.getPlayer(root.id);
+          if(player&&player.currentSources)player.currentSources().slice(0,32).forEach(source=>
+            declared(source.src,source.label||source.res||source.height||'',source.type||''));
+        }
+      }catch(e){}
     });
     // Explicit quality controls can expose all renditions before Play. Accept
     // only media links that belong to visible controls, never arbitrary hrefs.
@@ -139,7 +169,7 @@ internal object BrowserMediaCapture {
     if(visible.length===1 && recentDirect.length===1 &&
       Number.isFinite(visible[0].duration) && visible[0].duration>=120)
       sendOption(recentDirect[0].url,
-        visible[0].getAttribute('data-quality')||'','visible-video',
+        visible[0].getAttribute('data-quality')||(visible[0].videoHeight?visible[0].videoHeight+'p':''),'visible-video',
         false,recentDirect[0].mime);
     const recent=Array.from(masters.values()).filter(m=>Date.now()-m.time<60000);
     recent.forEach(master=>{
@@ -229,7 +259,7 @@ internal object BrowserMediaCapture {
     directMedia.set(url,{url,time:Date.now(),mime});
     if(Number.isFinite(players[0].duration)&&players[0].duration>=120 &&
       players[0].videoWidth>=160&&players[0].videoHeight>=90)
-      sendOption(url,players[0].getAttribute('data-quality')||'',
+      sendOption(url,players[0].getAttribute('data-quality')||(players[0].videoHeight?players[0].videoHeight+'p':''),
         'visible-video',false,mime);
     schedule();
   }catch(e){}};

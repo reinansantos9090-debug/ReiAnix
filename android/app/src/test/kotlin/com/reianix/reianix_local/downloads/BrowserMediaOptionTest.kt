@@ -72,4 +72,13 @@ class BrowserMediaOptionTest {
         assertEquals(direct.url,list.first().url)
     }
 
+    @Test fun knownQualityWinsOverUnknownDuplicateInEitherOrder() {
+        val known=source("https://cdn.example/episode.mp4","720p")
+        val unknown=known.copy(quality="Qualidade não informada")
+        for(options in listOf(listOf(known,unknown),listOf(unknown,known))) {
+            val results=BrowserMediaResults.combine(emptyList(),options)
+            assertEquals(1,results.size)
+            assertEquals("720p",results.single().quality)
+        }
+    }
 }

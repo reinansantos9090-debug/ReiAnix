@@ -74,10 +74,11 @@ internal object BrowserMediaResults {
     ): List<BrowserDownloadChoice> {
         val byUrl = LinkedHashMap<String, BrowserDownloadChoice>()
         discovered.filter(BrowserMediaOption::eligible).forEach { option ->
-            byUrl.putIfAbsent(
-                option.url,
-                BrowserDownloadChoice(option.url, option.page, option.quality, option.format, option.separateAudio, null),
-            )
+            val previous=byUrl[option.url]
+            if(previous==null || (previous.quality=="Qualidade não informada" &&
+                    option.quality!="Qualidade não informada"))
+                byUrl[option.url]=BrowserDownloadChoice(option.url, option.page, option.quality,
+                    option.format, option.separateAudio, null)
         }
         confirmed.filter(PlayerMediaCandidate::eligible).forEach { item ->
             val previous = byUrl[item.url]

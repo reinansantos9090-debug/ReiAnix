@@ -114,7 +114,12 @@ class DownloadBrowserActivity: ComponentActivity() {
                     },
                     onOption = { item ->
                         val key=item.frame+"::"+item.url
-                        if(sourceOptions.size<96 || sourceOptions.containsKey(key))sourceOptions[key]=item
+                        val previous=sourceOptions[key]
+                        // A later scan without metadata must not erase a known resolution.
+                        if(sourceOptions.size<96 || previous!=null)sourceOptions[key]=
+                            if(item.quality=="Qualidade não informada" &&
+                                previous!=null && previous.quality!="Qualidade não informada")
+                                item.copy(quality=previous.quality) else item
                         if(showMedia)updateCandidates()
                     },
                 )
@@ -187,7 +192,17 @@ class DownloadBrowserActivity: ComponentActivity() {
                             try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
                         }))
                     IconButton(onClick={
-                        browser.evaluateJavascript("window.__reiScanPlayers && window.__reiScanPlayers(true)") {
+                        browser.evaluateJavascript("""
+                            (() => {
+                              window.__reiScanPlayers && window.__reiScanPlayers(true);
+                              const headings=Array.from(document.querySelectorAll('h1,h2,.entry-title,.post-title')).slice(0,30);
+                              const episode=/(?:epis[oó]dio|episode|ep)[\s._-]*\d+|(?:dublado|legendado)\s+\d+\s*$/i;
+                              const heading=headings.find(h=>h.getClientRects().length && episode.test(h.textContent||''));
+                              return heading ? heading.textContent.trim().slice(0,240) : document.title;
+                            })()
+                        """.trimIndent()) { raw ->
+                            val detected=runCatching {JSONArray("[$raw]").optString(0)}.getOrDefault("")
+                            if(detected.isNotBlank())title=detected
                             browser.postDelayed({
                                 updateCandidates()
                                 showMedia=true
