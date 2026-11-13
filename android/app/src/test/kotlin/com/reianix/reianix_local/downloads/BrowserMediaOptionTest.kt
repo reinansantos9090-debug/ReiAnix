@@ -56,4 +56,20 @@ class BrowserMediaOptionTest {
         assertEquals(1,found.size)
         assertTrue(found.first().separateAudio)
     }
+    @Test fun aDirectLowerResolutionFileRanksAboveHigherResolutionManifest() {
+        val direct=source("https://cdn.example/episode-480p.mp4","480p")
+        val manifest=source("https://player.example/master.m3u8","1080p","hls")
+        val list=BrowserMediaResults.combine(emptyList(),listOf(manifest,direct))
+        assertEquals(listOf(direct.url,manifest.url),list.map{it.url})
+    }
+
+    @Test fun anUnverifiedPlayerPageNeverOutranksDirectMedia() {
+        val direct=source("https://cdn.example/show/episode.mp4","720p")
+        val fakePage=PlayerMediaCandidate("https://player.example/watch/episode-1",
+            "https://player.example/watch/episode-1","f1",1200.0,
+            1920,1080,640.0,360.0,"video",100L)
+        val list=BrowserMediaResults.combine(listOf(fakePage),listOf(direct))
+        assertEquals(direct.url,list.first().url)
+    }
+
 }
