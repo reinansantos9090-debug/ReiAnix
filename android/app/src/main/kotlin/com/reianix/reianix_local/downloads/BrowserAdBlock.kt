@@ -14,10 +14,13 @@ import org.json.JSONObject
 internal object BrowserAdBlock {
     @Volatile var mode="balanced"
     @Volatile private var ready=false
-    suspend fun prepare(context:Context):String {
+    suspend fun prepare(context:Context):String = try {
         val result=BrowserFilterLists.prepare(context)
         ready=true
-        return result
+        result
+    } catch(t:Throwable) {
+        ready=false
+        throw t
     }
     suspend fun refresh(context:Context)=BrowserFilterLists.refresh(context)
     val status:String get()=BrowserFilterLists.status

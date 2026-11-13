@@ -197,7 +197,9 @@ class DownloadBrowserActivity: ComponentActivity() {
         val browser=remember {
             WebView(this).apply {
                 web=this
-                BrowserAdBlock.install(applicationContext,this,scope)
+                try { BrowserAdBlock.install(applicationContext,this,scope) }
+                catch(e:Exception) { android.util.Log.w("ReiAnixBrowser","Filtro visual indisponível",e) }
+                catch(e:LinkageError) { android.util.Log.w("ReiAnixBrowser","Filtro visual não suportado",e) }
                 BrowserMediaCapture.install(
                     this,
                     onMedia = { frame,item ->
@@ -247,16 +249,18 @@ class DownloadBrowserActivity: ComponentActivity() {
                     override fun onPageStarted(view: WebView,url: String,favicon: Bitmap?) {
                         discoveryGeneration++;discoveryRequested=false
                         hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
+                        progress=1
                         if(!tab.home)address=url;tab.url=url;observed.clear();sourceOptions.clear();mediaRequests.clear();error=""
                     }
                     override fun onPageFinished(view: WebView,url: String) {
                         if(!tab.home)address=url
+                        progress=100
                         tab.url=url;title=view.title.orEmpty();tab.title=title.ifBlank {BrowserAdBlock.host(url)}
                         backAvailable=view.canGoBack();forwardAvailable=view.canGoForward()
                         if(restoreScroll) {restoreScroll=false;view.post {view.scrollTo(tab.scrollX,tab.scrollY)}}
                     }
                     override fun onReceivedError(view:WebView,request:WebResourceRequest,failure:WebResourceError) {
-                        if(request.isForMainFrame)error="Não foi possível carregar a página: ${failure.description}"
+                        if(request.isForMainFrame) {progress=100;error="Não foi possível carregar a página: "+failure.description}
                     }
 
                 }
@@ -308,30 +312,55 @@ class DownloadBrowserActivity: ComponentActivity() {
             }
         }
         LaunchedEffect(tab.id) {
+            // Preferences and filter preparation are independent: neither failure may
+            // prevent a tab from loading. The WebView always stays usable.
             try {
                 val deps=com.reianix.reianix_local.ReiAnixAppDependencies.from(applicationContext)
                 BrowserAdBlock.mode=withContext(Dispatchers.IO) {
                     deps.bootstrap.awaitStarted()
                     deps.sqliteSettingsRepository.getPreference("browser.ad_mode","balanced") ?: "balanced"
                 }
-                rememberedMode=BrowserAdBlock.mode
+            } catch(c:CancellationException) {throw c}
+            catch(e:Exception) {android.util.Log.w("ReiAnixBrowser","Não foi possível ler o modo de proteção",e)}
+            rememberedMode=BrowserAdBlock.mode
+            try {
                 if(BrowserAdBlock.mode!="off")BrowserAdBlock.prepare(applicationContext)
+                protectionError=""
+            } catch(c:CancellationException) {throw c}
+            catch(e:Exception) {
+                protectionError="Bloqueador indisponível. A navegação continua."
+                android.util.Log.e("ReiAnixBrowser","Falha na inicialização dos filtros",e)
+            } catch(e:LinkageError) {
+                protectionError="Bloqueador indisponível. A navegação continua."
+                android.util.Log.e("ReiAnixBrowser","Biblioteca nativa do bloqueador indisponível",e)
+            } finally {
                 protectionReady=true
-                if(tab.saved.isEmpty || browser.restoreState(tab.saved)==null) {
-                    if(tab.url.isNotBlank()) {DownloadHttp.validateUrl(tab.url);browser.loadUrl(tab.url)}
+                if(tab.saved.isEmpty || runCatching {browser.restoreState(tab.saved)}.getOrNull()==null) {
+                    if(tab.url.isNotBlank()) {
+                        val destination=BrowserAddress.resolve(tab.url)
+                        if(destination!=null) {tab.home=false;browser.loadUrl(destination)}
+                        else error="Endereço inválido"
+                    }
                 }
-            }catch(c:CancellationException){throw c}
-            catch(_:Exception){protectionError="Não foi possível iniciar o bloqueador. Abra Configurações para desativar ou tentar novamente."}
+            }
         }
         LaunchedEffect(showSettings) {
             if(!showSettings && rememberedMode!=BrowserAdBlock.mode) {
-                protectionReady=false
+                rememberedMode=BrowserAdBlock.mode
                 try {
                     if(BrowserAdBlock.mode!="off")BrowserAdBlock.prepare(applicationContext)
-                    rememberedMode=BrowserAdBlock.mode;protectionError="";protectionReady=true
-                    if(!tab.home)browser.reload()
-                }catch(c:CancellationException){throw c}
-                catch(_:Exception){protectionError="Não foi possível carregar os filtros. Tente atualizar em Configurações."}
+                    protectionError=""
+                } catch(c:CancellationException) {throw c}
+                catch(e:Exception) {
+                    protectionError="Bloqueador indisponível. A navegação continua."
+                    android.util.Log.e("ReiAnixBrowser","Falha ao alternar modo de filtros",e)
+                } catch(e:LinkageError) {
+                    protectionError="Bloqueador indisponível. A navegação continua."
+                    android.util.Log.e("ReiAnixBrowser","Biblioteca nativa do bloqueador indisponível",e)
+                } finally {
+                    protectionReady=true
+                    if(!tab.home && browser.url!=null)browser.reload()
+                }
             }
         }
         DisposableEffect(browser) {onDispose {
@@ -368,9 +397,11 @@ class DownloadBrowserActivity: ComponentActivity() {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    OutlinedTextField(address,{address=it},enabled=protectionReady,singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")},
+                    OutlinedTextField(address,{address=it},singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")},
                         keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),keyboardActions=KeyboardActions(onGo={
-                            try {val url=if(address.startsWith("http"))address else "https://$address";DownloadHttp.validateUrl(url);tab.home=false;browser.onResume();browser.loadUrl(url)}catch(_: Exception){error="Endereço inválido"}
+                            val destination=BrowserAddress.resolve(address)
+                            if(destination==null)error="Endereço inválido"
+                            else {error="";tab.home=false;browser.onResume();browser.loadUrl(destination)}
                         }))
                     IconButton(enabled=protectionReady && !tab.home,onClick={
                         discoveryGeneration++
@@ -412,7 +443,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                         }
                     }
                 }
-                if(progress<100) LinearProgressIndicator(progress={progress/100f},modifier=Modifier.fillMaxWidth())
+                if(progress in 1..99 && !tab.home) LinearProgressIndicator(progress={progress/100f},modifier=Modifier.fillMaxWidth())
                 if(error.isNotBlank()) Text(error,Modifier.padding(8.dp),color=MaterialTheme.colorScheme.error)
                 if(protectionError.isNotBlank())Text(protectionError,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error)
                 if(!protectionReady) Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) {

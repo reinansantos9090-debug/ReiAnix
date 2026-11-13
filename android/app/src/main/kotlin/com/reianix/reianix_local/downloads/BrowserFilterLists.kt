@@ -31,17 +31,27 @@ internal object BrowserFilterLists {
         }}
     }
     private fun cache(context:Context,s:ListSource)=File(context.filesDir,"browser-filters/${s.id}.txt.gz")
-    private fun read(context:Context,s:ListSource):ByteArray {
+    private fun bundled(context:Context,s:ListSource):ByteArray =
+        GZIPInputStream(context.assets.open("browser-filter/"+s.id+".txt.gz")).use {it.readBytes()}
+
+    private fun loadSource(context:Context,s:ListSource):Loaded {
         val local=cache(context,s)
-        return runCatching {if(local.exists())GZIPInputStream(local.inputStream()).use {it.readBytes()}
-            else error("no cache")}.getOrElse {
-            GZIPInputStream(context.assets.open("browser-filter/${s.id}.txt.gz")).use {it.readBytes()}
+        if(local.exists()) {
+            try {
+                // A complete gzip can still contain an invalid or stale filter list.
+                // Validate it with the engine before trusting it over the APK copy.
+                return client(s,GZIPInputStream(local.inputStream()).use {it.readBytes()})
+            } catch(e:Exception) {
+                android.util.Log.w("ReiAnixFilters","Cache inválido para "+s.id+"; restaurando lista embarcada",e)
+            }
         }
+        return client(s,bundled(context,s))
     }
     private fun client(s:ListSource,data:ByteArray):Loaded {
         require(data.size in 1000..MAX_BYTES)
         val text=data.toString(Charsets.UTF_8)
-        require(!text.trimStart().startsWith('<') && (text.startsWith('!') || text.startsWith('[')))
+        val header=text.trimStart('\uFEFF',' ','\n','\r','\t')
+        require(!header.startsWith('<') && !header.startsWith('{'))
         val engine=AdBlockClient(s.id)
         try {
             engine.loadBasicData(data,true)
@@ -57,10 +67,30 @@ internal object BrowserFilterLists {
         if(loaded.isEmpty())updateLock.withLock {
             if(loaded.isEmpty()) {
                 val items=mutableListOf<Loaded>()
+                val inputs=sources(context)
                 try {
-                    sources(context).forEach {items+=client(it,read(context,it))}
-                    synchronized(lock) {loaded=items.toList();status="${items.sumOf {it.client.getFiltersCount()}} regras • 5 listas"}
-                } catch(t:Throwable) {items.forEach {it.client.close()};throw t}
+                    for(source in inputs) {
+                        try {
+                            items+=loadSource(context,source)
+                        } catch(c:CancellationException) {throw c}
+                        catch(e:Exception) {
+                            android.util.Log.e("ReiAnixFilters","Falha ao carregar lista "+source.id,e)
+                        } catch(e:LinkageError) {
+                            android.util.Log.e("ReiAnixFilters","Motor nativo indisponível para "+source.id,e)
+                            break
+                        }
+                    }
+                    check(items.isNotEmpty()) {"Não foi possível carregar nenhuma lista de filtros"}
+                    synchronized(lock) {
+                        loaded=items.toList()
+                        status=items.sumOf {it.client.getFiltersCount()}.toString()+
+                            " regras • "+items.size+"/"+inputs.size+" listas"
+                    }
+                } catch(t:Throwable) {
+                    items.forEach {it.client.close()}
+                    status="Bloqueador indisponível"
+                    throw t
+                }
             }
         }
         // Updates never delay opening the first tab or destroy working offline rules.
