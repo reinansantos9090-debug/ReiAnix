@@ -111,6 +111,8 @@ jobs:
               --tests com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolverTest \
               --tests com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProviderTest \
               --tests com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
+              --tests com.reianix.reianix_local.downloads.BrowserFallbackBlockerTest \
+              --tests com.reianix.reianix_local.downloads.BrowserAddressTest \
               --tests com.reianix.reianix_local.downloads.DownloadDisplaySizeTest \
               --tests com.reianix.reianix_local.downloads.DownloadNotificationIconTest \
               --tests com.reianix.reianix_local.downloads.DownloadRandomFileTest \
