@@ -75,9 +75,11 @@ internal object BrowserMediaCapture {
     let m=/(?:^|[^0-9])(2160|1440|1080|720|480|360|240)\s*p(?:[^a-z]|$)/i.exec(text);
     if(m)return m[1]+'p';
     m=/(?:quality|res|height|q)[=:/_-](2160|1440|1080|720|480|360|240)(?:[^0-9]|$)/i.exec(text);
+    if(m)return m[1]+'p';
+    try{m=/(?:^|[-_/])(2160|1440|1080|720|480|360|240)\.(?:m3u8|mp4|webm)(?:[?#]|$)/i.exec(String(url||''));}catch(e){}
     return m?m[1]+'p':'Qualidade não informada';
   };
-  const sendOption=(raw,label,origin,separateAudio=false,mimeHint='')=>{try{
+  const sendOption=(raw,label,origin,separateAudio=false,mimeHint='',masterUrl='',estimatedBytes=0)=>{try{
     if(!frame.known||!frame.allowed)return;
     const url=new URL(raw,location.href).href;
     const hint=String(mimeHint||'').toLowerCase();
@@ -86,11 +88,11 @@ internal object BrowserMediaCapture {
         hint.startsWith('video/')?'video':origin==='visible-video'?'video':'');
     if(!format||badUrl(url)||url.length>16384)return;
     const quality=qualityFrom(label,url);
-    const key=url+'|'+quality,now=Date.now();
+    const key=url+'|'+quality+'|'+masterUrl+'|'+estimatedBytes,now=Date.now();
     if(emittedOptions.get(key)&&now-emittedOptions.get(key)<4000)return;
     if(emittedOptions.size>=96)emittedOptions.clear();
     emittedOptions.set(key,now);
-    message({kind:'option',url,quality,format,origin,separateAudio:!!separateAudio,mimeHint:hint});
+    message({kind:'option',url,quality,format,origin,separateAudio:!!separateAudio,mimeHint:hint,masterUrl,estimatedBytes});
   }catch(e){}};
   const scanOptions=(prepareMasters=false)=>{try{
     if(!frame.known||!frame.allowed)return;
@@ -177,7 +179,12 @@ internal object BrowserMediaCapture {
         master.children.some(child=>sources.has(child.url))||
         (visible.length===1&&recent.length===1);
       if(!related)return;
-      master.children.forEach(child=>sendOption(child.url,child.quality,'master',child.audio,'application/vnd.apple.mpegurl'));
+      master.children.forEach(child=>{
+        const vod=manifests.get(child.url),playing=visible[0];
+        const duration=vod?vod.duration:(visible.length===1&&Number.isFinite(playing.duration)&&playing.duration>=120?playing.duration:0);
+        const estimate=child.bandwidth>0&&duration>0?Math.round(child.bandwidth*duration/8):0;
+        sendOption(child.url,child.quality,'master',child.audio,'application/vnd.apple.mpegurl',master.url,estimate);
+      });
     });
     // Only on an explicit toolbar request: inspect a few *same-origin*
     // visible HLS playlists. Cross-origin/CORS/auth restrictions are respected.
@@ -232,7 +239,8 @@ internal object BrowserMediaCapture {
         const audio=/(?:^|,)AUDIO=/i.test(info);
         for(let j=i+1;j<lines.length;j++)if(lines[j].trim()&&!lines[j].startsWith('#')){
           links.push({url:new URL(lines[j].trim(),url).href,
-            quality:resolution?resolution[2]+'p':'Qualidade não informada',audio});
+            quality:resolution?resolution[2]+'p':qualityFrom('',new URL(lines[j].trim(),url).href),audio,
+            bandwidth:Number((/(?:^|,)AVERAGE-BANDWIDTH=(\d+)/i.exec(info.substring(info.indexOf(':')+1))||/(?:^|,)BANDWIDTH=(\d+)/i.exec(info.substring(info.indexOf(':')+1))||[])[1])||0});
           break;
         }
       }

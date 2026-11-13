@@ -291,6 +291,10 @@ internal object DownloadSizeProbe {
         val plan=playlist?.let {parseVod(it,mediaUrl)}
         val duration=plan?.durationSeconds ?: richer?.duration ?: 0.0
         val bitrate=bitrateEstimate(duration,choice?.averageBandwidth ?: choice?.bandwidth)
+        // A master's declared average bitrate yields an immediate estimate.
+        // Do not lose it to the dialog timeout while inspecting many fragments.
+        if(bitrate!=null && (plan==null || plan.segments.size>MAX_EXACT_SEGMENTS))return Result(bitrate,false,
+            if(choice?.averageBandwidth!=null) "hls-average-bandwidth" else "hls-bitrate")
         if(plan==null)return bitrate?.let{Result(it,false,"hls-average-bandwidth")}
             ?: Result.Unknown
         val segments=plan.segments
@@ -409,7 +413,9 @@ internal object DownloadSizeProbe {
     private suspend fun readManifest(url: String,headers: Map<String,String>,credentialOrigin: String): String? =
         withContext(Dispatchers.IO) {
             val conn=DownloadHttp.connect(url,headers,0,null,credentialOrigin=credentialOrigin,
-                connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS)
+                connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
+                allowMediaHttpDowngrade=true,
+                redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
             try {
                 if(conn.responseCode!=200 ||
                     conn.getHeaderFieldLong("Content-Length",-1)>MAX_MANIFEST_BYTES) return@withContext null

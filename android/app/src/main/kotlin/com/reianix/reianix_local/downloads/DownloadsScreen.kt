@@ -406,6 +406,11 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
             }
             sizeResult=providedSize?.takeIf {url.trim()==initialUrl.trim()}
             sizeProbeUrl=if(sizeResult!=null)url.trim() else ""
+            // The browser already saw this VOD's master bitrate and duration.
+            // Keep the estimate explicitly approximate, without another fragment
+            // sampling round merely to open the confirmation dialog.
+            if(hlsHint && sizeRetry==0 && sizeResult?.bytes?.let {it>0L}==true &&
+                initialEstimatedSize!=null && url.trim()==initialUrl.trim())return@LaunchedEffect
             resolvedMediaUrl=null
             delay(200)
             val target=url.trim()
@@ -422,7 +427,8 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                 android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP)
             val inspected=withTimeoutOrNull(8_000) {
                 val sessionHeaders=DownloadSessionHeaders.resolve(context,target,probeHeaders)
-                if(DownloadSignedLinkPolicy.avoidPrefetch(target))
+                if(DownloadSignedLinkPolicy.avoidPrefetch(target) &&
+                    !hlsHint && !target.substringBefore('?').endsWith(".m3u8",true))
                     DownloadSizeProbe.inspectSignedHeaders(target,sessionHeaders)
                 else DownloadSizeProbe.inspect(target,sessionHeaders,hlsHint && target==initialUrl)
             } ?: DownloadSizeProbe.Result.Unknown
@@ -611,10 +617,10 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                         Text("Nome",color=Color.LightGray,
                             style=MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.width(5.dp))
-                        val confirmed=sizeResult?.takeIf { it.exact && (it.bytes ?: 0L)>0L }
+                        val confirmed=sizeResult?.takeIf { (it.bytes ?: 0L)>0L }
                         if(!sizeLoading && confirmed!=null && storageBytes!=null) {
                             Text(
-                                "${Formatter.formatFileSize(context,confirmed.bytes!!)} / " +
+                                (if(confirmed.exact)"" else "≈ ")+"${Formatter.formatFileSize(context,confirmed.bytes!!)} / " +
                                     Formatter.formatFileSize(context,storageBytes!!),
                                 color=Color.LightGray,fontSize=9.sp,maxLines=1,
                                 overflow=TextOverflow.Ellipsis,
@@ -642,7 +648,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                                 modifier=Modifier.size(20.dp))
                         }
                     }
-                    if(!sizeLoading && sizeResult?.exact!=true && url.isNotBlank()) {
+                    if(!sizeLoading && (sizeResult?.bytes ?: 0L)<=0L && url.isNotBlank()) {
                         Text("Não foi possível consultar o tamanho. Toque em atualizar para tentar novamente.",
                             color=Color.LightGray,style=MaterialTheme.typography.bodySmall)
                     }

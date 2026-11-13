@@ -17,6 +17,8 @@ internal data class BrowserMediaOption(
     val origin: String,
     val mimeHint: String = "",
     val separateAudio: Boolean = false,
+    val masterUrl: String = "",
+    val estimatedBytes: Long? = null,
     val receivedAt: Long = System.nanoTime() / 1_000_000,
 ) {
     companion object {
@@ -30,18 +32,22 @@ internal data class BrowserMediaOption(
                 origin = obj.optString("origin").lowercase(),
                 mimeHint = obj.optString("mimeHint").lowercase().take(80),
                 separateAudio = obj.optBoolean("separateAudio"),
+                masterUrl = obj.optString("masterUrl"),
+                estimatedBytes = obj.optLong("estimatedBytes").takeIf { it in 1..(2L*1024*1024*1024*1024) },
             ).takeIf(::eligible)
         }.getOrNull()
 
         fun eligible(value: BrowserMediaOption): Boolean = runCatching {
             DownloadHttp.validateUrl(value.url)
             DownloadHttp.validateUrl(value.page)
+            if(value.masterUrl.isNotBlank())DownloadHttp.validateUrl(value.masterUrl)
             val media = URI(value.url)
             val path = media.path.orEmpty().lowercase()
             val knownMedia = listOf(
                 ".m3u8", ".mpd", ".mp4", ".mkv", ".webm", ".m4v", ".mov", ".ts", ".m2ts",
             ).any { path.endsWith(it) }
             value.url.length in 8..16384 && value.page.length in 8..16384 &&
+                value.masterUrl.length<=16384 &&
                 value.frame.length in 1..100 &&
                 value.format in setOf("hls", "video", "dash") &&
                 value.origin in setOf("visible-video", "source", "quality-link", "master") &&
@@ -65,6 +71,7 @@ internal data class BrowserDownloadChoice(
     val format: String,
     val separateAudio: Boolean,
     val capture: PlayerMediaCandidate?,
+    val estimatedBytes: Long? = null,
 )
 
 internal object BrowserMediaResults {
@@ -75,10 +82,10 @@ internal object BrowserMediaResults {
         val byUrl = LinkedHashMap<String, BrowserDownloadChoice>()
         discovered.filter(BrowserMediaOption::eligible).forEach { option ->
             val previous=byUrl[option.url]
-            if(previous==null || (previous.quality=="Qualidade não informada" &&
-                    option.quality!="Qualidade não informada"))
-                byUrl[option.url]=BrowserDownloadChoice(option.url, option.page, option.quality,
-                    option.format, option.separateAudio, null)
+            val quality=option.quality.takeUnless { it.isBlank() || it=="Qualidade não informada" }
+                ?: previous?.quality ?: option.quality
+            byUrl[option.url]=BrowserDownloadChoice(option.url,option.page,quality,
+                option.format,option.separateAudio,null,option.estimatedBytes ?: previous?.estimatedBytes)
         }
         confirmed.filter(PlayerMediaCandidate::eligible).forEach { item ->
             val previous = byUrl[item.url]
@@ -89,9 +96,14 @@ internal object BrowserMediaResults {
                 format = previous?.format ?: if (item.source == "hls") "hls" else "video",
                 separateAudio = previous?.separateAudio == true,
                 capture = item,
+                estimatedBytes = previous?.estimatedBytes,
             )
         }
-        return byUrl.values.sortedWith(
+        // A master selects among these variants; it is not another resolution.
+        val expandedMasters=discovered.filter { BrowserMediaOption.eligible(it) &&
+            it.masterUrl.isNotBlank() && it.url!=it.masterUrl && byUrl.containsKey(it.url) }
+            .map { it.masterUrl }.toSet()
+        return byUrl.values.filter { it.url !in expandedMasters }.sortedWith(
             compareBy<BrowserDownloadChoice> {
                 // Prioritize the original, playable media resource over a
                 // gateway/player page. Keep all qualities selectable.

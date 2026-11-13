@@ -81,4 +81,16 @@ class BrowserMediaOptionTest {
             assertEquals("720p",results.single().quality)
         }
     }
+    @Test fun expandedMasterIsNotAnUnknownThirdResolution() {
+        val master=source("https://cdn.example/master.m3u8","Qualidade não informada","hls")
+        val high=source("https://cdn.example/1080.m3u8","1080p","hls")
+            .copy(masterUrl=master.url,estimatedBytes=500_000_000L)
+        val medium=source("https://cdn.example/720.m3u8","720p","hls")
+            .copy(masterUrl=master.url)
+        val results=BrowserMediaResults.combine(emptyList(),listOf(master,high,medium))
+        assertEquals(listOf("1080p","720p"),results.map {it.quality})
+        assertEquals(500_000_000L,results.first().estimatedBytes)
+        // An unrelated standalone playlist must remain selectable.
+        assertEquals(1,BrowserMediaResults.combine(emptyList(),listOf(master)).size)
+    }
 }

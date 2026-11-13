@@ -116,10 +116,12 @@ class DownloadBrowserActivity: ComponentActivity() {
                         val key=item.frame+"::"+item.url
                         val previous=sourceOptions[key]
                         // A later scan without metadata must not erase a known resolution.
-                        if(sourceOptions.size<96 || previous!=null)sourceOptions[key]=
-                            if(item.quality=="Qualidade não informada" &&
-                                previous!=null && previous.quality!="Qualidade não informada")
-                                item.copy(quality=previous.quality) else item
+                        if(sourceOptions.size<96 || previous!=null)sourceOptions[key]=item.copy(
+                            quality=if(item.quality=="Qualidade não informada" && previous!=null)
+                                previous.quality else item.quality,
+                            masterUrl=item.masterUrl.ifBlank {previous?.masterUrl.orEmpty()},
+                            estimatedBytes=item.estimatedBytes ?: previous?.estimatedBytes,
+                        )
                         if(showMedia)updateCandidates()
                     },
                 )
@@ -301,7 +303,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                             else -> null
                                         },
                                         title,item.page,item.capture,
-                                        providerEstimatedSize=DownloadSizeIntelligence
+                                        providerEstimatedSize=item.estimatedBytes ?: DownloadSizeIntelligence
                                             .fromSharedMetadata(item.quality)?.bytes)
                                 }
                             },
@@ -315,7 +317,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                                         "Página intermediária"
                                     else -> "Fonte encontrada"
                                 }
-                                Text("${item.quality} • $formatLabel • $sourceLabel",
+                                val qualityLabel=item.quality.takeUnless {it.isBlank() || it=="Qualidade não informada"}
+                                    ?: if(item.format=="hls")"Automática" else "Resolução pendente"
+                                Text("$qualityLabel • $formatLabel • $sourceLabel",
                                     maxLines=2)
                                 if(!supported) Text(
                                     if(item.separateAudio) "Faixas HLS separadas: MP4 quando o dispositivo suportar"
