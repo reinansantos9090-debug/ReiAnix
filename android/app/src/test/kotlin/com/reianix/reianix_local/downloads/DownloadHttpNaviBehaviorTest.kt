@@ -214,4 +214,56 @@ class DownloadHttpNaviBehaviorTest {
             java.net.URL("file:///tmp/video.mp4"),true))
     }
 
+    @Test fun redirectedHostUsesItsOwnCookieNotTheOriginalCookie() {
+        ServerSocket(0,10,InetAddress.getByName("127.0.0.1")).use {gateway ->
+            ServerSocket(0,10,InetAddress.getByName("127.0.0.1")).use {cdn ->
+                gateway.soTimeout=6_000;cdn.soTimeout=6_000
+                val actual=java.util.concurrent.atomic.AtomicReference<Map<String,String>>()
+                fun readHeaders(socket:java.net.Socket):Map<String,String> {
+                    val input=socket.getInputStream().bufferedReader()
+                    input.readLine()
+                    val h=linkedMapOf<String,String>()
+                    while(true) {
+                        val row=input.readLine()?:break
+                        if(row.isBlank())break
+                        h[row.substringBefore(':').lowercase()]=row.substringAfter(':').trim()
+                    }
+                    return h
+                }
+                val gatewayThread=thread(isDaemon=true) {
+                    gateway.accept().use {socket->
+                        readHeaders(socket)
+                        val dest="http://127.0.0.1:"+cdn.localPort+"/movie.mp4"
+                        socket.getOutputStream().write((
+                            "HTTP/1.1 302 Found\r\nLocation: "+dest+
+                                "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            ).toByteArray())
+                    }
+                }
+                val cdnThread=thread(isDaemon=true) {
+                    cdn.accept().use {socket ->
+                        actual.set(readHeaders(socket))
+                        socket.getOutputStream().write(
+                            "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nDATA"
+                                .toByteArray())
+                    }
+                }
+                val url="http://127.0.0.1:"+gateway.localPort+"/series/one"
+                DownloadHttp.connect(url,mapOf(
+                    "Cookie" to "source=private",
+                    "Authorization" to "Bearer private",
+                    "User-Agent" to "ReiAnix-Test"
+                ),0,null,preferInitialRange=true,
+                    redirectCookieProvider={target ->
+                        if(java.net.URL(target).port==cdn.localPort)"cdn=own" else null
+                    }).withDisconnect {assertEquals(200,it.responseCode)}
+                gatewayThread.join(6_000);cdnThread.join(6_000)
+                assertFalse(gatewayThread.isAlive);assertFalse(cdnThread.isAlive)
+                assertEquals("cdn=own",actual.get()?.get("cookie"))
+                assertNull(actual.get()?.get("authorization"))
+                assertEquals("ReiAnix-Test",actual.get()?.get("user-agent"))
+            }
+        }
+    }
+
 }
