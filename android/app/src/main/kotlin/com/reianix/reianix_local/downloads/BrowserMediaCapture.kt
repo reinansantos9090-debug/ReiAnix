@@ -323,7 +323,15 @@ internal object BrowserMediaCapture {
   // before that expensive browser-only flow starts. No automatic enqueue.
   document.addEventListener('click',e=>{try{
     if(!e.isTrusted||!window.ReiAnixMedia||!frame.known||!frame.allowed)return;
-    const button=e.target.closest('button'),download=button&&button.closest('app-player-download');
+    // Web Components retarget clicks crossing a Shadow DOM boundary. The real
+    // clicked control is still present in composedPath(), even when e.target is
+    // only the app-player-download host.
+    const path=typeof e.composedPath==='function'?e.composedPath():[];
+    const button=path.find(node=>node&&node.tagName==='BUTTON')||
+      (e.target&&e.target.closest?e.target.closest('button'):null);
+    const download=path.find(node=>node&&node.tagName==='APP-PLAYER-DOWNLOAD')||
+      (button&&button.closest?button.closest('app-player-download'):null)||
+      (e.target&&e.target.closest?e.target.closest('app-player-download'):null);
     if(!download||!rect(button)||adElement(download))return;
     const quality=(button.textContent||'').trim();
     if(!/^(2160|1440|1080|720|480|360|240)p$/.test(quality))return;

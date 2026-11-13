@@ -261,6 +261,12 @@ class DownloadBrowserActivity: ComponentActivity() {
                 settings.useWideViewPort=true; settings.loadWithOverviewMode=false
                 settings.textZoom=100
                 settings.setSupportZoom(true);settings.builtInZoomControls=true;settings.displayZoomControls=false
+                // Some sites serve a broken embedded-WebView experience when they
+                // see Android's `; wv` / `Version/4.0` markers. Keep WebView's
+                // current Chromium version, but present it as the ReiAnix browser.
+                settings.userAgentString=settings.userAgentString
+                    .replace("; wv", "")
+                    .replace("Version/4.0 ", "")
                 settings.setSupportMultipleWindows(true)
                 settings.mixedContentMode=WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 CookieManager.getInstance().setAcceptCookie(true)
@@ -330,9 +336,13 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 val target=r.url.toString()
                                 if(r.url.scheme in setOf("http","https") && !BrowserAdBlock.blocked(target,
                                     page=tab.url,type=io.github.edsuns.adblockclient.ResourceType.POPUP)) {
-                                    // A user gesture and real popup rules determine admission;
-                                    // a different CDN hostname alone does not identify an ad.
-                                    view.loadUrl(target,mapOf("Referer" to view.url.orEmpty()))
+                                    // Unknown cross-site popups are usually ad redirects. Only
+                                    // let a popup navigate the tab when filtering is disabled
+                                    // or the destination belongs to the current site.
+                                    if(BrowserAdBlock.mode=="off" ||
+                                        BrowserAdBlock.related(view.url.orEmpty(),target)) {
+                                        view.loadUrl(target,mapOf("Referer" to view.url.orEmpty()))
+                                    }
                                 }
                                 closePopup(); return true
                             }
