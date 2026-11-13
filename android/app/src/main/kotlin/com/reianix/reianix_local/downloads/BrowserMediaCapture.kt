@@ -12,6 +12,7 @@ internal object BrowserMediaCapture {
         web: WebView,
         onMedia: (String,PlayerMediaCandidate?)->Unit,
         onOption: (BrowserMediaOption)->Unit,
+        onDownload: (BrowserMediaOption,String)->Unit = { _,_ -> },
     ) {
         if(!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
@@ -25,10 +26,11 @@ internal object BrowserMediaCapture {
                 val frame=obj.optString("frame")
                 if(frame.length !in 1..100)return@runCatching
                 if(obj.optString("kind")=="clear") {onMedia(frame,null);return@runCatching}
-                if(obj.optString("kind")=="option") {
+                if(obj.optString("kind") in setOf("option","download")) {
                     val option=BrowserMediaOption.parse(obj) ?: return@runCatching
                     if(!DownloadHttp.sameOrigin(java.net.URL(option.page),java.net.URL(sourceOrigin.toString())))return@runCatching
-                    onOption(option)
+                    if(obj.optString("kind")=="download")onDownload(option,
+                        obj.optString("title").take(240).filterNot {it.isISOControl()}) else onOption(option)
                     return@runCatching
                 }
                 val item=PlayerMediaCandidate.parse(obj) ?: return@runCatching
@@ -251,7 +253,11 @@ internal object BrowserMediaCapture {
       if(duration>=120&&manifests.size<30)manifests.set(url,{url,duration,time:Date.now()});
     }schedule();
   }catch(e){}};
-  const hls=(url,type)=>/mpegurl/i.test(type||'')||/\.m3u8(?:[?#]|${'$'})/i.test(url||'');
+  // Some players deliberately serve HLS as .jpg/image/jpeg. Only trust a
+  // URL explicitly declared as HLS by this document's player, not random images.
+  const hls=(url,type)=>/mpegurl/i.test(type||'')||/\.m3u8(?:[?#]|${'$'})/i.test(url||'')||
+    Array.from(document.querySelectorAll('video source[type]')).slice(0,32).some(s=>
+      s.src===url&&/mpegurl/i.test(s.getAttribute('type')||''));
   const observeDirect=(raw,type,status)=>{try{
     const mime=String(type||'').split(';')[0].trim().toLowerCase();
     if(!['video/mp4','video/webm','video/quicktime','video/x-matroska',
@@ -312,6 +318,24 @@ internal object BrowserMediaCapture {
     });
   };
   window.__reiScanPlayers=(prepareMetadata=false)=>{if(prepareMetadata)prepare();scan();scanOptions(prepareMetadata);children().forEach(f=>{sendFrame(f);try{f.contentWindow.postMessage({type:'REI_SCAN',prepare:prepareMetadata},'*')}catch(e){}});};
+  // Vidstack-based sites may remux an entire HLS video into a blob in JS.
+  // Route an explicit selection through the existing native confirmation dialog
+  // before that expensive browser-only flow starts. No automatic enqueue.
+  document.addEventListener('click',e=>{try{
+    if(!e.isTrusted||!window.ReiAnixMedia||!frame.known||!frame.allowed)return;
+    const button=e.target.closest('button'),download=button&&button.closest('app-player-download');
+    if(!download||!rect(button)||adElement(download))return;
+    const quality=(button.textContent||'').trim();
+    if(!/^(2160|1440|1080|720|480|360|240)p$/.test(quality))return;
+    const player=download.closest('media-player'),video=player&&player.querySelector('video');
+    if(!video||!rect(video))return;
+    const source=Array.from(video.querySelectorAll('source[src]')).find(s=>/mpegurl/i.test(s.getAttribute('type')||''));
+    if(!source||badUrl(source.src))return;
+    const heading=player.querySelector('h5,h1,h2'),episode=/\bT(\d+)\s*EP[.\s]*(\d+)/i.exec(player.textContent||'');
+    const title=(heading?heading.textContent:document.title)+(episode?' T'+episode[1]+' Episódio '+episode[2]:'');
+    message({kind:'download',url:source.src,quality,format:'hls',origin:'source',mimeHint:'application/vnd.apple.mpegurl',title});
+    e.preventDefault();e.stopImmediatePropagation();
+  }catch(e){}},true);
   document.addEventListener('loadstart',()=>{clear();manifests.clear();masters.clear();directMedia.clear();schedule();},true);
   ['loadedmetadata','durationchange','play','pause','timeupdate','emptied'].forEach(event=>document.addEventListener(event,schedule,true));
   document.addEventListener('DOMContentLoaded',()=>{window.__reiScanPlayers();new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','class','style']});},{once:true});

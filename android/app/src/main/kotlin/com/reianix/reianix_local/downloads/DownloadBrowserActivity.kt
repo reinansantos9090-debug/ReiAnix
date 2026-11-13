@@ -130,6 +130,7 @@ class DownloadBrowserActivity: ComponentActivity() {
         var progress by remember { mutableIntStateOf(0) }
         var showMedia by remember { mutableStateOf(false) }
         var submitting by remember { mutableStateOf(false) }
+        var preparingSiteDownload by remember {mutableStateOf(false)}
         val downloadStore=remember {DownloadStore(applicationContext)}
         val scope=rememberCoroutineScope()
         val notificationPermission=rememberLauncherForActivityResult(
@@ -142,6 +143,7 @@ class DownloadBrowserActivity: ComponentActivity() {
         val inspectedHls=remember {mutableSetOf<String>()}
         val hlsJobs=remember {mutableListOf<Job>()}
         val popupViews=remember {mutableListOf<WebView>()}
+        val fullscreen=remember {BrowserFullscreen(this@DownloadBrowserActivity)}
         var discoveryRequested by remember {mutableStateOf(false)}
         var discoveryGeneration by remember {mutableIntStateOf(0)}
         var discoveringHls by remember {mutableIntStateOf(0)}
@@ -206,6 +208,38 @@ class DownloadBrowserActivity: ComponentActivity() {
                         if(item==null)observed.remove(frame)
                         else if(observed.size<20 || observed.containsKey(frame))observed[frame]=item
                     },
+                    onDownload = { source,downloadTitle ->
+                        if(pendingOffer==null && !submitting && !preparingSiteDownload) {
+                            preparingSiteDownload=true
+                            val generation=discoveryGeneration
+                            scope.launch {
+                            fullscreen.hide()
+                            try {
+                                val provided=mediaRequests[source.url]?.second.orEmpty().toMutableMap()
+                                if(provided.keys.none {it.equals("Referer",true)})provided["Referer"]=source.page
+                                provided["User-Agent"]=settings.userAgentString
+                                val headers=DownloadSessionHeaders.resolve(applicationContext,source.url,provided)
+                                // Prefer variants read by the page's authenticated fetch/XHR.
+                                // Inspect over HTTP only when the page has not exposed them yet.
+                                val captured=sourceOptions.values.firstOrNull {
+                                    it.frame==source.frame && it.masterUrl==source.url && it.quality==source.quality
+                                }
+                                val selected=captured ?: withTimeoutOrNull(8000) {
+                                    BrowserHlsDiscovery.inspect(source,headers)
+                                }.orEmpty().firstOrNull {it.quality==source.quality}
+                                if(generation!=discoveryGeneration)return@launch
+                                if(selected!=null)offer(selected.url,settings.userAgentString,null,
+                                    "application/vnd.apple.mpegurl",downloadTitle.ifBlank {title},source.page)
+                                else {
+                                    error="Não foi possível consultar essa qualidade. Tente novamente pelo botão de download."
+                                    discoveryRequested=true;discoverHls();updateCandidates();showMedia=true
+                                }
+                            } catch(c:CancellationException){throw c}
+                            catch(_:Exception){if(generation==discoveryGeneration)error="Não foi possível preparar o download. Tente novamente."}
+                            finally {preparingSiteDownload=false}
+                            }
+                        }
+                    },
                     onOption = { item ->
                         val key=item.frame+"::"+item.url
                         val previous=sourceOptions[key]
@@ -222,7 +256,11 @@ class DownloadBrowserActivity: ComponentActivity() {
                 )
                 settings.javaScriptEnabled=true; settings.domStorageEnabled=true
                 settings.allowFileAccess=false; settings.allowContentAccess=false
-                settings.useWideViewPort=true; settings.loadWithOverviewMode=true
+                // Respect the mobile viewport without zooming the whole page out when
+                // a player/popover temporarily reports wider overflow content.
+                settings.useWideViewPort=true; settings.loadWithOverviewMode=false
+                settings.textZoom=100
+                settings.setSupportZoom(true);settings.builtInZoomControls=true;settings.displayZoomControls=false
                 settings.setSupportMultipleWindows(true)
                 settings.mixedContentMode=WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 CookieManager.getInstance().setAcceptCookie(true)
@@ -265,6 +303,8 @@ class DownloadBrowserActivity: ComponentActivity() {
 
                 }
                 webChromeClient=object: WebChromeClient() {
+                    override fun onShowCustomView(view:android.view.View,callback:CustomViewCallback) {fullscreen.show(view,callback)}
+                    override fun onHideCustomView() {fullscreen.hide()}
                     override fun onProgressChanged(view: WebView,n: Int) { progress=n }
                     // Open a requested new window within this browser instead of silently dropping download links.
                     override fun onCreateWindow(view: WebView,isDialog: Boolean,isUserGesture: Boolean,resultMsg: android.os.Message): Boolean {
@@ -290,11 +330,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 val target=r.url.toString()
                                 if(r.url.scheme in setOf("http","https") && !BrowserAdBlock.blocked(target,
                                     page=tab.url,type=io.github.edsuns.adblockclient.ResourceType.POPUP)) {
-                                    when {
-                                        BrowserAdBlock.mode=="off" || BrowserAdBlock.related(view.url.orEmpty(),target) -> view.loadUrl(target)
-                                        // Unknown third-party popup windows are silently denied.
-                                        else -> Unit
-                                    }
+                                    // A user gesture and real popup rules determine admission;
+                                    // a different CDN hostname alone does not identify an ad.
+                                    view.loadUrl(target,mapOf("Referer" to view.url.orEmpty()))
                                 }
                                 closePopup(); return true
                             }
@@ -364,6 +402,7 @@ class DownloadBrowserActivity: ComponentActivity() {
             }
         }
         DisposableEffect(browser) {onDispose {
+            fullscreen.hide()
             tab.saved=Bundle();browser.saveState(tab.saved)
             tab.scrollX=browser.scrollX;tab.scrollY=browser.scrollY
             popupViews.toList().forEach {it.stopLoading();it.destroy()};popupViews.clear()
@@ -382,6 +421,7 @@ class DownloadBrowserActivity: ComponentActivity() {
         }
         BackHandler {
             when {
+                fullscreen.active -> fullscreen.hide()
                 showSettings -> showSettings=false
                 tab.home && browser.url!=null -> {tab.home=false;browser.onResume();address=tab.url}
                 pendingOffer!=null -> { if(!submitting)pendingOffer=null }
@@ -403,7 +443,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                             if(destination==null)error="Endereço inválido"
                             else {error="";tab.home=false;browser.onResume();browser.loadUrl(destination)}
                         }))
-                    IconButton(enabled=protectionReady && !tab.home,onClick={
+                    IconButton(enabled=protectionReady && !tab.home && !preparingSiteDownload,onClick={
                         discoveryGeneration++
                         hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
                         discoveryRequested=true
@@ -432,7 +472,8 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 discoverHls();updateCandidates()
                             } },2600)
                         }
-                    }) { Icon(Icons.Filled.Download,"Vídeos encontrados") }
+                    }) { if(preparingSiteDownload)CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)
+                        else Icon(Icons.Filled.Download,"Vídeos encontrados") }
                     Box {
                         IconButton(onClick={menu=true}) {Icon(Icons.Filled.MoreVert,"Menu do navegador")}
                         DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {

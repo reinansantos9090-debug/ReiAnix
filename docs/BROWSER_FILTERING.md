@@ -17,3 +17,13 @@ The modified native SDK source and licenses are in `android/browser-filter/`; se
 ## Verification
 
 Native contract source: `android/browser-filter/src/test/cpp/filter_contract_test.cc`. It can be manually compiled with the vendored non-JNI C++ sources using a host C++17 compiler. Optional first argument: a directory containing the decompressed five list text files. No emulator or CI workflow was added. Kotlin/JVM tests remain reserved for manual execution under AGENTS.md; existing automatic repository checks have not been changed.
+
+## Browser compatibility fixes
+
+The WebView respects mobile viewport metadata without automatic overview zoom-out when overlay/player content overflows. Pinch zoom remains available without floating zoom controls. HTML Fullscreen requests now attach the custom view to an opaque full-window container; Back, exit and tab disposal remove it and restore system bars/window flags.
+
+Gesture-originated popup destinations still pass subscription popup rules. A different hostname alone no longer causes a silent refusal of legitimate CDN/download gateways. Non-gesture popup windows and matched advertisements remain silently rejected; no SSL or storage protection was relaxed.
+
+Media capture recognizes HLS served with an image-looking URL/content type only when the document explicitly declares that exact URL as HLS in a video source. Ordinary images are not scanned as playlists. In a Vidstack `app-player-download` control, a trusted click on a resolution routes the declared HLS rendition to the existing native confirmation dialog, rather than remuxing the entire file in JavaScript into an unsupported blob. It prefers variants already observed in the page's session and otherwise inspects the declared master with session headers. A missing resolution never silently selects a different one. The adapter is framework-specific, not a universal blob-file downloader; normal site HTTP downloads retain the existing listener.
+
+Manual Node regression check (no emulator/JVM): `node --test android/app/src/test/js/browser-media-capture.test.cjs`. These fixtures exercise the actual injected script with a bounded fake DOM; they do not prove Android rendering or a real CDN transfer. Live inspection of AnimeFire confirmed its CDK/Popover overlays, Vidstack controls, typed image-URL HLS source and JS/blob remux download. The site's CDN blocked this cloud environment, so a complete live transfer and the reported mobile layout require confirmation on the user's device.
