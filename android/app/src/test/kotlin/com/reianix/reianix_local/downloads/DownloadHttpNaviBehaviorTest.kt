@@ -196,4 +196,22 @@ class DownloadHttpNaviBehaviorTest {
         assertEquals(1,seen.size)
     }
 
+    @Test fun mediaOnlyMayFollowHttpsToHttpRedirectWithCredentialsStillOriginScoped() {
+        val origin=java.net.URL("https://gateway.example/series/example")
+        val endpoint=java.net.URL("http://media.example/files/video.mp4")
+        assertFalse(DownloadHttp.canFollowRedirect(origin,endpoint,false))
+        assertTrue(DownloadHttp.canFollowRedirect(origin,endpoint,true))
+        assertFalse(DownloadHttp.sameOrigin(origin,endpoint))
+        assertFalse(DownloadHttp.sameOrigin(
+            java.net.URL("https://media.example/file.mp4"),endpoint))
+        assertTrue(DownloadHttp.canFollowRedirect(
+            java.net.URL("http://media.example/redirect"),
+            java.net.URL("https://media.example/video.mp4"),false))
+    }
+    @Test fun unsupportedRedirectSchemesRemainDeniedEvenForMedia() {
+        assertFalse(DownloadHttp.canFollowRedirect(
+            java.net.URL("https://example.org/video"),
+            java.net.URL("file:///tmp/video.mp4"),true))
+    }
+
 }
