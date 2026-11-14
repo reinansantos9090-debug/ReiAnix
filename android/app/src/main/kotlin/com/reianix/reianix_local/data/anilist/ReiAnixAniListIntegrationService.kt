@@ -46,6 +46,9 @@ import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reianix.reianix_local.data.sqlite.updateAniListMetadataAndAssociation
 import com.reianix.reianix_local.data.sqlite.recordAniListAutoMatchOutcome
+import com.reianix.reianix_local.data.sqlite.findCachedPostersWithMetadataGaps
+import com.reianix.reianix_local.data.sqlite.candidateMetadataRecoveryAttemptAt
+import com.reianix.reianix_local.data.sqlite.markCandidateMetadataRecoveryAttempt
 import com.reianix.reianix_local.data.sqlite.setMetadataStatusByLookupTitle
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 
@@ -237,6 +240,7 @@ class ReiAnixAniListIntegrationService(
     private val genreRegistry: ReiAnixGenreRegistry? = null,
     private val artworkCandidatePublisher: ((Long, List<ReiAnixArtworkCandidate>) -> Boolean)? = null,
     private val traceMoeClient: ReiAnixTraceMoeClient = ReiAnixTraceMoeClient(),
+    private val candidateMetadataPublisher: ((Long, AniListAnime) -> Unit)? = null,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -276,6 +280,10 @@ class ReiAnixAniListIntegrationService(
         artworkCandidatePublisher = { animeId, candidates ->
             ReiAnixAppDependencies.existingOrNull(context.applicationContext)
                 ?.artworkService?.requestAnimeArtworkCandidates(animeId, candidates) ?: false
+        },
+        candidateMetadataPublisher = { animeId, candidate ->
+            ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.candidateMetadataService?.offerAniList(animeId, candidate)
         },
     )
 
@@ -870,8 +878,11 @@ class ReiAnixAniListIntegrationService(
                 AniListError.InvalidRequest("Local anime has no usable title for AniList lookup."),
             )
         }
+        // A provisional year borrowed from an artwork candidate must not penalize
+        // the true anime in later AniList identification.
+        val candidateOnly = local.metadataSource?.endsWith("_candidate", ignoreCase = true) == true
         val searchContext = ReiAnixAniListMatcher.Context(
-            year = local.year,
+            year = local.year.takeUnless { candidateOnly },
             mediaKind = local.mediaKind,
         )
         fun rankCandidates(
@@ -948,12 +959,16 @@ class ReiAnixAniListIntegrationService(
         }
         val best = ranked.first()
         if (best.score < ReiAnixAniListMatcher.MINIMUM_SCORE) {
+            // The same fetched candidate can still fill empty description/details.
+            // This does not assign an AniList ID or affect the existing poster work.
+            candidateMetadataPublisher?.invoke(animeId, best.anime)
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
         val second = ranked.getOrNull(1)?.score ?: 0.0
         val margin = best.score - second
         if (best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
+            candidateMetadataPublisher?.invoke(animeId, best.anime)
             recordAutoMatchOutcome(
                 animeId,
                 "ambiguous",
@@ -1056,7 +1071,10 @@ class ReiAnixAniListIntegrationService(
         if (candidatesById.isEmpty()) return emptyList()
         // Do not use identity confidence, exact-title checks, or metadata similarity to
         // decide which AniList images can be published. Keep the provider's result order.
-        return usableAniListArtworkCandidates(candidatesById.values)
+        val artworkCandidates = usableAniListArtworkCandidates(candidatesById.values)
+        // No extra API call: candidate metadata arrives in the same AniList response.
+        artworkCandidates.firstOrNull()?.let { candidateMetadataPublisher?.invoke(local.id, it) }
+        return artworkCandidates
     }
 
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
@@ -1233,6 +1251,63 @@ class ReiAnixAniListIntegrationService(
         } finally {
             missingArtworkRecoveryRunning.set(false)
         }
+    }
+
+    /**
+     * Independently restore missing details for cached posters that originated at
+     * AniList, including posters shown before a confident catalog association.
+     * No artwork request, candidate list or image refresh path is changed.
+     */
+    suspend fun recoverMetadataForReadyAniListPosters(maxRecords: Int = 100): Int {
+        require(maxRecords in 1..200)
+        val publisher = candidateMetadataPublisher ?: return 0
+        if (!isAniListEnabled()) return 0
+        val artworkDownloading = library.database.read { db ->
+            db.rawQuery(
+                "SELECT 1 FROM artwork WHERE artwork_type IN ('poster','backdrop') " +
+                    "AND status='downloading' AND last_attempt_at>=? LIMIT 1",
+                arrayOf((System.currentTimeMillis() / 1_000.0 - 120.0).toString()),
+            ).use { it.moveToFirst() }
+        }
+        if (artworkDownloading) return 0
+
+        var offered = 0
+        val targets = library.findCachedPostersWithMetadataGaps(maxRecords)
+        for (target in targets) {
+            if (!target.posterSource.equals("anilist", ignoreCase = true)) continue
+            currentCoroutineContext().ensureActive()
+            val now = System.currentTimeMillis() / 1_000.0
+            val attemptedAt = library.candidateMetadataRecoveryAttemptAt(target.animeId, "anilist")
+            if (attemptedAt != null && now - attemptedAt < AUTO_MATCH_COOLDOWN_MS / 1_000.0) continue
+
+            val local = library.getAnime(target.animeId) ?: continue
+            val knownId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+            val candidate = if (knownId != null) {
+                when (val result = client.getAnime(knownId.toInt())) {
+                    is AniListResult.Success -> result.value
+                    is AniListResult.Failure -> null
+                }
+            } else {
+                when (val result = client.searchAnime(target.title, 10)) {
+                    is AniListResult.Success -> {
+                        val options = result.value
+                        options.firstOrNull {
+                            target.posterUrl != null &&
+                                (it.coverExtraLargeUrl == target.posterUrl ||
+                                    it.coverLargeUrl == target.posterUrl)
+                        } ?: options.firstOrNull { !it.description.isNullOrBlank() }
+                            ?: options.firstOrNull()
+                    }
+                    is AniListResult.Failure -> null
+                }
+            }
+            library.markCandidateMetadataRecoveryAttempt(target.animeId, now, "anilist")
+            if (candidate != null) {
+                publisher(target.animeId, candidate)
+                offered++
+            }
+        }
+        return offered
     }
 
     /**

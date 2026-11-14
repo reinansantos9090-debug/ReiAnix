@@ -7,6 +7,9 @@ import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.externalCatalogAttemptAt
 import com.reianix.reianix_local.data.sqlite.externalCatalogCursor
+import com.reianix.reianix_local.data.sqlite.findCachedPostersWithMetadataGaps
+import com.reianix.reianix_local.data.sqlite.candidateMetadataRecoveryAttemptAt
+import com.reianix.reianix_local.data.sqlite.markCandidateMetadataRecoveryAttempt
 import com.reianix.reianix_local.data.sqlite.getExternalCatalogIds
 import com.reianix.reianix_local.data.sqlite.listAnimeAfterExternalCatalogCursor
 import com.reianix.reianix_local.data.sqlite.markExternalCatalogAttempt
@@ -33,6 +36,8 @@ class ReiAnixExternalCatalogIntegrationService(
     private val providers: ReiAnixCatalogProviderRegistry,
     private val artwork: ReiAnixArtworkService,
     private val identifierResolver: ReiAnixCatalogIdResolver? = null,
+    private val candidateMetadataPublisher: ((Long, ReiAnixCatalogAnime) -> Unit)? = null,
+    private val metadataCommitPublisher: ((Long) -> Unit)? = null,
 ) {
     private val enrichmentPassMutex = Mutex()
 
@@ -111,6 +116,69 @@ class ReiAnixExternalCatalogIntegrationService(
         require(batchSize in 1..MAX_BATCH_SIZE)
         if (restartFromLibraryScan) library.setExternalCatalogCursor(0L)
         runEnrichmentPass(batchSize, forceRetry)
+    }
+
+    /**
+     * Recover legacy entries whose poster was downloaded in a previous run but whose
+     * metadata was rejected by the old strict matcher. This is a separate, read-only
+     * catalog lookup: it never calls any artwork request or changes the artwork cursor.
+     *
+     * Defer while posters/backdrops are actively downloading so metadata-only network
+     * traffic does not compete with the existing image pipeline.
+     */
+    suspend fun recoverMetadataForReadyPosters(
+        maxRecords: Int = 100,
+    ): Int = enrichmentPassMutex.withLock {
+        require(maxRecords in 1..200)
+        val provider = providers.provider(ReiAnixCatalogSource.KITSU) ?: return@withLock 0
+        val artworkDownloading = library.database.read { db ->
+            db.rawQuery(
+                "SELECT 1 FROM artwork WHERE artwork_type IN ('poster','backdrop') " +
+                    "AND status='downloading' AND last_attempt_at>=? LIMIT 1",
+                arrayOf((System.currentTimeMillis() / 1_000.0 - 120.0).toString()),
+            ).use { it.moveToFirst() }
+        }
+        if (artworkDownloading) return@withLock 0
+
+        val targets = library.findCachedPostersWithMetadataGaps(maxRecords)
+        var offered = 0
+        for (target in targets) {
+            // Let the AniList-specific metadata pass own an AniList poster.
+            if (target.posterSource.equals("anilist", ignoreCase = true)) continue
+            currentCoroutineContext().ensureActive()
+            val now = System.currentTimeMillis() / 1_000.0
+            val previous = library.candidateMetadataRecoveryAttemptAt(target.animeId)
+            if (previous != null && now - previous < SOURCE_RETRY_COOLDOWN_SECONDS) continue
+            // A distinct metadata-only retry marker does not change artwork attempts,
+            // artwork timestamps, or the persisted supplemental catalog scan cursor.
+            library.markCandidateMetadataRecoveryAttempt(target.animeId, now)
+            val result = try {
+                provider.searchAnime(target.title, SEARCH_LIMIT)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                record(ReiAnixCatalogSource.KITSU, "CACHED_POSTER_METADATA_LOOKUP_FAILED", target.animeId, error)
+                continue
+            }
+            when (result) {
+                is ReiAnixCatalogResult.Success -> {
+                    val candidate = result.value.firstOrNull {
+                        target.posterUrl != null && it.coverUrl == target.posterUrl
+                    } ?: result.value.firstOrNull {
+                        !it.synopsis.isNullOrBlank()
+                    } ?: result.value.firstOrNull()
+                    if (candidate != null) {
+                        candidateMetadataPublisher?.invoke(target.animeId, candidate)
+                        offered++
+                    } else {
+                        record(ReiAnixCatalogSource.KITSU, "CACHED_POSTER_METADATA_NOT_FOUND", target.animeId)
+                    }
+                }
+                is ReiAnixCatalogResult.Failure ->
+                    record(ReiAnixCatalogSource.KITSU, "CACHED_POSTER_METADATA_LOOKUP_FAILED", target.animeId)
+            }
+        }
+        offered
     }
 
     /**
@@ -318,6 +386,7 @@ class ReiAnixExternalCatalogIntegrationService(
                     } else {
                         try {
                             anime = library.mergeExternalCatalogMetadata(verified.match, verified.remote)
+                            metadataCommitPublisher?.invoke(anime.id)
                             record(source, "VERIFIED_METADATA_MERGED", anime.id)
                         } catch (cancelled: CancellationException) {
                             throw cancelled
@@ -365,6 +434,16 @@ class ReiAnixExternalCatalogIntegrationService(
             ) {
                 record(source, "ARTWORK_CANDIDATES_QUEUED", anime.id)
                 changed = true
+            }
+
+            // Metadata is already present in the same provider response that supplied
+            // the poster candidates. Write missing fields independently, even when the
+            // strict identity matcher cannot confirm IDs. Never wait for this operation
+            // before sending images through the original artwork pipeline.
+            if (needsMetadata) {
+                val posterSource = remoteArtworkCandidates.firstOrNull { !it.coverUrl.isNullOrBlank() }
+                    ?: remoteArtworkCandidates.first()
+                candidateMetadataPublisher?.invoke(anime.id, posterSource)
             }
         }
         return changed
