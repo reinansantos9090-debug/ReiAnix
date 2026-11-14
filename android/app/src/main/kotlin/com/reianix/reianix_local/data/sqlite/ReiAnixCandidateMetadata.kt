@@ -77,7 +77,9 @@ suspend fun ReiAnixSqliteLibraryRepository.mergeCandidateMetadataGaps(
 
         val synopsis = metadata.synopsis?.trim()?.takeIf { it.length >= 8 }
         fillText("description", current.description, synopsis)
-        fillText("description_original", current.descriptionOriginal, synopsis)
+        if ("description" !in manualFields) {
+            fillText("description_original", current.descriptionOriginal, synopsis)
+        }
         fillInt("year", current.year, metadata.year?.takeIf { it in 1900..2200 })
         fillText("season", current.season, metadata.season)
         fillText("status", current.status, metadata.status)
@@ -87,7 +89,7 @@ suspend fun ReiAnixSqliteLibraryRepository.mergeCandidateMetadataGaps(
         fillInt("duration", current.duration, metadata.durationMinutes?.takeIf { it > 0 })
         fillInt("score", current.score, metadata.score?.takeIf { it in 0..100 })
         if ("genres" !in manualFields &&
-            (current.genresJson.isNullOrBlank() || current.genresJson.trim() == "[]")
+            (current.genresJson.isNullOrBlank() || current.genresJson.orEmpty().trim() == "[]")
         ) {
             val genres = metadata.genres.map(String::trim).filter(String::isNotEmpty).distinct()
             if (genres.isNotEmpty()) values.put("genres", JSONArray(genres).toString())
