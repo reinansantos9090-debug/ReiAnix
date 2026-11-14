@@ -113,3 +113,93 @@ suspend fun ReiAnixSqliteLibraryRepository.mergeCandidateMetadataGaps(
         db.update("anime", values, "id=?", arrayOf(animeId.toString())) > 0
     }
 }
+
+/** Only fully materialized posters qualify for legacy metadata-only recovery. */
+data class ReiAnixMetadataRecoveryTarget(
+    val animeId: Long,
+    val title: String,
+    val posterUrl: String?,
+)
+
+/**
+ * Discover already-covered anime that missed their catalog details in an older pass.
+ * This query never reads or changes poster bytes, retries or publication state.
+ */
+suspend fun ReiAnixSqliteLibraryRepository.findCachedPostersWithMetadataGaps(
+    limit: Int = 100,
+): List<ReiAnixMetadataRecoveryTarget> = withContext(Dispatchers.IO) {
+    require(limit in 1..200)
+    database.read { db ->
+        db.rawQuery(
+            """
+            SELECT a.id, a.title,
+                   (SELECT p.external_url FROM artwork p
+                    WHERE p.entity_id=CAST(a.id AS TEXT)
+                      AND p.entity_type IN ('anime','movie')
+                      AND p.artwork_type='poster'
+                      AND p.status='ready' AND TRIM(COALESCE(p.local_path,''))!=''
+                    ORDER BY p.priority DESC, p.updated_at DESC, p.id DESC LIMIT 1)
+            FROM anime a
+            WHERE (TRIM(COALESCE(a.description,''))='' OR a.year IS NULL
+                   OR TRIM(COALESCE(a.status,''))='')
+              AND COALESCE(a.metadata_source,'')!='manual'
+              AND COALESCE(a.metadata_status,'')!='manual'
+              AND COALESCE(a.anilist_match_manual,0)=0
+              AND EXISTS (SELECT 1 FROM artwork art
+                          WHERE art.entity_id=CAST(a.id AS TEXT)
+                            AND art.entity_type IN ('anime','movie')
+                            AND art.artwork_type='poster'
+                            AND art.status='ready'
+                            AND TRIM(COALESCE(art.local_path,''))!='')
+            ORDER BY a.id ASC LIMIT ?
+            """.trimIndent(),
+            arrayOf(limit.toString()),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(ReiAnixMetadataRecoveryTarget(
+                        animeId = cursor.getLong(0),
+                        title = cursor.getString(1),
+                        posterUrl = if (cursor.isNull(2)) null else cursor.getString(2),
+                    ))
+                }
+            }
+        }
+    }
+}
+
+private fun metadataRecoveryAttemptKey(animeId: Long): String {
+    require(animeId > 0L)
+    return "__reianix.candidate_metadata_recovery.v1.$animeId"
+}
+
+/** Separate cooldown from the source/artwork cursor so already-ready covers are untouched. */
+suspend fun ReiAnixSqliteLibraryRepository.candidateMetadataRecoveryAttemptAt(
+    animeId: Long,
+): Double? = withContext(Dispatchers.IO) {
+    database.read { db ->
+        db.rawQuery(
+            "SELECT value FROM preferences WHERE key=? LIMIT 1",
+            arrayOf(metadataRecoveryAttemptKey(animeId)),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0)?.toDoubleOrNull() else null
+        }
+    }
+}
+
+suspend fun ReiAnixSqliteLibraryRepository.markCandidateMetadataRecoveryAttempt(
+    animeId: Long,
+    attemptedAtSeconds: Double,
+) = withContext(Dispatchers.IO) {
+    require(attemptedAtSeconds.isFinite() && attemptedAtSeconds >= 0.0)
+    database.transaction { db ->
+        db.execSQL(
+            """
+            INSERT INTO preferences(key,value,updated_at) VALUES(?,?,?)
+            ON CONFLICT(key) DO UPDATE SET
+              value=excluded.value, updated_at=excluded.updated_at
+            """.trimIndent(),
+            arrayOf(metadataRecoveryAttemptKey(animeId), attemptedAtSeconds.toString(), attemptedAtSeconds),
+        )
+    }
+}
