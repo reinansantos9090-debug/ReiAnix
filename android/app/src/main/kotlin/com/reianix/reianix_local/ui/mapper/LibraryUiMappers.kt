@@ -162,6 +162,7 @@ object LibraryUiMappers {
         val posterExternalUrl = firstNonBlank(
             listOf("artwork_external_url", "cover_url", "external_url"),
         )
+        val posterFallbackExternalUrl = firstNonBlank(listOf("artwork_external_fallback_url"))
         val backdropLocalPath = firstNonBlank(
             listOf("backdrop_local_path", "artwork_backdrop_local_path"),
         )
@@ -181,6 +182,7 @@ object LibraryUiMappers {
                 externalUrl = posterExternalUrl,
                 backdropLocalPath = backdropLocalPath,
                 backdropExternalUrl = backdropExternalUrl,
+                fallbackExternalUrl = posterFallbackExternalUrl,
                 sourceRevisions = buildMap {
                     for (source in sources.reversed()) {
                         val revisions = source["artwork_source_revisions"] as? Map<*, *> ?: continue
