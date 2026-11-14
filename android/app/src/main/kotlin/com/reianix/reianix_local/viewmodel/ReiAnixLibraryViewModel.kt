@@ -3012,7 +3012,7 @@ class ReiAnixLibraryViewModel(
                     ?: episode.fileName.trim().takeIf { it.isNotEmpty() }
                     ?: "Episódio"
 
-                val commandUri = Uri.parse("reiflix://native").buildUpon()
+                val commandUri = Uri.parse("reianix://native").buildUpon()
                     .appendQueryParameter("action", "play")
                     .appendQueryParameter("request_id", requestId)
                     .appendQueryParameter("protocol_version", "2")
