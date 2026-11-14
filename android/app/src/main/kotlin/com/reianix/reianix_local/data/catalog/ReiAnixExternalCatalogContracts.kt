@@ -516,4 +516,3 @@ fun reiAnixCatalogErrorFor(error: Throwable): ReiAnixCatalogError = when (error)
     is IllegalArgumentException -> ReiAnixCatalogError.InvalidRequest(error.message.orEmpty())
     else -> ReiAnixCatalogError.Network(error.message ?: error.javaClass.simpleName)
 }
-92326a85781c44823e3b101339bd05332f89ada2
