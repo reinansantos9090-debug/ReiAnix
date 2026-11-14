@@ -248,6 +248,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val coverCache: String?,
         val bannerUrl: String?,
         val metadataManualFields: String?,
+        val format: String?,
+        val manualAniListMatch: Boolean,
     )
     private data class Artwork(
         val id: Long, val source: String, val sourceRef: String?, val path: String?, val url: String?,
@@ -404,8 +406,17 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     val anime = loadAnime(animeId) ?: return@launch
                     val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
                     if (candidateCandidates == null) {
+                        // An old automatic MUSIC association must not download its clip cover
+                        // again while the targeted non-MUSIC recovery finds the anime poster.
+                        // All ordinary and manual artwork retains the original fast path.
+                        val obsoleteMusicArtwork = anime.format?.trim()
+                            ?.equals("MUSIC", ignoreCase = true) == true &&
+                            !anime.manualAniListMatch &&
+                            !ownsManualField(anime.metadataManualFields, "cover_url")
                         val posterUrl = anime.coverUrl?.trim()?.takeIf(String::isNotEmpty)
+                            ?.takeUnless { obsoleteMusicArtwork }
                         val backdropUrl = anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
+                            ?.takeUnless { obsoleteMusicArtwork }
                         var posterMaterialized = posterUrl?.let {
                             materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId)
                         } ?: false
@@ -413,7 +424,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         // Keep the fast path unchanged: secondary AniList URLs are only read and
                         // attempted after the primary URL is absent or could not be materialized.
                         if (!posterMaterialized) {
-                            val alternatives = loadAlternativePosterCandidates(
+                            val alternatives = if (obsoleteMusicArtwork) emptyList() else loadAlternativePosterCandidates(
                                 animeId = animeId,
                                 anime = anime,
                                 primaryUrl = posterUrl,
@@ -1813,7 +1824,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     private fun loadAnime(id: Long): Anime? = database.read { db ->
         db.rawQuery(
-            "SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url,metadata_manual_fields FROM anime WHERE id=? LIMIT 1",
+            "SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url,metadata_manual_fields," +
+                "format,anilist_match_manual FROM anime WHERE id=? LIMIT 1",
             arrayOf(id.toString()),
         ).use { c ->
             if (!c.moveToFirst()) return@use null
@@ -1825,6 +1837,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 coverCache = c.getString(3),
                 bannerUrl = c.getString(4),
                 metadataManualFields = c.getString(5),
+                format = c.getString(6),
+                manualAniListMatch = !c.isNull(7) && c.getInt(7) != 0,
             )
         }
     }
