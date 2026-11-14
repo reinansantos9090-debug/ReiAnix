@@ -9,6 +9,7 @@ import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
 import com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
 import com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProvider
 import com.reianix.reianix_local.data.catalog.ReiAnixCatalogProviderRegistry
+import com.reianix.reianix_local.data.catalog.ReiAnixCandidateMetadataService
 import com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
 import com.reianix.reianix_local.data.catalog.ReiAnixExternalRequestCoordinator
 import com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProvider
@@ -123,6 +124,11 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixArtworkService(appContext, sqliteDatabase)
     }
 
+    // Catalog-only writes. This never requests or modifies artwork.
+    val candidateMetadataService: ReiAnixCandidateMetadataService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixCandidateMetadataService(sqliteLibraryRepository)
+    }
+
     /** Shared executor/cache for supplemental public catalog lookups. */
     val externalCatalogRequestCoordinator: ReiAnixExternalRequestCoordinator by lazy(
         LazyThreadSafetyMode.SYNCHRONIZED,
@@ -160,6 +166,12 @@ class ReiAnixAppDependencies(context: Context) {
             identifierResolver = externalCatalogProviderRegistry.coordinate(
                 ReiAnixAniMapCatalogIdResolver(),
             ),
+            candidateMetadataPublisher = { animeId, candidate ->
+                candidateMetadataService.offerKitsu(animeId, candidate)
+            },
+            metadataCommitPublisher = { animeId ->
+                candidateMetadataService.notifyVerifiedMetadataCommitted(animeId)
+            },
         )
     }
 
@@ -183,6 +195,9 @@ class ReiAnixAppDependencies(context: Context) {
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),
+            candidateMetadataPublisher = { animeId, candidate ->
+                candidateMetadataService.offerAniList(animeId, candidate)
+            },
             metadataCommitPublisher = { animeId, requestArtwork ->
                 val requestId = UUID.randomUUID().toString()
                 ReiAnixDiagnosticTimeline.record(
