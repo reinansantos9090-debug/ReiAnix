@@ -875,8 +875,11 @@ class ReiAnixAniListIntegrationService(
                 AniListError.InvalidRequest("Local anime has no usable title for AniList lookup."),
             )
         }
+        // A provisional year borrowed from an artwork candidate must not penalize
+        // the true anime in later AniList identification.
+        val candidateOnly = local.metadataSource?.endsWith("_candidate", ignoreCase = true) == true
         val searchContext = ReiAnixAniListMatcher.Context(
-            year = local.year,
+            year = local.year.takeUnless { candidateOnly },
             mediaKind = local.mediaKind,
         )
         fun rankCandidates(
