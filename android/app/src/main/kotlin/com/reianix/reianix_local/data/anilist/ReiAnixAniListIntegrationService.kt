@@ -81,6 +81,9 @@ internal fun shouldResumeTraceMoeSession(persistedCompleted: Boolean): Boolean =
 
 private const val MAX_ARTWORK_CANDIDATES = 5
 
+internal fun isAniListMusicFormat(format: String?): Boolean =
+    format?.trim()?.equals("MUSIC", ignoreCase = true) == true
+
 /**
  * Artwork lookup preserves provider/query order but skips AniList's MUSIC format before the
  * candidate limit is applied. That lets the official anime result later in the same response
@@ -93,7 +96,7 @@ internal fun usableAniListArtworkCandidates(
     candidates.asSequence()
         .filter { remote ->
             remote.id > 0 &&
-                !remote.format.orEmpty().trim().equals("MUSIC", ignoreCase = true) &&
+                !isAniListMusicFormat(remote.format) &&
                 (!remote.coverExtraLargeUrl.isNullOrBlank() ||
                     !remote.coverLargeUrl.isNullOrBlank() || !remote.bannerUrl.isNullOrBlank())
         }
@@ -891,15 +894,18 @@ class ReiAnixAniListIntegrationService(
         fun rankCandidates(
             candidates: Collection<AniListAnime>,
             titles: List<String>,
-        ): List<ReiAnixAniListMatcher.RankedCandidate> = candidates.mapNotNull { candidate ->
-            titles.mapNotNull { title ->
-                ReiAnixAniListMatcher.rank(title, listOf(candidate), searchContext).firstOrNull()
-            }.maxByOrNull { it.score }
-        }.sortedWith(
-            compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }
-                .thenBy { (it.anime.titleEnglish ?: it.anime.titleRomaji ?: "").lowercase(Locale.ROOT) }
-                .thenBy { it.anime.id },
-        )
+        ): List<ReiAnixAniListMatcher.RankedCandidate> = candidates
+            .filterNot { isAniListMusicFormat(it.format) }
+            .mapNotNull { candidate ->
+                titles.mapNotNull { title ->
+                    ReiAnixAniListMatcher.rank(title, listOf(candidate), searchContext).firstOrNull()
+                }.maxByOrNull { it.score }
+            }
+            .sortedWith(
+                compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }
+                    .thenBy { (it.anime.titleEnglish ?: it.anime.titleRomaji ?: "").lowercase(Locale.ROOT) }
+                    .thenBy { it.anime.id },
+            )
 
         val candidatesById = linkedMapOf<Int, AniListAnime>()
         var ranked: List<ReiAnixAniListMatcher.RankedCandidate> = emptyList()
