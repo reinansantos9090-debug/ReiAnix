@@ -46,6 +46,9 @@ import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reianix.reianix_local.data.sqlite.updateAniListMetadataAndAssociation
 import com.reianix.reianix_local.data.sqlite.recordAniListAutoMatchOutcome
+import com.reianix.reianix_local.data.sqlite.findCachedPostersWithMetadataGaps
+import com.reianix.reianix_local.data.sqlite.candidateMetadataRecoveryAttemptAt
+import com.reianix.reianix_local.data.sqlite.markCandidateMetadataRecoveryAttempt
 import com.reianix.reianix_local.data.sqlite.setMetadataStatusByLookupTitle
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 
@@ -1248,6 +1251,63 @@ class ReiAnixAniListIntegrationService(
         } finally {
             missingArtworkRecoveryRunning.set(false)
         }
+    }
+
+    /**
+     * Independently restore missing details for cached posters that originated at
+     * AniList, including posters shown before a confident catalog association.
+     * No artwork request, candidate list or image refresh path is changed.
+     */
+    suspend fun recoverMetadataForReadyAniListPosters(maxRecords: Int = 100): Int {
+        require(maxRecords in 1..200)
+        val publisher = candidateMetadataPublisher ?: return 0
+        if (!isAniListEnabled()) return 0
+        val artworkDownloading = library.database.read { db ->
+            db.rawQuery(
+                "SELECT 1 FROM artwork WHERE artwork_type IN ('poster','backdrop') " +
+                    "AND status='downloading' LIMIT 1",
+                null,
+            ).use { it.moveToFirst() }
+        }
+        if (artworkDownloading) return 0
+
+        var offered = 0
+        val targets = library.findCachedPostersWithMetadataGaps(maxRecords)
+        for (target in targets) {
+            if (!target.posterSource.equals("anilist", ignoreCase = true)) continue
+            currentCoroutineContext().ensureActive()
+            val now = System.currentTimeMillis() / 1_000.0
+            val attemptedAt = library.candidateMetadataRecoveryAttemptAt(target.animeId, "anilist")
+            if (attemptedAt != null && now - attemptedAt < AUTO_MATCH_COOLDOWN_MS / 1_000.0) continue
+
+            val local = library.getAnime(target.animeId) ?: continue
+            val knownId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
+            val candidate = if (knownId != null) {
+                when (val result = client.getAnime(knownId.toInt())) {
+                    is AniListResult.Success -> result.value
+                    is AniListResult.Failure -> null
+                }
+            } else {
+                when (val result = client.searchAnime(target.title, 10)) {
+                    is AniListResult.Success -> {
+                        val options = result.value
+                        options.firstOrNull {
+                            target.posterUrl != null &&
+                                (it.coverExtraLargeUrl == target.posterUrl ||
+                                    it.coverLargeUrl == target.posterUrl)
+                        } ?: options.firstOrNull { !it.description.isNullOrBlank() }
+                            ?: options.firstOrNull()
+                    }
+                    is AniListResult.Failure -> null
+                }
+            }
+            library.markCandidateMetadataRecoveryAttempt(target.animeId, now, "anilist")
+            if (candidate != null) {
+                publisher(target.animeId, candidate)
+                offered++
+            }
+        }
+        return offered
     }
 
     /**
