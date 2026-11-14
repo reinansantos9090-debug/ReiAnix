@@ -80,7 +80,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
         }
         val animeArtwork = row.animeArtwork
-        val backdrop = animeArtwork.firstOrNull {
+        val backdropCandidates = animeArtwork.filter {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
         }
@@ -88,10 +88,36 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
         }
-        val primaryLocalArtwork = posterCandidates.firstOrNull { !it.localPath.isNullOrBlank() }?.localPath
-            ?: anime.coverCache
-        val primaryExternalArtwork = posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
-            ?: anime.coverUrl
+
+        // Source revisions were already measured for Coil. Reuse the same file stats
+        // when selecting artwork: a stale first row must not hide a later cached
+        // poster, and no file checks are added to Compose's hot rendering path.
+        val sourceRevisions = (animeArtwork.mapNotNull { it.localPath } +
+            listOfNotNull(anime.coverCache)).distinct().associateWith(::localArtworkSourceRevision)
+        fun usableLocalArtwork(path: String?): String? {
+            val candidate = path?.trim()?.takeIf(String::isNotEmpty) ?: return null
+            if (candidate.startsWith("content://", ignoreCase = true) ||
+                candidate.startsWith("android.resource://", ignoreCase = true)
+            ) return candidate
+            val length = sourceRevisions[candidate]?.substringBefore('-')?.toLongOrNull() ?: return null
+            return candidate.takeIf { length > 0L }
+        }
+
+        val validatedCoverCache = usableLocalArtwork(anime.coverCache)
+        val primaryLocalArtwork = posterCandidates.asSequence()
+            .mapNotNull { usableLocalArtwork(it.localPath) }.firstOrNull()
+            ?: validatedCoverCache
+        val backdropLocalArtwork = backdropCandidates.asSequence()
+            .mapNotNull { usableLocalArtwork(it.localPath) }.firstOrNull()
+        // Preserve the original first remote candidate. A second known URL is offered
+        // only if Coil fails to load the first, without a new catalog lookup.
+        val posterUrls = (posterCandidates.mapNotNull { it.externalUrl?.trim()?.takeIf(String::isNotEmpty) } +
+            listOfNotNull(anime.coverUrl?.trim()?.takeIf(String::isNotEmpty))).distinct()
+        val primaryExternalArtwork = posterUrls.firstOrNull()
+        val fallbackExternalArtwork = posterUrls.getOrNull(1)
+        val backdropExternalArtwork = (backdropCandidates.mapNotNull {
+            it.externalUrl?.trim()?.takeIf(String::isNotEmpty)
+        } + listOfNotNull(anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty))).firstOrNull()
         val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name }
             else parseStringArray(anime.genresJson)
         val genreIds = if (row.genres.isNotEmpty()) row.genres.map { it.id } else emptyList()
@@ -103,7 +129,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "aliases" to parseStringArray(anime.aliasesJson),
             "description" to anime.description,
             "cover_url" to anime.coverUrl,
-            "cover_cache" to anime.coverCache,
+            "cover_cache" to validatedCoverCache,
             "banner_url" to anime.bannerUrl,
             "genres" to genreNames,
             "year" to anime.year,
@@ -156,13 +182,13 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "media_files" to movieEpisodes.map { episodeMap(it, anime.id, row) },
             // File metadata is captured with the background catalog projection,
             // never during Compose composition. Preserve same-path regeneration keys.
-            "artwork_source_revisions" to (animeArtwork.mapNotNull { it.localPath } +
-                listOfNotNull(anime.coverCache)).distinct().associateWith(::localArtworkSourceRevision),
-            "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank()),
+            "artwork_source_revisions" to sourceRevisions,
+            "artwork_available" to !primaryLocalArtwork.isNullOrBlank(),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
-            "artwork_backdrop_local_path" to backdrop?.localPath,
-            "backdrop_external_url" to backdrop?.externalUrl,
+            "artwork_external_fallback_url" to fallbackExternalArtwork,
+            "artwork_backdrop_local_path" to backdropLocalArtwork,
+            "backdrop_external_url" to backdropExternalArtwork,
             "playback_target_episode_id" to target?.id,
             "score" to anime.score?.toDouble(),
             "year" to anime.year,
