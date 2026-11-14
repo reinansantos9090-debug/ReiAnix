@@ -340,7 +340,8 @@ class DownloadBrowserActivity: ComponentActivity() {
                                     // let a popup navigate the tab when filtering is disabled
                                     // or the destination belongs to the current site.
                                     if(BrowserAdBlock.mode=="off" ||
-                                        BrowserAdBlock.related(view.url.orEmpty(),target)) {
+                                        BrowserAdBlock.related(view.url.orEmpty(),target) ||
+                                        BrowserVerificationPolicy.isVerificationResource(target,tab.url)) {
                                         view.loadUrl(target,mapOf("Referer" to view.url.orEmpty()))
                                     }
                                 }
