@@ -292,7 +292,8 @@ class ReiAnixComposeLibraryHost(
                                     }
                                 },
                                 onOpenStorageAccess = {
-                                    activity.requestNativeStorageAction("open_broad_storage_settings")
+                                    // Manage folders through SAF rather than requesting all-files access.
+                                    navController.navigate(ReiAnixRoutes.STORAGE)
                                 },
                                 onSelectDefaultReiAnixFolder = {
                                     activity.requestDefaultReiAnixFolderAuthorization()
@@ -376,9 +377,7 @@ class ReiAnixComposeLibraryHost(
                                 onSelectDefaultReiAnixFolder = {
                                     activity.requestDefaultReiAnixFolderAuthorization()
                                 },
-                                onOpenBroadSettings = {
-                                    activity.requestNativeStorageAction("open_broad_storage_settings")
-                                },
+                                onOpenBroadSettings = libraryViewModel::selectSafTree,
                                 onCheckAccess = {
                                     activity.requestNativeStorageAction("check_storage_access")
                                 },

@@ -244,7 +244,11 @@ jobs:
           echo "$badging" | grep -Fq "versionName='0.2.1'"
           echo "$badging" | grep -Fq "targetSdkVersion:'36'"
           echo "$badging" | grep -Fq "application-icon"
-          "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.MANAGE_EXTERNAL_STORAGE"
+          # The Play-oriented organizer must not package unrestricted all-files access.
+          if "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.MANAGE_EXTERNAL_STORAGE"; then
+            echo "ERROR: APK must not request MANAGE_EXTERNAL_STORAGE" >&2
+            exit 1
+          fi
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VIDEO"
           "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
 
