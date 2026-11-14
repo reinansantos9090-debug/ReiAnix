@@ -116,9 +116,11 @@ internal fun shouldDiscoverMissingArtwork(
     nowSeconds: Double,
     hasExhaustedArtworkFailure: Boolean = false,
     forceRetry: Boolean = false,
+    musicVideoMetadata: Boolean = false,
 ): Boolean {
     if (hasUsableLocalCover) return false
-    if (!coverUrl.isNullOrBlank()) {
+    // A previously accepted MUSIC URL must not suppress recovery of the real anime.
+    if (!musicVideoMetadata && !coverUrl.isNullOrBlank()) {
         // A valid canonical URL is already handled by the downloader; an exhausted
         // failure is eligible for a fresh catalogue lookup after its persisted backoff.
         // Use the same HTTPS-only rule as the AniList parser and artwork downloader.
@@ -129,7 +131,7 @@ internal fun shouldDiscoverMissingArtwork(
     // Identity and metadata provenance describe association confidence, not whether an
     // image may be displayed. Manual metadata remains untouched by artwork-only lookup.
     val fetchedAt = metadataFetchedAtSeconds
-    if (!forceRetry && !manualMetadata && fetchedAt != null && fetchedAt.isFinite() &&
+    if (!musicVideoMetadata && !forceRetry && !manualMetadata && fetchedAt != null && fetchedAt.isFinite() &&
         nowSeconds - fetchedAt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS
     ) return false
     return true
@@ -1038,7 +1040,10 @@ class ReiAnixAniListIntegrationService(
      * is not consulted when deciding which returned images may be published.
      * A failed alias request does not discard results already obtained from other aliases.
      */
-    private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): List<AniListAnime> {
+    private suspend fun discoverArtworkCandidates(
+        local: ReiAnixAnimeRecord,
+        excludeMusic: Boolean = false,
+    ): List<AniListAnime> {
         val titleCandidates = buildList {
             add(local.title)
             add(local.lookupTitle)
@@ -1056,10 +1061,12 @@ class ReiAnixAniListIntegrationService(
         val terms = boundedAniListSearchTerms(titleCandidates, limit = 6)
         if (terms.isEmpty()) return emptyList()
         val candidatesById = linkedMapOf<Int, AniListAnime>()
+        var sawMusicVideo = false
         for (term in terms) {
             currentCoroutineContext().ensureActive()
             when (val result = try {
-                client.searchAnime(term, 10)
+                if (excludeMusic) client.searchAnimeExcludingMusic(term, 10)
+                else client.searchAnime(term, 10)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -1067,6 +1074,7 @@ class ReiAnixAniListIntegrationService(
                 continue
             }) {
                 is AniListResult.Success -> result.value.forEach { remote ->
+                    if (isAniListMusicVideo(remote)) sawMusicVideo = true
                     if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
                 }
                 is AniListResult.Failure -> Log.w(
@@ -1075,10 +1083,41 @@ class ReiAnixAniListIntegrationService(
                 )
             }
         }
-        if (candidatesById.isEmpty()) return emptyList()
-        // Do not use identity confidence, exact-title checks, or metadata similarity to
-        // decide which AniList images can be published. Keep the provider's result order.
-        val artworkCandidates = usableAniListArtworkCandidates(candidatesById.values)
+
+        // If the usual bounded search only returned clips (or non-poster results),
+        // retry at most two existing titles with AniList's server-side MUSIC exclusion.
+        // Healthy searches never take this additional path.
+        var artworkCandidates = usableAniListArtworkCandidates(candidatesById.values)
+        if (!excludeMusic && sawMusicVideo && artworkCandidates.none {
+                !it.coverExtraLargeUrl.isNullOrBlank() || !it.coverLargeUrl.isNullOrBlank()
+            }
+        ) {
+            for (term in terms.take(2)) {
+                currentCoroutineContext().ensureActive()
+                when (val result = client.searchAnimeExcludingMusic(term, 10)) {
+                    is AniListResult.Success -> {
+                        result.value.forEach { remote ->
+                            if (!isAniListMusicVideo(remote) && remote.id > 0) {
+                                candidatesById.putIfAbsent(remote.id, remote)
+                            }
+                        }
+                        artworkCandidates = usableAniListArtworkCandidates(candidatesById.values)
+                        if (artworkCandidates.any {
+                                !it.coverExtraLargeUrl.isNullOrBlank() || !it.coverLargeUrl.isNullOrBlank()
+                            }
+                        ) break
+                    }
+                    is AniListResult.Failure -> {
+                        Log.w(TAG, "Non-MUSIC AniList poster recovery failed for animeId=" +
+                            local.id + " title=" + term + ": " + result.error)
+                        // Avoid a second request during rate limiting or a temporary API error.
+                        break
+                    }
+                }
+            }
+        }
+        // No identity verification is added to the original immediate-artwork selection.
+        // Provider order is kept for every non-MUSIC candidate.
         // No extra API call: candidate metadata arrives in the same AniList response.
         artworkCandidates.firstOrNull()?.let { candidateMetadataPublisher?.invoke(local.id, it) }
         return artworkCandidates
