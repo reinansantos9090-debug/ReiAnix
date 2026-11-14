@@ -229,6 +229,70 @@ internal fun boundedAniListSearchTerms(candidates: List<String>, limit: Int = 6)
         .toList()
 }
 
+internal const val MAX_MUSIC_ARTWORK_FALLBACK_SEARCHES = 6
+
+/** Split common attached romaji particles only on the fallback path after a MUSIC hit. */
+internal fun spacedAniListMusicFallbackVariants(title: String): List<String> {
+    val particles = listOf("mo", "wa", "ga", "no", "ni", "de", "to", "ka", "yo", "ne", "ha", "wo")
+    val words = title.trim().split(Regex("\\s+")).filter(String::isNotBlank)
+    if (words.isEmpty()) return emptyList()
+    return words.indices.asSequence().flatMap { index ->
+        val word = words[index]
+        particles.asSequence().mapNotNull { particle ->
+            val stemLength = word.length - particle.length
+            if (stemLength < 3 || !word.endsWith(particle, ignoreCase = true)) return@mapNotNull null
+            words.toMutableList().apply {
+                this[index] = word.substring(0, stemLength)
+                add(index + 1, word.substring(stemLength))
+            }.joinToString(" ")
+        }
+    }.distinctBy(MediaTitleNormalizer::normalizeTitle)
+        .take(4)
+        .toList()
+}
+
+/**
+ * Builds bounded retries for a confirmed MUSIC result. The corrected spacing is tried first;
+ * local aliases and titles exposed by catalog results follow only when that retry has no poster.
+ */
+internal fun aniListMusicArtworkFallbackTerms(
+    primaryTitle: String,
+    alternateTitles: Collection<String>,
+    musicResults: Collection<AniListAnime>,
+    limit: Int = MAX_MUSIC_ARTWORK_FALLBACK_SEARCHES,
+): List<String> {
+    require(limit in 1..MAX_MUSIC_ARTWORK_FALLBACK_SEARCHES)
+    val primary = MediaTitleNormalizer.cleanMediaTitle(primaryTitle).ifBlank { primaryTitle.trim() }
+    val candidates = buildList {
+        add(primary)
+        alternateTitles.forEach(::add)
+        musicResults.forEach { candidate ->
+            listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative)
+                .forEach(::add)
+            addAll(candidate.synonyms)
+        }
+    }
+    val primaryKey = MediaTitleNormalizer.normalizeTitle(primary)
+    val seen = HashSet<String>()
+    return buildList {
+        for (raw in candidates) {
+            val cleaned = MediaTitleNormalizer.cleanMediaTitle(raw).ifBlank { raw.trim() }
+            val variants = spacedAniListMusicFallbackVariants(cleaned)
+            for (term in variants) {
+                val normalized = MediaTitleNormalizer.normalizeTitle(term)
+                if (term.length in 2..120 && normalized != primaryKey && seen.add(normalized)) {
+                    add(term)
+                    if (size >= limit) return@buildList
+                }
+            }
+            val normalized = MediaTitleNormalizer.normalizeTitle(cleaned)
+            if (cleaned.length in 2..120 && normalized != primaryKey && seen.add(normalized)) {
+                add(cleaned)
+                if (size >= limit) return@buildList
+            }
+        }
+    }
+}
 
 
 /**
@@ -1055,35 +1119,100 @@ class ReiAnixAniListIntegrationService(
                 }
             }
         }
-        val terms = boundedAniListSearchTerms(titleCandidates, limit = 6)
-        if (terms.isEmpty()) return emptyList()
-        val candidatesById = linkedMapOf<Int, AniListAnime>()
-        for (term in terms) {
+        val rawPrimaryTitle = listOf(local.lookupTitle, local.title)
+            .firstOrNull { !it.isNullOrBlank() }
+            ?.trim()
+            .orEmpty()
+        if (rawPrimaryTitle.isBlank()) return emptyList()
+        val primaryTitle = MediaTitleNormalizer.cleanMediaTitle(rawPrimaryTitle).ifBlank { rawPrimaryTitle }
+
+        suspend fun search(term: String): List<AniListAnime> {
             currentCoroutineContext().ensureActive()
-            when (val result = try {
+            return when (val result = try {
                 client.searchAnime(term, 10)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 Log.w(TAG, "AniList artwork search failed for animeId=" + local.id + " title=" + term, error)
-                continue
+                return emptyList()
             }) {
-                is AniListResult.Success -> result.value.forEach { remote ->
-                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
+                is AniListResult.Success -> result.value
+                is AniListResult.Failure -> {
+                    Log.w(TAG, "AniList artwork search failed for animeId=" + local.id + " title=" + term + ": " + result.error)
+                    emptyList()
                 }
-                is AniListResult.Failure -> Log.w(
-                    TAG,
-                    "AniList artwork search failed for animeId=" + local.id + " title=" + term + ": " + result.error,
-                )
             }
         }
-        if (candidatesById.isEmpty()) return emptyList()
-        // Do not use identity confidence, exact-title checks, or metadata similarity to
-        // decide which AniList images can be published. Keep the provider's result order.
-        val artworkCandidates = usableAniListArtworkCandidates(candidatesById.values)
-        // No extra API call: candidate metadata arrives in the same AniList response.
-        artworkCandidates.firstOrNull()?.let { candidateMetadataPublisher?.invoke(local.id, it) }
-        return artworkCandidates
+
+        fun posterCandidates(results: Collection<AniListAnime>): List<AniListAnime> =
+            usableAniListArtworkCandidates(results.filter { candidate ->
+                !candidate.coverExtraLargeUrl.isNullOrBlank() || !candidate.coverLargeUrl.isNullOrBlank()
+            })
+
+        fun offerFirstPoster(candidates: List<AniListAnime>): List<AniListAnime> {
+            candidates.firstOrNull()?.let { candidateMetadataPublisher?.invoke(local.id, it) }
+            return candidates
+        }
+
+        val primaryResults = search(primaryTitle)
+        val primaryPosters = posterCandidates(primaryResults)
+        val musicResults = primaryResults.filter { isAniListMusicFormat(it.format) }
+        if (musicResults.isEmpty()) return offerFirstPoster(primaryPosters)
+
+        val primaryResultAlternates = primaryResults
+            .filterNot { isAniListMusicFormat(it.format) }
+            .flatMap { candidate ->
+                listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) +
+                    candidate.synonyms
+            }
+        val alternateTitles = titleCandidates + primaryResultAlternates
+        val distinctAlternateTitles = alternateTitles
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinctBy(MediaTitleNormalizer::normalizeTitle)
+        val queryQueue = aniListMusicArtworkFallbackTerms(
+            primaryTitle = primaryTitle,
+            alternateTitles = distinctAlternateTitles,
+            musicResults = musicResults,
+        ).toMutableList()
+        val queuedTerms = queryQueue.mapTo(HashSet(), MediaTitleNormalizer::normalizeTitle)
+        val discoveredNonMusicIds = HashSet<Int>()
+        var queryIndex = 0
+        var fallbackSearches = 0
+
+        while (queryIndex < queryQueue.size && fallbackSearches < MAX_MUSIC_ARTWORK_FALLBACK_SEARCHES) {
+            currentCoroutineContext().ensureActive()
+            val term = queryQueue[queryIndex++]
+            fallbackSearches++
+            val results = search(term)
+            val posters = posterCandidates(results)
+            if (posters.isNotEmpty()) return offerFirstPoster(posters)
+
+            // If a corrected query identifies the anime but its record lacks a poster, its
+            // own alternate titles become the next bounded searches. MUSIC entries stay out.
+            val newlyFoundAnime = results.filter { candidate ->
+                candidate.id > 0 && !isAniListMusicFormat(candidate.format) &&
+                    discoveredNonMusicIds.add(candidate.id)
+            }
+            if (newlyFoundAnime.isNotEmpty() && fallbackSearches < MAX_MUSIC_ARTWORK_FALLBACK_SEARCHES) {
+                val remaining = MAX_MUSIC_ARTWORK_FALLBACK_SEARCHES - fallbackSearches
+                val aliases = newlyFoundAnime.flatMap { candidate ->
+                    listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) +
+                        candidate.synonyms
+                }
+                aniListMusicArtworkFallbackTerms(
+                    primaryTitle = primaryTitle,
+                    alternateTitles = aliases,
+                    musicResults = emptyList(),
+                    limit = remaining,
+                ).forEach { fallbackTerm ->
+                    if (queuedTerms.add(MediaTitleNormalizer.normalizeTitle(fallbackTerm))) {
+                        queryQueue.add(fallbackTerm)
+                    }
+                }
+            }
+        }
+        return emptyList()
     }
 
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
