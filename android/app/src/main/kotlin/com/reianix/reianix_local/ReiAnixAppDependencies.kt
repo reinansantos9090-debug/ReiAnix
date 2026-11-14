@@ -208,6 +208,7 @@ class ReiAnixAppDependencies(context: Context) {
                     context = mapOf("artwork_requested" to requestArtwork),
                 )
                 if (requestArtwork) artworkService.requestAnimeArtwork(animeId, force = true)
+                candidateMetadataService.notifyVerifiedMetadataCommitted(animeId)
                 NativeMailbox.write(
                     appContext,
                     JSONObject()
