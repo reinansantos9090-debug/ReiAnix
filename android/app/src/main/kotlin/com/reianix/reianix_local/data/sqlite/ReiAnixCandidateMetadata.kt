@@ -107,7 +107,8 @@ suspend fun ReiAnixSqliteLibraryRepository.mergeCandidateMetadataGaps(
         if (current.metadataConfidence.isNullOrBlank()) {
             values.put("metadata_confidence", "unverified_artwork_candidate")
         }
-        if (current.metadataFetchedAt == null) values.put("metadata_fetched_at", now)
+        // Artwork recovery uses metadata_fetched_at for its own cooldown. Never advance
+        // that timestamp here or a poster could be deferred by this metadata-only write.
         values.put("metadata_updated_at", now)
         db.update("anime", values, "id=?", arrayOf(animeId.toString())) > 0
     }
