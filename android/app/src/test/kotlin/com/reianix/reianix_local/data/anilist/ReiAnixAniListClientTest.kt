@@ -120,19 +120,25 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
-    fun targetedMusicExclusionUsesSameSearchAndServerSideFormatFilter() = runBlocking {
-        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""))
+    fun originalArtworkSearchReturnsOfficialAnimeInOneRequestWithoutMusic() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Page":{"media":[{
+              "id":181447,
+              "title":{"romaji":"Saigo ni Hitotsu dake Onegai Shite mo Yoroshii Deshou ka"},
+              "format":"ONA",
+              "coverImage":{"extraLarge":"https://cdn.example/official-ona.jpg"}
+            }]}}}
+        """.trimIndent()))
         val client = ReiAnixAniListClient(transport, 0)
 
-        assertEquals(AniListResult.Success<List<AniListAnime>>(emptyList()),
-            client.searchAnimeExcludingMusic("Futsutsuka na Akujo", limit = 10))
-        val excludedQuery = transport.requestBody!!.getString("query")
-        assertTrue(excludedQuery.contains("format_not: MUSIC"))
-        assertEquals("Futsutsuka na Akujo", transport.requestBody!!.getJSONObject("variables").getString("search"))
-
-        client.searchAnime("Futsutsuka na Akujo", limit = 10)
-        assertFalse(transport.requestBody!!.getString("query").contains("format_not: MUSIC"))
-        assertEquals(2, transport.calls)
+        val result = client.searchAnimeExcludingMusic("Saigo ni Hitotsu dake Onegai Shite mo Yoroshii Deshou ka")
+        assertTrue(result is AniListResult.Success)
+        val anime = (result as AniListResult.Success).value.single()
+        assertEquals(181447, anime.id)
+        assertEquals("ONA", anime.format)
+        assertEquals("https://cdn.example/official-ona.jpg", anime.coverExtraLargeUrl)
+        assertTrue(transport.requestBody!!.getString("query").contains("format_not: MUSIC"))
+        assertEquals(1, transport.calls)
     }
 
     @Test
