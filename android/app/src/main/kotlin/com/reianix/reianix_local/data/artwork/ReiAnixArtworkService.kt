@@ -472,7 +472,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                         // poster is already available, so current AniList posters keep their
                         // existing fast, two-permit download path.
                         if (!posterMaterialized && !hasUsablePersistedPoster(animeId, entityType)) {
-                            if (!anime.coverCache.isNullOrBlank()) {
+                            if (!obsoleteMusicArtwork && !anime.coverCache.isNullOrBlank()) {
                                 restoreLegacyCoverCachePointer(
                                     animeId = animeId,
                                     entity = entityType,
