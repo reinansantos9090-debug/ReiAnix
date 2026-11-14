@@ -82,7 +82,9 @@ internal fun shouldResumeTraceMoeSession(persistedCompleted: Boolean): Boolean =
 private const val MAX_ARTWORK_CANDIDATES = 5
 
 /**
- * Artwork lookup preserves provider/query order and checks only whether a candidate has an image.
+ * Artwork lookup preserves provider/query order but skips AniList's MUSIC format before the
+ * candidate limit is applied. That lets the official anime result later in the same response
+ * reach the existing download queue without another search.
  * Identity scoring remains available to the separate metadata auto-match path.
  */
 internal fun usableAniListArtworkCandidates(
@@ -91,6 +93,7 @@ internal fun usableAniListArtworkCandidates(
     candidates.asSequence()
         .filter { remote ->
             remote.id > 0 &&
+                !remote.format.orEmpty().trim().equals("MUSIC", ignoreCase = true) &&
                 (!remote.coverExtraLargeUrl.isNullOrBlank() ||
                     !remote.coverLargeUrl.isNullOrBlank() || !remote.bannerUrl.isNullOrBlank())
         }
