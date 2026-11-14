@@ -32,6 +32,17 @@ internal object BrowserAdBlock {
     }
     fun blocked(url:String,selected:String=mode,page:String=url,type:ResourceType=ResourceType.UNKNOWN):Boolean {
         if(selected=="off" || !ready || !url.startsWith("http"))return false
+        if(BrowserVerificationPolicy.isVerificationResource(url,page))return false
+        // Never block top-level document navigation as a side effect of ad rules.
+        if(type==ResourceType.DOCUMENT)return false
+        if(selected=="balanced") {
+            val kind=when(type) {
+                ResourceType.CSS -> "stylesheet"
+                ResourceType.UNKNOWN -> "other"
+                else -> type.name.lowercase()
+            }
+            if(BrowserVerificationPolicy.isEssentialInBalanced(url,page,kind))return false
+        }
         return BrowserFilterLists.blocked(url,page,type,selected=="advanced")
     }
     fun blocked(request:WebResourceRequest,page:String):Boolean {
@@ -64,7 +75,9 @@ internal object BrowserAdBlock {
                 return@addWebMessageListener
             scope.launch {
                 val data=withContext(Dispatchers.IO) {
-                    if(mode=="off" || !ready)"{}" else BrowserFilterLists.cosmetics(url,mode=="advanced")
+                    if(mode=="off" || !ready ||
+                        BrowserVerificationPolicy.isVerificationResource(url,url))"{}"
+                    else BrowserFilterLists.cosmetics(url,mode=="advanced")
                 }
                 reply.postMessage(data)
             }
@@ -79,7 +92,17 @@ internal object BrowserAdBlock {
               let last='';
               window.ReiAnixFilters.onmessage=e=>{try{
                 const d=JSON.parse(e.data);if(last===e.data)return;last=e.data;
+                const verificationPresent=()=> {
+                  const h=location.hostname.toLowerCase(),p=location.pathname.toLowerCase();
+                  return h==='challenges.cloudflare.com' ||
+                    p.startsWith('/cdn-cgi/challenge-platform/') ||
+                    !!document.querySelector('.cf-turnstile,.g-recaptcha,.h-captcha,#challenge-stage,iframe[src*="challenges.cloudflare.com"],iframe[src*="recaptcha"],iframe[src*="hcaptcha.com"]');
+                };
                 const apply=()=>{
+                  if(verificationPresent()){
+                    document.getElementById('__rei_filter_css')?.remove();
+                    return;
+                  }
                   let style=document.getElementById('__rei_filter_css');
                   if(!style){style=document.createElement('style');style.id='__rei_filter_css';(document.head||document.documentElement).appendChild(style);}
                   style.textContent=d.css||'';
@@ -89,7 +112,7 @@ internal object BrowserAdBlock {
                     if(code)new Function(code)();
                   }catch(e){}});
                 };
-                if(document.documentElement)apply();else document.addEventListener('DOMContentLoaded',apply,{once:true});
+                if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();
               }catch(e){}};
               const request=()=>{try{window.ReiAnixFilters.postMessage(JSON.stringify({url:location.href}));}catch(e){}};
               request();document.addEventListener('DOMContentLoaded',request,{once:true});

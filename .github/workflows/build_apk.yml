@@ -289,6 +289,24 @@ jobs:
             fi
           done
 
+      - name: Check embedded ad-filter snapshots in the actual APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="${{ steps.apk.outputs.path }}"
+          archive_list="$(unzip -Z1 "$apk")"
+          for id in easylist mobile portuguese easyprivacy annoyances; do
+            asset="assets/browser-filter/${id}.filterdata"
+            if ! grep -Fxq "$asset" <<< "$archive_list"; then
+              echo "::error::APK missing $asset"
+              exit 1
+            fi
+            unpacked="$RUNNER_TEMP/${id}.filterdata"
+            unzip -p "$apk" "$asset" > "$unpacked"
+            gzip -t "$unpacked"
+          done
+          echo "BROWSER_FILTER_SNAPSHOTS=PASS (all 5 archives preserved and readable)"
+
       - name: Print and publish APK SHA-256
         shell: bash
         run: |

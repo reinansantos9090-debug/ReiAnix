@@ -34,7 +34,7 @@ internal object BrowserFilterLists {
     }
     private fun cache(context:Context,s:ListSource)=File(context.filesDir,"browser-filters/${s.id}.txt.gz")
     private fun bundled(context:Context,s:ListSource):ByteArray =
-        GZIPInputStream(context.assets.open("browser-filter/"+s.id+".txt.gz")).use {it.readBytes()}
+        GZIPInputStream(context.assets.open("browser-filter/"+s.id+".filterdata")).use {it.readBytes()}
 
     private fun loadSource(context:Context,s:ListSource):Loaded {
         val local=cache(context,s)
@@ -99,7 +99,7 @@ internal object BrowserFilterLists {
                     try {
                         val readers=sources(context).map {source ->
                             source.advanced to GZIPInputStream(
-                                context.assets.open("browser-filter/"+source.id+".txt.gz")
+                                context.assets.open("browser-filter/"+source.id+".filterdata")
                             ).reader(Charsets.UTF_8)
                         }
                         val compatible=BrowserFallbackBlocker.compile(readers)
