@@ -9,6 +9,42 @@ import org.junit.Test
 
 class ReiAnixExternalCatalogContractsTest {
     @Test
+    fun supplementalArtworkSkipsMusicVideoWithoutReorderingNormalAnime() {
+        val ordinary = ReiAnixCatalogAnime(
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(kitsuId = "tv"),
+            title = "Sample Anime",
+            format = "TV",
+            mediaKind = ReiAnixCatalogMediaKind.SERIES,
+            coverUrl = "https://cdn.example/tv.jpg",
+        )
+        val musicByFormat = ordinary.copy(
+            ids = ReiAnixExternalCatalogIds(kitsuId = "clip"),
+            format = " music ",
+            coverUrl = "https://cdn.example/clip.jpg",
+        )
+        val musicByMediaKind = ordinary.copy(
+            ids = ReiAnixExternalCatalogIds(kitsuId = "clip2"),
+            mediaKind = ReiAnixCatalogMediaKind.MUSIC,
+            format = null,
+        )
+        val unknown = ordinary.copy(
+            ids = ReiAnixExternalCatalogIds(kitsuId = "unknown"),
+            format = null,
+            mediaKind = ReiAnixCatalogMediaKind.UNKNOWN,
+        )
+        assertTrue(isCatalogMusicVideo(musicByFormat))
+        assertTrue(isCatalogMusicVideo(musicByMediaKind))
+        assertFalse(isCatalogMusicVideo(ordinary))
+        assertFalse(isCatalogMusicVideo(unknown))
+        assertEquals(
+            listOf("tv", "unknown"),
+            usableCatalogArtworkCandidates(listOf(musicByFormat, ordinary, musicByMediaKind, unknown))
+                .map { it.ids.kitsuId },
+        )
+    }
+
+    @Test
     fun sourceRolesKeepAniMapAsIdentifierResolverOnly() {
         assertTrue(ReiAnixCatalogSource.ANILIST.providesMetadata)
         assertTrue(ReiAnixCatalogSource.KITSU.providesArtwork)
