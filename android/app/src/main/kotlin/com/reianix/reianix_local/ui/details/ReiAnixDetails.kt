@@ -941,6 +941,7 @@ private fun DetailsHero(
                         identity = anime.stableKey + ":poster",
                         maxDimensionPx = 512,
                         externalUrl = anime.artwork?.externalUrl,
+                        fallbackExternalUrl = anime.artwork?.fallbackExternalUrl,
                         sourceRevisions = anime.artwork?.sourceRevisions.orEmpty())
                     Text(text = anime.title, style = ReiAnixTokens.TypographyTokens.heroTitle, color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
@@ -962,6 +963,7 @@ private fun DetailsHero(
                             identity = anime.stableKey + ":poster",
                             maxDimensionPx = 512,
                             externalUrl = anime.artwork?.externalUrl,
+                            fallbackExternalUrl = anime.artwork?.fallbackExternalUrl,
                             sourceRevisions = anime.artwork?.sourceRevisions.orEmpty())
                     }
                     Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.md))
