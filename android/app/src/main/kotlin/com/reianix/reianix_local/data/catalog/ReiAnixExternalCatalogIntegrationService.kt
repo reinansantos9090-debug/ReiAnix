@@ -7,6 +7,9 @@ import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.externalCatalogAttemptAt
 import com.reianix.reianix_local.data.sqlite.externalCatalogCursor
+import com.reianix.reianix_local.data.sqlite.findCachedPostersWithMetadataGaps
+import com.reianix.reianix_local.data.sqlite.candidateMetadataRecoveryAttemptAt
+import com.reianix.reianix_local.data.sqlite.markCandidateMetadataRecoveryAttempt
 import com.reianix.reianix_local.data.sqlite.getExternalCatalogIds
 import com.reianix.reianix_local.data.sqlite.listAnimeAfterExternalCatalogCursor
 import com.reianix.reianix_local.data.sqlite.markExternalCatalogAttempt
@@ -113,6 +116,67 @@ class ReiAnixExternalCatalogIntegrationService(
         require(batchSize in 1..MAX_BATCH_SIZE)
         if (restartFromLibraryScan) library.setExternalCatalogCursor(0L)
         runEnrichmentPass(batchSize, forceRetry)
+    }
+
+    /**
+     * Recover legacy entries whose poster was downloaded in a previous run but whose
+     * metadata was rejected by the old strict matcher. This is a separate, read-only
+     * catalog lookup: it never calls any artwork request or changes the artwork cursor.
+     *
+     * Defer while posters/backdrops are actively downloading so metadata-only network
+     * traffic does not compete with the existing image pipeline.
+     */
+    suspend fun recoverMetadataForReadyPosters(
+        maxRecords: Int = 100,
+    ): Int = enrichmentPassMutex.withLock {
+        require(maxRecords in 1..200)
+        val provider = providers.provider(ReiAnixCatalogSource.KITSU) ?: return@withLock 0
+        val artworkDownloading = library.database.read { db ->
+            db.rawQuery(
+                "SELECT 1 FROM artwork WHERE artwork_type IN ('poster','backdrop') " +
+                    "AND status='downloading' LIMIT 1",
+                null,
+            ).use { it.moveToFirst() }
+        }
+        if (artworkDownloading) return@withLock 0
+
+        val targets = library.findCachedPostersWithMetadataGaps(maxRecords)
+        var offered = 0
+        for (target in targets) {
+            currentCoroutineContext().ensureActive()
+            val now = System.currentTimeMillis() / 1_000.0
+            val previous = library.candidateMetadataRecoveryAttemptAt(target.animeId)
+            if (previous != null && now - previous < SOURCE_RETRY_COOLDOWN_SECONDS) continue
+            // A distinct metadata-only retry marker does not change artwork attempts,
+            // artwork timestamps, or the persisted supplemental catalog scan cursor.
+            library.markCandidateMetadataRecoveryAttempt(target.animeId, now)
+            val result = try {
+                provider.searchAnime(target.title, SEARCH_LIMIT)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                record(ReiAnixCatalogSource.KITSU, "CACHED_POSTER_METADATA_LOOKUP_FAILED", target.animeId, error)
+                continue
+            }
+            when (result) {
+                is ReiAnixCatalogResult.Success -> {
+                    val candidate = result.value.firstOrNull {
+                        target.posterUrl != null && it.coverUrl == target.posterUrl
+                    } ?: result.value.firstOrNull {
+                        !it.synopsis.isNullOrBlank()
+                    } ?: result.value.firstOrNull()
+                    if (candidate != null) {
+                        candidateMetadataPublisher?.invoke(target.animeId, candidate)
+                        offered++
+                    } else {
+                        record(ReiAnixCatalogSource.KITSU, "CACHED_POSTER_METADATA_NOT_FOUND", target.animeId)
+                    }
+                }
+                is ReiAnixCatalogResult.Failure ->
+                    record(ReiAnixCatalogSource.KITSU, "CACHED_POSTER_METADATA_LOOKUP_FAILED", target.animeId)
+            }
+        }
+        offered
     }
 
     /**
