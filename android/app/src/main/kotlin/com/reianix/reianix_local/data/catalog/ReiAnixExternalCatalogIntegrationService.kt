@@ -465,21 +465,23 @@ class ReiAnixExternalCatalogIntegrationService(
     ): Resolution {
         val knownId = ids.idFor(provider.source)
         if (!knownId.isNullOrBlank()) {
-            return when (val result = provider.getAnime(knownId)) {
+            when (val result = provider.getAnime(knownId)) {
                 is ReiAnixCatalogResult.Failure -> {
                     record(provider.source, "DETAIL_REQUEST_FAILED", anime.id)
-                    Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
+                    return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
                 }
                 is ReiAnixCatalogResult.Success -> {
                     val remote = result.value ?: return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
                     if (isCatalogMusicVideo(remote)) {
+                        // Only an old MUSIC association takes this path. Search the already
+                        // configured title terms for a non-MUSIC cover instead of stopping.
+                        // Valid existing IDs still keep the original single-fetch fast path.
                         record(provider.source, "MUSIC_VIDEO_CANDIDATE_SKIPPED", anime.id)
-                        Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
                     } else {
                         val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
                         val artworkCandidates = usableCatalogArtworkCandidates(listOf(remote))
                         val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
-                        Resolution(evaluation.decision, verified, artworkCandidates)
+                        return Resolution(evaluation.decision, verified, artworkCandidates)
                     }
                 }
             }
