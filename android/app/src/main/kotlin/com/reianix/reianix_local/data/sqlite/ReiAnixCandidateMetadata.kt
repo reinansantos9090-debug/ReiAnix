@@ -119,6 +119,7 @@ data class ReiAnixMetadataRecoveryTarget(
     val animeId: Long,
     val title: String,
     val posterUrl: String?,
+    val posterSource: String?,
 )
 
 /**
@@ -134,6 +135,12 @@ suspend fun ReiAnixSqliteLibraryRepository.findCachedPostersWithMetadataGaps(
             """
             SELECT a.id, a.title,
                    (SELECT p.external_url FROM artwork p
+                    WHERE p.entity_id=CAST(a.id AS TEXT)
+                      AND p.entity_type IN ('anime','movie')
+                      AND p.artwork_type='poster'
+                      AND p.status='ready' AND TRIM(COALESCE(p.local_path,''))!=''
+                    ORDER BY p.priority DESC, p.updated_at DESC, p.id DESC LIMIT 1),
+                   (SELECT p.source FROM artwork p
                     WHERE p.entity_id=CAST(a.id AS TEXT)
                       AND p.entity_type IN ('anime','movie')
                       AND p.artwork_type='poster'
@@ -161,6 +168,7 @@ suspend fun ReiAnixSqliteLibraryRepository.findCachedPostersWithMetadataGaps(
                         animeId = cursor.getLong(0),
                         title = cursor.getString(1),
                         posterUrl = if (cursor.isNull(2)) null else cursor.getString(2),
+                        posterSource = if (cursor.isNull(3)) null else cursor.getString(3),
                     ))
                 }
             }
@@ -168,19 +176,21 @@ suspend fun ReiAnixSqliteLibraryRepository.findCachedPostersWithMetadataGaps(
     }
 }
 
-private fun metadataRecoveryAttemptKey(animeId: Long): String {
+private fun metadataRecoveryAttemptKey(animeId: Long, source: String): String {
     require(animeId > 0L)
-    return "__reianix.candidate_metadata_recovery.v1.$animeId"
+    require(source == "anilist" || source == "kitsu")
+    return "__reianix.candidate_metadata_recovery.v1.$source.$animeId"
 }
 
 /** Separate cooldown from the source/artwork cursor so already-ready covers are untouched. */
 suspend fun ReiAnixSqliteLibraryRepository.candidateMetadataRecoveryAttemptAt(
     animeId: Long,
+    source: String = "kitsu",
 ): Double? = withContext(Dispatchers.IO) {
     database.read { db ->
         db.rawQuery(
             "SELECT value FROM preferences WHERE key=? LIMIT 1",
-            arrayOf(metadataRecoveryAttemptKey(animeId)),
+            arrayOf(metadataRecoveryAttemptKey(animeId, source)),
         ).use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0)?.toDoubleOrNull() else null
         }
@@ -190,6 +200,7 @@ suspend fun ReiAnixSqliteLibraryRepository.candidateMetadataRecoveryAttemptAt(
 suspend fun ReiAnixSqliteLibraryRepository.markCandidateMetadataRecoveryAttempt(
     animeId: Long,
     attemptedAtSeconds: Double,
+    source: String = "kitsu",
 ) = withContext(Dispatchers.IO) {
     require(attemptedAtSeconds.isFinite() && attemptedAtSeconds >= 0.0)
     database.transaction { db ->
@@ -199,7 +210,7 @@ suspend fun ReiAnixSqliteLibraryRepository.markCandidateMetadataRecoveryAttempt(
             ON CONFLICT(key) DO UPDATE SET
               value=excluded.value, updated_at=excluded.updated_at
             """.trimIndent(),
-            arrayOf(metadataRecoveryAttemptKey(animeId), attemptedAtSeconds.toString(), attemptedAtSeconds),
+            arrayOf(metadataRecoveryAttemptKey(animeId, source), attemptedAtSeconds.toString(), attemptedAtSeconds),
         )
     }
 }
