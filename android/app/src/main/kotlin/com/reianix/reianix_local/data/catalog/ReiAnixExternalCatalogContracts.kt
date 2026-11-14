@@ -235,14 +235,27 @@ data class ReiAnixCatalogAnime(
 
 
 /**
- * Keeps every provider result that carries structurally valid artwork.
- * This selection deliberately does not inspect titles, metadata, IDs already linked to the
- * local anime, or any catalog identity decision. Provider order is preserved.
+ * Music videos have their own entries in anime catalogs. Their posters/synopses must
+ * not be selected automatically as if they belonged to the main anime.
+ *
+ * Restrict this policy to explicit provider format/type data. Never guess from titles,
+ * genres, episode counts or identity confidence, and keep the provider order unchanged.
+ */
+internal fun isCatalogMusicVideo(remote: ReiAnixCatalogAnime): Boolean {
+    if (remote.mediaKind == ReiAnixCatalogMediaKind.MUSIC) return true
+    return remote.format?.trim()?.uppercase(Locale.ROOT) in
+        setOf("MUSIC", "MUSIC_VIDEO", "MUSIC VIDEO", "MUSIC-VIDEO")
+}
+
+/**
+ * Keeps provider results that carry structurally valid artwork, excluding explicitly
+ * labeled music videos. Other candidates retain their exact provider/query order.
+ * This selection does not inspect titles, local IDs or identity confidence.
  */
 internal fun usableCatalogArtworkCandidates(
     candidates: Collection<ReiAnixCatalogAnime>,
 ): List<ReiAnixCatalogAnime> =
-    candidates.filter { it.artworkCandidates().isNotEmpty() }
+    candidates.filter { !isCatalogMusicVideo(it) && it.artworkCandidates().isNotEmpty() }
 
 sealed interface ReiAnixCatalogError {
     data class Http(val statusCode: Int) : ReiAnixCatalogError
