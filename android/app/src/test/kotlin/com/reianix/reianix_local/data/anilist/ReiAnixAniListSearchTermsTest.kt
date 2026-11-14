@@ -76,6 +76,12 @@ class ReiAnixAniListSearchTermsTest {
             year = 1990,
             format = "MOVIE",
         )
+        val musicClip = anime(
+            id = 30,
+            title = "Expected Anime Ending Theme",
+            poster = "https://cdn.example/music-clip.jpg",
+            format = "MUSIC",
+        )
         val noArtwork = anime(id = 32, title = "No Cover", poster = null)
         val matchingLater = anime(
             id = 33,
@@ -85,8 +91,10 @@ class ReiAnixAniListSearchTermsTest {
             format = "TV",
         )
 
-        val selected = usableAniListArtworkCandidates(listOf(unrelatedFirst, noArtwork, matchingLater))
+        val selected = usableAniListArtworkCandidates(listOf(musicClip, unrelatedFirst, noArtwork, matchingLater))
         assertEquals(listOf(31, 33), selected.map { it.id })
+        assertTrue(isAniListMusicVideo(musicClip.copy(format = " music ")))
+        assertTrue(!isAniListMusicVideo(matchingLater))
     }
 
 }
