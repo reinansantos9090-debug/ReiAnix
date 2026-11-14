@@ -1265,8 +1265,8 @@ class ReiAnixAniListIntegrationService(
         val artworkDownloading = library.database.read { db ->
             db.rawQuery(
                 "SELECT 1 FROM artwork WHERE artwork_type IN ('poster','backdrop') " +
-                    "AND status='downloading' LIMIT 1",
-                null,
+                    "AND status='downloading' AND last_attempt_at>=? LIMIT 1",
+                arrayOf((System.currentTimeMillis() / 1_000.0 - 120.0).toString()),
             ).use { it.moveToFirst() }
         }
         if (artworkDownloading) return 0
