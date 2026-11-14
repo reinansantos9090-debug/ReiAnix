@@ -235,14 +235,17 @@ data class ReiAnixCatalogAnime(
 
 
 /**
- * Keeps every provider result that carries structurally valid artwork.
- * This selection deliberately does not inspect titles, metadata, IDs already linked to the
- * local anime, or any catalog identity decision. Provider order is preserved.
+ * Keeps provider results that carry structurally valid artwork and are not music entries.
+ * Music videos/clips are not anime posters. Removing them here lets the existing artwork queue
+ * continue with the next candidate from the same search response, without another lookup.
+ * Provider order is preserved, and unknown media kinds remain eligible.
  */
 internal fun usableCatalogArtworkCandidates(
     candidates: Collection<ReiAnixCatalogAnime>,
 ): List<ReiAnixCatalogAnime> =
-    candidates.filter { it.artworkCandidates().isNotEmpty() }
+    candidates.filter {
+        it.mediaKind != ReiAnixCatalogMediaKind.MUSIC && it.artworkCandidates().isNotEmpty()
+    }
 
 sealed interface ReiAnixCatalogError {
     data class Http(val statusCode: Int) : ReiAnixCatalogError
@@ -513,3 +516,4 @@ fun reiAnixCatalogErrorFor(error: Throwable): ReiAnixCatalogError = when (error)
     is IllegalArgumentException -> ReiAnixCatalogError.InvalidRequest(error.message.orEmpty())
     else -> ReiAnixCatalogError.Network(error.message ?: error.javaClass.simpleName)
 }
+92326a85781c44823e3b101339bd05332f89ada2
