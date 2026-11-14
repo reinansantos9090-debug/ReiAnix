@@ -33,6 +33,7 @@ class ReiAnixExternalCatalogIntegrationService(
     private val providers: ReiAnixCatalogProviderRegistry,
     private val artwork: ReiAnixArtworkService,
     private val identifierResolver: ReiAnixCatalogIdResolver? = null,
+    private val metadataCommitPublisher: ((Long) -> Unit)? = null,
 ) {
     private val enrichmentPassMutex = Mutex()
 
@@ -140,21 +141,34 @@ class ReiAnixExternalCatalogIntegrationService(
     }
 
     /**
-     * Drain the eligible catalog through keyset-paginated SQLite pages. The persisted
+     * Drain eligible catalog records through keyset-paginated SQLite pages. The persisted
      * anime ID cursor advances only after a row finishes, so cancellation resumes at
      * the first unfinished row and inserts made during a pass are visible to later pages.
-     * A completed cursor is deliberately not wrapped: foreground resumes do not rescan
-     * completed records. A confirmed library scan explicitly rewinds the same cursor.
+     * A completed pass wraps once so older metadata gaps can be reconsidered on startup;
+     * per-source retry cooldowns keep provider traffic bounded. A confirmed library scan
+     * explicitly rewinds the same cursor.
      */
     private suspend fun runEnrichmentPass(batchSize: Int, forceRetry: Boolean): Int {
         require(batchSize in 1..MAX_BATCH_SIZE)
         var cursor = library.externalCatalogCursor()
+        var wrappedCursor = false
         var enriched = 0
 
         while (true) {
             currentCoroutineContext().ensureActive()
             val rows = library.listAnimeAfterExternalCatalogCursor(cursor, batchSize)
-            if (rows.isEmpty()) break
+            if (rows.isEmpty()) {
+                // Startup recovery must revisit older metadata gaps after a completed pass.
+                // Wrap only once; the persisted per-source cooldown below prevents repeated
+                // provider requests while still allowing unresolved records to recover later.
+                if (cursor > 0L && !wrappedCursor) {
+                    library.setExternalCatalogCursor(0L)
+                    cursor = 0L
+                    wrappedCursor = true
+                    continue
+                }
+                break
+            }
 
             for (row in rows) {
                 currentCoroutineContext().ensureActive()
@@ -282,7 +296,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             val previousAttempt = library.externalCatalogAttemptAt(anime.id, source.key)
             val knownId = ids.idFor(source)
-            if (!forceRetry && knownId == null && previousAttempt != null &&
+            if (!forceRetry && previousAttempt != null &&
                 System.currentTimeMillis() / 1_000.0 - previousAttempt < SOURCE_RETRY_COOLDOWN_SECONDS
             ) continue
 
@@ -318,6 +332,7 @@ class ReiAnixExternalCatalogIntegrationService(
                     } else {
                         try {
                             anime = library.mergeExternalCatalogMetadata(verified.match, verified.remote)
+                            runCatching { metadataCommitPublisher?.invoke(anime.id) }
                             record(source, "VERIFIED_METADATA_MERGED", anime.id)
                         } catch (cancelled: CancellationException) {
                             throw cancelled

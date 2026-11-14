@@ -139,6 +139,19 @@ class ReiAnixComposeLibraryHost(
                         }
                         try {
                             withContext(Dispatchers.IO) {
+                                dependencies.aniListIntegrationService.recoverMissingLinkedMetadata()
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w(
+                                TAG,
+                                "Native linked-catalog-metadata recovery after scan failed. errorType=" +
+                                    error::class.java.simpleName,
+                            )
+                        }
+                        try {
+                            withContext(Dispatchers.IO) {
                                 dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()
                             }
                         } catch (cancelled: CancellationException) {
@@ -216,6 +229,34 @@ class ReiAnixComposeLibraryHost(
                 ) return@LaunchedEffect
 
                 val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                try {
+                    withContext(Dispatchers.IO) {
+                        dependencies.aniListIntegrationService.recoverMissingLinkedMetadata()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w(
+                        TAG,
+                        "Native linked-catalog-metadata recovery failed. errorType=" +
+                            error::class.java.simpleName,
+                    )
+                }
+                try {
+                    withContext(Dispatchers.IO) {
+                        dependencies.aniListIntegrationService.reconcileUnmatchedLibraryMetadata(
+                            metadataOnly = true,
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w(
+                        TAG,
+                        "Native missing-catalog-metadata recovery failed. errorType=" +
+                            error::class.java.simpleName,
+                    )
+                }
                 try {
                     withContext(Dispatchers.IO) {
                         dependencies.aniListIntegrationService.recoverMissingArtworkMetadata()

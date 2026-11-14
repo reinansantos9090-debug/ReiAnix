@@ -9766,11 +9766,11 @@ internal class NativeMainRuntimePort(
                 )
                 true
             }
-            "anilist_metadata_committed" -> {
+            "anilist_metadata_committed", "catalog_metadata_committed" -> {
                 val animeId = longValue("animeId", "anime_id")
                 if (animeId == null || animeId <= 0L) {
                     recordDiagnostic(
-                        name = "ANILIST_METADATA_PROJECTION_REFRESH_REJECTED",
+                        name = "CATALOG_METADATA_PROJECTION_REFRESH_REJECTED",
                         severity = "WARN",
                         requestId = eventRequestId ?: stringValue("requestId"),
                         result = "invalid_anime_id",
@@ -9781,7 +9781,7 @@ internal class NativeMainRuntimePort(
                 refreshCurrentDetails(animeId)
                 libraryViewModel.refreshCatalogProjection()
                 recordDiagnostic(
-                    name = "ANILIST_METADATA_PROJECTION_REFRESH",
+                    name = "CATALOG_METADATA_PROJECTION_REFRESH",
                     requestId = eventRequestId ?: stringValue("requestId"),
                     result = "canonical_write_already_committed",
                     context = mapOf("anime_id" to animeId),

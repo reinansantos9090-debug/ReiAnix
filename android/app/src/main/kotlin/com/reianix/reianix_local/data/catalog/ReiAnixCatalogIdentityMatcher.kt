@@ -99,15 +99,13 @@ object ReiAnixCatalogIdentityMatcher {
         )
         if (evidence.rejectionReason != null) return rejected(evidence.rejectionReason)
 
-        // Fetching a record through the exact, previously-confirmed provider ID is an identity
-        // anchor. All metadata contradictions are still rejected above.
+        // A unique exact-title result can supply metadata even when the local file has no year,
+        // episode count, or format yet. Existing identity fields still reject contradictions,
+        // and evaluateCandidates rejects multiple exact-title records. Artwork selection remains
+        // independent of this metadata association.
         val sourceIdIsAnchored =
             knownIds.idFor(remote.source) != null &&
                 knownIds.idFor(remote.source) == remote.ids.idFor(remote.source)
-
-        if (!sourceIdIsAnchored && evidence.matchedDimensions < MINIMUM_INDEPENDENT_DIMENSIONS) {
-            return probable("exact_title_but_insufficient_independent_metadata")
-        }
 
         return confirmed(
             ReiAnixCatalogIdentityMatch(
@@ -118,7 +116,7 @@ object ReiAnixCatalogIdentityMatcher {
                 matchedTitle = exactTitle,
             ),
             if (sourceIdIsAnchored) "confirmed_by_existing_provider_id_and_exact_title"
-            else "confirmed_by_exact_title_and_" + evidence.matchedDimensions + "_independent_dimensions",
+            else "confirmed_by_exact_title_and_" + evidence.matchedDimensions + "_compatible_dimensions",
         )
     }
 
@@ -229,8 +227,9 @@ object ReiAnixCatalogIdentityMatcher {
 
     /**
      * Fields absent from either side are unknown, not contradictory. When both sides provide a
-     * field, disagreement is a hard rejection. Search-only matches need two independent groups;
-     * format and media kind form one group because they describe the same dimension.
+     * field, disagreement is a hard rejection. Exact title and a unique provider result are the
+     * minimum association evidence; available independent fields strengthen it or reject conflicts.
+     * Format and media kind form one group because they describe the same dimension.
      */
     private fun evaluateCompatibleEvidence(
         local: ReiAnixCatalogIdentity,
@@ -419,5 +418,4 @@ object ReiAnixCatalogIdentityMatcher {
         "episode", "season", "part", "unknown", "untitled", "the anime",
     )
 
-    private const val MINIMUM_INDEPENDENT_DIMENSIONS = 2
 }

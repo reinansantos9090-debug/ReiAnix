@@ -132,7 +132,7 @@ class ReiAnixExternalCatalogContractsTest {
     }
 
     @Test
-    fun missingRemoteMetadataIsNeutralButInsufficientSearchEvidenceStaysProbable() {
+    fun missingRemoteMetadataIsNeutralForUniqueExactTitleMatch() {
         val local = ReiAnixCatalogIdentity(
             titles = setOf("Known Work", "Known Work Original"),
             releaseYear = 2021,
@@ -148,8 +148,8 @@ class ReiAnixExternalCatalogContractsTest {
         )
 
         val titleOnly = ReiAnixCatalogIdentityMatcher.evaluate(7L, local, remote)
-        assertEquals(ReiAnixCatalogIdentityDecision.PROBABLE, titleOnly.decision)
-        assertNull(titleOnly.value)
+        assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, titleOnly.decision)
+        assertNotNull(titleOnly.value)
 
         val anchored = ReiAnixCatalogIdentityMatcher.evaluate(
             7L,
@@ -267,8 +267,8 @@ class ReiAnixExternalCatalogContractsTest {
         val probableResult = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
             70L, local, listOf(probable),
         )
-        assertEquals(ReiAnixCatalogIdentityDecision.PROBABLE, probableResult.decision)
-        assertNull(probableResult.value)
+        assertEquals(ReiAnixCatalogIdentityDecision.CONFIRMED, probableResult.decision)
+        assertNotNull(probableResult.value)
 
         val ambiguousResult = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
             70L, local, listOf(confirmed, confirmed.copy(
@@ -338,7 +338,7 @@ class ReiAnixExternalCatalogContractsTest {
         )
 
         assertEquals(
-            ReiAnixCatalogIdentityDecision.PROBABLE,
+            ReiAnixCatalogIdentityDecision.CONFIRMED,
             ReiAnixCatalogIdentityMatcher.evaluate(7L, local, probableFirst).decision,
         )
         assertEquals(

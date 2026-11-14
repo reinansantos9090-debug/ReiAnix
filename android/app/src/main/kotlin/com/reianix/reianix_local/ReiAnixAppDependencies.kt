@@ -160,6 +160,15 @@ class ReiAnixAppDependencies(context: Context) {
             identifierResolver = externalCatalogProviderRegistry.coordinate(
                 ReiAnixAniMapCatalogIdResolver(),
             ),
+            metadataCommitPublisher = { animeId ->
+                NativeMailbox.write(
+                    appContext,
+                    JSONObject()
+                        .put("type", "catalog_metadata_committed")
+                        .put("requestId", UUID.randomUUID().toString())
+                        .put("payload", JSONObject().put("animeId", animeId).put("requestArtwork", false)),
+                )
+            },
         )
     }
 

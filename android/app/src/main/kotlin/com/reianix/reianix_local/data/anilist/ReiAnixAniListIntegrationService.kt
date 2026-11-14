@@ -139,6 +139,7 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
 internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+private const val METADATA_MATCH_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.metadata_match_attempt_v1."
 
 /** Read attempt timestamps from the existing schema-v29 preferences table. */
 internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
@@ -827,6 +828,7 @@ class ReiAnixAniListIntegrationService(
     suspend fun autoMatch(
         animeId: Long,
         force: Boolean = false,
+        metadataOnly: Boolean = false,
     ): AniListResult<AniListAutoMatchResult> {
         if (!isAniListEnabled()) {
             return AniListResult.Failure(AniListError.InvalidRequest("AniList integration is disabled in settings."))
@@ -965,7 +967,14 @@ class ReiAnixAniListIntegrationService(
             )
         }
         val persisted = when (
-            val result = applyRemote(local, best.anime, manual = false, score = best.score, margin = margin)
+            val result = applyRemote(
+                local,
+                best.anime,
+                manual = false,
+                score = best.score,
+                margin = margin,
+                metadataOnly = metadataOnly,
+            )
         ) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> return result
@@ -1235,16 +1244,73 @@ class ReiAnixAniListIntegrationService(
         }
     }
 
+    /** Refreshes incomplete metadata for titles already linked to a verified AniList ID. */
+    suspend fun recoverMissingLinkedMetadata(maxRecords: Int = 12): Int {
+        require(maxRecords in 1..24)
+        if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
+
+        val rows = library.loadLibraryCatalogRows()
+        var examined = 0
+        var updated = 0
+        val nowSeconds = System.currentTimeMillis() / 1000.0
+        val persistedAttempts = readMetadataMatchAttemptTimes().toMutableMap()
+        for (row in rows) {
+            currentCoroutineContext().ensureActive()
+            val local = row.anime
+            val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() } ?: continue
+            if (local.anilistMatchManual == true || local.metadataSource == "manual" ||
+                local.metadataStatus == "manual" || !hasMetadataGap(local)
+            ) continue
+            val previousAttempt = persistedAttempts[local.id]
+            if (previousAttempt != null &&
+                nowSeconds - previousAttempt < AUTO_MATCH_COOLDOWN_MS / 1_000.0
+            ) continue
+            if (examined >= maxRecords) break
+
+            examined++
+            writeMetadataMatchAttemptAt(local.id, nowSeconds)
+            persistedAttempts[local.id] = nowSeconds
+            val remote = when (val result = client.getAnime(remoteId.toInt())) {
+                is AniListResult.Success -> result.value
+                is AniListResult.Failure -> {
+                    Log.w(TAG, "Missing linked metadata lookup failed for animeId=${local.id}: ${result.error}")
+                    null
+                }
+            } ?: continue
+
+            when (val result = applyRemote(
+                local = local,
+                remote = remote,
+                manual = false,
+                score = local.anilistMatchScore,
+                margin = local.anilistMatchMargin,
+                metadataOnly = true,
+            )) {
+                is AniListResult.Success -> if (!hasMetadataGap(result.value)) updated++
+                is AniListResult.Failure -> Log.w(
+                    TAG,
+                    "Missing linked metadata update failed for animeId=${local.id}: ${result.error}",
+                )
+            }
+        }
+        return updated
+    }
+
     /**
-     * Native library replacement for the legacy Python metadata hydrator.
-     * It processes the canonical SQLite catalog sequentially and persists lookup
-     * outcomes so catalog refreshes cannot repeatedly query unresolved titles.
-     * Persisted image URLs are handed to the application-scoped Kotlin artwork service.
+     * Reconciles missing metadata independently of artwork discovery. Unmatched titles,
+     * including previous no-result/ambiguous outcomes, are retried at a durable six-hour
+     * cadence. Artwork URLs still use the existing pipeline and schedule.
      */
-    suspend fun reconcileUnmatchedLibraryMetadata(): Int {
+    suspend fun reconcileUnmatchedLibraryMetadata(
+        maxRecords: Int = 12,
+        metadataOnly: Boolean = false,
+    ): Int {
+        require(maxRecords in 1..24)
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", defaultValue = true)) return 0
         val rows = library.loadLibraryCatalogRows()
         var changedOutcomes = 0
+        var examined = 0
+        val persistedAttempts = readMetadataMatchAttemptTimes().toMutableMap()
         for (row in rows) {
             currentCoroutineContext().ensureActive()
             val local = row.anime
@@ -1252,11 +1318,24 @@ class ReiAnixAniListIntegrationService(
                 local.anilistId != null ||
                 local.anilistMatchManual == true ||
                 local.metadataSource == "manual" ||
-                local.metadataStatus == "manual"
+                local.metadataStatus == "manual" ||
+                !hasMetadataGap(local)
             ) continue
-            if (local.anilistMatchStatus in AUTO_MATCH_TERMINAL_STATUSES) continue
 
-            when (val result = autoMatch(local.id)) {
+            // A missing cover and a missing description are independent gaps. Retry an
+            // unresolved metadata match on its own cadence, even when the cover pipeline
+            // already found and displayed an image for this title.
+            val nowSeconds = System.currentTimeMillis() / 1000.0
+            val previousAttempt = persistedAttempts[local.id]
+            if (previousAttempt != null &&
+                nowSeconds - previousAttempt < AUTO_MATCH_COOLDOWN_MS / 1_000.0
+            ) continue
+            if (examined >= maxRecords) break
+            examined++
+            writeMetadataMatchAttemptAt(local.id, nowSeconds)
+            persistedAttempts[local.id] = nowSeconds
+
+            when (val result = autoMatch(local.id, metadataOnly = metadataOnly)) {
                 is AniListResult.Success -> when (result.value) {
                     is AniListAutoMatchResult.Matched -> changedOutcomes++
                     AniListAutoMatchResult.NoMatch -> changedOutcomes++
@@ -1273,6 +1352,55 @@ class ReiAnixAniListIntegrationService(
         return changedOutcomes
     }
 
+    private fun hasMetadataGap(anime: ReiAnixAnimeRecord): Boolean =
+        anime.description.isNullOrBlank() ||
+            anime.episodesCount == null ||
+            anime.duration == null ||
+            anime.status.isNullOrBlank() ||
+            anime.format.isNullOrBlank() ||
+            anime.year == null ||
+            anime.score == null
+
+    private suspend fun readMetadataMatchAttemptTimes(): Map<Long, Double> = withContext(Dispatchers.IO) {
+        library.database.read { connection ->
+            connection.rawQuery(
+                "SELECT key, value FROM preferences WHERE substr(key, 1, ?) = ?",
+                arrayOf(
+                    METADATA_MATCH_ATTEMPT_PREFERENCE_PREFIX.length.toString(),
+                    METADATA_MATCH_ATTEMPT_PREFERENCE_PREFIX,
+                ),
+            ).use { cursor ->
+                buildMap {
+                    while (cursor.moveToNext()) {
+                        val animeId = cursor.getString(0).orEmpty()
+                            .removePrefix(METADATA_MATCH_ATTEMPT_PREFERENCE_PREFIX)
+                            .toLongOrNull()?.takeIf { it > 0L } ?: continue
+                        val attemptAt = cursor.getString(1)?.toDoubleOrNull()
+                            ?.takeIf { it.isFinite() } ?: continue
+                        put(animeId, attemptAt)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun writeMetadataMatchAttemptAt(animeId: Long, attemptAtSeconds: Double) =
+        withContext(Dispatchers.IO) {
+            library.database.transaction { connection ->
+                val values = ContentValues().apply {
+                    put("key", METADATA_MATCH_ATTEMPT_PREFERENCE_PREFIX + animeId)
+                    put("value", attemptAtSeconds.toString())
+                    put("updated_at", attemptAtSeconds)
+                }
+                connection.insertWithOnConflict(
+                    "preferences",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+            }
+        }
+
     private suspend fun applyRemote(
         local: ReiAnixAnimeRecord,
         remote: AniListAnime,
@@ -1280,6 +1408,7 @@ class ReiAnixAniListIntegrationService(
         score: Double?,
         margin: Double?,
         traceMoeConfirmed: Boolean = false,
+        metadataOnly: Boolean = false,
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
             // Artwork preference controls whether the remote URL becomes eligible
@@ -1325,8 +1454,10 @@ class ReiAnixAniListIntegrationService(
                     aliasesJson = remote.synonyms.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     description = displayDescription,
                     descriptionOriginal = remoteOriginalDescription,
-                    coverUrl = if (artworkEnabled) remote.coverExtraLargeUrl ?: remote.coverLargeUrl else null,
-                    bannerUrl = remote.bannerUrl.takeIf { artworkEnabled },
+                    coverUrl = if (artworkEnabled && !metadataOnly) {
+                        remote.coverExtraLargeUrl ?: remote.coverLargeUrl
+                    } else null,
+                    bannerUrl = remote.bannerUrl.takeIf { artworkEnabled && !metadataOnly },
                     genresJson = remote.genres.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() },
                     year = remote.seasonYear,
                     season = remote.season,
@@ -1354,7 +1485,7 @@ class ReiAnixAniListIntegrationService(
             // The metadata patch above is already committed to the canonical database.
             // Persist the lower-quality HTTPS variant before projection so it can be
             // tried only if the primary cover cannot be materialized.
-            if (artworkEnabled) {
+            if (artworkEnabled && !metadataOnly) {
                 try {
                     persistAniListCoverFallbackCandidates(updated.id, updated.mediaKind, remote)
                 } catch (cancelled: CancellationException) {
@@ -1382,7 +1513,7 @@ class ReiAnixAniListIntegrationService(
                     Log.w(TAG, "AniList metadata committed but genre registry sync failed", error)
                 }
             }
-            enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled)
+            enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled && !metadataOnly)
             AniListResult.Success(updated)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -1581,10 +1712,6 @@ class ReiAnixAniListIntegrationService(
         private val autoMatchAttemptTimestamps = ConcurrentHashMap<Long, Long>()
         const val AUTO_MATCH_MIN_SCORE = ReiAnixAniListMatcher.AUTO_CONFIRM_SCORE
         const val AUTO_MATCH_MIN_MARGIN = ReiAnixAniListMatcher.AUTO_CONFIRM_MARGIN
-        private val AUTO_MATCH_TERMINAL_STATUSES = setOf(
-            "not_found",
-            "ambiguous",
-        )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     }
 }
