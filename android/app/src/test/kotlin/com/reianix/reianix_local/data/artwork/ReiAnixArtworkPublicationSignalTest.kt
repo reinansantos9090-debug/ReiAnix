@@ -337,6 +337,43 @@ class ReiAnixArtworkPublicationSignalTest {
     }
 
     @Test
+    fun oldMusicMetadataAllowsMissingPosterRecoveryWithoutSlowingNormalPosters() {
+        // The existing MUSIC URL and metadata freshness must not make the clip
+        // cover look like a successfully identified anime poster.
+        assertTrue(shouldDiscoverMissingArtwork(
+            coverUrl = "https://cdn.example/music-video.jpg",
+            hasUsableLocalCover = false,
+            hasAniListId = true,
+            manualMetadata = false,
+            matchStatus = "confirmed",
+            metadataFetchedAtSeconds = 99_999.0,
+            nowSeconds = 100_000.0,
+            musicVideoMetadata = true,
+        ))
+        // A real local poster is still never replaced by a speculative lookup.
+        assertFalse(shouldDiscoverMissingArtwork(
+            coverUrl = "https://cdn.example/official.jpg",
+            hasUsableLocalCover = true,
+            hasAniListId = true,
+            manualMetadata = false,
+            matchStatus = "confirmed",
+            metadataFetchedAtSeconds = null,
+            nowSeconds = 100_000.0,
+            musicVideoMetadata = true,
+        ))
+        // Regular URLs and their existing cooldown remain unchanged.
+        assertFalse(shouldDiscoverMissingArtwork(
+            coverUrl = "https://cdn.example/official.jpg",
+            hasUsableLocalCover = false,
+            hasAniListId = true,
+            manualMetadata = false,
+            matchStatus = "confirmed",
+            metadataFetchedAtSeconds = 99_999.0,
+            nowSeconds = 100_000.0,
+        ))
+    }
+
+    @Test
     fun existingUrlLocalCoverAndRecentlyFetchedRowsAreNotRediscovered() {
         assertFalse(shouldDiscoverMissingArtwork("https://example.test/poster.jpg", false, false, false, null, null, 100_000.0))
         assertTrue(shouldDiscoverMissingArtwork("not-a-url", false, false, false, null, null, 100_000.0))
