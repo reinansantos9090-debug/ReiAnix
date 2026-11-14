@@ -243,8 +243,10 @@ data class ReiAnixCatalogAnime(
  */
 internal fun isCatalogMusicVideo(remote: ReiAnixCatalogAnime): Boolean {
     if (remote.mediaKind == ReiAnixCatalogMediaKind.MUSIC) return true
-    return remote.format?.trim()?.uppercase(Locale.ROOT) in
-        setOf("MUSIC", "MUSIC_VIDEO", "MUSIC VIDEO", "MUSIC-VIDEO")
+    return when (remote.format?.trim()?.uppercase(Locale.ROOT)) {
+        "MUSIC", "MUSIC_VIDEO", "MUSIC VIDEO", "MUSIC-VIDEO" -> true
+        else -> false
+    }
 }
 
 /**
