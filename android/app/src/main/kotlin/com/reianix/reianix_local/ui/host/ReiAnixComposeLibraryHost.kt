@@ -243,6 +243,22 @@ class ReiAnixComposeLibraryHost(
                     )
                 }
 
+                // Prefer AniList for existing AniList posters; this metadata-only
+                // lookup does not request artwork or change existing poster scheduling.
+                try {
+                    withContext(Dispatchers.IO) {
+                        dependencies.aniListIntegrationService.recoverMetadataForReadyAniListPosters()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w(
+                        TAG,
+                        "Ready AniList-poster metadata recovery failed. errorType=" +
+                            error::class.java.simpleName,
+                    )
+                }
+
                 // Backfill synopsis/details for posters already on disk from older
                 // sessions. The recovery is metadata-only and yields whenever artwork
                 // is actively downloading; it never queues a poster or a media scan.
