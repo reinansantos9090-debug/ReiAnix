@@ -8,15 +8,15 @@ No mesmo projeto do Google Cloud:
 
 1. Configure a tela de consentimento OAuth.
 2. Crie um OAuth Client ID do tipo **Web application**.
-3. Use o valor terminado em `apps.googleusercontent.com` como `REIANIX_GOOGLE_WEB_CLIENT_ID`.
-4. Crie também um OAuth Client ID do tipo **Android** para `com.reianix.reianix_local`.
+3. Use o valor terminado em `apps.googleusercontent.com` como `REIFLIX_GOOGLE_WEB_CLIENT_ID`.
+4. Crie também um OAuth Client ID do tipo **Android** para `com.reiflix.reiflix_local`.
 5. Cadastre no cliente Android os fingerprints SHA-1 e SHA-256 do certificado que assina o APK instalado.
 
 Não é necessário habilitar Google Drive, Gmail, Contacts ou APIs de arquivos.
 
 ## 2. Configurar o Web Client ID
 
-O workflow oficial aceita o valor como variável de repositório ou secret com o nome `REIANIX_GOOGLE_WEB_CLIENT_ID`. Como o identificador é público, a **Repository Variable** costuma ser a opção mais simples. O workflow injeta o valor no recurso Android somente durante a compilação.
+O workflow oficial aceita o valor como variável de repositório ou secret com o nome `REIFLIX_GOOGLE_WEB_CLIENT_ID`. Como o identificador é público, a **Repository Variable** costuma ser a opção mais simples. O workflow injeta o valor no recurso Android somente durante a compilação.
 
 Se nenhum valor estiver configurado, o APK continua compilável, mas o aplicativo informa que o login precisa ser configurado em vez de simular uma autenticação.
 

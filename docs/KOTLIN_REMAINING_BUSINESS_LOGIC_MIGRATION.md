@@ -9,7 +9,7 @@ Foram inventariados os módulos Python operacionais, entry point, views, bridges
 
 ## Migração feita nesta etapa
 
-A lógica pura de core/library_discovery.py agora possui implementação Kotlin em android/app/src/main/kotlin/com/reianix/reianix_local/data/library/ReiAnixLibraryDiscovery.kt:
+A lógica pura de core/library_discovery.py agora possui implementação Kotlin em android/app/src/main/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryDiscovery.kt:
 
 - timeline_groups: ano decrescente, ano inválido/desconhecido ao final, título e ID como desempate.
 - duration_anomalies: durações finitas e positivas, mediana, quartis median-of-halves, mínimo de quatro observações para outliers, limites IQR e os limiares relativos legados.
@@ -96,7 +96,7 @@ Estados:
 ## Testes e validação
 
 - Novo contrato Python: tests/test_prompt22_remaining_business_logic_migration.py.
-- Novo teste Kotlin/JVM manual: android/app/src/test/kotlin/com/reianix/reianix_local/data/library/ReiAnixLibraryDiscoveryTest.kt. Não executado manualmente.
+- Novo teste Kotlin/JVM manual: android/app/src/test/kotlin/com/reiflix/reiflix_local/data/library/ReiAnixLibraryDiscoveryTest.kt. Não executado manualmente.
 - A suíte Python e a compilação de release serão verificadas pelos workflows oficiais do commit resultante. O status do commit-base não é evidência de sucesso para esta etapa.
 - Não foi criado workflow instrumentado, não foram adicionados testes de emulador e não se alterou a política de execução manual dos testes Kotlin/JVM.
 

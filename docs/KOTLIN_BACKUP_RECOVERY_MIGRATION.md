@@ -5,7 +5,7 @@
 - Repositório: `reinansantos9090-debug/ReiAnix`.
 - Base canônica: `filesDir/data/library.sqlite3`.
 - Contrato persistido: SQLite schema v29.
-- Formato de backup compatível: ZIP `reianix-backup-v1`, `format_version = 1`.
+- Formato de backup compatível: ZIP `rei-flix-backup-v1`, `format_version = 1`.
 - Implementação nativa: `ReiAnixBackupService`, `MainActivity`, `ReiAnixSqliteDatabase` e a rota Compose `ReiAnixRecoveryRoute`.
 
 A etapa reutiliza o formato e os serviços existentes; não cria outro banco operacional, catálogo, formato de exportação principal ou arquitetura paralela de persistência.

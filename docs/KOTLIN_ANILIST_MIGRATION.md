@@ -2,7 +2,7 @@
 
 ## Escopo
 
-Este documento registra o fluxo AniList utilizado pelos consumidores nativos do ReiAnix. A implementação de produção para Compose está composta por android/app/src/main/kotlin/com/reianix/reianix_local/data/anilist/ReiAnixAniListClient.kt, ReiAnixAniListIntegrationService.kt, ReiAnixAniListDescriptionLocalizer.kt, o ReiAnixSqliteLibraryRepository canônico e ReiAnixAppDependencies.
+Este documento registra o fluxo AniList utilizado pelos consumidores nativos do ReiAnix. A implementação de produção para Compose está composta por android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/ReiAnixAniListClient.kt, ReiAnixAniListIntegrationService.kt, ReiAnixAniListDescriptionLocalizer.kt, o ReiAnixSqliteLibraryRepository canônico e ReiAnixAppDependencies.
 
 A migração não remove o runtime híbrido nem os consumidores Python legados. core/anilist.py e core/artwork.py permanecem disponíveis para jornadas Flet ainda ativas. No modo Compose, main.py chama hydrate_catalog_metadata(..., allow_anilist_metadata=False): o worker Python não pesquisa AniList, não faz matching nem materializa imagens. O evento anilist_metadata_committed apenas atualiza a projeção, enquanto ReiAnixArtworkService em Kotlin materializa as URLs persistidas usando o mesmo SQLite v29. No modo Flet legado, o parâmetro continua verdadeiro por padrão e mantém a compatibilidade até esses consumidores serem migrados.
 

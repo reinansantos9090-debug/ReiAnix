@@ -1,0 +1,488 @@
+package com.reiflix.reiflix_local.ui.details
+
+import android.graphics.Bitmap
+import java.io.File
+import androidx.test.platform.app.InstrumentationRegistry
+
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import com.reiflix.reiflix_local.ui.ReiAnixComposeRoot
+import com.reiflix.reiflix_local.data.diagnostics.ReiAnixDiagnosticTimeline
+import androidx.compose.runtime.mutableStateOf
+import com.reiflix.reiflix_local.ui.model.ReiAnixAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixArtworkUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixConsumptionState
+import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsAnimeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsLoadStatus
+import com.reiflix.reiflix_local.ui.model.ReiAnixDetailsUiState
+import com.reiflix.reiflix_local.ui.model.ReiAnixEpisodeUiModel
+import com.reiflix.reiflix_local.ui.model.ReiAnixGenreUiModel
+import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationStatus
+import com.reiflix.reiflix_local.viewmodel.ReiAnixTraceMoeIdentificationUiState
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+
+class ReiAnixDetailsInstrumentedTest {
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    @Test
+    fun readyHeroShowsRealMetadataAndDispatchesExistingActions() {
+        var watchedEpisodeId: Long? = null
+        var favoriteAnimeId: Long? = null
+        var backCount = 0
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = ReiAnixDetailsUiState(
+                        status = ReiAnixDetailsLoadStatus.READY,
+                        sourceAvailable = true,
+                        sourceState = "AVAILABLE",
+                        anime = ReiAnixDetailsAnimeUiModel(
+                            id = 42L,
+                            title = "ReiAnix Test",
+                            year = 2026,
+                            genres = listOf(
+                                ReiAnixGenreUiModel("action", "Action"),
+                                ReiAnixGenreUiModel("drama", "Drama"),
+                            ),
+                            score = 86.0,
+                            favorite = true,
+                            artwork = ReiAnixArtworkUiModel(null, null),
+                            episodeCount = 12,
+                            announcedEpisodeCount = 24,
+                            playbackTargetEpisodeId = 71L,
+                            shouldContinue = true,
+                        ),
+                    ),
+                    onBack = { backCount++ },
+                    onRetry = {},
+                    onWatch = { watchedEpisodeId = it },
+                    onToggleFavorite = { favoriteAnimeId = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("ReiAnix Test").assertIsDisplayed()
+        composeRule.onNodeWithText("2026").assertIsDisplayed()
+        composeRule.onNodeWithText("Nota 8.6/10").assertIsDisplayed()
+        composeRule.onNodeWithText("Biblioteca: 12 episódios locais").assertIsDisplayed()
+        composeRule.onNodeWithText("AniList: 24 episódios esperados").assertIsDisplayed()
+        composeRule.onNodeWithText("Action").assertIsDisplayed()
+        composeRule.onNodeWithText("Drama").assertIsDisplayed()
+        composeRule.onNodeWithText("Continuar").performClick()
+        composeRule.onNodeWithContentDescription("Remover da Minha Lista").performClick()
+        composeRule.onNodeWithContentDescription("Voltar").performClick()
+
+        assertEquals(71L, watchedEpisodeId)
+        assertEquals(42L, favoriteAnimeId)
+        assertEquals(1, backCount)
+    }
+
+    @Test
+    fun traceMoeIdentificationButtonDispatchesTheCurrentAnimeId() {
+        var requestedAnimeId: Long? = null
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    onIdentifyWithTraceMoe = { requestedAnimeId = it },
+                )
+            }
+        }
+
+        val identifyButton = composeRule.onNodeWithTag("details-tracemoe-identify-button")
+        identifyButton.assertIsDisplayed()
+        identifyButton.performClick()
+        assertEquals(700L, requestedAnimeId)
+    }
+
+    @Test
+    fun traceMoeRunningStateShowsCurrentEpisodeAndValidResponseCount() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val artworkFile = File(context.cacheDir, "reianix-tracemoe-progress-test.png")
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        artworkFile.outputStream().use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+        }
+        bitmap.recycle()
+
+        try {
+            composeRule.setContent {
+                ReiAnixComposeRoot {
+                    ReiAnixDetailsScreen(
+                        state = detailsStateWithEpisodes(1),
+                        onBack = {},
+                        onRetry = {},
+                        onWatch = {},
+                        onToggleFavorite = {},
+                        traceMoeState = ReiAnixTraceMoeIdentificationUiState(
+                            status = ReiAnixTraceMoeIdentificationStatus.RUNNING,
+                            message = "Aguardando a resposta do Trace.moe...",
+                            currentEpisodeId = 1L,
+                            currentEpisodeLabel = "Episódio 1",
+                            currentThumbnailPath = artworkFile.absolutePath,
+                            validResponses = 1,
+                        ),
+                    )
+                }
+            }
+
+            composeRule.onNodeWithText("Episódio 1").assertIsDisplayed()
+            composeRule.onNodeWithText("1 de 3 respostas válidas").assertIsDisplayed()
+            composeRule.onNodeWithText("Aguardando a resposta do Trace.moe...").assertIsDisplayed()
+        } finally {
+            artworkFile.delete()
+        }
+    }
+
+    @Test
+    fun traceMoeRunningButtonCancelsTheCurrentAnimeIdentification() {
+        var cancelledAnimeId: Long? = null
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    traceMoeState = ReiAnixTraceMoeIdentificationUiState(
+                        status = ReiAnixTraceMoeIdentificationStatus.RUNNING,
+                        message = "Enviando thumbnail ao Trace.moe...",
+                    ),
+                    onCancelTraceMoe = { cancelledAnimeId = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Cancelar identificação").assertIsDisplayed().performClick()
+        assertEquals(700L, cancelledAnimeId)
+    }
+
+    @Test
+    fun episodeThumbnailMovesFromMissingSourceToDecodedImageForItsOwnEpisode() {
+        ReiAnixDiagnosticTimeline.clear()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val artworkFile = File(context.cacheDir, "reianix-episode-artwork-test.png")
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        artworkFile.outputStream().use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+        }
+        bitmap.recycle()
+
+        val state = mutableStateOf(detailsStateWithEpisodes(10))
+        try {
+            composeRule.setContent {
+                ReiAnixComposeRoot {
+                    ReiAnixDetailsScreen(
+                        state = state.value,
+                        onBack = {},
+                        onRetry = {},
+                        onWatch = {},
+                        onToggleFavorite = {},
+                        onSetEpisodeWatched = { _, _ -> },
+                    )
+                }
+            }
+            composeRule.waitUntil(10_000L) {
+                ReiAnixDiagnosticTimeline.events.value.any { event ->
+                    event.name == "ARTWORK_SOURCE_NOT_FOUND" &&
+                        event.context["entity_type"] == "episode" &&
+                        event.context["entity_id"] == "7" &&
+                        event.context["artwork_type"] == "episode_thumbnail" &&
+                        event.context["candidate_count"] == "0"
+                }
+            }
+
+            composeRule.runOnIdle {
+                val current = state.value
+                val anime = current.anime!!
+                val season = anime.seasons.single()
+                state.value = current.copy(
+                    anime = anime.copy(
+                        seasons = listOf(
+                            season.copy(
+                                episodes = season.episodes.map { episode ->
+                                    if (episode.id == 7L) {
+                                        episode.copy(artwork = ReiAnixArtworkUiModel(artworkFile.absolutePath, null))
+                                    } else episode
+                                },
+                            ),
+                        ),
+                    ),
+                )
+            }
+            composeRule.waitUntil(10_000L) {
+                ReiAnixDiagnosticTimeline.events.value.any { event ->
+                    event.name == "ARTWORK_IMAGE_READY" &&
+                        event.result == "COMPLETED" &&
+                        event.context["entity_type"] == "episode" &&
+                        event.context["entity_id"] == "7" &&
+                        event.context["artwork_type"] == "episode_thumbnail"
+                }
+            }
+            assertEquals(false, ReiAnixDiagnosticTimeline.events.value.any { event ->
+                event.name == "ARTWORK_IMAGE_READY" &&
+                    event.context["entity_id"] == "8" &&
+                    event.context["artwork_type"] == "episode_thumbnail"
+            })
+            composeRule.onNodeWithText("E07 • Episode 7").assertIsDisplayed()
+        } finally {
+            artworkFile.delete()
+            ReiAnixDiagnosticTimeline.clear()
+        }
+    }
+
+    @Test
+    fun episodeMenuDispatchesPersistedEpisodeIdAndWatchedState() {
+        var dispatchedEpisodeId: Long? = null
+        var dispatchedWatched: Boolean? = null
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    onSetEpisodeWatched = { id, watched ->
+                        dispatchedEpisodeId = id
+                        dispatchedWatched = watched
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Ações do episódio Episode 1").performClick()
+        composeRule.onNodeWithText("Marcar como visto").performClick()
+
+        assertEquals(1L, dispatchedEpisodeId)
+        assertEquals(true, dispatchedWatched)
+    }
+
+    @Test
+    fun episodeListKeepsEpisodeIdentityWhenProgressChanges() {
+        val state = mutableStateOf(detailsStateWithEpisodes(10))
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state.value,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    onSetEpisodeWatched = { _, _ -> },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("E07 • Episode 7").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Ações do episódio Episode 7").performClick()
+        composeRule.onNodeWithText("Marcar como visto").assertIsDisplayed()
+
+        val current = state.value
+        val anime = current.anime!!
+        val season = anime.seasons.single()
+        state.value = current.copy(
+            anime = anime.copy(
+                seasons = listOf(
+                    season.copy(
+                        episodes = season.episodes.map { episode ->
+                            if (episode.id == 7L) {
+                                episode.copy(
+                                    progressSeconds = 18.0,
+                                    consumptionState = ReiAnixConsumptionState.IN_PROGRESS,
+                                )
+                            } else {
+                                episode
+                            }
+                        },
+                    ),
+                ),
+                playbackTargetEpisodeId = 7L,
+                shouldContinue = true,
+            ),
+        )
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("E07 • Episode 7").assertIsDisplayed()
+        composeRule.onNodeWithText("18% assistido").assertIsDisplayed()
+        composeRule.onNodeWithText("Marcar como visto").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Ações do episódio Episode 7").assertIsDisplayed()
+    }
+
+    @Test
+    fun seasonSelectorShowsOnlyTheSelectedSeasonInCanonicalOrder() {
+        val state = detailsStateWithSeasons(
+            listOf(
+                season(1, 3),
+                season(2, 3),
+            ),
+        )
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Selecionar Temporada 1").assertIsDisplayed()
+        composeRule.onNodeWithText("E01 • Episode 1").assertIsDisplayed()
+        composeRule.onNodeWithText("E02 • Episode 2").assertIsDisplayed()
+        composeRule.onNodeWithText("E03 • Episode 3").assertIsDisplayed()
+        composeRule.onNodeWithText("E11 • Episode 11").assertIsNotDisplayed()
+
+        composeRule.onNodeWithContentDescription("Selecionar Temporada 2").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("E11 • Episode 11").assertIsDisplayed()
+        composeRule.onNodeWithText("E12 • Episode 12").assertIsDisplayed()
+        composeRule.onNodeWithText("E13 • Episode 13").assertIsDisplayed()
+        composeRule.onNodeWithText("E01 • Episode 1").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun largeEpisodeSeasonUsesLazyListAndRetainsLastEpisode() {
+        val state = detailsStateWithSeasons(
+            listOf(season(1, 300)),
+        )
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("E01 • Episode 1").assertIsDisplayed()
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasText("E300 • Episode 300"))
+        composeRule.onNodeWithText("E300 • Episode 300").assertIsDisplayed()
+    }
+
+    @Test
+    fun missingOptionalMetadataIsNotInvented() {
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = ReiAnixDetailsUiState(
+                        status = ReiAnixDetailsLoadStatus.READY,
+                        sourceAvailable = true,
+                        sourceState = "AVAILABLE",
+                        anime = ReiAnixDetailsAnimeUiModel(
+                            id = 43L,
+                            title = "Local Only",
+                            year = null,
+                            genres = emptyList(),
+                            score = null,
+                            favorite = false,
+                            artwork = null,
+                            episodeCount = null,
+                            playbackTargetEpisodeId = null,
+                            shouldContinue = false,
+                        ),
+                    ),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Local Only").assertIsDisplayed()
+        composeRule.onNodeWithText("Assistir").assertIsNotDisplayed()
+        composeRule.onNodeWithText("2026").assertIsNotDisplayed()
+        composeRule.onNodeWithText("Nota 8.6/10").assertIsNotDisplayed()
+        composeRule.onNodeWithText("episódios").assertIsNotDisplayed()
+        composeRule.onNodeWithContentDescription("Adicionar à Minha Lista").assertIsDisplayed()
+        composeRule.onNodeWithText("Nenhuma mídia local disponível para reprodução.").assertIsDisplayed()
+    }
+    private fun detailsStateWithEpisodes(episodeCount: Int): ReiAnixDetailsUiState =
+        detailsStateWithSeasons(listOf(season(1, episodeCount)))
+
+    private fun detailsStateWithSeasons(
+        seasons: List<com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel>,
+    ) = ReiAnixDetailsUiState(
+        status = ReiAnixDetailsLoadStatus.READY,
+        sourceAvailable = true,
+        sourceState = "AVAILABLE",
+        anime = ReiAnixDetailsAnimeUiModel(
+            id = 700L,
+            title = "Episode List Test",
+            year = null,
+            genres = emptyList(),
+            score = null,
+            favorite = false,
+            artwork = null,
+            episodeCount = seasons.sumOf { it.episodes.size },
+            playbackTargetEpisodeId = seasons.firstOrNull()?.episodes?.firstOrNull()?.id,
+            shouldContinue = false,
+            seasons = seasons,
+        ),
+    )
+
+    private fun season(
+        number: Int,
+        count: Int,
+    ): com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel =
+        com.reiflix.reiflix_local.ui.model.ReiAnixSeasonUiModel(
+            animeId = 700L,
+            number = number,
+            title = "Temporada $number",
+            episodes = (1..count).map { offset ->
+                val id = ((number - 1) * 10L) + offset
+                ReiAnixEpisodeUiModel(
+                    id = id,
+                    animeId = 700L,
+                    seasonNumber = number,
+                    number = id.toDouble(),
+                    title = "Episode $id",
+                    fileName = "Episode-$id.mkv",
+                    media = com.reiflix.reiflix_local.ui.model.ReiAnixLocalMediaUiModel(
+                        reference = "content://episode/$id",
+                        uri = "content://episode/$id",
+                        path = null,
+                        mediaIdentity = "episode-$id",
+                        sourceAvailabilityState = "available",
+                        availability = com.reiflix.reiflix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE,
+                    ),
+                    progressSeconds = 0.0,
+                    durationSeconds = 100.0,
+                    watched = false,
+                    consumptionState = ReiAnixConsumptionState.UNWATCHED,
+                    artwork = null,
+                )
+            },
+        )
+
+}

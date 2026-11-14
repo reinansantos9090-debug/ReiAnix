@@ -8,12 +8,3 @@ The full license text is provided in the LICENSE file.
 Third-party dependencies and components may be distributed under their own
 licenses. Their respective license and attribution requirements remain
 applicable to those components.
-
-Browser filtering additions:
-- Edsuns/AdblockAndroid (a585487eb19328f635a5b7b983fa38d4c97f2bc8), LGPL-2.1.
-- Brave/ad-block C++ and retained dependencies: MPL-2.0 and MIT notices in each source file.
-- DuckDuckGo Android JNI/Kotlin origins: Apache-2.0 notices retained in source.
-- AdGuard ExtendedCss 1.3.10 and Scriptlets 1.4.0, LGPL-3.0; source references and full licenses in android/browser-filter/.
-- EasyList/EasyPrivacy and EasyList Portuguese authors, filter sources listed in assets/browser-filter/sources.json. Distributed filter data retains its original GPL-3.0 / CC BY-SA terms, separate from app code.
-- AdGuard Mobile Ads and Annoyances filters: AdGuard Software Ltd., GPL-3.0. Original snapshots are gzip-compressed without changing filter text.
-See docs/BROWSER_FILTERING.md and android/browser-filter/UPSTREAM.md for provenance and modifications.

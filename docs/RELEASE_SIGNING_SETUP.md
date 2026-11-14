@@ -13,8 +13,8 @@ A correção **não desativa o Google Play Protect** nem garante ausência de av
 3. Escolha e **guarde com segurança** a senha da nova chave. O script cria `$HOME/ReiAnix-release-key.jks` (ou reaproveita o arquivo se já existir), grava **quatro segredos criptografados** e uma variável pública do certificado no repositório.
 4. **Faça uma cópia de segurança privada da chave .jks, em local diferente do terminal usado, e guarde a senha em um gerenciador seguro.** Se gerar a chave em ambiente temporário (incluindo Codespaces), baixe uma cópia privada antes de encerrar o ambiente. Jamais coloque o arquivo, senha ou base64 em um commit, issue, PR, print ou chat.
 5. Confirme em **Settings → Secrets and variables → Actions** que aparecem os seguintes nomes (GitHub não mostra os valores dos segredos):
-   - Segredos: `REIANIX_ANDROID_KEYSTORE_B64`, `REIANIX_ANDROID_KEYSTORE_PASSWORD`, `REIANIX_ANDROID_KEY_PASSWORD`, `REIANIX_ANDROID_KEY_ALIAS`.
-   - Variável pública: `REIANIX_ANDROID_EXPECTED_CERT_SHA256`.
+   - Segredos: `REIFLIX_ANDROID_KEYSTORE_B64`, `REIFLIX_ANDROID_KEYSTORE_PASSWORD`, `REIFLIX_ANDROID_KEY_PASSWORD`, `REIFLIX_ANDROID_KEY_ALIAS`.
+   - Variável pública: `REIFLIX_ANDROID_EXPECTED_CERT_SHA256`.
 6. Depois disso, mescle esta PR. A execução de **push na main** exige a chave estável e confere se o certificado SHA-256 é o já fixado. Se estiver ausente/incorreto, o build oficial **falha antes de gerar ou publicar APK**. Verifique no resultado do GitHub Actions `signing_mode=stable` e `certificate_sha256=...`.
 
 É possível passar um caminho explícito para a chave: `bash scripts/setup_release_signing.sh /local/privado/ReiAnix-release-key.jks`. O script não sobrescreve um keystore existente. A variável pública SHA-256 impede a substituição silenciosa por outra chave.
@@ -35,6 +35,6 @@ Não gire a chave por conveniência. Se a chave privada for perdida e não houve
 ## Como verificar
 
 - No job oficial `Build ReiAnix Android APK`, confirme as etapas `Configure stable Android release signing` e `Verify APK signing certificate and identity`.
-- Examine o artefato `reianix-release-metadata.txt`: modo `stable` e o mesmo `certificate_sha256` fixado em `REIANIX_ANDROID_EXPECTED_CERT_SHA256`.
+- Examine o artefato `reiflix-release-metadata.txt`: modo `stable` e o mesmo `certificate_sha256` fixado em `REIFLIX_ANDROID_EXPECTED_CERT_SHA256`.
 - A opção de release contínuo (`reianix-ci-latest`) só pode ser executada manualmente na `main` e depois de passar pela verificação do certificado.
 - Os testes Android Instrumented e os testes Kotlin/JVM **continuam manuais**; este ajuste não instala emuladores nem muda esses workflows.
