@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.data.catalog
 
 import com.reianix.reianix_local.data.anilist.AniListAnime
+import com.reianix.reianix_local.data.anilist.isAniListMusicVideo
 import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.data.sqlite.ReiAnixCandidateMetadata
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
@@ -32,7 +33,7 @@ class ReiAnixCandidateMetadataService(
     }
 
     fun offerKitsu(animeId: Long, remote: ReiAnixCatalogAnime) {
-        if (remote.source != ReiAnixCatalogSource.KITSU) return
+        if (remote.source != ReiAnixCatalogSource.KITSU || isCatalogMusicVideo(remote)) return
         queue(
             animeId,
             ReiAnixCandidateMetadata(
@@ -50,6 +51,7 @@ class ReiAnixCandidateMetadataService(
     }
 
     fun offerAniList(animeId: Long, remote: AniListAnime) {
+        if (isAniListMusicVideo(remote)) return
         queue(
             animeId,
             ReiAnixCandidateMetadata(
