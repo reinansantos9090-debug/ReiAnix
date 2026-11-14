@@ -72,6 +72,8 @@ data class ReiAnixArtworkUiModel(
     val backdropLocalPath: String? = null,
     val backdropExternalUrl: String? = null,
     val sourceRevisions: Map<String, String> = emptyMap(),
+    /** Secondary URL is attempted only when the current poster URL fails. */
+    val fallbackExternalUrl: String? = null,
 ) {
     /** True only when Compose has a materialized local file to decode. */
     val isAvailable: Boolean
