@@ -3,7 +3,7 @@
 ## Estado e ponto de entrada
 
 A Home visível no Android é `ReiAnixHomeRoute`, em
-`android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/ReiAnixHome.kt`.
+`android/app/src/main/kotlin/com/reianix/reianix_local/ui/home/ReiAnixHome.kt`.
 `MainActivity.onCreate` monta um único `ReiAnixComposeLibraryHost` e abre
 `ReiAnixRoutes.HOME`. A rota reutiliza o `ReiAnixLibraryViewModel` compartilhado
 com Biblioteca, Minha Lista, Search, Details e Player; esta etapa não cria um
