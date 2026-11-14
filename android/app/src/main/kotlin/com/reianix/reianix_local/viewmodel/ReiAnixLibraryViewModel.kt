@@ -2124,8 +2124,10 @@ class ReiAnixLibraryViewModel(
         // downloaded. This independent stream cannot start, delay or retry poster work.
         appDependencies?.candidateMetadataService?.updates?.let { updates ->
             viewModelScope.launch {
-                updates.collect { animeId ->
-                    refreshNativeCatalog(setOf(animeId))
+                // Coalesce rapid metadata commits. A full canonical read includes every
+                // committed anime, even if several intermediate signals were skipped.
+                updates.conflate().collect {
+                    refreshNativeCatalog()
                 }
             }
         }
