@@ -87,6 +87,13 @@ internal object BrowserAdBlock {
         val script="""
             (()=>{
               if(!window.ReiAnixFilters)return;
+              const verificationHost=location.hostname.toLowerCase();
+              const verificationPath=location.pathname.toLowerCase();
+              if(verificationHost==='challenges.cloudflare.com' ||
+                 (verificationPath.startsWith('/cdn-cgi/challenge-platform/')) ||
+                 ((verificationHost==='www.google.com'||verificationHost==='www.recaptcha.net'||verificationHost==='recaptcha.net'||verificationHost==='www.gstatic.com') &&
+                   verificationPath.startsWith('/recaptcha/')) ||
+                 (verificationHost==='hcaptcha.com'||verificationHost.endsWith('.hcaptcha.com')))return;
               var scriptlets;
               $libraries
               let last='';
