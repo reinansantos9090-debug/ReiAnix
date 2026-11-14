@@ -1,0 +1,10 @@
+ReiAnix Local
+
+Copyright © 2026 Reinan Santos.
+
+This project is licensed under the Apache License, Version 2.0 (Apache-2.0).
+The full license text is provided in the LICENSE file.
+
+Third-party dependencies and components may be distributed under their own
+licenses. Their respective license and attribution requirements remain
+applicable to those components.
