@@ -33,6 +33,8 @@ class ReiAnixExternalCatalogIntegrationService(
     private val providers: ReiAnixCatalogProviderRegistry,
     private val artwork: ReiAnixArtworkService,
     private val identifierResolver: ReiAnixCatalogIdResolver? = null,
+    private val candidateMetadataPublisher: ((Long, ReiAnixCatalogAnime) -> Unit)? = null,
+    private val metadataCommitPublisher: ((Long) -> Unit)? = null,
 ) {
     private val enrichmentPassMutex = Mutex()
 
@@ -318,6 +320,7 @@ class ReiAnixExternalCatalogIntegrationService(
                     } else {
                         try {
                             anime = library.mergeExternalCatalogMetadata(verified.match, verified.remote)
+                            metadataCommitPublisher?.invoke(anime.id)
                             record(source, "VERIFIED_METADATA_MERGED", anime.id)
                         } catch (cancelled: CancellationException) {
                             throw cancelled
@@ -365,6 +368,16 @@ class ReiAnixExternalCatalogIntegrationService(
             ) {
                 record(source, "ARTWORK_CANDIDATES_QUEUED", anime.id)
                 changed = true
+            }
+
+            // Metadata is already present in the same provider response that supplied
+            // the poster candidates. Write missing fields independently, even when the
+            // strict identity matcher cannot confirm IDs. Never wait for this operation
+            // before sending images through the original artwork pipeline.
+            if (needsMetadata) {
+                val posterSource = remoteArtworkCandidates.firstOrNull { !it.coverUrl.isNullOrBlank() }
+                    ?: remoteArtworkCandidates.first()
+                candidateMetadataPublisher?.invoke(anime.id, posterSource)
             }
         }
         return changed
