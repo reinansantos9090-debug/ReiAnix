@@ -22,16 +22,18 @@ internal val SettingsRootCategories = listOf(
     ReiAnixSettingsCategoryUiModel("Geral", "Preferências, aparência e biblioteca", Icons.Filled.Settings),
     ReiAnixSettingsCategoryUiModel("Player", "Reprodução, controles, áudio e tela", Icons.Filled.PlayArrow),
     ReiAnixSettingsCategoryUiModel("Metadados e Capas", "Identificação, capas e miniaturas", Icons.Filled.Image),
-    ReiAnixSettingsCategoryUiModel("Diagnóstico e Backup", "Dados, backup, informações e diagnóstico", Icons.Filled.Backup),
+    ReiAnixSettingsCategoryUiModel("Diagnóstico e Backup", "Dados, backup e diagnóstico", Icons.Filled.Backup),
     ReiAnixSettingsCategoryUiModel("Contas e Avançado", "AniList", Icons.Filled.Settings),
     ReiAnixSettingsCategoryUiModel("Pastas", "Pastas locais da biblioteca", Icons.Filled.LibraryBooks),
+    ReiAnixSettingsCategoryUiModel("Sobre", "Versão, informações e licenças", Icons.Filled.Info),
 )
 
 /** Existing destinations remain addressable for saved navigation and search consumers. */
 internal fun settingsPageSections(page: String): List<String> = when (page) {
     "Geral" -> listOf("Geral", "appearance_theme", "appearance_library", "Biblioteca")
     "Player" -> listOf("player_playback", "player_video", "player_controls", "player_audio", "player_display", "Player")
-    "Diagnóstico e Backup" -> listOf("data_settings", "data_backup", "Dados e Backup", "about_diagnostics", "about_reports", "Sobre e Diagnóstico")
+    "Diagnóstico e Backup" -> listOf("data_settings", "data_backup", "Dados e Backup", "about_diagnostics", "about_reports")
+    "Sobre" -> listOf("Sobre")
     else -> listOf(page)
 }
 
@@ -39,7 +41,7 @@ internal fun settingsSectionTitle(section: String): String = when (section) {
     "Geral" -> "Comportamento"
     "Biblioteca" -> "Organização da biblioteca"
     "Dados e Backup" -> "Cache"
-    "Sobre e Diagnóstico" -> "Sobre"
+    "Sobre" -> "Informações do ReiAnix"
     "Player" -> "Restaurar preferências"
     else -> settingsDestination(section)?.title ?: section
 }
@@ -48,7 +50,8 @@ internal fun settingsPageForDestination(destination: String?): String? = when (d
     null -> null
     "Aparência", "Biblioteca", "appearance_theme", "appearance_library", "general_behavior", "general_privacy", "library_organization" -> "Geral"
     "library_storage", "library_scan" -> "Pastas"
-    "Dados e Backup", "Sobre e Diagnóstico", "data_cache", "about_app", "data_settings", "data_backup", "about_diagnostics", "about_reports" -> "Diagnóstico e Backup"
+    "Dados e Backup", "data_cache", "data_settings", "data_backup", "about_diagnostics", "about_reports" -> "Diagnóstico e Backup"
+    "Sobre e Diagnóstico", "about_app", "about:app", "about:licenses" -> "Sobre"
     "player_advanced", "player_playback", "player_video", "player_controls", "player_audio", "player_display" -> "Player"
     "metadata_identification", "metadata_artwork" -> "Metadados e Capas"
     "Conta", "Contas" -> "Contas e Avançado"
@@ -71,8 +74,9 @@ internal val SettingsDestinations = listOf(
     SettingsDestination("Dados e Backup", "Dados e Backup", "", listOf(
         SettingsEntry("data-cache:artwork-cache", "Limpar cache de capas", "miniaturas imagens cache artwork"),
     )),
-    SettingsDestination("Sobre e Diagnóstico", "Sobre e Diagnóstico", "", listOf(
+    SettingsDestination("Sobre", "Sobre", "", listOf(
         SettingsEntry("about:app", "Versão e informações do aplicativo", "ReiAnix versão"),
+        SettingsEntry("about:licenses", "Licenças", "Bibliotecas código aberto Apache licença créditos terceiros"),
     )),
     SettingsDestination("Biblioteca", "Biblioteca", "", listOf(
         SettingsEntry("setting:library.sort_default", "Ordenação padrão"),
@@ -132,13 +136,13 @@ internal val SettingsDestinations = listOf(
     SettingsDestination("data_backup", "Backup e restauração", "Dados e Backup", listOf(
         SettingsEntry("backup:actions", "Fazer backup", "Fazer backup Restaurar backup Verificar integridade Reconciliar arquivos"),
     )),
-    SettingsDestination("about_diagnostics", "Diagnóstico técnico", "Sobre e Diagnóstico", listOf(
+    SettingsDestination("about_diagnostics", "Diagnóstico técnico", "Diagnóstico e Backup", listOf(
         SettingsEntry("data-cache:info", "Informações do armazenamento de preferências", "SettingsStore dados locais"),
         SettingsEntry("backup:info", "Informações dos dados de backup", "SQLite schema"),
         SettingsEntry("diagnostic:info", "Diagnóstico técnico", "Diagnóstico técnico DiagnosticsService existente"),
         SettingsEntry("diagnostic:actions", "Verificações do dispositivo", "Executar diagnóstico geral Android logcat armazenamento permissões scanner indexação SQLite biblioteca capas comunicação interna desempenho estabilidade"),
     )),
-    SettingsDestination("about_reports", "Relatórios e histórico", "Sobre e Diagnóstico", listOf(
+    SettingsDestination("about_reports", "Relatórios e histórico", "Diagnóstico e Backup", listOf(
         SettingsEntry("diagnostic:reports", "Relatórios e histórico", "Importar logcat ADB cancelar coleta exportar relatório limpar resultados histórico"),
         SettingsEntry("diagnostic:timeline:heading", "Eventos nativos recentes", "timeline histórico"),
     )),

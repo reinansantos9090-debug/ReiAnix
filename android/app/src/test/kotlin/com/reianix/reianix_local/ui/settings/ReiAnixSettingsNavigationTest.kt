@@ -12,7 +12,7 @@ class ReiAnixSettingsNavigationTest {
         assertEquals(
             listOf(
                 "Geral", "Player", "Metadados e Capas", "Diagnóstico e Backup",
-                "Contas e Avançado", "Pastas",
+                "Contas e Avançado", "Pastas", "Sobre",
             ),
             SettingsRootCategories.map { it.label },
         )
@@ -24,6 +24,18 @@ class ReiAnixSettingsNavigationTest {
         assertEquals("Diagnóstico e Backup", settingsPageForDestination("about_reports"))
         assertEquals("Pastas", settingsPageForDestination("library_storage"))
         assertEquals("Contas e Avançado", settingsPageForDestination("Contas"))
+        assertEquals("Sobre", settingsPageForDestination("Sobre e Diagnóstico"))
+        assertEquals("Sobre", settingsPageForDestination("about_app"))
+        assertEquals(listOf("Sobre"), settingsPageSections("Sobre"))
+        assertEquals(false, "Sobre" in settingsPageSections("Diagnóstico e Backup"))
+        assertEquals(false, "Sobre e Diagnóstico" in settingsPageSections("Diagnóstico e Backup"))
+        assertEquals(true, "about_diagnostics" in settingsPageSections("Diagnóstico e Backup"))
+    }
+
+    @Test fun licensesHaveUniqueEntriesAndIncludeTheProjectAndFont() {
+        assertEquals(ReiAnixLicenseCredits.size, ReiAnixLicenseCredits.map { it.id }.distinct().size)
+        assertEquals("Apache License 2.0", ReiAnixLicenseCredits.first { it.id == "reianix" }.licenseName)
+        assertEquals("SIL Open Font License 1.1", ReiAnixLicenseCredits.first { it.id == "google-sans" }.licenseName)
     }
 
     @Test fun everyPreferenceUsesAnExplicitDistinctIcon() {
