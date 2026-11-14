@@ -83,12 +83,15 @@ object BroadStorageScanner {
         val state: String,
     )
     /**
-     * The Play-distributed organizer no longer requests broad all-files access.
-     * In particular, ignore stale grants from a previously installed version.
-     * Existing MediaStore and SAF discovery stay independent of this legacy scanner.
+     * Broad traversal is available only when Android itself reports the special
+     * MANAGE_EXTERNAL_STORAGE grant. Settings callbacks, intents and Python
+     * state are deliberately not used as evidence of authorization.
      */
-    fun accessLevel(context: Context): BroadStorageAccessLevel =
-        BroadStorageAccessLevel.UNAVAILABLE
+    fun accessLevel(context: Context): BroadStorageAccessLevel {
+        val granted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            Environment.isExternalStorageManager()
+        return StorageAuthorization.broadAccess(granted)
+    }
 
     fun hasAccess(context: Context): Boolean =
         accessLevel(context) == BroadStorageAccessLevel.AVAILABLE
@@ -98,12 +101,16 @@ object BroadStorageScanner {
         val result = JSONObject()
             .put("api", Build.VERSION.SDK_INT)
             .put("hasAccess", hasAccess(context))
-            .put("permissionAuthority", "not_requested_scoped_storage_only")
-            .put("permissionAuthoritative", false)
+            .put("permissionAuthority", "Environment.isExternalStorageManager")
+            .put("permissionAuthoritative", Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
             .put("permissionCheckedAt", System.currentTimeMillis())
         val rootsJson = JSONArray()
         roots(context).forEach { root ->
-            val pathAccess = false // Broad access is intentionally disabled.
+            val pathAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                runCatching { Environment.isExternalStorageManager(root.file) }.getOrDefault(false)
+            } else {
+                hasAccess(context)
+            }
             val check = JSONObject().put("path", root.file.path)
                 .put("volumeId", root.volumeId).put("uuid", root.volumeUuid ?: "")
                 .put("primary", root.primary).put("removable", root.removable).put("emulated", root.emulated)

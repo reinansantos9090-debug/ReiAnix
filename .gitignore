@@ -11,3 +11,6 @@ android/app/build/
 *.keystore
 *.p12
 *.pfx
+
+# Generated native CMake intermediates
+android/**/.cxx/

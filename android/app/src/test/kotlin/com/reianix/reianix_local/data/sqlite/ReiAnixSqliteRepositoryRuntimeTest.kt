@@ -2232,6 +2232,48 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertFalse(databaseFile.exists())
     }
 
+    @Test
+    fun ownedDownloadDuplicateKeepsProgressAndUserMetadata() {
+        createCanonicalFixture()
+        val database=ReiAnixSqliteDatabase(context)
+        val id="00000000-0000-0000-0000-000000000001"
+        val virtual="content://${context.packageName}.downloads/$id/episode-01.mkv"
+        val output="file:///media/downloaded/episode-01.mkv"
+        database.transaction {db ->
+            db.execSQL("CREATE TABLE native_downloads(id TEXT PRIMARY KEY NOT NULL,data TEXT NOT NULL)")
+            db.execSQL("UPDATE episodes SET path=?,media_identity=? WHERE id=7",arrayOf(virtual,"download:$id"))
+            db.execSQL("INSERT INTO anime(id,lookup_title,title,added_at,user_tags,personal_note) VALUES(2,'duplicate-key','Original Title',1100,'[\"download-tag\"]','download note')")
+            db.execSQL("INSERT INTO episodes(id,anime_id,path,file_name,season,progress,last_played_at,watched) VALUES(8,2,?,'episode-01.mkv',1,500,2000,1)",arrayOf(output))
+            val data=JSONObject().put("id",id).put("name","episode-01.mkv").put("state","COMPLETE").put("output",output).put("virtualUri",virtual).put("episodeId",7).put("animeId",1)
+            db.execSQL("INSERT INTO native_downloads(id,data) VALUES(?,?)",arrayOf(id,data.toString()))
+        }
+        assertTrue(com.reianix.reianix_local.downloads.DownloadCatalogBridge.reconcile(database))
+        database.read {db ->
+            db.rawQuery("SELECT progress,watched,path FROM episodes WHERE id=7",null).use {c ->assertTrue(c.moveToFirst());assertEquals(500.0,c.getDouble(0),0.0);assertEquals(1,c.getInt(1));assertEquals(virtual,c.getString(2))}
+            assertEquals(1L,android.database.DatabaseUtils.longForQuery(db,"SELECT count(*) FROM episodes",null))
+            assertEquals(1L,android.database.DatabaseUtils.longForQuery(db,"SELECT count(*) FROM anime",null))
+            db.rawQuery("SELECT personal_note,user_tags FROM anime WHERE id=1",null).use {c ->assertTrue(c.moveToFirst());assertTrue(c.getString(0).contains("keep this note"));assertTrue(c.getString(0).contains("download note"));assertTrue(c.getString(1).contains("download-tag"))}
+        }
+        assertFalse(com.reianix.reianix_local.downloads.DownloadCatalogBridge.reconcile(database))
+    }
+
+    @Test
+    fun sameFilenameAloneDoesNotMergeDifferentDownloadFiles() {
+        createCanonicalFixture()
+        val database=ReiAnixSqliteDatabase(context)
+        val id="00000000-0000-0000-0000-000000000002"
+        val virtual="content://${context.packageName}.downloads/$id/episode-01.mkv"
+        database.transaction {db ->
+            db.execSQL("CREATE TABLE native_downloads(id TEXT PRIMARY KEY NOT NULL,data TEXT NOT NULL)")
+            db.execSQL("UPDATE episodes SET path=?,media_identity=? WHERE id=7",arrayOf(virtual,"download:$id"))
+            db.execSQL("INSERT INTO episodes(id,anime_id,path,file_name,season) VALUES(8,1,'file:///different/episode-01.mkv','episode-01.mkv',1)")
+            val data=JSONObject().put("id",id).put("name","episode-01.mkv").put("state","COMPLETE").put("output","file:///download/episode-01.mkv").put("virtualUri",virtual).put("episodeId",7).put("animeId",1)
+            db.execSQL("INSERT INTO native_downloads(id,data) VALUES(?,?)",arrayOf(id,data.toString()))
+        }
+        assertFalse(com.reianix.reianix_local.downloads.DownloadCatalogBridge.reconcile(database))
+        database.read {db ->assertEquals(2L,android.database.DatabaseUtils.longForQuery(db,"SELECT count(*) FROM episodes",null))}
+    }
+
     private fun createCanonicalFixture(transformFixture: (JSONObject) -> Unit = {}) {
         databaseFile.parentFile?.mkdirs()
         val schema = loadCanonicalSchemaFixture()

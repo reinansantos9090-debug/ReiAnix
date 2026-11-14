@@ -24,7 +24,7 @@ enum class ReiAnixSqliteTransactionOutcome {
 }
 
 class ReiAnixSqliteDatabase(context: Context) {
-    private val appContext = context.applicationContext
+    internal val appContext = context.applicationContext
     private val databaseFile = ReiAnixSqliteDatabase.canonicalFile(appContext)
     private val connectionLock = Any()
     @Volatile private var contractValidated = false

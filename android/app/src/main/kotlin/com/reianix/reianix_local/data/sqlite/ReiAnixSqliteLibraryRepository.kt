@@ -1536,6 +1536,36 @@ class ReiAnixSqliteLibraryRepository(
     ): NativeLibraryIndexReport = withContext(Dispatchers.IO) {
             require(snapshot.operationId.isNotBlank()) { "A scan operation ID is required." }
             require(snapshot.scopeRoot.isNotBlank()) { "An explicit scope root is required." }
+            val bridge=com.reianix.reianix_local.downloads.DownloadCatalogBridge
+            // A public MediaStore file is visible to other applications while
+            // downloading. Scans from SAF, MediaStore and broad storage must
+            // not index that same unfinished file as an independent episode.
+            val activeTransfers=runCatching {
+                com.reianix.reianix_local.downloads.DownloadStore(database.appContext).all()
+                    .filter { it.state !in setOf("COMPLETE","CANCELLED") }
+            }.getOrDefault(emptyList())
+            val activeMediaIds=activeTransfers.mapNotNull {
+                Uri.parse(it.json.optString("transferUri"))
+                    .takeIf { uri -> uri.authority=="media" }
+                    ?.lastPathSegment?.toLongOrNull()
+            }.toSet()
+            val activeUris=activeTransfers.map { it.json.optString("transferUri") }
+                .filter(String::isNotBlank).toSet()
+            val activeRelativeNames=activeTransfers.filter {
+                it.json.optString("destination").isBlank()
+            }.map {
+                "download/reianix/" + it.name.lowercase(java.util.Locale.ROOT)
+            }.toSet()
+            fun stillDownloading(item:NativeDiscoveredMedia):Boolean {
+                val uri=Uri.parse(item.location)
+                if(item.location in activeUris) return true
+                if(uri.authority=="media" && uri.lastPathSegment?.toLongOrNull() in activeMediaIds) return true
+                return item.relativePath?.replace('\\', '/')?.trimStart('/')
+                    ?.lowercase(java.util.Locale.ROOT) in activeRelativeNames
+            }
+            val scanContainsActiveTransfers=snapshot.items.any(::stillDownloading)
+            if(bridge.reconcile(database))com.reianix.reianix_local.downloads.DownloadEvents.catalog.tryEmit(Unit)
+            val downloadAliases=bridge.aliases(database,snapshot.items.map {it.location})
             var transactionReport: NativeLibraryIndexReport? = null
             val report = database.transaction(
                 onOutcome = { outcome ->
@@ -1559,7 +1589,7 @@ class ReiAnixSqliteLibraryRepository(
                 val oldUnnumberedMovieAlbums = linkedSetOf<Long>()
 
                 val indexedItems = recognizeUnnumberedSeriesSiblings(
-                    normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items)
+                    normalizeDuplicateReleaseEpisodeTitleSuffixes(snapshot.items.filterNot(::stillDownloading))
                 )
                 for (item in indexedItems) {
                     db.execSQL("SAVEPOINT native_index_item")
@@ -1583,17 +1613,29 @@ class ReiAnixSqliteLibraryRepository(
                         ambiguous++
                         continue
                     }
+                    val download=downloadAliases[item.location]?.let {bridge.episodeFor(db,it)}
+                    if(download?.second=="REJECTED") {unchanged++;continue}
+                    val downloadRow=download?.let {entry -> db.rawQuery("SELECT * FROM episodes WHERE id=?",arrayOf(entry.first.toString())).use {c ->if(c.moveToFirst())c.toEpisodeRecord() else null}}
                     val identityRow = byIdentity.singleOrNull()
                     val pathRow = byPath.singleOrNull()
                     if (identityRow != null && pathRow != null && identityRow.id != pathRow.id) {
                         ambiguous++
                         continue
                     }
-                    val current = identityRow ?: pathRow
+                    val current = downloadRow ?: identityRow ?: pathRow
                     if (current != null) {
+                        if(downloadRow!=null) {
+                            seenLocations+=current.path
+                            current.mediaIdentity?.let {seenIdentities+=it}
+                            if(download?.second=="SAVING") {recordEpisodeObservation(db,current.id,snapshot,item);unchanged++;continue}
+                        }
                         val patch = ContentValues()
-                        if (current.path != item.location) patch.put("path", item.location)
-                        if (current.fileName != item.fileName) patch.put("file_name", item.fileName)
+                        // Native downloads retain their app-owned virtual URI and the
+                        // original title, even when the scanner sees an output-provider
+                        // filename or a different URI alias for the same physical file.
+                        val ownedDownload = current.mediaIdentity?.startsWith("download:") == true
+                        if (!ownedDownload && current.path != item.location) patch.put("path", item.location)
+                        if (!ownedDownload && current.fileName != item.fileName) patch.put("file_name", item.fileName)
                         item.mimeType?.takeIf { it.isNotBlank() }?.let { if (current.mimeType != it) patch.put("mime_type", it) }
                         item.sizeBytes?.let { if (current.fileSize != it) patch.put("file_size", it) }
                         item.modifiedAtEpochSeconds?.let { if (current.modifiedAt != it) patch.put("modified_at", it) }
@@ -1604,8 +1646,8 @@ class ReiAnixSqliteLibraryRepository(
                         item.relativePath?.takeIf { it.isNotBlank() }?.let { if (current.relativePath != it) patch.put("relative_path", it) }
                         item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
                         item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
-                        item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
-                        if (current.manualOverride != true) {
+                        item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity?.startsWith("download:")!=true && current.mediaIdentity != it) patch.put("media_identity", it) }
+                        if (current.manualOverride != true && !ownedDownload) {
                             // A formerly standalone "One Piece.mkv" can be recognized
                             // as a serial episode when a numbered sibling proves it.
                             // Preserve its original path, progress, artwork and ID.
@@ -1767,7 +1809,7 @@ class ReiAnixSqliteLibraryRepository(
                     } finally { db.execSQL("RELEASE cleanup_empty_movie") }
                 }
 
-                val reconcile = snapshot.mayReconcile &&
+                val reconcile = snapshot.mayReconcile && !scanContainsActiveTransfers &&
                     rejected == 0 && !invalidScopeEvidence && ambiguous == 0
                 var missing = 0
                 if (reconcile) {

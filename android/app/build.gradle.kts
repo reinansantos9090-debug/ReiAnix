@@ -72,6 +72,7 @@ kotlin { jvmToolchain(17) }
     // earlier validation stage 29: dependencies remain unchanged; the cleanup is structural and reuses
     // the existing Compose/Navigation/Lifecycle/Media3 stack without new abstractions.
 dependencies {
+    implementation(project(":browser-filter"))
     // Native AndroidX/Compose dependencies used by the installed application.
     implementation("androidx.activity:activity-ktx:1.13.0")
     // Compose line compatible with the existing compileSdk 36 / AGP 8.9.1 toolchain.
@@ -98,8 +99,14 @@ dependencies {
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.work:work-runtime-ktx:2.11.1")
     implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
+    implementation("androidx.media3:media3-transformer:1.11.1")
+    implementation("androidx.media3:media3-effect:1.11.1")
+    // RFC 4918 WebDAV PROPFIND (HttpURLConnection does not support custom methods).
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
     // Robolectric exercises Android SQLiteDatabase on the JVM; no emulator or instrumentation runner.

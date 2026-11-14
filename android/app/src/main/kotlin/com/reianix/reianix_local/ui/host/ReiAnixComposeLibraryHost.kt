@@ -242,39 +242,6 @@ class ReiAnixComposeLibraryHost(
                             error::class.java.simpleName,
                     )
                 }
-
-                // Prefer AniList for existing AniList posters; this metadata-only
-                // lookup does not request artwork or change existing poster scheduling.
-                try {
-                    withContext(Dispatchers.IO) {
-                        dependencies.aniListIntegrationService.recoverMetadataForReadyAniListPosters()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        TAG,
-                        "Ready AniList-poster metadata recovery failed. errorType=" +
-                            error::class.java.simpleName,
-                    )
-                }
-
-                // Backfill synopsis/details for posters already on disk from older
-                // sessions. The recovery is metadata-only and yields whenever artwork
-                // is actively downloading; it never queues a poster or a media scan.
-                try {
-                    withContext(Dispatchers.IO) {
-                        dependencies.externalCatalogIntegrationService.recoverMetadataForReadyPosters()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    android.util.Log.w(
-                        TAG,
-                        "Ready-poster metadata recovery failed. errorType=" +
-                            error::class.java.simpleName,
-                    )
-                }
             }
 
             ReiAnixComposeRoot(
@@ -325,8 +292,7 @@ class ReiAnixComposeLibraryHost(
                                     }
                                 },
                                 onOpenStorageAccess = {
-                                    // Manage folders through SAF rather than requesting all-files access.
-                                    navController.navigate(ReiAnixRoutes.STORAGE)
+                                    activity.requestNativeStorageAction("open_broad_storage_settings")
                                 },
                                 onSelectDefaultReiAnixFolder = {
                                     activity.requestDefaultReiAnixFolderAuthorization()
@@ -410,7 +376,9 @@ class ReiAnixComposeLibraryHost(
                                 onSelectDefaultReiAnixFolder = {
                                     activity.requestDefaultReiAnixFolderAuthorization()
                                 },
-                                onOpenBroadSettings = libraryViewModel::selectSafTree,
+                                onOpenBroadSettings = {
+                                    activity.requestNativeStorageAction("open_broad_storage_settings")
+                                },
                                 onCheckAccess = {
                                     activity.requestNativeStorageAction("check_storage_access")
                                 },
@@ -491,6 +459,7 @@ class ReiAnixComposeLibraryHost(
 
             ReiAnixRoutes.LIBRARY,
             ReiAnixRoutes.SEARCH,
+            ReiAnixRoutes.DOWNLOADS,
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.MY_LIST,
             ReiAnixRoutes.ORGANIZE,
@@ -592,6 +561,7 @@ class ReiAnixComposeLibraryHost(
             ReiAnixRoutes.MY_LIST -> controller.navigateToMyList()
 
             ReiAnixRoutes.ORGANIZE,
+            ReiAnixRoutes.DOWNLOADS,
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.STORAGE,
             -> controller.navigate(

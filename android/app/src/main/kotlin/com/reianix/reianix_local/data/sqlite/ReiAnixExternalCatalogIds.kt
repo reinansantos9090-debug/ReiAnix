@@ -225,17 +225,13 @@ internal fun ReiAnixAnimeRecord.toExternalCatalogIdentity(): ReiAnixCatalogIdent
             }
         }
     }
-    // Provisional metadata can belong to an incorrect but usable cover. It is for
-    // display only: do not let its year/format/episode totals falsely confirm or
-    // reject a future canonical AniList/Kitsu identity association.
-    val candidateOnly = metadataSource?.endsWith("_candidate", ignoreCase = true) == true
     return ReiAnixCatalogIdentity(
         titles = titles.ifEmpty { setOf(title) },
-        releaseYear = year.takeUnless { candidateOnly },
-        format = format.takeUnless { candidateOnly },
-        mediaKind = parseLocalMediaKind(mediaKind, format.takeUnless { candidateOnly }),
-        season = season.takeUnless { candidateOnly },
-        episodes = episodesCount?.takeIf { it >= 0 && !candidateOnly },
+        releaseYear = year,
+        format = format,
+        mediaKind = parseLocalMediaKind(mediaKind, format),
+        season = season,
+        episodes = episodesCount?.takeIf { it >= 0 },
     )
 }
 
@@ -403,17 +399,8 @@ suspend fun ReiAnixSqliteLibraryRepository.mergeExternalCatalogMetadata(
             }
         }
 
-        // A subsequently verified match supersedes the provisional catalog origin.
-        if (current.metadataSource?.endsWith("_candidate", ignoreCase = true) == true) {
-            values.put("metadata_source", remote.source.key)
-        } else {
-            fillText("metadata_source", current.metadataSource, remote.source.key)
-        }
-        if (current.metadataConfidence == "unverified_artwork_candidate") {
-            values.put("metadata_confidence", "verified_exact_identity")
-        } else {
-            fillText("metadata_confidence", current.metadataConfidence, "verified_exact_identity")
-        }
+        fillText("metadata_source", current.metadataSource, remote.source.key)
+        fillText("metadata_confidence", current.metadataConfidence, "verified_exact_identity")
         fillText("metadata_status", current.metadataStatus, "supplemental")
         if (current.metadataFetchedAt == null) {
             values.put("metadata_fetched_at", System.currentTimeMillis() / 1_000.0)

@@ -1169,7 +1169,7 @@ private fun LibraryAnimeCard(
         completed = renderData.completed,
         modifier = modifier,
         onClick = onClick,
-        bottomBadgeText = presentationStateLabel(anime.presentationState) ?: when {
+        bottomBadgeText = com.reianix.reianix_local.downloads.downloadLibraryLabel(animeId = anime.id) ?: presentationStateLabel(anime.presentationState) ?: when {
             anime.mediaKind == com.reianix.reianix_local.ui.model.ReiAnixMediaKind.MOVIE -> "Filme"
             renderData.availableCount > 0 -> renderData.availableCount.toString() + if (renderData.availableCount == 1) " episódio" else " episódios"
             else -> null
@@ -1177,6 +1177,7 @@ private fun LibraryAnimeCard(
         onFavoriteClick = onToggleFavorite,
         maxDimensionPx = maxDimensionPx,
     )
+
 }
 
 private data class LibraryCardRenderData(
