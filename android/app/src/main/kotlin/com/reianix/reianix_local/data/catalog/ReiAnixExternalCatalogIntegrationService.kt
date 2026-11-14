@@ -162,11 +162,12 @@ class ReiAnixExternalCatalogIntegrationService(
             }
             when (result) {
                 is ReiAnixCatalogResult.Success -> {
-                    val candidate = result.value.firstOrNull {
+                    val eligible = result.value.filterNot(::isCatalogMusicVideo)
+                    val candidate = eligible.firstOrNull {
                         target.posterUrl != null && it.coverUrl == target.posterUrl
-                    } ?: result.value.firstOrNull {
+                    } ?: eligible.firstOrNull {
                         !it.synopsis.isNullOrBlank()
-                    } ?: result.value.firstOrNull()
+                    } ?: eligible.firstOrNull()
                     if (candidate != null) {
                         candidateMetadataPublisher?.invoke(target.animeId, candidate)
                         offered++
@@ -471,10 +472,15 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
                 is ReiAnixCatalogResult.Success -> {
                     val remote = result.value ?: return Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
-                    val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
-                    val artworkCandidates = usableCatalogArtworkCandidates(listOf(remote))
-                    val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
-                    Resolution(evaluation.decision, verified, artworkCandidates)
+                    if (isCatalogMusicVideo(remote)) {
+                        record(provider.source, "MUSIC_VIDEO_CANDIDATE_SKIPPED", anime.id)
+                        Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
+                    } else {
+                        val evaluation = ReiAnixCatalogIdentityMatcher.evaluate(anime.id, identity, remote, ids)
+                        val artworkCandidates = usableCatalogArtworkCandidates(listOf(remote))
+                        val verified = evaluation.value?.let { VerifiedRemote(remote, it) }
+                        Resolution(evaluation.decision, verified, artworkCandidates)
+                    }
                 }
             }
         }
@@ -492,6 +498,8 @@ class ReiAnixExternalCatalogIntegrationService(
                 }
                 is ReiAnixCatalogResult.Success -> {
                     result.value.forEach { remote ->
+                        // No catalog association, synopsis or poster may originate from MUSIC.
+                        if (isCatalogMusicVideo(remote)) return@forEach
                         val remoteId = remote.ids.idFor(remote.source)
                         if (remoteId.isNullOrBlank()) {
                             incompleteSearch = true
