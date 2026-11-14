@@ -237,6 +237,7 @@ class ReiAnixAniListIntegrationService(
     private val genreRegistry: ReiAnixGenreRegistry? = null,
     private val artworkCandidatePublisher: ((Long, List<ReiAnixArtworkCandidate>) -> Boolean)? = null,
     private val traceMoeClient: ReiAnixTraceMoeClient = ReiAnixTraceMoeClient(),
+    private val candidateMetadataPublisher: ((Long, AniListAnime) -> Unit)? = null,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -276,6 +277,10 @@ class ReiAnixAniListIntegrationService(
         artworkCandidatePublisher = { animeId, candidates ->
             ReiAnixAppDependencies.existingOrNull(context.applicationContext)
                 ?.artworkService?.requestAnimeArtworkCandidates(animeId, candidates) ?: false
+        },
+        candidateMetadataPublisher = { animeId, candidate ->
+            ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.candidateMetadataService?.offerAniList(animeId, candidate)
         },
     )
 
@@ -948,12 +953,16 @@ class ReiAnixAniListIntegrationService(
         }
         val best = ranked.first()
         if (best.score < ReiAnixAniListMatcher.MINIMUM_SCORE) {
+            // The same fetched candidate can still fill empty description/details.
+            // This does not assign an AniList ID or affect the existing poster work.
+            candidateMetadataPublisher?.invoke(animeId, best.anime)
             recordAutoMatchOutcome(animeId, "not_found")
             return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         }
         val second = ranked.getOrNull(1)?.score ?: 0.0
         val margin = best.score - second
         if (best.score < AUTO_MATCH_MIN_SCORE || margin < AUTO_MATCH_MIN_MARGIN) {
+            candidateMetadataPublisher?.invoke(animeId, best.anime)
             recordAutoMatchOutcome(
                 animeId,
                 "ambiguous",
@@ -1056,7 +1065,10 @@ class ReiAnixAniListIntegrationService(
         if (candidatesById.isEmpty()) return emptyList()
         // Do not use identity confidence, exact-title checks, or metadata similarity to
         // decide which AniList images can be published. Keep the provider's result order.
-        return usableAniListArtworkCandidates(candidatesById.values)
+        val artworkCandidates = usableAniListArtworkCandidates(candidatesById.values)
+        // No extra API call: candidate metadata arrives in the same AniList response.
+        artworkCandidates.firstOrNull()?.let { candidateMetadataPublisher?.invoke(local.id, it) }
+        return artworkCandidates
     }
 
     private suspend fun readArtworkDiscoveryCursor(): Long = withContext(Dispatchers.IO) {
