@@ -1124,7 +1124,7 @@ class ReiAnixAniListIntegrationService(
     // catch-up lookup per affected anime after this upgrade, then keep normal cooldowns.
     // This marker is local to the artwork recovery; no schema or scheduled work changes.
     private fun musicRecoveryKey(animeId: Long): String =
-        "__reianix.non_music_poster_recovery_v1.$animeId"
+        "__reianix.non_music_poster_recovery_single_query_v2.$animeId"
 
     private suspend fun hasAttemptedMusicRecovery(animeId: Long): Boolean =
         withContext(Dispatchers.IO) {
@@ -1251,7 +1251,12 @@ class ReiAnixAniListIntegrationService(
                 persistedAttemptTimes[local.id] = attemptAtSeconds
                 if (immediateMusicRetry) markMusicRecoveryAttempt(local.id, attemptAtSeconds)
                 val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
-                if (remoteId != null) {
+                if (musicVideoMetadata) {
+                    // The stored AniList ID already points to MUSIC. Do not spend a
+                    // request fetching that same clip by ID: search for a non-MUSIC
+                    // anime by its existing title in the original discovery pass.
+                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                } else if (remoteId != null) {
                     val remote = when (val result = client.getAnime(remoteId.toInt())) {
                         is AniListResult.Success -> result.value
                         is AniListResult.Failure -> {
@@ -1260,8 +1265,8 @@ class ReiAnixAniListIntegrationService(
                         }
                     }
                     if (remote == null || isAniListMusicVideo(remote)) {
-                        // Even an old linked MUSIC ID must not publish an automatic clip poster.
-                        // Only affected entries fall back to the existing title artwork search.
+                        // A stale ID that resolves to MUSIC is never accepted as artwork.
+                        // Unknown legacy metadata may require title discovery instead.
                         if (publishArtworkCandidates(local.id,
                                 discoverArtworkCandidates(local)
                             )
