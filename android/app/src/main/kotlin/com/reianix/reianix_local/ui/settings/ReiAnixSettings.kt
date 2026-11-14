@@ -234,11 +234,14 @@ fun ReiAnixSettingsRoute(
     // Restore saved navigation from APKs that still had these intermediate pages.
     val destination = settingsPageForDestination(selectedDestination)
     fun goBack() {
-        selectedDestination = if (selectedDestination == "Licenças") "Sobre" else null
+        selectedDestination = null
         selectedItemIndex = 0
     }
     BackHandler(enabled = destination != null) { goBack() }
     when {
+        destination == "Downloads" -> ReiAnixSettingsRoot {
+            com.reianix.reianix_local.downloads.DownloadSettingsScreen(onBack=::goBack)
+        }
         destination == "Pastas" -> {
             if (libraryFoldersContent != null) {
                 libraryFoldersContent(::goBack)
@@ -250,9 +253,6 @@ fun ReiAnixSettingsRoute(
                     onOpenStorage()
                 }
             }
-        }
-        destination == "Licenças" -> androidx.compose.runtime.key(destination) {
-            ReiAnixOpenSourceLicensesScreen(onBack = ::goBack)
         }
         destination == "Contas e Avançado" -> androidx.compose.runtime.key(destination) {
             ReiAnixSettingsRoot {
@@ -764,7 +764,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
 
-                "Sobre" -> {
+                "Sobre e Diagnóstico" -> {
                     item(key = "about:app") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
@@ -801,14 +801,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                             }
                         }
-                    }
-                    item(key = "about:licenses") {
-                        ReiAnixSettingsRow(
-                            icon = Icons.Filled.Info,
-                            title = "Licenças",
-                            description = "Bibliotecas de código aberto e créditos usados no ReiAnix",
-                            onClick = { onOpenSubmenu("Licenças") },
-                        )
                     }
                 }
 

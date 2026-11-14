@@ -968,7 +968,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         try {
             logPlayer("EXOPLAYER_CREATE requestId=" + requestId.ifEmpty { "-" })
             logPlayer("MEDIA3_PLAYER_CREATE_START requestId=" + requestId.ifEmpty { "-" })
-            player = ExoPlayer.Builder(this).build()
+            player = ExoPlayer.Builder(this)
+                .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this,
+                    com.reianix.reianix_local.downloads.DownloadExtractorsFactory(this))
+                    .setDataSourceFactory(com.reianix.reianix_local.downloads.DownloadDataSourceFactory(this)))
+                .build()
             PerformanceDiagnostics.markPlayer(this, "player_created", requestId,
                 commandCreatedAtMs, reused = false)
             player.setAudioAttributes(
@@ -6015,6 +6019,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun sourceFor(localUri: Uri): String {
         return when {
+            localUri.scheme.equals("content", true) && localUri.authority == "$packageName.downloads" -> "reianix_download"
             localUri.scheme.equals("content", true) && localUri.authority == MediaStore.AUTHORITY -> "mediastore"
             localUri.scheme.equals("content", true) -> "saf"
             localUri.scheme.equals("file", true) -> "broad_storage"
@@ -6042,6 +6047,27 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun validateLocalSource(localUri: Uri): SourceValidationFailure? {
         val result = when (localUri.scheme?.lowercase()) {
             "content" -> {
+                // Native downloads are app-owned sources, not SAF documents.
+                // Validate their persisted state and readable file descriptor before playing.
+                if (localUri.authority == "$packageName.downloads") {
+                    val id = localUri.pathSegments.firstOrNull().orEmpty()
+                    val item = runCatching {
+                        com.reianix.reianix_local.downloads.DownloadStore(this).get(id)
+                    }.getOrNull()
+                    when {
+                        item == null || item.state in setOf("CANCELLED", "CORRUPT") ->
+                            SourceValidationFailure("Este download não está disponível.", "MEDIA_URI_INVALID")
+                        item.state == "ERROR" ->
+                            SourceValidationFailure("Este download precisa ser retomado.", "MEDIA_URI_INVALID")
+                        runCatching {
+                            contentResolver.openFileDescriptor(localUri, "r")?.use { true } == true
+                        }.getOrDefault(false) -> null
+                        else -> SourceValidationFailure(
+                            "O arquivo do download ainda não está disponível para leitura.",
+                            "MEDIA_URI_INVALID",
+                        )
+                    }
+                } else {
                 val safAuthorized = runCatching {
                     SafScanner.isAuthorizedDocument(this, localUri)
                 }.getOrDefault(false)
@@ -6050,11 +6076,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         MediaStoreScanner.isAuthorizedDocument(this, localUri)
                     }.getOrDefault(false)
                 } else false
+                // Compatibility for episodes created by older ReiAnix APKs:
+                // they may still point directly to the final MediaStore output.
+                // A confirmed ownership record is enough to test readability
+                // without demanding gallery-wide permission.
+                val ownedFinishedOutput = if (!safAuthorized && !mediaStoreAuthorized &&
+                    localUri.authority == MediaStore.AUTHORITY
+                ) runCatching {
+                    com.reianix.reianix_local.downloads.DownloadStore(this).all().any { download ->
+                        download.state == "COMPLETE" && download.output == localUri.toString()
+                    }
+                }.getOrDefault(false) else false
                 logPlayer(
                     "AUTH_CHECK scheme=content authority=" + localUri.authority.orEmpty() +
-                        " saf=" + safAuthorized + " mediastore=" + mediaStoreAuthorized,
+                        " saf=" + safAuthorized + " mediastore=" + mediaStoreAuthorized +
+                        " ownedDownload=" + ownedFinishedOutput,
                 )
-                if (!safAuthorized && !mediaStoreAuthorized && !intent.getBooleanExtra("externalVideo", false)) {
+                if (!safAuthorized && !mediaStoreAuthorized && !ownedFinishedOutput &&
+                    !intent.getBooleanExtra("externalVideo", false)) {
                     if (localUri.authority == MediaStore.AUTHORITY &&
                         !MediaStoreScanner.hasReadPermission(this)
                     ) {
@@ -6088,6 +6127,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             "MEDIA_URI_INVALID",
                         )
                     } else null
+                }
                 }
             }
             "file" -> {
