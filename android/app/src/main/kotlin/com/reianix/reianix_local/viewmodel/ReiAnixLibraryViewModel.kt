@@ -2120,6 +2120,16 @@ class ReiAnixLibraryViewModel(
             }
         }
 
+        // A catalog metadata-only commit must refresh Details even when no artwork was
+        // downloaded. This independent stream cannot start, delay or retry poster work.
+        appDependencies?.candidateMetadataService?.updates?.let { updates ->
+            viewModelScope.launch {
+                updates.collect { animeId ->
+                    refreshNativeCatalog(setOf(animeId))
+                }
+            }
+        }
+
         // A successful artwork commit must invalidate the existing SQLite projection:
         // Compose reads immutable models and does not consume NativeMailbox directly.
         // Retain the existing publication interval and every affected identity. Read
