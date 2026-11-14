@@ -120,6 +120,22 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
+    fun targetedMusicExclusionUsesSameSearchAndServerSideFormatFilter() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Page":{"media":[]}}}"""))
+        val client = ReiAnixAniListClient(transport, 0)
+
+        assertEquals(AniListResult.Success<List<AniListAnime>>(emptyList()),
+            client.searchAnimeExcludingMusic("Futsutsuka na Akujo", limit = 10))
+        val excludedQuery = transport.requestBody!!.getString("query")
+        assertTrue(excludedQuery.contains("format_not: MUSIC"))
+        assertEquals("Futsutsuka na Akujo", transport.requestBody!!.getJSONObject("variables").getString("search"))
+
+        client.searchAnime("Futsutsuka na Akujo", limit = 10)
+        assertFalse(transport.requestBody!!.getString("query").contains("format_not: MUSIC"))
+        assertEquals(2, transport.calls)
+    }
+
+    @Test
     fun idLookupSendsLiteralIdVariableAndExpectedJsonValue() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":42,"title":{}}}}"""))
         val result = ReiAnixAniListClient(transport, 0).getAnime(42)
