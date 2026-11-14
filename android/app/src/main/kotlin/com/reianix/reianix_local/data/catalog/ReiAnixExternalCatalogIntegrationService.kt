@@ -143,6 +143,8 @@ class ReiAnixExternalCatalogIntegrationService(
         val targets = library.findCachedPostersWithMetadataGaps(maxRecords)
         var offered = 0
         for (target in targets) {
+            // Let the AniList-specific metadata pass own an AniList poster.
+            if (target.posterSource.equals("anilist", ignoreCase = true)) continue
             currentCoroutineContext().ensureActive()
             val now = System.currentTimeMillis() / 1_000.0
             val previous = library.candidateMetadataRecoveryAttemptAt(target.animeId)
