@@ -1156,6 +1156,34 @@ class ReiAnixAniListIntegrationService(
     private suspend fun writeArtworkDiscoveryAttemptAt(animeId: Long, attemptAtSeconds: Double) =
         writePersistedArtworkDiscoveryAttemptAt(library.database, animeId, attemptAtSeconds)
 
+    // An existing 24-hour attempt may predate the MUSIC filter. Allow one immediate
+    // catch-up lookup per affected anime after this upgrade, then keep normal cooldowns.
+    // This marker is local to the artwork recovery; no schema or scheduled work changes.
+    private fun musicRecoveryKey(animeId: Long): String =
+        "__reianix.non_music_poster_recovery_v1.$animeId"
+
+    private suspend fun hasAttemptedMusicRecovery(animeId: Long): Boolean =
+        withContext(Dispatchers.IO) {
+            library.database.read { db ->
+                db.rawQuery(
+                    "SELECT 1 FROM preferences WHERE key=? LIMIT 1",
+                    arrayOf(musicRecoveryKey(animeId)),
+                ).use { it.moveToFirst() }
+            }
+        }
+
+    private suspend fun markMusicRecoveryAttempt(animeId: Long, timestamp: Double) =
+        withContext(Dispatchers.IO) {
+            library.database.transaction { db ->
+                val values = ContentValues().apply {
+                    put("key", musicRecoveryKey(animeId))
+                    put("value", timestamp.toString())
+                    put("updated_at", timestamp)
+                }
+                db.insertWithOnConflict("preferences", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+        }
+
     /**
      * Discovers artwork for existing canonical rows whose poster URL was never saved.
      * It reuses the existing AniList client, conservative matcher and SQLite writer;
@@ -1216,21 +1244,28 @@ class ReiAnixAniListIntegrationService(
                         options.outWidth > 0 && options.outHeight > 0
                     }
                 }.getOrDefault(false)
+                val manualMetadata = local.anilistMatchManual == true ||
+                    local.metadataSource == "manual" || local.metadataStatus == "manual"
+                val musicVideoMetadata = !manualMetadata &&
+                    local.format?.trim()?.equals("MUSIC", ignoreCase = true) == true
+                val immediateMusicRetry = musicVideoMetadata &&
+                    !hasAttemptedMusicRecovery(local.id)
                 if (!shouldDiscoverMissingArtwork(
                         coverUrl = local.coverUrl,
                         hasUsableLocalCover = usableLocalCover,
                         hasAniListId = local.anilistId != null,
                         hasExhaustedArtworkFailure = local.id.toString() in exhaustedPosterIds,
-                        manualMetadata = local.anilistMatchManual == true ||
-                            local.metadataSource == "manual" || local.metadataStatus == "manual",
+                        manualMetadata = manualMetadata,
                         matchStatus = local.anilistMatchStatus,
                         metadataFetchedAtSeconds = local.metadataFetchedAt,
                         nowSeconds = nowSeconds,
                         forceRetry = forceRetry,
+                        musicVideoMetadata = musicVideoMetadata,
                     )
                 ) continue
                 if (shouldDeferArtworkDiscoveryAttempt(
-                        persistedAttemptTimes[local.id], nowSeconds, forceRetry = forceRetry,
+                        persistedAttemptTimes[local.id], nowSeconds,
+                        forceRetry = forceRetry || immediateMusicRetry,
                     )
                 ) {
                     continue
@@ -1239,7 +1274,8 @@ class ReiAnixAniListIntegrationService(
                 val attemptAt = nowSeconds.toLong()
                 val previousAttempt = missingArtworkLookupAttempts.putIfAbsent(local.id, attemptAt)
                 if (previousAttempt != null) {
-                    if ((!forceRetry && nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS) ||
+                    if ((!forceRetry && !immediateMusicRetry &&
+                            nowSeconds - previousAttempt < MISSING_ARTWORK_LOOKUP_COOLDOWN_SECONDS) ||
                         !missingArtworkLookupAttempts.replace(local.id, previousAttempt, attemptAt)
                     ) continue
                 }
@@ -1249,6 +1285,7 @@ class ReiAnixAniListIntegrationService(
                 val attemptAtSeconds = attemptAt.toDouble()
                 writeArtworkDiscoveryAttemptAt(local.id, attemptAtSeconds)
                 persistedAttemptTimes[local.id] = attemptAtSeconds
+                if (immediateMusicRetry) markMusicRecoveryAttempt(local.id, attemptAtSeconds)
                 val remoteId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
                 if (remoteId != null) {
                     val remote = when (val result = client.getAnime(remoteId.toInt())) {
@@ -1261,7 +1298,11 @@ class ReiAnixAniListIntegrationService(
                     if (remote == null || isAniListMusicVideo(remote)) {
                         // Even an old linked MUSIC ID must not publish an automatic clip poster.
                         // Only affected entries fall back to the existing title artwork search.
-                        if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                        if (publishArtworkCandidates(local.id,
+                                discoverArtworkCandidates(local, excludeMusic = musicVideoMetadata ||
+                                    remote?.let(::isAniListMusicVideo) == true)
+                            )
+                        ) recovered++
                         continue
                     }
                     val remotePosterUrl = remote.coverExtraLargeUrl ?: remote.coverLargeUrl
@@ -1289,7 +1330,10 @@ class ReiAnixAniListIntegrationService(
                     // Artwork recovery is read-only with respect to identity:
                     // PROBABLE/AMBIGUOUS/REJECTED/UNRESOLVED titles can provide ranked image
                     // candidates without assigning their AniList ID to the local anime.
-                    if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
+                    if (publishArtworkCandidates(local.id,
+                            discoverArtworkCandidates(local, excludeMusic = musicVideoMetadata)
+                        )
+                    ) recovered++
                 }
             }
             if (targetAnimeIds == null && lastVisitedCursor > 0L && lastVisitedCursor != discoveryCursor) {
