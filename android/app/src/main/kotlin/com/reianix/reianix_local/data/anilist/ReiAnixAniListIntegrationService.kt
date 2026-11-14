@@ -81,6 +81,10 @@ internal fun shouldResumeTraceMoeSession(persistedCompleted: Boolean): Boolean =
 
 private const val MAX_ARTWORK_CANDIDATES = 5
 
+/** AniList's official MediaFormat.MUSIC represents a music video, not an anime series. */
+internal fun isAniListMusicVideo(remote: AniListAnime): Boolean =
+    remote.format?.trim()?.equals("MUSIC", ignoreCase = true) == true
+
 /**
  * Artwork lookup preserves provider/query order and checks only whether a candidate has an image.
  * Identity scoring remains available to the separate metadata auto-match path.
@@ -89,6 +93,7 @@ internal fun usableAniListArtworkCandidates(
     candidates: Collection<AniListAnime>,
 ): List<AniListAnime> =
     candidates.asSequence()
+        .filterNot(::isAniListMusicVideo)
         .filter { remote ->
             remote.id > 0 &&
                 (!remote.coverExtraLargeUrl.isNullOrBlank() ||
@@ -888,7 +893,9 @@ class ReiAnixAniListIntegrationService(
         fun rankCandidates(
             candidates: Collection<AniListAnime>,
             titles: List<String>,
-        ): List<ReiAnixAniListMatcher.RankedCandidate> = candidates.mapNotNull { candidate ->
+        ): List<ReiAnixAniListMatcher.RankedCandidate> = candidates
+            .filterNot(::isAniListMusicVideo)
+            .mapNotNull { candidate ->
             titles.mapNotNull { title ->
                 ReiAnixAniListMatcher.rank(title, listOf(candidate), searchContext).firstOrNull()
             }.maxByOrNull { it.score }
@@ -1212,7 +1219,9 @@ class ReiAnixAniListIntegrationService(
                             null
                         }
                     }
-                    if (remote == null) {
+                    if (remote == null || isAniListMusicVideo(remote)) {
+                        // Even an old linked MUSIC ID must not publish an automatic clip poster.
+                        // Only affected entries fall back to the existing title artwork search.
                         if (publishArtworkCandidates(local.id, discoverArtworkCandidates(local))) recovered++
                         continue
                     }
@@ -1284,13 +1293,13 @@ class ReiAnixAniListIntegrationService(
             val knownId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
             val candidate = if (knownId != null) {
                 when (val result = client.getAnime(knownId.toInt())) {
-                    is AniListResult.Success -> result.value
+                    is AniListResult.Success -> result.value?.takeUnless(::isAniListMusicVideo)
                     is AniListResult.Failure -> null
                 }
             } else {
                 when (val result = client.searchAnime(target.title, 10)) {
                     is AniListResult.Success -> {
-                        val options = result.value
+                        val options = result.value.filterNot(::isAniListMusicVideo)
                         options.firstOrNull {
                             target.posterUrl != null &&
                                 (it.coverExtraLargeUrl == target.posterUrl ||
@@ -1356,6 +1365,11 @@ class ReiAnixAniListIntegrationService(
         margin: Double?,
         traceMoeConfirmed: Boolean = false,
     ): AniListResult<ReiAnixAnimeRecord> {
+        if (!manual && isAniListMusicVideo(remote)) {
+            return AniListResult.Failure(
+                AniListError.InvalidRequest("Automatic AniList music-video associations are not allowed."),
+            )
+        }
         return try {
             // Artwork preference controls whether the remote URL becomes eligible
             // for the existing artwork pipeline. This service never downloads images.
