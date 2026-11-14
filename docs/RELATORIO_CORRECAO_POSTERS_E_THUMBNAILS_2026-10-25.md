@@ -42,9 +42,9 @@ A comparação entre o commit-base e o commit `ef6e657` identificou cinco arquiv
 | Arquivo | Alteração observada | Finalidade |
 |---|---:|---|
 | `.github/workflows/release_certification.yml` | +5 / -3 linhas | Executar montagem do APK de release e guardar o APK/log/resultados de teste como artefatos. |
-| `android/app/src/main/kotlin/com/reianix/reianix_local/data/artwork/ReiAnixArtworkService.kt` | +100 / -13 linhas | Retry de posters, backoff, fila de pedidos forçados e regras de elegibilidade. |
-| `android/app/src/main/kotlin/com/reianix/reianix_local/ui/host/ReiAnixComposeLibraryHost.kt` | +27 linhas | Solicitar backfill na abertura quando o bootstrap está pronto e o SQLite está saudável. |
-| `android/app/src/test/kotlin/com/reianix/reianix_local/data/artwork/ReiAnixArtworkPublicationSignalTest.kt` | +79 linhas | Testar elegibilidade de retry e contratos auxiliares de artwork. |
+| `android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkService.kt` | +100 / -13 linhas | Retry de posters, backoff, fila de pedidos forçados e regras de elegibilidade. |
+| `android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/ReiAnixComposeLibraryHost.kt` | +27 linhas | Solicitar backfill na abertura quando o bootstrap está pronto e o SQLite está saudável. |
+| `android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/ReiAnixArtworkPublicationSignalTest.kt` | +79 linhas | Testar elegibilidade de retry e contratos auxiliares de artwork. |
 | `docs/KOTLIN_ARTWORK_MIGRATION.md` | +2 / -2 linhas | Atualizar a descrição de retry/backfill e os limites da migração. |
 
 O diff agregado desses cinco arquivos foi de 213 adições e 18 remoções. Essa contagem é a soma dos números reportados pela comparação de commits; não equivale a linhas de código executadas ou aprovadas por teste.

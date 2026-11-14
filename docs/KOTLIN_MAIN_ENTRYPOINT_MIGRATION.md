@@ -110,9 +110,9 @@ below.
   `579a680e3b1d123834e44fbb0cd0030711c5cbb78801d913eef51dcc762b99a9`.
 - APK verifier output: `NATIVE_RUNTIME=PASS`,
   `PYTHON_FLET_FLUTTER_ABSENT=PASS`,
-  `ANDROID_ENTRYPOINT=PASS com.reianix.reianix_local.MainActivity`,
+  `ANDROID_ENTRYPOINT=PASS com.reiflix.reiflix_local.MainActivity`,
   `COMPOSE_APK_DEX=PASS`.
-- Effective manifest: package `com.reianix.reianix_local`, build number
+- Effective manifest: package `com.reiflix.reiflix_local`, build number
   `6280`, version `0.2.1`, target SDK `36`; required storage permissions
   and native launcher contracts passed.
 - Signature: APK Signature Scheme v2 passed; signer is the Android **debug**
@@ -138,7 +138,7 @@ deleted because their full functional replacement has not yet been proven.
 
 | Responsabilidade / componente | Estado atual | Evidência e limite |
 | --- | --- | --- |
-| Launcher Android | Já nativo | O Manifest efetivo aponta para `com.reianix.reianix_local.MainActivity`; não foi criada outra Activity launcher. |
+| Launcher Android | Já nativo | O Manifest efetivo aponta para `com.reiflix.reiflix_local.MainActivity`; não foi criada outra Activity launcher. |
 | Grafo de dependências process-scoped | Já nativo | `ReiAnixApplication` cria a única `ReiAnixAppDependencies`; Application e Activity chamam o mesmo bootstrap idempotente existente. |
 | Validação do SQLite canônico e decisão de Recovery Mode | Já nativo | `ReiAnixAppBootstrap` valida a base antes de recuperar receipts SAF e iniciar `NativeCommandDispatcher`; o estado é publicado por `StateFlow`. |
 | Política de liberação de operações nativas | Migrada parcialmente para `main.kt` | `MainEntryPoint.allowsNativeOperations` centraliza a decisão que exige decisão da Activity concluída, fase `READY`, persistência `HEALTHY` ou `NOT_CREATED` e ausência de Recovery Mode. `MainActivity` delega essa política. |
@@ -150,7 +150,7 @@ deleted because their full functional replacement has not yet been proven.
 
 ### Alteração funcional desta etapa
 
-`android/app/src/main/kotlin/com/reianix/reianix_local/main.kt` já não é apenas um gancho de log: `MainEntryPoint` observa o bootstrap process-owned, registra transições de estado de forma limitada e contém a política central de liberação das operações nativas. `MainActivity.kt` delega a decisão a esse ponto de entrada. A chamada explícita `appDependencies.bootstrap.start()` permanece intacta, pois a Application é a dona do bootstrap e a operação é idempotente.
+`android/app/src/main/kotlin/com/reiflix/reiflix_local/main.kt` já não é apenas um gancho de log: `MainEntryPoint` observa o bootstrap process-owned, registra transições de estado de forma limitada e contém a política central de liberação das operações nativas. `MainActivity.kt` delega a decisão a esse ponto de entrada. A chamada explícita `appDependencies.bootstrap.start()` permanece intacta, pois a Application é a dona do bootstrap e a operação é idempotente.
 
 Não foram criados serviços de domínio duplicados. Não houve alteração do Manifest, do banco/schema SQLite, de scanners, player, testes ou workflows. Os quatro testes contratuais auditados permaneceram sem alterações:
 
@@ -167,7 +167,7 @@ Para o commit de código `76262d2f3daa673b1799e1fa1423133324da2521`:
 - [ReiAnix Release Evidence Certification — run 39436193473](https://github.com/reinansantos9090-debug/ReiAnix/actions/runs/39436193473): **success**, incluindo a matriz de evidências de 201 linhas.
 - Testes de regressão Python: `1,971 passed, 58 subtests passed`.
 - `:app:assembleRelease` e verificação explícita de compilação Kotlin: **BUILD SUCCESSFUL**.
-- Verificações pós-build: `NATIVE_RUNTIME=PASS`, `PYTHON_FLET_FLUTTER_ABSENT=PASS`, `ANDROID_ENTRYPOINT=PASS com.reianix.reianix_local.MainActivity`, `COMPOSE_APK_DEX=PASS`; Manifest efetivo e integridade final do Git verificados.
+- Verificações pós-build: `NATIVE_RUNTIME=PASS`, `PYTHON_FLET_FLUTTER_ABSENT=PASS`, `ANDROID_ENTRYPOINT=PASS com.reiflix.reiflix_local.MainActivity`, `COMPOSE_APK_DEX=PASS`; Manifest efetivo e integridade final do Git verificados.
 - APK build 6296: 19,859,229 bytes; SHA-256 `0f63933235912b007fe12b04c7fcedd1ed20298f74c73c23f1114186771a6e14`. Certificado de assinatura SHA-256 `cf1dbfcc5ac35c39d36695ec5f9822ec8fef1a595c8fff962917c2339fdb24d3` (debug signing; chave de release estável não configurada).
 - APK e ZIP de instalação foram publicados como artefatos do Actions. A publicação no rolling GitHub Release foi ignorada pela condição existente do workflow.
 
@@ -191,7 +191,7 @@ Comparação de `bfa1eb408d9c8245dce421088034e7b324371cc6` para `76262d2f3daa673
 - `MainEntryPoint.allowsNativeOperations` continua exigindo que a decisão inicial da Activity esteja concluída.
 - A decisão do bootstrap exige a etapa `READY`, persistência `HEALTHY` ou `NOT_CREATED` e ausência de Recovery Mode. O estado `DEGRADED` com etapa/persistência prontas ainda pode representar avisos não fatais; a fase nominal sozinha não libera comandos.
 - A verificação de persistência usa comparações explícitas, evitando construir um conjunto temporário em cada verificação do gate.
-- Foi adicionado `android/app/src/test/kotlin/com/reianix/reianix_local/MainEntryPointTest.kt` com oito casos: decisão da Activity pendente, estado saudável, instalação sem banco prévio, avisos não fatais, etapa incompleta, Recovery Mode, persistência em recuperação e persistência não verificada.
+- Foi adicionado `android/app/src/test/kotlin/com/reiflix/reiflix_local/MainEntryPointTest.kt` com oito casos: decisão da Activity pendente, estado saudável, instalação sem banco prévio, avisos não fatais, etapa incompleta, Recovery Mode, persistência em recuperação e persistência não verificada.
 - O launcher continua sendo `MainActivity`; `MainEntryPoint` não se torna uma segunda Activity e não cria outro grafo/bootstrap.
 
 **Validação pendente:** o workflow automático de APK compila o código Kotlin de release, mas não executa os testes JVM recém-adicionados. O workflow Kotlin/JVM do repositório é manual e não foi acionado nesta alteração. Portanto, os oito testes estão escritos, mas não são declarados como executados. O build/CI do PR deve ser conferido pelo SHA exato antes de integrar.

@@ -23,118 +23,78 @@ jobs:
 
           runs_api="https://api.github.com/repos/${REPOSITORY}/actions/runs"
           artifacts_api="https://api.github.com/repos/${REPOSITORY}/actions/artifacts"
-          runs_file="$(mktemp)"
-          candidates_file="$(mktemp)"
-          artifacts_file="$(mktemp)"
-          response_body="$(mktemp)"
-          trap 'rm -f "$runs_file" "$candidates_file" "$artifacts_file" "$response_body"' EXIT
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
 
-          api_get() {
-            curl -fsSL --retry 2 --retry-delay 2 \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "X-GitHub-Api-Version: 2026-03-10" "$1"
-          }
-
-          api_delete() {
-            local url="$1" code message
-            # Capture the HTTP status rather than letting one denied deletion stop the job.
-            if ! code="$(curl -sS -o "$response_body" -w '%{http_code}' -X DELETE \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "X-GitHub-Api-Version: 2026-03-10" "$url")"; then
-              echo "::warning::DELETE request failed for ${url} (network error)."
-              return 1
-            fi
-            if [[ "$code" == "204" ]]; then
-              return 0
-            fi
-            message="$(jq -r '.message // empty' "$response_body" 2>/dev/null || true)"
-            echo "::warning::DELETE ${url} returned HTTP ${code}: ${message}"
-            return 1
-          }
-
-          echo "Collecting workflow runs before deleting anything..."
+          echo "Collecting workflow runs..."
           page=1
           while :; do
-            response="$(api_get "${runs_api}?per_page=100&page=${page}")"
-            jq -e '.workflow_runs | type == "array"' <<<"$response" >/dev/null
-            count="$(jq -r '.workflow_runs | length' <<<"$response")"
-            (( count > 0 )) || break
-            jq -c '.workflow_runs[] | {id, run_number, created_at, status}' <<<"$response" >> "$runs_file"
+            response="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "${runs_api}?per_page=100&page=${page}")"
+
+            count="$(jq '.workflow_runs | length' <<<"${response}")"
+            [ "${count}" -eq 0 ] && break
+
+            jq -c '.workflow_runs[] | {id, run_number, name, created_at, status}' <<<"${response}" >> "${tmp}"
+
             echo "Collected page ${page}: ${count} runs"
-            (( count < 100 )) && break
+            [ "${count}" -lt 100 ] && break
             page=$((page + 1))
           done
 
-          total="$(wc -l < "$runs_file" | tr -d ' ')"
+          total="$(wc -l < "${tmp}" | tr -d ' ')"
           echo "Total workflow runs found: ${total}"
-          deleted_runs=0
-          skipped_runs=0
-          failed_runs=0
-          if (( total > KEEP_RUNS )); then
-            # Preserve the newest 50 regardless of state; delete only older completed runs.
-            jq -s -r --argjson keep "$KEEP_RUNS" \
-              'sort_by(.created_at, .id) | reverse | .[$keep:] | .[] | [.id, .run_number, .status] | @tsv' \
-              "$runs_file" > "$candidates_file"
-            while IFS=$'\t' read -r run_id run_number status; do
-              if [[ "$status" != "completed" ]]; then
-                echo "Skipping run #${run_number} (${run_id}): status ${status} (not completed)."
-                skipped_runs=$((skipped_runs + 1))
-                continue
-              fi
-              echo "Deleting completed run #${run_number} (${run_id})..."
-              if api_delete "${runs_api}/${run_id}"; then
-                deleted_runs=$((deleted_runs + 1))
-              else
-                failed_runs=$((failed_runs + 1))
-              fi
-            done < "$candidates_file"
+
+          if [ "${total}" -le "${KEEP_RUNS}" ]; then
+            echo "There are already ${total} runs; no old runs need deletion."
+          else
+            delete_count=$((total - KEEP_RUNS))
+            echo "Keeping newest ${KEEP_RUNS} workflow runs and deleting ${delete_count} older runs."
+
+            jq -s -r 'sort_by(.created_at) | reverse | .['"${KEEP_RUNS}"':] | .[] | [.id, .run_number, .name, .created_at, .status] | @tsv' "${tmp}" |
+            while IFS=$'\t' read -r run_id run_number run_name created_at status; do
+              echo "Deleting run #${run_number} (${run_id}) - ${run_name} - ${created_at} - ${status}"
+              curl -fsSL -X DELETE \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "X-GitHub-Api-Version: 2026-03-10" \
+                "${runs_api}/${run_id}"
+            done
           fi
 
-          # Gather a snapshot of all artifact IDs first. Paging during deletion skips
-          # artifacts because each deletion shifts subsequent API pages.
-          echo "Collecting Actions artifacts..."
-          page=1
+          echo "Deleting all remaining Actions artifacts without deleting their workflow runs..."
+          artifact_page=1
+          deleted_artifacts=0
+
           while :; do
-            response="$(api_get "${artifacts_api}?per_page=100&page=${page}")"
-            jq -e '.artifacts | type == "array"' <<<"$response" >/dev/null
-            count="$(jq -r '.artifacts | length' <<<"$response")"
-            (( count > 0 )) || break
-            jq -r '.artifacts[].id' <<<"$response" >> "$artifacts_file"
-            echo "Collected artifact page ${page}: ${count} artifacts"
-            (( count < 100 )) && break
-            page=$((page + 1))
+            response="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "${artifacts_api}?per_page=100&page=${artifact_page}")"
+
+            artifact_count="$(jq '.artifacts | length' <<<"${response}")"
+            [ "${artifact_count}" -eq 0 ] && break
+
+            mapfile -t artifact_ids < <(jq -r '.artifacts[].id' <<<"${response}")
+
+            for artifact_id in "${artifact_ids[@]}"; do
+              echo "Deleting Actions artifact ${artifact_id}"
+              curl -fsSL -X DELETE \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "X-GitHub-Api-Version: 2026-03-10" \
+                "${artifacts_api}/${artifact_id}"
+              deleted_artifacts=$((deleted_artifacts + 1))
+            done
+
+            [ "${artifact_count}" -lt 100 ] && break
+            artifact_page=$((artifact_page + 1))
           done
 
-          total_artifacts="$(wc -l < "$artifacts_file" | tr -d ' ')"
-          deleted_artifacts=0
-          failed_artifacts=0
-          while IFS= read -r artifact_id; do
-            [[ -n "$artifact_id" ]] || continue
-            if api_delete "${artifacts_api}/${artifact_id}"; then
-              deleted_artifacts=$((deleted_artifacts + 1))
-            else
-              failed_artifacts=$((failed_artifacts + 1))
-            fi
-          done < "$artifacts_file"
-
-          echo "Runs: ${total} found; ${deleted_runs} deleted; ${skipped_runs} skipped (not completed); ${failed_runs} failed."
-          echo "Artifacts: ${total_artifacts} found; ${deleted_artifacts} deleted; ${failed_artifacts} failed."
-          echo "Newest ${KEEP_RUNS} workflow runs preserved. Release assets unaffected."
-          {
-            echo '### GitHub Actions cleanup'
-            echo "- Runs found: ${total}"
-            echo "- Runs deleted: ${deleted_runs}"
-            echo "- Older non-completed runs skipped: ${skipped_runs}"
-            echo "- Failed run deletions: ${failed_runs}"
-            echo "- Artifacts found: ${total_artifacts}"
-            echo "- Artifacts deleted: ${deleted_artifacts}"
-            echo "- Failed artifact deletions: ${failed_artifacts}"
-          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
-
-          # Continue through individual errors, but still surface real failures at the end.
-          if (( failed_runs + failed_artifacts > 0 )); then
-            echo "::error::Cleanup finished with some denied or failed deletions; see summary."
-            exit 1
-          fi
+          echo "Deleted ${deleted_artifacts} Actions artifacts."
+          echo "Newest ${KEEP_RUNS} workflow runs are preserved (unless fewer existed)."
+          echo "Release assets are not affected."

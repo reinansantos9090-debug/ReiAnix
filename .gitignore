@@ -1,4 +1,4 @@
-.reianix-data/
+.reiflix-data/
 build/
 
 # Android/Gradle generated files
@@ -11,6 +11,3 @@ android/app/build/
 *.keystore
 *.p12
 *.pfx
-
-# Generated native CMake intermediates
-android/**/.cxx/

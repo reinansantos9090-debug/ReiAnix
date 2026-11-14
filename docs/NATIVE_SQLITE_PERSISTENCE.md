@@ -47,7 +47,7 @@ O progresso e a data de reprodução estão persistidos nas colunas da tabela `e
 
 ## Runtime contract tests
 
-`android/app/src/test/kotlin/com/reianix/reianix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt` uses Robolectric to run Android SQLite APIs in the JVM; no device/emulator tests were added. The suite consumes a JSON fixture generated from a fresh temporary database opened by the canonical `LibraryStore`; it recreates the real v29 table/index DDL and adds only synthetic test rows. It covers catalog/schema reads, SQLite `quick_check`, reopening connections, playback persistence, transaction rollback, preferences round-trip, manual metadata ownership, rejection of future/incomplete schemas, and refusal to create/replace missing or corrupt databases. This is schema derived from the canonical implementation, not a copy of any user's database.
+`android/app/src/test/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt` uses Robolectric to run Android SQLite APIs in the JVM; no device/emulator tests were added. The suite consumes a JSON fixture generated from a fresh temporary database opened by the canonical `LibraryStore`; it recreates the real v29 table/index DDL and adds only synthetic test rows. It covers catalog/schema reads, SQLite `quick_check`, reopening connections, playback persistence, transaction rollback, preferences round-trip, manual metadata ownership, rejection of future/incomplete schemas, and refusal to create/replace missing or corrupt databases. This is schema derived from the canonical implementation, not a copy of any user's database.
 
 
 ## Validação estrutural do Prompt 3.2

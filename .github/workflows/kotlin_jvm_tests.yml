@@ -3,42 +3,39 @@ name: ReiAnix Kotlin/JVM Source Validation
 on:
   pull_request:
     paths:
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/storage/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/scanner/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/downloads/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/downloads/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/MainActivity.kt"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/artwork/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/catalog/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/anilist/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/tracemoe/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/details/**"
-      - "android/app/src/androidTest/kotlin/com/reianix/reianix_local/ui/details/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/storage/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/scanner/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/tracemoe/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/sqlite/ReiAnixSqliteAniListAssociation.kt"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/viewmodel/ReiAnixLibraryViewModel.kt"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/artwork/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/ui/model/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/catalog/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/anilist/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/settings/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/home/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/host/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/library/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/model/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/settings/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/theme/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/viewmodel/ReiAnixSettingsViewModel.kt"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/ReiAnixSettingsContractTest.kt"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/storage/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/scanner/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/catalog/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/anilist/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/tracemoe/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/details/**"
+      - "android/app/src/androidTest/kotlin/com/reiflix/reiflix_local/ui/details/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/storage/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/scanner/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/tracemoe/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteAniListAssociation.kt"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixLibraryViewModel.kt"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/artwork/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/ui/model/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/catalog/**"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/data/anilist/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/data/settings/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/home/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/host/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/library/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/model/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/settings/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/ui/theme/**"
+      - "android/app/src/main/kotlin/com/reiflix/reiflix_local/viewmodel/ReiAnixSettingsViewModel.kt"
+      - "android/app/src/test/kotlin/com/reiflix/reiflix_local/ReiAnixSettingsContractTest.kt"
       - ".github/workflows/kotlin_jvm_tests.yml"
   workflow_dispatch:
 
 concurrency:
-  # v2 isolates checks from historical runs stuck in GitHub Actions finalization.
-  group: reianix-kotlin-jvm-${{ github.ref }}-v2
+  group: reianix-kotlin-jvm-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -78,14 +75,11 @@ jobs:
           test -s android/build.gradle.kts
           test -s android/app/build.gradle.kts
           test -s android/app/src/main/AndroidManifest.xml
-          test -s android/app/src/main/kotlin/com/reianix/reianix_local/MainActivity.kt
-          test -s android/app/src/main/kotlin/com/reianix/reianix_local/ReiAnixApplication.kt
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt
+          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt
           test ! -e main.py
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-
-      - name: Verify only the unchanged Android application ID uses legacy naming
-        run: bash scripts/verify_reianix_identity.sh
 
       - name: Run focused Android JVM contract tests and compile release Kotlin sources
         shell: bash
@@ -104,35 +98,20 @@ jobs:
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
-              --tests com.reianix.reianix_local.data.artwork.ReiAnixLocalArtworkSidecarPolicyTest \
-              --tests com.reianix.reianix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
-              --tests com.reianix.reianix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogContractsTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolverTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProviderTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
-              --tests com.reianix.reianix_local.downloads.BrowserFallbackBlockerTest \
-              --tests com.reianix.reianix_local.downloads.BrowserAddressTest \
-              --tests com.reianix.reianix_local.downloads.BrowserVerificationPolicyTest \
-              --tests com.reianix.reianix_local.downloads.DownloadDisplaySizeTest \
-              --tests com.reianix.reianix_local.downloads.DownloadNotificationIconTest \
-              --tests com.reianix.reianix_local.downloads.DownloadRandomFileTest \
-              --tests com.reianix.reianix_local.downloads.DownloadIdentityPersistenceTest \
-              --tests com.reianix.reianix_local.data.media.MediaFilenameParserTest \
-              --tests com.reianix.reianix_local.data.sqlite.NativeLibraryIndexingPolicyTest \
-              --tests com.reianix.reianix_local.scanner.DefaultReiAnixFolderScannerTest \
-              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.distinctSecondReleaseIsImportedWithoutReplacingOriginalEpisode' \
-              --tests com.reianix.reianix_local.ui.settings.ReiAnixSettingsNavigationTest \
-              --tests com.reianix.reianix_local.data.anilist.ReiAnixAniListSearchTermsTest \
-              --tests com.reianix.reianix_local.data.anilist.ReiAnixAniListClientTest \
-              --tests com.reianix.reianix_local.data.anilist.AniListAccountSyncPolicyTest \
-              --tests com.reianix.reianix_local.data.anilist.AniListOAuthRequestTest \
-              --tests com.reianix.reianix_local.data.tracemoe.TraceMoeIdentityConsensusTest \
-              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
-              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
-              --tests com.reianix.reianix_local.ReiAnixSettingsContractTest \
-              --tests com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
-              --tests com.reianix.reianix_local.storage.NativeStorageOnboardingStateTest \
-              --tests com.reianix.reianix_local.scanner.SafTreeChangeDetectionTest \
+              --tests com.reiflix.reiflix_local.data.artwork.ReiAnixLocalArtworkSidecarPolicyTest \
+              --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
+              --tests com.reiflix.reiflix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
+              --tests com.reiflix.reiflix_local.data.catalog.ReiAnixExternalCatalogContractsTest \
+              --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListSearchTermsTest \
+              --tests com.reiflix.reiflix_local.data.anilist.ReiAnixAniListClientTest \
+              --tests com.reiflix.reiflix_local.data.anilist.AniListAccountSyncPolicyTest \
+              --tests com.reiflix.reiflix_local.data.anilist.AniListOAuthRequestTest \
+              --tests com.reiflix.reiflix_local.data.tracemoe.TraceMoeIdentityConsensusTest \
+              --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
+              --tests 'com.reiflix.reiflix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
+              --tests com.reiflix.reiflix_local.ReiAnixSettingsContractTest \
+              --tests com.reiflix.reiflix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
+              --tests com.reiflix.reiflix_local.storage.NativeStorageOnboardingStateTest \
+              --tests com.reiflix.reiflix_local.scanner.SafTreeChangeDetectionTest \
             :app:assembleDebugAndroidTest \
             :app:compileReleaseKotlin

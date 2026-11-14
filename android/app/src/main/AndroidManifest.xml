@@ -8,11 +8,6 @@
   </queries>
 
   <uses-permission android:name="android.permission.INTERNET" />
-  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-  <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
   
   <!-- Runtime media access; selected-only access is not equivalent to a SAF tree grant. -->
@@ -26,36 +21,9 @@
   <uses-feature android:name="android.software.leanback" android:required="false" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-  <application android:usesCleartextTraffic="true" android:name="com.reianix.reianix_local.ReiAnixApplication" android:theme="@style/ReiAnixTheme" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
-    <provider android:name="com.reianix.reianix_local.downloads.DownloadProvider" android:authorities="${applicationId}.downloads" android:exported="false" />
-    <service android:name="com.reianix.reianix_local.downloads.DownloadTransferJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
-    <service android:name="androidx.work.impl.foreground.SystemForegroundService" android:foregroundServiceType="dataSync" tools:node="merge" />
-    <receiver android:name="com.reianix.reianix_local.downloads.DownloadPauseReceiver" android:exported="false" />
-    <activity android:name="com.reianix.reianix_local.downloads.DownloadBrowserActivity" android:label="ReiAnix Browser" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden">
-      <intent-filter>
-        <action android:name="android.intent.action.SEND" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="text/plain" />
-      </intent-filter>
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="http" /><data android:scheme="https" />
-      </intent-filter>
-    </activity>
-    <activity android:name="com.reianix.reianix_local.downloads.DownloadsActivity" android:label="ReiAnix" android:exported="true" android:launchMode="singleTop">
-      <intent-filter>
-        <action android:name="android.intent.action.SEND" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <data android:mimeType="text/plain" />
-      </intent-filter>
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="http" /><data android:scheme="https" />
-        <data android:mimeType="video/*" /><data android:mimeType="application/octet-stream" /><data android:mimeType="application/vnd.apple.mpegurl" /><data android:mimeType="application/x-mpegURL" /><data android:mimeType="application/dash+xml" />
-      </intent-filter>
-    </activity>
-    <activity android:name="com.reianix.reianix_local.AniListAccountActivity" android:exported="false" />
-    <activity android:name="com.reianix.reianix_local.AniListOAuthCallbackActivity" android:exported="true" android:noHistory="true" android:excludeFromRecents="true">
+  <application android:name=".ReiAnixApplication" android:theme="@style/ReiAnixTheme" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
+    <activity android:name=".AniListAccountActivity" android:exported="false" />
+    <activity android:name=".AniListOAuthCallbackActivity" android:exported="true" android:noHistory="true" android:excludeFromRecents="true">
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
@@ -65,7 +33,7 @@
     </activity>
     <!-- Public Android "Abrir com" entry; the Media3 player itself stays private. -->
     <activity
-        android:name="com.reianix.reianix_local.ExternalVideoActivity"
+        android:name=".ExternalVideoActivity"
         android:exported="true"
         android:excludeFromRecents="true"
         android:theme="@android:style/Theme.Translucent.NoTitleBar">
@@ -81,8 +49,8 @@
         <data android:mimeType="video/*" />
       </intent-filter>
     </activity>
-    <activity android:name="com.reianix.reianix_local.NativePlayerActivity" android:theme="@style/ReiAnixPlayerTheme" android:launchMode="singleTop" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" android:screenOrientation="fullSensor" android:supportsPictureInPicture="true" android:exported="false" />
-    <activity android:name="com.reianix.reianix_local.MainActivity" android:exported="true" android:launchMode="singleTask" android:documentLaunchMode="never" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
+    <activity android:name=".NativePlayerActivity" android:theme="@style/ReiAnixPlayerTheme" android:launchMode="singleTop" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" android:screenOrientation="fullSensor" android:supportsPictureInPicture="true" android:exported="false" />
+    <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:documentLaunchMode="never" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
@@ -92,7 +60,7 @@
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="reianix" android:host="native"/>
+        <data android:scheme="reiflix" android:host="native"/>
       </intent-filter>
     </activity>
   </application>
