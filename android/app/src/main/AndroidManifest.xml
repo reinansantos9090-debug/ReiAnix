@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
   <queries>
     <intent>
@@ -14,9 +13,8 @@
   <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
   <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
-  <!-- Optional, explicit Broad Storage feature only. SAF and MediaStore do not require it;
-       MainActivity opens Android Settings only after the user invokes that feature. -->
-  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+  <!-- Video library discovery uses MediaStore or explicit user-selected SAF folders.
+       No broad all-files permission is requested. -->
   <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
   <uses-feature android:name="android.software.leanback" android:required="false" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

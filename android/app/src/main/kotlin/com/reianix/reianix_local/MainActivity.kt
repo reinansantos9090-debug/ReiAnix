@@ -546,7 +546,13 @@ class MainActivity : ComponentActivity() {
         when {
             source == "saf" && !scopeRef.isNullOrBlank() -> scanTree(scopeRef, requestId)
             source == "mediastore" -> scanMediaStore(requestId)
-            source == "broad_storage" -> scanAllStorage(requestId)
+            source == "broad_storage" -> scanConfiguredSafRoots(
+                requestId = requestId,
+                origin = origin,
+                reason = reason,
+                includeAuthorizedDiagnostics = true,
+                onFinished = onSafScanFinished,
+            )
             else -> scanConfiguredSafRoots(
                 requestId = requestId,
                 origin = origin,
@@ -3359,9 +3365,16 @@ class MainActivity : ComponentActivity() {
                     publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
                 }
                 "scan_all_storage" -> {
+                    // Legacy intent: scan configured SAF trees and eligible MediaStore
+                    // sources, not unrestricted filesystem paths.
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
-                    scanAllStorage(requestId)
+                    scanConfiguredSafRoots(
+                        requestId = requestId,
+                        origin = "USER_REFRESH",
+                        reason = "legacy_scan_all_storage",
+                        includeAuthorizedDiagnostics = true,
+                    )
                 }
                 "extract_thumbnail" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
@@ -3740,15 +3753,6 @@ class MainActivity : ComponentActivity() {
                             recordSourceStartFailure(MediaStoreScanner.SOURCE, "scan_not_started")
                         } else {
                             pendingSources += MediaStoreScanner.SOURCE to mediaScanId
-                        }
-                    }
-                    if (BroadStorageScanner.hasAccess(this@MainActivity)) {
-                        requestedSources++
-                        val broadScanId = scanAllStorage(requestId)
-                        if (broadScanId == null) {
-                            recordSourceStartFailure(BroadStorageScanner.SOURCE, "scan_not_started")
-                        } else {
-                            pendingSources += BroadStorageScanner.SOURCE to broadScanId
                         }
                     }
                 }
@@ -4518,133 +4522,16 @@ class MainActivity : ComponentActivity() {
         return false
     }
 
+    /**
+     * Compatibility entry point for old "open_broad_storage_settings" commands.
+     * Broad storage permission is deliberately not requested: the user chooses
+     * a specific SAF folder instead, without losing the existing library.
+     */
     private fun openBroadStorageSettings() {
-        if (!activityResumed) {
-            nativeRequestState.queueLifecycleAction("open_broad_storage_settings", pendingBroadRequestId)
-            Log.i(tag, "Deferring broad-storage Settings launch until Activity is resumed")
-            return
-        }
         val requestId = pendingBroadRequestId
-        if (BroadStorageScanner.hasAccess(this)) {
-            completeComposeSettingsStorageAction(
-                requestId,
-                "SUCCESS",
-                message = "O acesso amplo ao armazenamento já está autorizado.",
-            )
-            pendingBroadRequestId = null
-            NativeMailbox.write(
-                this,
-                JSONObject().put("type", "broad_storage_permission")
-                    .put("requestId", requestId ?: "")
-                    .put("payload", JSONObject()
-                        .put("granted", true)
-                        .put("source", BroadStorageScanner.SOURCE)
-                        .put("revalidatedAfterSettings", true)
-                        .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REVALIDATED)))
-            )
-            scanAllStorage(requestId)
-            publishStorageCapabilities(StorageLifecycleState.REVALIDATED)
-            return
-        }
-        if (Build.VERSION.SDK_INT < 30) {
-            completeComposeSettingsStorageAction(
-                requestId,
-                "ERROR",
-                error = "O acesso amplo ao armazenamento exige Android 11 ou superior.",
-            )
-            broadStoragePermissionPending = false
-            pendingBroadRequestId = null
-            NativeMailbox.write(this, JSONObject().put("type", "broad_storage_error")
-                .put("message", "A varredura Broad Storage exige Android 11 (API 30) ou superior, onde o Android expõe a autoridade MANAGE_EXTERNAL_STORAGE.")
-                .put("payload", JSONObject()
-                    .put("source", BroadStorageScanner.SOURCE)
-                    .put("status", "UNAVAILABLE")
-                    .put("reason", "manage_external_storage_not_available")
-                    .put("api", Build.VERSION.SDK_INT)
-                    .put("permissionAuthority", "Environment.isExternalStorageManager")))
-            return
-        }
-
-        broadStoragePermissionPending = true
-        NativeMailbox.write(
-            this,
-            JSONObject().put("type", "broad_storage_permission_request")
-                .put("requestId", requestId ?: "")
-                .put("payload", JSONObject()
-                    .put("source", BroadStorageScanner.SOURCE)
-                    .put("state", "requesting")
-                    .put("capabilities", storageCapabilitiesPayload(StorageLifecycleState.REQUESTING)))
-        )
-
-        val launched = launchExternalSettings(
-            "broad_storage",
-            requestId,
-            listOf(
-                "app_specific_all_files" to Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    .setData(Uri.parse("package:$packageName")),
-                "global_all_files" to Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
-                "app_details" to Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    .setData(Uri.parse("package:$packageName")),
-            ),
-        )
-        if (!launched) {
-            completeComposeSettingsStorageAction(
-                requestId,
-                "ERROR",
-                error = "O Android não conseguiu abrir as configurações de acesso amplo.",
-            )
-            broadStoragePermissionPending = false
-            pendingBroadRequestId = null
-            NativeMailbox.write(this, JSONObject().put("type", "broad_storage_error")
-                .put("message", "O Android não conseguiu abrir diretamente a tela de acesso amplo. Abra as configurações do aplicativo e procure por acesso a todos os arquivos.")
-                .put("payload", JSONObject()
-                    .put("api", Build.VERSION.SDK_INT)
-                    .put("specificIntent", Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    .put("globalIntent", Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    .put("appDetailsIntent", Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    .put("hasAccess", BroadStorageScanner.hasAccess(this))
-                    .put("fallbackOpened", false)
-                    .put("source", BroadStorageScanner.SOURCE)))
-        } else {
-            completeComposeSettingsStorageAction(
-                requestId,
-                "SUCCESS",
-                message = "As configurações de acesso amplo foram abertas.",
-            )
-            Log.i(tag, "SETTINGS_LAUNCH accepted kind=broad_storage requestId=" + (requestId ?: "-"))
-        }
-    }
-
-    private fun scanAllStorage(requestId: String? = null): String? {
-        val appContext = applicationContext
-        val scanId = UUID.randomUUID().toString()
-        if (!BroadStorageScanner.hasAccess(this)) {
-            publishStorageStatus()
-            NativeMailbox.write(appContext, JSONObject().put("type", "broad_storage_permission")
-                .put("requestId", requestId ?: "")
-                .put("payload", JSONObject().put("granted", false).put("source", BroadStorageScanner.SOURCE)))
-            return null
-        }
-        NativeMailbox.write(appContext, JSONObject().put("type", "broad_storage_permission")
-            .put("requestId", requestId ?: "")
-            .put("payload", JSONObject().put("granted", true).put("source", BroadStorageScanner.SOURCE)))
-        if (!NativeScanController.begin(scanId, BroadStorageScanner.SOURCE)) {
-            val activeScanId = NativeScanController.activeScanId(BroadStorageScanner.SOURCE)
-            NativeMailbox.write(appContext, JSONObject().put("type", "broad_storage_scan_progress")
-                .put("requestId", requestId ?: "")
-                .put("payload", JSONObject()
-                    .put("source", BroadStorageScanner.SOURCE)
-                    .put("requestId", requestId ?: "")
-                    .put("phase", "already_running")
-                    .put("activeScanId", activeScanId ?: "")))
-            return activeScanId
-        }
-        val launched = NativeScanController.launch(scanId) {
-            NativeScanRunner.runBroadScan(appContext, scanId, requestId)
-        }
-        if (launched || NativeScanController.snapshot(scanId)?.state?.isTerminal == true) return scanId
-        NativeScanController.finish(scanId)
-        return NativeScanController.activeScanId(BroadStorageScanner.SOURCE)
+        pendingBroadRequestId = null
+        pendingSafRequestId = requestId
+        openTreePicker(requestId)
     }
 
     /**
