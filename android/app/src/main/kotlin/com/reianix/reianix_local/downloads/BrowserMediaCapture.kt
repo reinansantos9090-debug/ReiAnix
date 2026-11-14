@@ -111,6 +111,13 @@ internal object BrowserMediaCapture {
     const values=Array.from((snippet||'').matchAll(/(?:label|quality|resolution|res|height)["']?\s*[:=]\s*["']?\s*(2160|1440|1080|720|480|360|240)\s*p?/gi),m=>m[1]+'p');
     const unique=Array.from(new Set(values));return unique.length===1?unique[0]:'';
   };
+  const qualityInEntry=(text,start,end)=>{
+    const open=text.lastIndexOf('{',start),close=text.indexOf('}',end);
+    if(open>=0&&close>=end&&close-open<=4096){
+      const quality=qualityContext(text.slice(open,close+1));if(quality)return quality;
+    }
+    return qualityContext(text.slice(Math.max(0,start-160),Math.min(text.length,end+160)));
+  };
   const emitEmbedded=(raw,label='',mimeHint='')=>{try{
     const url=String(raw||'').replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
     const hint=String(mimeHint||'').toLowerCase(),format=mediaFormat(url)||
@@ -165,7 +172,7 @@ internal object BrowserMediaCapture {
     const pattern=/(?:https?:\/\/|\/\/|\/)[^"'\\\s<>]{1,1536}?\.(?:m3u8|mpd|mp4|mkv|webm|mov|m4v|ts|m2ts)(?:\?[^"'\\\s<>]{0,2048})?/gi;
     let match,count=0;
     while((match=pattern.exec(text))&&count++<48){
-      const quality=qualityContext(text.slice(Math.max(0,match.index-320),Math.min(text.length,pattern.lastIndex+320)));
+      const quality=qualityInEntry(text,match.index,pattern.lastIndex);
       emitEmbedded(match[0],quality);
     }
     // Extensionless signed player URLs only pass when the page exposes both a
@@ -173,8 +180,7 @@ internal object BrowserMediaCapture {
     const declared=/(?:"|')?(?:src|file|url|source|stream|playlist|hls|dash|videoUrl|srcUrl)(?:"|')?\s*[:=]\s*(?:"|')((?:https?:)?\/\/[^"'\\\s<>]{8,2048})(?:"|')/gi;
     let entry,declaredCount=0;
     while((entry=declared.exec(text))&&declaredCount++<48){
-      const context=text.slice(Math.max(0,entry.index-200),Math.min(text.length,declared.lastIndex+200));
-      const quality=qualityContext(context);
+      const quality=qualityInEntry(text,entry.index,declared.lastIndex);
       if(quality)emitEmbedded(entry[1],quality);
     }
   }catch(e){}};
@@ -223,8 +229,7 @@ internal object BrowserMediaCapture {
         const pattern=/(?:https?:\/\/|\/\/|\/)[^"'\\\s<>]{1,1536}?\.(?:m3u8|mpd|mp4|mkv|webm|mov|m4v|ts|m2ts)(?:\?[^"'\\\s<>]{0,2048})?/gi;
         let match,count=0;
         while((match=pattern.exec(text))&&count++<48){
-          const context=text.slice(Math.max(0,match.index-320),Math.min(text.length,pattern.lastIndex+320));
-          emitEmbedded(match[0],qualityContext(context));
+          emitEmbedded(match[0],qualityInEntry(text,match.index,pattern.lastIndex));
         }
       });
       // Resource Timing also sees manifests/files loaded by page scripts and
@@ -235,7 +240,8 @@ internal object BrowserMediaCapture {
         performance.getEntriesByType('resource').slice(-160).forEach(entry=>{
           const url=entry&&entry.name||'',format=mediaFormat(url);
           if(format==='hls'||format==='dash')emitEmbedded(url,'');
-          else if(format==='video'&&qualityFrom('',url)!=='Qualidade não informada')emitEmbedded(url,'');
+          else if(format==='video'&&/\.(?:mp4|mkv|webm|mov|m4v)(?:[?#]|$)/i.test(url)&&
+            qualityFrom('',url)!=='Qualidade não informada')emitEmbedded(url,'');
         });
       }catch(e){}
       // Some embeds store rendition URLs in page markup instead of script
@@ -520,7 +526,62 @@ internal object BrowserMediaCapture {
       if(source&&!badUrl(source)){v.preload='metadata';if(v.networkState===0||v.networkState===3)v.load();}
     });
   };
-  window.__reiScanPlayers=(prepareMetadata=false)=>{if(prepareMetadata)prepare();scan();scanOptions(prepareMetadata);children().forEach(f=>{sendFrame(f);try{f.contentWindow.postMessage({type:'REI_SCAN',prepare:prepareMetadata},'*')}catch(e){}});};
+  // Some episode pages do not create their player until the visitor presses
+  // the episode's own "Watch" button. On an explicit intelligent-download
+  // request, allow one narrowly-scoped, visible episode CTA to mount its
+  // player. Never follow anchors, quality selectors, or ad-marked controls.
+  let preflightAt=0,preflightDone=false,restorePlay=null;
+  const preflight=()=>{try{
+    if(window!==window.top||preflightDone||!frame.known||!frame.allowed)return false;
+    const hasVisiblePlayer=Array.from(document.querySelectorAll('video')).some(v=>{
+      const r=rect(v);return r&&r.width>=180&&r.height>=90&&!adElement(v)&&
+        !!(v.currentSrc||v.src||v.querySelector('source[src]'));
+    });
+    if(hasVisiblePlayer)return false;
+    const episode=/\b(?:T(?:emporada)?\s*\d+\s*)?EP(?:is[oó]dio)?[.\s_-]*\d+\b|\bepis[oó]dio\s*\d+\b|\bepisode\s*\d+\b|\bS\d{1,2}\s*E\d{1,3}\b/i;
+    const action=/^(?:assistir|watch|play|reproduzir|ver\s+(?:o\s+)?(?:epis[oó]dio|ep\.?))\b/i;
+    const buttons=Array.from(document.querySelectorAll('button,[role="button"],input[type="button"]')).slice(0,160);
+    const target=buttons.find(button=>{
+      if(button.disabled||button.closest('a')||adElement(button))return false;
+      const r=rect(button);if(!r||r.width<24||r.height<16)return false;
+      const label=String(button.getAttribute('aria-label')||button.getAttribute('title')||button.value||button.textContent||'').trim().replace(/\s+/g,' ');
+      return label.length<=180&&action.test(label)&&episode.test(label);
+    });
+    if(!target)return false;
+    preflightDone=true;preflightAt=Date.now()+2200;
+    try{
+      const prototype=window.HTMLMediaElement&&HTMLMediaElement.prototype,original=prototype&&prototype.play;
+      if(original){
+        const guarded=function(){
+          if(Date.now()<preflightAt){try{this.autoplay=false;this.pause();}catch(e){}return Promise.resolve();}
+          return original.apply(this,arguments);
+        };
+        prototype.play=guarded;restorePlay=()=>{try{if(prototype.play===guarded)prototype.play=original;}catch(e){};restorePlay=null;};
+      }
+    }catch(e){}
+    const scanAndPause=()=>{
+      try{Array.from(document.querySelectorAll('video')).forEach(v=>{v.autoplay=false;try{v.pause();}catch(e){}});}catch(e){}
+      scan();scanOptions(true);
+      children().forEach(child=>{sendFrame(child);try{child.contentWindow.postMessage({type:'REI_SCAN',prepare:true},'*')}catch(e){}});
+    };
+    // Re-scan as the site's event handlers attach a source asynchronously.
+    [180,520,1050].forEach(delay=>setTimeout(scanAndPause,delay));
+    setTimeout(()=>{
+      scanAndPause();
+      try{document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));
+        document.dispatchEvent(new KeyboardEvent('keyup',{key:'Escape',code:'Escape',bubbles:true}));}catch(e){}
+      // Some custom players ignore Escape but expose an accessible close action.
+      const close=Array.from(document.querySelectorAll('button,[role="button"]')).slice(0,160).find(button=>{
+        const r=rect(button),label=String(button.getAttribute('aria-label')||button.getAttribute('title')||button.textContent||'').trim();
+        return r&&!adElement(button)&&/^(?:fechar|close|sair do player|close player)$/i.test(label);
+      });
+      if(close)try{close.click();}catch(e){}
+    },1450);
+    setTimeout(()=>{if(restorePlay)restorePlay();preflightAt=0;preflightDone=false;scan();scanOptions(true);},2300);
+    try{target.click();}catch(e){if(restorePlay)restorePlay();preflightAt=0;return false;}
+    return true;
+  }catch(e){if(restorePlay)restorePlay();preflightAt=0;return false;}};
+  window.__reiScanPlayers=(prepareMetadata=false)=>{if(prepareMetadata){prepare();preflight();}scan();scanOptions(prepareMetadata);children().forEach(f=>{sendFrame(f);try{f.contentWindow.postMessage({type:'REI_SCAN',prepare:prepareMetadata},'*')}catch(e){}});};
   // Vidstack-based sites may remux an entire HLS video into a blob in JS.
   // Route an explicit selection through the existing native confirmation dialog
   // before that expensive browser-only flow starts. No automatic enqueue.
