@@ -119,7 +119,7 @@ if [ "$status" -ne 0 ]; then
       echo "DIAGNOSTIC_COMMAND_FAILED=package_state"
     fi
     echo "--- logcat errors ---"
-    if ! adb -s "$serial" logcat -d -v threadtime -t 1200 | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|Application Not Responding|com.reiflix.reiflix_local|serious_python|flutter" | tail -n 240; then
+    if ! adb -s "$serial" logcat -d -v threadtime -t 1200 | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|Application Not Responding|com.reianix.reianix_local|serious_python|flutter" | tail -n 240; then
       echo "DIAGNOSTIC_COMMAND_FAILED=logcat_errors"
     fi
   } | tee "$output_dir/runtime-failure-diagnostics.txt"

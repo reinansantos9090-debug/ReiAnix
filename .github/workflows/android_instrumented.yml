@@ -44,8 +44,8 @@ jobs:
           test -s android/build.gradle.kts
           test -s android/app/build.gradle.kts
           test -s android/app/src/main/AndroidManifest.xml
-          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/MainActivity.kt
-          test -s android/app/src/main/kotlin/com/reiflix/reiflix_local/ReiAnixApplication.kt
+          test -s android/app/src/main/kotlin/com/reianix/reianix_local/MainActivity.kt
+          test -s android/app/src/main/kotlin/com/reianix/reianix_local/ReiAnixApplication.kt
           test -s android/app/src/main/assets/native-sqlite-contract-v29.json.gz
           test ! -e main.py
           test ! -e app_config.py
@@ -115,7 +115,7 @@ jobs:
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixBuildVersion="0.2.1" \
             :app:testDebugUnitTest \
-            --tests com.reiflix.reiflix_local.VideoThumbnailExtractorTest \
+            --tests com.reianix.reianix_local.VideoThumbnailExtractorTest \
             :app:assembleDebug \
             :app:assembleDebugAndroidTest \
             :app:compileReleaseKotlin
