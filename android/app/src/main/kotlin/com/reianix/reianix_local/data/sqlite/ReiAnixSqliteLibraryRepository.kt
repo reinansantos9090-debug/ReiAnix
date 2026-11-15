@@ -205,7 +205,9 @@ class ReiAnixSqliteLibraryRepository(
         libraryOnly: Boolean = false,
         allResults: Boolean = false,
     ): ReiAnixSqliteSearchPage = withContext(Dispatchers.IO) {
-        require(limit in 1..199) { "Search page size must be between 1 and 199." }
+        require(limit in 1..ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS) {
+            "Search page size must be between 1 and ${ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS}."
+        }
         require(offset >= 0) { "Search offset cannot be negative." }
         require(!allResults || offset == 0) { "All-results queries must start at offset zero." }
 
@@ -335,7 +337,7 @@ class ReiAnixSqliteLibraryRepository(
         val searchContext = currentCoroutineContext()
         database.read { connection ->
             searchContext.ensureActive()
-            val matched = mutableListOf<Pair<Long, Int>>()
+            val matchedIds = mutableListOf<Long>()
             val relevanceMode = terms.isNotEmpty() && sortLabel.isNullOrBlank()
             val keepCount = if (allResults) Int.MAX_VALUE else {
                 (offset.toLong() + limit + 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
@@ -416,25 +418,22 @@ class ReiAnixSqliteLibraryRepository(
                     if (relevanceMode) {
                         bestMatches.add(id to score)
                         if (bestMatches.size > keepCount) bestMatches.poll()
-                    } else if (matched.size < keepCount) {
-                        // SQL already orders the requested sort; retain only enough rows
-                        // to produce this page while continuing the cursor to count matches.
-                        matched += id to score
+                    } else if (matchedIds.size < keepCount) {
+                        // SQL already orders the requested sort; keep IDs, not id/score pairs.
+                        matchedIds += id
                     }
                 }
             }
-            val ordered = if (relevanceMode) bestMatches.sortedWith(relevanceOrder) else matched
-            val page = when {
-                allResults -> ordered
-                terms.isEmpty() -> ordered
-                else -> ordered.drop(offset).take(limit + 1)
+            val orderedIds = if (relevanceMode) {
+                bestMatches.sortedWith(relevanceOrder).map { it.first }
+            } else matchedIds
+            val pageIds = when {
+                allResults -> orderedIds
+                terms.isEmpty() -> orderedIds
+                else -> orderedIds.drop(offset).take(limit + 1)
             }
             val totalCount = if (terms.isEmpty()) exactTotal else scannedMatches
-            val resultIds = if (allResults) {
-                page.map { it.first }
-            } else {
-                page.take(limit).map { it.first }
-            }
+            val resultIds = if (allResults) pageIds else pageIds.take(limit)
             ReiAnixSqliteSearchPage(
                 animeIds = resultIds,
                 offset = if (allResults) 0 else offset,
@@ -1381,6 +1380,14 @@ class ReiAnixSqliteLibraryRepository(
      * Episode observations that are exclusively removed from multiple scopes remain excluded
      * under the same legacy projection rules.
      */
+    // The read lock covers the SQLite snapshot, not the subsequent in-memory grouping.
+    private data class CatalogRawRows(
+        val animes: List<ReiAnixAnimeRecord>,
+        val episodes: List<ReiAnixEpisodeRecord>,
+        val artwork: List<ReiAnixArtworkRecord>,
+        val genres: List<Pair<Long, ReiAnixLibraryCatalogGenre>>,
+    )
+
     suspend fun loadLibraryCatalogRows(
         animeIds: Set<Long>? = null,
     ): List<ReiAnixLibraryCatalogRow> = withContext(Dispatchers.IO) {
@@ -1397,7 +1404,7 @@ class ReiAnixSqliteLibraryRepository(
                 "WHERE CAST(pe.id AS TEXT)=art.entity_id AND pe.anime_id IN ($it))))"
         }.orEmpty()
         val genreFilter = ids?.let { " WHERE ag.anime_id IN ($it)" }.orEmpty()
-        database.readConsistentSnapshot { connection ->
+        val rawRows = database.readConsistentSnapshot { connection ->
             val animes = connection.rawQuery(
                 "SELECT * FROM anime$animeFilter ORDER BY added_at DESC, title COLLATE NOCASE ASC, id DESC",
                 null,
@@ -1406,7 +1413,7 @@ class ReiAnixSqliteLibraryRepository(
                     while (cursor.moveToNext()) add(cursor.toAnimeRecord())
                 }
             }
-            if (animes.isEmpty()) return@readConsistentSnapshot emptyList<ReiAnixLibraryCatalogRow>()
+            if (animes.isEmpty()) return@readConsistentSnapshot CatalogRawRows(animes, emptyList(), emptyList(), emptyList())
 
             val episodes = connection.rawQuery(
                 """
@@ -1489,12 +1496,20 @@ class ReiAnixSqliteLibraryRepository(
                 }
             }
 
-            val episodesByAnime = episodes.groupBy { it.animeId }
+            CatalogRawRows(animes, episodes, artwork, genres)
+        }
+        if (rawRows.animes.isEmpty()) return@withContext emptyList<ReiAnixLibraryCatalogRow>()
+        val (animes, episodes, artwork, genres) = rawRows
+
+        val episodesByAnime = episodes.groupBy { it.animeId }
             val genresByAnime = genres.groupBy({ it.first }, { it.second })
-            val artworkByAnime = artwork
-                .filter { it.entityType == "anime" || it.entityType == "movie" }
-                .mapNotNull { item -> item.entityId.toLongOrNull()?.let { it to item } }
-                .groupBy({ it.first }, { it.second })
+            val artworkByAnime = buildMap<Long, MutableList<ReiAnixArtworkRecord>> {
+                for (item in artwork) {
+                    if (item.entityType != "anime" && item.entityType != "movie") continue
+                    val animeId = item.entityId.toLongOrNull() ?: continue
+                    getOrPut(animeId) { mutableListOf() }.add(item)
+                }
+            }
             val episodeIdToAnimeId = episodes.associate { it.id to it.animeId }
             val episodeArtworkByAnime = buildMap<Long, MutableMap<Long, ReiAnixArtworkRecord>> {
                 for (item in artwork) {
@@ -1519,7 +1534,6 @@ class ReiAnixSqliteLibraryRepository(
                     genres = genresByAnime[anime.id].orEmpty(),
                 )
             }
-        }
     }
 
     /**

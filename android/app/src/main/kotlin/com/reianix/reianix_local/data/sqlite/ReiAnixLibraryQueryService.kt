@@ -59,8 +59,8 @@ class ReiAnixLibraryQueryService(
         allResults: Boolean = false,
     ): ReiAnixLibraryQueryResult<ReiAnixSqliteSearchPage> =
         this.query("searchAnime") {
-            require(limit in 1..MAX_PAGE_SIZE) {
-                "Search page size must be between 1 and $MAX_PAGE_SIZE."
+            require(limit in 1..MAX_SEARCH_RESULTS) {
+                "Search page size must be between 1 and $MAX_SEARCH_RESULTS."
             }
             require(offset >= 0) { "Search offset cannot be negative." }
             require(!allResults || offset == 0) { "All-results queries must start at offset zero." }
@@ -147,6 +147,8 @@ class ReiAnixLibraryQueryService(
     companion object {
         const val DEFAULT_PAGE_SIZE = 36
         const val MAX_PAGE_SIZE = 199
+        // The search UI displays two normal pages; fetch both with one database scan.
+        const val MAX_SEARCH_RESULTS = MAX_PAGE_SIZE * 2
         private const val TAG = "ReiAnixLibraryQueries"
     }
 }
