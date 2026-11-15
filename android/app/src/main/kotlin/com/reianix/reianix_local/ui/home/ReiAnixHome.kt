@@ -1216,12 +1216,13 @@ private fun topHomeItems(
     }
     val top = java.util.PriorityQueue<Ranked>(limit, order.reversed())
     items.forEachIndexed { index, anime ->
-        val candidate = Ranked(anime, index)
         if (top.size < limit) {
-            top.add(candidate)
-        } else if (order.compare(candidate, top.peek()) < 0) {
+            top.add(Ranked(anime, index))
+        } else if (comparator.compare(anime, top.peek().anime) < 0) {
+            // Allocate a wrapper only for cards that actually enter the top twelve.
+            // Equal-ranked later cards never replace earlier cards.
             top.poll()
-            top.add(candidate)
+            top.add(Ranked(anime, index))
         }
     }
     return top.sortedWith(order).map { it.anime }
