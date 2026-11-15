@@ -1775,7 +1775,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
                 for (animeId in 10L until 235L) {
                     db.execSQL(
                         "INSERT INTO anime(id, lookup_title, title, added_at, favorite) VALUES (?, ?, ?, ?, 0)",
-                        arrayOf(animeId, "bulk-$"+"animeId", "Bulk $"+"animeId", animeId.toDouble()),
+                        arrayOf(animeId, "bulk-" + animeId, "Bulk " + animeId, animeId.toDouble()),
                     )
                 }
                 db.setTransactionSuccessful()
