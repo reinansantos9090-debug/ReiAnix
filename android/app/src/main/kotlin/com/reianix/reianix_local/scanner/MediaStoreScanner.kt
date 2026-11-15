@@ -241,7 +241,7 @@ object MediaStoreScanner {
                     authorizedScopes.asSequence()
                         .filter { it.authority == "com.android.externalstorage.documents" }
                         .filter { volumeMatches(it, volumeName, baseVolumeUuid) }
-                        .map(::normalizeScopePath)
+                        .map { normalizeScopePath(it.treeDocumentId) }
                         .filter(String::isNotBlank)
                         .distinct()
                         .toList()
