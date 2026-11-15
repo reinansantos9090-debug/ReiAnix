@@ -119,6 +119,7 @@ jobs:
               --tests com.reianix.reianix_local.data.anilist.AniListAccountSyncPolicyTest \
               --tests com.reianix.reianix_local.data.anilist.AniListOAuthRequestTest \
               --tests com.reianix.reianix_local.data.tracemoe.TraceMoeIdentityConsensusTest \
+              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.searchCombinedResultWindowMatchesTwoPagesAndPreservesAllItems' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reianix.reianix_local.ReiAnixSettingsContractTest \
