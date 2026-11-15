@@ -697,18 +697,13 @@ private fun ColumnScope.HomeReadyContent(
     val recentlyWatched = remember(animes) { buildRecentlyWatchedItems(animes) }
     val favorites = remember(animes) { animes.filter { it.favorite }.distinctBy { it.id } }
     val available = remember(animes) {
-        animes
-            .asSequence()
-            .filter { it.availableContentCount > 0 }
-            .distinctBy { it.id }
-            .sortedWith(
-                compareByDescending<ReiAnixHomeAnimeUiModel> { it.isWatching }
-                    .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
-                    .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
-                    .thenBy { it.title.trim().lowercase() },
-            )
-            .take(12)
-            .toList()
+        topHomeItems(
+            animes.asSequence().filter { it.availableContentCount > 0 }.distinctBy { it.id },
+            compareByDescending<ReiAnixHomeAnimeUiModel> { it.isWatching }
+                .thenByDescending { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
+                .thenByDescending { it.addedAt ?: Double.NEGATIVE_INFINITY }
+                .thenBy { it.title.trim().lowercase() },
+        )
     }
     val genreSections = remember(animes) { buildHomeGenreSections(animes) }
     val movies = remember(animes) {
@@ -1205,33 +1200,52 @@ private fun selectFeaturedAnime(items: List<ReiAnixHomeAnimeUiModel>): ReiAnixHo
         ?: items.firstOrNull()
         ?: error("Home hero requested without library data")
 
+/**
+ * Maintain only the twelve best cards rather than sorting a full large catalog.
+ * Original input order is retained for equal-ranked cards (stable sort semantics).
+ */
+private fun topHomeItems(
+    items: Sequence<ReiAnixHomeAnimeUiModel>,
+    comparator: Comparator<ReiAnixHomeAnimeUiModel>,
+    limit: Int = 12,
+): List<ReiAnixHomeAnimeUiModel> {
+    data class Ranked(val anime: ReiAnixHomeAnimeUiModel, val index: Int)
+    val order = Comparator<Ranked> { left, right ->
+        val ranked = comparator.compare(left.anime, right.anime)
+        if (ranked != 0) ranked else left.index.compareTo(right.index)
+    }
+    val top = java.util.PriorityQueue<Ranked>(limit, order.reversed())
+    items.forEachIndexed { index, anime ->
+        val candidate = Ranked(anime, index)
+        if (top.size < limit) {
+            top.add(candidate)
+        } else if (order.compare(candidate, top.peek()) < 0) {
+            top.poll()
+            top.add(candidate)
+        }
+    }
+    return top.sortedWith(order).map { it.anime }
+}
+
 private fun buildRecentlyAddedItems(
     items: List<ReiAnixHomeAnimeUiModel>,
 ): List<ReiAnixHomeAnimeUiModel> =
-    items
-        .asSequence()
-        .filter { it.addedAt?.isFinite() == true }
-        .distinctBy { it.id }
-        .sortedWith(
-            compareByDescending<ReiAnixHomeAnimeUiModel> { it.addedAt ?: Double.NEGATIVE_INFINITY }
-                .thenBy { it.title.trim().lowercase() },
-        )
-        .take(12)
-        .toList()
+    topHomeItems(
+        items.asSequence().filter { it.addedAt?.isFinite() == true }.distinctBy { it.id },
+        compareByDescending<ReiAnixHomeAnimeUiModel> { it.addedAt ?: Double.NEGATIVE_INFINITY }
+            .thenBy { it.title.trim().lowercase() },
+    )
 
 private fun buildRecentlyWatchedItems(
     items: List<ReiAnixHomeAnimeUiModel>,
 ): List<ReiAnixHomeAnimeUiModel> =
-    items
-        .asSequence()
-        .filter { it.lastPlayedAt?.isFinite() == true && (it.lastPlayedAt ?: 0.0) > 0.0 }
-        .distinctBy { it.id }
-        .sortedWith(
-            compareByDescending<ReiAnixHomeAnimeUiModel> { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
-                .thenBy { it.title.trim().lowercase() },
-        )
-        .take(12)
-        .toList()
+    topHomeItems(
+        items.asSequence()
+            .filter { it.lastPlayedAt?.isFinite() == true && (it.lastPlayedAt ?: 0.0) > 0.0 }
+            .distinctBy { it.id },
+        compareByDescending<ReiAnixHomeAnimeUiModel> { it.lastPlayedAt ?: Double.NEGATIVE_INFINITY }
+            .thenBy { it.title.trim().lowercase() },
+    )
 
 private fun buildHomeGenreSections(
     items: List<ReiAnixHomeAnimeUiModel>,
@@ -1240,6 +1254,7 @@ private fun buildHomeGenreSections(
         val key: String,
         val title: String,
         val items: MutableList<ReiAnixHomeAnimeUiModel>,
+        val seenIds: MutableSet<Long>,
     )
 
     val sections = linkedMapOf<String, MutableSection>()
@@ -1254,9 +1269,10 @@ private fun buildHomeGenreSections(
                         key = key,
                         title = title,
                         items = mutableListOf(),
+                        seenIds = hashSetOf(),
                     )
                 }
-                if (section.items.none { it.id == anime.id }) {
+                if (section.seenIds.add(anime.id)) {
                     section.items += anime
                 }
             }

@@ -1,6 +1,8 @@
 package com.reianix.reianix_local.data.sqlite
 
 import android.content.Context
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.withLock
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import org.json.JSONArray
@@ -26,14 +28,15 @@ enum class ReiAnixSqliteTransactionOutcome {
 class ReiAnixSqliteDatabase(context: Context) {
     private val appContext = context.applicationContext
     private val databaseFile = ReiAnixSqliteDatabase.canonicalFile(appContext)
-    private val connectionLock = Any()
+    // Concurrent independent readers share the file safely; writes/migrations remain exclusive.
+    private val connectionLock = ReentrantReadWriteLock(true)
     @Volatile private var contractValidated = false
     private val canonicalContract: JSONObject by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         loadCanonicalContract()
     }
 
     internal fun <T> read(block: (SQLiteDatabase) -> T): T =
-        synchronized(connectionLock) {
+        connectionLock.readLock().withLock {
             val database = openExisting(readOnly = true)
             try {
                 block(database)
@@ -48,7 +51,7 @@ class ReiAnixSqliteDatabase(context: Context) {
      * read-only behavior; Android 15+ pins all projection queries to one snapshot.
      */
     internal fun <T> readConsistentSnapshot(block: (SQLiteDatabase) -> T): T =
-        synchronized(connectionLock) {
+        connectionLock.readLock().withLock {
             val database = openExisting(readOnly = true)
             try {
                 if (android.os.Build.VERSION.SDK_INT < 35) {
@@ -77,7 +80,7 @@ class ReiAnixSqliteDatabase(context: Context) {
     internal fun <T> transaction(
         onOutcome: ((ReiAnixSqliteTransactionOutcome) -> Unit)? = null,
         block: (SQLiteDatabase) -> T,
-    ): T = synchronized(connectionLock) {
+    ): T = connectionLock.writeLock().withLock {
         val database = openExisting(readOnly = false)
         try {
             database.beginTransactionNonExclusive()
@@ -115,7 +118,7 @@ class ReiAnixSqliteDatabase(context: Context) {
      * database cannot be opened. Revalidate the runtime schema contract after maintenance.
      */
     internal fun <T> withExclusiveFileMaintenance(block: (File) -> T): T =
-        synchronized(connectionLock) {
+        connectionLock.writeLock().withLock {
             try {
                 block(databaseFile)
             } finally {
@@ -141,7 +144,7 @@ class ReiAnixSqliteDatabase(context: Context) {
      * class as the connection/validation boundary used by the application's repositories.
      */
     internal fun initializeOrMigrate(allowCreate: Boolean = false): ReiAnixSqliteSchemaSnapshot =
-        synchronized(connectionLock) {
+        connectionLock.writeLock().withLock {
             ReiAnixSqliteSchemaManager.initialize(
                 databaseFile = databaseFile,
                 allowCreate = allowCreate,
@@ -151,7 +154,7 @@ class ReiAnixSqliteDatabase(context: Context) {
         }
 
     internal fun inspectSchema(): ReiAnixSqliteSchemaSnapshot =
-        synchronized(connectionLock) {
+        connectionLock.readLock().withLock {
             val database = openExisting(readOnly = true, validateContract = false)
             try {
                 inspectSchema(database)
@@ -161,7 +164,7 @@ class ReiAnixSqliteDatabase(context: Context) {
         }
 
     internal fun quickCheck(): List<String> =
-        synchronized(connectionLock) {
+        connectionLock.readLock().withLock {
             val database = openExisting(readOnly = true)
             try {
                 runQuickCheck(database).also { results ->
