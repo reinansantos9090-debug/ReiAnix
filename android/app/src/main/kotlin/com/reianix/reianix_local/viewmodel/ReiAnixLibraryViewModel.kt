@@ -2184,9 +2184,10 @@ class ReiAnixLibraryViewModel(
         // Periodic notifications arrive at the existing 15-second checkpoint, not the
         // 250 ms UI clock, so Compose remains responsive without excessive full queries.
         viewModelScope.launch {
+            // Every committed episode matters when refreshes are scoped per anime.
+            // Conflation/cancel-latest could silently lose a different anime's update.
             ReiAnixConsumptionService.playbackChanges
-                .conflate()
-                .collectLatest { change ->
+                .collect { change ->
                     Log.d(
                         TAG,
                         "Native playback committed episodeId=${change.episodeId} " +
