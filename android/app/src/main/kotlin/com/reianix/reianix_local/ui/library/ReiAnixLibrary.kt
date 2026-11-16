@@ -1186,6 +1186,11 @@ private fun LibraryAnimeCard(
         },
         onFavoriteClick = onToggleFavorite,
         maxDimensionPx = maxDimensionPx,
+        // Use the exact same identity and local-file revision as Home.
+        // Without these, Coil treats the same poster as unrelated requests
+        // when switching tabs, producing a placeholder flash.
+        artworkIdentity = anime.stableKey,
+        artworkSourceRevisions = anime.artwork?.sourceRevisions.orEmpty(),
     )
 }
 

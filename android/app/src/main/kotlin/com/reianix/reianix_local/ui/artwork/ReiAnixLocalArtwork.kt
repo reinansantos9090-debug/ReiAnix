@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -124,6 +125,12 @@ fun ReiAnixLocalArtwork(
     var isMissing by remember(stableIdentity, candidates) {
         mutableStateOf(false)
     }
+    // Preserve a successfully drawn poster while Coil switches between
+    // candidates/revisions within this card. No new network request is made
+    // and the decoder/cache policy stays unchanged.
+    var lastSuccessfulPainter by remember(stableIdentity) {
+        mutableStateOf<Painter?>(null)
+    }
     val imageLoader = ReiAnixArtworkImageLoader.get(context)
 
     BoxWithConstraints(
@@ -215,7 +222,11 @@ fun ReiAnixLocalArtwork(
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
-                placeholder = placeholderPainter,
+                placeholder = lastSuccessfulPainter ?: placeholderPainter,
+                onSuccess = { state ->
+                    lastSuccessfulPainter = state.painter
+                    isMissing = false
+                },
                 onError = { state ->
                     Log.w(
                         TAG,

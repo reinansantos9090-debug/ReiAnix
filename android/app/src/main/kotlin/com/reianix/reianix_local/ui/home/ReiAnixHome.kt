@@ -269,11 +269,10 @@ private fun ReiAnixHomeObservedScreen(
                         onOpenLibrary = onOpenLibrary,
                     )
                 } else {
-                    ReiAnixLoadingState(
-                        title = "Carregando biblioteca",
-                        message = "Os primeiros itens aparecerão assim que estiverem disponíveis.",
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    // The native SQLite/bootstrap work continues in the background.
+                    // Keep the Home header visible instead of flashing a blue
+                    // loading indicator for an already configured library.
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
             ReiAnixLibraryLoadStatus.ERROR -> {
