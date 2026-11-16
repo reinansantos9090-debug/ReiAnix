@@ -3896,6 +3896,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun adjustVolumeByFraction(deltaFraction: Float) {
+        if (castController?.isCasting == true) {
+            val remotePercent = castController?.adjustVolumeByFraction(deltaFraction)
+            if (remotePercent != null) showFeedback("Volume TV $remotePercent%", 900L)
+            return
+        }
         runCatching {
             val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val maxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
