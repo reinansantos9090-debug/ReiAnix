@@ -137,6 +137,64 @@ class ReiAnixLibraryFiltersTest {
         )
     }
 
+    @Test
+    fun episodeSortsUseOnlyTheirRequestedMetricsAndPreserveOrder() {
+        fun updated(
+            base: ReiAnixAnimeUiModel,
+            season: Int,
+            number: Double,
+            progress: Double,
+            duration: Double,
+            modified: Double,
+            size: Long,
+        ): ReiAnixAnimeUiModel {
+            val original = base.seasons.single()
+            val episode = original.episodes.single().copy(
+                seasonNumber = season,
+                number = number,
+                progressSeconds = progress,
+                durationSeconds = duration,
+                modifiedAt = modified,
+                fileSizeBytes = size,
+            )
+            return base.copy(seasons = listOf(original.copy(episodes = listOf(episode))))
+        }
+
+        val alpha = updated(anime(1L, "Alpha"), 2, 9.0, 80.0, 100.0, 100.0, 20L)
+        val beta = updated(anime(2L, "Beta"), 1, 2.0, 10.0, 40.0, 200.0, 500L)
+        val animes = listOf(alpha, beta)
+        val expectedOrders = mapOf(
+            "Episódio" to listOf(2L, 1L),
+            "Temporada + episódio" to listOf(2L, 1L),
+            "Progresso" to listOf(1L, 2L),
+            "Modificação" to listOf(2L, 1L),
+            "Duração" to listOf(1L, 2L),
+            "Tamanho" to listOf(2L, 1L),
+        )
+        for ((sort, expected) in expectedOrders) {
+            assertEquals(
+                "Unexpected order for $sort",
+                expected,
+                ReiAnixLibraryFilterEngine.sortForLibrary(animes, sort).map { it.id },
+            )
+        }
+    }
+
+    @Test
+    fun titleAndRecentSortDoNotMaterializeLazyEpisodeLists() {
+        val alpha = anime(1L, "Alpha").copy(addedAt = 100.0)
+        val beta = anime(2L, "Beta").copy(addedAt = 200.0)
+        val flattenedField = ReiAnixAnimeUiModel::class.java
+            .getDeclaredField("flattenedEpisodes\$delegate")
+            .apply { isAccessible = true }
+        val lazyLists = listOf(alpha, beta).map { flattenedField.get(it) as Lazy<*> }
+        org.junit.Assert.assertTrue(lazyLists.none { it.isInitialized() })
+
+        ReiAnixLibraryFilterEngine.sortForLibrary(listOf(beta, alpha), "Mais recentes")
+        ReiAnixLibraryFilterEngine.sortForLibrary(listOf(beta, alpha), "Nome A-Z")
+        org.junit.Assert.assertTrue(lazyLists.none { it.isInitialized() })
+    }
+
     private fun anime(
         id: Long,
         title: String,
