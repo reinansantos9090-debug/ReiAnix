@@ -860,13 +860,17 @@ fun ReiAnixAnimeCard(
                         )
                     }
                 }
-                ReiAnixProgressIndicator(
-                    progress = progress ?: 0f,
-                    visible = progress != null && progress > 0f,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = ReiAnixTokens.Spacing.sm),
-                )
+                // Most library posters have no playback progress. Skip composing
+                // Material's progress indicator entirely for those cards; in a dense
+                // grid this removes one layout/draw/semantics node per visible poster.
+                progress?.takeIf { it > 0f }?.let { posterProgress ->
+                    ReiAnixProgressIndicator(
+                        progress = posterProgress,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = ReiAnixTokens.Spacing.sm),
+                    )
+                }
             }
             Column(
                 modifier = Modifier
