@@ -68,6 +68,33 @@ private object ReiAnixArtworkImageLoader {
 }
 
 /**
+ * Remembers only Coil memory-cache keys, never bitmaps or downloaded files.
+ * It lets a poster opened at a different grid width show the already decoded
+ * Home/Library poster as a temporary placeholder while Coil decodes the exact
+ * new size. Existing cache keys, source candidates and thumbnail behavior stay
+ * unchanged. Bound entries prevent keeping obsolete artwork identities forever.
+ */
+internal object ReiAnixPosterPlaceholderKeyHistory {
+    private const val MAX_IDENTITIES = 256
+    private val keys = object : LinkedHashMap<String, String>(MAX_IDENTITIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
+            size > MAX_IDENTITIES
+    }
+
+    private fun sourceIdentity(animeIdentity: String, source: String, revision: String): String =
+        animeIdentity + "\u0000" + source + "\u0000" + revision
+
+    @Synchronized
+    fun find(identity: String, source: String, revision: String): String? =
+        keys[sourceIdentity(identity, source, revision)]
+
+    @Synchronized
+    fun record(identity: String, source: String, revision: String, memoryCacheKey: String) {
+        keys[sourceIdentity(identity, source, revision)] = memoryCacheKey
+    }
+}
+
+/**
  * Artwork resolution order:
  * 1. materialized/local path
  * 2. cache/fallback local path
@@ -192,6 +219,13 @@ fun ReiAnixLocalArtwork(
             val diskCacheKey = remember(stableIdentity, source, sourceRevision) {
                 buildArtworkDiskCacheKey(source, sourceRevision)
             }
+            val sharedPosterPlaceholderKey = remember(
+                stableIdentity, source, sourceRevision, artworkType,
+            ) {
+                if (artworkType == "poster") {
+                    ReiAnixPosterPlaceholderKeyHistory.find(stableIdentity, source, sourceRevision)
+                } else null
+            }
             val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
             val placeholderPainter = remember(placeholderColor) {
                 ColorPainter(placeholderColor)
@@ -200,6 +234,7 @@ fun ReiAnixLocalArtwork(
                 context,
                 memoryCacheKey,
                 diskCacheKey,
+                sharedPosterPlaceholderKey,
             ) {
                 ImageRequest.Builder(context)
                     .data(coilData(source))
@@ -212,7 +247,7 @@ fun ReiAnixLocalArtwork(
                     .crossfade(false)
                     .memoryCacheKey(memoryCacheKey)
                     .diskCacheKey(diskCacheKey)
-                    .placeholderMemoryCacheKey(memoryCacheKey)
+                    .placeholderMemoryCacheKey(sharedPosterPlaceholderKey ?: memoryCacheKey)
                     .build()
             }
 
@@ -225,6 +260,11 @@ fun ReiAnixLocalArtwork(
                 placeholder = lastSuccessfulPainter ?: placeholderPainter,
                 onSuccess = { state ->
                     lastSuccessfulPainter = state.painter
+                    if (artworkType == "poster") {
+                        ReiAnixPosterPlaceholderKeyHistory.record(
+                            stableIdentity, source, sourceRevision, memoryCacheKey,
+                        )
+                    }
                     isMissing = false
                 },
                 onError = { state ->
