@@ -252,6 +252,10 @@ fun ReiAnixLocalArtwork(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
                 onSuccess = {
+                    // The same source may become readable after its revision
+                    // changes. A prior terminal failure must not keep the
+                    // "Sem poster" overlay above a successfully decoded image.
+                    if (isMissing) isMissing = false
                     lastSuccessfulArtworkKeys.recordSuccess(
                         identity = stableIdentity,
                         type = artworkType,
