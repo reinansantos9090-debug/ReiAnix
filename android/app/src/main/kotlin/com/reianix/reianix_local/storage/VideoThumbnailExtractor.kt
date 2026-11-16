@@ -266,6 +266,27 @@ object VideoThumbnailExtractor {
     internal fun normalizeLocalMediaUri(raw: String?): Uri? =
         normalizeLocalMediaReference(raw)?.let { runCatching { Uri.parse(it) }.getOrNull() }
 
+    /**
+     * Clear only generated episode images/metadata from the app's cache.
+     * Synchronize with active frame decoders; never touch videos or poster files.
+     * Called from the Settings repository's IO coroutine, never Compose.
+     */
+    fun clearCachedThumbnails(context: Context): Int {
+        val directory = File(context.cacheDir, "reianix/thumbnails")
+        if (!directory.isDirectory) return 0
+        extractionPermits.acquire(2)
+        return try {
+            var deleted = 0
+            directory.listFiles()?.forEach { file ->
+                if (file.isFile && file.delete()) deleted++
+            }
+            latestKeyByUri.clear()
+            deleted
+        } finally {
+            extractionPermits.release(2)
+        }
+    }
+
     fun extract(
         context: Context,
         uri: Uri,
