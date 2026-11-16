@@ -229,7 +229,7 @@ private fun ReiAnixHomeObservedScreen(
     onSelectSource: () -> Unit,
     onOpenTimeline: () -> Unit,
     onOpenDurationAnomalies: () -> Unit,
-    onOpenRoulette: () -> Unit = {},
+    onOpenRoulette: (() -> Unit)? = null,
 ) {
     ReiAnixResponsiveRoot {
     val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
