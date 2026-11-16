@@ -58,7 +58,8 @@ class ReiAnixCastController(
     val isLoading: Boolean get() = loading
 
     fun positionMs(): Long =
-        if (isCasting) (client?.approximateStreamPosition ?: lastPositionMs).coerceAtLeast(0L)
+        if (isCasting && ended()) durationMs().coerceAtLeast(lastPositionMs)
+        else if (isCasting) (client?.approximateStreamPosition ?: lastPositionMs).coerceAtLeast(0L)
         else lastPositionMs
 
     fun durationMs(): Long =
@@ -119,7 +120,9 @@ class ReiAnixCastController(
         val current = video() ?: return
         if (activeSourceUri == current.uri.toString()) return
         if (LocalCastMediaServer.currentSource == current.uri.toString() &&
-            castSession.remoteMediaClient?.hasMediaSession() == true
+            castSession.remoteMediaClient?.hasMediaSession() == true &&
+            // Only reattach if this receiver is still playing our own endpoint.
+            castSession.remoteMediaClient?.mediaInfo?.contentId?.contains("/media/") == true
         ) {
             pauseLocal()
             activeSourceUri = current.uri.toString()
