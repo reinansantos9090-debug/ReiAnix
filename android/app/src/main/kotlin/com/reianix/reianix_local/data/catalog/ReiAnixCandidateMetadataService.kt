@@ -1,7 +1,6 @@
 package com.reianix.reianix_local.data.catalog
 
 import com.reianix.reianix_local.data.anilist.AniListAnime
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.data.sqlite.ReiAnixCandidateMetadata
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.mergeCandidateMetadataGaps
@@ -74,24 +73,12 @@ class ReiAnixCandidateMetadataService(
             try {
                 if (library.mergeCandidateMetadataGaps(animeId, candidate)) {
                     mutableUpdates.tryEmit(animeId)
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "CATALOG_CANDIDATE_METADATA",
-                        source = candidate.source,
-                        result = "GAPS_FILLED",
-                        context = mapOf("anime_id" to animeId),
-                    )
+
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                ReiAnixDiagnosticTimeline.record(
-                    name = "CATALOG_CANDIDATE_METADATA",
-                    severity = "WARN",
-                    source = candidate.source,
-                    result = "MERGE_FAILED",
-                    error = error,
-                    context = mapOf("anime_id" to animeId),
-                )
+
             }
         }
     }

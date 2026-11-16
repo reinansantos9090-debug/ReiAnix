@@ -12,7 +12,6 @@ import android.database.sqlite.SQLiteException
 import android.graphics.BitmapFactory
 import android.util.Log
 import com.reianix.reianix_local.bridge.NativeMailbox
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reianix.reianix_local.scanner.MediaStoreScanner
 import com.reianix.reianix_local.scanner.SafScanner
@@ -372,14 +371,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     ): Boolean {
         val requestId = UUID.randomUUID().toString()
         if (animeId <= 0L || cacheClearInProgress.get()) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_REQUEST_REJECTED",
-                severity = "WARN",
-                source = "ReiAnixArtworkService",
-                result = if (animeId <= 0L) "INVALID_ENTITY_ID" else "CACHE_CLEAR_IN_PROGRESS",
-                requestId = requestId,
-                context = mapOf("entity_id" to animeId, "force" to force),
-            )
+
             return false
         }
         synchronized(jobs) {
@@ -438,19 +430,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                     )
                                 }
                                 if (posterMaterialized) {
-                                    ReiAnixDiagnosticTimeline.record(
-                                        name = "NATIVE_ARTWORK_ALTERNATIVE_SOURCE_SELECTED",
-                                        source = "ReiAnixArtworkService",
-                                        result = "ALTERNATE_ANILIST_VARIANT_MATERIALIZED",
-                                        requestId = requestId,
-                                        context = mapOf(
-                                            "entity_type" to entityType,
-                                            "entity_id" to animeId,
-                                            "artwork_type" to "poster",
-                                            "candidate_count" to alternatives.size,
-                                            "source_kind" to "anilist_alternative",
-                                        ),
-                                    )
+
                                 }
                             }
                         }
@@ -505,33 +485,12 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                                 sourceKind = candidate.source,
                             )
                         }
-                        ReiAnixDiagnosticTimeline.record(
-                            name = "NATIVE_ARTWORK_CANDIDATE_FALLBACK_FINISHED",
-                            source = "ReiAnixArtworkService",
-                            result = if (posterRecovered || backdropRecovered) "ARTWORK_RECOVERED" else "NO_CANDIDATE_ARTWORK_RECOVERED",
-                            requestId = requestId,
-                            context = mapOf(
-                                "entity_type" to entityType,
-                                "entity_id" to animeId,
-                                "candidate_count" to candidateCandidates.size,
-                                "poster_recovered" to posterRecovered,
-                                "banner_recovered" to backdropRecovered,
-                                "identity_associated" to false,
-                            ),
-                        )
+
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "NATIVE_ARTWORK_REQUEST_FAILED",
-                        severity = "ERROR",
-                        source = "ReiAnixArtworkService",
-                        result = "FAILED",
-                        requestId = requestId,
-                        error = error,
-                        context = mapOf("entity_id" to animeId),
-                    )
+
                     Log.e(TAG, "Native artwork request failed for " + animeId, error)
                 } finally {
                     currentCoroutineContext()[Job]?.let { jobs.remove(animeId, it) }
@@ -712,25 +671,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         sourceKind: String = "anilist",
     ): Boolean {
         if (!safeUrl(url)) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_SOURCE_REJECTED",
-                severity = "WARN",
-                source = "ReiAnixArtworkService",
-                result = "INVALID_SOURCE",
-                requestId = requestId,
-                context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
-            )
+
             return false
         }
         if (requireCurrentUrl && !isUrlCurrent(id, type, url)) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_SOURCE_REJECTED",
-                severity = "WARN",
-                source = "ReiAnixArtworkService",
-                result = "ASSOCIATION_CHANGED",
-                requestId = requestId,
-                context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
-            )
+
             return false
         }
         return permits.withPermit {
@@ -770,22 +715,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     Log.w(TAG, "Could not persist artwork retry state for animeId=$id", persistenceError)
                 }.getOrNull()
                 if (retryDelaySeconds != null) scheduleArtworkRetry(id, retryDelaySeconds, retryCandidates)
-                ReiAnixDiagnosticTimeline.record(
-                    name = "NATIVE_ARTWORK_DOWNLOAD_FAILED",
-                    severity = "ERROR",
-                    source = "ReiAnixArtworkService",
-                    result = "FAILED",
-                    requestId = requestId,
-                    error = error,
-                    context = mapOf(
-                        "entity_type" to entity,
-                        "entity_id" to id,
-                        "artwork_type" to type,
-                        "source_kind" to sourceKind,
-                        "association_status" to if (requireCurrentUrl) "CHECKED_BEFORE_DOWNLOAD" else "CANDIDATE_ONLY",
-                        "http_status" to ((error as? HttpFailure)?.code ?: -1),
-                    ),
-                )
+
                 image?.let { removeIfUnreferenced(it.file) }
                 Log.w(TAG, "ARTWORK_DOWNLOAD_FAILED entity=" + entity + ":" + id + " type=" + type, error)
                 false
@@ -1206,20 +1136,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             if (examined >= MAX_LOCAL_SIDECAR_CANDIDATES) break
         }
         if (persisted > 0 || examined > 0) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_LOCAL_SIDECAR_DISCOVERY",
-                source = "ReiAnixArtworkService",
-                result = if (persisted > 0) "CANDIDATES_PERSISTED" else "NO_NEW_CANDIDATES",
-                requestId = requestId,
-                context = mapOf(
-                    "entity_type" to entity,
-                    "entity_id" to animeId,
-                    "episode_paths_checked" to episodePaths.size,
-                    "sidecars_examined" to examined,
-                    "sidecars_persisted" to persisted,
-                    "source" to "existing_file_mediastore_or_authorized_saf",
-                ),
-            )
+
         }
     }
 
@@ -1796,19 +1713,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             contentType = restored.contentType,
             requestId = requestId,
         )
-        ReiAnixDiagnosticTimeline.record(
-            name = "NATIVE_ARTWORK_LEGACY_CACHE_RECONSTRUCTED",
-            source = "ReiAnixArtworkService",
-            result = if (restored.manual) "MANUAL_POINTER_RESTORED" else "UNBOUND_LOCAL_POINTER_RESTORED",
-            requestId = requestId,
-            context = mapOf(
-                "entity_type" to entity,
-                "entity_id" to animeId,
-                "artwork_type" to "poster",
-                "source_kind" to "legacy_cover_cache",
-                "association_status" to "COMMITTED",
-            ),
-        )
+
     }
 
     private fun loadAnime(id: Long): Anime? = database.read { db ->
@@ -1962,13 +1867,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val file = File(thumbnailPath).absoluteFile
         if (uri.isEmpty() || !file.isFile || !validImage(file)) return false
         if (!com.reianix.reianix_local.storage.VideoThumbnailExtractor.isUsableThumbnailFile(file.absolutePath)) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_THUMBNAIL_REJECTED",
-                severity = "WARN",
-                source = "ReiAnixArtworkService",
-                result = "VISUALLY_UNUSABLE",
-                context = mapOf("stage" to "generated_thumbnail_registration", "file_bytes" to file.length()),
-            )
+
             return false
         }
         // The extractor consumes file:// URIs, while canonical episode.path and
@@ -2064,24 +1963,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             }
         }.getOrElse { error ->
             Log.w(TAG, "Could not invalidate generated thumbnail episodeId=$episodeId", error)
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_THUMBNAIL_INVALIDATION_FAILED",
-                severity = "ERROR",
-                source = "ReiAnixArtworkService",
-                result = "FAILED",
-                error = error,
-                context = mapOf("episode_id" to episodeId, "reason" to reason),
-            )
+
             false
         }
         if (invalidated) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_THUMBNAIL_INVALIDATED",
-                severity = "WARN",
-                source = "ReiAnixArtworkService",
-                result = "REGENERATION_REQUIRED",
-                context = mapOf("episode_id" to episodeId, "reason" to reason),
-            )
+
         }
         return invalidated
     }
@@ -2118,14 +2004,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             }
         } catch (error: Exception) {
             Log.w(TAG, "Could not inspect generated thumbnail rows episodeId=$episodeId", error)
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_THUMBNAIL_SCAN_FAILED",
-                severity = "ERROR",
-                source = "ReiAnixArtworkService",
-                result = "FAILED",
-                error = error,
-                context = mapOf("episode_id" to episodeId, "reason" to reason),
-            )
+
             return 0
         }
         val invalidPaths = invalidGeneratedThumbnailPaths(paths) {
@@ -2135,17 +2014,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         invalidPaths.forEach { path ->
             if (invalidateGeneratedThumbnail(episodeId, path, reason)) invalidatedCount++
         }
-        ReiAnixDiagnosticTimeline.record(
-            name = "NATIVE_ARTWORK_THUMBNAIL_ROWS_VALIDATED",
-            source = "ReiAnixArtworkService",
-            result = if (invalidatedCount > 0) "INVALID_ROWS_HIDDEN" else "NO_INVALID_ROWS",
-            context = mapOf(
-                "episode_id" to episodeId,
-                "rows_checked" to paths.distinct().size,
-                "invalid_rows_hidden" to invalidatedCount,
-                "reason" to reason,
-            ),
-        )
+
         return invalidatedCount
     }
 
@@ -2181,37 +2050,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 sourceFileExists = sourceFileExists,
             )
         ) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_PUBLICATION_SOURCE_MISSING",
-                severity = "ERROR",
-                source = "ReiAnixArtworkService",
-                result = "SOURCE_FILE_MISSING",
-                requestId = requestId,
-                context = mapOf(
-                    "entity_type" to entity,
-                    "entity_id" to id,
-                    "artwork_type" to type,
-                    "source_kind" to sourceKind,
-                    "association_status" to "COMMITTED",
-                    "source_file_exists" to false,
-                ),
-            )
+
             return
         }
-        ReiAnixDiagnosticTimeline.record(
-            name = "NATIVE_ARTWORK_PUBLISHED",
-            source = "ReiAnixArtworkService",
-            result = "COMPLETED",
-            requestId = requestId,
-            context = mapOf(
-                "entity_type" to entity,
-                "entity_id" to id,
-                "artwork_type" to type,
-                "source_kind" to sourceKind,
-                "association_status" to "COMMITTED",
-                "source_file_exists" to true,
-            ),
-        )
+
         val body = JSONObject().put("event", "ARTWORK_PUBLISHED").put("entity_type", entity)
             .put("entity_id", id).put("artwork_type", type).put("cache_key", key).put("local_path", path)
             .put("source_ref", ref ?: JSONObject.NULL).put("external_url", url ?: JSONObject.NULL)
@@ -2221,14 +2063,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 .put("requestId", requestId).put("payload", body))
         }.getOrElse { Log.w(TAG, "Artwork publication failed", it); false }
         if (!ok) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_ARTWORK_MAILBOX_PUBLISH_FAILED",
-                severity = "WARN",
-                source = "ReiAnixArtworkService",
-                result = "MAILBOX_WRITE_FAILED",
-                requestId = requestId,
-                context = mapOf("entity_type" to entity, "entity_id" to id, "artwork_type" to type),
-            )
+
             Log.w(TAG, "ARTWORK_PUBLISHED event could not be queued")
         }
     }

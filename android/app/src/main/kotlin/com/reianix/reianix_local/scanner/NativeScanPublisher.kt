@@ -1,7 +1,6 @@
 package com.reianix.reianix_local.scanner
 
 import com.reianix.reianix_local.bridge.NativeMailbox
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.storage.NativeIndex
 import android.content.Context
 import android.util.Log
@@ -33,21 +32,7 @@ object NativeScanPublisher {
             NativeMailbox.writeOrThrow(appContext, JSONObject().put("type", eventType).put("requestId", requestId ?: "").put("payload", payload))
         } catch (exception: Exception) {
             if (exception is kotlinx.coroutines.CancellationException) throw exception
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_SCAN_BATCH_PUBLICATION_FAILED",
-                severity = "ERROR",
-                source = "NativeScanPublisher",
-                result = "FAILED",
-                requestId = requestId,
-                scanId = scanId,
-                error = exception,
-                context = mapOf(
-                    "scan_source" to source,
-                    "scope_kind" to scopeKind,
-                    "generation" to generation,
-                    "batch_number" to batchEvent.optInt("batchNumber", 0),
-                ),
-            )
+
             Log.e(TAG, "Native batch publication failed", exception)
             NativeMailbox.write(appContext, JSONObject().put("type", eventType.replace("_batch", "_error")).put("requestId", requestId ?: "")
                 .put("message", "Não foi possível preparar um lote da biblioteca.").put("payload", JSONObject().put("scanId", scanId).put("requestId", requestId ?: "")
