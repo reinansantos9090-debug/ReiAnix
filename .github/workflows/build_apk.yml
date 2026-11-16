@@ -201,7 +201,7 @@ jobs:
       - name: Build native Android release APK
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --console=plain --stacktrace \
@@ -212,7 +212,7 @@ jobs:
       - name: Explicitly verify release Kotlin compilation
         shell: bash
         env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --console=plain \
