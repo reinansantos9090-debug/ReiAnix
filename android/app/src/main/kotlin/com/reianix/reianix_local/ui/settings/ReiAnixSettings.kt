@@ -1710,7 +1710,7 @@ private fun PosterSizeSettingRow(
     selectedValue: String?,
     onSelected: (Int) -> Unit,
 ) {
-    val persistedValue = selectedValue?.toIntOrNull()?.coerceIn(0, 16) ?: 5
+    val persistedValue = selectedValue?.toIntOrNull()?.coerceIn(0, 16) ?: 8
     var sliderValue by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableFloatStateOf(persistedValue.toFloat())
     }
