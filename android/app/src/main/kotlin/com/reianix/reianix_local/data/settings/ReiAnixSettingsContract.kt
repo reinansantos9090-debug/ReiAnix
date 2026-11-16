@@ -76,7 +76,6 @@ object ReiAnixSettingsContract {
         int("appearance.poster_size", 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16),
         bool("appearance.show_thumbnails", true),
         enum("library.sort_default", "added_desc", "added_desc", "title_asc", "title_desc", "recently_watched"),
-        enum("library.grid_density", "medium", "small", "medium", "large"),
         int("library.page_size", 0, 0, 24, 36, 48, 72),
         bool("library.continue_watching", true),
         int("library.continue_watching_limit", 10, 5, 10, 15, 20),
