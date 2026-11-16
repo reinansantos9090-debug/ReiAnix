@@ -680,6 +680,11 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
         return permits.withPermit {
             currentCoroutineContext().ensureActive()
+            // Recheck inside the download permit: a queued metadata candidate may
+            // have become unnecessary while the first poster was being saved.
+            if (!force && type == POSTER &&
+                (hasUsablePersistedPoster(id, entity) || validImage(loadAnime(id)?.coverCache))
+            ) return@withPermit true
             if (reuseLocal(id, entity, type, url, aniId, requestId, requireCurrentUrl)) return@withPermit true
             val key = remoteKey(aniId, url, type)
             val rowId = prepareRow(id, entity, type, url, key, force, requireCurrentUrl, sourceKind) ?: return@withPermit false
@@ -738,6 +743,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val existing = rows.firstOrNull { it.url == url && validImage(it.path) }
         if (existing != null) {
             val path = existing.path ?: return false
+            // A cache hit is not a new image publication. Avoid refreshing the
+            // library again for every already-ready backdrop/poster on startup.
+            if (existing.status.equals("ready", true)) return true
             if (markReady(existing.id, id, type, url, path, requireCurrentUrl)) {
                 publish("artwork_published", entity, id.toString(), type, path, url,
                     existing.key ?: remoteKey(aniId, url, type), url, existing.mime ?: mime(path), requestId)

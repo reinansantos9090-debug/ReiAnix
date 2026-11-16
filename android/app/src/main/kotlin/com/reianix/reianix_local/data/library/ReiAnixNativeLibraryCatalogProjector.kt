@@ -28,7 +28,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             val file = if (path.startsWith("file://")) {
                 Uri.parse(path).path?.let(::File) ?: return@runCatching false
             } else File(path)
-            file.isFile && file.canRead() && file.length() > 0L
+            if (!file.isFile || !file.canRead() || file.length() <= 0L) return@runCatching false
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+            bounds.outWidth > 0 && bounds.outHeight > 0
         }.getOrDefault(false)
     }
 
@@ -102,10 +105,19 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
         }
-        val primaryLocalArtwork = (posterCandidates.mapNotNull { it.localPath } +
-            listOfNotNull(anime.coverCache)).firstOrNull(::hasReadableArtworkFile)
-        val primaryExternalArtwork = posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
-            ?: anime.coverUrl
+        // A valid saved poster remains stable when background metadata changes
+        // priorities or URLs. Explicit manual artwork still takes precedence.
+        val manualPoster = posterCandidates.firstOrNull {
+            (it.manual == true || it.source.equals("manual", true)) &&
+                it.localPath?.let(::hasReadableArtworkFile) == true
+        }
+        val primaryLocalArtwork = manualPoster?.localPath
+            ?: anime.coverCache?.takeIf(::hasReadableArtworkFile)
+            ?: posterCandidates.mapNotNull { it.localPath }.firstOrNull(::hasReadableArtworkFile)
+        val selectedPoster = posterCandidates.firstOrNull { it.localPath == primaryLocalArtwork && primaryLocalArtwork != null }
+        val primaryExternalArtwork = selectedPoster?.externalUrl
+            ?: anime.coverUrl?.takeIf(String::isNotBlank)
+            ?: posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
         val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name }
             else parseStringArray(anime.genresJson)
         val genreIds = if (row.genres.isNotEmpty()) row.genres.map { it.id } else emptyList()
