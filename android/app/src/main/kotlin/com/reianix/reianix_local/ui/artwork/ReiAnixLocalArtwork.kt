@@ -171,7 +171,7 @@ fun ReiAnixLocalArtwork(
 
         if (source == null) {
             LaunchedEffect(stableIdentity, candidates) {
-                ReiAnixDiagnosticTimeline.record(
+                ReiAnixDiagnosticTimeline.recordOffMain(
                     name = "ARTWORK_SOURCE_NOT_FOUND",
                     severity = "WARN",
                     source = "ReiAnixLocalArtwork",
@@ -191,7 +191,7 @@ fun ReiAnixLocalArtwork(
             ReiAnixArtworkMissingState(label = placeholder)
         } else if (effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
             LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
-                ReiAnixDiagnosticTimeline.record(
+                ReiAnixDiagnosticTimeline.recordOffMain(
                     name = "ARTWORK_LOAD_DEFERRED",
                     source = "ReiAnixLocalArtwork",
                     result = "NOT_REQUESTED",
@@ -257,7 +257,7 @@ fun ReiAnixLocalArtwork(
             }
 
             LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
-                ReiAnixDiagnosticTimeline.record(
+                ReiAnixDiagnosticTimeline.recordOffMain(
                     name = "ARTWORK_LOAD_REQUESTED",
                     source = "ReiAnixLocalArtwork",
                     result = "STARTED",
@@ -283,7 +283,7 @@ fun ReiAnixLocalArtwork(
                 contentScale = contentScale,
                 placeholder = placeholderPainter,
                 onLoading = {
-                    ReiAnixDiagnosticTimeline.record(
+                    ReiAnixDiagnosticTimeline.recordOffMain(
                         name = "ARTWORK_LOAD_STARTED",
                         source = "ReiAnixLocalArtwork",
                         result = "RUNNING",
@@ -300,7 +300,7 @@ fun ReiAnixLocalArtwork(
                 onSuccess = { state ->
                     val dataSource = (state.result as? coil.request.SuccessResult)?.dataSource?.name ?: "UNKNOWN"
                     if (dataSource.contains("CACHE", ignoreCase = true)) {
-                        ReiAnixDiagnosticTimeline.record(
+                        ReiAnixDiagnosticTimeline.recordOffMain(
                             name = "ARTWORK_CACHE_HIT",
                             source = "ReiAnixLocalArtwork",
                             result = dataSource,
@@ -316,7 +316,7 @@ fun ReiAnixLocalArtwork(
                             ),
                         )
                     }
-                    ReiAnixDiagnosticTimeline.record(
+                    ReiAnixDiagnosticTimeline.recordOffMain(
                         name = "ARTWORK_IMAGE_READY",
                         source = "ReiAnixLocalArtwork",
                         result = "COMPLETED",
@@ -342,7 +342,7 @@ fun ReiAnixLocalArtwork(
                             " candidateIndex=" + candidateIndex,
                         state.result.throwable,
                     )
-                    ReiAnixDiagnosticTimeline.record(
+                    ReiAnixDiagnosticTimeline.recordOffMain(
                         name = "ARTWORK_LOAD_FAILED",
                         severity = "ERROR",
                         source = "ReiAnixLocalArtwork",

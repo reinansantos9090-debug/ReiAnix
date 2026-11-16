@@ -727,12 +727,15 @@ fun ReiAnixAnimeCard(
     bottomBadgeText: String? = null,
 ) {
     val metadataText = remember(metadata) { metadata.joinToString(" • ") }
+    val accessibilityMetadata = remember(metadata) {
+        metadata.filter { it.isNotBlank() }.joinToString(" • ")
+    }
     val animeAccessibilityLabel = remember(
-        title, metadataText, completed, watching, watched, favorite, progress,
+        title, accessibilityMetadata, completed, watching, watched, favorite, progress,
     ) {
         buildList {
             add(title)
-            metadataText.takeIf { it.isNotBlank() }?.let(::add)
+            accessibilityMetadata.takeIf { it.isNotBlank() }?.let(::add)
             when {
                 completed -> add("Concluído")
                 watching -> add("Assistindo")

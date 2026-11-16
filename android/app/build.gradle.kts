@@ -50,6 +50,11 @@ android {
 
     buildTypes {
         getByName("release") {
+            // R8 optimizes Kotlin/Compose bytecode and removes unused code/resources.
+            // This variant is exercised by the existing CI build and certification.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             // Release APKs must never silently inherit a changing debug key.
             // Only PR preview artifacts opt in to debug signing explicitly.
             signingConfig = when {

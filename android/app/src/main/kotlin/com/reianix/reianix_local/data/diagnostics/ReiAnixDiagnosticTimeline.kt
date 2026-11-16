@@ -2,6 +2,11 @@ package com.reianix.reianix_local.data.diagnostics
 
 import android.os.SystemClock
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,9 +47,47 @@ object ReiAnixDiagnosticTimeline {
     private val recent = ArrayDeque<ReiAnixDiagnosticEvent>()
     private var nextSequence = 0L
     private val mutableEvents = MutableStateFlow<List<ReiAnixDiagnosticEvent>>(emptyList())
+    // Image callbacks can run on the main thread while a grid scrolls. Keep their
+    // expensive normalization/UUID/snapshot work out of the frame budget.
+    // A single consumer preserves the callback order; the fallback is lossless.
+    private val recorderScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val pendingRecords = Channel<() -> Unit>(capacity = Channel.BUFFERED)
+
+    init {
+        recorderScope.launch {
+            for (recordEvent in pendingRecords) recordEvent()
+        }
+    }
 
     /** Newest first; the list itself is immutable to consumers. */
     val events: StateFlow<List<ReiAnixDiagnosticEvent>> = mutableEvents.asStateFlow()
+
+    /**
+     * Lossless background logging for display-only artwork callbacks. Unlike record(),
+     * this is deliberately not synchronous: it must not hold up image presentation.
+     * The same bounded timeline remains available to diagnostics and backup.
+     */
+    fun recordOffMain(
+        name: String,
+        severity: String = "INFO",
+        source: String? = null,
+        result: String? = null,
+        requestId: String? = null,
+        scanId: String? = null,
+        refreshId: String? = null,
+        sessionId: String? = null,
+        error: Throwable? = null,
+        context: Map<String, Any?> = emptyMap(),
+    ) {
+        val task: () -> Unit = {
+            record(name, severity, source, result, requestId, scanId,
+                refreshId, sessionId, error, context)
+        }
+        if (pendingRecords.trySend(task).isFailure) {
+            // Preserve events even if a burst of visible poster loads fills the buffer.
+            recorderScope.launch { pendingRecords.send(task) }
+        }
+    }
 
     fun record(
         name: String,
@@ -79,7 +122,11 @@ object ReiAnixDiagnosticTimeline {
                 )
                 recent.addLast(event)
                 while (recent.size > RETENTION_LIMIT) recent.removeFirst()
-                mutableEvents.value = recent.toList().asReversed()
+                // One snapshot allocation; toList().asReversed() materialized twice.
+                val newestFirst = ArrayList<ReiAnixDiagnosticEvent>(recent.size)
+                val it = recent.descendingIterator()
+                while (it.hasNext()) newestFirst.add(it.next())
+                mutableEvents.value = newestFirst
             }
         } catch (failure: Exception) {
             // A diagnostics failure must never escape into the observed operation.
