@@ -133,7 +133,7 @@ internal object LocalCastMediaServer {
             if (header.startsWith("Range:", ignoreCase = true)) range = header.substringAfter(':').trim()
         }
         val method = parts[0]
-        if (method != "GET" && method != "HEAD") {
+        if (method != "GET" && method != "HEAD" && method != "OPTIONS") {
             respond(output, 405, "Method Not Allowed")
             return
         }
@@ -141,9 +141,24 @@ internal object LocalCastMediaServer {
             respond(output, 404, "Not Found")
             return
         }
+        // Cast Web Receivers use CORS preflight for tracks and range requests.
+        // The secret route is still required even for preflight requests.
+        if (method == "OPTIONS") {
+            output.write(("HTTP/1.1 204 No Content\r\n" +
+                "Access-Control-Allow-Origin: *\r\n" +
+                "Access-Control-Allow-Methods: GET, HEAD, OPTIONS\r\n" +
+                "Access-Control-Allow-Headers: Range, Accept-Encoding, Content-Type\r\n" +
+                "Access-Control-Max-Age: 600\r\n" +
+                "Content-Length: 0\r\nConnection: close\r\n\r\n")
+                .toByteArray(StandardCharsets.US_ASCII))
+            output.flush()
+            return
+        }
         val parsed = try { parseRange(range, binding.size) } catch (_: IOException) {
             output.write(("HTTP/1.1 416 Range Not Satisfiable\r\n" +
-                "Content-Range: bytes */${binding.size}\r\nContent-Length: 0\r\n\r\n").toByteArray(StandardCharsets.US_ASCII))
+                "Content-Range: bytes */${binding.size}\r\n" +
+                "Access-Control-Allow-Origin: *\r\nContent-Length: 0\r\n\r\n")
+                .toByteArray(StandardCharsets.US_ASCII))
             output.flush()
             return
         }
@@ -154,6 +169,8 @@ internal object LocalCastMediaServer {
             append(if (partial) "HTTP/1.1 206 Partial Content\r\n" else "HTTP/1.1 200 OK\r\n")
             append("Content-Type: ${binding.mimeType}\r\n")
             append("Accept-Ranges: bytes\r\n")
+            append("Access-Control-Allow-Origin: *\r\n")
+            append("Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges\r\n")
             append("Content-Length: $length\r\n")
             if (partial) append("Content-Range: bytes $start-$end/${binding.size}\r\n")
             append("Cache-Control: private, no-store\r\n")
