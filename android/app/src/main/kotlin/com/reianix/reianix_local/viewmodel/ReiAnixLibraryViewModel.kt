@@ -496,6 +496,9 @@ class ReiAnixLibraryViewModel(
     /** Native replacement for legacy local release timeline calculations. */
     suspend fun queryNativeTimelineGroups() = nativeLibraryDiscovery.timelineGroups()
 
+    /** On-demand snapshot for the Timeline's optional statistics tab. */
+    suspend fun queryNativeTimelineStatistics() = nativeLibraryDiscovery.timelineStatistics()
+
     /** Native replacement for the local duration anomaly report; does not mutate playback state. */
     suspend fun queryNativeDurationAnomalies(animeId: Long? = null) =
         nativeLibraryDiscovery.durationAnomalies(animeId)
