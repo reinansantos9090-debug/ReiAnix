@@ -20,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryQueryService
 import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryQueryResult
+import com.reianix.reianix_local.data.collections.ReiAnixPersonalCollectionsRepository
 import com.reianix.reianix_local.data.anilist.readPersistedArtworkDiscoveryAttemptTimes
 import com.reianix.reianix_local.data.anilist.writePersistedArtworkDiscoveryAttemptAt
 import org.robolectric.annotation.Config
@@ -54,6 +55,43 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         File(databaseFile.path + "-wal").delete()
         File(databaseFile.path + "-shm").delete()
         databaseFile.parentFile?.delete()
+    }
+
+    @Test
+    fun personalCollectionsPersistOrderedMembershipAndCustomPosterInCanonicalSqlite() = runBlocking {
+        createCanonicalFixture()
+        val firstSession = ReiAnixPersonalCollectionsRepository(context)
+        val collection = firstSession.create("Obras-primas")
+        assertEquals(1, firstSession.load().size)
+        firstSession.toggleAnime(collection.id, 1L)
+        firstSession.toggleAnime(collection.id, 2L)
+        firstSession.setCover(collection.id, 2L)
+        firstSession.moveAnime(collection.id, 2L, -1)
+        firstSession.rename(collection.id, "Meus 10 favoritos")
+
+        // A new service instance must read the exact order and cover from SQLite.
+        val reopened = ReiAnixPersonalCollectionsRepository(context)
+        val persisted = reopened.load().single()
+        assertEquals("Meus 10 favoritos", persisted.name)
+        assertEquals(listOf(2L, 1L), persisted.animeIds)
+        assertEquals(2L, persisted.effectiveCoverId)
+
+        try {
+            reopened.setCover(collection.id, 900L)
+            fail("A capa deve ser um anime membro.")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("capa"))
+        }
+
+        reopened.toggleAnime(collection.id, 2L)
+        assertEquals(listOf(1L), reopened.load().single().animeIds)
+        assertEquals(1L, reopened.load().single().effectiveCoverId)
+        reopened.delete(collection.id)
+        assertTrue(reopened.load().isEmpty())
+
+        // No anime/video rows were removed by a collection mutation.
+        assertNotNull(ReiAnixSqliteLibraryRepository(context).getAnime(1L))
+        assertEquals(29, ReiAnixSqliteLibraryRepository(context).inspectSchema().schemaVersion)
     }
 
     @Test
