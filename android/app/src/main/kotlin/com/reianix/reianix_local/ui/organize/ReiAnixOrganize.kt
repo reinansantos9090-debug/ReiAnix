@@ -1273,7 +1273,7 @@ private fun EmptyAction(
 ) {
     Surface(
         modifier = modifier
-            .heightIn(min = ReiAnixTokens.Dimensions.buttonMinHeight)
+            .heightIn(min = ReiAnixTokens.Dimensions.touchTarget)
             .semantics {
                 contentDescription = label
                 role = Role.Button
