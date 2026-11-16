@@ -276,6 +276,11 @@ class ReiAnixSettingsRepository(
                         }
                     }
 
+                    if (shouldNotifyRuntime && normalizedKey == "artwork.cache_limit_mb") {
+                        // Trim only after SQLite confirms the setting; do not disturb
+                        // registered poster paths or block the Settings UI.
+                        nativeArtworkService.requestCacheTrim()
+                    }
                     if (shouldNotifyRuntime) {
                         val published = runCatching {
                             NativeMailbox.write(
@@ -756,9 +761,7 @@ class ReiAnixSettingsRepository(
     }
 
     private fun resetSettingsNatively(action: String) {
-        val keys = ReiAnixSettingsContract.definitions.keys
-            .filter { action == "reset_all_settings" || it.startsWith("player.") }
-            .sorted()
+        val keys = ReiAnixSettingsContract.keysForReset(playerOnly = action == "reset_player")
         val defaults = keys.associateWith { key ->
             ReiAnixSettingsContract.defaultFor(key)
                 ?: throw IllegalStateException("Missing default for known setting: $key")
