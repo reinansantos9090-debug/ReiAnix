@@ -32,6 +32,16 @@ class ReiAnixSettingsContractTest {
         assertEquals("false", effective["gestures.volume"])
     }
 
+    @Test fun obsoleteDensityPreferenceCanRemainStoredWithoutBeingASetting() {
+        val effective = ReiAnixSettingsContract.withDefaults(
+            mapOf("library.grid_density" to "large"),
+        )
+        // Preserve old SQLite data for compatibility, but do not advertise
+        // the removed selector as a supported current preference.
+        assertEquals("large", effective["library.grid_density"])
+        assertNull(ReiAnixSettingsContract.defaultFor("library.grid_density"))
+    }
+
     @Test fun canonicalPreferencesDoNotInheritMissingKeysFromStaleProjection() {
         val effective = ReiAnixSettingsContract.effectivePreferences(
             canonicalPreferences = mapOf("appearance.theme" to "light"),
