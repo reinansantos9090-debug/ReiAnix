@@ -290,63 +290,19 @@ object VideoThumbnailExtractor {
             latestKeyByUri.keys.asSequence().filter { it != uri.toString() }.take(1024).forEach(latestKeyByUri::remove)
         }
         val target = File(cacheDir, key + ".jpg")
-        val requestId = "thumb-" + key.take(12)
-        val targetExistsAtRequest = target.exists()
         val initialCacheEntryValid = target.isFile && target.length() > 0L &&
             isValidCachedThumbnail(target)
-        if (targetExistsAtRequest && !initialCacheEntryValid) {
 
-        }
-        val requestStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
-
-        NativeMailbox.writeBestEffort(
-            context,
-            org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
-                .put("payload", org.json.JSONObject().put("event", "THUMBNAIL_REQUESTED")
-                    .put("requestId", requestId).put("mediaIdentity", identity).put("size", size)
-                    .put("modifiedAt", modifiedAt)),
-        )
+        
         if (initialCacheEntryValid) {
             val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
             if (cached != null) {
-                NativeMailbox.writeBestEffort(
-                    context,
-                    JSONObject().put("type", "diagnostic").put("requestId", requestId)
-                        .put(
-                            "payload",
-                            JSONObject()
-                                .put("event", "THUMBNAIL_CACHE_HIT")
-                                .put("requestId", requestId)
-                                .put("mediaIdentity", identity)
-                                .put("size", size)
-                                .put("durationMs", cached.result.durationMs),
-                        ),
-                )
-                if (cached.durationRepaired) {
-                    NativeMailbox.writeBestEffort(
-                        context,
-                        JSONObject().put("type", "diagnostic").put("requestId", requestId)
-                            .put(
-                                "payload",
-                                JSONObject()
-                                    .put("event", "THUMBNAIL_DURATION_REPAIRED")
-                                    .put("requestId", requestId)
-                                    .put("mediaIdentity", identity)
-                                    .put("durationMs", cached.result.durationMs),
-                            ),
-                    )
-                }
 
                 return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
             }
         }
 
-        NativeMailbox.writeBestEffort(
-            context,
-            org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
-                .put("payload", org.json.JSONObject().put("event", "THUMBNAIL_CACHE_MISS")
-                    .put("requestId", requestId).put("mediaIdentity", identity).put("size", size)),
-        )
+        
 
         val lock = inFlight.computeIfAbsent(key) { Any() }
         synchronized(lock) {
@@ -363,27 +319,14 @@ object VideoThumbnailExtractor {
 
                     return null
                 }
-                val startedNs = android.os.SystemClock.elapsedRealtimeNanos()
 
-                NativeMailbox.writeBestEffort(
-                    context,
-                    org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
-                        .put("payload", org.json.JSONObject().put("event", "THUMBNAIL_GENERATION_STARTED")
-                            .put("requestId", requestId)),
-                )
+                
                 if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
                     val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
                     if (cached != null) return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
                 }
                 val result = extractLocked(context, uri, target, key, size, modifiedAt)
-                NativeMailbox.writeBestEffort(
-                    context,
-                    org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
-                        .put("payload", org.json.JSONObject()
-                            .put("event", if (result != null) "THUMBNAIL_GENERATION_FINISHED" else "THUMBNAIL_FAILED")
-                            .put("requestId", requestId)
-                            .put("durationMs", (android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000.0)),
-                )
+                
                 if (result == null) {
 
                     return null
@@ -425,11 +368,6 @@ object VideoThumbnailExtractor {
             android.util.Log.w("VideoThumbnailExtractor", "Canonical thumbnail registration failed", error)
 
             false
-        }
-        if (!registered) {
-
-        } else {
-
         }
         return result.copy(canonicalArtworkRegistered = registered)
     }
