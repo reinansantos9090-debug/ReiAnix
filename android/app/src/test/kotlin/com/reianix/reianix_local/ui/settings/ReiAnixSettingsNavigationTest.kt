@@ -40,6 +40,12 @@ class ReiAnixSettingsNavigationTest {
         assertEquals("SIL Open Font License 1.1", ReiAnixLicenseCredits.first { it.id == "google-sans" }.licenseName)
     }
 
+    @Test fun redundantLibraryDensityOptionIsNoLongerDisplayed() {
+        val appearance = SettingsDestinations.first { it.id == "appearance_library" }
+        assertEquals(false, appearance.entries.any { it.key == "setting:library.grid_density" })
+        assertEquals(true, appearance.entries.any { it.key == "setting:appearance.poster_size" })
+    }
+
     @Test fun everyPreferenceUsesAnExplicitDistinctIcon() {
         val keys = SettingsDestinations.flatMap { destination ->
             destination.entries.map { entry -> entry.key.removePrefix("setting:") }

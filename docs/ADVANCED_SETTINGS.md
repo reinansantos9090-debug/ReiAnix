@@ -58,7 +58,6 @@ A implementação do ReiAnix continua própria e usa SettingsStore, LibraryServi
 | Cards da Busca e Minha Lista | Aparência | medium | altera a largura dos cards dessas duas telas |
 | Miniaturas de episódios na Home | Aparência | true | oculta apenas as imagens de Continuar assistindo; pôsteres oficiais continuam visíveis |
 | Ordenação padrão | Biblioteca | added_desc | define a ordenação inicial da Home |
-| Densidade da grade | Biblioteca | medium | altera espaçamento da grade |
 | Animes por lote | Biblioteca | Tudo | escolhe quantos registros carregar de cada vez; novos lotes aparecem ao rolar |
 | Salto no double tap | Player/Gestos | 10 s | altera o seek do double tap; swipe horizontal continua desativado |
 | Velocidade da pressão longa | Player/Gestos | 2.0x | aplica velocidade temporária durante long press |

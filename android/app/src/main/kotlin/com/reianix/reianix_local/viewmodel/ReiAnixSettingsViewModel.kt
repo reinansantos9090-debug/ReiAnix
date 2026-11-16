@@ -63,11 +63,6 @@ class ReiAnixSettingsViewModel(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), true)
 
-    val libraryGridDensity: StateFlow<String> = uiState
-        .map { it.settings["library.grid_density"] ?: "medium" }
-        .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), "medium")
-
     /** Persisted library preferences projected from the canonical settings StateFlow. */
     val libraryPageSize: StateFlow<Int> = uiState
         .map { state ->

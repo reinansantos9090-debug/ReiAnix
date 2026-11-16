@@ -96,7 +96,6 @@ class ReiAnixComposeLibraryHost(
             val appearancePosterSize by settingsViewModel.appearancePosterSize.collectAsStateWithLifecycle()
             val appearanceShowThumbnails by settingsViewModel.appearanceShowThumbnails.collectAsStateWithLifecycle()
             val remoteArtworkAllowed by settingsViewModel.artworkDownloadsAllowed.collectAsStateWithLifecycle()
-            val libraryGridDensity by settingsViewModel.libraryGridDensity.collectAsStateWithLifecycle()
             val libraryPageSize by settingsViewModel.libraryPageSize.collectAsStateWithLifecycle()
             val librarySortDefault by settingsViewModel.librarySortDefault.collectAsStateWithLifecycle()
             val continueWatchingEnabled by settingsViewModel.continueWatchingEnabled.collectAsStateWithLifecycle()
@@ -384,7 +383,6 @@ class ReiAnixComposeLibraryHost(
                         },
                         appearanceCardSize = appearanceCardSize,
                         appearanceShowThumbnails = appearanceShowThumbnails,
-                        libraryGridDensity = libraryGridDensity,
                         libraryPageSize = libraryPageSize,
                         librarySortDefault = librarySortDefault,
                         continueWatchingEnabled = continueWatchingEnabled,
