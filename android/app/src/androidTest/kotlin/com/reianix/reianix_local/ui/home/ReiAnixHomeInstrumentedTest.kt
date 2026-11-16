@@ -9,6 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
