@@ -4086,6 +4086,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         }
         invalidateTransition("player_error")
+        // A fatal playback error takes precedence over the floating menu.
+        setMorePanelVisible(false)
         setLocked(false, persist = true, announce = false)
         errorVisible = true
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
