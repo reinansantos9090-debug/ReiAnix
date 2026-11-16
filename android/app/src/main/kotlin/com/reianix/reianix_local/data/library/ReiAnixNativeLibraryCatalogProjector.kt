@@ -9,6 +9,8 @@ import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
 import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
 import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
 import org.json.JSONArray
+import java.io.File
+import android.net.Uri
 import com.reianix.reianix_local.ui.artwork.localArtworkSourceRevision
 
 /** A single canonical SQLite read projected into the existing immutable Compose models. */
@@ -18,6 +20,18 @@ internal data class ReiAnixNativeLibraryCatalogSnapshot(
 )
 
 internal object ReiAnixNativeLibraryCatalogProjector {
+    // Catalog worker only: stale pointers must not hide another saved poster.
+    private fun hasReadableArtworkFile(path: String): Boolean {
+        if (path.isBlank()) return false
+        if (path.startsWith("content://") || path.startsWith("android.resource://")) return true
+        return runCatching {
+            val file = if (path.startsWith("file://")) {
+                Uri.parse(path).path?.let(::File) ?: return@runCatching false
+            } else File(path)
+            file.isFile && file.canRead() && file.length() > 0L
+        }.getOrDefault(false)
+    }
+
     private val specialTypes = setOf("special", "ova", "oad", "ona", "extra")
 
     fun project(
@@ -88,8 +102,8 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
         }
-        val primaryLocalArtwork = posterCandidates.firstOrNull { !it.localPath.isNullOrBlank() }?.localPath
-            ?: anime.coverCache
+        val primaryLocalArtwork = (posterCandidates.mapNotNull { it.localPath } +
+            listOfNotNull(anime.coverCache)).firstOrNull(::hasReadableArtworkFile)
         val primaryExternalArtwork = posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
             ?: anime.coverUrl
         val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name }

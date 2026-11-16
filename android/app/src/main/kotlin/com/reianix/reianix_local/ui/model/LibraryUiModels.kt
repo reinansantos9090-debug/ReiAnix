@@ -323,6 +323,8 @@ data class ReiAnixAnimeUiModel(
         val availableCount: Int,
         val isWatching: Boolean,
         val isCompleted: Boolean,
+        val hasWatchedEpisode: Boolean,
+        val resumeProgress: Float?,
     )
 
     private val episodeSummary: EpisodeSummary by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -330,6 +332,8 @@ data class ReiAnixAnimeUiModel(
         var availableCount = 0
         var watching = false
         var completed = episodes.isNotEmpty()
+        var watched = false
+        var resumeProgress: Float? = null
         for (episode in episodes) {
             if (episode.media.availability == ReiAnixMediaAvailability.AVAILABLE) {
                 availableCount++
@@ -337,13 +341,17 @@ data class ReiAnixAnimeUiModel(
             if (episode.consumptionState == ReiAnixConsumptionState.IN_PROGRESS) {
                 watching = true
             }
+            if (episode.isWatched) watched = true
+            if (resumeProgress == null && !episode.isCompleted) {
+                episode.progressFraction.takeIf { it > 0f }?.let { resumeProgress = it }
+            }
             if (episode.media.availability == ReiAnixMediaAvailability.MISSING ||
                 episode.media.availability == ReiAnixMediaAvailability.SCOPE_UNAVAILABLE ||
                 episode.media.availability == ReiAnixMediaAvailability.VOLUME_UNAVAILABLE ||
                 !episode.isCompleted
             ) completed = false
         }
-        EpisodeSummary(availableCount, watching, completed)
+        EpisodeSummary(availableCount, watching, completed, watched, resumeProgress)
     }
 
     val availableContentCount: Int
@@ -360,6 +368,13 @@ data class ReiAnixAnimeUiModel(
 
     val isCompleted: Boolean
         get() = episodeSummary.isCompleted
+
+    /** Cached card flags; avoids walking every episode again while grid cards enter composition. */
+    val hasWatchedEpisode: Boolean
+        get() = episodeSummary.hasWatchedEpisode
+
+    val resumeProgressFraction: Float?
+        get() = episodeSummary.resumeProgress
 }
 
 @Immutable

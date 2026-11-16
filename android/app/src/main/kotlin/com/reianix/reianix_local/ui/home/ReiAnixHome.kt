@@ -72,7 +72,6 @@ import com.reianix.reianix_local.ui.ReiAnixAnimeCard
 import com.reianix.reianix_local.ui.ReiAnixIconActionButton
 import com.reianix.reianix_local.ui.ReiAnixTopBar
 import com.reianix.reianix_local.ui.ReiAnixEmptyState
-import com.reianix.reianix_local.ui.ReiAnixLoadingState
 import com.reianix.reianix_local.ui.ReiAnixMetadata
 import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
 import com.reianix.reianix_local.ui.ReiAnixProgressIndicator
@@ -269,11 +268,7 @@ private fun ReiAnixHomeObservedScreen(
                         onOpenLibrary = onOpenLibrary,
                     )
                 } else {
-                    ReiAnixLoadingState(
-                        title = "Carregando biblioteca",
-                        message = "Os primeiros itens aparecerão assim que estiverem disponíveis.",
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    HomeLoading()
                 }
             }
             ReiAnixLibraryLoadStatus.ERROR -> {
@@ -1290,12 +1285,10 @@ private data class HomeGenreSection(
 )
 
 @Composable
-private fun HomeLoading() {
-    ReiAnixLoadingState(
-        title = "Carregando biblioteca",
-        message = "Lendo o catálogo local…",
-        modifier = Modifier.fillMaxSize(),
-    )
+private fun ColumnScope.HomeLoading() {
+    // Keep the existing screen geometry while SQLite restores the saved catalog.
+    // A transient startup state should not replace the Home with a spinning loader.
+    Spacer(modifier = Modifier.weight(1f).fillMaxWidth())
 }
 
 @Composable
