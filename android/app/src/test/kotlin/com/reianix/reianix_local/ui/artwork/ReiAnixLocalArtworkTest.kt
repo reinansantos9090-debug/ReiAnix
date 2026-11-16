@@ -64,6 +64,30 @@ class ReiAnixLocalArtworkTest {
     }
 
     @Test
+    fun previouslyDecodedPosterCanBePlaceholderForAnotherScreenSize() {
+        val identity = "anime:re-zero-poster-cache-test"
+        val source = "/cache/re-zero-official-cover.jpg"
+        val revision = "2026-11-16-1"
+
+        ReiAnixPosterPlaceholderKeyHistory.record(
+            identity, source, revision, "coils-first-small-request-key",
+        )
+        assertEquals(
+            "coils-first-small-request-key",
+            ReiAnixPosterPlaceholderKeyHistory.find(identity, source, revision),
+        )
+        // A changed local file or a new poster must not display stale pixels.
+        assertEquals(null, ReiAnixPosterPlaceholderKeyHistory.find(identity, source, "2026-11-16-2"))
+        assertEquals(null, ReiAnixPosterPlaceholderKeyHistory.find(identity, "/cache/other.jpg", revision))
+
+        // The exact-size request is still distinct: the shared key is only a placeholder.
+        assertNotEquals(
+            buildArtworkMemoryCacheKey(identity, source, 128, 192, revision),
+            buildArtworkMemoryCacheKey(identity, source, 192, 288, revision),
+        )
+    }
+
+    @Test
     fun bucketDimensionPxRoundsToNearestStep() {
         assertEquals(320, bucketDimensionPx(320))
         assertEquals(320, bucketDimensionPx(322))
