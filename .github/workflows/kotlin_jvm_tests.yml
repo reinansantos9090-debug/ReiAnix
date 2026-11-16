@@ -20,6 +20,8 @@ on:
       - "android/app/src/test/kotlin/com/reianix/reianix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt"
       - "android/app/src/test/kotlin/com/reianix/reianix_local/data/artwork/**"
       - "android/app/src/test/kotlin/com/reianix/reianix_local/ui/model/**"
+      - "android/app/src/test/kotlin/com/reianix/reianix_local/ReiAnixLibraryFiltersTest.kt"
+      - "android/app/src/test/kotlin/com/reianix/reianix_local/ReiAnixLibraryRefreshWindowTest.kt"
       - "android/app/src/test/kotlin/com/reianix/reianix_local/data/catalog/**"
       - "android/app/src/test/kotlin/com/reianix/reianix_local/data/anilist/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/data/settings/**"
@@ -125,6 +127,8 @@ jobs:
               --tests com.reianix.reianix_local.ReiAnixSettingsContractTest \
               --tests com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModelEpisodeSummaryTest \
               --tests com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
+              --tests com.reianix.reianix_local.ReiAnixLibraryFiltersTest \
+              --tests com.reianix.reianix_local.ReiAnixLibraryRefreshWindowTest \
               --tests com.reianix.reianix_local.storage.NativeStorageOnboardingStateTest \
               --tests com.reianix.reianix_local.scanner.SafTreeChangeDetectionTest \
             :app:assembleDebugAndroidTest \

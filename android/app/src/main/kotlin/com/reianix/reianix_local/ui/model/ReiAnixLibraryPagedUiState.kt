@@ -18,6 +18,8 @@ data class ReiAnixLibraryPagedUiState(
     val hasMore: Boolean = false,
     val loadedPage: Int = -1,
     val isLoading: Boolean = false,
+    /** A same-filter page-zero refresh keeps existing cards on screen without a load-more spinner. */
+    val isRefreshingPage: Boolean = false,
     val pageSize: Int = 0,
     val requestId: String? = null,
     val generation: Long = 0L,
@@ -42,5 +44,5 @@ data class ReiAnixLibraryPagedUiState(
      * grid's blue "load more" spinner.
      */
     val isLoadingMore: Boolean
-        get() = isLoading && loadedPage >= 0
+        get() = isLoading && loadedPage >= 0 && !isRefreshingPage
 }

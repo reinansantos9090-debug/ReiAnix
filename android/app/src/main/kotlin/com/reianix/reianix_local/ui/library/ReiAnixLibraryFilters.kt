@@ -81,6 +81,7 @@ object ReiAnixLibraryFilterEngine {
 
     private data class SortMetrics(
         val anime: ReiAnixAnimeUiModel,
+        val normalizedTitle: String,
         val addedAt: Double,
         val lastPlayedAt: Double,
         val progress: Double,
@@ -98,47 +99,91 @@ object ReiAnixLibraryFilterEngine {
     ): List<ReiAnixAnimeUiModel> {
         if (animes.size < 2 || sortLabel.isBlank()) return animes
 
+        val selectedSort = ReiAnixLibrarySort.fromLabel(sortLabel)
+        // Most library views use RECENT or TITLE ordering. Neither needs to
+        // inspect episodes: calculating every metric for every anime made even
+        // a simple title sort traverse the entire episode catalog.
         val decorated = animes.map { anime ->
-            val episodes = anime.contentEpisodes
-            val available = episodes.filter {
-                it.media.availability == ReiAnixMediaAvailability.AVAILABLE
+            val episodes = when (selectedSort) {
+                ReiAnixLibrarySort.PROGRESS,
+                ReiAnixLibrarySort.EPISODE,
+                ReiAnixLibrarySort.SEASON_EPISODE,
+                ReiAnixLibrarySort.MODIFICATION,
+                ReiAnixLibrarySort.DURATION,
+                ReiAnixLibrarySort.SIZE -> anime.contentEpisodes
+                else -> emptyList()
             }
-            val episodeForOrdering = available.sortedWith(
-                compareBy<ReiAnixEpisodeUiModel>(
-                    { it.seasonNumber ?: Int.MAX_VALUE },
-                    { it.number ?: Double.MAX_VALUE },
-                ).thenBy { it.id },
-            ).firstOrNull()
-            val firstSeason = available.minOfOrNull { it.seasonNumber ?: Int.MAX_VALUE } ?: Int.MAX_VALUE
-            val progress = if (episodes.isEmpty()) {
-                0.0
+            val available = if (
+                selectedSort == ReiAnixLibrarySort.EPISODE ||
+                selectedSort == ReiAnixLibrarySort.SEASON_EPISODE
+            ) {
+                episodes.filter { it.media.availability == ReiAnixMediaAvailability.AVAILABLE }
             } else {
-                episodes.map { episode ->
+                emptyList()
+            }
+            val episodeForOrdering = if (selectedSort == ReiAnixLibrarySort.EPISODE) {
+                // The first element of a sorted list is the minimum; avoid
+                // allocating/sorting a whole episode list to find one item.
+                available.minWithOrNull(
+                    compareBy<ReiAnixEpisodeUiModel>(
+                        { it.seasonNumber ?: Int.MAX_VALUE },
+                        { it.number ?: Double.MAX_VALUE },
+                    ).thenBy { it.id },
+                )
+            } else {
+                null
+            }
+            val progress = if (selectedSort == ReiAnixLibrarySort.PROGRESS && episodes.isNotEmpty()) {
+                var totalProgress = 0.0
+                for (episode in episodes) {
                     val duration = episode.durationSeconds
-                    if (episode.media.availability == com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability.AVAILABLE &&
+                    if (episode.media.availability == ReiAnixMediaAvailability.AVAILABLE &&
                         duration != null && duration.isFinite() && duration > 0.0
                     ) {
-                        ((episode.progressSeconds ?: 0.0).coerceAtLeast(0.0) / duration).coerceIn(0.0, 1.0)
-                    } else {
-                        0.0
+                        totalProgress += ((episode.progressSeconds ?: 0.0).coerceAtLeast(0.0) / duration)
+                            .coerceIn(0.0, 1.0)
                     }
-                }.average()
+                }
+                totalProgress / episodes.size
+            } else {
+                0.0
             }
             SortMetrics(
                 anime = anime,
+                normalizedTitle = anime.title.trim().lowercase(),
                 addedAt = anime.addedAt ?: 0.0,
                 lastPlayedAt = anime.lastPlayedAt ?: 0.0,
                 progress = progress,
                 firstEpisode = episodeForOrdering?.number ?: Double.MAX_VALUE,
-                minEpisode = available.minOfOrNull { it.number ?: Double.MAX_VALUE } ?: Double.MAX_VALUE,
-                firstSeason = firstSeason,
-                maxModifiedAt = episodes.maxOfOrNull { it.modifiedAt ?: 0.0 } ?: 0.0,
-                totalDuration = episodes.sumOf { it.durationSeconds?.takeIf(Double::isFinite)?.coerceAtLeast(0.0) ?: 0.0 },
-                totalSize = episodes.sumOf { it.fileSizeBytes?.coerceAtLeast(0L) ?: 0L },
+                minEpisode = if (selectedSort == ReiAnixLibrarySort.SEASON_EPISODE) {
+                    available.minOfOrNull { it.number ?: Double.MAX_VALUE } ?: Double.MAX_VALUE
+                } else {
+                    Double.MAX_VALUE
+                },
+                firstSeason = if (selectedSort == ReiAnixLibrarySort.SEASON_EPISODE) {
+                    available.minOfOrNull { it.seasonNumber ?: Int.MAX_VALUE } ?: Int.MAX_VALUE
+                } else {
+                    Int.MAX_VALUE
+                },
+                maxModifiedAt = if (selectedSort == ReiAnixLibrarySort.MODIFICATION) {
+                    episodes.maxOfOrNull { it.modifiedAt ?: 0.0 } ?: 0.0
+                } else {
+                    0.0
+                },
+                totalDuration = if (selectedSort == ReiAnixLibrarySort.DURATION) {
+                    episodes.sumOf { it.durationSeconds?.takeIf(Double::isFinite)?.coerceAtLeast(0.0) ?: 0.0 }
+                } else {
+                    0.0
+                },
+                totalSize = if (selectedSort == ReiAnixLibrarySort.SIZE) {
+                    episodes.sumOf { it.fileSizeBytes?.coerceAtLeast(0L) ?: 0L }
+                } else {
+                    0L
+                },
             )
         }
 
-        val comparator = when (ReiAnixLibrarySort.fromLabel(sortLabel)) {
+        val comparator = when (selectedSort) {
             ReiAnixLibrarySort.RECENT -> compareByDescending<SortMetrics> { it.addedAt }
             ReiAnixLibrarySort.RECENTLY_WATCHED -> compareByDescending<SortMetrics> { it.lastPlayedAt }
             ReiAnixLibrarySort.PROGRESS -> compareByDescending<SortMetrics> { it.progress }
@@ -150,11 +195,11 @@ object ReiAnixLibraryFilterEngine {
             ReiAnixLibrarySort.SIZE -> compareByDescending<SortMetrics> { it.totalSize }
             ReiAnixLibrarySort.FAVORITES_FIRST -> compareByDescending<SortMetrics> { it.anime.favorite }
             ReiAnixLibrarySort.PINNED_FIRST -> compareByDescending<SortMetrics> { it.anime.pinned }
-            ReiAnixLibrarySort.TITLE_ASC -> compareBy<SortMetrics> { it.anime.title.trim().lowercase() }
-            ReiAnixLibrarySort.TITLE_DESC -> compareByDescending<SortMetrics> { it.anime.title.trim().lowercase() }
+            ReiAnixLibrarySort.TITLE_ASC -> compareBy<SortMetrics> { it.normalizedTitle }
+            ReiAnixLibrarySort.TITLE_DESC -> compareByDescending<SortMetrics> { it.normalizedTitle }
         }
 
-        val ordered = when (ReiAnixLibrarySort.fromLabel(sortLabel)) {
+        val ordered = when (selectedSort) {
             ReiAnixLibrarySort.TITLE_ASC ->
                 decorated.sortedWith(comparator.thenBy { it.anime.id })
             ReiAnixLibrarySort.TITLE_DESC ->
@@ -162,7 +207,7 @@ object ReiAnixLibraryFilterEngine {
             else ->
                 decorated.sortedWith(
                     comparator
-                        .thenBy { it.anime.title.trim().lowercase() }
+                        .thenBy { it.normalizedTitle }
                         .thenByDescending { it.anime.id },
                 )
         }
