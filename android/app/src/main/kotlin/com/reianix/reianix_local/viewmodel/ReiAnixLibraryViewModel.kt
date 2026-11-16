@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import com.reianix.reianix_local.data.library.ReiAnixLibraryRepository
+import com.reianix.reianix_local.data.collections.ReiAnixPersonalCollectionsRepository
 import com.reianix.reianix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reianix.reianix_local.data.organize.ReiAnixGenreRegistry
 import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryQueryService
@@ -220,6 +221,10 @@ class ReiAnixLibraryViewModel(
 ) :
     ReiAnixViewModel<ReiAnixLibraryUiState>() {
     private val appContext = context.applicationContext
+    /** Loaded only when Collections or Roulette is opened; canonical SQLite preference ownership. */
+    val personalCollectionsRepository: ReiAnixPersonalCollectionsRepository by lazy(LazyThreadSafetyMode.NONE) {
+        ReiAnixPersonalCollectionsRepository(appContext)
+    }
     private val appDependencies = dependencies ?: ReiAnixAppDependencies.existingOrNull(appContext)
     private val traceMoeRequestsInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val traceMoeRequestJobs = ConcurrentHashMap<Long, Job>()
