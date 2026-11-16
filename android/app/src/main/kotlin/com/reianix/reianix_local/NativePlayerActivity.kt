@@ -2548,6 +2548,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         },
                         onSleepTimer = { showSleepTimerSelection() },
+                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Selecionar faixa de áudio") },
+                        onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Selecionar legendas") },
                         onPlaybackSpeed = {
                             showSpeedSelection(TextView(this@NativePlayerActivity))
                         },
@@ -2808,7 +2810,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
             audioTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_AUDIO),
             subtitleTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_TEXT),
-            audioTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_AUDIO) > 1,
+            audioTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_AUDIO) > 0,
             subtitleTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_TEXT) > 0,
             autoplayNext = autoplayNext,
             horizontalSeekEnabled = horizontalSeekEnabled,
@@ -3055,10 +3057,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val audioAvailable = audioCount > 0
         val subtitleAvailable = subtitleCount > 0
 
-        // A single audio track has no useful selection UI. Subtitles retain the
-        // button even with one track because the existing selector can turn the
-        // subtitle track off explicitly.
-        findViewByTag<View>("reianix_audio_button")?.isEnabled = audioAvailable && audioCount > 1
+        // Keep single-track selectors available so users can disable audio or subtitles.
+        findViewByTag<View>("reianix_audio_button")?.isEnabled = audioAvailable
         findViewByTag<View>("reianix_subtitle_button")?.isEnabled = subtitleAvailable
     }
 
@@ -3094,8 +3094,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun selectedPlayerTrackLabel(trackType: Int): String {
         if (!::player.isInitialized) return "Selecionar"
         val parameters = player.trackSelectionParameters
-        if (trackType == C.TRACK_TYPE_TEXT && parameters.disabledTrackTypes.contains(trackType)) {
-            return "Off"
+        if (parameters.disabledTrackTypes.contains(trackType)) {
+            return "Desativado"
         }
         val selectedFormat = player.currentTracks.groups
             .filter { it.type == trackType && it.isSupported }
@@ -3530,23 +3530,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
             }
 
-        if (trackType == C.TRACK_TYPE_AUDIO && realTracks.size <= 1) {
-            showFeedback(
-                if (realTracks.isEmpty()) "Nenhuma faixa de áudio disponível"
-                else "Apenas uma faixa de áudio",
-            )
-            return
-        }
         if (realTracks.isEmpty()) {
-            showFeedback("Nenhuma faixa disponível")
+            showFeedback(
+                if (trackType == C.TRACK_TYPE_AUDIO) "Nenhuma faixa de áudio disponível"
+                else "Nenhuma legenda disponível",
+            )
             return
         }
 
         val options = buildList {
             add(TrackOption("Automático", null, -1))
-            if (trackType == C.TRACK_TYPE_TEXT) {
-                add(TrackOption("Desativadas", null, -2))
-            }
+            add(TrackOption(
+                if (trackType == C.TRACK_TYPE_AUDIO) "Desativar áudio" else "Desativar legendas",
+                null,
+                -2,
+            ))
             addAll(realTracks)
         }
 
@@ -3554,7 +3552,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val disabled = parameters.disabledTrackTypes.contains(trackType)
         val overriddenGroups = parameters.overrides.keys
         val selectedIndex = when {
-            trackType == C.TRACK_TYPE_TEXT && disabled -> options.indexOfFirst { it.trackIndex == -2 }
+            disabled -> options.indexOfFirst { it.trackIndex == -2 }
             overriddenGroups.isNotEmpty() -> options.indexOfFirst { option ->
                 option.group != null && option.group.mediaTrackGroup in overriddenGroups
             }
@@ -3570,8 +3568,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val builder = player.trackSelectionParameters.buildUpon()
                         .clearOverridesOfType(trackType)
                     when {
-                        trackType == C.TRACK_TYPE_TEXT && option.trackIndex == -2 -> {
-                            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                        option.trackIndex == -2 -> {
+                            builder.setTrackTypeDisabled(trackType, true)
                         }
                         else -> {
                             builder.setTrackTypeDisabled(trackType, false)
