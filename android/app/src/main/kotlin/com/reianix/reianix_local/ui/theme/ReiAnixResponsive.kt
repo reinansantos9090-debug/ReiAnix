@@ -75,11 +75,8 @@ data class ReiAnixResponsiveMetrics(
             ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedLibraryGridMinWidth
             ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Dimensions.gridMinWidthMedium
         }
-        return when (normalized) {
-            "small" -> mediumBase * (76f / 108f)
-            "large" -> mediumBase * (144f / 108f)
-            else -> mediumBase
-        }
+        val scale = compactBase.value / ReiAnixTokens.Dimensions.gridMinWidthMedium.value
+        return mediumBase * scale
     }
 
     fun homeCardWidth(preference: String): Dp {
