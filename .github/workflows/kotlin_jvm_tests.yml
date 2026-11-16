@@ -114,6 +114,8 @@ jobs:
               --tests com.reianix.reianix_local.scanner.DefaultReiAnixFolderScannerTest \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.distinctSecondReleaseIsImportedWithoutReplacingOriginalEpisode' \
               --tests com.reianix.reianix_local.ui.settings.ReiAnixSettingsNavigationTest \
+              --tests com.reianix.reianix_local.ui.model.ReiAnixLibraryPageRefreshPolicyTest \
+              --tests com.reianix.reianix_local.ui.library.ReiAnixLibraryFilterEngineFastSortTest \
               --tests com.reianix.reianix_local.data.anilist.ReiAnixAniListSearchTermsTest \
               --tests com.reianix.reianix_local.data.anilist.ReiAnixAniListClientTest \
               --tests com.reianix.reianix_local.data.anilist.AniListAccountSyncPolicyTest \

@@ -78,6 +78,8 @@ class ReiAnixHomeInstrumentedTest {
         }
         composeRule.onNodeWithText("ReiAnix").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Pesquisar na biblioteca").assertIsDisplayed()
+        composeRule.onNodeWithText("Carregando biblioteca").assertDoesNotExist()
+        composeRule.onNodeWithText("Os primeiros itens aparecerão assim que estiverem disponíveis.").assertDoesNotExist()
     }
 
     @Test
