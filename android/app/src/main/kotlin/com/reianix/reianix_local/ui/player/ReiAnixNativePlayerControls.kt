@@ -183,7 +183,13 @@ fun ReiAnixNativePlayerTopControls(
                             androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_reianix_cast),
                         )
                         // Cast owns device discovery and route selection; no DLNA.
-                        CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
+                        // Cast is optional: devices without Play services must
+                        // still be able to open and use the local player.
+                        runCatching {
+                            CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
+                        }.onFailure {
+                            visibility = android.view.View.GONE
+                        }
                     }
                 },
                 modifier = Modifier.size(48.dp),
