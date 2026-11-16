@@ -520,7 +520,7 @@ private fun ColumnScope.LibraryReadyContent(
     val availableEpisodeCount = state.availableEpisodeCount
     val responsive = LocalReiAnixResponsiveMetrics.current
     val posterSize = LocalReiAnixPosterSize.current
-    val posterGridMinimum = responsive.posterCardWidth(posterSize)
+    val posterGridMinimum = responsive.libraryPosterGridMinWidth(posterSize, gridDensity)
     val posterRequestDimensionPx = with(LocalDensity.current) {
         (posterGridMinimum / ReiAnixTokens.Dimensions.posterAspectRatio).roundToPx().coerceAtLeast(1)
     }
