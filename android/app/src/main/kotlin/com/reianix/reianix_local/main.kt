@@ -4,9 +4,7 @@ import androidx.activity.ComponentActivity
 import android.util.Log
 import android.graphics.BitmapFactory
 import androidx.lifecycle.lifecycleScope
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.data.backup.ReiAnixBackupService
-import com.reianix.reianix_local.data.backup.ReiAnixDiagnosticsService
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsFileService
 import java.util.UUID
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
@@ -175,8 +173,8 @@ internal object MainEntryPoint {
         // This is the single Kotlin entrypoint for process bootstrap from an Activity.
         // ReiAnixApplication may already have started it; start() is idempotent.
         dependencies.bootstrap.start()
-        PerformanceDiagnostics.attach(activity)
-        PerformanceDiagnostics.sampleMemory(activity, "main_on_create")
+
+
         observeBootstrapForActivity(activity, dependencies)
 
         Log.i(TAG, "NATIVE_ACTIVITY_ENTRYPOINT_READY activity=${activity::class.java.simpleName}")
@@ -291,12 +289,7 @@ internal object MainEntryPoint {
                 runtimePort.onRuntimeReconnect()
                 runtimePort.scheduleThumbnailReconciliation("startup_ready")
             }
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_RUNTIME_COMPOSITION_READY",
-                severity = if (recoveryRequired) "WARN" else "INFO",
-                source = "MainEntryPoint",
-                result = if (recoveryRequired) "RECOVERY_REQUIRED" else "HOME_READY",
-            )
+
             onReady(host, recoveryRequired)
         }
     }
@@ -352,20 +345,7 @@ internal object MainEntryPoint {
                         observation.normalOperationsReady -> "READY_WITH_WARNINGS"
                         else -> observation.phase.name
                     }
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "APP_NATIVE_ENTRYPOINT_BOOTSTRAP_STATE",
-                        severity = if (observation.recoveryRequired) "WARN" else "INFO",
-                        source = "MainEntryPoint",
-                        result = result,
-                        context = mapOf(
-                            "phase" to observation.phase.name,
-                            "stage" to observation.stage.name,
-                            "persistence_status" to observation.persistenceStatus.name,
-                            "recovery_required" to observation.recoveryRequired,
-                            "normal_operations_ready" to observation.normalOperationsReady,
-                            "warnings_count" to observation.warningsCount,
-                        ),
-                    )
+
                     if (observation.recoveryRequired) {
                         Log.w(TAG, "Native startup remains gated: canonical database recovery is required.")
                     } else {
@@ -412,17 +392,7 @@ internal object NativeLifecycleCoordinator {
                 changedAtMillis = System.currentTimeMillis(),
             ).also { mutableState.value = it }
         }
-        ReiAnixDiagnosticTimeline.record(
-            name = "APP_NATIVE_LIFECYCLE_STATE_CHANGED",
-            severity = if (updated.state == "destroyed") "DEBUG" else "INFO",
-            source = "MainEntryPoint",
-            result = updated.state,
-            context = mapOf(
-                "resumed" to updated.resumed,
-                "generation" to updated.generation,
-                "changed_at_ms" to updated.changedAtMillis,
-            ),
-        )
+
     }
 }
 
@@ -570,19 +540,7 @@ internal object HomeRefreshCoordinator {
         reason: String,
     ) {
         if (previous == next) return
-        ReiAnixDiagnosticTimeline.record(
-            name = "HOME_REFRESH_PHASE_CHANGED",
-            severity = if (next == HomeRefreshPhase.ERROR || next == HomeRefreshPhase.CANCELLED) "WARN" else "INFO",
-            source = source,
-            result = next.name,
-            requestId = requestId,
-            refreshId = refreshId,
-            context = mapOf(
-                "previous_phase" to (previous?.name ?: "NONE"),
-                "phase" to next.name,
-                "transition_reason" to reason.take(80),
-            ),
-        )
+
     }
 }
 
@@ -912,20 +870,11 @@ internal class NativeMainRuntimePort(
                         continue
                     }
                     if (changed > 0) libraryViewModel.refreshCatalogProjection()
-                    recordDiagnostic(
-                        name = "CATALOG_METADATA_HYDRATION_FINISHED",
-                        result = if (changed > 0) "updated" else "no_unmatched_metadata",
-                        context = mapOf("reason" to reason, "updated_count" to changed),
-                    )
+
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Throwable) {
-                    recordDiagnostic(
-                        name = "CATALOG_METADATA_HYDRATION_FAILED",
-                        severity = "WARN",
-                        result = reason,
-                        error = failure,
-                    )
+
                 }
             }
         }
@@ -948,12 +897,7 @@ internal class NativeMainRuntimePort(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Throwable) {
-                    recordDiagnostic(
-                        name = "THUMBNAIL_RECONCILIATION_FAILED",
-                        severity = "WARN",
-                        result = reason,
-                        error = failure,
-                    )
+
                 }
             }
         }
@@ -964,11 +908,7 @@ internal class NativeMainRuntimePort(
         val normalizedReason = reason.trim().take(160).ifEmpty { "catalog_changed" }
         val result = metadataHydrationRequests.trySend(normalizedReason)
         if (result.isFailure) {
-            recordDiagnostic(
-                name = "CATALOG_METADATA_HYDRATION_NOT_QUEUED",
-                severity = "WARN",
-                result = normalizedReason,
-            )
+
         }
         return result.isSuccess
     }
@@ -978,11 +918,7 @@ internal class NativeMainRuntimePort(
         val normalizedReason = reason.trim().take(160).ifEmpty { "catalog_changed" }
         val result = thumbnailReconciliationRequests.trySend(normalizedReason)
         if (result.isFailure) {
-            recordDiagnostic(
-                name = "THUMBNAIL_RECONCILIATION_NOT_QUEUED",
-                severity = "WARN",
-                result = normalizedReason,
-            )
+
         }
         return result.isSuccess
     }
@@ -1114,21 +1050,11 @@ internal class NativeMainRuntimePort(
         val state = withTimeoutOrNull(20_000L) {
             libraryViewModel.uiState.first { it.status.name != "LOADING" }
         } ?: run {
-            recordDiagnostic(
-                name = "THUMBNAIL_RECONCILIATION_SKIPPED",
-                severity = "WARN",
-                result = "catalog_not_ready",
-                context = mapOf("reason" to reason),
-            )
+
             return
         }
         if (state.status.name == "ERROR") {
-            recordDiagnostic(
-                name = "THUMBNAIL_RECONCILIATION_SKIPPED",
-                severity = "WARN",
-                result = "catalog_read_failed",
-                context = mapOf("reason" to reason),
-            )
+
             return
         }
 
@@ -1180,25 +1106,10 @@ internal class NativeMainRuntimePort(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Throwable) {
-            recordDiagnostic(
-                name = "THUMBNAIL_RECONCILIATION_FAILED",
-                severity = "WARN",
-                result = reason,
-                error = failure,
-                context = mapOf("last_episode_id" to cursor),
-            )
+
             return
         }
-        recordDiagnostic(
-            name = "THUMBNAIL_RECONCILIATION_FINISHED",
-            result = "completed",
-            context = mapOf(
-                "reason" to reason,
-                "catalog_episode_count" to scanned,
-                "queued" to queued,
-                "skipped" to skipped,
-            ),
-        )
+
     }
 
     private fun updateScanUiState(snapshots: Collection<ScanProgressSnapshot>) {
@@ -1209,13 +1120,7 @@ internal class NativeMainRuntimePort(
         val current = mutableScanUiState.value
         val sameOperation = current.scanId?.let { id -> snapshots.firstOrNull { it.operationId == id } }
         if (sameOperation != null && current.isTerminal && !sameOperation.state.isTerminal) {
-            recordDiagnostic(
-                name = "SCAN_STALE_PROGRESS_IGNORED",
-                severity = "WARN",
-                result = sameOperation.state.name,
-                scanId = sameOperation.operationId,
-                context = mapOf("current_state" to current.state),
-            )
+
             return
         }
         val preferred = snapshots.filter { !it.state.isTerminal }.maxByOrNull { it.startedAtMillis }
@@ -1241,18 +1146,7 @@ internal class NativeMainRuntimePort(
             timestamp = preferred.finishedAtMillis ?: preferred.startedAtMillis,
         )
         if (current.state != uiState || current.scanId != preferred.operationId) {
-            recordDiagnostic(
-                name = "SCAN_UI_STATE_CHANGED",
-                result = uiState,
-                scanId = preferred.operationId,
-                context = mapOf(
-                    "source" to preferred.source,
-                    "files_found" to preferred.filesFound,
-                    "files_processed" to preferred.filesProcessed,
-                    "directories_completed" to preferred.directoriesCompleted,
-                    "partial" to preferred.partial,
-                ),
-            )
+
         }
     }
 
@@ -1449,14 +1343,7 @@ internal class NativeMainRuntimePort(
                 throw cancelled
             } catch (failure: Throwable) {
                 Log.e("ReiAnixMainPort", "Native main operation failed: $label", failure)
-                ReiAnixDiagnosticTimeline.record(
-                    name = "NATIVE_MAIN_OPERATION_FAILED",
-                    severity = "ERROR",
-                    source = "NativeMainRuntimePort",
-                    result = label,
-                    error = failure,
-                    context = mapOf("operation" to label, "lane" to normalizedLane),
-                )
+
                 publish(action = label, error = failure.message ?: failure.javaClass.simpleName)
             }
         }
@@ -1620,12 +1507,7 @@ internal class NativeMainRuntimePort(
                     error = "saf_selection_pending",
                 )
             }
-            recordDiagnostic(
-                name = "LIBRARY_REFRESH_REJECTED",
-                severity = "WARN",
-                requestId = correlatedRequestId,
-                result = "saf_selection_pending",
-            )
+
             return false
         }
 
@@ -1635,11 +1517,7 @@ internal class NativeMainRuntimePort(
                 ignoreCase = true,
             )
         ) {
-            recordDiagnostic(
-                name = "NATIVE_STORAGE_CAPABILITIES_CHECK_REQUESTED",
-                requestId = correlatedRequestId,
-                result = "refresh_library",
-            )
+
             return checkStorageAccess(
                 requestId = correlatedRequestId,
                 resultAction = "refresh_library",
@@ -1931,13 +1809,7 @@ internal class NativeMainRuntimePort(
                     allowMissingAnimeId = true,
                 )
                 if (!validation.isCurrent) {
-                    recordDiagnostic(
-                        name = "PLAYER_PROGRESS_STALE",
-                        severity = "WARN",
-                        requestId = callbackRequestId,
-                        result = "stale_before_persistence:" + validation.reason,
-                        context = mapOf("episode_id" to episodeId),
-                    )
+
                     return@launchTracked
                 }
                 val suppliedPath = callbackSnapshot.optString(
@@ -1947,16 +1819,7 @@ internal class NativeMainRuntimePort(
                 if (suppliedPath.isNotEmpty()) {
                     val pathEpisode = dependencies.sqliteLibraryRepository.findEpisodeByPathOrFileUri(suppliedPath)
                     if (pathEpisode != null && pathEpisode.id != episodeId) {
-                        recordDiagnostic(
-                            name = "PLAYER_PROGRESS_IDENTITY_REJECTED",
-                            severity = "WARN",
-                            requestId = callbackRequestId,
-                            result = "episode_path_mismatch",
-                            context = mapOf(
-                                "episode_id" to episodeId,
-                                "path_episode_id" to pathEpisode.id,
-                            ),
-                        )
+
                         return@launchTracked
                     }
                 }
@@ -1964,15 +1827,7 @@ internal class NativeMainRuntimePort(
             val existingProgress = dependencies.consumptionService.getProgress(episodeId)
                 ?: throw NoSuchElementException("Episode ID does not exist: $episodeId")
             if ((existingProgress.lastPlayedAtEpochSeconds ?: 0.0) >= playedAtEpochSeconds) {
-                recordDiagnostic(
-                    name = "PLAYER_PROGRESS_STALE",
-                    result = "stale_event_timestamp",
-                    context = mapOf(
-                        "episode_id" to episodeId,
-                        "event_time_seconds" to playedAtEpochSeconds,
-                        "stored_last_played_at" to existingProgress.lastPlayedAtEpochSeconds,
-                    ),
-                )
+
                 return@launchTracked
             }
             val progress = dependencies.consumptionService.saveProgress(
@@ -2002,16 +1857,7 @@ internal class NativeMainRuntimePort(
                     allowMissingAnimeId = true,
                 )
                 if (!postSaveValidation.isCurrent) {
-                    recordDiagnostic(
-                        name = "PLAYER_TASK_STALE",
-                        severity = "WARN",
-                        requestId = callbackRequestId,
-                        result = postSaveValidation.reason,
-                        context = mapOf(
-                            "episode_id" to episodeId,
-                            "stage" to "after_save_progress",
-                        ),
-                    )
+
                     return@launchTracked
                 }
             }
@@ -2153,12 +1999,7 @@ internal class NativeMainRuntimePort(
                     compareBy<NativeThumbnailRequest> { it.priority }.thenBy { it.sequence },
                 )
                 if (lowest == null || lowest.priority >= priority) {
-                    recordDiagnostic(
-                        name = "THUMBNAIL_REQUEST_REJECTED",
-                        severity = "WARN",
-                        result = "queue_full",
-                        context = mapOf("pending_count" to thumbnailRequests.size),
-                    )
+
                     return false
                 }
                 thumbnailQueue.remove(lowest)
@@ -2290,12 +2131,7 @@ internal class NativeMainRuntimePort(
                         }
                         request.completion.complete(result)
                         if (result == null) {
-                            recordDiagnostic(
-                                name = "THUMBNAIL_EXTRACTION_FAILED",
-                                severity = "WARN",
-                                result = "no_result",
-                                context = mapOf("request_id" to request.key.take(20)),
-                            )
+
                             val previousAttempts = thumbnailRetryCounts[request.key] ?: 0
                             if (previousAttempts < 2 && !request.completion.isCancelled) {
                                 val nextAttempt = previousAttempts + 1
@@ -2309,12 +2145,7 @@ internal class NativeMainRuntimePort(
                                 if (thumbnailLatestKeyByUri.remove(uriKey, request.key)) {
                                     thumbnailLatestAtMillis.remove(uriKey)
                                 }
-                                recordDiagnostic(
-                                    name = "THUMBNAIL_RETRY_EXHAUSTED",
-                                    severity = "WARN",
-                                    result = "extraction_failed",
-                                    context = mapOf("attempts" to previousAttempts),
-                                )
+
                             }
                         } else {
                             thumbnailRetryCounts.remove(request.key)
@@ -2331,12 +2162,7 @@ internal class NativeMainRuntimePort(
                     } catch (failure: Throwable) {
                         request.completion.completeExceptionally(failure)
                         Log.w("ReiAnixMainPort", "Local thumbnail extraction failed", failure)
-                        recordDiagnostic(
-                            name = "THUMBNAIL_EXTRACTION_FAILED",
-                            severity = "WARN",
-                            error = failure,
-                            context = mapOf("request_id" to request.key.take(20)),
-                        )
+
                         val previousAttempts = thumbnailRetryCounts[request.key] ?: 0
                         if (previousAttempts < 2 && !request.completion.isCancelled) {
                             val nextAttempt = previousAttempts + 1
@@ -2350,12 +2176,7 @@ internal class NativeMainRuntimePort(
                             if (thumbnailLatestKeyByUri.remove(uriKey, request.key)) {
                                 thumbnailLatestAtMillis.remove(uriKey)
                             }
-                            recordDiagnostic(
-                                name = "THUMBNAIL_RETRY_EXHAUSTED",
-                                severity = "WARN",
-                                error = failure,
-                                context = mapOf("attempts" to previousAttempts),
-                            )
+
                         }
                     } finally {
                         synchronized(thumbnailQueueLock) {
@@ -2393,21 +2214,9 @@ internal class NativeMainRuntimePort(
                                     if (thumbnailRetryCounts[request.key] == attemptToRetry) {
                                         thumbnailRetryCounts.remove(request.key)
                                     }
-                                    recordDiagnostic(
-                                        name = "THUMBNAIL_RETRY_REJECTED",
-                                        severity = "WARN",
-                                        result = "queue_rejected",
-                                        context = mapOf("attempt" to attemptToRetry),
-                                    )
+
                                 } else {
-                                    recordDiagnostic(
-                                        name = "THUMBNAIL_RETRY_SCHEDULED",
-                                        result = "retry_$attemptToRetry",
-                                        context = mapOf(
-                                            "attempt" to attemptToRetry,
-                                            "delay_ms" to delayBeforeRetry,
-                                        ),
-                                    )
+
                                 }
                             } finally {
                                 thumbnailRetryPendingKeys.remove(request.key)
@@ -2527,13 +2336,7 @@ internal class NativeMainRuntimePort(
         return runCatching { libraryViewModel.openEpisode(episodeId, expectedAnimeId) }
             .onFailure { failure ->
                 Log.e("ReiAnixMainPort", "Unable to open local episode id=$episodeId", failure)
-                ReiAnixDiagnosticTimeline.record(
-                    name = "NATIVE_MAIN_OPEN_EPISODE_FAILED",
-                    severity = "ERROR",
-                    source = "NativeMainRuntimePort",
-                    error = failure,
-                    context = mapOf("episode_id" to episodeId),
-                )
+
             }
             .getOrNull()
     }
@@ -2560,12 +2363,7 @@ internal class NativeMainRuntimePort(
         publish(action = "player_transition_cancelled", transform = {
             it.copy(transitionGeneration = it.transitionGeneration + 1L)
         })
-        recordDiagnostic(
-            name = "PLAYER_TRANSITION_CANCELLED",
-            severity = "INFO",
-            result = reason,
-            context = mapOf("transition_generation" to mutableSnapshot.value.transitionGeneration),
-        )
+
     }
 
     fun invalidatePlayerSession(
@@ -2577,27 +2375,13 @@ internal class NativeMainRuntimePort(
         if (!expectedSessionId.isNullOrBlank() && current.activePlayerSessionId != null &&
             current.activePlayerSessionId != expectedSessionId
         ) {
-            recordDiagnostic(
-                name = "PLAYER_CALLBACK_STALE",
-                severity = "WARN",
-                requestId = expectedRequestId ?: current.activePlayerRequestId,
-                sessionId = expectedSessionId,
-                result = "session_mismatch_on_invalidation",
-                context = mapOf("current_player_session_id" to current.activePlayerSessionId),
-            )
+
             return false
         }
         if (!expectedRequestId.isNullOrBlank() && current.activePlayerRequestId != null &&
             current.activePlayerRequestId != expectedRequestId
         ) {
-            recordDiagnostic(
-                name = "PLAYER_CALLBACK_STALE",
-                severity = "WARN",
-                requestId = expectedRequestId,
-                sessionId = current.activePlayerSessionId,
-                result = "request_mismatch_on_invalidation",
-                context = mapOf("current_request_id" to current.activePlayerRequestId),
-            )
+
             return false
         }
         // Match the former invalidate_player_session order: cancel the
@@ -2631,12 +2415,7 @@ internal class NativeMainRuntimePort(
                 transitionGeneration = it.transitionGeneration,
             )
         })
-        recordDiagnostic(
-            name = "PLAYER_SESSION_INVALIDATED",
-            severity = "INFO",
-            result = reason,
-            context = mapOf("had_session" to !current.activePlayerSessionId.isNullOrBlank()),
-        )
+
         return true
     }
 
@@ -2976,13 +2755,7 @@ internal class NativeMainRuntimePort(
         if (correlatedRequestId != null && pendingOperation != null &&
             pendingStorageOperations.putIfAbsent(correlatedRequestId, pendingOperation) != null
         ) {
-            recordDiagnostic(
-                name = "NATIVE_STORAGE_DUPLICATE_REQUEST_IGNORED",
-                severity = "WARN",
-                requestId = correlatedRequestId,
-                result = operationAction,
-                context = mapOf("native_action" to normalizedAction),
-            )
+
             return false
         }
 
@@ -3030,13 +2803,7 @@ internal class NativeMainRuntimePort(
                 message = launchError,
                 error = launchError,
             )
-            recordDiagnostic(
-                name = "NATIVE_STORAGE_ACTION_LAUNCH_FAILED",
-                severity = "WARN",
-                requestId = correlatedRequestId,
-                result = normalizedAction,
-                error = IllegalStateException(launchError),
-            )
+
         }
         publish(
             action = "storage_action",
@@ -3062,12 +2829,7 @@ internal class NativeMainRuntimePort(
     ): Boolean {
         if (restoreMaintenanceInProgress) {
             val message = "Aguarde a conclusão da restauração do backup antes de atualizar a biblioteca."
-            recordDiagnostic(
-                name = "LIBRARY_SCAN_REJECTED",
-                severity = "WARN",
-                requestId = requestId,
-                result = "restore_in_progress",
-            )
+
             requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 publishOperationResult(
                     requestId = it,
@@ -3086,12 +2848,7 @@ internal class NativeMainRuntimePort(
                 !pendingFolderRemovalRequestId.isNullOrBlank()
         if (storageMutationPending) {
             val message = "Conclua a seleção ou remoção da pasta antes de atualizar a biblioteca."
-            recordDiagnostic(
-                name = "LIBRARY_SCAN_REJECTED",
-                severity = "WARN",
-                requestId = requestId,
-                result = "storage_operation_in_progress",
-            )
+
             requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 publishOperationResult(
                     requestId = it,
@@ -3107,13 +2864,7 @@ internal class NativeMainRuntimePort(
         val authorizedRoots = authorizedScanTargets("saf")
         if (authorizedRoots.isEmpty()) {
             val message = "Não há uma pasta SAF autorizada para atualizar a biblioteca."
-            recordDiagnostic(
-                name = "LIBRARY_SCAN_REJECTED",
-                severity = "WARN",
-                requestId = requestId,
-                result = "no_authorized_library_saf_source",
-                context = mapOf("authorized_saf_root_count" to authorizedRoots.size),
-            )
+
             requestId?.trim()?.takeIf { it.isNotEmpty() }?.let {
                 publishOperationResult(
                     requestId = it,
@@ -3148,12 +2899,7 @@ internal class NativeMainRuntimePort(
                     .put("waitingForScanCount", activeScanIds.size)
                     .put("waitingForScanIds", org.json.JSONArray(activeScanIds.toList())),
             )
-            recordDiagnostic(
-                name = "LIBRARY_SCAN_QUEUED",
-                requestId = queuedRequestId,
-                result = "active_scan_in_progress",
-                context = mapOf("active_scan_count" to activeScanIds.size),
-            )
+
             val accepted = launchTracked("queued_library_scan", lane = "storage") {
                 try {
                     // A library refresh may fan out across several SAF roots.
@@ -3188,26 +2934,14 @@ internal class NativeMainRuntimePort(
                         val refresh = HomeRefreshCoordinator.state.value
                         if (refresh.active && refresh.requestId == queuedRequestId) {
                             HomeRefreshCoordinator.fail(queuedRequestId, "queued_scan_request_rejected")
-                            recordDiagnostic(
-                                name = "HOME_REFRESH_FAILED",
-                                severity = "WARN",
-                                requestId = queuedRequestId,
-                                refreshId = refresh.refreshId,
-                                result = "queued_scan_request_rejected",
-                            )
+
                         }
                     }
                 } catch (cancelled: CancellationException) {
                     val refresh = HomeRefreshCoordinator.state.value
                     if (refresh.active && refresh.requestId == queuedRequestId) {
                         HomeRefreshCoordinator.cancel(queuedRequestId, "queued_scan_cancelled")
-                        recordDiagnostic(
-                            name = "HOME_REFRESH_CANCELLED",
-                            severity = "WARN",
-                            requestId = queuedRequestId,
-                            refreshId = refresh.refreshId,
-                            result = "queued_scan_cancelled",
-                        )
+
                     }
                     publishOperationResult(
                         requestId = queuedRequestId,
@@ -3228,12 +2962,7 @@ internal class NativeMainRuntimePort(
                     message = "Não foi possível enfileirar a atualização da biblioteca.",
                     error = "operation_rejected",
                 )
-                recordDiagnostic(
-                    name = "LIBRARY_SCAN_QUEUE_REJECTED",
-                    severity = "WARN",
-                    requestId = queuedRequestId,
-                    result = "operation_rejected",
-                )
+
             }
             return accepted
         }
@@ -3252,14 +2981,7 @@ internal class NativeMainRuntimePort(
     ) {
         val timestamp = eventTimestampMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
         lastStorageMutationAtMillis = maxOf(lastStorageMutationAtMillis, timestamp)
-        recordDiagnostic(
-            name = "NATIVE_STORAGE_MUTATION",
-            result = reason,
-            context = mapOf(
-                "tree_uri_present" to !treeUri.isNullOrBlank(),
-                "at_ms" to timestamp,
-            ),
-        )
+
     }
 
     fun isStorageSnapshotStale(publishedAtMillis: Long): Boolean =
@@ -3289,15 +3011,7 @@ internal class NativeMainRuntimePort(
         }
         if (isStorageSnapshotStale(publishedAt)) {
             mutableStorageState.value = storageSnapshot()
-            recordDiagnostic(
-                name = "STORAGE_STALE_CAPABILITY_SNAPSHOT_IGNORED",
-                severity = "INFO",
-                result = "older_than_last_storage_mutation",
-                context = mapOf(
-                    "published_at_ms" to publishedAt,
-                    "last_mutation_at_ms" to lastStorageMutationAtMillis,
-                ),
-            )
+
             settingsViewModel.refresh()
             return false
         }
@@ -3324,15 +3038,7 @@ internal class NativeMainRuntimePort(
         }
         if (isStorageSnapshotStale(publishedAt)) {
             mutableStorageState.value = storageSnapshot()
-            recordDiagnostic(
-                name = "STORAGE_STALE_CAPABILITY_SNAPSHOT_IGNORED",
-                severity = "WARN",
-                result = "older_than_last_storage_mutation",
-                context = mapOf(
-                    "published_at_ms" to publishedAt,
-                    "last_mutation_at_ms" to lastStorageMutationAtMillis,
-                ),
-            )
+
             return false
         }
 
@@ -3357,12 +3063,7 @@ internal class NativeMainRuntimePort(
                     recordStorageMutation("saf_grant_confirmed", treeUri)
                 }
             } else {
-                recordDiagnostic(
-                    name = "SAF_GRANT_EVENT_REJECTED",
-                    severity = "WARN",
-                    requestId = pendingSafSelectionRequestId,
-                    result = "android_persisted_read_grant_missing",
-                )
+
             }
         }
 
@@ -3371,17 +3072,7 @@ internal class NativeMainRuntimePort(
         settingsViewModel.refresh()
         libraryViewModel.refreshNativeFolders()
         libraryViewModel.refreshCatalogProjection()
-        recordDiagnostic(
-            name = "NATIVE_STORAGE_CAPABILITIES_APPLIED",
-            requestId = pendingSafSelectionRequestId,
-            result = "authoritative_android_snapshot",
-            context = mapOf(
-                "media_store_access" to snapshot.mediaStoreAccess,
-                "broad_storage_access" to snapshot.broadStorageAccess,
-                "configured_saf_root_count" to snapshot.configuredSafRoots.size,
-                "onboarding_phase" to snapshot.onboardingPhase,
-            ),
-        )
+
         return true
     }
 
@@ -3765,16 +3456,7 @@ internal class NativeMainRuntimePort(
             else -> pythonTruthyJsonValue(payload.opt("complete"))
         }
         if (inventoryStartedAt > 0L && lastStorageMutationAtMillis > inventoryStartedAt) {
-            recordDiagnostic(
-                name = "SAF_INVENTORY_STALE_IGNORED",
-                severity = "INFO",
-                result = "newer_storage_mutation",
-                context = mapOf(
-                    "inventory_started_at_ms" to inventoryStartedAt,
-                    "last_mutation_at_ms" to lastStorageMutationAtMillis,
-                    "inventory_complete" to inventoryComplete,
-                ),
-            )
+
             settingsViewModel.refresh()
             // main.py still re-evaluates the startup onboarding gate for a stale
             // inventory, but only from current canonical folders/grants—not from
@@ -3914,18 +3596,6 @@ internal class NativeMainRuntimePort(
             requestId = payload.optString("requestId", "").takeIf { it.isNotBlank() },
         )
 
-        recordDiagnostic(
-            name = "NATIVE_SAF_INVENTORY_RECONCILED",
-            result = if (inventoryComplete) "complete" else "partial_inventory",
-            context = mapOf(
-                "inventory_started_at_ms" to inventoryStartedAt,
-                "configured_root_count" to configuredSafFolders.size,
-                "reported_identity_count" to statusByIdentity.size,
-                "identity_rows_updated" to identityRowsUpdated,
-                "sources_restored" to sourcesRestored,
-                "sources_marked_unavailable" to sourcesUnavailable,
-            ),
-        )
     }
 
     fun updateSafCapabilities(currentUris: Collection<String>): NativeMainStorageSnapshot {
@@ -3961,11 +3631,7 @@ internal class NativeMainRuntimePort(
             StorageAuthorization.safIdentity(existing.toString()) == identity
         }
         if (!match) {
-            recordDiagnostic(
-                name = "SAF_ROOT_MERGE_REJECTED",
-                severity = "WARN",
-                result = "not_a_configured_library_source",
-            )
+
             return false
         }
         mutableStorageState.value = storageSnapshot()
@@ -4011,12 +3677,7 @@ internal class NativeMainRuntimePort(
             val expectedIdentity = StorageAuthorization.safIdentity(expectedReference)
             val actualIdentity = StorageAuthorization.safIdentity(actualReference)
             if (expectedIdentity == null || actualIdentity == null || expectedIdentity != actualIdentity) {
-                recordDiagnostic(
-                    name = "SAF_REMOVAL_RESULT_REJECTED",
-                    severity = "WARN",
-                    requestId = pendingRequestId,
-                    result = "tree_uri_mismatch",
-                )
+
                 return false
             }
         }
@@ -4095,18 +3756,7 @@ internal class NativeMainRuntimePort(
             dismissed = dismissed,
         )
         diagnosticEvent?.takeIf { it.isNotBlank() }?.let { name ->
-            recordDiagnostic(
-                name = name,
-                severity = if (phase == NativeStorageOnboardingState.PHASE_ERROR) "WARN" else "INFO",
-                source = "saf",
-                requestId = requestId,
-                result = result ?: normalized.lowercase(Locale.ROOT),
-                context = mapOf(
-                    "phase" to phase,
-                    "has_message" to !resolvedMessage.isNullOrBlank(),
-                    "has_error" to !resolvedError.isNullOrBlank(),
-                ),
-            )
+
         }
         Log.i(
             "ReiAnixMainPort",
@@ -4124,12 +3774,7 @@ internal class NativeMainRuntimePort(
         // library root is unavailable and prompting the user to select it again.
         val repairedSafIdentities = repairConfiguredSafSourceIdentities()
         if (repairedSafIdentities > 0) {
-            recordDiagnostic(
-                name = "SAF_SOURCE_IDENTITIES_REPAIRED",
-                result = "startup_onboarding",
-                requestId = requestId,
-                context = mapOf("repaired_rows" to repairedSafIdentities, "reason" to reason),
-            )
+
         }
         val validRoots = configuredValidLibrarySafRoots()
         val current = activity.nativeStorageOnboardingState.value
@@ -4185,12 +3830,7 @@ internal class NativeMainRuntimePort(
             requestId = requestId,
         )
         if (!current.dismissed) {
-            recordDiagnostic(
-                name = "STORAGE_ONBOARDING_SHOWN",
-                source = "saf",
-                result = onboardingResult,
-                requestId = requestId,
-            )
+
         }
     }
 
@@ -4275,22 +3915,11 @@ internal class NativeMainRuntimePort(
             .filter { it.isReadPermission }
             .map { it.uri.toString() }
         if (StorageAuthorization.safAccess(treeUri, persistedReadUris) != SafAccessLevel.AVAILABLE) {
-            recordDiagnostic(
-                name = "SAF_INVENTORY_RECOVERY_REJECTED",
-                severity = "WARN",
-                requestId = request,
-                result = "persisted_read_grant_not_available",
-                context = mapOf("identity" to identity),
-            )
+
             return false
         }
         if (!claimRequestId(request, "saf_inventory_recovery")) {
-            recordDiagnostic(
-                name = "SAF_INVENTORY_RECOVERY_DUPLICATE_IGNORED",
-                severity = "WARN",
-                requestId = request,
-                result = "already_claimed",
-            )
+
             return true
         }
 
@@ -4341,13 +3970,7 @@ internal class NativeMainRuntimePort(
                         .put("identity", identity)
                         .put("recoveredFromInventory", true),
                 )
-                recordDiagnostic(
-                    name = "STORAGE_SOURCE_VALIDATION_FAILED",
-                    severity = "WARN",
-                    requestId = request,
-                    result = "inventory_recovery_validation_failed",
-                    context = mapOf("identity" to identity),
-                )
+
                 return true
             }
 
@@ -4374,12 +3997,7 @@ internal class NativeMainRuntimePort(
                     .put("identity", identity)
                     .put("recoveredFromInventory", true),
             )
-            recordDiagnostic(
-                name = "SAF_SELECTION_RECOVERED_FROM_INVENTORY",
-                requestId = request,
-                result = "completed",
-                context = mapOf("identity" to identity),
-            )
+
             try {
                 activity.startActivity(
                     MainActivity.createNativeStorageActionIntent(
@@ -4391,13 +4009,7 @@ internal class NativeMainRuntimePort(
                     )
                 )
             } catch (scanFailure: Exception) {
-                recordDiagnostic(
-                    name = "SAF_RECOVERY_RESCAN_LAUNCH_FAILED",
-                    severity = "WARN",
-                    result = "scan_tree",
-                    error = scanFailure,
-                    context = mapOf("identity" to identity),
-                )
+
             }
         } catch (cancelled: CancellationException) {
             finishPendingSafSelection(
@@ -4415,14 +4027,7 @@ internal class NativeMainRuntimePort(
                 error = failure.javaClass.simpleName,
                 dismissed = false,
             )
-            recordDiagnostic(
-                name = "SAF_SELECTION_INVENTORY_RECOVERY_FAILED",
-                severity = "WARN",
-                requestId = request,
-                result = "failed",
-                error = failure,
-                context = mapOf("identity" to identity),
-            )
+
             finishPendingSafSelection(
                 eventRequestId = request,
                 status = "ERROR",
@@ -4449,12 +4054,7 @@ internal class NativeMainRuntimePort(
         pendingSafSelectionBaselineKnown = baseline.isSuccess
         pendingSafSelectionBaselineIdentities = baseline.getOrDefault(emptySet())
         if (!pendingSafSelectionBaselineKnown) {
-            recordDiagnostic(
-                name = "SAF_SELECTION_BASELINE_UNAVAILABLE",
-                severity = "WARN",
-                requestId = pendingSafSelectionRequestId,
-                result = "inventory_recovery_disabled",
-            )
+
         }
         pendingSafSelectionStartedAtMillis = System.currentTimeMillis()
         publish(action = "begin_saf_selection")
@@ -4919,12 +4519,7 @@ internal class NativeMainRuntimePort(
                     if (eventId.isBlank()) {
                         // The legacy poller rejected malformed envelopes before dispatch.
                         // Do not execute an uncorrelated event that cannot be deduplicated safely.
-                        recordDiagnostic(
-                            name = "NATIVE_EVENT_REJECTED",
-                            severity = "WARN",
-                            result = "missing_event_id",
-                            context = mapOf("type" to item.envelope.optString("type")),
-                        )
+
                         acknowledgeNativeMailboxEvent(item)
                         continue
                     }
@@ -5016,11 +4611,7 @@ internal class NativeMainRuntimePort(
                 message,
                 android.widget.Toast.LENGTH_LONG,
             ).show()
-            recordDiagnostic(
-                name = "INTERRUPTED_SCAN_STARTUP_NOTICE",
-                result = "shown",
-                context = mapOf("interrupted_scan_count" to interruptedCount),
-            )
+
         }
     }
 
@@ -5180,9 +4771,6 @@ internal class NativeMainRuntimePort(
 
     private val backupService: ReiAnixBackupService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixBackupService(activity.applicationContext)
-    }
-    private val diagnosticsService: ReiAnixDiagnosticsService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        ReiAnixDiagnosticsService(activity.applicationContext)
     }
     private val settingsFileService: ReiAnixSettingsFileService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixSettingsFileService(dependencies.sqliteSettingsRepository)
@@ -5351,14 +4939,7 @@ internal class NativeMainRuntimePort(
                 require(archive.isFile && archive.length() > 0L) {
                     "O serviço de backup não produziu um arquivo válido."
                 }
-                recordDiagnostic(
-                    name = "BACKUP_CREATED",
-                    result = "success",
-                    context = mapOf(
-                        "backup_duration_ms" to (android.os.SystemClock.elapsedRealtime() - backupStartedAtMillis),
-                        "size_bytes" to archive.length(),
-                    ),
-                )
+
                 publish(action = "create_backup", transform = {
                     it.copy(lastArtifactPath = archive.absolutePath, lastResultJson = null)
                 })
@@ -5549,12 +5130,7 @@ internal class NativeMainRuntimePort(
                     error = "scan_in_progress_or_restore_active",
                 )
             }
-            recordDiagnostic(
-                name = "BACKUP_RESTORE_BLOCKED",
-                severity = "WARN",
-                requestId = correlatedRequestId,
-                result = "scan_in_progress_or_restore_active",
-            )
+
             return false
         }
         correlatedRequestId?.let {
@@ -5593,17 +5169,7 @@ internal class NativeMainRuntimePort(
                         }
                     }
                 }
-                recordDiagnostic(
-                    name = "RESTORE_COMPLETED",
-                    result = "success",
-                    context = mapOf(
-                        "restore_duration_ms" to (android.os.SystemClock.elapsedRealtime() - restoreStartedAtMillis),
-                        "imported_rows" to result.importedRows,
-                        "missing_files" to result.missingFiles,
-                        "manual_artwork_reconnected" to result.manualArtworkReconnected,
-                        "warnings_count" to result.warnings.size,
-                    ),
-                )
+
                 libraryViewModel.refreshCatalogProjection()
                 settingsViewModel.refresh()
                 scheduleCatalogMetadataHydration("backup_restored")
@@ -5788,12 +5354,7 @@ internal class NativeMainRuntimePort(
                     error = "scan_in_progress_or_restore_active",
                 )
             }
-            recordDiagnostic(
-                name = "RECOVERY_RESTORE_BLOCKED",
-                severity = "WARN",
-                requestId = correlatedRequestId,
-                result = "scan_in_progress_or_restore_active",
-            )
+
             return false
         }
         correlatedRequestId?.let {
@@ -5918,15 +5479,16 @@ internal class NativeMainRuntimePort(
         }
         val accepted = launchTracked("database_integrity", lane = "backup") {
             try {
-                // main.py's integrity_check returned the complete privacy-filtered
-                // diagnostic report (database, library, files, artwork, AniList,
-                // playback, performance, storage and scan state), not only the
-                // backup subsystem's SQLite integrity fragment.
-                val reportBytes = withContext(Dispatchers.IO) {
-                    val raw = ReiAnixDiagnosticsService(activity.applicationContext).exportJson()
-                    if (mutableSnapshot.value.recoveryRequired) enrichRecoveryDiagnostic(raw) else raw
+                // Integrity is a local database check, never a diagnostic export.
+                val integrity = withContext(Dispatchers.IO) { backupService.integrityReport() }
+                val report = org.json.JSONObject()
+                    .put("healthy", integrity.healthy)
+                    .put("schema_version", integrity.schemaVersion)
+                    .put("foreign_key_violations", integrity.foreignKeyViolations)
+                    .put("error", integrity.error ?: org.json.JSONObject.NULL)
+                if (!integrity.healthy) {
+                    throw IllegalStateException(integrity.error ?: "A verificação de integridade do SQLite falhou.")
                 }
-                val report = org.json.JSONObject(String(reportBytes, Charsets.UTF_8))
                 publish(action = "database_integrity", transform = {
                     it.copy(lastResultJson = report.toString())
                 })
@@ -6004,12 +5566,7 @@ internal class NativeMainRuntimePort(
                 message = "Aguarde a restauração do backup terminar antes de reconciliar a biblioteca.",
                 error = "restore_in_progress",
             )
-            recordDiagnostic(
-                name = "RESTORE_RECONCILIATION_BLOCKED",
-                severity = "WARN",
-                requestId = resolvedRequestId,
-                result = "restore_in_progress",
-            )
+
             return false
         }
         if (mutableSnapshot.value.recoveryRequired) {
@@ -6027,13 +5584,7 @@ internal class NativeMainRuntimePort(
             try {
                 val scanState = mutableScanUiState.value.state.uppercase(Locale.ROOT)
                 if (scanState in setOf("RUNNING", "QUEUED", "CANCELLING")) {
-                    recordDiagnostic(
-                        name = "RESTORE_RECONCILIATION_SCAN_ALREADY_RUNNING",
-                        severity = "WARN",
-                        requestId = resolvedRequestId,
-                        result = scanState,
-                        context = mapOf("reconciliation" to "blocked_before_mutation"),
-                    )
+
                     publishOperationResult(
                         requestId = resolvedRequestId,
                         action = "backup_reconcile",
@@ -6059,21 +5610,10 @@ internal class NativeMainRuntimePort(
                     // requestLibraryScan already publishes the specific BLOCKED or
                     // FAILED terminal result. Do not overwrite that reason with a
                     // generic failure from this caller.
-                    recordDiagnostic(
-                        name = "RESTORE_RECONCILIATION_SCAN_NOT_QUEUED",
-                        severity = "WARN",
-                        requestId = resolvedRequestId,
-                        result = operationResultFor(resolvedRequestId)?.status ?: "rejected",
-                        context = mapOf("local_references_updated" to updated),
-                    )
+
                     return@launchTracked
                 }
-                recordDiagnostic(
-                    name = "RESTORE_RECONCILIATION_QUEUED",
-                    requestId = resolvedRequestId,
-                    result = "scan_library",
-                    context = mapOf("local_references_updated" to updated),
-                )
+
             } catch (cancelled: CancellationException) {
                 publishOperationResult(
                     requestId = resolvedRequestId,
@@ -6109,134 +5649,16 @@ internal class NativeMainRuntimePort(
     }
 
     /** Native privacy-filtered report mirrors the old diagnostic export action. */
-    fun exportDiagnosticsJson(
-        requestId: String? = null,
-        resultAction: String = "export_diagnostics",
-    ): Boolean {
-        val correlatedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
-        correlatedRequestId?.let {
-            publishOperationResult(
-                requestId = it,
-                action = resultAction,
-                status = "QUEUED",
-                operationState = "QUEUED",
-                message = "Exportação de diagnósticos enfileirada.",
-            )
-        }
-        val accepted = launchTracked("export_diagnostics", lane = "diagnostics") {
-            try {
-                val bytes = withContext(Dispatchers.IO) {
-                    val raw = diagnosticsService.exportJson()
-                    if (mutableSnapshot.value.recoveryRequired) {
-                        enrichRecoveryDiagnostic(raw)
-                    } else {
-                        raw
-                    }
-                }
-                val json = bytes.toString(Charsets.UTF_8)
-                publish(action = "export_diagnostics", transform = {
-                    it.copy(lastResultJson = json)
-                })
-                correlatedRequestId?.let {
-                    publishOperationResult(
-                        requestId = it,
-                        action = resultAction,
-                        status = "COMPLETED",
-                        operationState = "COMPLETED",
-                        message = "Diagnósticos exportados.",
-                        payload = org.json.JSONObject().put("jsonBytes", bytes.size),
-                    )
-                }
-            } catch (cancelled: CancellationException) {
-                correlatedRequestId?.let {
-                    publishOperationResult(
-                        requestId = it,
-                        action = resultAction,
-                        status = "CANCELLED",
-                        operationState = "CANCELLED",
-                        message = "A exportação de diagnósticos foi cancelada.",
-                    )
-                }
-                throw cancelled
-            } catch (failure: Throwable) {
-                correlatedRequestId?.let {
-                    publishOperationResult(
-                        requestId = it,
-                        action = resultAction,
-                        status = "FAILED",
-                        operationState = "FAILED",
-                        message = failure.message ?: "Não foi possível exportar os diagnósticos.",
-                        error = failure.javaClass.simpleName,
-                    )
-                }
-                throw failure
-            }
-        }
-        if (!accepted && correlatedRequestId != null) {
-            publishOperationResult(
-                requestId = correlatedRequestId,
-                action = resultAction,
-                status = "FAILED",
-                operationState = "FAILED",
-                message = "A exportação de diagnósticos não foi aceita.",
-                error = "operation_rejected",
-            )
-        }
-        return accepted
-    }
+
 
     /**
      * Port RecoveryService.diagnostic_bytes without exposing the local database path.
      * The ordinary privacy-filtered report remains unchanged outside Recovery Mode.
      */
-    private fun enrichRecoveryDiagnostic(raw: ByteArray): ByteArray {
-        val report = org.json.JSONObject(String(raw, Charsets.UTF_8))
-        val database = report.optJSONObject("database") ?: org.json.JSONObject()
-        val databaseFile = File(File(activity.filesDir, "data"), "library.sqlite3")
-        val quickCheck = database.optJSONArray("quick_check") ?: org.json.JSONArray()
-        val foreignKeyViolations = database.optInt("foreign_key_violations", -1)
-        report.put(
-            "recovery",
-            org.json.JSONObject()
-                .put("required", true)
-                .put("database_exists", databaseFile.isFile)
-                .put("size_bytes", if (databaseFile.isFile) databaseFile.length() else 0L)
-                .put("quick_check", quickCheck)
-                // Keep the FK result independent from the overall SQLite/schema
-                // health flag, matching the legacy RecoveryService diagnostic contract.
-                .put("foreign_key_ok", foreignKeyViolations == 0)
-                .put("error", database.opt("error") ?: org.json.JSONObject.NULL),
-        )
-        return (report.toString(2) + "\n").toByteArray(Charsets.UTF_8)
-    }
 
-    fun exportDiagnostics(): String = ReiAnixDiagnosticTimeline.snapshotJson().toString()
 
-    fun recordDiagnostic(
-        name: String,
-        severity: String = "INFO",
-        result: String? = null,
-        error: Throwable? = null,
-        context: Map<String, Any?> = emptyMap(),
-        requestId: String? = null,
-        scanId: String? = null,
-        refreshId: String? = null,
-        sessionId: String? = null,
-        source: String = "NativeMainRuntimePort",
-    ) {
-        ReiAnixDiagnosticTimeline.record(
-            name = name,
-            severity = severity,
-            source = source,
-            result = result,
-            requestId = requestId,
-            scanId = scanId,
-            refreshId = refreshId,
-            sessionId = sessionId,
-            error = error,
-            context = context,
-        )
-    }
+
+
 
 
     private val settingLocks = ConcurrentHashMap<String, Mutex>()
@@ -6411,7 +5833,6 @@ internal class NativeMainRuntimePort(
             libraryViewModel.refreshCatalogProjection()
         }
 
-    fun requestRecoveryDiagnostic(): Boolean = exportDiagnosticsJson()
 
     fun createRecoverySnapshot(): Boolean = createRecoverySafetySnapshot()
 
@@ -6540,12 +5961,7 @@ internal class NativeMainRuntimePort(
         val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
             ?: UUID.randomUUID().toString()
         if (pendingSafSelectionRequestId == resolvedRequestId) {
-            recordDiagnostic(
-                name = "SAF_SELECTION_DUPLICATE_REQUEST_IGNORED",
-                severity = "WARN",
-                requestId = resolvedRequestId,
-                result = "request_already_pending",
-            )
+
             return false
         }
         if (!beginSafSelection(resolvedRequestId, bridge)) {
@@ -6695,12 +6111,7 @@ internal class NativeMainRuntimePort(
                         clearPendingSafRemovalContext()
                         throw failure
                     }
-                    recordDiagnostic(
-                        name = "NATIVE_FOLDER_RELEASE_REQUESTED",
-                        requestId = resolvedRequestId,
-                        result = normalizedAction,
-                        context = mapOf("folder_kind" to "saf", "tree_uri_present" to true),
-                    )
+
                     return@launchTracked
                 }
 
@@ -6726,12 +6137,7 @@ internal class NativeMainRuntimePort(
                         .put("reference", normalizedReference)
                         .put("folderKind", folder.kind ?: ""),
                 )
-                recordDiagnostic(
-                    name = "NATIVE_FOLDER_REMOVED",
-                    requestId = resolvedRequestId,
-                    result = normalizedAction,
-                    context = mapOf("folder_kind" to (folder.kind ?: "unknown")),
-                )
+
                 publish(action = "remove_folder")
             } catch (cancelled: CancellationException) {
                 if (pendingSafRemovalRequestId == resolvedRequestId) clearPendingSafRemovalContext()
@@ -6759,13 +6165,7 @@ internal class NativeMainRuntimePort(
                     message = failure.message ?: "Não foi possível remover a pasta.",
                     error = failure.javaClass.simpleName,
                 )
-                recordDiagnostic(
-                    name = "NATIVE_FOLDER_REMOVAL_FAILED",
-                    severity = "WARN",
-                    requestId = resolvedRequestId,
-                    result = normalizedAction,
-                    error = failure,
-                )
+
             }
         }
         if (!accepted) {
@@ -6793,12 +6193,7 @@ internal class NativeMainRuntimePort(
         val resolvedRequestId = requestId?.trim()?.takeIf { it.isNotEmpty() }
             ?: UUID.randomUUID().toString()
         if (pendingSafRemovalRequestId == resolvedRequestId) {
-            recordDiagnostic(
-                name = "SAF_REMOVAL_DUPLICATE_REQUEST_IGNORED",
-                severity = "WARN",
-                requestId = resolvedRequestId,
-                result = "request_already_pending",
-            )
+
             return false
         }
         val requestedIdentity = StorageAuthorization.safIdentity(requestedReference)
@@ -6881,7 +6276,6 @@ internal class NativeMainRuntimePort(
     fun nativeStorageAction(action: String): Boolean =
         requestStorageAction(action)
 
-    fun performanceSnapshot(): String = PerformanceDiagnostics.snapshotJson().toString()
 
     /** Metadata-only AniList access delegates to the existing native integration service. */
     suspend fun searchAniList(term: String, limit: Int = 10) =
@@ -7085,12 +6479,7 @@ internal class NativeMainRuntimePort(
                             message = completionMessage,
                             payload = completionPayload,
                         )
-                        recordDiagnostic(
-                            name = "ANILIST_METADATA_REFRESH_COMPLETED",
-                            requestId = correlatedRequestId,
-                            result = if (stale) "stale_metadata_retained" else "updated",
-                            context = mapOf("anime_id" to animeId),
-                        )
+
                     }
                     is com.reianix.reianix_local.data.anilist.AniListResult.Failure -> {
                         throw IllegalStateException(finalResult.error.toString())
@@ -7114,14 +6503,7 @@ internal class NativeMainRuntimePort(
                     message = failure.message ?: "Não foi possível atualizar os metadados AniList.",
                     error = failure.javaClass.simpleName,
                 )
-                recordDiagnostic(
-                    name = "ANILIST_METADATA_REFRESH_FAILED",
-                    severity = "WARN",
-                    requestId = correlatedRequestId,
-                    result = failure.javaClass.simpleName,
-                    error = failure,
-                    context = mapOf("anime_id" to animeId),
-                )
+
                 throw failure
             }
         }
@@ -7149,12 +6531,7 @@ internal class NativeMainRuntimePort(
     fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean {
         if (animeId <= 0L || restoreMaintenanceInProgress) {
             if (restoreMaintenanceInProgress) {
-                recordDiagnostic(
-                    name = "ARTWORK_REQUEST_BLOCKED",
-                    severity = "WARN",
-                    result = "restore_in_progress",
-                    context = mapOf("anime_id" to animeId),
-                )
+
             }
             return false
         }
@@ -7165,11 +6542,7 @@ internal class NativeMainRuntimePort(
 
     fun requestPendingArtwork(): Boolean {
         if (restoreMaintenanceInProgress) {
-            recordDiagnostic(
-                name = "ARTWORK_RECONCILIATION_BLOCKED",
-                severity = "WARN",
-                result = "restore_in_progress",
-            )
+
             return false
         }
         val accepted = dependencies.artworkService.requestPendingArtwork()
@@ -7349,14 +6722,7 @@ internal class NativeMainRuntimePort(
         }
 
         if (restoreMaintenanceInProgress) {
-            recordDiagnostic(
-                name = "HOME_REFRESH_BLOCKED",
-                severity = "WARN",
-                requestId = requestId,
-                refreshId = refreshId,
-                result = "restore_in_progress",
-                context = mapOf("source" to refreshSource),
-            )
+
             reportOperation(
                 status = "BLOCKED",
                 operationState = "BLOCKED",
@@ -7366,14 +6732,7 @@ internal class NativeMainRuntimePort(
             return false
         }
         if (HomeRefreshCoordinator.state.value.active) {
-            recordDiagnostic(
-                name = "HOME_REFRESH_REJECTED",
-                severity = "INFO",
-                requestId = requestId,
-                refreshId = refreshId,
-                result = "already_refreshing",
-                context = mapOf("source" to refreshSource),
-            )
+
             // The legacy request_home_refresh reports an active refresh as an
             // accepted wait, not a failed tap; leave the existing coordinator
             // untouched and let its current terminal transition own the UI state.
@@ -7387,21 +6746,9 @@ internal class NativeMainRuntimePort(
         }
         val startedAt = System.currentTimeMillis()
         val knownOperations = NativeScanController.progress.value.keys.toSet()
-        recordDiagnostic(
-            name = "HOME_REFRESH_REQUESTED",
-            requestId = requestId,
-            refreshId = refreshId,
-            result = refreshSource,
-            context = mapOf("source" to refreshSource),
-        )
+
         if (!HomeRefreshCoordinator.begin(requestId, refreshId, refreshSource)) {
-            recordDiagnostic(
-                name = "HOME_REFRESH_REJECTED",
-                severity = "WARN",
-                requestId = requestId,
-                refreshId = refreshId,
-                result = "coordinator_rejected",
-            )
+
             reportOperation(
                 status = "FAILED",
                 operationState = "FAILED",
@@ -7412,13 +6759,7 @@ internal class NativeMainRuntimePort(
         }
         if (!pendingSafSelectionRequestId.isNullOrBlank()) {
             HomeRefreshCoordinator.fail(requestId, "saf_selection_pending")
-            recordDiagnostic(
-                name = "HOME_REFRESH_REJECTED",
-                severity = "WARN",
-                requestId = requestId,
-                refreshId = refreshId,
-                result = "saf_selection_pending",
-            )
+
             reportOperation(
                 status = "BLOCKED",
                 operationState = "BLOCKED",
@@ -7435,21 +6776,10 @@ internal class NativeMainRuntimePort(
             // Port main.py's refresh_library preflight: query Android storage
             // capabilities first, then request the catalogue scan once the result
             // has updated the canonical onboarding projection.
-            recordDiagnostic(
-                name = "NATIVE_STORAGE_CAPABILITIES_CHECK_REQUESTED",
-                requestId = requestId,
-                refreshId = refreshId,
-                result = "home_refresh",
-            )
+
             if (!checkStorageAccess()) {
                 HomeRefreshCoordinator.fail(requestId, "storage_capabilities_check_rejected")
-                recordDiagnostic(
-                    name = "HOME_REFRESH_FAILED",
-                    severity = "WARN",
-                    requestId = requestId,
-                    refreshId = refreshId,
-                    result = "storage_capabilities_check_rejected",
-                )
+
                 reportOperation(
                     status = "FAILED",
                     operationState = "FAILED",
@@ -7463,13 +6793,7 @@ internal class NativeMainRuntimePort(
             // the absence of a currently authorized SAF root blocks Home refresh here.
             if (authorizedScanTargets("saf").isEmpty()) {
                 HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
-                recordDiagnostic(
-                    name = "HOME_REFRESH_FAILED",
-                    severity = "WARN",
-                    requestId = requestId,
-                    refreshId = refreshId,
-                    result = "no_authorized_library_saf_source",
-                )
+
                 reportOperation(
                     status = "BLOCKED",
                     operationState = "BLOCKED",
@@ -7480,13 +6804,7 @@ internal class NativeMainRuntimePort(
             }
             if (!requestLibraryScan(requestId = requestId, resultAction = "scan_library")) {
                 HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected")
-                recordDiagnostic(
-                    name = "HOME_REFRESH_FAILED",
-                    severity = "WARN",
-                    requestId = requestId,
-                    refreshId = refreshId,
-                    result = "native_scan_request_rejected",
-                )
+
                 reportOperation(
                     status = "FAILED",
                     operationState = "FAILED",
@@ -7496,13 +6814,7 @@ internal class NativeMainRuntimePort(
                 return false
             }
         }
-        recordDiagnostic(
-            name = "HOME_REFRESH_ACCEPTED",
-            requestId = requestId,
-            refreshId = refreshId,
-            result = if (capabilitiesCheckPending) "storage_capability_check_accepted" else "native_scan_request_accepted",
-            context = mapOf("source" to refreshSource, "capabilities_check_pending" to capabilitiesCheckPending),
-        )
+
         synchronized(lock) {
             homeRefreshJob?.cancel()
             homeRefreshJob = activity.lifecycleScope.launch {
@@ -7518,13 +6830,7 @@ internal class NativeMainRuntimePort(
                         }
                         if (checkedStorage == null) {
                             HomeRefreshCoordinator.fail(requestId, "storage_capabilities_check_timeout")
-                            recordDiagnostic(
-                                name = "HOME_REFRESH_FAILED",
-                                severity = "WARN",
-                                requestId = requestId,
-                                refreshId = refreshId,
-                                result = "storage_capabilities_check_timeout",
-                            )
+
                             reportOperation(
                                 status = "FAILED",
                                 operationState = "FAILED",
@@ -7538,13 +6844,7 @@ internal class NativeMainRuntimePort(
                         // mutations before it schedules the next native operation.
                         if (authorizedScanTargets("saf").isEmpty()) {
                             HomeRefreshCoordinator.fail(requestId, "no_authorized_library_saf_source")
-                            recordDiagnostic(
-                                name = "HOME_REFRESH_FAILED",
-                                severity = "WARN",
-                                requestId = requestId,
-                                refreshId = refreshId,
-                                result = "no_authorized_library_saf_source",
-                            )
+
                             reportOperation(
                                 status = "BLOCKED",
                                 operationState = "BLOCKED",
@@ -7555,13 +6855,7 @@ internal class NativeMainRuntimePort(
                         }
                         if (!requestLibraryScan(requestId = requestId, resultAction = "scan_library")) {
                             HomeRefreshCoordinator.fail(requestId, "native_scan_request_rejected_after_capability_check")
-                            recordDiagnostic(
-                                name = "HOME_REFRESH_FAILED",
-                                severity = "WARN",
-                                requestId = requestId,
-                                refreshId = refreshId,
-                                result = "native_scan_request_rejected_after_capability_check",
-                            )
+
                             reportOperation(
                                 status = "FAILED",
                                 operationState = "FAILED",
@@ -7582,8 +6876,7 @@ internal class NativeMainRuntimePort(
                     }
                     if (firstBatch.isNullOrEmpty()) {
                         HomeRefreshCoordinator.fail(requestId, "native_scan_start_timeout")
-                        recordDiagnostic("HOME_REFRESH_FAILED", result = "native_scan_start_timeout",
-                            requestId = requestId, context = mapOf("source" to refreshSource))
+
                         reportOperation(
                             status = "FAILED",
                             operationState = "FAILED",
@@ -7593,20 +6886,8 @@ internal class NativeMainRuntimePort(
                         return@launch
                     }
                     HomeRefreshCoordinator.markScanStarted(requestId)
-                    recordDiagnostic(
-                        name = "HOME_REFRESH_STARTED",
-                        requestId = requestId,
-                        refreshId = refreshId,
-                        result = "scan_started",
-                        context = mapOf("source" to refreshSource, "operation_count" to firstBatch.size),
-                    )
-                    recordDiagnostic(
-                        name = "HOME_REFRESH_SCAN_STARTED",
-                        requestId = requestId,
-                        refreshId = refreshId,
-                        result = "scan_started",
-                        context = mapOf("source" to refreshSource, "operation_count" to firstBatch.size),
-                    )
+
+
                     var stableTerminalBatch: List<ScanProgressSnapshot> = emptyList()
                     while (true) {
                         val current = NativeScanController.progress.value.values.filter {
@@ -7626,9 +6907,7 @@ internal class NativeMainRuntimePort(
                     }
                     if (stableTerminalBatch.any { it.state == ScanLifecycleState.FAILED }) {
                         HomeRefreshCoordinator.fail(requestId, "native_scan_failed")
-                        recordDiagnostic("HOME_REFRESH_FAILED", severity = "WARN", requestId = requestId,
-                            refreshId = refreshId, result = "native_scan_failed",
-                            context = mapOf("terminal_states" to stableTerminalBatch.joinToString { it.state.name }))
+
                         reportOperation(
                             status = "FAILED",
                             operationState = "FAILED",
@@ -7642,8 +6921,7 @@ internal class NativeMainRuntimePort(
                     }
                     if (stableTerminalBatch.any { it.state == ScanLifecycleState.CANCELLED }) {
                         HomeRefreshCoordinator.cancel(requestId, "native_scan_cancelled")
-                        recordDiagnostic("HOME_REFRESH_CANCELLED", severity = "WARN", requestId = requestId,
-                            refreshId = refreshId, result = "native_scan_cancelled")
+
                         reportOperation(
                             status = "CANCELLED",
                             operationState = "CANCELLED",
@@ -7655,11 +6933,7 @@ internal class NativeMainRuntimePort(
                     if (!HomeRefreshCoordinator.markScanTerminal(requestId)) {
                         throw IllegalStateException("Home refresh refused a non-running terminal scan transition.")
                     }
-                    recordDiagnostic("HOME_REFRESH_SCAN_COMPLETED", requestId = requestId, refreshId = refreshId,
-                        context = mapOf(
-                            "operation_count" to stableTerminalBatch.size,
-                            "partial_count" to stableTerminalBatch.count { it.state == ScanLifecycleState.PARTIAL },
-                        ))
+
                     val catalogAccepted = libraryViewModel.refreshCanonicalCatalogAfterBootstrapValidation()
                     if (!catalogAccepted) {
                         HomeRefreshCoordinator.fail(requestId, "canonical_catalog_refresh_rejected")
@@ -7685,22 +6959,9 @@ internal class NativeMainRuntimePort(
                         throw IllegalStateException("Home refresh refused completion before UI commit.")
                     }
                     val elapsedMs = System.currentTimeMillis() - startedAt
-                    recordDiagnostic(
-                        "HOME_REFRESH_UI_UPDATED",
-                        requestId = requestId,
-                        refreshId = refreshId,
-                        context = mapOf("elapsed_ms" to elapsedMs, "rebuild" to false, "db_updated" to true),
-                    )
+
                     val partialCount = stableTerminalBatch.count { it.state == ScanLifecycleState.PARTIAL }
-                    recordDiagnostic(
-                        "HOME_REFRESH_COMPLETED",
-                        requestId = requestId,
-                        refreshId = refreshId,
-                        context = mapOf(
-                            "elapsed_ms" to elapsedMs,
-                            "partial_count" to partialCount,
-                        ),
-                    )
+
                     reportOperation(
                         status = "COMPLETED",
                         operationState = "COMPLETED",
@@ -7725,8 +6986,7 @@ internal class NativeMainRuntimePort(
                     throw cancelled
                 } catch (failure: Throwable) {
                     HomeRefreshCoordinator.fail(requestId, failure.message ?: "runtime_failure")
-                    recordDiagnostic("HOME_REFRESH_FAILED", severity = "ERROR", requestId = requestId,
-                        refreshId = refreshId, error = failure)
+
                     reportOperation(
                         status = "FAILED",
                         operationState = "FAILED",
@@ -7751,8 +7011,7 @@ internal class NativeMainRuntimePort(
         if (!current.active || current.requestId.isNullOrBlank()) return false
         homeRefreshJob?.cancel()
         val cancelled = HomeRefreshCoordinator.cancel(current.requestId, reason)
-        if (cancelled) recordDiagnostic("HOME_REFRESH_CANCELLED", severity = "WARN",
-            requestId = current.requestId, refreshId = current.refreshId, result = reason)
+        if (cancelled) Unit
         return cancelled
     }
 
@@ -7803,11 +7062,7 @@ internal class NativeMainRuntimePort(
             }
             scheduleThumbnailReconciliation("catalog_changed")
             scheduleCatalogMetadataHydration("catalog_changed")
-            recordDiagnostic(
-                name = "UI_REFRESHED",
-                result = "catalog_changed",
-                context = mapOf("route" to mutableSnapshot.value.route),
-            )
+
         }
 
     fun onMetadataChanged(animeId: Long, requestArtwork: Boolean = true): Boolean {
@@ -7954,13 +7209,7 @@ internal class NativeMainRuntimePort(
                         error = failure.javaClass.simpleName,
                     )
                 }
-                recordDiagnostic(
-                    name = "MANUAL_EPISODE_IDENTIFICATION_FAILED",
-                    severity = "WARN",
-                    requestId = correlatedRequestId,
-                    result = failure.javaClass.simpleName,
-                    error = failure,
-                )
+
                 throw failure
             }
         }
@@ -8391,12 +7640,7 @@ internal class NativeMainRuntimePort(
 
         synchronized(thumbnailQueueLock) {
             if (thumbnailLatestKeyByUri[uri.toString()] != key) {
-                recordDiagnostic(
-                    name = "THUMBNAIL_STALE_ERROR_IGNORED",
-                    requestId = requestId,
-                    result = status,
-                    context = mapOf("uri_present" to true),
-                )
+
                 return true
             }
             if (
@@ -8404,11 +7648,7 @@ internal class NativeMainRuntimePort(
                 thumbnailRequests.containsKey(key) ||
                 key in thumbnailInFlight
             ) {
-                recordDiagnostic(
-                    name = "THUMBNAIL_DUPLICATE_ERROR_IGNORED",
-                    requestId = requestId,
-                    result = status,
-                )
+
                 return true
             }
 
@@ -8425,13 +7665,7 @@ internal class NativeMainRuntimePort(
                 thumbnailLatestKeyByUri.remove(uri.toString(), key)
                 thumbnailLatestAtMillis.remove(uri.toString())
                 if (status == "EXTRACTION_FAILED") {
-                    recordDiagnostic(
-                        name = "THUMBNAIL_RETRY_EXHAUSTED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = status,
-                        context = mapOf("attempts" to previousAttempts),
-                    )
+
                 }
             }
         }
@@ -8460,20 +7694,9 @@ internal class NativeMainRuntimePort(
                 )
                 if (!queued) {
                     if (thumbnailRetryCounts[key] == scheduledAttempt) thumbnailRetryCounts.remove(key)
-                    recordDiagnostic(
-                        name = "THUMBNAIL_RETRY_REJECTED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = "queue_rejected",
-                        context = mapOf("attempt" to scheduledAttempt),
-                    )
+
                 } else {
-                    recordDiagnostic(
-                        name = "THUMBNAIL_RETRY_SCHEDULED",
-                        requestId = requestId,
-                        result = "retry_$scheduledAttempt",
-                        context = mapOf("attempt" to scheduledAttempt, "delay_ms" to delayMs),
-                    )
+
                 }
             } finally {
                 thumbnailRetryPendingKeys.remove(key)
@@ -8555,11 +7778,7 @@ internal class NativeMainRuntimePort(
                 ?.let { File(it).isFile } == true
             if (exactThumbnailReady) {
                 cancelThumbnailRequest(reference, size, modifiedAt, mediaIdentity)
-                recordDiagnostic(
-                    name = "THUMBNAIL_CACHE_HIT",
-                    result = "exact_local_thumbnail_ready",
-                    context = mapOf("episode_id" to episodeId),
-                )
+
                 return@launchTracked
             }
             if (!enqueueLocalThumbnail(
@@ -8570,12 +7789,7 @@ internal class NativeMainRuntimePort(
                     priority = priority,
                 )
             ) {
-                recordDiagnostic(
-                    name = "THUMBNAIL_REQUEST_REJECTED",
-                    severity = "WARN",
-                    result = "queue_full",
-                    context = mapOf("episode_id" to episodeId),
-                )
+
             }
         }
     }
@@ -8850,20 +8064,8 @@ internal class NativeMainRuntimePort(
                 if (episodeId == null) {
                     // Preserve main.py's explicit rejection contract instead of silently
                     // dropping a malformed play command before the native handoff layer.
-                    recordDiagnostic(
-                        name = "ASSIST_REQUEST_REJECTED",
-                        severity = "WARN",
-                        requestId = request,
-                        result = "EPISODE_NOT_FOUND",
-                        context = mapOf("anime_id" to animeId),
-                    )
-                    recordDiagnostic(
-                        name = "PLAYER_COMMAND_REJECTED",
-                        severity = "WARN",
-                        requestId = request,
-                        source = "details",
-                        result = "EPISODE_NOT_FOUND",
-                    )
+
+
                     false
                 } else {
                     // The ViewModel owns duplicate suppression and asynchronous handoff results.
@@ -8915,12 +8117,7 @@ internal class NativeMainRuntimePort(
                     requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 )
             } catch (failure: IllegalArgumentException) {
-                recordDiagnostic(
-                    name = "MANUAL_EPISODE_IDENTIFICATION_REJECTED",
-                    severity = "WARN",
-                    requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
-                    result = failure.message ?: "invalid_episode_identification",
-                )
+
                 false
             }
             "set_episode_manual_identification" -> {
@@ -8994,13 +8191,7 @@ internal class NativeMainRuntimePort(
                         message = message,
                         error = "invalid_anilist_id",
                     )
-                    recordDiagnostic(
-                        name = "ANILIST_MANUAL_ASSOCIATION_REJECTED",
-                        severity = "WARN",
-                        requestId = correlatedRequestId,
-                        result = "invalid_anilist_id",
-                        context = mapOf("anilist_id" to remoteIdLong),
-                    )
+
                     false
                 } else if (animeId == null && lookupTitle.isNullOrBlank()) {
                     val message = "Informe o anime local que deve ser associado."
@@ -9045,13 +8236,7 @@ internal class NativeMainRuntimePort(
                                         message = "O AniList está desativado nas configurações.",
                                         error = "anilist_disabled",
                                     )
-                                    recordDiagnostic(
-                                        name = "ANILIST_MANUAL_ASSOCIATION_BLOCKED",
-                                        severity = "WARN",
-                                        requestId = correlatedRequestId,
-                                        result = "anilist_disabled",
-                                        context = mapOf("anime_id" to resolvedAnimeId),
-                                    )
+
                                     return@launchTracked
                                 }
                                 throw IllegalStateException(associationError.toString())
@@ -9073,12 +8258,7 @@ internal class NativeMainRuntimePort(
                                     .put("animeId", resolvedAnimeId)
                                     .put("anilistId", remoteId),
                             )
-                            recordDiagnostic(
-                                name = "ANILIST_MANUAL_ASSOCIATION_COMPLETED",
-                                requestId = correlatedRequestId,
-                                result = "associated",
-                                context = mapOf("anime_id" to resolvedAnimeId, "anilist_id" to remoteId),
-                            )
+
                         } catch (cancelled: CancellationException) {
                             publishOperationResult(
                                 requestId = correlatedRequestId,
@@ -9097,13 +8277,7 @@ internal class NativeMainRuntimePort(
                                 message = failure.message ?: "Não foi possível salvar a associação AniList.",
                                 error = failure.javaClass.simpleName,
                             )
-                            recordDiagnostic(
-                                name = "ANILIST_MANUAL_ASSOCIATION_FAILED",
-                                severity = "WARN",
-                                requestId = correlatedRequestId,
-                                result = failure.javaClass.simpleName,
-                                error = failure,
-                            )
+
                             throw failure
                         }
                     }
@@ -9186,10 +8360,6 @@ internal class NativeMainRuntimePort(
                 requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
                 resultAction = normalized,
             )
-            "export_diagnostics" -> exportDiagnosticsJson(
-                requestId = requestId ?: nonBlank("requestId") ?: nonBlank("request_id"),
-                resultAction = normalized,
-            )
 
             "cancel_scan", "cancel_native_scan", "scan_cancel" -> {
                 val id = nonBlank("scanId") ?: nonBlank("scan_id") ?: return false
@@ -9213,23 +8383,7 @@ internal class NativeMainRuntimePort(
                 revokePlayerTransition(origin, nonBlank("originPlayerSessionId") ?: nonBlank("origin_player_session_id"))
                 true
             }
-            "diagnostic" -> {
-                recordDiagnostic(
-                    name = nonBlank("name") ?: "NATIVE_MAIN_DIAGNOSTIC",
-                    severity = payload.optString("severity", "INFO"),
-                    result = nonBlank("result"),
-                    context = payload.optJSONObject("context")?.let { context ->
-                        buildMap {
-                            val keys = context.keys()
-                            while (keys.hasNext()) {
-                                val key = keys.next()
-                                put(key, context.opt(key))
-                            }
-                        }
-                    } ?: emptyMap(),
-                )
-                true
-            }
+
             else -> {
                 Log.w("ReiAnixMainPort", "Rejected unknown main action='$normalized'")
                 false
@@ -9312,13 +8466,7 @@ internal class NativeMainRuntimePort(
                 .put("updatedAtMillis", result.updatedAtMillis)
                 .toString())
         })
-        recordDiagnostic(
-            name = "NATIVE_OPERATION_RESULT",
-            severity = if (normalizedStatus in setOf("FAILED", "ERROR", "BLOCKED")) "WARN" else "INFO",
-            requestId = request,
-            result = normalizedState,
-            context = mapOf("action" to operation, "status" to normalizedStatus, "has_error" to !result.error.isNullOrBlank()),
-        )
+
         return true
     }
 
@@ -9515,8 +8663,7 @@ internal class NativeMainRuntimePort(
             failNativeOperation(request, normalizedAction, "A operacao nativa nao foi aceita.")
             return false
         }
-        recordDiagnostic(name = "NATIVE_OPERATION_ACCEPTED", requestId = request, result = "queued",
-            context = mapOf("action" to normalizedAction))
+
         return true
     }
 
@@ -9539,13 +8686,7 @@ internal class NativeMainRuntimePort(
                 StorageAuthorization.safAccess(normalizedTreeUri, persistedReadUris) != SafAccessLevel.AVAILABLE ||
                 authorizedScanTargets("saf", normalizedTreeUri).isEmpty()
             ) {
-                recordDiagnostic(
-                    name = "SAF_IDENTITY_FOLLOWUP_SCAN_SKIPPED",
-                    severity = "WARN",
-                    requestId = sourceRequestId,
-                    result = "tree_not_authorized",
-                    context = mapOf("tree_uri_present" to true),
-                )
+
                 return@launchTracked
             }
             val followupRequestId = UUID.randomUUID().toString()
@@ -9560,12 +8701,7 @@ internal class NativeMainRuntimePort(
                     ),
                 )
             }
-            recordDiagnostic(
-                name = "SAF_IDENTITY_FOLLOWUP_SCAN_REQUESTED",
-                requestId = followupRequestId,
-                result = "scan_tree",
-                context = mapOf("source_request_id" to sourceRequestId),
-            )
+
         }
     }
 
@@ -9584,16 +8720,7 @@ internal class NativeMainRuntimePort(
             rawPayload == null || rawPayload === org.json.JSONObject.NULL -> org.json.JSONObject()
             rawPayload is org.json.JSONObject -> org.json.JSONObject(rawPayload.toString())
             else -> {
-                recordDiagnostic(
-                    name = "NATIVE_EVENT_REJECTED",
-                    severity = "WARN",
-                    requestId = event.optString("requestId", "").trim().takeIf { it.isNotEmpty() },
-                    result = "invalid_payload_type",
-                    context = mapOf(
-                        "type" to eventType,
-                        "payload_type" to rawPayload.javaClass.simpleName,
-                    ),
-                )
+
                 return false
             }
         }
@@ -9709,11 +8836,7 @@ internal class NativeMainRuntimePort(
         }
         return when (type) {
             "permission_requested" -> {
-                recordDiagnostic(
-                    name = "STORAGE_PERMISSION_REQUESTED",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    result = stringValue("source", "permission", "reason") ?: "native_permission_request",
-                )
+
                 true
             }
             "permission_cancelled" -> {
@@ -9728,23 +8851,13 @@ internal class NativeMainRuntimePort(
                 settingsViewModel.refresh()
                 libraryViewModel.refreshNativeFolders()
                 libraryViewModel.refreshCatalogProjection()
-                recordDiagnostic(
-                    name = "STORAGE_PERMISSION_CANCELLED",
-                    requestId = correlatedRequestId,
-                    result = stringValue("reason") ?: "user_cancelled",
-                )
+
                 true
             }
             "translation_succeeded", "translation_cache_hit", "translation_failed" -> {
                 val animeId = longValue("animeId", "anime_id")
                 if (type != "translation_failed" && (animeId == null || animeId <= 0L)) {
-                    recordDiagnostic(
-                        name = "METADATA_TRANSLATION_EVENT_REJECTED",
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = "missing_anime_id",
-                        context = mapOf("event_type" to type),
-                    )
+
                     return false
                 }
                 if (type in setOf("translation_succeeded", "translation_cache_hit")) {
@@ -9754,59 +8867,30 @@ internal class NativeMainRuntimePort(
                 // translation outcomes; only successful/cache-hit events hydrate
                 // Details, while failures still refresh the observable status.
                 libraryViewModel.refreshCatalogProjection()
-                recordDiagnostic(
-                    name = "METADATA_TRANSLATION_PROJECTION_REFRESH",
-                    severity = if (type == "translation_failed") "WARN" else "INFO",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    result = type,
-                    context = mapOf(
-                        "anime_id" to animeId,
-                        "lookup_title" to stringValue("lookupTitle", "lookup_title"),
-                    ),
-                )
+
                 true
             }
             "anilist_metadata_committed" -> {
                 val animeId = longValue("animeId", "anime_id")
                 if (animeId == null || animeId <= 0L) {
-                    recordDiagnostic(
-                        name = "ANILIST_METADATA_PROJECTION_REFRESH_REJECTED",
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = "invalid_anime_id",
-                    )
+
                     // main.py logs malformed metadata notifications and continues.
                     return true
                 }
                 refreshCurrentDetails(animeId)
                 libraryViewModel.refreshCatalogProjection()
-                recordDiagnostic(
-                    name = "ANILIST_METADATA_PROJECTION_REFRESH",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    result = "canonical_write_already_committed",
-                    context = mapOf("anime_id" to animeId),
-                )
+
                 true
             }
             "native_genres_committed" -> {
                 val count = payload.optInt("changedCount", payload.optInt("changed_count", 0))
                 if (count <= 0) {
-                    recordDiagnostic(
-                        name = "NATIVE_GENRES_PROJECTION_REFRESH_REJECTED",
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = "invalid_changed_count",
-                    )
+
                     // The legacy bridge ignores invalid counts without retrying the event.
                     return true
                 }
                 libraryViewModel.refreshCatalogProjection()
-                recordDiagnostic(
-                    name = "NATIVE_GENRES_PROJECTION_REFRESH",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    result = "canonical_bulk_write_already_committed",
-                    context = mapOf("changed_count" to count),
-                )
+
                 true
             }
             "artwork_published" -> {
@@ -9834,19 +8918,7 @@ internal class NativeMainRuntimePort(
                         artworkType.isBlank() ||
                         localFile?.isFile != true
                     ) {
-                        recordDiagnostic(
-                            name = "ARTWORK_PUBLICATION_REJECTED",
-                            severity = "WARN",
-                            requestId = eventRequestId ?: stringValue("requestId"),
-                            result = "invalid_local_publication",
-                            context = mapOf(
-                                "event" to event,
-                                "entity_type" to entity,
-                                "entity_id" to entityId,
-                                "artwork_type" to artworkType,
-                                "path_present" to localPath.isNotBlank(),
-                            ),
-                        )
+
                         // main.py warns and continues after rejecting a bad publication;
                         // the legacy mailbox event is consumed, not left pending.
                         return true
@@ -9860,16 +8932,7 @@ internal class NativeMainRuntimePort(
                     } else {
                         libraryViewModel.refreshCatalogProjection()
                     }
-                    recordDiagnostic(
-                        name = "ARTWORK_PROJECTION_REFRESH",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = event.lowercase(Locale.ROOT),
-                        context = mapOf(
-                            "entity_type" to entity,
-                            "entity_id" to entityId,
-                            "artwork_type" to artworkType,
-                        ),
-                    )
+
                     return true
                 }
                 if (event in stateOnlyEvents) {
@@ -9885,26 +8948,10 @@ internal class NativeMainRuntimePort(
                     } else {
                         libraryViewModel.refreshCatalogProjection()
                     }
-                    recordDiagnostic(
-                        name = "ARTWORK_STATE_PROJECTION_REFRESH",
-                        severity = if (event == "ARTWORK_DOWNLOAD_FAILED") "WARN" else "INFO",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = event.lowercase(Locale.ROOT),
-                        context = mapOf(
-                            "entity_type" to entity,
-                            "entity_id" to entityId,
-                            "artwork_type" to artworkType,
-                        ),
-                    )
+
                     return true
                 }
-                recordDiagnostic(
-                    name = "ARTWORK_EVENT_IGNORED",
-                    severity = "WARN",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    result = event,
-                    context = mapOf("unsupported_event" to true),
-                )
+
                 // Unknown artwork sub-events are logged and consumed by main.py.
                 true
             }
@@ -9912,35 +8959,17 @@ internal class NativeMainRuntimePort(
                 val key = stringValue("key") ?: stringValue("setting_key").orEmpty()
                 val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
                 if (requestId.isNullOrBlank() || key.isBlank()) {
-                    recordDiagnostic(
-                        name = "COMPOSE_SETTINGS_COMMAND_REJECTED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = "missing_request_id_or_key",
-                        context = mapOf("key" to key),
-                    )
+
                     // Legacy main.py logs and continues for an incomplete command;
                     // consume it so the same malformed mailbox item is not replayed.
                     return true
                 }
                 if (!claimRequestId(requestId, "compose_settings")) {
-                    recordDiagnostic(
-                        name = "COMPOSE_SETTINGS_DUPLICATE_IGNORED",
-                        severity = "INFO",
-                        requestId = requestId,
-                        result = "duplicate_request",
-                        context = mapOf("key" to key),
-                    )
+
                     return true
                 }
                 if (ReiAnixSettingsContract.definitions[key] == null) {
-                    recordDiagnostic(
-                        name = "SETTINGS_COMMAND_UNSUPPORTED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = "unsupported_setting",
-                        context = mapOf("key" to key),
-                    )
+
                     publishOperationResult(
                         requestId = requestId,
                         action = "set:" + key,
@@ -9958,26 +8987,12 @@ internal class NativeMainRuntimePort(
                     // The canonical SQLite write already happened in Kotlin's settings owner.
                     // Re-read the committed projection without writing the value a second time.
                     settingsViewModel.refresh()
-                    recordDiagnostic(
-                        name = "SETTINGS_RUNTIME_APPLY",
-                        requestId = requestId,
-                        result = "native_persisted_projection_refresh",
-                        context = mapOf("key" to key),
-                    )
-                    recordDiagnostic(
-                        name = "SETTINGS_SNAPSHOT_PUBLISHED",
-                        requestId = requestId,
-                        result = "setting:" + key,
-                    )
+
+
                     true
                 } else {
                     val accepted = setSettingSerialized(key, value, requestId)
-                    recordDiagnostic(
-                        name = "SETTINGS_COMMAND_RECEIVED",
-                        requestId = requestId,
-                        result = if (accepted) "queued" else "rejected",
-                        context = mapOf("key" to key),
-                    )
+
                     if (!accepted) {
                         publishOperationResult(
                             requestId = requestId,
@@ -10000,27 +9015,15 @@ internal class NativeMainRuntimePort(
                     "settings_export", "settings_import", "select_saf",
                     "request_media_access", "check_storage_access", "open_broad_storage_settings",
                     "backup_create", "backup_restore", "backup_integrity",
-                    "backup_reconcile", "diagnostic_export",
+                    "backup_reconcile",
                 )
                 if (requestId.isNullOrBlank() || action !in supportedActions) {
-                    recordDiagnostic(
-                        name = "COMPOSE_SETTINGS_ACTION_REJECTED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = "missing_request_id_or_unsupported_action",
-                        context = mapOf("action" to action),
-                    )
+
                     // Match main.py: log and continue without scheduling an unsupported action.
                     return true
                 }
                 if (!claimRequestId(requestId, "compose_settings")) {
-                    recordDiagnostic(
-                        name = "COMPOSE_SETTINGS_ACTION_DUPLICATE_IGNORED",
-                        severity = "INFO",
-                        requestId = requestId,
-                        result = "duplicate_request",
-                        context = mapOf("action" to action),
-                    )
+
                     return true
                 }
                 if (payload.opt("nativeHandled") == true) {
@@ -10030,16 +9033,11 @@ internal class NativeMainRuntimePort(
                     // Refresh the visible library state because the database change was
                     // already committed by the native settings repository.
                     libraryViewModel.refreshCatalogProjection()
-                    recordDiagnostic(
-                        name = "SETTINGS_ACTION_ALREADY_HANDLED_NATIVELY",
-                        requestId = requestId,
-                        result = action,
-                    )
+
                     return true
                 }
                 val accepted = dispatchSettingsAction(action, payload, requestId)
-                recordDiagnostic("SETTINGS_ACTION_DISPATCH", requestId = requestId,
-                    result = if (accepted) "accepted" else "rejected", context = mapOf("action" to action))
+
                 accepted
             }
             "compose_account_action" -> {
@@ -10048,23 +9046,11 @@ internal class NativeMainRuntimePort(
                 if (action !in setOf("login", "logout", "switch", "switch_account") ||
                     requestId.isNullOrBlank()
                 ) {
-                    recordDiagnostic(
-                        name = "COMPOSE_ACCOUNT_ACTION_REJECTED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = "missing_request_id_or_unsupported_action",
-                        context = mapOf("action" to action),
-                    )
+
                     return true
                 }
                 if (!claimRequestId(requestId, "compose_account")) {
-                    recordDiagnostic(
-                        name = "COMPOSE_ACCOUNT_ACTION_DUPLICATE_IGNORED",
-                        severity = "INFO",
-                        requestId = requestId,
-                        result = "duplicate_request",
-                        context = mapOf("action" to action),
-                    )
+
                     return true
                 }
                 requestAccountActionTracked(
@@ -10080,23 +9066,12 @@ internal class NativeMainRuntimePort(
                     "refresh", "publish_catalog", "load_library_page", "open_media",
                 )
                 if (requestId.isNullOrBlank()) {
-                    recordDiagnostic(
-                        name = "COMPOSE_LIBRARY_COMMAND_REJECTED",
-                        severity = "WARN",
-                        result = "missing_request_id",
-                        context = mapOf("action" to action),
-                    )
+
                     // main.py consumes request-less events after logging them.
                     return true
                 }
                 if (action !in supportedActions) {
-                    recordDiagnostic(
-                        name = "COMPOSE_LIBRARY_COMMAND_UNSUPPORTED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = "unsupported_action",
-                        context = mapOf("action" to action),
-                    )
+
                     publishOperationResult(
                         requestId = requestId,
                         action = action,
@@ -10108,13 +9083,7 @@ internal class NativeMainRuntimePort(
                     return true
                 }
                 if (!claimRequestId(requestId, "compose_library")) {
-                    recordDiagnostic(
-                        name = "COMPOSE_LIBRARY_COMMAND_DUPLICATE_IGNORED",
-                        severity = "INFO",
-                        requestId = requestId,
-                        result = "duplicate_request",
-                        context = mapOf("action" to action),
-                    )
+
                     return true
                 }
                 dispatchMainAction(action, payload, requestId)
@@ -10127,12 +9096,7 @@ internal class NativeMainRuntimePort(
                 if (type == "volume_changed") {
                     val nativeStorageOwner = payload.opt("nativeStorageOwner") == true
                     if (nativeStorageOwner && pythonTruthyJsonValue(payload.opt("nativeVolumeStateIgnored"))) {
-                        recordDiagnostic(
-                            name = "NATIVE_VOLUME_CHANGE_IGNORED",
-                            requestId = correlatedRequestId,
-                            result = "stale_native_volume_snapshot",
-                            context = mapOf("event_timestamp" to payload.optLong("eventTimestamp", payload.optLong("timestamp", 0L))),
-                        )
+
                         return true
                     }
 
@@ -10151,12 +9115,7 @@ internal class NativeMainRuntimePort(
                             dependencies.libraryService.recordNativeVolumeChange(volumeEvent)
                         }
                         if (volumeResult.optBoolean("ignored", false)) {
-                            recordDiagnostic(
-                                name = "NATIVE_VOLUME_CHANGE_IGNORED",
-                                requestId = correlatedRequestId,
-                                result = "stale_volume_event",
-                                context = mapOf("event_timestamp" to volumeEvent.optLong("eventTimestamp", 0L)),
-                            )
+
                             return@launchTracked
                         }
 
@@ -10197,11 +9156,7 @@ internal class NativeMainRuntimePort(
 
                         val volumeReturned = volumeBecameAvailable()
                         if (volumeReturned && nativeScanDispatchOwner) {
-                            recordDiagnostic(
-                                name = "NATIVE_VOLUME_SCAN_DISPATCH",
-                                requestId = correlatedRequestId,
-                                result = "native_owner",
-                            )
+
                         } else if (volumeReturned) {
                             val scanRequestId = UUID.randomUUID().toString()
                             val scanUri = Uri.parse("reianix://native").buildUpon()
@@ -10222,23 +9177,9 @@ internal class NativeMainRuntimePort(
                                         android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP,
                                 ),
                             )
-                            recordDiagnostic(
-                                name = "NATIVE_VOLUME_SCAN_DISPATCH",
-                                requestId = scanRequestId,
-                                result = "volume_returned",
-                                context = mapOf("source_request_id" to correlatedRequestId),
-                            )
+
                         }
-                        recordDiagnostic(
-                            name = "NATIVE_VOLUME_CHANGE_APPLIED",
-                            requestId = correlatedRequestId,
-                            result = if (nativeStorageOwner) "native_persisted" else "compatibility_persisted",
-                            context = mapOf(
-                                "volume_returned" to volumeReturned,
-                                "native_scan_dispatch_owner" to nativeScanDispatchOwner,
-                                "event_timestamp" to volumeEvent.optLong("eventTimestamp", 0L),
-                            ),
-                        )
+
                     }
                 }
                 when (type) {
@@ -10287,13 +9228,7 @@ internal class NativeMainRuntimePort(
                                 val changed = markSafSourceUnavailable(treeUri, authorization, unavailableReason)
                                 libraryViewModel.refreshNativeFolders()
                                 libraryViewModel.refreshCatalogProjection()
-                                recordDiagnostic(
-                                    name = "SAF_SOURCE_MARKED_UNAVAILABLE",
-                                    severity = "WARN",
-                                    requestId = correlatedRequestId,
-                                    result = unavailableReason,
-                                    context = mapOf("updated_rows" to changed, "status" to scanStatus),
-                                )
+
                             }
                         }
                         finishPendingSafSelection(
@@ -10343,13 +9278,7 @@ internal class NativeMainRuntimePort(
                                 )
                                 libraryViewModel.refreshNativeFolders()
                                 libraryViewModel.refreshCatalogProjection()
-                                recordDiagnostic(
-                                    name = "MEDIASTORE_SOURCE_MARKED_UNAVAILABLE",
-                                    severity = "WARN",
-                                    requestId = correlatedRequestId,
-                                    result = "media_permission_revoked",
-                                    context = mapOf("updated_rows" to changed),
-                                )
+
                             }
                         }
                         finishPendingStorageOperation(
@@ -10374,13 +9303,7 @@ internal class NativeMainRuntimePort(
                             )
                             libraryViewModel.refreshNativeFolders()
                             libraryViewModel.refreshCatalogProjection()
-                            recordDiagnostic(
-                                name = "MEDIASTORE_SOURCE_MARKED_UNAVAILABLE",
-                                severity = "WARN",
-                                requestId = correlatedRequestId,
-                                result = if (revoked) "media_permission_revoked" else "mediastore_scan_failed",
-                                context = mapOf("updated_rows" to changed, "status" to status),
-                            )
+
                         }
                         finishPendingStorageOperation(
                             eventRequestId = correlatedRequestId,
@@ -10401,12 +9324,7 @@ internal class NativeMainRuntimePort(
                                 )
                                 libraryViewModel.refreshNativeFolders()
                                 libraryViewModel.refreshCatalogProjection()
-                                recordDiagnostic(
-                                    name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
-                                    severity = "WARN",
-                                    result = "broad_access_revoked",
-                                    context = mapOf("updated_rows" to changed),
-                                )
+
                             }
                         }
                     }
@@ -10421,13 +9339,7 @@ internal class NativeMainRuntimePort(
                                 )
                                 libraryViewModel.refreshNativeFolders()
                                 libraryViewModel.refreshCatalogProjection()
-                                recordDiagnostic(
-                                    name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
-                                    severity = "WARN",
-                                    requestId = correlatedRequestId,
-                                    result = "broad_access_denied",
-                                    context = mapOf("updated_rows" to changed),
-                                )
+
                             }
                         }
                         finishPendingStorageOperation(
@@ -10450,13 +9362,7 @@ internal class NativeMainRuntimePort(
                             )
                             libraryViewModel.refreshNativeFolders()
                             libraryViewModel.refreshCatalogProjection()
-                            recordDiagnostic(
-                                name = "BROAD_STORAGE_SOURCE_MARKED_UNAVAILABLE",
-                                severity = "WARN",
-                                requestId = correlatedRequestId,
-                                result = if (revoked) "broad_access_revoked" else "broad_scan_failed",
-                                context = mapOf("updated_rows" to changed, "status" to status),
-                            )
+
                         }
                         finishPendingStorageOperation(
                             eventRequestId = correlatedRequestId,
@@ -10492,13 +9398,7 @@ internal class NativeMainRuntimePort(
                                 )
                                 libraryViewModel.refreshNativeFolders()
                                 libraryViewModel.refreshCatalogProjection()
-                                recordDiagnostic(
-                                    name = "SAF_SOURCE_MARKED_UNAVAILABLE",
-                                    severity = "WARN",
-                                    requestId = correlatedRequestId,
-                                    result = "saf_permission_revoked",
-                                    context = mapOf("updated_rows" to changed),
-                                )
+
                             }
                         } else if (!selected && granted && !nativeFolderConfigOwner && !treeUri.isNullOrBlank()) {
                             launchTracked("saf_permission_revalidated", lane = "storage") {
@@ -10507,13 +9407,7 @@ internal class NativeMainRuntimePort(
                                     libraryViewModel.refreshNativeFolders()
                                     libraryViewModel.refreshCatalogProjection()
                                 }
-                                recordDiagnostic(
-                                    name = "SAF_PERMISSION_REVALIDATED",
-                                    severity = if (updated) "INFO" else "WARN",
-                                    requestId = correlatedRequestId,
-                                    result = if (updated) "granted" else "existing_source_not_reconciled",
-                                    context = mapOf("tree_uri_present" to true),
-                                )
+
                             }
                         }
                         if (selected) {
@@ -10577,17 +9471,7 @@ internal class NativeMainRuntimePort(
                         )
                     }
                 }
-                recordDiagnostic(
-                    name = "NATIVE_STORAGE_PROJECTION_REFRESH",
-                    severity = if (type.endsWith("_error")) "WARN" else "INFO",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    result = reason,
-                    context = mapOf(
-                        "event_type" to type,
-                        "broad_storage_is_library_source" to false,
-                        "mediastore_is_library_source" to false,
-                    ),
-                )
+
                 true
             }
             "native_error" -> {
@@ -10645,14 +9529,7 @@ internal class NativeMainRuntimePort(
                             payload = payload,
                         )
                     else -> {
-                        recordDiagnostic(
-                            name = "NATIVE_COMMAND_ERROR_OBSERVED",
-                            severity = "WARN",
-                            requestId = correlatedRequestId,
-                            result = failedAction,
-                            error = IllegalStateException(message),
-                            context = mapOf("error_code" to error),
-                        )
+
                         false
                     }
                 }
@@ -10732,13 +9609,7 @@ internal class NativeMainRuntimePort(
                 settingsViewModel.refresh()
                 libraryViewModel.refreshNativeFolders()
                 libraryViewModel.refreshCatalogProjection()
-                recordDiagnostic(
-                    name = "NATIVE_SAF_PROJECTION_REFRESH",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    scanId = stringValue("scanId", "scan_id"),
-                    result = type,
-                    context = mapOf("inventory_complete" to payload.optBoolean("complete", false)),
-                )
+
                 true
             }
             "saf_document_identity_change" -> {
@@ -10758,12 +9629,7 @@ internal class NativeMainRuntimePort(
                             sourceRequestId = eventRequestId ?: stringValue("requestId"),
                         )
                     }
-                    recordDiagnostic(
-                        name = "SAF_IDENTITY_PROJECTION_REFRESH",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = reconciliationStatus.ifBlank { "native_commit_already_applied" },
-                        context = mapOf("episode_id" to longValue("episodeId", "episode_id")),
-                    )
+
                     true
                 } else {
                     val persistedReadUris = activity.contentResolver.persistedUriPermissions
@@ -10772,12 +9638,7 @@ internal class NativeMainRuntimePort(
                     if (StorageAuthorization.safAccess(treeUri, persistedReadUris) != SafAccessLevel.AVAILABLE ||
                         authorizedScanTargets("saf", treeUri).isEmpty()
                     ) {
-                        recordDiagnostic(
-                            name = "SAF_IDENTITY_RECONCILIATION_REJECTED",
-                            severity = "WARN",
-                            requestId = eventRequestId ?: stringValue("requestId"),
-                            result = "tree_not_authorized_library_source",
-                        )
+
                         return false
                     }
                     launchTracked("saf_document_identity_change", lane = "library") {
@@ -10800,23 +9661,9 @@ internal class NativeMainRuntimePort(
                                 treeUri = treeUri,
                                 sourceRequestId = eventRequestId ?: stringValue("requestId"),
                             )
-                            recordDiagnostic(
-                                name = "SAF_IDENTITY_RECONCILED",
-                                requestId = eventRequestId ?: stringValue("requestId"),
-                                result = status,
-                                context = mapOf(
-                                    "episode_id" to result.optLong("episode_id", 0L),
-                                    "source" to "legacy_event_compatibility",
-                                ),
-                            )
+
                         } else {
-                            recordDiagnostic(
-                                name = "SAF_IDENTITY_RECONCILIATION_NOT_APPLIED",
-                                severity = "WARN",
-                                requestId = eventRequestId ?: stringValue("requestId"),
-                                result = status,
-                                context = mapOf("canonical_episode_row_preserved" to true),
-                            )
+
                         }
                     }
                 }
@@ -10828,19 +9675,7 @@ internal class NativeMainRuntimePort(
                 val scanId = stringValue("scanId", "scan_id")
                 val source = stringValue("source", "sourceKind", "source_kind")
                 val operationState = stringValue("operationState", "status", "generationStatus")
-                recordDiagnostic(
-                    name = "NATIVE_SCAN_EVENT_OBSERVED",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    scanId = scanId,
-                    severity = if (operationState.equals("FAILED", true) || operationState.equals("REVOKED", true)) "WARN" else "INFO",
-                    result = operationState ?: type,
-                    context = mapOf(
-                        "event_type" to type,
-                        "source" to source,
-                        "canonical_writer" to "NativeScanController",
-                        "payload_bytes" to payload.toString().length,
-                    ),
-                )
+
                 // NativeScanController emits the authoritative StateFlow snapshots;
                 // re-ingesting a reported batch here would create a second writer.
                 true
@@ -10890,20 +9725,11 @@ internal class NativeMainRuntimePort(
                             }
                             when (eventDisposition) {
                                 "duplicate" -> {
-                                    recordDiagnostic(
-                                        name = "THUMBNAIL_DUPLICATE",
-                                        requestId = correlatedRequestId,
-                                        result = "IGNORED",
-                                    )
+
                                     return true
                                 }
                                 "stale" -> {
-                                    recordDiagnostic(
-                                        name = "THUMBNAIL_STALE",
-                                        requestId = correlatedRequestId,
-                                        result = "IGNORED",
-                                        context = mapOf("uri_present" to true),
-                                    )
+
                                     return true
                                 }
                             }
@@ -10911,13 +9737,7 @@ internal class NativeMainRuntimePort(
                     }
                 }
                 libraryViewModel.refreshCatalogProjection()
-                recordDiagnostic(
-                    name = if (type == "thumbnail_ready") "NATIVE_THUMBNAIL_READY" else "NATIVE_THUMBNAIL_ERROR",
-                    severity = if (type == "thumbnail_error") "WARN" else "INFO",
-                    requestId = correlatedRequestId,
-                    result = stringValue("path", "uri", "reason", "error") ?: type,
-                    context = mapOf("media_identity" to stringValue("mediaIdentity", "media_identity")),
-                )
+
                 true
             }
             "google_account", "google_signed_out", "google_cancelled", "google_error", "google_sign_in_started" -> {
@@ -10935,12 +9755,7 @@ internal class NativeMainRuntimePort(
                                 setAccountState("error", "google_profile_invalid")
                                 settingsViewModel.refresh()
                                 libraryViewModel.refreshCatalogProjection()
-                                recordDiagnostic(
-                                    name = "GOOGLE_PROFILE_REJECTED",
-                                    severity = "WARN",
-                                    requestId = correlatedRequestId,
-                                    result = "invalid_profile_payload",
-                                )
+
                                 publish(action = "google_error", error = message)
                                 return@launchTracked
                             }
@@ -10966,15 +9781,7 @@ internal class NativeMainRuntimePort(
                         )
                         settingsViewModel.refresh()
                         libraryViewModel.refreshCatalogProjection()
-                        recordDiagnostic(
-                            name = "NATIVE_ACCOUNT_EVENT",
-                            requestId = correlatedRequestId,
-                            result = type,
-                            context = mapOf(
-                                "profile_present" to (profile != null),
-                                "connected" to connected,
-                            ),
-                        )
+
                     }
                 } else {
                     val accountErrorCode = stringValue("code", "errorCode", "error_code")
@@ -11006,24 +9813,7 @@ internal class NativeMainRuntimePort(
                     }
                     settingsViewModel.refresh()
                     libraryViewModel.refreshCatalogProjection()
-                    recordDiagnostic(
-                        name = "NATIVE_ACCOUNT_EVENT",
-                        severity = if (type == "google_error") "WARN" else "INFO",
-                        requestId = correlatedRequestId,
-                        result = type,
-                        error = if (type == "google_error") IllegalStateException(accountMessage) else
-                            stringValue("error", "message")?.let(::IllegalStateException),
-                        context = mapOf(
-                            "has_profile" to (payload.optJSONObject("profile") != null),
-                            "error_code" to accountErrorCode,
-                            "account_state" to when (type) {
-                                "google_sign_in_started" -> "awaiting_google"
-                                "google_cancelled" -> "disconnected"
-                                "google_error" -> if (accountErrorCode == "configuration_required") "configuration_required" else "error"
-                                else -> null
-                            },
-                        ),
-                    )
+
                     if (type == "google_error") {
                         publish(action = "google_error", error = accountMessage)
                     }
@@ -11034,22 +9824,12 @@ internal class NativeMainRuntimePort(
                 val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
                 val values = payload.optJSONObject("settings")
                 if (requestId.isNullOrBlank() || values == null || values.length() == 0) {
-                    recordDiagnostic(
-                        name = "SETTINGS_RUNTIME_BULK_APPLY_REJECTED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = "missing_request_or_settings",
-                    )
+
                     // main.py logs and continues when the notification lacks an ID or settings object.
                     return true
                 }
                 if (!claimRequestId(requestId, "compose_settings")) {
-                    recordDiagnostic(
-                        name = "SETTINGS_RUNTIME_BULK_APPLY_DUPLICATE_IGNORED",
-                        severity = "INFO",
-                        requestId = requestId,
-                        result = "duplicate_request",
-                    )
+
                     return true
                 }
                 val iterator = values.keys()
@@ -11060,16 +9840,7 @@ internal class NativeMainRuntimePort(
                 }
                 val unsupportedKeys = settings.keys.filter { ReiAnixSettingsContract.definitions[it] == null }
                 if (unsupportedKeys.isNotEmpty()) {
-                    recordDiagnostic(
-                        name = "SETTINGS_RUNTIME_BULK_APPLY_FAILED",
-                        severity = "WARN",
-                        requestId = requestId,
-                        result = "unsupported_native_settings_key",
-                        context = mapOf(
-                            "unsupported_keys" to unsupportedKeys.sorted(),
-                            "setting_count" to settings.size,
-                        ),
-                    )
+
                     return true
                 }
                 // This event is emitted after the Kotlin settings owner has already
@@ -11077,37 +9848,18 @@ internal class NativeMainRuntimePort(
                 // _run_compose_settings_bulk_applied always re-read canonical settings
                 // and never wrote values from this delayed notification back to SQLite.
                 settingsViewModel.refresh()
-                recordDiagnostic(
-                    name = "SETTINGS_RUNTIME_BULK_APPLIED",
-                    requestId = requestId,
-                    result = "SUCCESS",
-                    context = mapOf("setting_count" to settings.size, "owner" to "kotlin"),
-                )
-                recordDiagnostic(
-                    name = "SETTINGS_RUNTIME_BULK_APPLY",
-                    requestId = requestId,
-                    result = "accepted",
-                    context = mapOf("settings_count" to settings.size, "native_persisted" to true),
-                )
+
+
                 true
             }
             "compose_settings_native_account_changed" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
                 if (requestId.isNullOrBlank()) {
-                    recordDiagnostic(
-                        name = "NATIVE_COMPOSE_ACCOUNT_PROJECTION_REJECTED",
-                        severity = "WARN",
-                        result = "missing_request_id",
-                    )
+
                     return true
                 }
                 if (!claimRequestId(requestId, "compose_settings_account_changed")) {
-                    recordDiagnostic(
-                        name = "NATIVE_COMPOSE_ACCOUNT_PROJECTION_DUPLICATE_IGNORED",
-                        severity = "INFO",
-                        requestId = requestId,
-                        result = "duplicate_request",
-                    )
+
                     return true
                 }
                 val accepted = launchTracked("compose_settings_native_account_changed", lane = "settings") {
@@ -11123,16 +9875,7 @@ internal class NativeMainRuntimePort(
                     )
                     settingsViewModel.refresh()
                     libraryViewModel.refreshCatalogProjection()
-                    recordDiagnostic(
-                        name = "NATIVE_COMPOSE_ACCOUNT_PROJECTION_REFRESHED",
-                        requestId = requestId,
-                        result = "SUCCESS",
-                        context = mapOf(
-                            "connected" to connected,
-                            "profile_present" to (profile != null),
-                            "account_write_repeated" to false,
-                        ),
-                    )
+
                     completeNativeOperation(requestId, "account_changed")
                 }
                 if (!accepted) {
@@ -11150,20 +9893,11 @@ internal class NativeMainRuntimePort(
             "compose_settings_native_backup_restored" -> {
                 val requestId = eventRequestId ?: stringValue("requestId") ?: stringValue("request_id")
                 if (requestId.isNullOrBlank()) {
-                    recordDiagnostic(
-                        name = "NATIVE_BACKUP_RESTORE_PROJECTION_REJECTED",
-                        severity = "WARN",
-                        result = "missing_request_id",
-                    )
+
                     return true
                 }
                 if (!claimRequestId(requestId, "compose_settings_backup_restored")) {
-                    recordDiagnostic(
-                        name = "NATIVE_BACKUP_RESTORE_PROJECTION_DUPLICATE_IGNORED",
-                        severity = "INFO",
-                        requestId = requestId,
-                        result = "duplicate_request",
-                    )
+
                     return true
                 }
                 settingsViewModel.refresh()
@@ -11171,11 +9905,7 @@ internal class NativeMainRuntimePort(
                 libraryViewModel.refreshCatalogProjection()
                 scheduleCatalogMetadataHydration("backup_restored")
                 scheduleThumbnailReconciliation("backup_restored")
-                recordDiagnostic(
-                    name = "NATIVE_BACKUP_RESTORE_PROJECTION_REFRESH",
-                    requestId = requestId,
-                    result = if (reconciled) "reconciliation_queued" else "catalog_refreshed",
-                )
+
                 completeNativeOperation(requestId, "backup_restored")
             }
             "performance_metrics", "performance_player" -> {
@@ -11215,19 +9945,7 @@ internal class NativeMainRuntimePort(
                 } else {
                     null
                 }
-                recordDiagnostic(
-                    name = "NATIVE_PERFORMANCE_EVENT",
-                    requestId = eventRequestId ?: stringValue("requestId", "request_id"),
-                    sessionId = stringValue("playerSessionId", "player_session_id", "sessionId", "session_id"),
-                    result = type,
-                    context = mapOf(
-                        "event_type" to type,
-                        "event_id" to stringValue("eventId", "event_id", "id"),
-                        "stage" to firstTruthyJsonText(payload, "stage", "event").takeIf { it.isNotEmpty() },
-                        "delivery_latency_ms" to deliveryLatencyMs,
-                        "payload" to payload.toString().take(2000),
-                    ),
-                )
+
                 true
             }
             "player_opened" -> {
@@ -11238,12 +9956,7 @@ internal class NativeMainRuntimePort(
                 val request = eventRequestId ?: stringValue("requestId") ?: current.activePlayerRequestId.orEmpty()
                 val sessionId = stringValue("playerSessionId", "player_session_id", "sessionId")
                 if (sessionId.isNullOrBlank()) {
-                    recordDiagnostic(
-                        name = "PLAYER_COMMAND_REJECTED",
-                        severity = "WARN",
-                        requestId = request,
-                        result = "missing_player_session_id",
-                    )
+
                     // The legacy mailbox loop consumes rejected player_opened events;
                     // acknowledge this malformed event after recording the rejection.
                     return true
@@ -11277,47 +9990,16 @@ internal class NativeMainRuntimePort(
                         else -> null
                     }
                     if (transitionMismatch != null) {
-                        recordDiagnostic(
-                            name = "PLAYER_CALLBACK_STALE",
-                            severity = "WARN",
-                            requestId = request,
-                            sessionId = sessionId,
-                            result = transitionMismatch,
-                            context = mapOf(
-                                "origin_request_id" to originRequestId,
-                                "origin_session_matches" to (originSessionId == sessionId),
-                                "origin_generation" to originGeneration,
-                                "opened_generation" to openedGeneration,
-                                "direction" to direction,
-                            ),
-                        )
-                        recordDiagnostic(
-                            name = "PLAYER_OPENED_IGNORED",
-                            requestId = request,
-                            sessionId = sessionId,
-                            result = transitionMismatch,
-                            context = mapOf("origin_request_id" to originRequestId),
-                        )
+
+
                         return true
                     }
                 }
                 if (!current.activePlayerSessionId.isNullOrBlank() &&
                     current.activePlayerSessionId != sessionId
                 ) {
-                    recordDiagnostic(
-                        name = "PLAYER_CALLBACK_STALE",
-                        severity = "WARN",
-                        requestId = request,
-                        sessionId = sessionId,
-                        result = "player_opened_session_mismatch",
-                        context = mapOf("current_session" to current.activePlayerSessionId),
-                    )
-                    recordDiagnostic(
-                        name = "PLAYER_OPENED_IGNORED",
-                        requestId = request,
-                        sessionId = sessionId,
-                        result = "stale_player_session",
-                    )
+
+
                     return true
                 }
                 notePlayerSession(
@@ -11333,69 +10015,23 @@ internal class NativeMainRuntimePort(
                 )
                 // Retain the legacy PLAYER_OPENED diagnostic contract in addition
                 // to the native session-projection marker.
-                recordDiagnostic(
-                    name = "PLAYER_OPENED",
-                    requestId = request,
-                    sessionId = sessionId,
-                    source = stringValue("source") ?: "native_player",
-                    result = stringValue("state") ?: "READY",
-                )
+
                 if (originRequestId.isBlank()) {
                     // Initial opens were acknowledged as an accepted playback command;
                     // NEXT/PREVIOUS handoffs emit their own transition-ready markers.
-                    recordDiagnostic(
-                        name = "PLAYER_COMMAND_ACCEPTED",
-                        requestId = request,
-                        sessionId = sessionId,
-                        result = "player_opened",
-                        context = mapOf(
-                            "player_generation" to mutableSnapshot.value.activePlayerGeneration,
-                            "reason" to "player_opened",
-                        ),
-                    )
+
                 }
                 if (originRequestId.isNotBlank()) {
                     when (transitionDirection) {
-                        "NEXT", "PREVIOUS" -> recordDiagnostic(
-                            name = if (transitionDirection == "NEXT") {
-                                "NEXT_TRANSITION_READY"
-                            } else {
-                                "PREVIOUS_TRANSITION_READY"
-                            },
-                            requestId = originRequestId,
-                            sessionId = sessionId,
-                            result = "ready",
-                            context = mapOf(
-                                "target_request_id" to request,
-                                "episode_id" to longValue("episodeId", "episode_id"),
-                                "player_generation" to mutableSnapshot.value.activePlayerGeneration,
-                                "transition_generation" to payload.optLong("transitionGeneration", 0L),
-                            ),
-                        )
+                        "NEXT", "PREVIOUS" -> Unit
                     }
                 }
-                recordDiagnostic(
-                    name = "PLAYER_OPENED_EVENT",
-                    requestId = request,
-                    sessionId = sessionId,
-                    result = "session_active",
-                )
+
                 true
             }
             "player_paused", "player_completed" -> {
                 if (!playerCallbackIdentityIsComplete(payload)) {
-                    recordDiagnostic(
-                        name = "PLAYER_CALLBACK_REJECTED_INCOMPLETE_IDENTITY",
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = type,
-                        context = mapOf(
-                            "has_session_id" to stringValue("playerSessionId", "player_session_id").isNullOrBlank().not(),
-                            "has_episode_id" to (longValue("episodeId", "episode_id") != null),
-                            "has_media_id" to stringValue("mediaId", "media_id").isNullOrBlank().not(),
-                            "has_uri" to stringValue("uri").isNullOrBlank().not(),
-                        ),
-                    )
+
                     return true
                 }
                 val validation = validatePlayerCallback(
@@ -11408,16 +10044,7 @@ internal class NativeMainRuntimePort(
                     allowMissingAnimeId = true,
                 )
                 if (!validation.isCurrent) {
-                    recordDiagnostic(
-                        name = "PLAYER_TASK_STALE",
-                        severity = "WARN",
-                        requestId = eventRequestId,
-                        result = validation.reason,
-                        context = mapOf(
-                            "stage" to "before_save_progress",
-                            "event" to type,
-                        ),
-                    )
+
                     return true
                 }
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
@@ -11426,38 +10053,19 @@ internal class NativeMainRuntimePort(
                 val position = nonNegativeMillis("positionMs", "position_ms")
                 val duration = nonNegativeMillis("durationMs", "duration_ms")
                 if (position == null || duration == null) {
-                    recordDiagnostic(
-                        name = type.uppercase(Locale.ROOT),
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        sessionId = stringValue("playerSessionId", "player_session_id"),
-                        source = "native_player",
-                        result = "ignored",
-                        context = mapOf("reason" to "invalid_progress_values"),
-                    )
+
                     return true
                 }
                 if (payload.opt("nativeProgressPersisted") == true) {
                     // NativePlayerActivity already committed this checkpoint to canonical SQLite.
                     // Match main.py: leave the library projection untouched while the player
                     // is on top; the player-exit event performs the single catalog refresh.
-                    recordDiagnostic(
-                        name = "PLAYER_PROGRESS_NATIVE_COMMIT_REUSED",
-                        requestId = eventRequestId,
-                        sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
-                        result = type,
-                        context = mapOf("episode_id" to episodeId, "position_ms" to position),
-                    )
+
                     true
                 } else {
                     val eventTime = parseLegacyPlaybackTimestamp(payload)
                     if (eventTime.supplied && eventTime.epochSeconds == null) {
-                        recordDiagnostic(
-                            name = "PLAYER_PROGRESS_TIMESTAMP_REJECTED",
-                            severity = "WARN",
-                            requestId = eventRequestId,
-                            result = type,
-                        )
+
                         true
                     } else {
                         savePlaybackProgress(
@@ -11479,11 +10087,7 @@ internal class NativeMainRuntimePort(
                 // Consume it as an invalidation signal, not as a second settings write.
                 settingsViewModel.refresh()
                 val enabled = pythonTruthyJsonValue(payload.opt("enabled"))
-                recordDiagnostic(
-                    name = "PLAYER_AUTOPLAY_CHANGED",
-                    requestId = eventRequestId,
-                    result = if (enabled) "enabled" else "disabled",
-                )
+
                 true
             }
             "player_mark_watched", "player_mark_unwatched" -> {
@@ -11507,17 +10111,7 @@ internal class NativeMainRuntimePort(
                     allowMissingAnimeId = true,
                 )
                 if (!validation.isCurrent) {
-                    recordDiagnostic(
-                        name = "PLAYER_ERROR_STALE_IGNORED",
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        sessionId = stringValue("playerSessionId", "player_session_id", "sessionId", "session_id"),
-                        result = validation.reason,
-                        context = mapOf(
-                            "episode_id" to longValue("episodeId", "episode_id"),
-                            "stage" to "before_error_projection",
-                        ),
-                    )
+
                     // The legacy mailbox loop continues past stale player errors;
                     // consume this event rather than making an old error retry forever.
                     return true
@@ -11568,18 +10162,7 @@ internal class NativeMainRuntimePort(
                                 firstFrameRenderedPlayerSessions.contains(failedSessionId)
                             ) return@launchTracked
                             if (continueFailureRecordedPlayerSessions.add(failedSessionId)) {
-                                recordDiagnostic(
-                                    name = "CONTINUE_FAILED",
-                                    severity = "ERROR",
-                                    requestId = eventRequestId ?: stringValue("requestId"),
-                                    sessionId = failedSessionId,
-                                    result = playerErrorReason,
-                                    context = mapOf(
-                                        "episode_id" to resumeContext.episodeId,
-                                        "reason" to playerErrorReason,
-                                        "resume_seconds" to resumeContext.resumeSeconds,
-                                    ),
-                                )
+
                                 if (continueFailureRecordedPlayerSessions.size > 128) {
                                     continueFailureRecordedPlayerSessions.clear()
                                     continueFailureRecordedPlayerSessions.add(failedSessionId)
@@ -11607,17 +10190,7 @@ internal class NativeMainRuntimePort(
                         !playerErrorOriginRequestId.isNullOrBlank() &&
                         (transitionDirection == "NEXT" || transitionDirection == "PREVIOUS")
                     ) {
-                        recordDiagnostic(
-                            name = if (transitionDirection == "NEXT") "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
-                            severity = "ERROR",
-                            requestId = playerErrorOriginRequestId,
-                            sessionId = stringValue("playerSessionId", "player_session_id", "sessionId", "session_id"),
-                            result = transitionFailureReason,
-                            context = mapOf(
-                                "target_request_id" to playerErrorRequestId,
-                                "transition_direction" to transitionDirection,
-                            ),
-                        )
+
                     }
                     // A NEXT/PREVIOUS failure may carry the target request while the
                     // native handoff ledger is keyed by the origin request. Revoke that
@@ -11633,25 +10206,8 @@ internal class NativeMainRuntimePort(
                 }
                 // Preserve the established diagnostic event name/source/result from
                 // main.py so existing playback diagnostics remain comparable.
-                recordDiagnostic(
-                    name = "PLAYER_ERROR",
-                    severity = "ERROR",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
-                    source = "native_player",
-                    result = playerErrorReason,
-                    error = IllegalStateException(playerErrorMessage),
-                    context = mapOf("episode_id" to longValue("episodeId", "episode_id")),
-                )
-                recordDiagnostic(
-                    name = "PLAYER_RUNTIME_ERROR",
-                    severity = "ERROR",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    sessionId = stringValue("playerSessionId", "sessionId"),
-                    result = stringValue("errorCode", "code", "reason"),
-                    error = IllegalStateException(playerErrorMessage),
-                    context = mapOf("episode_id" to longValue("episodeId", "episode_id")),
-                )
+
+
                 // Preserve the old runtime's user-visible error state alongside the diagnostic.
                 publish(action = "player_error", error = playerErrorMessage)
                 true
@@ -11659,29 +10215,12 @@ internal class NativeMainRuntimePort(
             "player_next_request", "player_previous_request" -> {
                 // In a native Media3 session the Activity owns adjacent-episode navigation;
                 // do not dispatch a second launch from a mailbox projection callback.
-                recordDiagnostic(
-                    name = if (type == "player_next_request") "PLAYER_NEXT_ALREADY_NATIVE" else "PLAYER_PREVIOUS_ALREADY_NATIVE",
-                    requestId = eventRequestId ?: stringValue("requestId"),
-                    sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
-                    result = "delegated_to_native_player_activity",
-                    context = mapOf("transition_direction" to if (type == "player_next_request") "NEXT" else "PREVIOUS"),
-                )
+
                 true
             }
             "player_progress", "playback_progress" -> {
                 if (!playerCallbackIdentityIsComplete(payload)) {
-                    recordDiagnostic(
-                        name = "PLAYER_CALLBACK_REJECTED_INCOMPLETE_IDENTITY",
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = type,
-                        context = mapOf(
-                            "has_session_id" to stringValue("playerSessionId", "player_session_id").isNullOrBlank().not(),
-                            "has_episode_id" to (longValue("episodeId", "episode_id") != null),
-                            "has_media_id" to stringValue("mediaId", "media_id").isNullOrBlank().not(),
-                            "has_uri" to stringValue("uri").isNullOrBlank().not(),
-                        ),
-                    )
+
                     return true
                 }
                 val progressValidation = validatePlayerCallback(
@@ -11691,16 +10230,7 @@ internal class NativeMainRuntimePort(
                     allowMissingAnimeId = true,
                 )
                 if (!progressValidation.isCurrent) {
-                    recordDiagnostic(
-                        name = "PLAYER_TASK_STALE",
-                        severity = "WARN",
-                        requestId = eventRequestId,
-                        result = progressValidation.reason,
-                        context = mapOf(
-                            "stage" to "before_save_progress",
-                            "event" to type,
-                        ),
-                    )
+
                     return true
                 }
                 val episodeId = longValue("episodeId", "episode_id") ?: return false
@@ -11709,37 +10239,18 @@ internal class NativeMainRuntimePort(
                 val positionMs = nonNegativeMillis("positionMs", "position_ms")
                 val durationMs = nonNegativeMillis("durationMs", "duration_ms")
                 if (positionMs == null || durationMs == null) {
-                    recordDiagnostic(
-                        name = type.uppercase(Locale.ROOT),
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        sessionId = stringValue("playerSessionId", "player_session_id"),
-                        source = "native_player",
-                        result = "ignored",
-                        context = mapOf("reason" to "invalid_progress_values"),
-                    )
+
                     return true
                 }
                 if (payload.opt("nativeProgressPersisted") == true) {
                     // The player already saved this exact checkpoint before publishing the
                     // mailbox event. As in main.py, defer catalog refresh until player exit.
-                    recordDiagnostic(
-                        name = "PLAYER_PROGRESS_NATIVE_COMMIT_REUSED",
-                        requestId = eventRequestId,
-                        sessionId = stringValue("playerSessionId", "sessionId", "session_id"),
-                        result = type,
-                        context = mapOf("episode_id" to episodeId, "position_ms" to positionMs),
-                    )
+
                     true
                 } else {
                     val eventTime = parseLegacyPlaybackTimestamp(payload)
                     if (eventTime.supplied && eventTime.epochSeconds == null) {
-                        recordDiagnostic(
-                            name = "PLAYER_PROGRESS_TIMESTAMP_REJECTED",
-                            severity = "WARN",
-                            requestId = eventRequestId,
-                            result = type,
-                        )
+
                         true
                     } else {
                         savePlaybackProgress(
@@ -11758,18 +10269,7 @@ internal class NativeMainRuntimePort(
             }
             "player_exited", "player_exit" -> {
                 if (!playerCallbackIdentityIsComplete(payload)) {
-                    recordDiagnostic(
-                        name = "PLAYER_CALLBACK_REJECTED_INCOMPLETE_IDENTITY",
-                        severity = "WARN",
-                        requestId = eventRequestId ?: stringValue("requestId"),
-                        result = type,
-                        context = mapOf(
-                            "has_session_id" to stringValue("playerSessionId", "player_session_id").isNullOrBlank().not(),
-                            "has_episode_id" to (longValue("episodeId", "episode_id") != null),
-                            "has_media_id" to stringValue("mediaId", "media_id").isNullOrBlank().not(),
-                            "has_uri" to stringValue("uri").isNullOrBlank().not(),
-                        ),
-                    )
+
                     return true
                 }
                 val validation = validatePlayerCallback(
@@ -11786,26 +10286,8 @@ internal class NativeMainRuntimePort(
                     val staleSessionId = stringValue("playerSessionId", "sessionId", "session_id")
                     val staleActivityInstanceId = stringValue("activityInstanceId", "activity_instance_id")
                     val currentPlayer = mutableSnapshot.value
-                    recordDiagnostic(
-                        name = "PLAYER_CALLBACK_STALE",
-                        severity = "WARN",
-                        requestId = staleRequestId,
-                        sessionId = staleSessionId,
-                        result = "stale_player_exit",
-                        context = mapOf(
-                            "activity_instance_id" to staleActivityInstanceId,
-                            "current_player_session_id" to currentPlayer.activePlayerSessionId,
-                            "current_activity_instance_id" to currentPlayer.activePlayerActivityInstanceId,
-                            "validation_reason" to validation.reason,
-                        ),
-                    )
-                    recordDiagnostic(
-                        name = "MAILBOX_STALE_COMMAND_DISCARDED",
-                        severity = "WARN",
-                        requestId = staleRequestId,
-                        sessionId = staleSessionId,
-                        result = "stale_player_exit",
-                    )
+
+
                     // main.py continues the mailbox loop for stale exits: discard the
                     // event instead of asking the durable dispatcher to retry it.
                     return true
@@ -11878,13 +10360,7 @@ internal class NativeMainRuntimePort(
                             val eventTime = parseLegacyPlaybackTimestamp(payload)
                             when {
                                 eventTime.supplied && eventTime.epochSeconds == null -> {
-                                    recordDiagnostic(
-                                        name = "PLAYER_PROGRESS_TIMESTAMP_REJECTED",
-                                        severity = "WARN",
-                                        requestId = exitRequestId,
-                                        sessionId = exitSessionId,
-                                        result = "player_exited",
-                                    )
+
                                     exitProgressResult = "INVALID_TIMESTAMP"
                                 }
                                 else -> {
@@ -11897,30 +10373,10 @@ internal class NativeMainRuntimePort(
                                     } else null
                                     if (pathEpisode != null && pathEpisode.id != exitEpisodeId) {
                                         exitProgressResult = "IDENTITY_MISMATCH"
-                                        recordDiagnostic(
-                                            name = "PLAYER_PROGRESS_IDENTITY_REJECTED",
-                                            severity = "WARN",
-                                            requestId = exitRequestId,
-                                            sessionId = exitSessionId,
-                                            result = "player_exit_episode_path_mismatch",
-                                            context = mapOf(
-                                                "episode_id" to exitEpisodeId,
-                                                "path_episode_id" to pathEpisode.id,
-                                            ),
-                                        )
+
                                     } else if ((existingProgress.lastPlayedAtEpochSeconds ?: 0.0) >= timestampSeconds) {
                                         exitProgressResult = "STALE"
-                                        recordDiagnostic(
-                                            name = "PLAYER_PROGRESS_STALE",
-                                            result = "player_exit_stale_timestamp",
-                                            requestId = exitRequestId,
-                                            sessionId = exitSessionId,
-                                            context = mapOf(
-                                                "episode_id" to exitEpisodeId,
-                                                "event_time_seconds" to timestampSeconds,
-                                                "stored_last_played_at" to existingProgress.lastPlayedAtEpochSeconds,
-                                            ),
-                                        )
+
                                     } else {
                                         dependencies.consumptionService.saveProgress(
                                             episodeId = exitEpisodeId,
@@ -11943,21 +10399,7 @@ internal class NativeMainRuntimePort(
                     scheduleCatalogMetadataHydration("player_exited")
                     scheduleThumbnailReconciliation("player_exited")
                     val legacyProgressSaved = exitProgressResult in setOf("SAVED", "NATIVE_COMMIT_REUSED")
-                    recordDiagnostic(
-                        name = "PLAYER_EXITED",
-                        requestId = exitRequestId,
-                        sessionId = exitSessionId,
-                        source = "native_player",
-                        result = (stringValue("reason") ?: "exit") +
-                            if (legacyProgressSaved) ":progress_saved" else ":progress_not_updated",
-                        context = mapOf(
-                            "episode_id" to exitEpisodeId,
-                            "media_identity" to stringValue("mediaId", "media_id"),
-                            "position_ms" to exitPositionMs.takeIf { it >= 0L },
-                            "duration_ms" to exitDurationMs,
-                            "progress_result" to exitProgressResult,
-                        ),
-                    )
+
                 }
             }
             "diagnostic" -> {
@@ -11972,18 +10414,7 @@ internal class NativeMainRuntimePort(
                     // state handling, unless a stale callback explicitly continued.
                     val diagnosticSource = firstTruthyJsonText(payload, "source")
                         .takeIf { it.isNotEmpty() } ?: "NativeMainRuntimePort"
-                    recordDiagnostic(
-                        name = eventName,
-                        severity = stringValue("severity") ?: "INFO",
-                        result = firstTruthyJsonText(payload, "result", "access")
-                            .takeIf { it.isNotEmpty() },
-                        requestId = requestId,
-                        scanId = firstTruthyJsonText(payload, "scanId", "scan_id")
-                            .takeIf { it.isNotEmpty() },
-                        sessionId = sessionId,
-                        source = diagnosticSource,
-                        context = mapOf("event_type" to type),
-                    )
+
                 }
                 when (eventName) {
                     "PLAYER_SESSION_CREATED" -> {
@@ -11997,21 +10428,8 @@ internal class NativeMainRuntimePort(
                             current.activePlayerSessionId != null &&
                             current.activePlayerSessionId != createdSession
                         ) {
-                            recordDiagnostic(
-                                name = "PLAYER_CALLBACK_STALE",
-                                severity = "WARN",
-                                requestId = requestId,
-                                sessionId = createdSession,
-                                result = "stale_session_created",
-                                context = mapOf("current_session" to current.activePlayerSessionId),
-                            )
-                            recordDiagnostic(
-                                name = "MAILBOX_STALE_COMMAND_DISCARDED",
-                                severity = "WARN",
-                                requestId = requestId,
-                                sessionId = createdSession,
-                                result = "stale_session_created",
-                            )
+
+
                             return true
                         }
                         // Legacy callbacks may omit requestId after a native
@@ -12044,12 +10462,7 @@ internal class NativeMainRuntimePort(
                     "PLAYER_SESSION_INVALIDATED" -> {
                         val invalidSession = sessionId
                         if (invalidSession.isNullOrBlank()) {
-                            recordDiagnostic(
-                                name = "PLAYER_CALLBACK_STALE",
-                                severity = "WARN",
-                                requestId = requestId,
-                                result = "stale_session_invalidated",
-                            )
+
                             recordLegacyDiagnosticProjection()
                             return true
                         }
@@ -12059,13 +10472,7 @@ internal class NativeMainRuntimePort(
                                 current.activePlayerActivityInstanceId != null &&
                                 current.activePlayerActivityInstanceId != activityInstanceId)
                         ) {
-                            recordDiagnostic(
-                                name = "PLAYER_CALLBACK_STALE",
-                                severity = "WARN",
-                                requestId = requestId,
-                                sessionId = invalidSession,
-                                result = "stale_session_invalidated",
-                            )
+
                             recordLegacyDiagnosticProjection()
                             return true
                         }
@@ -12084,30 +10491,12 @@ internal class NativeMainRuntimePort(
                             return true
                         }
                         if (!active.playerSessionActive || active.activePlayerSessionId != sessionId) {
-                            recordDiagnostic(
-                                name = "PLAYER_CALLBACK_STALE",
-                                severity = "WARN",
-                                requestId = requestId,
-                                sessionId = sessionId,
-                                result = "stale_handoff_dispatch",
-                            )
+
                             val direction = stringValue("transitionDirection", "transition_direction")
                                 ?.uppercase(Locale.ROOT)
                             val previous = direction == "PREVIOUS"
-                            recordDiagnostic(
-                                name = if (previous) "PREVIOUS_REQUEST_STALE" else "NEXT_REQUEST_STALE",
-                                severity = "WARN",
-                                requestId = requestId,
-                                sessionId = sessionId,
-                                result = "stale_handoff_dispatch",
-                            )
-                            recordDiagnostic(
-                                name = if (previous) "PLAYER_PREVIOUS_STALE_REJECTED" else "PLAYER_NEXT_STALE_REJECTED",
-                                severity = "WARN",
-                                requestId = requestId,
-                                sessionId = sessionId,
-                                result = "stale_handoff_dispatch",
-                            )
+
+
                             return true
                         }
                         publish(action = "player_handoff_dispatched", transform = {
@@ -12150,18 +10539,7 @@ internal class NativeMainRuntimePort(
                             !activityInstanceId.isNullOrBlank() &&
                             current.activePlayerActivityInstanceId != activityInstanceId
                         ) {
-                            recordDiagnostic(
-                                name = "PLAYER_CALLBACK_STALE",
-                                severity = "WARN",
-                                requestId = requestId,
-                                sessionId = sessionId,
-                                result = "stale_activity_instance_lifecycle",
-                                context = mapOf(
-                                    "activity_instance_id" to activityInstanceId,
-                                    "current_activity_instance_id" to current.activePlayerActivityInstanceId,
-                                    "lifecycle" to lifecycle,
-                                ),
-                            )
+
                             return true
                         }
                         if (!sessionId.isNullOrBlank() &&
@@ -12234,13 +10612,7 @@ internal class NativeMainRuntimePort(
                             allowMissingAnimeId = true,
                         )
                         if (!validation.isCurrent) {
-                            recordDiagnostic(
-                                name = "PLAYER_CALLBACK_STALE",
-                                severity = "WARN",
-                                requestId = requestId,
-                                sessionId = sessionId,
-                                result = validation.reason,
-                            )
+
                             recordLegacyDiagnosticProjection()
                             true
                         } else {
@@ -12251,17 +10623,7 @@ internal class NativeMainRuntimePort(
                                     firstFrameRenderedPlayerSessions.add(it)
                                 }
                             }
-                            recordDiagnostic(
-                                name = "PLAYER_FIRST_FRAME_RENDERED",
-                                requestId = requestId,
-                                sessionId = sessionId,
-                                result = "current_session",
-                                context = mapOf(
-                                    "episode_id" to payload.optLong("episodeId", 0L),
-                                    "generation" to payload.optLong("generation", 0L),
-                                    "transition_generation" to payload.optLong("transitionGeneration", 0L),
-                                ),
-                            )
+
                             val frameGeneration = firstTruthyJsonLong(payload, "generation", "playerGeneration")
                             val transitionDirection = firstTruthyJsonText(
                                 payload,
@@ -12277,20 +10639,6 @@ internal class NativeMainRuntimePort(
                                 // completion marker. Adjacent-episode transitions are
                                 // emitted by NativePlayerActivity and must not count as
                                 // a second initial playback completion here.
-                                recordDiagnostic(
-                                    name = "ASSIST_COMPLETED",
-                                    requestId = requestId,
-                                    sessionId = sessionId,
-                                    result = "completed",
-                                    context = mapOf(
-                                        "status" to "completed",
-                                        "episode_id" to payload.optLong("episodeId", 0L),
-                                        "anime_id" to payload.optLong("animeId", 0L),
-                                        "player_generation" to frameGeneration,
-                                        "transition_generation" to payload.optLong("transitionGeneration", 0L),
-                                        "completion" to "FIRST_FRAME_RENDERED",
-                                    ),
-                                )
 
                                 // main.py separately completed the pending "continue
                                 // watching" action once the first frame of a resumed
@@ -12331,18 +10679,7 @@ internal class NativeMainRuntimePort(
                                         if (!continueCompletedPlayerSessions.add(completedSessionId)) {
                                             return@launchTracked
                                         }
-                                        recordDiagnostic(
-                                            name = "CONTINUE_COMPLETED",
-                                            requestId = requestId,
-                                            sessionId = completedSessionId,
-                                            result = "completed",
-                                            context = mapOf(
-                                                "episode_id" to resumeContext.episodeId,
-                                                "anime_id" to resumeContext.animeId,
-                                                "resume_seconds" to resumeContext.resumeSeconds,
-                                                "completion" to "FIRST_FRAME_RENDERED",
-                                            ),
-                                        )
+
                                         if (continueCompletedPlayerSessions.size > 128) {
                                             continueCompletedPlayerSessions.clear()
                                             continueCompletedPlayerSessions.add(completedSessionId)
@@ -12419,13 +10756,7 @@ internal class NativeMainRuntimePort(
                 message = failure.message ?: "Não foi possível iniciar a operação nativa de arquivo.",
                 error = failure.javaClass.simpleName,
             )
-            recordDiagnostic(
-                name = "NATIVE_SETTINGS_FILE_ACTION_LAUNCH_FAILED",
-                severity = "WARN",
-                requestId = resolvedRequestId,
-                result = normalizedAction,
-                error = failure,
-            )
+
             false
         }
     }
