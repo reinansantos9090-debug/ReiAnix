@@ -64,7 +64,7 @@ internal object LocalCastMediaServer {
         }
         val token = UUID.randomUUID().toString().replace("-", "") +
             UUID.randomUUID().toString().replace("-", "")
-        val socket = ServerSocket(0, 12, InetAddress.getByName("0.0.0.0")).apply {
+        val socket = ServerSocket(0, 12, InetAddress.getByName(address)).apply {
             soTimeout = 1000
         }
         val binding = Binding(source, mime, size, token, socket)
