@@ -18,6 +18,41 @@ import org.junit.Test
 class LibraryUiMappersTest {
 
     @Test
+    fun canonicalRejectedCoverCacheDoesNotBecomePrimaryLocalArtworkAgain() {
+        val source = animeSource(
+            id = 812L,
+            meta = mapOf(
+                "cover_cache" to "/deleted/stale-rezero-poster.jpg",
+                "cover_url" to "https://example.invalid/rezero-official.jpg",
+            ),
+        ) + ("artwork_local_path" to null)
+
+        val artwork = LibraryUiMappers.anime(source).artwork
+        assertNull("The canonical projection explicitly rejected this local file", artwork?.localPath)
+        assertEquals("https://example.invalid/rezero-official.jpg", artwork?.externalUrl)
+        assertFalse(artwork?.isAvailable ?: true)
+    }
+
+    @Test
+    fun canonicalValidatedAlternativePosterOverridesStaleCoverCache() {
+        val source = animeSource(
+            id = 812L,
+            meta = mapOf("cover_cache" to "/deleted/old-poster.jpg"),
+        ) + ("artwork_local_path" to "/saved/valid-poster.webp")
+
+        assertEquals(
+            "/saved/valid-poster.webp",
+            LibraryUiMappers.anime(source).artwork?.localPath,
+        )
+    }
+
+    @Test
+    fun legacyMapWithoutCanonicalResolutionStillSupportsStoredCoverCache() {
+        val source = animeSource(id = 812L)
+        assertEquals("/cache/poster.jpg", LibraryUiMappers.anime(source).artwork?.localPath)
+    }
+
+    @Test
     fun samePathArtworkRevisionSurvivesMappingWithoutFileAccess() {
         val source = animeSource(id = 10L, seasons = emptyList()).toMutableMap()
         source["artwork_source_revisions"] = mapOf("/cache/poster.jpg" to "100-200")
