@@ -73,6 +73,13 @@ class ReiAnixCastController(
 
     private val mediaCallback = object : RemoteMediaClient.Callback() {
         override fun onStatusUpdated() {
+            if (!isCasting && !loading) return
+            if (client?.mediaStatus?.idleReason == MediaStatus.IDLE_REASON_ERROR) {
+                onMessage("A TV não conseguiu reproduzir o formato deste vídeo")
+                detach(restoreLocal = true)
+                CastStreamingService.stop(activity)
+                return
+            }
             if (!isCasting) return
             lastPositionMs = positionMs()
             lastDurationMs = durationMs()
