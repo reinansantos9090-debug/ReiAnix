@@ -1119,7 +1119,13 @@ private fun LibraryAnimeCard(
     maxDimensionPx: Int,
     modifier: Modifier = Modifier,
 ) {
-    val renderData = remember(anime) {
+    // A new cover, title translation or synopsis must not make the grid card
+    // recount all episodes on the UI thread. Only fields used by its progress,
+    // watched, favorite and episode labels invalidate these render metrics.
+    val renderData = remember(
+        anime.id, anime.year, anime.favorite,
+        anime.seasons, anime.specials, anime.mediaFiles,
+    ) {
         val episodes = anime.contentEpisodes
         var availableCount = 0
         var completed = episodes.isNotEmpty()
