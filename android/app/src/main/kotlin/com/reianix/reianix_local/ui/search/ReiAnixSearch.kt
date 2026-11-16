@@ -385,6 +385,7 @@ fun ReiAnixSearchScreen(
                     else -> AniListSearchResults(
                         results = aniListState.results,
                         listState = listState,
+                        cardSize = cardSize,
                         onOpenDetails = onOpenAniListDetails,
                     )
                 }
@@ -572,11 +573,12 @@ private fun AniListSearchPromptState(message: String) {
 private fun AniListSearchResults(
     results: List<AniListAnime>,
     listState: LazyGridState,
+    cardSize: String,
     onOpenDetails: (Int) -> Unit,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(
-            minSize = LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth("medium"),
+            minSize = LocalReiAnixResponsiveMetrics.current.gridItemMinWidth(cardSize),
         ),
         state = listState,
         modifier = Modifier
