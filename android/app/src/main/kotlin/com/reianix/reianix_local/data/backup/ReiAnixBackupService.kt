@@ -806,29 +806,50 @@ class ReiAnixBackupService(context: Context) {
     fun reconcileRestoredFileAvailability(): Int =
         withCanonicalFileMaintenance { reconcileRestoredFileAvailabilityLocked() }
 
+    /** Check local files without treating a revoked SAF grant as a deleted file. */
+    private fun reconciledAvailability(path: String): Pair<Int, String>? {
+        if (path.isBlank()) return 1 to "missing"
+        val normalized = path.trim()
+        val localExists = when {
+            normalized.startsWith("content://", ignoreCase = true) -> {
+                val uri = android.net.Uri.parse(normalized)
+                try {
+                    appContext.contentResolver.openFileDescriptor(uri, "r")?.use { return 0 to "available" }
+                    // Null or a provider that cannot be reached is inconclusive.
+                    return null
+                } catch (_: java.io.FileNotFoundException) {
+                    return 1 to "missing"
+                } catch (_: SecurityException) {
+                    // Revoked/expired permissions must not mark a valid episode as missing.
+                    return null
+                } catch (_: Exception) {
+                    // Provider temporarily offline or a transient Android error.
+                    return null
+                }
+            }
+            normalized.startsWith("file://", ignoreCase = true) -> {
+                val filePath = android.net.Uri.parse(normalized).path ?: return null
+                File(filePath).isFile
+            }
+            normalized.startsWith("/") -> File(normalized).isFile
+            else -> return null // Unsupported remote/relative references: scanner owns these.
+        }
+        return if (localExists) 0 to "available" else 1 to "missing"
+    }
+
     private fun reconcileRestoredFileAvailabilityLocked(): Int {
         requireCanonicalDatabase()
         val updates = mutableListOf<Pair<Long, Pair<Int, String>>>()
         SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            db.rawQuery("SELECT id,path,availability_state FROM episodes", null).use { cursor ->
+            db.rawQuery("SELECT id,path,availability_state,missing FROM episodes", null).use { cursor ->
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(0)
                     val path = cursor.getString(1)?.trim().orEmpty()
                     val state = cursor.getString(2).orEmpty()
                     if (state == "scope_removed") continue
-                    if (path.isBlank()) {
-                        updates += id to (1 to "missing")
-                    } else if (
-                        path.startsWith("content://", true) ||
-                        path.startsWith("file://", true) ||
-                        path.startsWith("http://", true) ||
-                        path.startsWith("https://", true)
-                    ) {
-                        continue
-                    } else {
-                        val exists = File(path).isFile
-                        updates += id to ((if (exists) 0 else 1) to (if (exists) "available" else "missing"))
-                    }
+                    val result = reconciledAvailability(path) ?: continue
+                    val missing = cursor.getInt(3)
+                    if (missing != result.first || state != result.second) updates += id to result
                 }
             }
         }
