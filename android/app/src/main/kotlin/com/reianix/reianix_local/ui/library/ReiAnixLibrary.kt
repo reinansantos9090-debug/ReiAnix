@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -70,6 +71,7 @@ import kotlinx.coroutines.flow.collect
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.reianix.reianix_local.ui.ReiAnixAnimeCard
+import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsDialog
 import com.reianix.reianix_local.ui.ReiAnixIconActionButton
 import com.reianix.reianix_local.ui.ReiAnixTopBar
 import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeader
@@ -107,6 +109,7 @@ fun ReiAnixLibraryRoute(
     pageSize: Int = 0,
     defaultSortKey: String = "added_desc",
 ) {
+    var showCollections by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(pageSize) {
         viewModel.applyLibraryPageSize(pageSize)
     }
@@ -154,10 +157,26 @@ fun ReiAnixLibraryRoute(
             )
         },
         onToggleFavorite = viewModel::toggleFavorite,
+        onOpenCollections = { showCollections = true },
         hasMore = pageState.hasMore,
         isLoadingMore = pageState.isLoadingMore,
         onLoadMore = viewModel::loadNextLibraryPage,
     )
+    if (showCollections) {
+        val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
+        ReiAnixCollectionsDialog(
+            viewModel = viewModel,
+            animes = catalogState.animes,
+            onOpenAnime = { animeId ->
+                showCollections = false
+                navController.navigateToDetails(
+                    animeId = animeId.toString(),
+                    origin = ReiAnixRoutes.LIBRARY,
+                )
+            },
+            onDismiss = { showCollections = false },
+        )
+    }
 }
 
 @Composable
@@ -165,6 +184,7 @@ fun ReiAnixLibraryRoute(
     viewModel: ReiAnixLibraryViewModel,
     onOpenDetails: (Long) -> Unit,
 ) {
+    var showCollections by rememberSaveable { mutableStateOf(false) }
     val baseState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
     val pageState by viewModel.pagedLibraryState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
@@ -193,10 +213,23 @@ fun ReiAnixLibraryRoute(
         onSelectSource = viewModel::selectSafTree,
         onOpenDetails = onOpenDetails,
         onToggleFavorite = viewModel::toggleFavorite,
+        onOpenCollections = { showCollections = true },
         hasMore = pageState.hasMore,
         isLoadingMore = pageState.isLoadingMore,
         onLoadMore = viewModel::loadNextLibraryPage,
     )
+    if (showCollections) {
+        val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
+        ReiAnixCollectionsDialog(
+            viewModel = viewModel,
+            animes = catalogState.animes,
+            onOpenAnime = { animeId ->
+                showCollections = false
+                onOpenDetails(animeId)
+            },
+            onDismiss = { showCollections = false },
+        )
+    }
 }
 
 /**
@@ -227,6 +260,7 @@ fun ReiAnixLibraryScreen(
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
     onOpenStorage: (() -> Unit)? = null,
+    onOpenCollections: (() -> Unit)? = null,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
@@ -265,6 +299,7 @@ fun ReiAnixLibraryScreen(
         onToggleFavorite = onToggleFavorite,
         onSearch = onSearch,
         onOpenStorage = onOpenStorage,
+        onOpenCollections = onOpenCollections,
     )
 }
 
@@ -290,6 +325,7 @@ private fun ReiAnixLibraryPresentationScreen(
     onToggleFavorite: (Long) -> Unit = {},
     onSearch: (() -> Unit)? = null,
     onOpenStorage: (() -> Unit)? = null,
+    onOpenCollections: (() -> Unit)? = null,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
@@ -311,6 +347,7 @@ private fun ReiAnixLibraryPresentationScreen(
                 onSearch = onSearch,
                 onRefresh = onRefresh,
                 isRefreshing = isRefreshing,
+                onOpenCollections = onOpenCollections,
             )
         }
 
@@ -431,6 +468,7 @@ private fun LibraryHeader(
     onSearch: (() -> Unit)?,
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
+    onOpenCollections: (() -> Unit)? = null,
 ) {
     var actionsExpanded by rememberSaveable { mutableStateOf(false) }
     ReiAnixTopBar(
@@ -454,6 +492,16 @@ private fun LibraryHeader(
                     onDismissRequest = { actionsExpanded = false },
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
+                    if (onOpenCollections != null) {
+                        DropdownMenuItem(
+                            text = { Text("Coleções") },
+                            leadingIcon = { Icon(Icons.Filled.Folder, contentDescription = null) },
+                            onClick = {
+                                actionsExpanded = false
+                                onOpenCollections()
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = {
                             Text(

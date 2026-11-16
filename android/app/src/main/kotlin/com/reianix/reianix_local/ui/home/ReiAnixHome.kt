@@ -88,6 +88,7 @@ import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeaderState
 import com.reianix.reianix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
 import com.reianix.reianix_local.ui.discovery.ReiAnixDurationAnomalyDialog
 import com.reianix.reianix_local.ui.discovery.ReiAnixTimelineDialog
+import com.reianix.reianix_local.ui.collections.ReiAnixRouletteDialog
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixHomeAnimeUiModel
@@ -157,6 +158,7 @@ fun ReiAnixHomeRoute(
         onRefresh = viewModel::refresh,
         onSelectSource = viewModel::selectSafTree,
         onOpenTimeline = { activeDiscoveryDialog = "timeline" },
+        onOpenRoulette = { activeDiscoveryDialog = "roulette" },
         onOpenDurationAnomalies = { activeDiscoveryDialog = "duration" },
     )
 
@@ -177,6 +179,29 @@ fun ReiAnixHomeRoute(
                 )
             },
         )
+        "roulette" -> {
+            val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
+            ReiAnixRouletteDialog(
+                viewModel = viewModel,
+                animes = catalogState.animes,
+                onDismiss = { activeDiscoveryDialog = null },
+                onOpenAnime = { animeId ->
+                    activeDiscoveryDialog = null
+                    navController.navigateToDetails(
+                        animeId = animeId.toString(),
+                        origin = ReiAnixRoutes.HOME,
+                    )
+                },
+                onWatch = { episodeId, animeId ->
+                    activeDiscoveryDialog = null
+                    navController.navigateToPlayer(
+                        episodeId = episodeId.toString(),
+                        animeId = animeId.toString(),
+                        origin = ReiAnixRoutes.HOME,
+                    )
+                },
+            )
+        }
         "duration" -> ReiAnixDurationAnomalyDialog(
             viewModel = viewModel,
             onDismiss = { activeDiscoveryDialog = null },
@@ -204,6 +229,7 @@ private fun ReiAnixHomeObservedScreen(
     onSelectSource: () -> Unit,
     onOpenTimeline: () -> Unit,
     onOpenDurationAnomalies: () -> Unit,
+    onOpenRoulette: (() -> Unit)? = null,
 ) {
     ReiAnixResponsiveRoot {
     val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
@@ -223,6 +249,7 @@ private fun ReiAnixHomeObservedScreen(
                     onRefresh = onRefresh,
                     onOpenTimeline = onOpenTimeline,
                     onOpenDurationAnomalies = onOpenDurationAnomalies,
+                    onOpenRoulette = onOpenRoulette,
                 )
             }
         }
@@ -578,6 +605,7 @@ internal fun HomeHeader(
     onRefresh: () -> Unit,
     onOpenTimeline: (() -> Unit)? = null,
     onOpenDurationAnomalies: (() -> Unit)? = null,
+    onOpenRoulette: (() -> Unit)? = null,
 ) {
     val menuExpanded = rememberSaveable { mutableStateOf(false) }
 
@@ -622,6 +650,15 @@ internal fun HomeHeader(
                             onOpenCollector()
                         },
                     )
+                    if (onOpenRoulette != null) {
+                        DropdownMenuItem(
+                            text = { Text("Roleta de animes") },
+                            onClick = {
+                                menuExpanded.value = false
+                                onOpenRoulette()
+                            },
+                        )
+                    }
                     if (onOpenDurationAnomalies != null) {
                         DropdownMenuItem(
                             text = { Text("Durações incomuns") },
