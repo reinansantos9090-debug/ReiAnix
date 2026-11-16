@@ -156,9 +156,20 @@ object LibraryUiMappers {
                 .flatMap { map -> keys.asSequence().mapNotNull { map.stringOrNull(it) } }
                 .firstOrNull { it.isNotBlank() }
 
-        val posterLocalPath = firstNonBlank(
-            listOf("artwork_local_path", "cover_cache", "cover", "poster_path", "local_path"),
-        )
+        // Canonical SQLite projection explicitly resolves the first readable local
+        // poster (manual artwork > cover_cache > stored artwork records). A present
+        // but null artwork_local_path means that every local candidate was rejected.
+        // Do not resurrect an unvalidated cover_cache from the nested metadata:
+        // Coil would try that stale path before reaching the valid remote fallback,
+        // leaving the poster blank during navigation or cold-start.
+        val resolvedPosterSource = sources.firstOrNull { it.containsKey("artwork_local_path") }
+        val posterLocalPath = if (resolvedPosterSource != null) {
+            resolvedPosterSource.stringOrNull("artwork_local_path")
+                ?.takeIf(String::isNotBlank)
+        } else {
+            // Legacy presentation maps have no canonical resolution marker.
+            firstNonBlank(listOf("cover_cache", "cover", "poster_path", "local_path"))
+        }
         val posterExternalUrl = firstNonBlank(
             listOf("artwork_external_url", "cover_url", "external_url"),
         )
