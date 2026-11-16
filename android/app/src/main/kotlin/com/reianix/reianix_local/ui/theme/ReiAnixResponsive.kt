@@ -60,15 +60,25 @@ data class ReiAnixResponsiveMetrics(
         }
 
     fun libraryGridMinWidth(preference: String): Dp {
-        val base = when (preference.trim().lowercase()) {
+        val normalized = preference.trim().lowercase()
+        val compactBase = when (normalized) {
             "small" -> ReiAnixTokens.Dimensions.gridMinWidthSmall
             "large" -> ReiAnixTokens.Dimensions.gridMinWidthLarge
             else -> ReiAnixTokens.Dimensions.gridMinWidthMedium
         }
-        return when (widthClass) {
-            ReiAnixWindowWidthClass.COMPACT -> base
-            ReiAnixWindowWidthClass.MEDIUM -> maxOf(base, ReiAnixTokens.Responsive.mediumLibraryGridMinWidth)
-            ReiAnixWindowWidthClass.EXPANDED -> maxOf(base, ReiAnixTokens.Responsive.expandedLibraryGridMinWidth)
+        if (widthClass == ReiAnixWindowWidthClass.COMPACT) return compactBase
+
+        // Preserve distinct card sizes on tablets, where the previous
+        // minimum-width clamp collapsed small/medium/large into one value.
+        val mediumBase = when (widthClass) {
+            ReiAnixWindowWidthClass.MEDIUM -> ReiAnixTokens.Responsive.mediumLibraryGridMinWidth
+            ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedLibraryGridMinWidth
+            ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Dimensions.gridMinWidthMedium
+        }
+        return when (normalized) {
+            "small" -> mediumBase * (76f / 108f)
+            "large" -> mediumBase * (144f / 108f)
+            else -> mediumBase
         }
     }
 
