@@ -109,6 +109,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-cast-framework:22.3.1")
     // The native Cast route dialog requires a FragmentActivity host.
     implementation("androidx.fragment:fragment:1.8.9")
+    // MediaRouteButton dialogs use an AppCompat theme, scoped to that view.
+    implementation("androidx.appcompat:appcompat:1.7.1")
 
     testImplementation("junit:junit:4.13.2")
     // Robolectric exercises Android SQLiteDatabase on the JVM; no emulator or instrumentation runner.
