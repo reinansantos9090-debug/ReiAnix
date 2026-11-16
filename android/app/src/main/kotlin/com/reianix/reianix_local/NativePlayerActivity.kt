@@ -980,6 +980,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setLocked(incomingLockMode, persist = false, announce = false)
         }
         doubleTapSeekMs = newIntent.getLongExtra("setting_player_double_tap_seek_seconds", doubleTapSeekMs / 1000L)
+            .coerceIn(1L, 120L) * 1000L
         longPressSpeed = newIntent.getFloatExtra("setting_player_long_press_speed", longPressSpeed)
             .coerceIn(1f, 3f)
         maxVideoResolution = newIntent.getStringExtra("setting_player_max_video_resolution") ?: maxVideoResolution
@@ -992,6 +993,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
         preferredSubtitleLanguage = newIntent.getStringExtra("setting_audio_preferred_subtitle_language")?.trim() ?: preferredSubtitleLanguage
         subtitleMode = newIntent.getStringExtra("setting_audio_subtitles") ?: subtitleMode
         immersiveSetting = newIntent.getStringExtra("setting_player_immersive") ?: immersiveSetting
+        // The Player Activity is reused for adjacent episodes: apply the new
+        // episode's runtime preferences instead of retaining the first one's.
+        pipEnabled = newIntent.getBooleanExtra("setting_player_pip", pipEnabled)
+        autoHideTimeoutMs = newIntent.getIntExtra(
+            "setting_player_auto_hide_seconds",
+            (autoHideTimeoutMs / 1000L).toInt(),
+        ).coerceIn(0, 300) * 1000L
+        applyConfiguredRotation()
         applyImmersiveAfterLayout()
         applyGlobalTrackPreferences()
         applyAdvancedTrackConstraints()
