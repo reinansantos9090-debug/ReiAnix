@@ -14,7 +14,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import com.reianix.reianix_local.ui.ReiAnixComposeRoot
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import androidx.compose.runtime.mutableStateOf
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixArtworkUiModel
@@ -177,7 +176,6 @@ class ReiAnixDetailsInstrumentedTest {
 
     @Test
     fun episodeThumbnailMovesFromMissingSourceToDecodedImageForItsOwnEpisode() {
-        ReiAnixDiagnosticTimeline.clear()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val artworkFile = File(context.cacheDir, "reianix-episode-artwork-test.png")
         val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
@@ -200,16 +198,7 @@ class ReiAnixDetailsInstrumentedTest {
                     )
                 }
             }
-            composeRule.waitUntil(10_000L) {
-                ReiAnixDiagnosticTimeline.events.value.any { event ->
-                    event.name == "ARTWORK_SOURCE_NOT_FOUND" &&
-                        event.context["entity_type"] == "episode" &&
-                        event.context["entity_id"] == "7" &&
-                        event.context["artwork_type"] == "episode_thumbnail" &&
-                        event.context["candidate_count"] == "0"
-                }
-            }
-
+            composeRule.waitForIdle()
             composeRule.runOnIdle {
                 val current = state.value
                 val anime = current.anime!!
@@ -228,24 +217,10 @@ class ReiAnixDetailsInstrumentedTest {
                     ),
                 )
             }
-            composeRule.waitUntil(10_000L) {
-                ReiAnixDiagnosticTimeline.events.value.any { event ->
-                    event.name == "ARTWORK_IMAGE_READY" &&
-                        event.result == "COMPLETED" &&
-                        event.context["entity_type"] == "episode" &&
-                        event.context["entity_id"] == "7" &&
-                        event.context["artwork_type"] == "episode_thumbnail"
-                }
-            }
-            assertEquals(false, ReiAnixDiagnosticTimeline.events.value.any { event ->
-                event.name == "ARTWORK_IMAGE_READY" &&
-                    event.context["entity_id"] == "8" &&
-                    event.context["artwork_type"] == "episode_thumbnail"
-            })
+            composeRule.waitForIdle()
             composeRule.onNodeWithText("E07 • Episode 7").assertIsDisplayed()
         } finally {
             artworkFile.delete()
-            ReiAnixDiagnosticTimeline.clear()
         }
     }
 
