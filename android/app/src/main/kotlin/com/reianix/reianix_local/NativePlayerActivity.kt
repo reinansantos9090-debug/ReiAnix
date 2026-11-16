@@ -2695,6 +2695,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerTopControls(
                         state = composePlayerUiState.value,
                         onBack = { finishPlayer("back_button") },
+                        onToggleLock = { setLocked(!locked) },
                     )
                 }
             }
