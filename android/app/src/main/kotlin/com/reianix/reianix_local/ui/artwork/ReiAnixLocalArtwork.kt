@@ -42,6 +42,38 @@ import kotlin.math.roundToInt
 private const val TAG = "ReiAnixLocalArtwork"
 
 /**
+ * Holds ONLY memory-cache keys (never Bitmaps or Drawables). On a return from
+ * Home/Details to Library, Coil can paint the previous successful decode while
+ * resolving a changed target size or local-file revision of that SAME source.
+ *
+ * This supplements Coil's memory/disk caches without pinning large posters or
+ * modifying their download order. An evicted entry simply yields no placeholder.
+ */
+internal class ArtworkLastSuccessfulMemoryKeys(private val maxEntries: Int = 128) {
+    init { require(maxEntries > 0) }
+    private data class Entry(val source: String, val memoryKey: String)
+    private val entries = object : LinkedHashMap<String, Entry>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean =
+            size > maxEntries
+    }
+
+    private fun slot(identity: String, type: String) = type + "|" + identity
+
+    @Synchronized
+    fun placeholderKey(identity: String, type: String, source: String, currentKey: String): String {
+        // Never show a different candidate/series from a previous lookup.
+        return entries[slot(identity, type)]?.takeIf { it.source == source }?.memoryKey ?: currentKey
+    }
+
+    @Synchronized
+    fun recordSuccess(identity: String, type: String, source: String, key: String) {
+        entries[slot(identity, type)] = Entry(source, key)
+    }
+}
+
+private val lastSuccessfulArtworkKeys = ArtworkLastSuccessfulMemoryKeys()
+
+/**
  * One process-wide Coil loader for Compose artwork.
  *
  * ReiAnixArtworkService owns persistent artwork materialization for Compose.
@@ -184,10 +216,19 @@ fun ReiAnixLocalArtwork(
             val diskCacheKey = remember(stableIdentity, source, sourceRevision) {
                 buildArtworkDiskCacheKey(source, sourceRevision)
             }
+            val placeholderKey = remember(stableIdentity, artworkType, source, memoryCacheKey) {
+                lastSuccessfulArtworkKeys.placeholderKey(
+                    identity = stableIdentity,
+                    type = artworkType,
+                    source = source,
+                    currentKey = memoryCacheKey,
+                )
+            }
             val request = remember(
                 context,
                 memoryCacheKey,
                 diskCacheKey,
+                placeholderKey,
             ) {
                 ImageRequest.Builder(context)
                     .data(coilData(source))
@@ -200,7 +241,7 @@ fun ReiAnixLocalArtwork(
                     .crossfade(false)
                     .memoryCacheKey(memoryCacheKey)
                     .diskCacheKey(diskCacheKey)
-                    .placeholderMemoryCacheKey(memoryCacheKey)
+                    .placeholderMemoryCacheKey(placeholderKey)
                     .build()
             }
 
@@ -210,6 +251,14 @@ fun ReiAnixLocalArtwork(
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
+                onSuccess = {
+                    lastSuccessfulArtworkKeys.recordSuccess(
+                        identity = stableIdentity,
+                        type = artworkType,
+                        source = source,
+                        key = memoryCacheKey,
+                    )
+                },
                 onError = { state ->
                     Log.w(
                         TAG,
