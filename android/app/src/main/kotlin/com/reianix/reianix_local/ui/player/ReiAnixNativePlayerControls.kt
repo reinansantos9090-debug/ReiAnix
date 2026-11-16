@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
@@ -155,33 +154,23 @@ fun ReiAnixNativePlayerTopControls(
                 bottom = ReiAnixTokens.PlayerDimensions.topBottomPadding,
             ),
     ) {
-        // Both upper actions share the center of their respective bottom-menu
-        // quarter. The first episode line begins 2.dp below the content top and
-        // has 16.dp line height; moving the *48.dp touch targets* up by 14.dp
-        // centers the unchanged icons on that line without moving the title.
-        val episodeLineOffset = (-14).dp
-        Box(
+        // Return the back action to its original screen-edge position.
+        // The lock uses the same 48.dp row height, with no vertical offset.
+        IconButton(
+            onClick = onBack,
             modifier = Modifier
-                .fillMaxWidth(0.25f)
-                .align(Alignment.TopStart),
-            contentAlignment = Alignment.Center,
+                .size(48.dp)
+                .align(Alignment.TopStart)
+                .semantics {
+                    contentDescription = "Voltar"
+                    role = Role.Button
+                },
         ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .size(48.dp)
-                    .offset(y = episodeLineOffset)
-                    .semantics {
-                        contentDescription = "Voltar"
-                        role = Role.Button
-                    },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.ArrowBack,
-                    contentDescription = null,
-                    tint = ReiAnixTokens.Colors.playerControl,
-                )
-            }
+            Icon(
+                imageVector = Icons.Filled.ArrowBack,
+                contentDescription = null,
+                tint = ReiAnixTokens.Colors.playerControl,
+            )
         }
 
         // Top-right lock matches the horizontal center of the bottom three dots.
@@ -196,7 +185,6 @@ fun ReiAnixNativePlayerTopControls(
                 enabled = !state.episodeTransitionInProgress,
                 modifier = Modifier
                     .size(ReiAnixTokens.PlayerDimensions.actionButtonSize)
-                    .offset(y = episodeLineOffset)
                     .semantics {
                         contentDescription = "Bloquear toques"
                         role = Role.Button

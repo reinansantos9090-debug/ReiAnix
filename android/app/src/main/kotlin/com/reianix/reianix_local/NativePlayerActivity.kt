@@ -238,10 +238,21 @@ class NativePlayerActivity : FragmentActivity() {
         touchControls()
     }
 
+    // Keep the native list/radio logic, but reuse the ⋮ menu's rounded
+    // translucent charcoal surface for every options dialog.
+    private fun showPlayerMenuDialog(dialog: AlertDialog) {
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(R.drawable.reianix_player_menu_dialog_background)
+            val availableWidth = (resources.displayMetrics.widthPixels - dp(32)).coerceAtLeast(dp(240))
+            setLayout(minOf(dp(410), availableWidth), WindowManager.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
     private fun showSleepTimerSelection() {
         if (episodeChangePending || sleepTimerDialog?.isShowing == true) return
         val choices = arrayOf("15 minutos", "30 minutos", "45 minutos", "60 minutos", "90 minutos", "Personalizado", "Desativar")
-        sleepTimerDialog = AlertDialog.Builder(this)
+        sleepTimerDialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Temporizador")
             .setItems(choices) { _, which ->
                 when (which) {
@@ -251,7 +262,7 @@ class NativePlayerActivity : FragmentActivity() {
                 }
             }
             .setNegativeButton("Cancelar", null)
-            .create().also { it.show() }
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun showCustomSleepTimer() {
@@ -260,8 +271,11 @@ class NativePlayerActivity : FragmentActivity() {
             hint = "Minutos (1 a 1440)"
             setSingleLine(true)
             setPadding(dp(24), dp(12), dp(24), dp(12))
+            setTextColor(Color.WHITE)
+            setHintTextColor(0xFFBDBDBD.toInt())
+            backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
         }
-        val dialog = AlertDialog.Builder(this).setTitle("Temporizador").setView(input)
+        val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme).setTitle("Temporizador").setView(input)
             .setPositiveButton("Iniciar", null).setNegativeButton("Cancelar", null).create()
         sleepTimerDialog = dialog
         dialog.setOnShowListener {
@@ -271,7 +285,7 @@ class NativePlayerActivity : FragmentActivity() {
                 else { setSleepTimer(minutes); dialog.dismiss() }
             }
         }
-        dialog.show()
+        showPlayerMenuDialog(dialog)
     }
 
     private var lastSavedPosition = -1L
@@ -286,6 +300,9 @@ class NativePlayerActivity : FragmentActivity() {
     private var completionReported = false
     private var controlsVisible = true
     private var moreVisible = false
+    // Lives above the controls overlay: the options menu must remain usable after
+    // the 3.5s player-controls timeout hides the playback UI.
+    private var menuDismissScrim: View? = null
     private var lastControlsInteraction = 0L
     private var requestId = ""
     private var originRequestId = ""
@@ -463,8 +480,7 @@ class NativePlayerActivity : FragmentActivity() {
                 topBar.visibility = View.GONE
                 centerControls.visibility = View.GONE
                 bottomBar.visibility = View.GONE
-                moreVisible = false
-                findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+                setMorePanelVisible(false)
             }
         }
     }
@@ -1037,8 +1053,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         updateEpisodeNavigationButtons()
         findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
-        moreVisible = false
-        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+        setMorePanelVisible(false)
         setControlsVisible(true)
 
         try {
@@ -2534,6 +2549,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         val morePanel = ComposeView(this).apply {
             tag = "reianix_more_panel"
+            visibility = View.GONE
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 ReiAnixComposeTheme {
@@ -2618,7 +2634,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val panelWidth = minOf(dp(410), availablePanelWidth)
         val availablePanelHeight = (resources.displayMetrics.heightPixels - dp(72)).coerceAtLeast(dp(220))
         val panelHeight = minOf(dp(380), availablePanelHeight)
-        controls.addView(morePanel, FrameLayout.LayoutParams(
+        // A transparent, clickable layer consumes outside taps without triggering
+        // seek/pause gestures on the video underneath. It stays independent from
+        // the controls layer and is only visible while the options menu is open.
+        menuDismissScrim = View(this).apply {
+            tag = "reianix_more_dismiss_scrim"
+            visibility = View.GONE
+            isClickable = true
+            contentDescription = "Fechar menu do player"
+            setOnClickListener { setMorePanelVisible(false) }
+        }.also { scrim ->
+            root.addView(
+                scrim,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+        root.addView(morePanel, FrameLayout.LayoutParams(
             panelWidth,
             panelHeight,
         ).apply {
@@ -2634,7 +2668,28 @@ override fun onCreate(savedInstanceState: Bundle?) {
         bottomBar.visibility = View.GONE
         findViewByTag<View>("reianix_marker_row")?.visibility = View.GONE
         installComposePlayerControls()
-        controls.bringToFront()
+        // Menu + dismiss scrim are the last root children, above Compose controls.
+    }
+
+    private fun updateMorePanelBounds() {
+        // The panel was moved from controls to root; preserve the old gesture
+        // inset and resize bounds when orientation/configuration changes.
+        val panel = findViewByTag<View>("reianix_more_panel") ?: return
+        val params = panel.layoutParams as? FrameLayout.LayoutParams ?: return
+        val widthPixels = resources.displayMetrics.widthPixels
+        val heightPixels = resources.displayMetrics.heightPixels
+        val desiredWidth = minOf(dp(410), (widthPixels - dp(24)).coerceAtLeast(dp(240)))
+        val desiredHeight = minOf(dp(380), (heightPixels - dp(72)).coerceAtLeast(dp(220)))
+        val desiredRightMargin = dp(8) + max(dp(4), gestureSafeRight)
+        // Avoid requesting another layout on every insets delivery.
+        if (params.width != desiredWidth || params.height != desiredHeight ||
+            params.rightMargin != desiredRightMargin
+        ) {
+            params.width = desiredWidth
+            params.height = desiredHeight
+            params.rightMargin = desiredRightMargin
+            panel.layoutParams = params
+        }
     }
 
     private fun initializeGoogleCast() {
@@ -2910,17 +2965,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
         preparingIndicator.visibility = if (composeIndicatorVisible) View.GONE else View.VISIBLE
     }
 
-    private fun toggleMorePanel() {
-        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
-        moreVisible = !moreVisible
+    private fun setMorePanelVisible(visible: Boolean) {
+        val canShow = visible && !locked && !inPictureInPicture && !errorVisible
+        moreVisible = canShow
         val panel = findViewByTag<View>("reianix_more_panel")
-        panel?.visibility = if (moreVisible) View.VISIBLE else View.GONE
-        if (moreVisible) {
+        menuDismissScrim?.visibility = if (canShow) View.VISIBLE else View.GONE
+        panel?.visibility = if (canShow) View.VISIBLE else View.GONE
+        if (canShow) {
             optionsPanelResetSignal.value += 1
+            menuDismissScrim?.bringToFront()
             panel?.bringToFront()
         }
-        controls.bringToFront()
+    }
+
+    private fun toggleMorePanel() {
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
+        val opening = !moreVisible
         touchControls()
+        setMorePanelVisible(opening)
     }
 
     private fun hideLegacyPrimaryControls() {
@@ -2979,9 +3041,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     if (episodePlaylistOverlay != null) { closeEpisodePlaylist(); return }
                     logPlayer("PLAYER_BACK ANDROID_BACK requestId=" + requestId.ifEmpty { "-" })
                     if (moreVisible) {
-                        moreVisible = false
-                        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
-                        touchControls()
+                        setMorePanelVisible(false)
                         return
                     }
                     finishPlayer("back_button")
@@ -3017,6 +3077,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             max(dp(4), gestureSafeRight),
             0,
         )
+        updateMorePanelBounds()
         syncComposePlayerUiState()
     }
 
@@ -3180,7 +3241,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val labels = speeds.map { String.format(java.util.Locale.US, "%.2fx", it) }.toTypedArray()
         val currentIndex = speeds.indices.minByOrNull { abs(speeds[it] - player.playbackParameters.speed) } ?: 2
         touchControls()
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Velocidade")
             .setSingleChoiceItems(labels, currentIndex) { dialog, which ->
                 player.setPlaybackSpeed(speeds[which])
@@ -3193,7 +3254,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 dialog.dismiss()
             }
             .setNegativeButton("Cancelar", null)
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private var episodePlaylistOverlay: FrameLayout? = null
@@ -3487,12 +3548,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun showPlaybackHistory() {
         touchControls()
-        val loadingDialog = AlertDialog.Builder(this)
+        val loadingDialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Histórico")
             .setMessage("Carregando histórico…")
             .setNegativeButton("Fechar", null)
             .create()
-        loadingDialog.show()
+        showPlayerMenuDialog(loadingDialog)
 
         lifecycleScope.launch {
             try {
@@ -3524,11 +3585,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     showFeedback("Nenhum histórico de reprodução encontrado")
                     return@launch
                 }
-                AlertDialog.Builder(this@NativePlayerActivity)
+                AlertDialog.Builder(this@NativePlayerActivity, R.style.ReiAnixPlayerMenuDialogTheme)
                     .setTitle("Histórico")
                     .setItems(historyItems.toTypedArray(), null)
                     .setNegativeButton("Fechar", null)
-                    .show()
+                    .create().also { showPlayerMenuDialog(it) }
             } catch (cancelled: CancellationException) {
                 if (loadingDialog.isShowing) loadingDialog.dismiss()
                 throw cancelled
@@ -3545,11 +3606,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun showTechnicalInfo() {
         if (!::player.isInitialized) return
         touchControls()
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Informações técnicas")
             .setMessage(buildTechnicalInfo())
             .setPositiveButton("Fechar", null)
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
     private fun showTrackSelection(trackType: Int, label: String) {
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
@@ -3623,7 +3684,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }.let { if (it >= 0) it else 0 }
 
         val labels = options.map { it.title }.toTypedArray()
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle(label)
             .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
                 val option = options.getOrNull(which) ?: return@setSingleChoiceItems
@@ -3661,7 +3722,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 dialog.dismiss()
             }
             .setNegativeButton("Cancelar", null)
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun seekBy(deltaMs: Long, feedbackText: String) {
@@ -3708,8 +3769,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         if (inPictureInPicture) {
             handler.removeCallbacks(controlsHider)
-            moreVisible = false
-            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+            setMorePanelVisible(false)
             controls.visibility = View.INVISIBLE
             hideLegacyPrimaryControls()
             syncComposePlayerUiState()
@@ -3721,7 +3781,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             topBar.visibility = View.GONE
             bottomBar.visibility = View.GONE
             centerControls.visibility = View.GONE
-            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+            setMorePanelVisible(false)
             findViewByTag<View>("reianix_back_button")?.visibility = View.GONE
             findViewByTag<View>("reianix_more_button")?.visibility = View.GONE
             if (visible) {
@@ -3746,8 +3806,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (composeControlsEnabled) View.GONE else View.VISIBLE
         findViewByTag<View>("reianix_more_button")?.visibility =
             if (composeControlsEnabled) View.GONE else View.VISIBLE
-        moreVisible = false
-        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+        // Never close the options menu just because the playback controls
+        // auto-hide, or when a regular player interaction shows them again.
         syncComposePlayerUiState()
     }
 
@@ -3784,8 +3844,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         if (locked) {
             handler.removeCallbacks(controlsHider)
-            moreVisible = false
-            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+            setMorePanelVisible(false)
             findViewByTag<View>("reianix_back_button")?.visibility = View.GONE
             findViewByTag<View>("reianix_more_button")?.visibility = View.GONE
             controls.visibility = View.VISIBLE
@@ -3945,9 +4004,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         retryCount += 1
         errorVisible = false
         playbackErrorForGeneration = false
-        moreVisible = false
+        setMorePanelVisible(false)
         findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
-        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
         logPlayer(
             "PLAYER_RETRY requestId=" + requestId.ifEmpty { "-" } +
@@ -4036,6 +4094,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         }
         invalidateTransition("player_error")
+        // A fatal playback error takes precedence over the floating menu.
+        setMorePanelVisible(false)
         setLocked(false, persist = true, announce = false)
         errorVisible = true
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
@@ -5108,6 +5168,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateComposeOverlayBounds()
+        updateMorePanelBounds()
         logPlayer("onConfigurationChanged orientation=" + newConfig.orientation)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
 
@@ -5340,6 +5401,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 hint = label + " (MM:SS)"
                 setSingleLine(true)
                 inputType = android.text.InputType.TYPE_CLASS_DATETIME or android.text.InputType.TYPE_DATETIME_VARIATION_TIME
+                setTextColor(Color.WHITE)
+                setHintTextColor(0xFFBDBDBD.toInt())
+                backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
                 setText(valueMs?.let { formatTime(it) }.orEmpty())
             }
 
@@ -5382,7 +5446,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
 
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Marcadores e notas locais")
             .setView(container)
             .setNeutralButton("Nota no tempo atual") { _, _ ->
@@ -5423,7 +5487,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
                 showFeedback("Marcadores salvos")
             }
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun showAddLocalNoteDialog() {
@@ -5433,9 +5497,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setSingleLine(false)
             maxLines = 5
             setTextColor(Color.WHITE)
+            setHintTextColor(0xFFBDBDBD.toInt())
+            backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
             setTextSize(14f)
         }
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Nota em " + formatTime(if (::player.isInitialized) player.currentPosition else 0L))
             .setView(input)
             .setNegativeButton("Cancelar", null)
@@ -5448,7 +5514,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
                 showFeedback("Nota salva")
             }
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun parseTimestampMs(raw: String?): Long? {

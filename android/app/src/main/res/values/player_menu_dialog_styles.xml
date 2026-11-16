@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Restricted to the player option dialogs; the app and Cast themes stay unchanged. -->
+    <style name="ReiAnixPlayerMenuDialogTheme" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/reianix_player_menu_dialog_background</item>
+        <item name="android:colorBackground">#E61B1B1D</item>
+        <item name="android:colorAccent">#2579FF</item>
+        <item name="android:textColorPrimary">#FFFFFFFF</item>
+        <item name="android:textColorSecondary">#FFD0D0D0</item>
+        <item name="android:windowIsFloating">true</item>
+    </style>
+</resources>
