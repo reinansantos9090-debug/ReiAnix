@@ -257,16 +257,18 @@ fun ReiAnixLocalArtwork(
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
-                placeholder = lastSuccessfulPainter ?: placeholderPainter,
-                onSuccess = { state ->
+                // Keep episode thumbnails and backdrops on their original
+                // rendering path. Only anime posters need cross-tab retention.
+                placeholder = if (artworkType == "poster") {
+                    lastSuccessfulPainter ?: placeholderPainter
+                } else placeholderPainter,
+                onSuccess = if (artworkType == "poster") { { state ->
                     lastSuccessfulPainter = state.painter
-                    if (artworkType == "poster") {
-                        ReiAnixPosterPlaceholderKeyHistory.record(
-                            stableIdentity, source, sourceRevision, memoryCacheKey,
-                        )
-                    }
+                    ReiAnixPosterPlaceholderKeyHistory.record(
+                        stableIdentity, source, sourceRevision, memoryCacheKey,
+                    )
                     isMissing = false
-                },
+                } } else null,
                 onError = { state ->
                     Log.w(
                         TAG,
