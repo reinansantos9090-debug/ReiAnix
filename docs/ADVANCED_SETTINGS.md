@@ -55,10 +55,9 @@ A implementação do ReiAnix continua própria e usa SettingsStore, LibraryServi
 
 | Configuração | Categoria | Default | Efeito real |
 |---|---|---:|---|
-| Tamanho dos cards | Biblioteca | medium | altera dimensões dos cards da Home |
+| Tamanho dos cards | Busca e Minha Lista | medium | define a largura dos cards nessas duas telas |
 | Mostrar miniaturas | Biblioteca | true | evita carregamento/renderização de imagens na Home quando desativado |
 | Ordenação padrão | Biblioteca | added_desc | define a ordenação inicial da Home |
-| Densidade da grade | Biblioteca | medium | altera espaçamento da grade |
 | Itens por página | Biblioteca | Tudo | exibe todos os animes correspondentes; as opções 24, 36, 48 e 72 mantêm o carregamento paginado |
 | Salto no double tap | Player/Gestos | 10 s | altera o seek do double tap; swipe horizontal continua desativado |
 | Velocidade da pressão longa | Player/Gestos | 2.0x | aplica velocidade temporária durante long press |

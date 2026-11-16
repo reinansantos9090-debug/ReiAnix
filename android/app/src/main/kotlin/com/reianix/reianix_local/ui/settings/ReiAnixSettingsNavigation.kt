@@ -88,7 +88,6 @@ internal val SettingsDestinations = listOf(
     )),
     SettingsDestination("appearance_library", "Home e Biblioteca", "Aparência", listOf(
         SettingsEntry("setting:appearance.card_size", "Cards da Busca e Minha Lista"),
-        SettingsEntry("setting:library.grid_density", "Densidade da Biblioteca"),
         SettingsEntry("setting:appearance.poster_size", "Tamanho dos pôsteres (0–16)", ""),
         SettingsEntry("setting:appearance.show_thumbnails", "Mostrar miniaturas"),
         SettingsEntry("setting:library.continue_watching", "Continuar assistindo"),

@@ -1,6 +1,5 @@
 package com.reianix.reianix_local.ui.theme
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -8,36 +7,16 @@ class ReiAnixPosterLayoutTest {
     private val compact = ReiAnixResponsiveMetrics.compactDefaults()
 
     @Test
-    fun balancedGridDensityKeepsTheSelectedPosterSize() {
-        for (size in 0..16) {
-            assertEquals(
-                compact.posterCardWidth(size),
-                compact.libraryPosterGridMinWidth(size, "medium"),
-            )
+    fun posterSizeAloneDeterminesTheGridCardWidth() {
+        for (widthClass in ReiAnixWindowWidthClass.values()) {
+            val metrics = compact.copy(widthClass = widthClass)
+            var previous = metrics.posterCardWidth(0)
+            for (size in 1..16) {
+                val current = metrics.posterCardWidth(size)
+                assertTrue("Poster sizes must increase on $widthClass", current > previous)
+                previous = current
+            }
         }
-    }
-
-    @Test
-    fun densityPresetsActuallyChangeLibraryColumnWidth() {
-        for (size in listOf(0, 5, 8, 16)) {
-            val fewer = compact.libraryPosterGridMinWidth(size, "small")
-            val balanced = compact.libraryPosterGridMinWidth(size, "medium")
-            val more = compact.libraryPosterGridMinWidth(size, "large")
-            assertTrue("More cards must have a smaller minimum width", more < balanced)
-            assertTrue("Fewer cards must have a larger minimum width", balanced < fewer)
-        }
-    }
-
-    @Test
-    fun densityFallsBackToBalancedForUnknownValues() {
-        assertEquals(
-            compact.libraryPosterGridMinWidth(8, "medium"),
-            compact.libraryPosterGridMinWidth(8, "unknown"),
-        )
-        assertEquals(
-            compact.libraryPosterGridMinWidth(8, "small"),
-            compact.libraryPosterGridMinWidth(8, " SMALL "),
-        )
     }
 
     @Test

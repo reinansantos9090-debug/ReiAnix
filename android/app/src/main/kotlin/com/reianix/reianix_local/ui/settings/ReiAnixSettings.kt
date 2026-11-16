@@ -811,20 +811,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onSelected = { onUpdateSetting("appearance.card_size", it) },
                         )
                     }
-                    item(key = "setting:library.grid_density") {
-                        ChoiceSettingRow(
-                            keyName = "library.grid_density",
-                            title = "Densidade da Biblioteca",
-                            description = "Controla quantos pôsteres cabem por linha na Biblioteca, sem mudar as capas da Home.",
-                            selectedValue = state.settings["library.grid_density"],
-                            choices = listOf(
-                                SettingChoice("small", "Menos cards"),
-                                SettingChoice("medium", "Equilibrada"),
-                                SettingChoice("large", "Mais cards"),
-                            ),
-                            onSelected = { onUpdateSetting("library.grid_density", it) },
-                        )
-                    }
                     item(key = "setting:appearance.poster_size") {
                         PosterSizeSettingRow(
                             selectedValue = state.settings["appearance.poster_size"],
