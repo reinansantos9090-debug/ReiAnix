@@ -804,8 +804,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     item(key = "setting:appearance.card_size") {
                         ChoiceSettingRow(
                             keyName = "appearance.card_size",
-                            title = "Tamanho dos cards",
-                            description = "Controla o tamanho visual dos cards da biblioteca/Home.",
+                            title = "Cards da Busca e Minha Lista",
+                            description = "Define o tamanho dos cards na Busca e em Minha Lista. Para a Home e a Biblioteca, use Tamanho dos pôsteres.",
                             selectedValue = state.settings["appearance.card_size"],
                             choices = cardSizeChoices,
                             onSelected = { onUpdateSetting("appearance.card_size", it) },
@@ -814,8 +814,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     item(key = "setting:library.grid_density") {
                         ChoiceSettingRow(
                             keyName = "library.grid_density",
-                            title = "Densidade da grade",
-                            description = "Controla a largura efetiva dos cards.",
+                            title = "Densidade da Biblioteca",
+                            description = "Controla quantos pôsteres cabem por linha na Biblioteca, sem mudar as capas da Home.",
                             selectedValue = state.settings["library.grid_density"],
                             choices = listOf(
                                 SettingChoice("small", "Menos cards"),
@@ -1710,7 +1710,7 @@ private fun PosterSizeSettingRow(
     selectedValue: String?,
     onSelected: (Int) -> Unit,
 ) {
-    val persistedValue = selectedValue?.toIntOrNull()?.coerceIn(0, 16) ?: 5
+    val persistedValue = selectedValue?.toIntOrNull()?.coerceIn(0, 16) ?: 8
     var sliderValue by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableFloatStateOf(persistedValue.toFloat())
     }

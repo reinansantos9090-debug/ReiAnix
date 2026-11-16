@@ -60,16 +60,23 @@ data class ReiAnixResponsiveMetrics(
         }
 
     fun libraryGridMinWidth(preference: String): Dp {
-        val base = when (preference.trim().lowercase()) {
+        val normalized = preference.trim().lowercase()
+        val compactBase = when (normalized) {
             "small" -> ReiAnixTokens.Dimensions.gridMinWidthSmall
             "large" -> ReiAnixTokens.Dimensions.gridMinWidthLarge
             else -> ReiAnixTokens.Dimensions.gridMinWidthMedium
         }
-        return when (widthClass) {
-            ReiAnixWindowWidthClass.COMPACT -> base
-            ReiAnixWindowWidthClass.MEDIUM -> maxOf(base, ReiAnixTokens.Responsive.mediumLibraryGridMinWidth)
-            ReiAnixWindowWidthClass.EXPANDED -> maxOf(base, ReiAnixTokens.Responsive.expandedLibraryGridMinWidth)
+        if (widthClass == ReiAnixWindowWidthClass.COMPACT) return compactBase
+
+        // Preserve distinct card sizes on tablets, where the previous
+        // minimum-width clamp collapsed small/medium/large into one value.
+        val mediumBase = when (widthClass) {
+            ReiAnixWindowWidthClass.MEDIUM -> ReiAnixTokens.Responsive.mediumLibraryGridMinWidth
+            ReiAnixWindowWidthClass.EXPANDED -> ReiAnixTokens.Responsive.expandedLibraryGridMinWidth
+            ReiAnixWindowWidthClass.COMPACT -> ReiAnixTokens.Dimensions.gridMinWidthMedium
         }
+        val scale = compactBase.value / ReiAnixTokens.Dimensions.gridMinWidthMedium.value
+        return mediumBase * scale
     }
 
     fun homeCardWidth(preference: String): Dp {
@@ -95,6 +102,18 @@ data class ReiAnixResponsiveMetrics(
             ReiAnixWindowWidthClass.EXPANDED -> 184.dp
         }
         return minimum + (maximum - minimum) * fraction
+    }
+
+    /** Density adjusts the Library's column count relative to the chosen poster size.
+     * Balanced preserves the original 0..16 poster scale exactly.
+     */
+    fun libraryPosterGridMinWidth(size: Int, density: String): Dp {
+        val posterWidth = posterCardWidth(size)
+        return when (density.trim().lowercase()) {
+            "small" -> posterWidth * 1.25f  // fewer columns
+            "large" -> posterWidth * 0.80f  // more columns
+            else -> posterWidth
+        }
     }
 
     fun posterRailPadding(size: Int): Dp {
@@ -212,7 +231,7 @@ val LocalReiAnixResponsiveMetrics = staticCompositionLocalOf {
 }
 
 /** User-selected poster size (0..16), supplied from canonical SQLite settings. */
-val LocalReiAnixPosterSize = staticCompositionLocalOf { 5 }
+val LocalReiAnixPosterSize = staticCompositionLocalOf { 8 }
 
 @Composable
 fun ReiAnixResponsiveRoot(

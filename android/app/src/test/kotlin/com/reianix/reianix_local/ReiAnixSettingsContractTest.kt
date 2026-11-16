@@ -10,7 +10,7 @@ import org.junit.Test
 class ReiAnixSettingsContractTest {
     @Test fun knownDefaultsAndTypesMatchLegacyContract() {
         assertEquals("dark", ReiAnixSettingsContract.defaultFor("appearance.theme"))
-        assertEquals("5", ReiAnixSettingsContract.defaultFor("appearance.poster_size"))
+        assertEquals("8", ReiAnixSettingsContract.defaultFor("appearance.poster_size"))
         assertEquals("true", ReiAnixSettingsContract.defaultFor("player.autoplay_next"))
         assertEquals("true", ReiAnixSettingsContract.defaultFor("gestures.double_tap"))
         assertEquals("false", ReiAnixSettingsContract.defaultFor("gestures.horizontal_seek"))
@@ -22,7 +22,7 @@ class ReiAnixSettingsContractTest {
     @Test fun missingPersistedSettingsUseContractDefaultsWithoutRewritingThem() {
         val effective = ReiAnixSettingsContract.withDefaults(emptyMap())
 
-        assertEquals("5", effective["appearance.poster_size"])
+        assertEquals("8", effective["appearance.poster_size"])
         assertEquals("true", effective["appearance.show_thumbnails"])
         assertEquals("dark", effective["appearance.theme"])
         assertEquals("0", effective["library.page_size"])
