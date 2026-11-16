@@ -657,6 +657,44 @@ private fun ColumnScope.LibraryReadyContent(
                         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                         contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
                     ) {
+                        item(key = "sort") {
+                            Box {
+                                ReiAnixChip(
+                                    text = "Ordenar",
+                                    selected = filters.sort != ReiAnixLibrarySort.DEFAULT.label,
+                                    onClick = { sortMenuExpanded = true },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Ordenar. Opção atual: " + filters.sort
+                                    },
+                                )
+                                DropdownMenu(
+                                    expanded = sortMenuExpanded,
+                                    onDismissRequest = { sortMenuExpanded = false },
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                ) {
+                                    ReiAnixLibrarySort.OPTIONS.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option.label) },
+                                            onClick = {
+                                                sortMenuExpanded = false
+                                                onSortSelected(option.label)
+                                            },
+                                            trailingIcon = if (filters.sort == option.label) {
+                                                {
+                                                    Text(
+                                                        text = "✓",
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                    )
+                                                }
+                                            } else {
+                                                null
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         item(key = "filter-genre") {
                             Box {
                                 ReiAnixChip(
@@ -735,44 +773,6 @@ private fun ColumnScope.LibraryReadyContent(
                                         },
                                         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                                     )
-                                }
-                            }
-                        }
-                        item(key = "sort") {
-                            Box {
-                                ReiAnixChip(
-                                    text = "Ordenar",
-                                    selected = filters.sort != ReiAnixLibrarySort.DEFAULT.label,
-                                    onClick = { sortMenuExpanded = true },
-                                    modifier = Modifier.semantics {
-                                        contentDescription = "Ordenar. Opção atual: " + filters.sort
-                                    },
-                                )
-                                DropdownMenu(
-                                    expanded = sortMenuExpanded,
-                                    onDismissRequest = { sortMenuExpanded = false },
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                ) {
-                                    ReiAnixLibrarySort.OPTIONS.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = { Text(option.label) },
-                                            onClick = {
-                                                sortMenuExpanded = false
-                                                onSortSelected(option.label)
-                                            },
-                                            trailingIcon = if (filters.sort == option.label) {
-                                                {
-                                                    Text(
-                                                        text = "✓",
-                                                        color = MaterialTheme.colorScheme.primary,
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                    )
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                        )
-                                    }
                                 }
                             }
                         }
