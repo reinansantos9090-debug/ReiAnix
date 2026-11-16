@@ -97,6 +97,18 @@ data class ReiAnixResponsiveMetrics(
         return minimum + (maximum - minimum) * fraction
     }
 
+    /** Density adjusts the Library's column count relative to the chosen poster size.
+     * Balanced preserves the original 0..16 poster scale exactly.
+     */
+    fun libraryPosterGridMinWidth(size: Int, density: String): Dp {
+        val posterWidth = posterCardWidth(size)
+        return when (density.trim().lowercase()) {
+            "small" -> posterWidth * 1.25f  // fewer columns
+            "large" -> posterWidth * 0.80f  // more columns
+            else -> posterWidth
+        }
+    }
+
     fun posterRailPadding(size: Int): Dp {
         val fraction = size.coerceIn(0, 16) / 16f
         val minimum = when (widthClass) {
