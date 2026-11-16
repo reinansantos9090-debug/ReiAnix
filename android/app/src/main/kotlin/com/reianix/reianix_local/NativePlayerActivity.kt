@@ -5459,7 +5459,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
                 showFeedback("Marcadores salvos")
             }
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun showAddLocalNoteDialog() {
@@ -5484,7 +5484,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
                 showFeedback("Nota salva")
             }
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun parseTimestampMs(raw: String?): Long? {
