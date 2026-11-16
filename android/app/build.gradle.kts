@@ -54,7 +54,10 @@ android {
             // This variant is exercised by the existing CI build and certification.
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-cast.pro",
+            )
             // Release APKs must never silently inherit a changing debug key.
             // Only PR preview artifacts opt in to debug signing explicitly.
             signingConfig = when {
