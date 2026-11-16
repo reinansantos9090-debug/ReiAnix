@@ -129,11 +129,6 @@ class ReiAnixAppBootstrap internal constructor(
                     stage = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE,
                 )
             }
-            recordDiagnostic(
-                name = "APP_BOOTSTRAP_STAGE_STARTED",
-                result = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE.name,
-                stage = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE,
-            )
 
             val check = try {
                 withContext(Dispatchers.IO) { inspectCanonicalDatabase() }
@@ -153,22 +148,10 @@ class ReiAnixAppBootstrap internal constructor(
             }
             publishDatabaseCheck(check)
             if (check.recoveryRequired) {
-                recordDiagnostic(
-                    name = "APP_BOOTSTRAP_RECOVERY_REQUIRED",
-                    result = check.status.name,
-                    stage = ReiAnixBootstrapStage.RECOVERY_REQUIRED,
-                )
+
             } else {
                 ensureNativeServicesStarted()
-                recordDiagnostic(
-                    name = if (state.value.phase == ReiAnixBootstrapPhase.READY) {
-                        "APP_BOOTSTRAP_DATABASE_VALIDATED"
-                    } else {
-                        "APP_BOOTSTRAP_DEGRADED"
-                    },
-                    result = state.value.persistenceStatus.name,
-                    stage = state.value.stage,
-                )
+
             }
             state.value.recoveryRequired
         }
@@ -180,11 +163,7 @@ class ReiAnixAppBootstrap internal constructor(
      * Recovery Mode without allowing queued catalog mutations to run.
      */
     private suspend fun initializeProcessServices() {
-        recordDiagnostic(
-            name = "APP_BOOTSTRAP_STARTED",
-            result = ReiAnixBootstrapPhase.STARTING.name,
-            stage = ReiAnixBootstrapStage.VALIDATING_CANONICAL_DATABASE,
-        )
+
         val check = try {
             withContext(Dispatchers.IO) { inspectCanonicalDatabase() }
         } catch (cancelled: CancellationException) {
@@ -203,11 +182,7 @@ class ReiAnixAppBootstrap internal constructor(
         }
         publishDatabaseCheck(check)
         if (check.recoveryRequired) {
-            recordDiagnostic(
-                name = "APP_BOOTSTRAP_RECOVERY_REQUIRED",
-                result = check.status.name,
-                stage = ReiAnixBootstrapStage.RECOVERY_REQUIRED,
-            )
+
             Log.w(TAG, "Normal native services were not started because canonical SQLite requires recovery.")
             return
         }
@@ -361,11 +336,7 @@ class ReiAnixAppBootstrap internal constructor(
             try {
                 NativeScanRunner.recoverInterruptedSafScans(appContext)
                 completeStage(ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS)
-                recordDiagnostic(
-                    name = "APP_BOOTSTRAP_STAGE_COMPLETED",
-                    result = "COMPLETED",
-                    stage = ReiAnixBootstrapStage.RECOVERING_INTERRUPTED_SCANS,
-                )
+
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -389,11 +360,7 @@ class ReiAnixAppBootstrap internal constructor(
                 }
                 if (afterFailure.recoveryRequired) {
                     publishDatabaseCheck(afterFailure)
-                    recordDiagnostic(
-                        name = "APP_BOOTSTRAP_RECOVERY_REQUIRED",
-                        result = afterFailure.status.name,
-                        stage = ReiAnixBootstrapStage.RECOVERY_REQUIRED,
-                    )
+
                     return@withLock
                 }
                 publishDatabaseCheck(afterFailure)
@@ -408,11 +375,7 @@ class ReiAnixAppBootstrap internal constructor(
             try {
                 NativeCommandDispatcher.start(appContext)
                 completeStage(ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER)
-                recordDiagnostic(
-                    name = "APP_BOOTSTRAP_STAGE_COMPLETED",
-                    result = "COMPLETED",
-                    stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
-                )
+
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -420,11 +383,7 @@ class ReiAnixAppBootstrap internal constructor(
                     "O canal interno de comandos nativos não pôde ser iniciado.",
                     error,
                 )
-                recordDiagnostic(
-                    name = "APP_BOOTSTRAP_STAGE_FAILED",
-                    result = "COMMAND_CHANNEL_UNAVAILABLE",
-                    stage = ReiAnixBootstrapStage.STARTING_NATIVE_COMMAND_DISPATCHER,
-                )
+
             }
 
             nativeServicesStarted = true
@@ -446,15 +405,7 @@ class ReiAnixAppBootstrap internal constructor(
                     )
                 }
             }
-            recordDiagnostic(
-                name = if (state.value.phase == ReiAnixBootstrapPhase.READY) {
-                    "APP_BOOTSTRAP_NATIVE_SERVICES_READY"
-                } else {
-                    "APP_BOOTSTRAP_DEGRADED"
-                },
-                result = state.value.phase.name,
-                stage = ReiAnixBootstrapStage.READY,
-            )
+
             Log.i(
                 TAG,
                 "NATIVE_BOOTSTRAP_FINISHED phase=${state.value.phase} " +
@@ -697,22 +648,7 @@ class ReiAnixAppBootstrap internal constructor(
         }
     }
 
-    private fun recordDiagnostic(
-        name: String,
-        result: String,
-        stage: ReiAnixBootstrapStage,
-    ) {
-        // Diagnostic persistence can touch disk. Enqueue it on the process IO scope
-        // so Application/Activity lifecycle callbacks never perform it synchronously.
-        processScope.launch {
-            runCatching {
 
-            }.onFailure { error ->
-                // Diagnostics are observational; they must not gate startup.
-                Log.w(TAG, "Could not record bootstrap diagnostic event=$name.", error)
-            }
-        }
-    }
 
     private data class CanonicalDatabaseCheck(
         val status: ReiAnixBootstrapPersistenceStatus,
