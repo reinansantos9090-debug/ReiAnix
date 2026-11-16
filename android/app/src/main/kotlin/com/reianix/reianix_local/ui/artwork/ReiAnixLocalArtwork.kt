@@ -2,7 +2,6 @@ package com.reianix.reianix_local.ui.artwork
 
 import android.content.Context
 import android.net.Uri
-import android.os.SystemClock
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -119,23 +117,10 @@ fun ReiAnixLocalArtwork(
         identity?.trim().takeUnless { it.isNullOrEmpty() }
             ?: candidates.firstOrNull().orEmpty()
     }
-    val artworkEntityId = remember(identity, artworkType) {
-        val keyPrefix = if (artworkType == "episode_thumbnail") "episode:" else "anime:"
-        identity?.takeIf { it.startsWith(keyPrefix) }
-            ?.removePrefix(keyPrefix)
-            ?.substringBefore(':')
-            ?.toLongOrNull()
-            ?.toString()
-    }
-    val artworkEntityType = if (artworkType == "episode_thumbnail") "episode" else "anime_or_movie"
-
     var candidateIndex by remember(stableIdentity, candidates) {
         mutableIntStateOf(0)
     }
     val source = candidates.getOrNull(candidateIndex)
-    val artworkTraceId = remember(stableIdentity, source) {
-        "art-" + Integer.toHexString((stableIdentity + "|" + source.orEmpty()).hashCode())
-    }
     var isMissing by remember(stableIdentity, candidates) {
         mutableStateOf(false)
     }
@@ -168,20 +153,11 @@ fun ReiAnixLocalArtwork(
         val effectiveWidthPx = if (requestWidthPx > 0) requestWidthPx else fallbackDimensionPx
         val effectiveHeightPx = if (requestHeightPx > 0) requestHeightPx else fallbackDimensionPx
 
-        val artworkRequestStartedAt = remember(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
-            SystemClock.elapsedRealtime()
-        }
-
-
         if (source == null) {
-            LaunchedEffect(stableIdentity, candidates) {
 
-            }
             ReiAnixArtworkMissingState(label = placeholder)
         } else if (effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
-            LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
 
-            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -233,9 +209,6 @@ fun ReiAnixLocalArtwork(
                     .build()
             }
 
-            LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
-
-            }
             AsyncImage(
                 model = request,
                 imageLoader = imageLoader,
@@ -243,21 +216,10 @@ fun ReiAnixLocalArtwork(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
                 placeholder = placeholderPainter,
-                onLoading = {
-
-                },
-                onSuccess = { state ->
-                    val dataSource = (state.result as? coil.request.SuccessResult)?.dataSource?.name ?: "UNKNOWN"
-                    if (dataSource.contains("CACHE", ignoreCase = true)) {
-
-                    }
-
-                },
                 onError = { state ->
                     Log.w(
                         TAG,
-                        "Artwork candidate failed requestId=" + artworkTraceId +
-                            " candidateIndex=" + candidateIndex,
+                        "Artwork candidate failed candidateIndex=" + candidateIndex,
                         state.result.throwable,
                     )
 
