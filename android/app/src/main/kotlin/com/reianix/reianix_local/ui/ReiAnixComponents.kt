@@ -43,6 +43,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -725,19 +726,24 @@ fun ReiAnixAnimeCard(
     artworkSourceRevisions: Map<String, String> = emptyMap(),
     bottomBadgeText: String? = null,
 ) {
-    val animeAccessibilityLabel = buildList {
-        add(title)
-        metadata.filter { it.isNotBlank() }.joinToString(" • ").takeIf { it.isNotBlank() }?.let(::add)
-        when {
-            completed -> add("Concluído")
-            watching -> add("Assistindo")
-            watched -> add("Assistido")
-            favorite -> add("Na Minha Lista")
-        }
-        progress
-            ?.takeIf { it.isFinite() && it > 0f }
-            ?.let { add(((it.coerceIn(0f, 1f) * 100f).roundToInt()).toString() + "% assistido") }
-    }.joinToString(", ")
+    val metadataText = remember(metadata) { metadata.joinToString(" • ") }
+    val animeAccessibilityLabel = remember(
+        title, metadataText, completed, watching, watched, favorite, progress,
+    ) {
+        buildList {
+            add(title)
+            metadataText.takeIf { it.isNotBlank() }?.let(::add)
+            when {
+                completed -> add("Concluído")
+                watching -> add("Assistindo")
+                watched -> add("Assistido")
+                favorite -> add("Na Minha Lista")
+            }
+            progress
+                ?.takeIf { it.isFinite() && it > 0f }
+                ?.let { add(((it.coerceIn(0f, 1f) * 100f).roundToInt()).toString() + "% assistido") }
+        }.joinToString(", ")
+    }
 
     Card(
         modifier = modifier
@@ -772,8 +778,7 @@ fun ReiAnixAnimeCard(
                     contentDescription = title,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio)
-                        .clip(ReiAnixTokens.Shapes.artwork),
+                        .aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio),
                     identity = artworkIdentity,
                     maxDimensionPx = maxDimensionPx,
                     externalUrl = artworkExternalUrl,
@@ -880,7 +885,7 @@ fun ReiAnixAnimeCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (metadata.isNotEmpty()) {
-                    ReiAnixMetadata(text = metadata.joinToString(" • "))
+                    ReiAnixMetadata(text = metadataText)
                 }
             }
         }

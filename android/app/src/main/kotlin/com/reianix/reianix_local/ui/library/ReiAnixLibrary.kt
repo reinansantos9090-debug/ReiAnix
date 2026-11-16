@@ -1121,15 +1121,29 @@ private fun LibraryAnimeCard(
 ) {
     val renderData = remember(anime) {
         val episodes = anime.contentEpisodes
-        val availableCount = episodes.count {
-            it.media.availability == ReiAnixMediaAvailability.AVAILABLE
-        }
-        val completed = episodes.isNotEmpty() && episodes.all {
-            it.media.availability !in setOf(
-                ReiAnixMediaAvailability.MISSING,
-                ReiAnixMediaAvailability.SCOPE_UNAVAILABLE,
-                ReiAnixMediaAvailability.VOLUME_UNAVAILABLE,
-            ) && it.isCompleted
+        var availableCount = 0
+        var completed = episodes.isNotEmpty()
+        var watching = false
+        var watched = false
+        var progress: Float? = null
+        // One pass instead of count + all + firstOrNull + any + any.
+        // Keep the first in-progress episode and all existing badge semantics.
+        for (episode in episodes) {
+            val availability = episode.media.availability
+            if (availability == ReiAnixMediaAvailability.AVAILABLE) availableCount++
+            if (availability == ReiAnixMediaAvailability.MISSING ||
+                availability == ReiAnixMediaAvailability.SCOPE_UNAVAILABLE ||
+                availability == ReiAnixMediaAvailability.VOLUME_UNAVAILABLE ||
+                !episode.isCompleted
+            ) completed = false
+            if (episode.consumptionState ==
+                com.reianix.reianix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
+            ) watching = true
+            if (episode.isWatched) watched = true
+            if (progress == null && !episode.isCompleted) {
+                val fraction = episode.progressFraction
+                if (fraction > 0f) progress = fraction
+            }
         }
         LibraryCardRenderData(
             availableCount = availableCount,
@@ -1145,14 +1159,10 @@ private fun LibraryAnimeCard(
                     )
                 }
             },
-            progress = episodes.firstOrNull {
-                it.progressFraction > 0f && !it.isCompleted
-            }?.progressFraction,
+            progress = progress,
             favorite = anime.favorite,
-            watching = episodes.any {
-                it.consumptionState == com.reianix.reianix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
-            },
-            watched = episodes.any { it.isWatched },
+            watching = watching,
+            watched = watched,
             completed = completed,
         )
     }

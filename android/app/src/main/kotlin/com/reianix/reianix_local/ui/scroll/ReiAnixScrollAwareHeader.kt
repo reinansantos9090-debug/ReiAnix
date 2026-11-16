@@ -16,7 +16,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
@@ -105,13 +105,11 @@ fun ReiAnixScrollAwareHeader(
     val visibleHeight = with(density) { state.visibleHeightPx.toDp() }
     val collapseOffsetPx = state.collapseOffsetPx
 
-    SubcomposeLayout(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(visibleHeight)
-            .clipToBounds(),
-    ) { constraints ->
-        val header = subcompose("scroll-aware-header") {
+    // No SubcomposeLayout: the header has exactly one always-present child.
+    // Regular Layout keeps the same clipping and collapse geometry with less
+    // composition work per drag. Height still follows the original scroll policy.
+    Layout(
+        content = {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -119,19 +117,18 @@ fun ReiAnixScrollAwareHeader(
             ) {
                 content()
             }
-        }.single().measure(
-            constraints.copy(
-                minHeight = 0,
-                maxHeight = Constraints.Infinity,
-            ),
+        },
+        modifier = modifier
+            .fillMaxWidth()
+            .height(visibleHeight)
+            .clipToBounds(),
+    ) { measurables, constraints ->
+        val header = measurables.single().measure(
+            constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity),
         )
-
         val layoutHeight = visibleHeight.roundToPx().coerceAtMost(constraints.maxHeight)
         layout(constraints.maxWidth, layoutHeight) {
-            header.placeRelative(
-                x = 0,
-                y = -collapseOffsetPx.roundToInt(),
-            )
+            header.placeRelative(x = 0, y = -collapseOffsetPx.roundToInt())
         }
     }
 }
