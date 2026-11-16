@@ -163,6 +163,11 @@ fun ReiAnixHomeRoute(
     when (activeDiscoveryDialog) {
         "timeline" -> ReiAnixTimelineDialog(
             viewModel = viewModel,
+            // Home already holds canonical, validated poster paths. Reuse them,
+            // without querying the full catalog or downloading images again.
+            artworkByAnimeId = remember(state.animes) {
+                state.animes.associate { anime -> anime.id to anime.artwork }
+            },
             onDismiss = { activeDiscoveryDialog = null },
             onOpenAnime = { animeId ->
                 activeDiscoveryDialog = null
