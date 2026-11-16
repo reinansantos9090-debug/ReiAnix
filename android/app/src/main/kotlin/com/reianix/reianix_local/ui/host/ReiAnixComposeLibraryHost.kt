@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -54,6 +55,13 @@ import kotlinx.coroutines.flow.map
  * the existing bridge already depend on it. Runtime-wise this is now the app
  * shell host rather than a Library-only surface.
  */
+private data class HostLibrarySignal(
+    val animeCount: Int,
+    val scanInProgress: Boolean,
+    val scanState: String,
+    val lastScanStatus: String?,
+)
+
 class ReiAnixComposeLibraryHost(
     private val activity: MainActivity,
     private val libraryViewModel: ReiAnixLibraryViewModel,
@@ -91,7 +99,33 @@ class ReiAnixComposeLibraryHost(
             val librarySortDefault by settingsViewModel.librarySortDefault.collectAsStateWithLifecycle()
             val continueWatchingEnabled by settingsViewModel.continueWatchingEnabled.collectAsStateWithLifecycle()
             val continueWatchingLimit by settingsViewModel.continueWatchingLimit.collectAsStateWithLifecycle()
-            val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+            // The shell needs only scan status and anime count. Observing the full
+            // catalog here invalidated the navigation root on progress/cover changes.
+            val librarySignalFlow = remember(libraryViewModel) {
+                libraryViewModel.uiState
+                    .map { state ->
+                        HostLibrarySignal(
+                            animeCount = state.animes.size,
+                            scanInProgress = state.scanInProgress,
+                            scanState = state.scanState,
+                            lastScanStatus = state.lastScanStatus,
+                        )
+                    }
+                    .distinctUntilChanged()
+            }
+            val initialLibrarySignal = remember(libraryViewModel) {
+                libraryViewModel.uiState.value.let { state ->
+                    HostLibrarySignal(
+                        animeCount = state.animes.size,
+                        scanInProgress = state.scanInProgress,
+                        scanState = state.scanState,
+                        lastScanStatus = state.lastScanStatus,
+                    )
+                }
+            }
+            val libraryState by librarySignalFlow.collectAsStateWithLifecycle(
+                initialValue = initialLibrarySignal,
+            )
             val bootstrapState by libraryViewModel.bootstrapState.collectAsStateWithLifecycle()
 
             LaunchedEffect(
@@ -207,12 +241,12 @@ class ReiAnixComposeLibraryHost(
                 libraryViewModel,
                 bootstrapState.phase,
                 bootstrapState.persistenceStatus,
-                libraryState.animes.size,
+                libraryState.animeCount,
             ) {
                 if (
                     bootstrapState.phase != ReiAnixBootstrapPhase.READY ||
                     bootstrapState.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY ||
-                    libraryState.animes.isEmpty()
+                    libraryState.animeCount == 0
                 ) return@LaunchedEffect
 
                 val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
