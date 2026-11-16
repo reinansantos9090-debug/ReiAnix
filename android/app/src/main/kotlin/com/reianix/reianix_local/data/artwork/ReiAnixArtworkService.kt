@@ -223,6 +223,10 @@ internal fun shouldRetryArtworkRequest(
     return retryAtSeconds == null || !retryAtSeconds.isFinite() || retryAtSeconds <= nowSeconds
 }
 
+/** Only accepted persisted values affect disposable artwork. Referenced covers are never evicted. */
+internal fun artworkCacheLimitBytes(raw: String?): Long =
+    (raw?.trim()?.toIntOrNull()?.takeIf { it in setOf(64, 128, 256, 512) } ?: 128).toLong() * 1024L * 1024L
+
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
@@ -588,34 +592,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     .forEach { (id, job) -> jobs.remove(id, job) }
             }
 
-            val removedPaths = database.transaction { db ->
-                val paths = db.rawQuery(
-                    "SELECT DISTINCT local_path FROM artwork " +
-                        "WHERE source IN ('cache','anilist') AND manual=0 AND local_path IS NOT NULL",
-                    null,
-                ).use { cursor ->
-                    buildList {
-                        while (cursor.moveToNext()) {
-                            val path = cursor.getString(0)?.trim().orEmpty()
-                            if (path.isNotEmpty()) add(path)
-                        }
-                    }
-                }
-                db.delete("artwork", "source IN ('cache','anilist') AND manual=0", null)
-                // Match Settings' existing cache-clear contract: expire remote metadata
-                // and clear stale cover pointers without deleting the library records.
-                db.execSQL("UPDATE anime SET metadata_updated_at=NULL, cover_cache=''")
-                paths
-            }
-
+            // Persisted posters are part of the library, not disposable scratch files.
+            // Do not drop their SQLite rows, cover_cache or metadata timestamps: doing
+            // so caused visible covers to disappear while metadata was recovered again.
             var removed = 0
-            val managedRoot = cacheDirectory.canonicalFile
-            removedPaths.distinct().forEach { path ->
-                val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return@forEach
-                if (isWithin(managedRoot, file) && !isArtworkPathReferenced(file.path) && file.isFile && file.delete()) {
-                    removed++
-                }
-            }
 
             // Palette metadata and orphan files are disposable cache entries. Temporary
             // files are left alone, matching ArtworkEngine's orphan cleanup contract.
@@ -641,6 +621,19 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             backfillJob = null
             backfillRunning.set(false)
             cacheClearInProgress.set(false)
+        }
+    }
+
+    /** Drop stale generated rows when the separate episode-thumbnail cache was cleared. */
+    fun clearCachedGeneratedThumbnailReferences(): Int {
+        val root = File(appContext.cacheDir, "reianix/thumbnails").absolutePath + File.separator
+        return database.transaction { db ->
+            db.delete(
+                "artwork",
+                "entity_type='episode' AND artwork_type='episode_thumbnail' AND source='generated' " +
+                    "AND local_path LIKE ?",
+                arrayOf(root.replace("%", "\\%").replace("_", "\\_") + "%"),
+            )
         }
     }
 
@@ -686,6 +679,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 (hasUsablePersistedPoster(id, entity) || validImage(loadAnime(id)?.coverCache))
             ) return@withPermit true
             if (reuseLocal(id, entity, type, url, aniId, requestId, requireCurrentUrl)) return@withPermit true
+            // Keep local/persisted artwork available when downloads are disabled.
+            // This is the shared network boundary for AniList, Kitsu, AniPub and
+            // every other candidate provider; no new remote query is required.
+            if (!remoteArtworkEnabled()) return@withPermit false
             val key = remoteKey(aniId, url, type)
             val rowId = prepareRow(id, entity, type, url, key, force, requireCurrentUrl, sourceKind) ?: return@withPermit false
             var image: Downloaded? = null
@@ -2076,23 +2073,45 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         }
     }
 
+    /** Scheduled after changing the preference, not on the UI thread. */
+    fun requestCacheTrim() {
+        scope.launch {
+            runCatching { trimCache() }
+                .onFailure { Log.w(TAG, "Could not enforce artwork cache preference", it) }
+        }
+    }
+
+    /** All online artwork paths converge here before an HTTP download. */
+    private fun remoteArtworkEnabled(): Boolean = database.read { db ->
+        db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1",
+            arrayOf("artwork.enabled")).use { cursor ->
+            if (!cursor.moveToFirst()) true
+            else cursor.getString(0).equals("true", ignoreCase = true)
+        }
+    }
+
     private fun trimCache() {
         if (!cacheDirectory.isDirectory) return
-        val refs = runCatching {
+        val (refs, limitBytes) = runCatching {
             database.read { db ->
-                db.rawQuery("SELECT local_path FROM artwork WHERE local_path IS NOT NULL UNION " +
+                val references = db.rawQuery("SELECT local_path FROM artwork WHERE local_path IS NOT NULL UNION " +
                     "SELECT cover_cache FROM anime WHERE cover_cache IS NOT NULL", null).use { c ->
                     buildSet { while (c.moveToNext()) c.getString(0)?.takeIf { it.isNotBlank() }?.let {
                         add(runCatching { File(it).canonicalPath }.getOrDefault(it))
                     } }
                 }
+                val rawLimit = db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1",
+                    arrayOf("artwork.cache_limit_mb")).use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }
+                references to artworkCacheLimitBytes(rawLimit)
             }
         }.getOrElse { Log.w(TAG, "Skip cache cleanup because references cannot be read", it); return }
         val images = cacheDirectory.listFiles()?.filter { it.isFile && it.extension.lowercase(Locale.ROOT) in EXTENSIONS }
             ?.sortedBy { it.lastModified() } ?: return
         var bytes = images.sumOf { it.length() }
         images.forEach { file ->
-            if (bytes <= MAX_CACHE_BYTES) return
+            if (bytes <= limitBytes) return
             val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
             if (path in refs) return@forEach
             val size = file.length()
@@ -2187,7 +2206,6 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         const val STATUS_NOT_REQUESTED = "not_requested"
         const val MAX_DOWNLOAD_BYTES = 32L * 1024L * 1024L
         const val MAX_CANDIDATE_ARTWORKS = 5
-        const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
         const val BACKFILL_BATCH_SIZE = 16
         const val IO_BUFFER_BYTES = 64 * 1024
         const val POSTER_PRIORITY = 400
