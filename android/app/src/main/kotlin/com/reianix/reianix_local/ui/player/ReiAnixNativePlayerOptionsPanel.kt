@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Brightness6
@@ -79,6 +80,8 @@ fun ReiAnixNativePlayerOptionsPanel(
     onNext: () -> Unit,
     onPlaybackSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
+    onAudioTracks: () -> Unit,
+    onSubtitles: () -> Unit,
     onRestart: () -> Unit,
     onHistory: () -> Unit,
     onMarkers: () -> Unit,
@@ -132,6 +135,20 @@ fun ReiAnixNativePlayerOptionsPanel(
                     value = state.sleepTimerLabel,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = onSleepTimer,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.VolumeUp,
+                    label = "Faixas de áudio",
+                    value = if (state.audioTrackSelectionEnabled) state.audioTrackLabel else "Indisponível",
+                    enabled = state.audioTrackSelectionEnabled && !state.episodeTransitionInProgress,
+                    onClick = onAudioTracks,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Subtitles,
+                    label = "Legendas",
+                    value = if (state.subtitleTrackSelectionEnabled) state.subtitleTrackLabel else "Indisponível",
+                    enabled = state.subtitleTrackSelectionEnabled && !state.episodeTransitionInProgress,
+                    onClick = onSubtitles,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Gesture,
