@@ -297,6 +297,9 @@ class ReiAnixLibraryDiscoveryService(
     suspend fun timelineGroups(): List<ReiAnixLibraryDiscovery.TimelineGroup> =
         ReiAnixLibraryDiscovery.timelineGroups(library.timelineItems())
 
+    /** On-demand read-only personal statistics, without extra metadata requests. */
+    suspend fun timelineStatistics() = library.timelineStatistics()
+
     suspend fun durationAnomalies(animeId: Long? = null): ReiAnixLibraryDiscovery.DurationAnomalyReport {
         require(animeId == null || animeId > 0L) { "animeId must be a positive persisted ID." }
         return ReiAnixLibraryDiscovery.durationAnomalies(library.durationObservations(animeId))
