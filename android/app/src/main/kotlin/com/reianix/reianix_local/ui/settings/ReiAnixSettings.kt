@@ -473,7 +473,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             val (title, message, confirmLabel) = when (action) {
                 "clear_anilist_cache" -> Triple(
                     "Limpar cache de capas?",
-                    "A biblioteca, progresso, favoritos, notas, pins e arquivos não serão apagados.",
+                    "Capas persistentes, progresso, favoritos e arquivos originais serão preservados. Miniaturas temporárias podem ser regeneradas.",
                     "Limpar",
                 )
                 "reset_all_settings" -> Triple(
@@ -490,6 +490,16 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     "Restaurar backup?",
                     "O BackupService existente validará o arquivo antes de alterar o estado lógico local.",
                     "Continuar",
+                )
+                "settings_import" -> Triple(
+                    "Importar configurações?",
+                    "As preferências atuais podem ser substituídas pelos valores do arquivo selecionado.",
+                    "Importar",
+                )
+                "backup_reconcile" -> Triple(
+                    "Reconciliar arquivos?",
+                    "Verifica e atualiza o estado de disponibilidade dos episódios. Arquivos e progresso não serão apagados.",
+                    "Reconciliar",
                 )
                 else -> Triple(
                     "Confirmar ação",
@@ -604,8 +614,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     item(key = "setting:library.page_size") {
                         ChoiceSettingRow(
                             keyName = "library.page_size",
-                            title = "Itens por página",
-                            description = "Define quantos animes são exibidos; Tudo mostra a biblioteca completa.",
+                            title = "Animes por lote",
+                            description = "Controla quantos animes carregar por vez; ao rolar, outros lotes aparecem. Tudo carrega a biblioteca inteira.",
                             selectedValue = state.settings["library.page_size"],
                             choices = listOf(
                                 SettingChoice("0", "Tudo"),
@@ -688,7 +698,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         BooleanSettingRow(
                             keyName = "artwork.enabled",
                             title = "Baixar capas pela internet",
-                            description = "Permite downloads remotos de capas pelo Artwork Engine existente.",
+                            description = "Permite novos downloads de capas de qualquer provedor. Capas já salvas continuam disponíveis.",
                             checked = state.settings["artwork.enabled"] == "true",
                             onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
                         )
@@ -697,7 +707,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "artwork.cache_limit_mb",
                             title = "Limite do cache de capas",
-                            description = "Limite persistido aplicado ao único Artwork Engine.",
+                            description = "Limite para arquivos descartáveis; capas em uso permanecem protegidas mesmo acima do valor.",
                             selectedValue = state.settings["artwork.cache_limit_mb"],
                             choices = listOf(
                                 SettingChoice("64", "64 MB"),
@@ -834,8 +844,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     item(key = "setting:appearance.show_thumbnails") {
                         BooleanSettingRow(
                             keyName = "appearance.show_thumbnails",
-                            title = "Mostrar miniaturas",
-                            description = "Quando desativado, a Home mantém o espaço do card, mas não carrega imagens.",
+                            title = "Miniaturas de episódios na Home",
+                            description = "Oculta imagens de episódios em Continuar assistindo. Capas dos animes continuam visíveis.",
                             checked = state.settings["appearance.show_thumbnails"] == "true",
                             onCheckedChange = { onUpdateSetting("appearance.show_thumbnails", it.toString()) },
                         )
@@ -1139,7 +1149,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 SettingsActionRow(
                                     text = "Importar configurações",
-                                    onClick = { onAction("settings_import") },
+                                    onClick = { requestDestructiveAction("settings_import") },
                                     enabled = !actionBusy("settings_import"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
@@ -1183,7 +1193,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 SettingsActionRow(
                                     text = "Reconciliar arquivos",
-                                    onClick = { onAction("backup_reconcile") },
+                                    onClick = { requestDestructiveAction("backup_reconcile") },
                                     enabled = !actionBusy("backup_reconcile"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
