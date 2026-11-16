@@ -1149,6 +1149,8 @@ private fun LibraryAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
         artworkExternalUrl = anime.artwork?.externalUrl,
+        artworkIdentity = anime.stableKey,
+        artworkSourceRevisions = anime.artwork?.sourceRevisions.orEmpty(),
         metadata = renderData.metadata,
         progress = renderData.progress,
         favorite = renderData.favorite,
