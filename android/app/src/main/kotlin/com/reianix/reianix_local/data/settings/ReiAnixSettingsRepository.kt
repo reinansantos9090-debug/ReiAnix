@@ -812,6 +812,9 @@ class ReiAnixSettingsRepository(
                             ),
                         )
                     }
+                    if ("artwork.cache_limit_mb" in persisted) {
+                        nativeArtworkService.requestCacheTrim()
+                    }
                     val notification = JSONObject().put("settings", JSONObject().apply {
                         persisted.forEach { (key, value) -> put(key, value) }
                     })
