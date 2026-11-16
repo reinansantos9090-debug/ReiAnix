@@ -140,7 +140,7 @@ internal fun ReiAnixTimelineList(
                         ReiAnixPoster(
                             localPath = artwork?.localPath ?: anime.coverCache,
                             contentDescription = "Capa de ${anime.title.ifBlank { "Anime local" }}",
-                            identity = anime.id.toString(),
+                            identity = "anime:${anime.id}",
                             modifier = Modifier.size(width = 44.dp, height = 62.dp),
                             maxDimensionPx = 160,
                             sourceRevisions = artwork?.sourceRevisions.orEmpty(),
