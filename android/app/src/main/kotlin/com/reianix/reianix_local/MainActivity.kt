@@ -834,6 +834,9 @@ class MainActivity : ComponentActivity() {
                     val result = ReiAnixSettingsFileService(appDependencies.sqliteSettingsRepository)
                         .importJson(raw)
                     settingsViewModel.refresh()
+                    if ("artwork.cache_limit_mb" in result.values) {
+                        appDependencies.artworkService.requestCacheTrim()
+                    }
                     if (result.values.isNotEmpty()) {
                         val settingsPayload = JSONObject().apply {
                             result.values.forEach { (key, value) -> put(key, value) }
@@ -1986,7 +1989,7 @@ class MainActivity : ComponentActivity() {
                         withContext(Dispatchers.IO) {
                             writeSettingsFileActionResult(
                                 requestId, action, "SUCCESS", "SUCCESS",
-                                message = "Reconciliação concluída. Referências locais verificadas: " + updated +
+                                message = "Reconciliação concluída. Referências atualizadas: " + updated +
                                     ". URIs SAF/MediaStore permanecem sob o scanner nativo.",
                             )
                         }

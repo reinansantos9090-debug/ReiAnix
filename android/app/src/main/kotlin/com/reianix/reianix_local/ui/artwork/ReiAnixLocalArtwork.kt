@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,9 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 private const val TAG = "ReiAnixLocalArtwork"
+
+/** A single shell-provided preference. The default keeps existing fast image rendering. */
+val LocalReiAnixRemoteArtworkAllowed = staticCompositionLocalOf { true }
 
 /**
  * Holds ONLY memory-cache keys (never Bitmaps or Drawables). On a return from
@@ -144,17 +148,19 @@ fun ReiAnixLocalArtwork(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val remoteAllowed = LocalReiAnixRemoteArtworkAllowed.current
 
     // Source selection, identity and the Coil loader are independent of layout.
     // Hoist them out of BoxWithConstraints so each lazy item subcomposes only
     // the image request whose first-frame dimensions must remain exact.
-    val candidates = remember(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl, artworkType) {
+    val candidates = remember(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl, artworkType, remoteAllowed) {
         artworkCandidatesForType(
             artworkType = artworkType,
             localPath = localPath,
             fallbackLocalPath = fallbackLocalPath,
             externalUrl = externalUrl,
             fallbackExternalUrl = fallbackExternalUrl,
+            allowRemoteArtwork = remoteAllowed,
         )
     }
     val stableIdentity = remember(
@@ -377,10 +383,15 @@ internal fun artworkCandidatesForType(
     fallbackLocalPath: String?,
     externalUrl: String?,
     fallbackExternalUrl: String?,
+    allowRemoteArtwork: Boolean = true,
 ): List<String> = if (artworkType.equals("episode_thumbnail", ignoreCase = true)) {
     localArtworkCandidates(localPath, fallbackLocalPath)
 } else {
-    artworkCandidates(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl)
+    artworkCandidates(
+        localPath, fallbackLocalPath,
+        externalUrl.takeIf { allowRemoteArtwork },
+        fallbackExternalUrl.takeIf { allowRemoteArtwork },
+    )
 }
 
 /** Resolve materialized local artwork first, then configured remote poster/backdrop candidates. */

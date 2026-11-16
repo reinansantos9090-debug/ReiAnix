@@ -639,8 +639,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         preferredSubtitleLanguage = intent.getStringExtra("setting_audio_preferred_subtitle_language")?.trim().orEmpty()
         subtitleMode = intent.getStringExtra("setting_audio_subtitles") ?: "auto"
         zoomEnabled = intent.getBooleanExtra("setting_player_zoom_enabled", false)
-        doubleTapSeekMs = intent.getLongExtra("setting_player_double_tap_seek_seconds", 10L)
-            .coerceIn(1L, 120L) * 1000L
+        doubleTapSeekMs = PlayerGesturePolicy.seekIntervalMs(
+            intent.getLongExtra("setting_player_double_tap_seek_seconds", 10L),
+        )
         longPressSpeed = intent.getFloatExtra("setting_player_long_press_speed", 2f)
             .coerceIn(1f, 3f)
         maxVideoResolution = intent.getStringExtra("setting_player_max_video_resolution") ?: "auto"
@@ -979,7 +980,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (incomingLockMode != locked) {
             setLocked(incomingLockMode, persist = false, announce = false)
         }
-        doubleTapSeekMs = newIntent.getLongExtra("setting_player_double_tap_seek_seconds", doubleTapSeekMs / 1000L)
+        doubleTapSeekMs = PlayerGesturePolicy.seekIntervalMs(
+            newIntent.getLongExtra("setting_player_double_tap_seek_seconds", doubleTapSeekMs / 1000L),
+        )
         longPressSpeed = newIntent.getFloatExtra("setting_player_long_press_speed", longPressSpeed)
             .coerceIn(1f, 3f)
         maxVideoResolution = newIntent.getStringExtra("setting_player_max_video_resolution") ?: maxVideoResolution
@@ -992,6 +995,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
         preferredSubtitleLanguage = newIntent.getStringExtra("setting_audio_preferred_subtitle_language")?.trim() ?: preferredSubtitleLanguage
         subtitleMode = newIntent.getStringExtra("setting_audio_subtitles") ?: subtitleMode
         immersiveSetting = newIntent.getStringExtra("setting_player_immersive") ?: immersiveSetting
+        // The Player Activity is reused for adjacent episodes: apply the new
+        // episode's runtime preferences instead of retaining the first one's.
+        pipEnabled = newIntent.getBooleanExtra("setting_player_pip", pipEnabled)
+        autoHideTimeoutMs = newIntent.getIntExtra(
+            "setting_player_auto_hide_seconds",
+            (autoHideTimeoutMs / 1000L).toInt(),
+        ).coerceIn(0, 300) * 1000L
+        applyConfiguredRotation()
         applyImmersiveAfterLayout()
         applyGlobalTrackPreferences()
         applyAdvancedTrackConstraints()
@@ -6430,6 +6441,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         fun normalizePlaybackSpeed(speed: Float): Float =
             if (speed.isFinite() && SUPPORTED_PLAYBACK_SPEEDS.any { it == speed }) speed else 1f
+
+        /** Intent values are seconds both on initial open and Activity reuse. */
+        fun seekIntervalMs(seconds: Long): Long = seconds.coerceIn(1L, 120L) * 1000L
 
         private val SUPPORTED_PLAYBACK_SPEEDS = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 

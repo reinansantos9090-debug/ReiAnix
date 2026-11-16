@@ -26,6 +26,7 @@ import com.reianix.reianix_local.ReiAnixBootstrapPersistenceStatus
 import com.reianix.reianix_local.R
 import com.reianix.reianix_local.ui.ReiAnixComposeRoot
 import com.reianix.reianix_local.ui.theme.LocalReiAnixPosterSize
+import com.reianix.reianix_local.ui.artwork.LocalReiAnixRemoteArtworkAllowed
 import com.reianix.reianix_local.ui.navigation.ReiAnixNavigationHost
 import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
 import com.reianix.reianix_local.ui.navigation.navigateToMyList
@@ -94,6 +95,7 @@ class ReiAnixComposeLibraryHost(
             val appearanceCardSize by settingsViewModel.appearanceCardSize.collectAsStateWithLifecycle()
             val appearancePosterSize by settingsViewModel.appearancePosterSize.collectAsStateWithLifecycle()
             val appearanceShowThumbnails by settingsViewModel.appearanceShowThumbnails.collectAsStateWithLifecycle()
+            val remoteArtworkAllowed by settingsViewModel.artworkDownloadsAllowed.collectAsStateWithLifecycle()
             val libraryPageSize by settingsViewModel.libraryPageSize.collectAsStateWithLifecycle()
             val librarySortDefault by settingsViewModel.librarySortDefault.collectAsStateWithLifecycle()
             val continueWatchingEnabled by settingsViewModel.continueWatchingEnabled.collectAsStateWithLifecycle()
@@ -337,7 +339,10 @@ class ReiAnixComposeLibraryHost(
                         )
 
                     Box(modifier = Modifier.fillMaxSize()) {
-                    CompositionLocalProvider(LocalReiAnixPosterSize provides appearancePosterSize) {
+                    CompositionLocalProvider(
+                        LocalReiAnixPosterSize provides appearancePosterSize,
+                        LocalReiAnixRemoteArtworkAllowed provides remoteArtworkAllowed,
+                    ) {
                     ReiAnixNavigationHost(
                         navController = navController,
                         homeViewModel = libraryViewModel,

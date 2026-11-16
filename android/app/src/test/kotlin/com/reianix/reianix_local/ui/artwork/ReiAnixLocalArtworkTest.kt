@@ -153,6 +153,29 @@ class ReiAnixLocalArtworkTest {
     }
 
     @Test
+    fun disablingInternetArtworkNeverStartsRemoteCoilCandidates() {
+        val poster = artworkCandidatesForType(
+            artworkType = "poster",
+            localPath = "/cache/saved-poster.jpg",
+            fallbackLocalPath = null,
+            externalUrl = "https://img.example/new-poster.jpg",
+            fallbackExternalUrl = "https://img.example/fallback.jpg",
+            allowRemoteArtwork = false,
+        )
+        assertEquals(listOf("/cache/saved-poster.jpg"), poster)
+
+        val enabled = artworkCandidatesForType(
+            artworkType = "poster",
+            localPath = "/cache/saved-poster.jpg",
+            fallbackLocalPath = null,
+            externalUrl = "https://img.example/new-poster.jpg",
+            fallbackExternalUrl = null,
+            allowRemoteArtwork = true,
+        )
+        assertEquals(listOf("/cache/saved-poster.jpg", "https://img.example/new-poster.jpg"), enabled)
+    }
+
+    @Test
     fun composeArtworkPrefersLocalCandidatesBeforeRemoteFallbacks() {
         assertEquals(
             listOf("/cache/poster.jpg", "https://img/a.jpg", "https://img/b.jpg"),

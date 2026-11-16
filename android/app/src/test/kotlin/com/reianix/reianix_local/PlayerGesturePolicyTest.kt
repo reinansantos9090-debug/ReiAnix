@@ -80,6 +80,15 @@ class PlayerGesturePolicyTest {
     }
 
     @Test
+    fun doubleTapSeekIntervalUsesSecondsOnOpenAndEpisodeReuse() {
+        assertEquals(5_000L, NativePlayerActivity.PlayerGesturePolicy.seekIntervalMs(5L))
+        assertEquals(10_000L, NativePlayerActivity.PlayerGesturePolicy.seekIntervalMs(10L))
+        assertEquals(30_000L, NativePlayerActivity.PlayerGesturePolicy.seekIntervalMs(30L))
+        assertEquals(1_000L, NativePlayerActivity.PlayerGesturePolicy.seekIntervalMs(0L))
+        assertEquals(120_000L, NativePlayerActivity.PlayerGesturePolicy.seekIntervalMs(500L))
+    }
+
+    @Test
     fun seekTargetIsAlwaysWithinMediaDuration() {
         assertEquals(
             0L,

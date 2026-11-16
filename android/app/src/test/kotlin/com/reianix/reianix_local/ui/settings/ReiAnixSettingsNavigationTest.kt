@@ -56,6 +56,16 @@ class ReiAnixSettingsNavigationTest {
         icons.forEach { assertNotEquals(Icons.Filled.Settings, it) }
     }
 
+    @Test fun settingLabelsExplainTheirActualBehavior() {
+        val library = SettingsDestinations.first { it.id == "Biblioteca" }
+        assertEquals("Animes por lote", library.entries.first { it.key == "setting:library.page_size" }.title)
+        val appearance = SettingsDestinations.first { it.id == "appearance_library" }
+        assertEquals(
+            "Miniaturas de episódios na Home",
+            appearance.entries.first { it.key == "setting:appearance.show_thumbnails" }.title,
+        )
+    }
+
     @Test fun dataAndBackupActionsHaveDistinctIcons() {
         val actions = listOf(
             "Restaurar", "Limpar cache de capas", "Exportar configurações",

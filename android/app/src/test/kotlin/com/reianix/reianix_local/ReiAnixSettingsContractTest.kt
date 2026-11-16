@@ -20,6 +20,19 @@ class ReiAnixSettingsContractTest {
         assertNull(ReiAnixSettingsContract.defaultFor("library.grid_density"))
     }
 
+    @Test fun resettingPlayerIncludesAudioSubtitlesAndGestures() {
+        val playerKeys = ReiAnixSettingsContract.keysForReset(playerOnly = true)
+        assertEquals(5, playerKeys.count { it.startsWith("gestures.") })
+        assertEquals(6, playerKeys.count { it.startsWith("audio.") })
+        assertEquals(true, "player.resume" in playerKeys)
+        assertEquals(false, "appearance.poster_size" in playerKeys)
+        assertEquals(false, "artwork.cache_limit_mb" in playerKeys)
+        assertEquals(
+            ReiAnixSettingsContract.definitions.keys.sorted(),
+            ReiAnixSettingsContract.keysForReset(playerOnly = false),
+        )
+    }
+
     @Test fun missingPersistedSettingsUseContractDefaultsWithoutRewritingThem() {
         val effective = ReiAnixSettingsContract.withDefaults(emptyMap())
 
