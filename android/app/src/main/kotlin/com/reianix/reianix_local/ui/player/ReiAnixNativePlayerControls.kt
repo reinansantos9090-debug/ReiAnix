@@ -31,6 +31,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.framework.CastButtonFactory
+import com.reianix.reianix_local.R
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
 import com.reianix.reianix_local.player.PlayerTimeFormatter
@@ -162,6 +166,27 @@ fun ReiAnixNativePlayerTopControls(
                 imageVector = Icons.Filled.ArrowBack,
                 contentDescription = null,
                 tint = ReiAnixTokens.Colors.playerControl,
+            )
+        }
+
+        // The fourth bottom action (three-dot menu) is centered in the last
+        // quarter of the same 8.dp-inset viewport. Match that exact x-axis.
+        Box(
+            modifier = Modifier.fillMaxWidth(0.25f).align(Alignment.TopEnd),
+            contentAlignment = Alignment.Center,
+        ) {
+            AndroidView(
+                factory = { context ->
+                    MediaRouteButton(context).apply {
+                        contentDescription = "Transmitir para TV (Google Cast)"
+                        setRemoteIndicatorDrawable(
+                            androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_reianix_cast),
+                        )
+                        // Cast owns device discovery and route selection; no DLNA.
+                        CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
+                    }
+                },
+                modifier = Modifier.size(48.dp),
             )
         }
 
