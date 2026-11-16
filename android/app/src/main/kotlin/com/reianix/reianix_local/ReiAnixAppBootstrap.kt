@@ -5,7 +5,6 @@ import android.util.Log
 import com.reianix.reianix_local.bridge.NativeCommandDispatcher
 import com.reianix.reianix_local.data.backup.ReiAnixBackupService
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.scanner.NativeScanRunner
 import com.reianix.reianix_local.storage.NativeIndex
 import java.io.File
@@ -707,16 +706,7 @@ class ReiAnixAppBootstrap internal constructor(
         // so Application/Activity lifecycle callbacks never perform it synchronously.
         processScope.launch {
             runCatching {
-                ReiAnixDiagnosticTimeline.record(
-                    name = name,
-                    source = "ReiAnixAppBootstrap",
-                    result = result,
-                    context = mapOf(
-                        "stage" to stage.name,
-                        "phase" to state.value.phase.name,
-                        "persistence" to state.value.persistenceStatus.name,
-                    ),
-                )
+
             }.onFailure { error ->
                 // Diagnostics are observational; they must not gate startup.
                 Log.w(TAG, "Could not record bootstrap diagnostic event=$name.", error)

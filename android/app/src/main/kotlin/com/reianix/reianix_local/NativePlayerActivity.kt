@@ -1,7 +1,6 @@
 package com.reianix.reianix_local
 
 import com.reianix.reianix_local.bridge.NativeMailbox
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import com.reianix.reianix_local.player.DeviceInteractionProfile
@@ -668,15 +667,7 @@ class NativePlayerActivity : ComponentActivity() {
             "player_error" -> "FAILED"
             else -> payloadEvent.takeIf { it.isNotBlank() }
         }
-        ReiAnixDiagnosticTimeline.record(
-            name = name,
-            severity = severity,
-            source = "NativePlayerActivity",
-            result = result,
-            requestId = event.optString("requestId").takeIf { it.isNotBlank() },
-            sessionId = payload.optString("playerSessionId").takeIf { it.isNotBlank() },
-            context = context,
-        )
+
         return true
     }
 
@@ -856,9 +847,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         val traceEpisodeId = intent.getStringExtra("episodeId").orEmpty()
         val traceAnimeId = intent.getStringExtra("animeId").orEmpty()
-        PerformanceDiagnostics.attach(this)
-        PerformanceDiagnostics.markPlayer(this, "activity_created", requestId,
-            intent.getLongExtra("commandCreatedAtMs", 0L), reused = false)
+
+
         commandCreatedAtMs = intent.getLongExtra("commandCreatedAtMs", 0L)
         commandReceivedAtMs = intent.getLongExtra("commandReceivedAtMs", 0L)
         handoffDispatchedAtMs = intent.getLongExtra("handoffDispatchedAtMs", 0L)
@@ -969,8 +959,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer("EXOPLAYER_CREATE requestId=" + requestId.ifEmpty { "-" })
             logPlayer("MEDIA3_PLAYER_CREATE_START requestId=" + requestId.ifEmpty { "-" })
             player = ExoPlayer.Builder(this).build()
-            PerformanceDiagnostics.markPlayer(this, "player_created", requestId,
-                commandCreatedAtMs, reused = false)
+
             player.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -1121,14 +1110,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         publishPlayerLifecycle("onNewIntent")
         val traceEpisodeId = newIntent.getStringExtra("episodeId").orEmpty()
         val traceAnimeId = newIntent.getStringExtra("animeId").orEmpty()
-        PerformanceDiagnostics.attach(this)
-        PerformanceDiagnostics.markPlayer(
-            this,
-            "reuse_intent",
-            incomingRequestId,
-            newIntent.getLongExtra("commandCreatedAtMs", 0L),
-            reused = true,
-        )
+
+
         logPlayer(
             "PLAYER_REUSE_INTENT requestId=" +
                 incomingRequestId.ifEmpty { "-" } +
@@ -1604,13 +1587,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     }
 
                     prepareDispatchedAtMs = System.currentTimeMillis()
-                    PerformanceDiagnostics.markPlayer(
-                        this@NativePlayerActivity,
-                        "prepare_dispatched",
-                        requestId,
-                        commandCreatedAtMs,
-                        reused = reason != "initial",
-                    )
+
                     logPlayer(
                         "MEDIA3_PREPARE_DISPATCHED requestId=" + requestId.ifEmpty { "-" } +
                             " generation=" + generation +
@@ -1765,8 +1742,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
                 syncComposePlayerUiState()
                 firstFrameRenderedAtMs = System.currentTimeMillis()
-                PerformanceDiagnostics.markPlayer(this@NativePlayerActivity, "first_frame",
-                    requestId, commandCreatedAtMs, reused = false)
+
                 val timing = playbackTimingPayload(firstFrameRenderedAtMs)
                 logPlayer(
                     "PLAYER_START requestId=" + requestId.ifEmpty { "-" } +
@@ -2049,13 +2025,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         if (transitionStartedAtMs > 0L) {
                             val readyAtMs = System.currentTimeMillis()
                             val transitionLatencyMs = readyAtMs - transitionStartedAtMs
-                            PerformanceDiagnostics.markPlayer(
-                                this@NativePlayerActivity,
-                                "transition_ready",
-                                requestId,
-                                commandCreatedAtMs,
-                                reused = true,
-                            )
+
                             publishNavigationTransitionDiagnostic(
                                 if (nextTransitionActive) "NEXT_TRANSITION_READY" else "PREVIOUS_TRANSITION_READY",
                                 "media3_ready",
@@ -2117,8 +2087,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (!isCurrent()) return
             if (isPlaying) {
-                PerformanceDiagnostics.markPlayer(this@NativePlayerActivity, "playing",
-                    requestId, commandCreatedAtMs, reused = false)
+
             }
             logPlayer(
                 "IS_PLAYING_CHANGED=" + isPlaying +
@@ -2177,19 +2146,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         override fun onPlayerError(error: PlaybackException) {
             if (!isCurrent()) return
 
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_PLAYER_PLAYBACK_ERROR",
-                severity = "ERROR",
-                source = "NativePlayerActivity",
-                result = "FAILED",
-                sessionId = playerSessionId,
-                error = error,
-                context = mapOf(
-                    "error_code" to error.errorCodeName,
-                    "player_generation" to playerGeneration,
-                    "transition_generation" to transitionGeneration,
-                ),
-            )
             val exoError = error as? ExoPlaybackException
             val rendererIndex = exoError?.rendererIndex?.takeIf { it >= 0 }
             val rendererType = exoError?.type?.let { "TYPE_$it" }.orEmpty()
@@ -4612,8 +4568,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.removeCallbacks(lockAffordanceHider)
         handler.removeCallbacks(feedbackHider)
         restoreSystemUiBeforeExit()
-        PerformanceDiagnostics.markPlayer(this, "player_exited", requestId,
-            commandCreatedAtMs, reused = false)
+
         reportPlayerExit(reason)
         setResult(
             RESULT_OK,
@@ -5675,8 +5630,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         sleepTimerDialog?.dismiss()
         sleepTimerDialog = null
         publishPlayerLifecycle("onDestroy")
-        PerformanceDiagnostics.sampleMemory(this, "player_on_destroy")
-        PerformanceDiagnostics.detach()
+
+
         val shouldReportExit = isFinishing && !suppressExitEvent && !exitReported && !isChangingConfigurations
         if (shouldReportExit) {
             reportPlayerExit("activity_finish")
