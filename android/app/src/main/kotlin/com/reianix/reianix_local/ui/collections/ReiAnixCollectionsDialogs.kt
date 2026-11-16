@@ -92,8 +92,8 @@ fun ReiAnixCollectionsDialog(
     }
 
     fun applyEdit(
-        change: suspend () -> List<ReiAnixPersonalCollection>,
         onSaved: () -> Unit = {},
+        change: suspend () -> List<ReiAnixPersonalCollection>,
     ) {
         if (busy || loading) return
         busy = true
