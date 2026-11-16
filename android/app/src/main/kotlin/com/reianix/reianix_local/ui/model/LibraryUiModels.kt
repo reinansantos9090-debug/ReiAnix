@@ -257,7 +257,10 @@ data class ReiAnixSeasonUiModel(
         }
 }
 
-@Immutable
+// Deliberately not @Immutable: this large model contains nested episode lists.
+// With Kotlin 2.2's strong skipping, Compose compares an unchanged item by
+// instance identity instead of walking its entire episode tree for each grid
+// recomposition. Canonical projection changes still supply a new instance.
 data class ReiAnixAnimeUiModel(
     val id: Long,
     val title: String,
