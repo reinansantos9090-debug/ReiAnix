@@ -326,7 +326,6 @@ private fun ReiAnixLibraryPresentationScreen(
     onSearch: (() -> Unit)? = null,
     onOpenStorage: (() -> Unit)? = null,
     onOpenCollections: (() -> Unit)? = null,
-    onOpenCollections: (() -> Unit)? = null,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
