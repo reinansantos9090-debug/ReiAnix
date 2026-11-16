@@ -48,6 +48,7 @@ import java.util.Locale
 import java.util.UUID
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiState
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryRefreshWindow
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryDataState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -2326,7 +2327,42 @@ class ReiAnixLibraryViewModel(
         }
         val normalizedGenre = genre.takeIf { it != "Todos" }?.trim()
         val previous = nativePagedLibraryState.value
-        nativePagedLibraryState.value = if (reset) {
+        val retainedPageIndex = if (reset) {
+            ReiAnixLibraryRefreshWindow.retainedPageIndex(
+                previous = previous,
+                pageSize = normalizedPageSize,
+                query = query,
+                genreKey = normalizedGenre,
+                sort = sort,
+                favoritesOnly = favoritesOnly,
+                watchingOnly = watchingOnly,
+                completedOnly = completedOnly,
+                maxQueryRows = ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS,
+            )
+        } else {
+            null
+        }
+        // Preserve all fully-loaded pages up to the SQLite search batch limit.
+        // This prevents a progress/metadata update from bouncing a scrolled grid
+        // back to its first page. Never change the actual poster lookup pipeline.
+        val queryLimit = if (retainedPageIndex != null &&
+            normalizedPageSize != REIANIX_LIBRARY_ALL_ITEMS
+        ) {
+            (retainedPageIndex + 1) * normalizedPageSize
+        } else if (normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS) {
+            ReiAnixLibraryQueryService.DEFAULT_PAGE_SIZE
+        } else {
+            normalizedPageSize
+        }
+        nativePagedLibraryState.value = if (reset && retainedPageIndex != null) {
+            previous.copy(
+                generation = generation,
+                isLoading = true,
+                isRefreshingPage = true,
+                requestId = null,
+                error = null,
+            )
+        } else if (reset) {
             ReiAnixLibraryPagedUiState(
                 status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
                 isLoading = true,
@@ -2372,11 +2408,7 @@ class ReiAnixLibraryViewModel(
                 watchingOnly = watchingOnly,
                 completedOnly = completedOnly,
                 sortLabel = sort,
-                limit = if (normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS) {
-                    ReiAnixLibraryQueryService.DEFAULT_PAGE_SIZE
-                } else {
-                    normalizedPageSize
-                },
+                limit = queryLimit,
                 offset = if (normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS) 0 else offset,
                 libraryOnly = true,
                 allResults = normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS,
@@ -2394,6 +2426,7 @@ class ReiAnixLibraryViewModel(
                                 com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
                             } else current.status,
                             isLoading = false,
+                            isRefreshingPage = false,
                             error = "A consulta SQLite encontrou alterações concorrentes; a biblioteca será relida.",
                         )
                         refreshNativeCatalog()
@@ -2417,8 +2450,9 @@ class ReiAnixLibraryViewModel(
                         animes = pageAnimes,
                         totalCount = pageResult.totalCount,
                         hasMore = pageResult.hasMore,
-                        loadedPage = requestedPage,
+                        loadedPage = if (reset) retainedPageIndex ?: requestedPage else requestedPage,
                         isLoading = false,
+                        isRefreshingPage = false,
                         pageSize = normalizedPageSize,
                         requestId = null,
                         error = null,
@@ -2437,6 +2471,7 @@ class ReiAnixLibraryViewModel(
                         hasMore = false,
                         loadedPage = if (requestedPage == 0) 0 else currentState.loadedPage,
                         isLoading = false,
+                        isRefreshingPage = false,
                         pageSize = normalizedPageSize,
                         requestId = null,
                         error = null,
@@ -2450,6 +2485,7 @@ class ReiAnixLibraryViewModel(
                                 com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
                             } else currentState.status,
                             isLoading = false,
+                            isRefreshingPage = false,
                             requestId = null,
                             error = result.cause.message
                                 ?.takeIf(String::isNotBlank)
@@ -2465,6 +2501,7 @@ class ReiAnixLibraryViewModel(
                                 com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.ERROR
                             } else currentState.status,
                             isLoading = false,
+                            isRefreshingPage = false,
                             requestId = null,
                             error = "A consulta da biblioteca retornou um resultado inconsistente.",
                         )
