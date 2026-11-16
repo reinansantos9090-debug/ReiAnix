@@ -50,6 +50,11 @@ class ReiAnixSettingsViewModel(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), 8)
 
+    val artworkDownloadsAllowed: StateFlow<Boolean> = uiState
+        .map { state -> state.settings["artwork.enabled"] != "false" }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), true)
+
     val appearanceShowThumbnails: StateFlow<Boolean> = uiState
         .map { state ->
             (state.settings["appearance.show_thumbnails"]
