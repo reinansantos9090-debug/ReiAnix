@@ -500,23 +500,6 @@ class NativePlayerActivity : ComponentActivity() {
             }
         }
     }
-
-    /**
-     * Diagnostics-only first-frame watchdog. It never retries playback and never
-     * converts a slow renderer into an automatic error/restart loop.
-     */
-
-
-
-
-
-
-    /**
-     * Publish telemetry to the legacy Python consumer only for legacy player sessions.
-     * Native Compose sessions have no Python runtime in the APK, so their equivalent
-     * observability is recorded in the Kotlin diagnostic timeline instead of a mailbox
-     * file that can never be consumed.
-     */
     private fun publishLegacyPlayerEvent(
         event: JSONObject,
         durable: Boolean = false,
@@ -1353,7 +1336,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     )
 
                     try {
-                        true
                         player.prepare()
                     } catch (error: Exception) {
                         logPlayer(
@@ -1506,18 +1488,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         " firstFrameLatencyMs=" + timing.optString("firstFrameLatencyMs") +
                         " totalOpenToFirstFrameMs=" + timing.optString("totalOpenToFirstFrameMs"),
                 )
-                val firstFrameEvent = JSONObject()
-                    .put("event", "FIRST_FRAME_RENDERED")
-                    .put("generation", generation)
-                    .put("playerSessionId", playerSessionId)
-                    .put("transitionGeneration", transitionGeneration)
-                    .put("originMonotonicNs", originMonotonicNs)
-                    .put("transitionDirection", transitionSourceDirection)
-                    .put("timing", timing)
-                if (!true
-                ) {
-                    logPlayer("FAILED_TO_PUBLISH player_diagnostic requestId=" + requestId.ifEmpty { "-" } + " event=FIRST_FRAME_RENDERED")
-                }
+
             }
                 if (
                     (nextTransitionActive || previousTransitionActive) &&
@@ -1697,7 +1668,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         if (!opened) {
                             logPlayer("FAILED_TO_PUBLISH player_opened requestId=" + requestId.ifEmpty { "-" })
                         }
-                        true
                     }
                     if (!initialSeekApplied) {
                         // Normal startup preloads the saved position through
