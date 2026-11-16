@@ -4428,27 +4428,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
 
-        NativeMailbox.writeBestEffort(
-            this,
-            JSONObject()
-                .put("type", "diagnostic")
-                .put("requestId", requestId)
-                .put(
-                    "payload",
-                    JSONObject()
-                        .put("event", if (isNextRequest) "NEXT_BUTTON_PRESSED" else "PREVIOUS_BUTTON_PRESSED")
-                        .put("requestId", requestId)
-                        .put("sequence", commandSequence)
-                        .put("createdAt", startedAtMs)
-                        .put("monotonicNs", monotonicNs)
-                        .put("playerGeneration", playerGeneration)
-                        .put("transitionGeneration", generation)
-                        .put("episodeId", currentEpisodeId())
-                        .put("animeId", intent.getStringExtra("animeId").orEmpty())
-                        .put("playerSessionId", playerSessionId)
-                        .put("transitionDirection", transitionSourceDirection),
-                ),
-        )
+
 
         val transitionCreatedAtMs = nextPlayerEventCreatedAt()
         val transitionEvent = JSONObject()
