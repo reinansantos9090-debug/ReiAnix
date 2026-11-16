@@ -80,7 +80,7 @@ internal val SettingsDestinations = listOf(
     )),
     SettingsDestination("Biblioteca", "Biblioteca", "", listOf(
         SettingsEntry("setting:library.sort_default", "Ordenação padrão"),
-        SettingsEntry("setting:library.page_size", "Itens por página"),
+        SettingsEntry("setting:library.page_size", "Animes por lote"),
         SettingsEntry("folders", "Pasta da biblioteca", "selecionar pasta pastas cadastradas armazenamento fontes remover pasta adicionar ou alterar pasta"),
     )),
     SettingsDestination("appearance_theme", "Tema", "Aparência", listOf(
@@ -90,7 +90,7 @@ internal val SettingsDestinations = listOf(
         SettingsEntry("setting:appearance.card_size", "Cards da Busca e Minha Lista"),
         SettingsEntry("setting:library.grid_density", "Densidade da Biblioteca"),
         SettingsEntry("setting:appearance.poster_size", "Tamanho dos pôsteres (0–16)", ""),
-        SettingsEntry("setting:appearance.show_thumbnails", "Mostrar miniaturas"),
+        SettingsEntry("setting:appearance.show_thumbnails", "Miniaturas de episódios na Home"),
         SettingsEntry("setting:library.continue_watching", "Continuar assistindo"),
         SettingsEntry("setting:library.continue_watching_limit", "Limite de continuar assistindo"),
     )),
