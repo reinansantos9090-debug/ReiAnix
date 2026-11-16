@@ -127,9 +127,9 @@ internal object LocalCastMediaServer {
             return
         }
         var range: String? = null
-        repeat(40) {
+        for (index in 0 until 40) {
             val header = readAsciiLine(input) ?: return
-            if (header.isEmpty()) return@repeat
+            if (header.isEmpty()) break
             if (header.startsWith("Range:", ignoreCase = true)) range = header.substringAfter(':').trim()
         }
         val method = parts[0]
@@ -261,7 +261,7 @@ internal object LocalCastMediaServer {
         if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
             capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
         ) {
-            val local = manager.getLinkProperties(network)?.linkAddresses
+            val local = network?.let { manager.getLinkProperties(it) }?.linkAddresses
                 ?.map { it.address }
                 ?.firstOrNull { it is Inet4Address && it.isSiteLocalAddress }
             if (local != null) return local.hostAddress
