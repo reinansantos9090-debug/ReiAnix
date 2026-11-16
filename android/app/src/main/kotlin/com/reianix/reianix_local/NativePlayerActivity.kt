@@ -5393,6 +5393,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 hint = label + " (MM:SS)"
                 setSingleLine(true)
                 inputType = android.text.InputType.TYPE_CLASS_DATETIME or android.text.InputType.TYPE_DATETIME_VARIATION_TIME
+                setTextColor(Color.WHITE)
+                setHintTextColor(0xFFBDBDBD.toInt())
+                backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
                 setText(valueMs?.let { formatTime(it) }.orEmpty())
             }
 
@@ -5486,6 +5489,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setSingleLine(false)
             maxLines = 5
             setTextColor(Color.WHITE)
+            setHintTextColor(0xFFBDBDBD.toInt())
+            backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
             setTextSize(14f)
         }
         AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
