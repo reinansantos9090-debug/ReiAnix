@@ -127,6 +127,24 @@ data class ReiAnixTimelineSourceRecord(
     val addedAt: Double?,
 )
 
+/**
+ * Read-only overview based on existing canonical playback state.
+ * estimatedSeconds is NOT a wall-clock watch-session counter: it reflects the
+ * saved position, or the known duration of an episode marked watched.
+ */
+data class ReiAnixTimelineStatistics(
+    val estimatedSeconds: Long,
+    val favoriteAnimeCount: Int,
+    val completedEpisodeCount: Int,
+    val activityDays: List<ReiAnixTimelineActivityDay>,
+)
+
+data class ReiAnixTimelineActivityDay(
+    val date: String,
+    val label: String,
+    val episodeCount: Int,
+)
+
 /** Canonical episode duration row; durations remain stored in seconds. */
 data class ReiAnixDurationObservationRecord(
     val id: Long,
