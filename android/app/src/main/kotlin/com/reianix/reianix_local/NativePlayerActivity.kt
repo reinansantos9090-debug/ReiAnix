@@ -349,15 +349,7 @@ class NativePlayerActivity : ComponentActivity() {
                 episodeChangeTimeoutSessionId == playerSessionId &&
                 episodeChangeTimeoutPlayerGeneration == playerGeneration
         if (!timeoutContextValid) {
-            publishNavigationTransitionDiagnostic(
-                "PLAYER_TIMEOUT_STALE",
-                "context_mismatch",
-                JSONObject()
-                    .put("requestId", requestId)
-                    .put("playerSessionId", playerSessionId)
-                    .put("playerGeneration", playerGeneration)
-                    .put("transitionGeneration", transitionGeneration),
-            )
+
             return@Runnable
         }
 
@@ -367,23 +359,9 @@ class NativePlayerActivity : ComponentActivity() {
             else -> "NONE"
         }
         if (direction == "NEXT") {
-            publishNextTransitionDiagnostic(
-                "NEXT_TRANSITION_STALLED",
-                "watchdog_elapsed",
-                JSONObject().put(
-                    "ageMs",
-                    transitionStartedAtMs.takeIf { it > 0L }?.let { System.currentTimeMillis() - it } ?: 0L,
-                ),
-            )
+
         } else if (direction == "PREVIOUS") {
-            publishPreviousTransitionDiagnostic(
-                "PREVIOUS_TRANSITION_STALLED",
-                "watchdog_elapsed",
-                JSONObject().put(
-                    "ageMs",
-                    transitionStartedAtMs.takeIf { it > 0L }?.let { System.currentTimeMillis() - it } ?: 0L,
-                ),
-            )
+
         }
         logPlayer(
             "EPISODE_CHANGE_WATCHDOG requestId=" + requestId.ifEmpty { "-" } +
@@ -449,8 +427,6 @@ class NativePlayerActivity : ComponentActivity() {
     private val deferredSubtitleCache =
         ConcurrentHashMap<String, List<LocalSubtitleResolver.SubtitleTrack>>()
     private var activeAnalyticsListener: AnalyticsListener? = null
-    private var firstFrameWatchGeneration = -1L
-    private val firstFrameDiagnosticTimeoutMs = 8_000L
 
     private val titleValue: String
         get() = intent.getStringExtra("title") ?: "Episódio"
@@ -529,94 +505,11 @@ class NativePlayerActivity : ComponentActivity() {
      * Diagnostics-only first-frame watchdog. It never retries playback and never
      * converts a slow renderer into an automatic error/restart loop.
      */
-    private val firstFrameDiagnostic = object : Runnable {
-        override fun run() {
-            val generation = firstFrameWatchGeneration
-            if (generation < 0L ||
-                generation != playerGeneration ||
-                sessionState != SessionState.ACTIVE ||
-                firstFrameRenderedForTesting ||
-                errorVisible ||
-                !::player.isInitialized
-            ) {
-                return
-            }
 
-            val payload = diagnosticPayload()
-                .put("event", "FIRST_FRAME_TIMEOUT")
-                .put("stage", "FIRST_FRAME")
-                .put("failureStage", "FIRST_FRAME_WAIT")
-                .put("failureKind", PlayerMediaPolicy.PlaybackFailureKind.UNKNOWN.name)
-                .put("diagnosticOnly", true)
-                .put("playbackState", player.playbackStateLabel())
-                .put("generation", generation)
-                .put("playWhenReady", player.playWhenReady)
-                .put("videoWidth", player.videoSize.width)
-                .put("videoHeight", player.videoSize.height)
-                .put("playerViewAttached", ::playerView.isInitialized && playerView.isAttachedToWindow)
-                .put("playerViewVisible", ::playerView.isInitialized && playerView.isShown)
-                .put("playerViewWidth", if (::playerView.isInitialized) playerView.width else 0)
-                .put("playerViewHeight", if (::playerView.isInitialized) playerView.height else 0)
-                .put("windowFocus", window.decorView.hasWindowFocus())
-                .put("orientation", resources.configuration.orientation)
-                .put("surfaceType", "texture_view")
 
-            logPlayer(
-                "FIRST_FRAME_TIMEOUT requestId=" + requestId.ifEmpty { "-" } +
-                    " generation=" + generation +
-                    " state=" + player.playbackStateLabel() +
-                    " isPlaying=" + player.isPlaying +
-                    " playWhenReady=" + player.playWhenReady +
-                    " video=" + player.videoSize.width + "x" + player.videoSize.height +
-                    " playerView=" + playerView.width + "x" + playerView.height +
-                    " attached=" + playerView.isAttachedToWindow +
-                    " focus=" + window.decorView.hasWindowFocus() +
-                    " orientation=" + resources.configuration.orientation +
-                    " surfaceType=texture_view",
-            )
-            val written = publishLegacyPlayerEvent(
-                JSONObject()
-                    .put("type", "player_diagnostic")
-                    .put("requestId", requestId)
-                    .put("payload", payload),
-            )
-            if (!written) {
-                logPlayer("FAILED_TO_PUBLISH player_diagnostic requestId=" + requestId.ifEmpty { "-" })
-            }
-            firstFrameWatchGeneration = -1L
-        }
-    }
 
-    private fun armFirstFrameDiagnostics(generation: Long) {
-        handler.removeCallbacks(firstFrameDiagnostic)
-        if (sessionState != SessionState.ACTIVE ||
-            firstFrameRenderedForTesting ||
-            errorVisible ||
-            generation != playerGeneration
-        ) {
-            firstFrameWatchGeneration = -1L
-            return
-        }
-        firstFrameWatchGeneration = generation
-        handler.postDelayed(firstFrameDiagnostic, firstFrameDiagnosticTimeoutMs)
-        logPlayer(
-            "FIRST_FRAME_WATCH_ARMED requestId=" + requestId.ifEmpty { "-" } +
-                " generation=" + generation +
-                " timeoutMs=" + firstFrameDiagnosticTimeoutMs,
-        )
-    }
 
-    private fun cancelFirstFrameDiagnostics(reason: String) {
-        handler.removeCallbacks(firstFrameDiagnostic)
-        if (firstFrameWatchGeneration >= 0L) {
-            logPlayer(
-                "FIRST_FRAME_WATCH_CANCELLED requestId=" + requestId.ifEmpty { "-" } +
-                    " generation=" + firstFrameWatchGeneration +
-                    " reason=" + reason,
-            )
-        }
-        firstFrameWatchGeneration = -1L
-    }
+
 
     /**
      * Publish telemetry to the legacy Python consumer only for legacy player sessions.
@@ -636,79 +529,13 @@ class NativePlayerActivity : ComponentActivity() {
             }
         }
 
-        val eventType = event.optString("type", "unknown")
-        val payload = event.optJSONObject("payload") ?: JSONObject()
-        val payloadEvent = payload.optString("event").ifBlank {
-            payload.optString("lifecycle").ifBlank {
-                payload.optString("failureStage").ifBlank { payload.optString("stage") }
-            }
-        }
-        val name = when (eventType) {
-            "diagnostic", "player_diagnostic" ->
-                payloadEvent.ifBlank { "NATIVE_PLAYER_DIAGNOSTIC" }
-            "player_opened" -> "NATIVE_PLAYER_OPENED"
-            "player_error" -> "NATIVE_PLAYER_ERROR_PUBLISHED"
-            "compose_settings_set" -> "NATIVE_PLAYER_SETTING_PERSISTED"
-            else -> "NATIVE_PLAYER_EVENT"
-        }
-        val context = payload.toNativeDiagnosticContext().toMutableMap()
-        context["event_type"] = eventType
-        event.optString("message").trim().takeIf { it.isNotEmpty() }?.let {
-            context["message"] = it
-        }
-        val severity = when {
-            eventType == "player_error" -> "ERROR"
-            payload.optString("failureStage").isNotBlank() -> "WARN"
-            else -> "INFO"
-        }
-        val result = when (eventType) {
-            "player_opened" -> payload.optString("state").ifBlank { "READY" }
-            "compose_settings_set" -> "COMMITTED"
-            "player_error" -> "FAILED"
-            else -> payloadEvent.takeIf { it.isNotBlank() }
-        }
-
+        // Native Compose handles playback locally; do not collect player telemetry.
         return true
     }
 
-    private fun JSONObject.toNativeDiagnosticContext(): Map<String, Any?> {
-        val context = linkedMapOf<String, Any?>()
-        val keys = keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val value = opt(key)
-            context[key] = when (value) {
-                JSONObject.NULL -> null
-                is JSONObject, is org.json.JSONArray -> value.toString()
-                else -> value
-            }
-        }
-        return context
-    }
 
-    private fun publishPlayerLifecycle(event: String) {
-        publishLegacyPlayerEvent(
-            JSONObject().put("type", "diagnostic")
-                .put("requestId", requestId)
-                .put("payload", JSONObject()
-                    .put("event", "PLAYER_LIFECYCLE")
-                    .put("lifecycle", event)
-                    .put("traceId", traceId)
-                    .put("requestId", requestId)
-                    .put("playerGeneration", playerGeneration)
-                    .put("transitionGeneration", transitionGeneration)
-                    .put("sessionState", sessionState.name)
-                    .put("activityElapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
-                    .put("playerSessionId", playerSessionId)
-                    .put("activityInstanceId", activityInstanceId)
-                    .put("originRequestId", originRequestId)
-                    .put("originCreatedAtMs", originCreatedAtMs)
-                    .put("originTransitionGeneration", originTransitionGeneration)
-                    .put("originPlayerSessionId", originPlayerSessionId)
-                    .put("transitionDirection", intent.getStringExtra("transitionDirection").orEmpty())
-                    .put("episodeId", currentEpisodeId())),
-        )
-    }
+
+
 
 override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -762,31 +589,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (originRequestId.isNotBlank() && !isEpisodeSuccessor && !recreatedPlayer) {
             val staleEvent = if (originTransitionDirection == "PREVIOUS") "PREVIOUS_REQUEST_STALE" else "NEXT_REQUEST_STALE"
             val staleRejectedEvent = if (originTransitionDirection == "PREVIOUS") "PLAYER_PREVIOUS_STALE_REJECTED" else "PLAYER_NEXT_STALE_REJECTED"
-            publishNavigationTransitionDiagnostic(
-                staleEvent,
-                "origin_on_new_activity",
-                JSONObject()
-                    .put("requestId", requestId)
-                    .put("originRequestId", originRequestId)
-                    .put("originCreatedAtMs", originCreatedAtMs)
-                    .put("originGeneration", originTransitionGeneration)
-                    .put("originPlayerSessionId", originPlayerSessionId)
-                    .put("currentPlayerSessionId", playerSessionId)
-                    .put("activityInstanceId", activityInstanceId),
-            )
-            publishNavigationTransitionDiagnostic(
-                staleRejectedEvent,
-                "origin_on_new_activity",
-                JSONObject()
-                    .put("requestId", requestId)
-                    .put("originRequestId", originRequestId)
-                    .put("originCreatedAtMs", originCreatedAtMs)
-                    .put("originGeneration", originTransitionGeneration)
-                    .put("currentGeneration", transitionGeneration)
-                    .put("originPlayerSessionId", originPlayerSessionId)
-                    .put("currentPlayerSessionId", playerSessionId)
-                    .put("activityInstanceId", activityInstanceId),
-            )
+
+
             suppressExitEvent = true
             sessionState = SessionState.EXITING
             logPlayer(
@@ -813,31 +617,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             nextTransitionActive = originTransitionDirection == "NEXT"
             previousTransitionActive = originTransitionDirection == "PREVIOUS"
             transitionReadyGeneration = -1L
-            publishNavigationTransitionDiagnostic(
-                if (nextTransitionActive) "NEXT_TRANSITION_ACTIVITY_CREATED" else "PREVIOUS_TRANSITION_ACTIVITY_CREATED",
-                "authorized_successor_activity",
-                JSONObject()
-                    .put("originRequestId", originRequestId)
-                    .put("requestId", requestId)
-                    .put("originGeneration", originTransitionGeneration)
-                    .put("transitionGeneration", transitionGeneration)
-                    .put("playerSessionId", playerSessionId)
-                    .put("activityInstanceId", activityInstanceId),
-            )
+
         }
 
-        publishPlayerLifecycle("onCreate")
-        publishNavigationTransitionDiagnostic(
-            if (isEpisodeSuccessor) "PLAYER_EPISODE_TRANSITION" else "PLAYER_SESSION_CREATED",
-            "onCreate",
-            JSONObject()
-                .put("playerSessionId", playerSessionId)
-                .put("playerGeneration", playerGeneration)
-                .put("transitionGeneration", transitionGeneration)
-                .put("activityInstanceId", activityInstanceId)
-                .put("originRequestId", originRequestId)
-                .put("transitionDirection", originTransitionDirection),
-        )
+
         MainActivity.notePlayerActivityCreated(
             activityInstanceId,
             requestId,
@@ -1064,28 +847,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 incomingOriginTransitionDirection == transitionSourceDirection
 
         if (incomingOriginRequestId.isNotBlank() && !expectedSuccessorBeforeMutation) {
-            publishNavigationTransitionDiagnostic(
-                if (incomingOriginTransitionDirection == "PREVIOUS") "PREVIOUS_REQUEST_STALE" else "NEXT_REQUEST_STALE",
-                "invalid_successor_origin",
-                JSONObject()
-                    .put("requestId", incomingRequestId)
-                    .put("originRequestId", incomingOriginRequestId)
-                    .put("originCreatedAtMs", incomingOriginCreatedAtMs)
-                    .put("originGeneration", incomingOriginTransitionGeneration)
-                    .put("originPlayerSessionId", incomingOriginPlayerSessionId)
-                    .put("currentPlayerSessionId", playerSessionId),
-            )
-            publishNavigationTransitionDiagnostic(
-                if (incomingOriginTransitionDirection == "PREVIOUS") "PLAYER_PREVIOUS_STALE_REJECTED" else "PLAYER_NEXT_STALE_REJECTED",
-                "invalid_successor_origin",
-                JSONObject()
-                    .put("requestId", incomingRequestId)
-                    .put("originRequestId", incomingOriginRequestId)
-                    .put("originGeneration", incomingOriginTransitionGeneration)
-                    .put("currentGeneration", transitionGeneration)
-                    .put("originPlayerSessionId", incomingOriginPlayerSessionId)
-                    .put("currentPlayerSessionId", playerSessionId),
-            )
+
+
             logPlayer(
                 "PLAYER_REUSE_ORIGIN_REJECTED requestId=" + incomingRequestId.ifEmpty { "-" } +
                     " originRequestId=" + incomingOriginRequestId +
@@ -1107,7 +870,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         originPlayerSessionId = incomingOriginPlayerSessionId
         originMonotonicNs = incomingOriginMonotonicNs
         transitionSourceDirection = incomingOriginTransitionDirection
-        publishPlayerLifecycle("onNewIntent")
+
         val traceEpisodeId = newIntent.getStringExtra("episodeId").orEmpty()
         val traceAnimeId = newIntent.getStringExtra("animeId").orEmpty()
 
@@ -1205,16 +968,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         } else {
             episodeChangePending = false
             if (originRequestId.isNotBlank()) {
-                publishNavigationTransitionDiagnostic(
-                    if (incomingOriginTransitionDirection == "PREVIOUS") "PREVIOUS_REQUEST_STALE" else "NEXT_REQUEST_STALE",
-                    "invalid_successor_origin",
-                    JSONObject()
-                        .put("originRequestId", originRequestId)
-                        .put("originPlayerSessionId", originPlayerSessionId)
-                        .put("currentPlayerSessionId", playerSessionId)
-                        .put("originGeneration", originTransitionGeneration)
-                        .put("currentGeneration", transitionGeneration),
-                )
+
             }
             logPlayer(
                 "PLAYER_REUSE_ORIGIN_REJECTED requestId=" + requestId.ifEmpty { "-" } +
@@ -1434,7 +1188,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             retryCount = 0
         }
         pendingPreparation?.cancel(true)
-        cancelFirstFrameDiagnostics("prepare_start")
+
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
 
         episodeTapAtMs = commandCreatedAtMs.takeIf { it > 0L }
@@ -1599,21 +1353,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     )
 
                     try {
-                        publishLegacyPlayerEvent(
-                            JSONObject()
-                                .put("type", "diagnostic")
-                                .put("requestId", requestId)
-                                .put(
-                                    "payload",
-                                    JSONObject()
-                                        .put("event", "PLAYER_PREPARING")
-                                        .put("episodeId", currentEpisodeId())
-                                        .put("playerSessionId", playerSessionId)
-                                        .put("playerGeneration", generation)
-                                        .put("transitionGeneration", transitionGeneration)
-                                        .put("startPositionMs", initialPositionMsForGeneration),
-                                ),
-                        )
+                        true
                         player.prepare()
                     } catch (error: Exception) {
                         logPlayer(
@@ -1738,7 +1478,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (!isCurrent()) return
             if (events.contains(Player.EVENT_RENDERED_FIRST_FRAME)) {
                 firstFrameRenderedForTesting = true
-                cancelFirstFrameDiagnostics("first_frame")
+
                 if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
                 syncComposePlayerUiState()
                 firstFrameRenderedAtMs = System.currentTimeMillis()
@@ -1774,12 +1514,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     .put("originMonotonicNs", originMonotonicNs)
                     .put("transitionDirection", transitionSourceDirection)
                     .put("timing", timing)
-                if (!publishLegacyPlayerEvent(
-                        JSONObject()
-                            .put("type", "player_diagnostic")
-                            .put("requestId", requestId)
-                            .put("payload", firstFrameEvent),
-                    )
+                if (!true
                 ) {
                     logPlayer("FAILED_TO_PUBLISH player_diagnostic requestId=" + requestId.ifEmpty { "-" } + " event=FIRST_FRAME_RENDERED")
                 }
@@ -1793,16 +1528,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     sessionState == SessionState.ACTIVE
                 ) {
                     val direction = if (nextTransitionActive) "NEXT" else "PREVIOUS"
-                    publishNavigationTransitionDiagnostic(
-                        if (nextTransitionActive) "NEXT_TRANSITION_FIRST_FRAME" else "PREVIOUS_TRANSITION_FIRST_FRAME",
-                        "media3_first_frame",
-                        JSONObject()
-                            .put("episodeId", currentEpisodeId())
-                            .put("generation", generation)
-                            .put("transitionGeneration", transitionGeneration)
-                            .put("playerSessionId", playerSessionId)
-                            .put("originMonotonicNs", transitionSourceMonotonicNs),
-                    )
+
                     setTransitionPhase(TransitionPhase.FIRST_FRAME, "media3_first_frame")
                     setTransitionPhase(TransitionPhase.COMMITTED, "first_frame_rendered")
                     episodeChangePending = false
@@ -1821,14 +1547,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     nextTransitionActive = false
                     previousTransitionActive = false
                     updateEpisodeNavigationButtons()
-                    publishNavigationTransitionDiagnostic(
-                        if (direction == "NEXT") "NEXT_TRANSITION_COMMITTED" else "PREVIOUS_TRANSITION_COMMITTED",
-                        "first_frame_rendered",
-                        JSONObject()
-                            .put("episodeId", currentEpisodeId())
-                            .put("generation", generation)
-                            .put("playerSessionId", playerSessionId),
-                    )
+
                     logPlayer(
                         "EPISODE_CHANGE_COMMITTED requestId=" + requestId.ifEmpty { "-" } +
                             " mediaId=" + currentMediaId() +
@@ -1978,20 +1697,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         if (!opened) {
                             logPlayer("FAILED_TO_PUBLISH player_opened requestId=" + requestId.ifEmpty { "-" })
                         }
-                        publishLegacyPlayerEvent(
-                            JSONObject()
-                                .put("type", "diagnostic")
-                                .put("requestId", requestId)
-                                .put(
-                                    "payload",
-                                    JSONObject()
-                                        .put("event", "PLAYER_READY")
-                                        .put("episodeId", currentEpisodeId())
-                                        .put("playerSessionId", playerSessionId)
-                                        .put("playerGeneration", generation)
-                                        .put("transitionGeneration", transitionGeneration),
-                                ),
-                        )
+                        true
                     }
                     if (!initialSeekApplied) {
                         // Normal startup preloads the saved position through
@@ -2026,15 +1732,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             val readyAtMs = System.currentTimeMillis()
                             val transitionLatencyMs = readyAtMs - transitionStartedAtMs
 
-                            publishNavigationTransitionDiagnostic(
-                                if (nextTransitionActive) "NEXT_TRANSITION_READY" else "PREVIOUS_TRANSITION_READY",
-                                "media3_ready",
-                                JSONObject()
-                                    .put("episodeId", currentEpisodeId())
-                                    .put("generation", generation)
-                                    .put("playerSessionId", playerSessionId)
-                                    .put("transitionLatencyMs", transitionLatencyMs),
-                            )
                             logPlayer(
                                 "PLAYER_TRANSITION_READY requestId=" + requestId.ifEmpty { "-" } +
                                     " transitionLatencyMs=" + transitionLatencyMs +
@@ -2051,7 +1748,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     updateProgressUi()
                     startProgressReporting()
                     if (!firstFrameRenderedForTesting && !errorVisible) {
-                        armFirstFrameDiagnostics(generation)
+
                     }
                     if (!errorVisible) scheduleControlsHide()
                 }
@@ -2168,7 +1865,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
             currentFailureKind = classification.kind
             currentFailureRetryable = classification.retryable
             playbackErrorForGeneration = true
-            cancelFirstFrameDiagnostics("player_error")
 
             val failureStage = when {
                 firstFrameRenderedForTesting -> "PLAYBACK_AFTER_FIRST_FRAME"
@@ -2371,7 +2067,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun beginPlayerGeneration(reason: String) {
         if (!::player.isInitialized || sessionState == SessionState.DESTROYED) return
-        cancelFirstFrameDiagnostics("new_generation")
+
         activePlayerListener?.let { player.removeListener(it) }
         activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }
         activePlayerListener = null
@@ -4250,17 +3946,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 (suppliedPlayerGeneration <= 0L || suppliedPlayerGeneration == playerGeneration) &&
                 (suppliedTransitionGeneration <= 0L || suppliedTransitionGeneration == transitionGeneration)
         if (!errorContextCurrent) {
-            publishNavigationTransitionDiagnostic(
-                "PLAYER_ERROR_STALE_IGNORED",
-                reason,
-                JSONObject()
-                    .put("requestId", suppliedRequest.ifBlank { requestId })
-                    .put("playerSessionId", suppliedSession.ifBlank { playerSessionId })
-                    .put("playerGeneration", suppliedPlayerGeneration)
-                    .put("transitionGeneration", suppliedTransitionGeneration)
-                    .put("currentPlayerGeneration", playerGeneration)
-                    .put("currentTransitionGeneration", transitionGeneration),
-            )
+
             logPlayer(
                 "PLAYER_ERROR_STALE_IGNORED requestId=" + suppliedRequest.ifBlank { requestId } +
                     " reason=" + reason,
@@ -4294,13 +3980,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         playbackErrorForGeneration = true
 
         if (nextTransitionActive || previousTransitionActive) {
-            publishNavigationTransitionDiagnostic(
-                if (nextTransitionActive) "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
-                "player_error",
-                JSONObject()
-                    .put("error", reason)
-                    .put("failureKind", resolvedFailureKind.name),
-            )
+
         }
         invalidateTransition("player_error")
         setLocked(false, persist = true, announce = false)
@@ -4550,19 +4230,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 " playerSessionId=" + playerSessionId,
         )
         sessionState = SessionState.EXITING
-        publishNavigationTransitionDiagnostic(
-            "PLAYER_SESSION_INVALIDATED",
-            reason,
-            JSONObject()
-                .put("requestId", requestId)
-                .put("playerSessionId", playerSessionId)
-                .put("activityInstanceId", activityInstanceId)
-                .put("playerGeneration", playerGeneration)
-                .put("transitionGeneration", transitionGeneration),
-        )
+
         invalidateTransition("finish_player")
         pendingPreparation?.cancel(true)
-        cancelFirstFrameDiagnostics("finish_player")
+
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
         handler.removeCallbacks(controlsHider)
         handler.removeCallbacks(lockAffordanceHider)
@@ -4589,54 +4260,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         syncComposePlayerUiState()
     }
 
-    private fun publishNavigationTransitionDiagnostic(
-        event: String,
-        reason: String,
-        extra: JSONObject = JSONObject(),
-    ) {
-        val payload = JSONObject()
-            .put("event", event)
-            .put("requestId", requestId)
-            .put("reason", reason)
-            .put("ageMs", transitionStartedAtMs.takeIf { it > 0L }?.let { System.currentTimeMillis() - it } ?: 0L)
-            .put("originRequestId", originRequestId)
-            .put("originCreatedAtMs", originCreatedAtMs)
-            .put("originGeneration", transitionSourceGeneration)
-            .put("currentGeneration", transitionGeneration)
-            .put("playerSessionId", playerSessionId)
-            .put("originMonotonicNs", originMonotonicNs)
-            .put("transitionDirection", transitionSourceDirection)
-        val keys = extra.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            payload.put(key, extra.opt(key))
-        }
-        publishLegacyPlayerEvent(
-            JSONObject()
-                .put("type", "diagnostic")
-                .put("requestId", requestId)
-                .put("payload", payload),
-        )
-        logPlayer(
-            event + " requestId=" + requestId.ifEmpty { "-" } +
-                " ageMs=" + payload.optLong("ageMs", 0L) +
-                " originGeneration=" + payload.optLong("originGeneration", 0L) +
-                " currentGeneration=" + payload.optLong("currentGeneration", 0L) +
-                " reason=" + reason,
-        )
-    }
 
-    private fun publishNextTransitionDiagnostic(
-        event: String,
-        reason: String,
-        extra: JSONObject = JSONObject(),
-    ) = publishNavigationTransitionDiagnostic(event, reason, extra)
 
-    private fun publishPreviousTransitionDiagnostic(
-        event: String,
-        reason: String,
-        extra: JSONObject = JSONObject(),
-    ) = publishNavigationTransitionDiagnostic(event, reason, extra)
+
 
     private fun invalidateTransition(reason: String) {
         val wasNext = nextTransitionActive
@@ -4647,38 +4273,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
         transitionPublishFuture = null
         handler.removeCallbacks(episodeChangeTimeout)
         if (wasNext) {
-            publishNextTransitionDiagnostic(
-                "NEXT_TRANSITION_INVALIDATED",
-                reason,
-                JSONObject()
-                    .put("ageMs", staleAgeMs)
-                    .put("originGeneration", transitionSourceGeneration)
-                    .put("currentGeneration", transitionGeneration),
-            )
-            publishNextTransitionDiagnostic(
-                "NEXT_REQUEST_CANCELLED",
-                reason,
-                JSONObject().put("ageMs", staleAgeMs),
-            )
+
+
         }
         if (wasPrevious) {
-            publishPreviousTransitionDiagnostic(
-                "PREVIOUS_TRANSITION_INVALIDATED",
-                reason,
-                JSONObject()
-                    .put("ageMs", staleAgeMs)
-                    .put("originRequestId", transitionSourceRequestId)
-                    .put("originCreatedAtMs", transitionSourceCreatedAtMs)
-                    .put("originGeneration", transitionSourceGeneration)
-                    .put("currentGeneration", transitionGeneration)
-                    .put("originMonotonicNs", transitionSourceMonotonicNs)
-                    .put("playerSessionId", playerSessionId),
-            )
-            publishPreviousTransitionDiagnostic(
-                "PREVIOUS_REQUEST_CANCELLED",
-                reason,
-                JSONObject().put("ageMs", staleAgeMs),
-            )
+
+
         }
         if (wasNext || wasPrevious) {
             setTransitionPhase(TransitionPhase.FAILED, "invalidated:" + reason)
@@ -4734,39 +4334,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (isNextRequest) nextEvent else previousEvent
 
         if (!::player.isInitialized) {
-            publishNavigationTransitionDiagnostic(requestEvent("NEXT_REQUEST_REJECTED", "PREVIOUS_REQUEST_REJECTED"), "player_unavailable")
+
             return
         }
         if (sessionState != SessionState.ACTIVE) {
-            publishNavigationTransitionDiagnostic(requestEvent("NEXT_REQUEST_STALE", "PREVIOUS_REQUEST_STALE"), "session_not_active")
+
             return
         }
         if (episodeChangePending) {
-            publishNavigationTransitionDiagnostic(
-                "PLAYER_COMMAND_DUPLICATE",
-                "transition_in_progress",
-                JSONObject()
-                    .put("requestId", requestId)
-                    .put("playerSessionId", playerSessionId)
-                    .put("transitionGeneration", transitionGeneration),
-            )
-            publishNavigationTransitionDiagnostic(
-                requestEvent("NEXT_REQUEST_DUPLICATE", "PREVIOUS_REQUEST_DUPLICATE"),
-                "transition_in_progress",
-                JSONObject().put("transitionGeneration", transitionGeneration),
-            )
+
+
             return
         }
         if (errorVisible) {
-            publishNavigationTransitionDiagnostic(requestEvent("NEXT_REQUEST_REJECTED", "PREVIOUS_REQUEST_REJECTED"), "player_error_visible")
+
             return
         }
         val canNavigate = intent.getBooleanExtra(if (isNextRequest) "canNext" else "canPrevious", false)
         if (!canNavigate && selectedEpisodeId == null) {
-            publishNavigationTransitionDiagnostic(
-                requestEvent("NEXT_REQUEST_REJECTED", "PREVIOUS_REQUEST_REJECTED"),
-                if (isNextRequest) "no_next_episode" else "no_previous_episode",
-            )
+
             return
         }
 
@@ -4787,26 +4373,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         previousTransitionActive = isPreviousRequest
         transitionReadyGeneration = -1L
 
-        publishNavigationTransitionDiagnostic(
-            requestEvent("NEXT_REQUEST_ACCEPTED", "PREVIOUS_REQUEST_ACCEPTED"),
-            "single_flight",
-            JSONObject()
-                .put("transitionGeneration", generation)
-                .put("playerGeneration", playerGeneration)
-                .put("playerSessionId", playerSessionId)
-                .put("originMonotonicNs", monotonicNs),
-        )
-        publishNavigationTransitionDiagnostic(
-            requestEvent("NEXT_TRANSITION_STARTED", "PREVIOUS_TRANSITION_STARTED"),
-            "native_mailbox_publish",
-            JSONObject()
-                .put("transitionGeneration", generation)
-                .put("playerGeneration", playerGeneration)
-                .put("episodeId", currentEpisodeId())
-                .put("animeId", intent.getStringExtra("animeId").orEmpty())
-                .put("playerSessionId", playerSessionId)
-                .put("originMonotonicNs", monotonicNs),
-        )
 
         handler.removeCallbacks(episodeChangeTimeout)
         armEpisodeChangeTimeout("request_episode")
@@ -4840,22 +4406,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("playerSettings", currentPlayerSettingsSnapshot())
 
         if (commandSequence < lastPlayerCommandSequence) {
-            publishLegacyPlayerEvent(
-                JSONObject()
-                    .put("type", "diagnostic")
-                    .put("requestId", requestId)
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("event", "PLAYER_COMMAND_OUT_OF_ORDER")
-                            .put("requestId", requestId)
-                            .put("sequence", commandSequence)
-                            .put("previousSequence", lastPlayerCommandSequence)
-                            .put("transitionGeneration", generation)
-                            .put("transitionDirection", transitionSourceDirection)
-                            .put("reason", requestEvent("NEXT_COMMAND_OUT_OF_ORDER", "PREVIOUS_COMMAND_OUT_OF_ORDER")),
-                    ),
-            )
+            true
         }
         lastPlayerCommandSequence = commandSequence
 
@@ -4915,11 +4466,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         if (!isCurrentTransition(generation) || !episodeChangePending) return@post
                         transitionPublishFuture = null
                         if (!published) {
-                            publishNavigationTransitionDiagnostic(
-                                requestEvent("NEXT_TRANSITION_FAILED", "PREVIOUS_TRANSITION_FAILED"),
-                                "mailbox_publish_failed",
-                                JSONObject().put("error", "native_mailbox_write_failed"),
-                            )
+
                             showFeedback("Não foi possível mudar de episódio.", 1800L)
                             episodeChangePending = false
                             invalidateTransition("mailbox_publish_failed")
@@ -4944,22 +4491,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 } catch (error: Exception) {
                     handler.post {
                         if (!isCurrentTransition(generation)) return@post
-                        publishNavigationTransitionDiagnostic(
-                            requestEvent("NEXT_TRANSITION_FAILED", "PREVIOUS_TRANSITION_FAILED"),
-                            "mailbox_publish_exception",
-                            JSONObject().put("error", error.message ?: error::class.java.simpleName),
-                        )
+
                         episodeChangePending = false
                         invalidateTransition("mailbox_publish_exception")
                     }
                 }
             }
         } catch (error: Exception) {
-            publishNavigationTransitionDiagnostic(
-                requestEvent("NEXT_TRANSITION_FAILED", "PREVIOUS_TRANSITION_FAILED"),
-                "executor_submit_failed",
-                JSONObject().put("error", error.message ?: error::class.java.simpleName),
-            )
+
             episodeChangePending = false
             invalidateTransition("executor_submit_failed")
         }
@@ -5027,22 +4566,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     navigation.current.animeId != animeId
                 ) {
                     val reason = sourceValidation.reason ?: "sqlite_current_row_mismatch"
-                    publishNavigationTransitionDiagnostic(
-                        if (isNextRequest) "NEXT_REQUEST_STALE" else "PREVIOUS_REQUEST_STALE",
-                        reason,
-                        JSONObject()
-                            .put("episodeId", episodeId)
-                            .put("animeId", animeId)
-                            .put("transitionGeneration", generation),
-                    )
-                    publishNavigationTransitionDiagnostic(
-                        if (isNextRequest) "PLAYER_NEXT_STALE_REJECTED" else "PLAYER_PREVIOUS_STALE_REJECTED",
-                        reason,
-                        JSONObject()
-                            .put("episodeId", episodeId)
-                            .put("animeId", animeId)
-                            .put("transitionGeneration", generation),
-                    )
+
+
                     invalidateTransition(reason)
                     return@launch
                 }
@@ -5063,14 +4588,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     // Preserve the legacy NEXT/PREVIOUS_TRANSITION_FAILED signal before
                     // invalidating the in-flight request, so diagnostics distinguish
                     // "no adjacent item" from a successful transition that was cancelled.
-                    publishNavigationTransitionDiagnostic(
-                        if (isNextRequest) "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
-                        "no_target",
-                        JSONObject()
-                            .put("episodeId", episodeId)
-                            .put("animeId", animeId)
-                            .put("direction", direction),
-                    )
+
                     invalidateTransition("no_adjacent_episode")
                     showFeedback("Não existe outro episódio local disponível nesta direção.", 2_200L)
                     return@launch
@@ -5230,14 +4748,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     "Native adjacent episode transition failed requestId=$sourceRequestId direction=$direction",
                     error,
                 )
-                publishNavigationTransitionDiagnostic(
-                    if (isNextRequest) "NEXT_TRANSITION_FAILED" else "PREVIOUS_TRANSITION_FAILED",
-                    "exception",
-                    JSONObject()
-                        .put("error", errorMessage)
-                        .put("direction", direction)
-                        .put("transitionGeneration", generation),
-                )
+
                 if (isCurrentTransition(
                         generation = generation,
                         expectedRequestId = sourceRequestId,
@@ -5245,14 +4756,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         expectedSessionId = sourcePlayerSessionId,
                     )
                 ) {
-                    publishNavigationTransitionDiagnostic(
-                        if (isNextRequest) "PLAYER_NEXT_FAILED" else "PLAYER_PREVIOUS_FAILED",
-                        "transition_failed",
-                        JSONObject()
-                            .put("error", errorMessage)
-                            .put("direction", direction)
-                            .put("episodeId", currentEpisodeId()),
-                    )
+
                     invalidateTransition("native_adjacent_transition_failed")
                     showFeedback(
                         "Não foi possível abrir o episódio local.",
@@ -5455,7 +4959,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     override fun onStart() {
         super.onStart()
-        publishPlayerLifecycle("onStart")
+
         logPlayer("onStart requestId=" + requestId.ifEmpty { "-" })
         if (!inPictureInPicture) applyImmersiveAfterLayout()
     }
@@ -5464,7 +4968,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         super.onResume()
         expireSleepTimerIfDue()
         if (!isPictureInPictureActive()) pictureInPictureSession = false
-        publishPlayerLifecycle("onResume")
+
         logPlayer("onResume requestId=" + requestId.ifEmpty { "-" })
         if (!inPictureInPicture) applyImmersiveAfterLayout()
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
@@ -5482,14 +4986,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
             updatePlayPauseButton()
             updatePictureInPictureParams()
             if (player.playbackState == Player.STATE_READY && !firstFrameRenderedForTesting) {
-                armFirstFrameDiagnostics(playerGeneration)
+
             }
         }
     }
 
     override fun onPause() {
-        publishPlayerLifecycle("onPause")
-        cancelFirstFrameDiagnostics("pause")
+
+
         if (sessionState != SessionState.EXITING || !exitProgressPublished) {
             saveProgress("player_paused", force = true)
         }
@@ -5499,7 +5003,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     override fun onStop() {
         closeEpisodePlaylist()
-        publishPlayerLifecycle("onStop")
+
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
         val screenInteractive = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
         val screenLocked = (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked
@@ -5570,7 +5074,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         updateComposeOverlayBounds()
         logPlayer("onConfigurationChanged orientation=" + newConfig.orientation)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
-        cancelFirstFrameDiagnostics("configuration_change")
+
         ViewCompat.requestApplyInsets(root)
         applyImmersiveAfterLayout()
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
@@ -5580,7 +5084,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 !firstFrameRenderedForTesting &&
                 sessionState == SessionState.ACTIVE
             ) {
-                armFirstFrameDiagnostics(playerGeneration)
+
             }
         }
     }
@@ -5629,8 +5133,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.removeCallbacks(sleepTimerTick)
         sleepTimerDialog?.dismiss()
         sleepTimerDialog = null
-        publishPlayerLifecycle("onDestroy")
-
 
         val shouldReportExit = isFinishing && !suppressExitEvent && !exitReported && !isChangingConfigurations
         if (shouldReportExit) {
@@ -5647,7 +5149,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.removeCallbacks(lockAffordanceHider)
         handler.removeCallbacks(feedbackHider)
         handler.removeCallbacks(episodeChangeTimeout)
-        cancelFirstFrameDiagnostics("destroy")
+
         restoreSystemUiBeforeExit()
         pendingPreparation?.cancel(true)
         playbackWorker.shutdown()
