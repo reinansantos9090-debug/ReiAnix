@@ -11,7 +11,7 @@ class ReiAnixSettingsNavigationTest {
     @Test fun rootCategoriesKeepRequestedCloudStreamOrder() {
         assertEquals(
             listOf(
-                "Geral", "Player", "Metadados e Capas", "Diagnóstico e Backup",
+                "Geral", "Player", "Metadados e Capas", "Dados e Backup",
                 "Contas e Avançado", "Pastas", "Sobre",
             ),
             SettingsRootCategories.map { it.label },
@@ -21,15 +21,17 @@ class ReiAnixSettingsNavigationTest {
     @Test fun oldSavedDestinationsStillOpenTheCorrectCurrentCategory() {
         assertEquals("Geral", settingsPageForDestination("appearance_theme"))
         assertEquals("Player", settingsPageForDestination("player_audio"))
-        assertEquals("Diagnóstico e Backup", settingsPageForDestination("about_reports"))
+        assertEquals("Dados e Backup", settingsPageForDestination("about_reports"))
         assertEquals("Pastas", settingsPageForDestination("library_storage"))
         assertEquals("Contas e Avançado", settingsPageForDestination("Contas"))
         assertEquals("Sobre", settingsPageForDestination("Sobre e Diagnóstico"))
         assertEquals("Sobre", settingsPageForDestination("about_app"))
         assertEquals(listOf("Sobre"), settingsPageSections("Sobre"))
-        assertEquals(false, "Sobre" in settingsPageSections("Diagnóstico e Backup"))
-        assertEquals(false, "Sobre e Diagnóstico" in settingsPageSections("Diagnóstico e Backup"))
-        assertEquals(true, "about_diagnostics" in settingsPageSections("Diagnóstico e Backup"))
+        assertEquals(false, "Sobre" in settingsPageSections("Dados e Backup"))
+        assertEquals(false, "Sobre e Diagnóstico" in settingsPageSections("Dados e Backup"))
+        assertEquals(false, "about_diagnostics" in settingsPageSections("Dados e Backup"))
+        assertEquals(false, "about_reports" in settingsPageSections("Dados e Backup"))
+        assertEquals(true, "data_backup" in settingsPageSections("Dados e Backup"))
     }
 
     @Test fun licensesHaveUniqueEntriesAndIncludeTheProjectAndFont() {
@@ -48,16 +50,11 @@ class ReiAnixSettingsNavigationTest {
         icons.forEach { assertNotEquals(Icons.Filled.Settings, it) }
     }
 
-    @Test fun diagnosticAndDataActionsNeverShareIcons() {
+    @Test fun dataAndBackupActionsHaveDistinctIcons() {
         val actions = listOf(
             "Restaurar", "Limpar cache de capas", "Exportar configurações",
             "Importar configurações", "Restaurar configurações", "Fazer backup",
             "Restaurar backup", "Verificar integridade", "Reconciliar arquivos",
-            "Executar diagnóstico geral", "Importar logcat (ADB)", "Cancelar coleta atual",
-            "Exportar relatório coletado", "Limpar resultados e histórico",
-            "Sistema Android", "Logcat disponível", "Armazenamento e permissões",
-            "Scanner e indexação", "SQLite e biblioteca", "Thumbnails, capas e cache",
-            "Ponte e comunicação interna", "Desempenho e estabilidade",
         )
         val icons = actions.map(::settingsIcon)
         assertEquals(actions.size, icons.distinct().size)

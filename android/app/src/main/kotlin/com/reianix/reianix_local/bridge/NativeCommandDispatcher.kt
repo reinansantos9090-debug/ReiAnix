@@ -131,11 +131,7 @@ object NativeCommandDispatcher {
                     previousState == NativeRequestState.OperationState.CANCELLED ||
                     previousState == NativeRequestState.OperationState.FAILED
                 if (terminal) {
-                    publishDiagnostic(
-                        command,
-                        "COMMAND_DUPLICATE",
-                        result = "ignored_duplicate",
-                    )
+
                     return
                 }
                 requestState.markOperationState(
@@ -143,19 +139,9 @@ object NativeCommandDispatcher {
                     command.action,
                     NativeRequestState.OperationState.QUEUED,
                 )
-                publishDiagnostic(
-                    command,
-                    "COMMAND_RECOVERED",
-                    state = NativeRequestState.OperationState.QUEUED.name,
-                    result = previousState?.name ?: "unknown",
-                )
+
             }
 
-            publishDiagnostic(
-                command,
-                "COMMAND_RECEIVED",
-                state = NativeRequestState.OperationState.RECEIVED.name,
-            )
             when (command.action) {
                 "play" -> dispatchPlay(command)
                 "extract_thumbnail" -> dispatchThumbnail(command)
@@ -227,12 +213,7 @@ object NativeCommandDispatcher {
                 command.action,
                 NativeRequestState.OperationState.COMPLETED,
             )
-            publishDurableDiagnostic(
-                command,
-                "PLAYER_HANDOFF_DISPATCHED",
-                state = NativeRequestState.OperationState.COMPLETED.name,
-                result = "direct_native_player",
-            )
+
             Log.i(
                 TAG,
                 "PLAYER_HANDOFF_DISPATCHED requestId=${command.requestId} " +
@@ -294,12 +275,7 @@ object NativeCommandDispatcher {
                             .put("status", "UNAUTHORIZED"),
                     ),
             )
-            publishDiagnostic(
-                command,
-                "OPERATION_COMPLETED",
-                state = NativeRequestState.OperationState.FAILED.name,
-                result = "thumbnail_unauthorized",
-            )
+
             return
         }
 
@@ -307,11 +283,6 @@ object NativeCommandDispatcher {
             command.requestId,
             command.action,
             NativeRequestState.OperationState.RUNNING,
-        )
-        publishDiagnostic(
-            command,
-            "OPERATION_STARTED",
-            state = NativeRequestState.OperationState.RUNNING.name,
         )
 
         thumbnailExecutor.execute {
@@ -433,58 +404,12 @@ object NativeCommandDispatcher {
             command.action,
             NativeRequestState.OperationState.COMPLETED,
         )
-        publishDiagnostic(
-            command,
-            "PLAYER_TRANSITION_CANCELLED",
-            state = NativeRequestState.OperationState.COMPLETED.name,
-            result = originRequestId,
-            playerSessionId = originPlayerSessionId,
-        )
+
     }
 
-    private fun publishDurableDiagnostic(
-        command: Command,
-        event: String,
-        state: String? = null,
-        result: String? = null,
-        playerSessionId: String? = null,
-    ) {
-        val payload = JSONObject()
-            .put("event", event)
-            .put("requestId", command.requestId)
-        if (!state.isNullOrBlank()) payload.put("state", state)
-        if (!result.isNullOrBlank()) payload.put("result", result)
-        if (!playerSessionId.isNullOrBlank()) payload.put("playerSessionId", playerSessionId)
-        NativeMailbox.write(
-            appContext,
-            JSONObject()
-                .put("type", "diagnostic")
-                .put("requestId", command.requestId)
-                .put("payload", payload),
-        )
-    }
 
-    private fun publishDiagnostic(
-        command: Command,
-        event: String,
-        state: String? = null,
-        result: String? = null,
-        playerSessionId: String? = null,
-    ) {
-        val payload = JSONObject()
-            .put("event", event)
-            .put("requestId", command.requestId)
-        if (!state.isNullOrBlank()) payload.put("state", state)
-        if (!result.isNullOrBlank()) payload.put("result", result)
-        if (!playerSessionId.isNullOrBlank()) payload.put("playerSessionId", playerSessionId)
-        NativeMailbox.writeBestEffort(
-            appContext,
-            JSONObject()
-                .put("type", "diagnostic")
-                .put("requestId", command.requestId)
-                .put("payload", payload),
-        )
-    }
+
+
 
     private fun publishFailure(
         command: Command,
@@ -501,21 +426,7 @@ object NativeCommandDispatcher {
             .put("stage", "native_command_dispatch")
             .put("reason", errorCode)
         if (!detail.isNullOrBlank()) payload.put("error", detail)
-        NativeMailbox.write(
-            appContext,
-            JSONObject()
-                .put("type", "diagnostic")
-                .put("requestId", command.requestId)
-                .put(
-                    "payload",
-                    JSONObject()
-                        .put("event", if (command.action == "play") "PLAYER_HANDOFF_FAILED" else "COMMAND_FAILED")
-                        .put("requestId", command.requestId)
-                        .put("reason", errorCode)
-                        .put("message", message)
-                        .put("detail", detail ?: ""),
-                ),
-        )
+
         NativeMailbox.writeBestEffort(
             appContext,
             JSONObject()

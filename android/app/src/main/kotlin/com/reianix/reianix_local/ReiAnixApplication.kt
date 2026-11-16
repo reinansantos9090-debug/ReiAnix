@@ -14,6 +14,8 @@ class ReiAnixApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Remove historical manual diagnostic reports without touching backups or library.
+        runCatching { deleteSharedPreferences("reianix_manual_diagnostics_v1") }
         runCatching { ReiAnixLegacyStorageMigration.migrate(this) }
             .onFailure { Log.w("ReiAnixMigration", "Legacy metadata migration deferred", it) }
         dependencies = ReiAnixAppDependencies(this)

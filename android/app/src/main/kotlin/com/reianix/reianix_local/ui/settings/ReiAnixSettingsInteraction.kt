@@ -107,10 +107,6 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "backup:actions" -> Icons.Filled.Backup
     "data-cache:info" -> Icons.Filled.Storage
     "backup:info" -> Icons.Filled.CloudDone
-    "diagnostic:info" -> Icons.Filled.BugReport
-    "diagnostic:actions" -> Icons.Filled.FactCheck
-    "diagnostic:reports" -> Icons.Filled.Assessment
-    "diagnostic:timeline:heading" -> Icons.Filled.Timeline
     "Restaurar" -> Icons.Filled.Restore
     "Limpar cache de capas" -> Icons.Filled.CleaningServices
     "Exportar configurações" -> Icons.Filled.UploadFile
@@ -120,19 +116,6 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "Restaurar backup" -> Icons.Filled.RestoreFromTrash
     "Verificar integridade" -> Icons.Filled.Verified
     "Reconciliar arquivos" -> Icons.Filled.Sync
-    "Executar diagnóstico geral" -> Icons.Filled.Troubleshoot
-    "Importar logcat (ADB)" -> Icons.Filled.Article
-    "Cancelar coleta atual" -> Icons.Filled.Cancel
-    "Exportar relatório coletado" -> Icons.Filled.FileUpload
-    "Limpar resultados e histórico" -> Icons.Filled.DeleteForever
-    "Sistema Android" -> Icons.Filled.Android
-    "Logcat disponível" -> Icons.Filled.Terminal
-    "Armazenamento e permissões" -> Icons.Filled.FolderShared
-    "Scanner e indexação" -> Icons.Filled.ManageSearch
-    "SQLite e biblioteca" -> Icons.Filled.Dataset
-    "Thumbnails, capas e cache" -> Icons.Filled.PhotoLibrary
-    "Ponte e comunicação interna" -> Icons.Filled.Cable
-    "Desempenho e estabilidade" -> Icons.Filled.Insights
     "Trocar conta" -> Icons.Filled.SwitchAccount
     "Sair" -> Icons.Filled.Logout
     "Adicionar pasta" -> Icons.Filled.CreateNewFolder

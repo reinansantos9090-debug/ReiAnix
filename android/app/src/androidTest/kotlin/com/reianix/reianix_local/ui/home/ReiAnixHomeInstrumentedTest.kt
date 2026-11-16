@@ -17,7 +17,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import com.reianix.reianix_local.ui.artwork.ReiAnixLocalArtwork
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reianix.reianix_local.ui.ReiAnixComposeRoot
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
@@ -253,7 +252,6 @@ class ReiAnixHomeInstrumentedTest {
 
     @Test
     fun artworkStateUpdateIsDecodedAndRenderedByCompose() {
-        ReiAnixDiagnosticTimeline.clear()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val artworkFile = File(context.cacheDir, "reianix-home-artwork-test.png")
         val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
@@ -278,18 +276,10 @@ class ReiAnixHomeInstrumentedTest {
             }
             composeRule.onNodeWithText("Aguardando arte").assertIsDisplayed()
             composeRule.runOnIdle { source.value = artworkFile.absolutePath }
-            composeRule.waitUntil(10_000L) {
-                ReiAnixDiagnosticTimeline.events.value.any { event ->
-                    event.name == "ARTWORK_IMAGE_READY" &&
-                        event.result == "COMPLETED" &&
-                        event.context["entity_id"] == "812" &&
-                        event.context["artwork_type"] == "poster"
-                }
-            }
+            composeRule.waitForIdle()
             composeRule.onNodeWithContentDescription("Artwork updated").assertIsDisplayed()
         } finally {
             artworkFile.delete()
-            ReiAnixDiagnosticTimeline.clear()
         }
     }
 

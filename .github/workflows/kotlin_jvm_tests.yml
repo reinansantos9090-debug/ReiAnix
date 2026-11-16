@@ -124,7 +124,6 @@ jobs:
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reianix.reianix_local.ReiAnixSettingsContractTest \
               --tests com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModelEpisodeSummaryTest \
-              --tests com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimelineOffMainTest \
               --tests com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
               --tests com.reianix.reianix_local.storage.NativeStorageOnboardingStateTest \
               --tests com.reianix.reianix_local.scanner.SafTreeChangeDetectionTest \

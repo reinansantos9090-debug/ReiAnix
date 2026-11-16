@@ -25,9 +25,6 @@ import com.reianix.reianix_local.ui.host.ReiAnixComposeLibraryHost
 import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsFileService
 import com.reianix.reianix_local.data.backup.ReiAnixBackupService
-import com.reianix.reianix_local.data.backup.ReiAnixDiagnosticsService
-import com.reianix.reianix_local.data.diagnostics.ReiAnixManualDiagnostics
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -186,22 +183,7 @@ class MainActivity : ComponentActivity() {
                     "resultCode=" + result.resultCode + " controlled=" + controlled +
                     " reason=" + reason.ifBlank { "-" },
             )
-            NativeMailbox.writeBestEffort(
-                this,
-                JSONObject()
-                    .put("type", "diagnostic")
-                    .put("requestId", requestId ?: "")
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("event", "PLAYER_ACTIVITY_RESULT")
-                            .put("resultCode", result.resultCode)
-                            .put("controlled", controlled)
-                            .put("reason", reason)
-                            .put("activityInstanceId", activityInstanceId ?: "")
-                            .put("unexpectedCancellation", result.resultCode == RESULT_CANCELED && !controlled),
-                    ),
-            )
+
             if (result.resultCode == RESULT_CANCELED && !controlled) {
                 Log.e(
                     tag,
@@ -550,14 +532,14 @@ class MainActivity : ComponentActivity() {
                 requestId = requestId,
                 origin = origin,
                 reason = reason,
-                includeAuthorizedDiagnostics = true,
+                includeMediaStoreScan = true,
                 onFinished = onSafScanFinished,
             )
             else -> scanConfiguredSafRoots(
                 requestId = requestId,
                 origin = origin,
                 reason = reason,
-                includeAuthorizedDiagnostics = source == null,
+                includeMediaStoreScan = source == null,
                 onFinished = onSafScanFinished,
             )
         }
@@ -694,7 +676,7 @@ class MainActivity : ComponentActivity() {
         // Android's callback map is only a notification; the current package permissions are authoritative.
         val granted = access != "denied"
         Log.i(tag, "MEDIA_PERMISSION_CALLBACK grants=" + grants + " access=" + access + " granted=" + granted)
-        NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "PERMISSION_RESULT").put("source", MediaStoreScanner.SOURCE).put("access", access)))
+
         NativeMailbox.write(this, JSONObject().put("type", "mediastore_permission")
             .put("requestId", requestId ?: "")
             .put("payload", JSONObject()
@@ -920,15 +902,7 @@ class MainActivity : ComponentActivity() {
             finishNativeBackupImport(uri)
         }
 
-    private val diagnosticExportLauncher =
-        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
-            finishNativeDiagnosticExport(uri)
-        }
 
-    private val diagnosticImportLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-            finishNativeDiagnosticLogImport(uri)
-        }
 
     private fun cancelSafPickerWatchdog() {
         safPickerWatchdog?.let { safPickerWatchdogHandler.removeCallbacks(it) }
@@ -941,10 +915,7 @@ class MainActivity : ComponentActivity() {
         val now = System.currentTimeMillis()
         Log.i(tag, "SAF_PICKER_STATE requestId=" + (requestId ?: "-") +
             " phase=" + phase.name + " at=" + now)
-        NativeMailbox.write(this, JSONObject().put("type", "diagnostic")
-            .put("requestId", requestId ?: "")
-            .put("payload", JSONObject().put("event", "SAF_PICKER_STATE")
-                .put("state", phase.name).put("requestId", requestId ?: "").put("timestamp", now)))
+
     }
 
     private fun clearSafPickerPending(requestId: String?, terminalPhase: SafPickerPhase) {
@@ -1083,26 +1054,10 @@ class MainActivity : ComponentActivity() {
         Log.i(tag, "SAF_PICKER_ACTIVITY_RESULT requestId=" + (requestId ?: "-") +
             " resultCode=" + result.resultCode + " hasUri=" + (uri != null) +
             " timestamp=" + System.currentTimeMillis())
-        publishNativeDiagnostic(
-            "SAF_PICKER_RESULT",
-            requestId,
-            action = "select_tree",
-            result = if (result.resultCode == RESULT_OK && uri != null) "RESULT_OK" else "RESULT_CANCELED",
-        )
 
         if (result.resultCode != RESULT_OK || uri == null) {
-            publishNativeDiagnostic(
-                "STORAGE_PICKER_CANCELLED",
-                requestId,
-                action = "select_tree",
-                result = "picker_cancelled",
-            )
-            publishNativeDiagnostic(
-                "STORAGE_CANCELLED",
-                requestId,
-                action = "select_tree",
-                result = "user_cancelled_picker",
-            )
+
+
             clearSafPickerPending(requestId, SafPickerPhase.CANCELLED)
             // Cancellation returns to the onboarding choice. The SAF picker is never
             // relaunched automatically; the user can retry through the visible button
@@ -1154,7 +1109,7 @@ class MainActivity : ComponentActivity() {
             }
             Log.i(tag, "SAF_PICKER_RESULT_VALID requestId=" + (requestId ?: "-") +
                 " authority=" + (uri.authority ?: "-"))
-            publishNativeDiagnostic("STORAGE_ROOT_SELECTED", requestId, action = "select_tree", result = uri.toString())
+
             val transientInspection = SafScanner.inspectTree(this, uri, requirePersisted = false)
             val transientStatus = transientInspection.optString("status")
             if (transientStatus != SafScanner.STATUS_COMPLETED) {
@@ -1166,8 +1121,8 @@ class MainActivity : ComponentActivity() {
             }
             val flags = resultIntent.flags
             SafScanner.persistPermission(this, uri, flags)
-            publishNativeDiagnostic("STORAGE_PERMISSION_PERSISTED", requestId, action = "select_tree", result = uri.toString())
-            publishNativeDiagnostic("SAF_PERMISSION_PERSISTED", requestId, action = "select_tree", result = uri.toString())
+
+
             val persistedInspection = SafScanner.inspectTree(this, uri, requirePersisted = true)
             val persistedStatus = persistedInspection.optString("status")
             if (persistedStatus != SafScanner.STATUS_COMPLETED) {
@@ -1178,8 +1133,8 @@ class MainActivity : ComponentActivity() {
                     status = status, treeUri = uri)
                 return
             }
-            publishNativeDiagnostic("STORAGE_ROOT_VALIDATED", requestId, action = "select_tree", result = uri.toString())
-            publishNativeDiagnostic("STORAGE_READY", requestId, action = "select_tree", result = "persisted_and_validated")
+
+
             val selectedIdentity = SafScanner.identityPayload(uri)
             val selectedName = SafScanner.displayName(this, uri)
             clearSafPickerPending(requestId, SafPickerPhase.COMPLETED)
@@ -1238,9 +1193,9 @@ class MainActivity : ComponentActivity() {
                     NativeMailbox.write(this@MainActivity, JSONObject().put("type", "saf_permission")
                         .put("requestId", requestId ?: "").put("payload", payload))
                 }.onFailure { Log.w(tag, "Native SAF registration succeeded, but compatibility state publication failed.", it) }
-                publishNativeDiagnostic("PERMISSION_CHANGE", requestId, action = "select_tree", result = "saf_granted")
-                publishNativeDiagnostic("STARTUP_SCAN_REQUESTED", requestId, action = "scan", result = "permission_change")
-                publishNativeDiagnostic("STORAGE_SCAN_STARTED", requestId, action = "select_tree", result = "permission_change")
+
+
+
                 scanTree(configuredReference, requestId)
             }
         } catch (exception: IllegalArgumentException) {
@@ -1258,46 +1213,7 @@ class MainActivity : ComponentActivity() {
                     SafScanner.STATUS_UNAVAILABLE else SafScanner.STATUS_FAILED, treeUri = uri)
         }
     }
-    private fun logLifecycle(event: String, intent: Intent? = null) {
-        val data = intent?.data
-        val action = data?.getQueryParameter("action")
-        val requestId = data?.getQueryParameter("request_id")
-        Log.i(
-            tag,
-            "LIFECYCLE $event instance=${System.identityHashCode(this)} task=$taskId resumed=$activityResumed " +
-                "focused=${window?.decorView?.hasWindowFocus() == true} finishing=$isFinishing " +
-                "action=${action ?: "-"} requestId=${requestId ?: "-"} flags=0x${intent?.flags?.toString(16) ?: "0"}"
-        )
-        ReiAnixDiagnosticTimeline.record(
-            name = "MAIN_ACTIVITY_LIFECYCLE",
-            source = "MainActivity",
-            result = event,
-            requestId = requestId,
-            context = mapOf(
-                "activity_instance" to System.identityHashCode(this),
-                "task_id" to taskId,
-                "resumed" to activityResumed,
-                "focused" to (window?.decorView?.hasWindowFocus() == true),
-                "finishing" to isFinishing,
-                "intent_flags" to (intent?.flags ?: 0),
-            ),
-        )
-        NativeMailbox.writeBestEffort(
-            this,
-            JSONObject().put("type", "diagnostic")
-                .put("requestId", requestId ?: "")
-                .put("payload", JSONObject()
-                    .put("event", "MAIN_ACTIVITY_LIFECYCLE")
-                    .put("lifecycle", event)
-                    .put("requestId", requestId ?: "")
-                    .put("activeRequestId", activePlayerRequestId ?: "")
-                    .put("activeCommandCreatedAtMs", activePlayerCommandCreatedAtMs)
-                    .put("activityElapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
-                    .put("resumed", activityResumed)
-                    .put("focused", window?.decorView?.hasWindowFocus() == true)
-                    .put("finishing", isFinishing)),
-        )
-    }
+
 
     private fun publishInteractionProfileIfChanged(force: Boolean = false) {
         val profile = DeviceInteractionProfile.detect(this)
@@ -1375,8 +1291,8 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState?.containsKey(STATE_LAST_OBSERVED_BROAD_ACCESS) == true) {
             lastObservedBroadAccess = savedInstanceState.getBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS)
         }
-        logLifecycle("onCreate", intent)
-        NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "APP_START").put("lifecycle", "onCreate")))
+
+
         systemUiController = SystemUiController(window)
         lifecycleScope.launch {
             SafTreeChangeMonitor.changes.collect {
@@ -1439,7 +1355,7 @@ class MainActivity : ComponentActivity() {
     public override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        logLifecycle("onNewIntent", intent)
+
         if (!nativeBootstrapDecisionComplete || !::composeLibraryHost.isInitialized) {
             synchronized(pendingNativeIntentsBeforeBootstrap) {
                 pendingNativeIntentsBeforeBootstrap.add(intent)
@@ -1459,11 +1375,8 @@ class MainActivity : ComponentActivity() {
             ?.trim().orEmpty()
         val nativeActions = setOf(
             "settings_export", "settings_import", "backup_create", "backup_restore",
-            "backup_recovery_restore", "backup_recovery_restore_local", "backup_recovery_snapshot", "backup_integrity", "backup_reconcile", "diagnostic_export",
-            "diagnostic_run_general", "diagnostic_run_system", "diagnostic_run_logs",
-            "diagnostic_run_storage", "diagnostic_run_scanner", "diagnostic_run_sqlite",
-            "diagnostic_run_thumbnails", "diagnostic_run_bridge", "diagnostic_run_performance",
-            "diagnostic_import_logcat", "diagnostic_clear", "diagnostic_cancel",
+            "backup_recovery_restore", "backup_recovery_restore_local", "backup_recovery_snapshot",
+            "backup_integrity", "backup_reconcile",
         )
         if (action == null || action !in nativeActions) return
 
@@ -1476,27 +1389,7 @@ class MainActivity : ComponentActivity() {
             Log.w(tag, "SETTINGS_NATIVE_ACTION_REJECTED reason=invalid_request_id action=" + action)
             return
         }
-        ReiAnixDiagnosticTimeline.record(
-            name = "SETTINGS_BRIDGE_ACTION_RECEIVED",
-            source = "MainActivity",
-            result = "RECEIVED",
-            requestId = requestId,
-            context = mapOf(
-                "action" to action,
-                "file_operation_busy" to (pendingSettingsFileAction != null || settingsFileProcessing),
-            ),
-        )
-        if (action == "diagnostic_cancel") {
-            // Cancellation must remain available while a long manual diagnostic owns the file-operation slot.
-            ReiAnixManualDiagnostics.requestCancellation()
-            lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(
-                    requestId, action, "SUCCESS", "SUCCESS",
-                    message = "Cancelamento solicitado; a coleta preservará as categorias já concluídas.",
-                )
-            }
-            return
-        }
+
         // Only actions required to inspect or recover data remain available in
         // Recovery Mode. In particular, normal restore/reconcile/import paths are
         // unavailable while SQLite health is unresolved.
@@ -1505,11 +1398,6 @@ class MainActivity : ComponentActivity() {
             "backup_recovery_restore",
             "backup_recovery_restore_local",
             "backup_recovery_snapshot",
-            "diagnostic_export",
-            "diagnostic_run_general", "diagnostic_run_system", "diagnostic_run_logs",
-            "diagnostic_run_storage", "diagnostic_run_scanner", "diagnostic_run_sqlite",
-            "diagnostic_run_thumbnails", "diagnostic_run_bridge", "diagnostic_run_performance",
-            "diagnostic_import_logcat", "diagnostic_clear", "diagnostic_cancel",
         )
         if (
             appDependencies.bootstrap.state.value.recoveryRequired &&
@@ -1543,13 +1431,10 @@ class MainActivity : ComponentActivity() {
                     message = if (
                         action == "backup_integrity" ||
                         action == "backup_reconcile" ||
-                        action == "backup_recovery_snapshot" ||
-                        action.startsWith("diagnostic_run_") ||
-                        action == "diagnostic_clear"
+                        action == "backup_recovery_snapshot"
                     ) "Preparando a operação nativa." else if (action == "backup_recovery_restore_local") {
                         "Procurando um backup válido salvo pelo ReiAnix."
-                    } else if (action == "diagnostic_export" || action == "diagnostic_import_logcat" ||
-                        action == "settings_export" || action == "settings_import" ||
+                    } else if (action == "settings_export" || action == "settings_import" ||
                         action == "backup_create" || action == "backup_restore" ||
                         action == "backup_recovery_restore") {
                         "Aguardando o seletor de arquivos do Android."
@@ -1574,22 +1459,6 @@ class MainActivity : ComponentActivity() {
                             arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
                         )
                         "backup_recovery_restore_local" -> restoreNewestLocalBackupForRecovery(requestId)
-                        "diagnostic_export" -> {
-                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.ROOT).format(Date())
-                            val uniqueSuffix = UUID.randomUUID().toString().take(8)
-                            diagnosticExportLauncher.launch("reianix-diagnostic-" + stamp + "-" + uniqueSuffix + ".json")
-                        }
-                        "diagnostic_import_logcat" -> diagnosticImportLauncher.launch(
-                            arrayOf("text/plain", "application/octet-stream", "*/*"),
-                        )
-                        "diagnostic_run_general", "diagnostic_run_system", "diagnostic_run_logs",
-                        "diagnostic_run_storage", "diagnostic_run_scanner", "diagnostic_run_sqlite",
-                        "diagnostic_run_thumbnails", "diagnostic_run_bridge", "diagnostic_run_performance",
-                        "diagnostic_clear" -> {
-                            pendingSettingsFileAction = null
-                            pendingSettingsFileRequestId = null
-                            runNativeSettingsMaintenanceAction(action, requestId)
-                        }
                         "backup_integrity", "backup_reconcile", "backup_recovery_snapshot" -> {
                             pendingSettingsFileAction = null
                             pendingSettingsFileRequestId = null
@@ -2086,133 +1955,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun finishNativeDiagnosticExport(uri: Uri?) {
-        val action = pendingSettingsFileAction
-        val requestId = pendingSettingsFileRequestId
-        pendingSettingsFileAction = null
-        pendingSettingsFileRequestId = null
-        if (action != "diagnostic_export" || requestId.isNullOrBlank()) return
-        if (uri == null) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Exportação de diagnóstico cancelada.")
-            }
-            return
-        }
-        if (settingsFileProcessing) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
-            }
-            return
-        }
-        settingsFileProcessing = true
-        lifecycleScope.launch {
-            try {
-                val report = withContext(Dispatchers.IO) { ReiAnixDiagnosticsService(applicationContext).exportJson() }
-                withContext(Dispatchers.IO) {
-                    val output = contentResolver.openOutputStream(uri, "w")
-                        ?: throw IllegalStateException("O Android não abriu o destino do diagnóstico.")
-                    output.use { it.write(report) }
-                    writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = "Diagnóstico nativo exportado.")
-                }
-            } catch (cancelled: CancellationException) {
-                withContext(NonCancellable + Dispatchers.IO) {
-                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A exportação de diagnóstico foi cancelada.")
-                }
-                throw cancelled
-            } catch (error: Exception) {
-                Log.e(tag, "NATIVE_DIAGNOSTIC_EXPORT_FAILED requestId=" + requestId, error)
-                withContext(Dispatchers.IO) {
-                    writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível exportar o diagnóstico.")
-                }
-            } finally {
-                settingsFileProcessing = false
-            }
-        }
-    }
 
-    private fun finishNativeDiagnosticLogImport(uri: Uri?) {
-        val action = pendingSettingsFileAction
-        val requestId = pendingSettingsFileRequestId
-        pendingSettingsFileAction = null
-        pendingSettingsFileRequestId = null
-        if (action != "diagnostic_import_logcat" || requestId.isNullOrBlank()) return
-        if (uri == null) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(
-                    requestId, action, "CANCELLED", "CANCELLED",
-                    message = "Importação de Logcat cancelada.",
-                )
-            }
-            return
-        }
-        if (settingsFileProcessing) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(
-                    requestId, action, "ERROR", "ERROR",
-                    error = "Outra operação de arquivo está em andamento.",
-                )
-            }
-            return
-        }
-        settingsFileProcessing = true
-        lifecycleScope.launch {
-            try {
-                val rawLogcat = withContext(Dispatchers.IO) {
-                    val input = contentResolver.openInputStream(uri)
-                        ?: throw IllegalStateException("O Android não abriu o log selecionado.")
-                    input.use { stream ->
-                        val output = java.io.ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        var total = 0
-                        while (true) {
-                            val count = stream.read(buffer)
-                            if (count < 0) break
-                            if (count == 0) continue
-                            total += count
-                            require(total <= 5 * 1024 * 1024) {
-                                "O arquivo de Logcat excede o limite permitido de 5 MiB."
-                            }
-                            output.write(buffer, 0, count)
-                        }
-                        output.toString(Charsets.UTF_8.name())
-                    }
-                }
-                val summary = withContext(Dispatchers.IO) {
-                    ReiAnixManualDiagnostics.importLogcat(applicationContext, rawLogcat)
-                }
-                withContext(Dispatchers.IO) {
-                    val partial = summary.optString("status") == "PARTIAL"
-                    writeSettingsFileActionResult(
-                        requestId, action, "SUCCESS", "SUCCESS",
-                        message = if (partial) {
-                            "Logcat importado parcialmente: nenhuma linha relevante foi encontrada; veja as instruções ADB no relatório."
-                        } else {
-                            "Logcat importado; linhas relevantes: " + summary.optInt("matching_lines") + "."
-                        },
-                    )
-                }
-            } catch (cancelled: CancellationException) {
-                withContext(NonCancellable + Dispatchers.IO) {
-                    writeSettingsFileActionResult(
-                        requestId, action, "CANCELLED", "CANCELLED",
-                        error = "A importação do Logcat foi cancelada.",
-                    )
-                }
-                throw cancelled
-            } catch (error: Exception) {
-                Log.e(tag, "NATIVE_DIAGNOSTIC_LOGCAT_IMPORT_FAILED requestId=" + requestId, error)
-                withContext(Dispatchers.IO) {
-                    writeSettingsFileActionResult(
-                        requestId, action, "ERROR", "ERROR",
-                        error = error.message?.takeIf { it.isNotBlank() }
-                            ?: "Não foi possível importar o Logcat.",
-                    )
-                }
-            } finally {
-                settingsFileProcessing = false
-            }
-        }
-    }
 
     private fun runNativeSettingsMaintenanceAction(action: String, requestId: String) {
         settingsFileProcessing = true
@@ -2222,39 +1965,6 @@ class MainActivity : ComponentActivity() {
                     writeSettingsFileActionResult(requestId, action, "RUNNING", "RUNNING", message = "Executando verificação nativa.")
                 }
                 when (action) {
-                    "diagnostic_run_general", "diagnostic_run_system", "diagnostic_run_logs",
-                    "diagnostic_run_storage", "diagnostic_run_scanner", "diagnostic_run_sqlite",
-                    "diagnostic_run_thumbnails", "diagnostic_run_bridge", "diagnostic_run_performance" -> {
-                        val category = action.removePrefix("diagnostic_run_")
-                        val summary = withContext(Dispatchers.IO) {
-                            ReiAnixManualDiagnostics.run(applicationContext, category)
-                        }
-                        val diagnosticStatus = summary.optString("status", "FAILED")
-                        val categoriesExecuted = summary.optJSONArray("categories_executed")?.length() ?: 0
-                        val message = when (diagnosticStatus) {
-                            "COMPLETED" -> "Diagnóstico concluído. Categorias executadas: " + categoriesExecuted + "."
-                            "PARTIAL" -> "Diagnóstico concluído parcialmente. Categorias concluídas: " + categoriesExecuted + ". Resultados parciais foram preservados."
-                            "CANCELLED" -> "Diagnóstico cancelado. Os resultados das categorias concluídas foram preservados."
-                            else -> "O diagnóstico falhou. Consulte os resultados e tente novamente."
-                        }
-                        withContext(Dispatchers.IO) {
-                            writeSettingsFileActionResult(
-                                requestId, action,
-                                if (diagnosticStatus == "FAILED") "ERROR" else if (diagnosticStatus == "CANCELLED") "CANCELLED" else "SUCCESS",
-                                if (diagnosticStatus == "FAILED") "ERROR" else if (diagnosticStatus == "CANCELLED") "CANCELLED" else "SUCCESS",
-                                message = message,
-                            )
-                        }
-                    }
-                    "diagnostic_clear" -> {
-                        withContext(Dispatchers.IO) { ReiAnixManualDiagnostics.clear(applicationContext) }
-                        withContext(Dispatchers.IO) {
-                            writeSettingsFileActionResult(
-                                requestId, action, "SUCCESS", "SUCCESS",
-                                message = "Resultados e histórico de diagnóstico removidos.",
-                            )
-                        }
-                    }
                     "backup_integrity" -> {
                         val report = withContext(Dispatchers.IO) { ReiAnixBackupService(applicationContext).integrityReport() }
                         if (!report.healthy) {
@@ -2354,27 +2064,7 @@ class MainActivity : ComponentActivity() {
                 temporary.delete()
                 throw IllegalStateException("Could not atomically publish the Settings result.")
             }
-            // Clearing diagnostics must leave the process timeline empty after the user-confirmed action.
-            if (!(action == "diagnostic_clear" && operationState.equals("SUCCESS", ignoreCase = true))) {
-                ReiAnixDiagnosticTimeline.record(
-                    name = "SETTINGS_BRIDGE_RESULT",
-                    severity = when (operationState.uppercase(Locale.ROOT)) {
-                    "ERROR", "FAILED" -> "ERROR"
-                    "CANCELLED" -> "WARN"
-                    else -> "INFO"
-                },
-                source = "MainActivity",
-                result = operationState,
-                requestId = requestId,
-                context = mapOf(
-                    "action" to action,
-                    "status" to status,
-                    "message_present" to !message.isNullOrBlank(),
-                    "error_present" to !error.isNullOrBlank(),
-                ),
-                    error = error?.takeIf { it.isNotBlank() }?.let { IllegalStateException(it) },
-                )
-            }
+
         } catch (exception: Exception) {
             Log.e(tag, "SETTINGS_FILE_RESULT_WRITE_FAILED requestId=" + requestId + " action=" + action, exception)
         }
@@ -2427,17 +2117,17 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         registerStorageReceiver()
         MediaStoreScanner.startChangeObserver(this) { scheduleMediaStoreIncrementalRescan() }
-        logLifecycle("onStart")
+
         applyApplicationSystemUi()
     }
 
     override fun onResume() {
         super.onResume()
-        PerformanceDiagnostics.attach(this)
-        PerformanceDiagnostics.sampleMemory(this, "main_on_resume")
+
+
         activityResumed = true
-        logLifecycle("onResume")
-        NativeMailbox.writeBestEffort(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "ON_RESUME").put("lifecycle", "onResume")))
+
+
         applyApplicationSystemUi()
         if (safPickerPending) {
             // onResume marks return even when a provider omits the separate focus-loss callback.
@@ -2643,17 +2333,12 @@ class MainActivity : ComponentActivity() {
                                 "scan_library",
                                 NativeRequestState.OperationState.RUNNING,
                             )
-                            publishNativeDiagnostic(
-                                "OPERATION_STARTED",
-                                pendingRequestId,
-                                "scan_library",
-                                NativeRequestState.OperationState.RUNNING.name,
-                            )
+
                             scanConfiguredSafRoots(
                                 pendingRequestId,
                                 "USER_REFRESH",
                                 "compose_library_refresh",
-                                includeAuthorizedDiagnostics = true,
+                                includeMediaStoreScan = true,
                             )
                         }
                         "play" -> {
@@ -2665,13 +2350,7 @@ class MainActivity : ComponentActivity() {
                                     "play",
                                     NativeRequestState.OperationState.RUNNING,
                                 )
-                                publishNativeDiagnostic(
-                                    "OPERATION_STARTED",
-                                    pendingRequestId,
-                                    "play",
-                                    NativeRequestState.OperationState.RUNNING.name,
-                                )
-        
+
                                 // Reuse the exact command that arrived from Python whenever possible.
                                 // This preserves playerSessionId, origin request/generation fencing,
                                 // monotonic correlation and all player settings across onResume.
@@ -2690,13 +2369,7 @@ class MainActivity : ComponentActivity() {
                                         "play",
                                         NativeRequestState.OperationState.FAILED,
                                     )
-                                    publishNativeDiagnostic(
-                                        "PLAYER_HANDOFF_REJECTED",
-                                        pendingRequestId,
-                                        "play",
-                                        NativeRequestState.OperationState.FAILED.name,
-                                        result = "PLAYER_SESSION_INVALID",
-                                    )
+
                                     clearPendingPlay()
                                     return
                                 }
@@ -2731,13 +2404,7 @@ class MainActivity : ComponentActivity() {
                                     .build()
                                 clearPendingPlay()
                                 if (openPlayer(playData, commandReceivedAtMs = System.currentTimeMillis())) {
-                                    publishNativeDiagnostic(
-                                        "COMMAND_DISPATCHED",
-                                        pendingRequestId,
-                                        "play",
-                                        nativeRequestState.operationState(pendingRequestId)?.name,
-                                        result = if (preservedPlayData != null) "dispatched_preserved_request" else "dispatched_legacy_restore",
-                                    )
+
                                 }
                             } else {
                                 clearPendingPlay()
@@ -2763,7 +2430,7 @@ class MainActivity : ComponentActivity() {
             safPickerFocusLost = true
             safPickerFocusRegainedAtMs = 0L
         }
-        logLifecycle("onPause")
+
         super.onPause()
     }
 
@@ -2771,7 +2438,7 @@ class MainActivity : ComponentActivity() {
         // SAF tree observers are process-scoped and intentionally remain registered
         // while the Activity is backgrounded. MediaStore/UI observers keep their
         // existing lifecycle because they are separate capabilities.
-        logLifecycle("onStop")
+
         unregisterStorageReceiver()
         MediaStoreScanner.stopChangeObserver(this)
         defaultFolderScanHandler.removeCallbacks(defaultFolderScanRunnable)
@@ -2779,15 +2446,15 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        PerformanceDiagnostics.sampleMemory(this, "main_on_destroy")
-        PerformanceDiagnostics.detach()
+
+
         cancelSafPickerWatchdog()
         if (::composeLibraryHost.isInitialized) composeLibraryHost.dispose()
         googleSignInJob?.cancel()
         googleSignInJob = null
         googleSignOutJob?.cancel()
         googleSignOutJob = null
-        logLifecycle("onDestroy")
+
         if (isFinishing) NativeScanController.cancelAll()
         unregisterStorageReceiver()
         super.onDestroy()
@@ -2952,87 +2619,7 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun publishNativeDiagnostic(
-        event: String,
-        requestId: String?,
-        action: String? = null,
-        state: String? = null,
-        result: String? = null,
-        error: String? = null,
-        protocolVersion: Int? = null,
-        commandCreatedAt: Long? = null,
-        parameterNames: String? = null,
-        playerSessionId: String? = null,
-        transitionDirection: String? = null,
-    ) {
-        val normalizedEvent = event.uppercase(Locale.ROOT)
-        if (
-            normalizedEvent.contains("COMMAND") ||
-            normalizedEvent.contains("REQUEST") ||
-            normalizedEvent.contains("BRIDGE") ||
-            normalizedEvent.contains("MAILBOX") ||
-            normalizedEvent.contains("PENDING") ||
-            normalizedEvent.contains("DISCARDED") ||
-            normalizedEvent.contains("DROPPED") ||
-            normalizedEvent.contains("FAILED") ||
-            normalizedEvent.contains("ERROR")
-        ) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_BRIDGE_" + normalizedEvent,
-                severity = when {
-                    state?.contains("FAILED", ignoreCase = true) == true ||
-                        result?.contains("FAILED", ignoreCase = true) == true ||
-                        normalizedEvent.contains("FAILED") ||
-                        normalizedEvent.contains("ERROR") -> "ERROR"
-                    normalizedEvent.contains("DUPLICATE") ||
-                        normalizedEvent.contains("DROPPED") ||
-                        normalizedEvent.contains("PENDING") -> "WARN"
-                    else -> "INFO"
-                },
-                source = "MainActivity",
-                result = result ?: state,
-                requestId = requestId,
-                error = error?.takeIf { it.isNotBlank() }?.let(::IllegalStateException),
-                context = mapOf(
-                    "action" to action,
-                    "state" to state,
-                    "protocol_version" to protocolVersion,
-                    "transition_direction" to transitionDirection,
-                    "parameter_names" to parameterNames,
-                ),
-            )
-        }
-        val payload = JSONObject()
-            .put("event", event)
-            .put("requestId", requestId ?: "")
-            .put("action", action ?: "")
-            .put("timestamp", System.currentTimeMillis())
-        if (state != null) payload.put("state", state)
-        if (result != null) payload.put("result", result)
-        if (error != null) payload.put("error", error)
-        if (protocolVersion != null) payload.put("protocolVersion", protocolVersion)
-        if (commandCreatedAt != null) payload.put("commandCreatedAt", commandCreatedAt)
-        if (parameterNames != null) payload.put("parameterNames", parameterNames)
-        if (!playerSessionId.isNullOrBlank()) payload.put("playerSessionId", playerSessionId)
-        if (!transitionDirection.isNullOrBlank()) payload.put("transitionDirection", transitionDirection.uppercase())
-        NativeMailbox.write(
-            this,
-            JSONObject().put("type", "diagnostic").put("requestId", requestId ?: "").put("payload", payload),
-        )
-    }
 
-    private fun publishPlayerSessionDiagnostic(
-        requestId: String?,
-        event: String,
-        sessionId: String? = activePlayerSessionId,
-    ) {
-        publishNativeDiagnostic(
-            event,
-            requestId,
-            action = "play",
-            playerSessionId = sessionId,
-        )
-    }
 
     private fun publishNativeCommandError(
         requestId: String?,
@@ -3056,10 +2643,7 @@ class MainActivity : ComponentActivity() {
                 .put("payload", JSONObject().put("stage", stage).put("code", code)
                     .put("action", action ?: "").put("timestamp", System.currentTimeMillis())),
         )
-        publishNativeDiagnostic(
-            "COMMAND_FAILED", requestId, action, NativeRequestState.OperationState.FAILED.name,
-            error = code,
-        )
+
     }
     /**
      * Existing UI/service boundary for native storage actions. Compose never
@@ -3119,7 +2703,7 @@ class MainActivity : ComponentActivity() {
         }
         if (!nativeRequestState.acceptRequest(requestId, action, commandCreatedAt ?: System.currentTimeMillis())) {
             Log.i(tag, "COMMAND_DUPLICATE action=" + action + " requestId=" + requestId)
-            publishNativeDiagnostic("COMMAND_DUPLICATE", requestId, action, result = "ignored_duplicate")
+
             return
         }
         val settingsAction = data.getQueryParameter("settings_action")?.trim()?.lowercase()
@@ -3169,11 +2753,6 @@ class MainActivity : ComponentActivity() {
             " createdAt=" + (commandCreatedAt ?: "-") +
             " parameterNames=" + parameterNames +
             " flags=0x" + intent.flags.toString(16))
-        publishNativeDiagnostic("COMMAND_RECEIVED", requestId, action,
-            NativeRequestState.OperationState.RECEIVED.name,
-            protocolVersion = protocolVersion ?: 1,
-            commandCreatedAt = commandCreatedAt,
-            parameterNames = parameterNames)
 
         // Navigation is not a database mutation. Keep Home, Library, Organize and
         // Settings reachable during a database fault so the user can inspect/export
@@ -3218,43 +2797,43 @@ class MainActivity : ComponentActivity() {
                     }
                     composeLibraryHost.show(destination, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
-                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+
                 }
                 "open_organize" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeLibraryHost.show(ReiAnixRoutes.ORGANIZE, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
-                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+
                 }
                 "hide_library" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeLibraryHost.hide()
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
-                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+
                 }
                 "open_storage_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeLibraryHost.show(ReiAnixRoutes.STORAGE, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
-                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+
                 }
                 "open_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeLibraryHost.show(ReiAnixRoutes.SETTINGS, resetBackStack = true)
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
-                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+
                 }
                 "hide_settings" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
                     composeLibraryHost.hide()
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
-                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+
                 }
                 "select_tree" -> {
                     if (!activityResumed) {
                         if (nativeRequestState.queueLifecycleAction("select_tree", requestId)) {
                             Log.i(tag, "COMMAND_QUEUED action=select_tree requestId=" + requestId)
-                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+
                         } else {
                             publishNativeCommandError(requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
                                 "Não foi possível iniciar a seleção da pasta agora. Tente novamente.")
@@ -3268,13 +2847,13 @@ class MainActivity : ComponentActivity() {
                     }
                     pendingSafRequestId = requestId
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     openTreePicker(requestId)
                 }
                 "scan_library" -> {
                     if (!activityResumed) {
                         if (nativeRequestState.queueLifecycleAction(action, requestId)) {
-                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+
                         } else {
                             publishNativeCommandError(
                                 requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
@@ -3285,27 +2864,27 @@ class MainActivity : ComponentActivity() {
                         return
                     }
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     scanConfiguredSafRoots(
                         requestId,
                         "USER_REFRESH",
                         "compose_library_refresh",
-                        includeAuthorizedDiagnostics = true,
+                        includeMediaStoreScan = true,
                     )
                 }
                 "scan_tree" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     scanTree(intent.data?.getQueryParameter("tree_uri"), requestId)
                 }
                 "verify_tree" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     verifyTree(intent.data?.getQueryParameter("tree_uri"), requestId)
                 }
                 "release_tree" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     releaseTree(
                         intent.data?.getQueryParameter("tree_uri"),
                         requestId,
@@ -3314,13 +2893,13 @@ class MainActivity : ComponentActivity() {
                 }
                 "scan_media_store" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     scanMediaStore(requestId)
                 }
                 "request_media_access" -> {
                     if (!activityResumed) {
                         if (nativeRequestState.queueLifecycleAction(action, requestId)) {
-                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+
                         } else {
                             publishNativeCommandError(requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
                                 "Não foi possível iniciar a solicitação de acesso aos vídeos agora. Tente novamente.")
@@ -3334,13 +2913,13 @@ class MainActivity : ComponentActivity() {
                     }
                     pendingMediaRequestId = requestId
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     requestMediaAccess()
                 }
                 "open_broad_storage_settings" -> {
                     if (!activityResumed) {
                         if (nativeRequestState.queueLifecycleAction(action, requestId)) {
-                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+
                         } else {
                             publishNativeCommandError(requestId, action, "lifecycle_queue", "LIFECYCLE_QUEUE_BUSY",
                                 "Não foi possível abrir as configurações de armazenamento agora. Tente novamente.")
@@ -3349,12 +2928,12 @@ class MainActivity : ComponentActivity() {
                     }
                     pendingBroadRequestId = requestId
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     openBroadStorageSettings()
                 }
                 "check_storage_access" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     publishStorageStatus(requestId)
                     completeComposeSettingsStorageAction(
                         requestId,
@@ -3362,33 +2941,33 @@ class MainActivity : ComponentActivity() {
                         message = "Estado das permissões de armazenamento atualizado.",
                     )
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
-                    publishNativeDiagnostic("OPERATION_COMPLETED", requestId, action, NativeRequestState.OperationState.COMPLETED.name)
+
                 }
                 "scan_all_storage" -> {
                     // Legacy intent: scan configured SAF trees and eligible MediaStore
                     // sources, not unrestricted filesystem paths.
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     scanConfiguredSafRoots(
                         requestId = requestId,
                         origin = "USER_REFRESH",
                         reason = "legacy_scan_all_storage",
-                        includeAuthorizedDiagnostics = true,
+                        includeMediaStoreScan = true,
                     )
                 }
                 "extract_thumbnail" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     requestThumbnail(intent.data, requestId)
                 }
                 "cancel_scan" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     cancelNativeScans(requestId)
                 }
                 "google_sign_in" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     val nativeOwner = intent.data?.getQueryParameter("native_account_owner") == "true"
                     val settingsAction = intent.data?.getQueryParameter("settings_action")?.trim()
                     if (nativeOwner && settingsAction == "login") {
@@ -3399,7 +2978,7 @@ class MainActivity : ComponentActivity() {
                 }
                 "google_sign_out" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     val nativeOwner = intent.data?.getQueryParameter("native_account_owner") == "true"
                     val settingsAction = intent.data?.getQueryParameter("settings_action")?.trim()
                     if (nativeOwner && settingsAction == "logout") {
@@ -3410,7 +2989,7 @@ class MainActivity : ComponentActivity() {
                 }
                 "google_account_switch" -> {
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                    publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                     if (
                         intent.data?.getQueryParameter("native_account_owner") == "true" &&
                         intent.data?.getQueryParameter("settings_action")?.trim() == "switch"
@@ -3433,13 +3012,7 @@ class MainActivity : ComponentActivity() {
                         action,
                         NativeRequestState.OperationState.RUNNING,
                     )
-                    publishNativeDiagnostic(
-                        "OPERATION_STARTED",
-                        requestId,
-                        action,
-                        NativeRequestState.OperationState.RUNNING.name,
-                        playerSessionId = originPlayerSessionId,
-                    )
+
                     if (originRequestId.isBlank()) {
                         publishNativeCommandError(
                             requestId,
@@ -3456,14 +3029,7 @@ class MainActivity : ComponentActivity() {
                         action,
                         NativeRequestState.OperationState.COMPLETED,
                     )
-                    publishNativeDiagnostic(
-                        "PLAYER_TRANSITION_CANCELLED",
-                        requestId,
-                        action,
-                        NativeRequestState.OperationState.COMPLETED.name,
-                        result = originRequestId,
-                        playerSessionId = originPlayerSessionId,
-                    )
+
                 }
                 "play" -> {
                     if (!activityResumed) {
@@ -3479,13 +3045,7 @@ class MainActivity : ComponentActivity() {
                                     action,
                                     NativeRequestState.OperationState.FAILED,
                                 )
-                                publishNativeDiagnostic(
-                                    "PLAYER_HANDOFF_REJECTED",
-                                    requestId,
-                                    action,
-                                    NativeRequestState.OperationState.FAILED.name,
-                                    result = "stale_pending_request",
-                                )
+
                                 return
                             }
                             nativeRequestState.markOperationState(
@@ -3493,13 +3053,7 @@ class MainActivity : ComponentActivity() {
                                 "play",
                                 NativeRequestState.OperationState.CANCELLED,
                             )
-                            publishNativeDiagnostic(
-                                "PLAYER_REQUEST_REPLACED",
-                                existingPendingId,
-                                "play",
-                                NativeRequestState.OperationState.CANCELLED.name,
-                                result = requestId,
-                            )
+
                             nativeRequestState.consumeLifecycleRequest()
                             clearPendingPlay()
                         }
@@ -3522,7 +3076,7 @@ class MainActivity : ComponentActivity() {
                         pendingPlayCommandCreatedAtMs = commandCreatedAt ?: 0L
                         pendingPlayRequestId = requestId
                         if (nativeRequestState.queueLifecycleAction("play", requestId)) {
-                            publishNativeDiagnostic("COMMAND_QUEUED", requestId, action, NativeRequestState.OperationState.QUEUED.name)
+
                             return
                         }
                         clearPendingPlay()
@@ -3531,15 +3085,14 @@ class MainActivity : ComponentActivity() {
                         return
                     } else {
                         nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.RUNNING)
-                        publishNativeDiagnostic("OPERATION_STARTED", requestId, action, NativeRequestState.OperationState.RUNNING.name)
+
                         if (!openPlayer(data, commandReceivedAtMs = commandReceivedAtMs)) {
                             return
                         }
                     }
                 }
             }
-            publishNativeDiagnostic("COMMAND_DISPATCHED", requestId, action,
-                nativeRequestState.operationState(requestId)?.name, result = "dispatched")
+
         } catch (exception: Exception) {
             Log.e(tag, "NATIVE_DISPATCH_FAILED requestId=" + requestId + " action=" + action, exception)
             publishNativeCommandError(requestId, action, "dispatch", "DISPATCH_EXCEPTION",
@@ -3555,7 +3108,7 @@ class MainActivity : ComponentActivity() {
         requestId: String?,
         origin: String,
         reason: String,
-        includeAuthorizedDiagnostics: Boolean = false,
+        includeMediaStoreScan: Boolean = false,
         onFinished: (() -> Unit)? = null,
     ) {
         if (!activityResumed) {
@@ -3730,13 +3283,7 @@ class MainActivity : ComponentActivity() {
                         recordSourceStartFailure(sourceKey, error)
                         continue
                     }
-                    publishNativeDiagnostic(
-                        "NATIVE_SAF_SCAN_REQUESTED",
-                        requestId,
-                        action = "scan",
-                        state = "QUEUED",
-                        result = "$origin:$reason",
-                    )
+
                     val scanId = scanTree(reference, requestId)
                     if (scanId == null) {
                         recordSourceStartFailure(sourceKey, "scan_not_started")
@@ -3745,7 +3292,7 @@ class MainActivity : ComponentActivity() {
                     pendingSources += sourceKey to scanId
                 }
 
-                if (includeAuthorizedDiagnostics) {
+                if (includeMediaStoreScan) {
                     if (MediaStoreScanner.hasReadPermission(this@MainActivity)) {
                         requestedSources++
                         val mediaScanId = scanMediaStore(requestId)
@@ -3799,33 +3346,19 @@ class MainActivity : ComponentActivity() {
                                 .put("noSourcesAvailable", requestedSources == 0),
                         ),
                 )
-                publishNativeDiagnostic(
-                    if (terminalRequestState == NativeRequestState.OperationState.COMPLETED) "OPERATION_COMPLETED"
-                    else if (terminalRequestState == NativeRequestState.OperationState.CANCELLED) "OPERATION_CANCELLED"
-                    else "OPERATION_FAILED",
-                    requestId,
-                    "scan_library",
-                    terminalRequestState.name,
-                    result = status,
-                )
+
                 scanCompletedSuccessfully = status == "COMPLETED"
                 noSourcesAvailable = requestedSources == 0
             } catch (cancelled: CancellationException) {
                 refreshTerminalStatus = "CANCELLED"
                 nativeRequestState.markOperationState(requestId, "scan_library", NativeRequestState.OperationState.CANCELLED)
-                publishNativeDiagnostic("OPERATION_CANCELLED", requestId, "scan_library", NativeRequestState.OperationState.CANCELLED.name)
+
                 throw cancelled
             } catch (exception: Exception) {
                 refreshTerminalStatus = "FAILED"
                 Log.e(tag, "Native storage discovery failed origin=$origin reason=$reason", exception)
                 nativeRequestState.markOperationState(requestId, "scan_library", NativeRequestState.OperationState.FAILED)
-                publishNativeDiagnostic(
-                    "OPERATION_FAILED",
-                    requestId,
-                    "scan_library",
-                    NativeRequestState.OperationState.FAILED.name,
-                    result = exception::class.java.simpleName,
-                )
+
                 NativeMailbox.writeBestEffort(
                     this@MainActivity,
                     JSONObject()
@@ -4015,13 +3548,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         mediaPermissionRequestPending = true
-        publishNativeDiagnostic(
-            "STORAGE_PERMISSION_REQUESTED",
-            pendingMediaRequestId,
-            action = "request_media_access",
-            state = "REQUESTED",
-            result = "media_store_permission",
-        )
+
         NativeMailbox.write(this, JSONObject().put("type", "mediastore_permission_request")
             .put("requestId", pendingMediaRequestId ?: "")
             .put("payload", JSONObject()
@@ -4366,12 +3893,6 @@ class MainActivity : ComponentActivity() {
             JSONObject().put("type", "broad_storage_status")
                 .put("requestId", requestId ?: "")
                 .put("payload", broadAccess)
-                .put("diagnostics", JSONObject()
-                    .put("activity", javaClass.name)
-                    .put("taskId", taskId)
-                    .put("lifecycle", if (activityResumed) "RESUMED" else "PAUSED")
-                    .put("permissionState", if (broadGranted) "BROAD_STORAGE_AVAILABLE" else "BROAD_STORAGE_UNAVAILABLE")
-                    .put("capabilities", capabilities))
         )
         NativeMailbox.write(
             this,
@@ -4382,15 +3903,6 @@ class MainActivity : ComponentActivity() {
                     .put("access", mediaAccess)
                     .put("source", MediaStoreScanner.SOURCE)
                     .put("capabilities", capabilities))
-                .put("diagnostics", JSONObject()
-                    .put("activity", javaClass.name)
-                    .put("taskId", taskId)
-                    .put("lifecycle", if (activityResumed) "RESUMED" else "PAUSED")
-                    .put("permissionState", when (mediaAccess) {
-                        "full" -> "MEDIA_FULL"
-                        "partial" -> "MEDIA_PARTIAL"
-                        else -> "MEDIA_DENIED"
-                    }))
         )
         val volumeChanges = NativeIndex.updateVolumeSnapshot(this, NativeIndex.volumeSnapshot(this))
         if (volumeChanges.optBoolean("changed")) {
@@ -4788,13 +4300,7 @@ class MainActivity : ComponentActivity() {
                 "release_tree",
                 NativeRequestState.OperationState.RUNNING,
             )
-            publishNativeDiagnostic(
-                "SAF_RELEASE_DUPLICATE_JOINED",
-                requestId,
-                action = "release_tree",
-                state = NativeRequestState.OperationState.RUNNING.name,
-                result = "same_tree_uri",
-            )
+
             return
         }
 
@@ -5069,8 +4575,7 @@ class MainActivity : ComponentActivity() {
                 .put("requestId", requestId)
                 .put("message", "Este episódio não possui uma referência local válida.")
                 .put("payload", JSONObject().put("stage", "handoff").put("failureStage", "OPEN_REQUEST").put("reason", "missing_uri")))
-            publishNativeDiagnostic("PLAYER_HANDOFF_FAILED", requestId, "play",
-                NativeRequestState.OperationState.FAILED.name, error = "MISSING_URI")
+
             return false
         }
 
@@ -5082,8 +4587,7 @@ class MainActivity : ComponentActivity() {
                 .put("requestId", requestId)
                 .put("message", "O ReiAnix aceita somente mídias locais autorizadas.")
                 .put("payload", JSONObject().put("uri", episodeUri).put("stage", "handoff").put("failureStage", "OPEN_REQUEST").put("reason", "unsupported_scheme")))
-            publishNativeDiagnostic("PLAYER_HANDOFF_FAILED", requestId, "play",
-                NativeRequestState.OperationState.FAILED.name, error = "UNSUPPORTED_SCHEME")
+
             return false
         }
 
@@ -5120,13 +4624,7 @@ class MainActivity : ComponentActivity() {
                 "play",
                 NativeRequestState.OperationState.FAILED,
             )
-            publishNativeDiagnostic(
-                "PLAYER_HANDOFF_REJECTED",
-                requestId,
-                "play",
-                NativeRequestState.OperationState.FAILED.name,
-                result = "PLAYER_SESSION_INVALID",
-            )
+
             NativeMailbox.writeBestEffort(
                 this,
                 JSONObject()
@@ -5150,13 +4648,7 @@ class MainActivity : ComponentActivity() {
                 "play",
                 NativeRequestState.OperationState.FAILED,
             )
-            publishNativeDiagnostic(
-                "PLAYER_HANDOFF_REJECTED",
-                requestId,
-                "play",
-                NativeRequestState.OperationState.FAILED.name,
-                result = "PLAYER_SESSION_INVALID",
-            )
+
             return false
         }
         if (originRequestId.isBlank() && incomingPlayerSessionId.isNotBlank()) {
@@ -5170,13 +4662,7 @@ class MainActivity : ComponentActivity() {
                     "play",
                     NativeRequestState.OperationState.FAILED,
                 )
-                publishNativeDiagnostic(
-                    "PLAYER_HANDOFF_REJECTED",
-                    requestId,
-                    "play",
-                    NativeRequestState.OperationState.FAILED.name,
-                    result = "stale_session",
-                )
+
                 return false
             }
             activePlayerSessionId = incomingPlayerSessionId
@@ -5195,29 +4681,7 @@ class MainActivity : ComponentActivity() {
                 "PLAYER_HANDOFF_REJECTED requestId=" + requestId +
                     " reason=revoked_origin originRequestId=" + originRequestId,
             )
-            publishNativeDiagnostic(
-                "PLAYER_HANDOFF_REJECTED",
-                requestId,
-                "play",
-                NativeRequestState.OperationState.FAILED.name,
-                result = "revoked_origin",
-            )
-            NativeMailbox.writeBestEffort(
-                this,
-                JSONObject()
-                    .put("type", "diagnostic")
-                    .put("requestId", requestId)
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("event", staleOriginDiagnosticEvent)
-                            .put("requestId", requestId)
-                            .put("originRequestId", originRequestId)
-                            .put("originPlayerSessionId", originPlayerSessionId)
-                            .put("currentPlayerSessionId", activePlayerSessionId ?: "")
-                            .put("reason", "revoked_origin"),
-                    ),
-            )
+
             return false
         }
         if (originRequestId.isNotBlank()) {
@@ -5248,31 +4712,7 @@ class MainActivity : ComponentActivity() {
                         " lastPlayerExitAtMs=" + lastPlayerExitAtMs +
                         " originCreatedAtMs=" + originCreatedAtMs,
                 )
-                publishNativeDiagnostic(
-                    "PLAYER_HANDOFF_REJECTED",
-                    requestId,
-                    "play",
-                    NativeRequestState.OperationState.FAILED.name,
-                    result = result,
-                )
-                NativeMailbox.writeBestEffort(
-                    this,
-                    JSONObject()
-                        .put("type", "diagnostic")
-                        .put("requestId", requestId)
-                        .put(
-                            "payload",
-                            JSONObject()
-                                .put("event", staleOriginDiagnosticEvent)
-                                .put("requestId", requestId)
-                                .put("originRequestId", originRequestId)
-                                .put("originPlayerSessionId", originPlayerSessionId)
-                                .put("currentPlayerSessionId", activePlayerSessionId ?: "")
-                                .put("originCreatedAtMs", originCreatedAtMs)
-                                .put("lastPlayerExitAtMs", lastPlayerExitAtMs)
-                                .put("reason", result),
-                        ),
-                )
+
                 return false
             }
         }
@@ -5291,13 +4731,7 @@ class MainActivity : ComponentActivity() {
                     " reason=stale_created_at incoming=" + playerRequest.commandCreatedAtMs +
                     " active=" + previousActiveCommandCreatedAtMs,
             )
-            publishNativeDiagnostic(
-                "PLAYER_HANDOFF_REJECTED",
-                requestId,
-                "play",
-                NativeRequestState.OperationState.FAILED.name,
-                result = "stale_request",
-            )
+
             return false
         }
         if (requestId.isNotBlank() && seenPlayerRequestIds.contains(requestId)) {
@@ -5311,13 +4745,7 @@ class MainActivity : ComponentActivity() {
                 "PLAY_HANDOFF_DUPLICATE requestId=" + requestId +
                     " ignored=true reason=same_request",
             )
-            publishNativeDiagnostic(
-                "PLAYER_HANDOFF_DUPLICATE",
-                requestId,
-                "play",
-                NativeRequestState.OperationState.COMPLETED.name,
-                result = "ignored_same_request",
-            )
+
             return true
         }
         activePlayerRequestId = requestId.takeIf { it.isNotBlank() }
@@ -5349,8 +4777,7 @@ class MainActivity : ComponentActivity() {
                 activePlayerSessionId = previousActiveSessionId
                 activePlayerCommandCreatedAtMs = previousActiveCommandCreatedAtMs
                 nativeRequestState.markOperationState(requestId, "play", NativeRequestState.OperationState.FAILED)
-                publishNativeDiagnostic("PLAYER_HANDOFF_FAILED", requestId, "play",
-                    NativeRequestState.OperationState.FAILED.name, error = "ACTIVITY_NOT_RESOLVABLE")
+
                 Log.e(
                     tag,
                     "PLAY_HANDOFF_FAILED requestId=" + requestId.ifEmpty { "-" } +
@@ -5379,21 +4806,7 @@ class MainActivity : ComponentActivity() {
                     " flags=0x" + intent.flags.toString(16) +
                     " reuse=" + reusingPlayerActivity,
             )
-            NativeMailbox.writeBestEffort(
-                this,
-                JSONObject()
-                    .put("type", "diagnostic")
-                    .put("requestId", requestId)
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("event", "PLAYER_HANDOFF_START")
-                            .put("stage", "start_activity")
-                            .put("uri", localUri.toString())
-                            .put("component", resolvedActivity.flattenToShortString())
-                            .put("reuse", reusingPlayerActivity),
-                    ),
-            )
+
             Log.i(tag, "PLAY_HANDOFF_START requestId=" + requestId.ifEmpty { "-" } + " component=" + intent.component)
 
             if (reusingPlayerActivity) {
@@ -5403,16 +4816,9 @@ class MainActivity : ComponentActivity() {
                             Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
                     ),
                 )
-                PerformanceDiagnostics.markPlayer(this, "handoff_dispatched", requestId, playerRequest.commandCreatedAtMs, reused = true)
+
                 nativeRequestState.markOperationState(requestId, "play", NativeRequestState.OperationState.COMPLETED)
-                publishNativeDiagnostic(
-                    "PLAYER_HANDOFF_DISPATCHED",
-                    requestId,
-                    "play",
-                    NativeRequestState.OperationState.COMPLETED.name,
-                    result = "activity_direct",
-                    transitionDirection = playerRequest.transitionDirection,
-                )
+
                 Log.i(
                     tag,
                     "PLAY_HANDOFF_DISPATCHED requestId=" + requestId.ifEmpty { "-" } +
@@ -5421,17 +4827,10 @@ class MainActivity : ComponentActivity() {
                 )
             } else {
                 playerActivityLauncher.launch(intent)
-                PerformanceDiagnostics.markPlayer(this, "handoff_dispatched", requestId, playerRequest.commandCreatedAtMs, reused = false)
+
                 nativeRequestState.markOperationState(requestId, "play", NativeRequestState.OperationState.COMPLETED)
-                publishNativeDiagnostic(
-                    "PLAYER_HANDOFF_DISPATCHED",
-                    requestId,
-                    "play",
-                    NativeRequestState.OperationState.COMPLETED.name,
-                    result = "activity_result",
-                    transitionDirection = playerRequest.transitionDirection,
-                )
-                publishPlayerSessionDiagnostic(requestId, "PLAYER_SESSION_CREATED")
+
+
                 Log.i(
                     tag,
                     "PLAY_HANDOFF_DISPATCHED requestId=" + requestId.ifEmpty { "-" } +
@@ -5451,13 +4850,7 @@ class MainActivity : ComponentActivity() {
             activePlayerSessionId = previousActiveSessionId
             activePlayerCommandCreatedAtMs = previousActiveCommandCreatedAtMs
             nativeRequestState.markOperationState(requestId, "play", NativeRequestState.OperationState.FAILED)
-            publishNativeDiagnostic(
-                "PLAYER_HANDOFF_FAILED",
-                requestId,
-                "play",
-                NativeRequestState.OperationState.FAILED.name,
-                error = "START_ACTIVITY_EXCEPTION",
-            )
+
             Log.e(tag, "PLAY_HANDOFF_FAILED requestId=" + requestId.ifEmpty { "-" } + " reason=start_activity", exception)
             NativeMailbox.writeBestEffort(this, JSONObject().put("type", "player_error")
                 .put("requestId", requestId)
@@ -5524,20 +4917,8 @@ class MainActivity : ComponentActivity() {
         safPickerFocusRegainedAtMs = 0L
         setSafPickerPhase(correlationId, SafPickerPhase.REQUESTED)
         setSafPickerPhase(correlationId, SafPickerPhase.LAUNCHING)
-        publishNativeDiagnostic(
-            "STORAGE_PERMISSION_REQUESTED",
-            correlationId,
-            action = "select_tree",
-            state = "REQUESTED",
-            result = "saf_tree_selection",
-        )
-        publishNativeDiagnostic(
-            "SAF_PICKER_REQUESTED",
-            correlationId,
-            action = "select_tree",
-            state = "REQUESTED",
-            result = "user_action",
-        )
+
+
         NativeMailbox.write(this, JSONObject().put("type", "saf_permission_request")
             .put("requestId", correlationId).put("payload", JSONObject().put("source", "saf")
                 .put("state", "requesting").put("status", "REQUESTED")
@@ -5581,7 +4962,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        logLifecycle("onWindowFocusChanged")
+
         if (hasFocus) {
             applyApplicationSystemUi()
          publishInteractionProfileIfChanged()
@@ -5674,10 +5055,7 @@ class MainActivity : ComponentActivity() {
                             }
                             settingsViewModel.refresh()
                             if (accountStateChanged) publishNativeComposeAccountChanged(requestId)
-                            publishNativeDiagnostic(
-                                "GOOGLE_COMPOSE_ACCOUNT_CANCELLED", requestId, action,
-                                NativeRequestState.OperationState.CANCELLED.name,
-                            )
+
                             return@launch
                         }
                         throw IllegalStateException(
@@ -5710,9 +5088,7 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 }
-                publishNativeDiagnostic(
-                    "GOOGLE_COMPOSE_ACCOUNT_COMPLETED", requestId, action, terminalState.name,
-                )
+
             } catch (cancelled: CancellationException) {
                 terminalState = NativeRequestState.OperationState.CANCELLED
                 withContext(NonCancellable + Dispatchers.IO) {
@@ -5732,10 +5108,7 @@ class MainActivity : ComponentActivity() {
                         error = error.message?.takeIf { it.isNotBlank() } ?: "A operação da conta não foi concluída.",
                     )
                 }
-                publishNativeDiagnostic(
-                    "GOOGLE_COMPOSE_ACCOUNT_FAILED", requestId, action, terminalState.name,
-                    error = error::class.java.simpleName,
-                )
+
             } finally {
                 nativeRequestState.markOperationState(
                     requestId,
@@ -5763,25 +5136,14 @@ class MainActivity : ComponentActivity() {
                         "google_sign_out",
                         NativeRequestState.OperationState.COMPLETED,
                     )
-                    publishNativeDiagnostic(
-                        "GOOGLE_SIGN_OUT_COMPLETED",
-                        requestId,
-                        "google_sign_out",
-                        NativeRequestState.OperationState.COMPLETED.name,
-                    )
+
                 } else {
                     nativeRequestState.markOperationState(
                         requestId,
                         "google_sign_out",
                         NativeRequestState.OperationState.FAILED,
                     )
-                    publishNativeDiagnostic(
-                        "GOOGLE_SIGN_OUT_FAILED",
-                        requestId,
-                        "google_sign_out",
-                        NativeRequestState.OperationState.FAILED.name,
-                        error = "CREDENTIAL_STATE_CLEAR_FAILED",
-                    )
+
                 }
             } finally {
                 if (googleSignOutJob === coroutineContext[Job]) {

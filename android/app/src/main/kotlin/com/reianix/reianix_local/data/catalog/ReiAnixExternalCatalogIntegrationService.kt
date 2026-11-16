@@ -2,7 +2,6 @@ package com.reianix.reianix_local.data.catalog
 
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkCandidate
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.externalCatalogAttemptAt
@@ -536,14 +535,7 @@ class ReiAnixExternalCatalogIntegrationService(
         animeId: Long,
         error: Throwable? = null,
     ) {
-        ReiAnixDiagnosticTimeline.record(
-            name = "EXTERNAL_CATALOG_ENRICHMENT",
-            severity = if (error == null && result.endsWith("FAILED")) "WARN" else "INFO",
-            source = source.key,
-            result = result,
-            error = error,
-            context = mapOf("anime_id" to animeId),
-        )
+
     }
 
     companion object {

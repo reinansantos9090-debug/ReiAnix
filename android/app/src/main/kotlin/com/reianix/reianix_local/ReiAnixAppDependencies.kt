@@ -15,7 +15,6 @@ import com.reianix.reianix_local.data.catalog.ReiAnixExternalRequestCoordinator
 import com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProvider
 import com.reianix.reianix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reianix.reianix_local.data.library.ReiAnixLibraryDiscoveryService
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.data.organize.ReiAnixGenreRegistry
 import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeClient
 import java.io.File
@@ -200,13 +199,7 @@ class ReiAnixAppDependencies(context: Context) {
             },
             metadataCommitPublisher = { animeId, requestArtwork ->
                 val requestId = UUID.randomUUID().toString()
-                ReiAnixDiagnosticTimeline.record(
-                    name = "ANILIST_METADATA_COMMITTED",
-                    source = "ReiAnixAniListIntegrationService",
-                    result = "COMPLETED",
-                    requestId = requestId,
-                    context = mapOf("artwork_requested" to requestArtwork),
-                )
+
                 if (requestArtwork) artworkService.requestAnimeArtwork(animeId, force = true)
                 candidateMetadataService.notifyVerifiedMetadataCommitted(animeId)
                 NativeMailbox.write(
