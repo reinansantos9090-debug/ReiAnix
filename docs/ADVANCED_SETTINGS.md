@@ -55,11 +55,11 @@ A implementação do ReiAnix continua própria e usa SettingsStore, LibraryServi
 
 | Configuração | Categoria | Default | Efeito real |
 |---|---|---:|---|
-| Tamanho dos cards | Biblioteca | medium | altera dimensões dos cards da Home |
-| Mostrar miniaturas | Biblioteca | true | evita carregamento/renderização de imagens na Home quando desativado |
+| Cards da Busca e Minha Lista | Aparência | medium | altera a largura dos cards dessas duas telas |
+| Miniaturas de episódios na Home | Aparência | true | oculta apenas as imagens de Continuar assistindo; pôsteres oficiais continuam visíveis |
 | Ordenação padrão | Biblioteca | added_desc | define a ordenação inicial da Home |
 | Densidade da grade | Biblioteca | medium | altera espaçamento da grade |
-| Itens por página | Biblioteca | Tudo | exibe todos os animes correspondentes; as opções 24, 36, 48 e 72 mantêm o carregamento paginado |
+| Animes por lote | Biblioteca | Tudo | escolhe quantos registros carregar de cada vez; novos lotes aparecem ao rolar |
 | Salto no double tap | Player/Gestos | 10 s | altera o seek do double tap; swipe horizontal continua desativado |
 | Velocidade da pressão longa | Player/Gestos | 2.0x | aplica velocidade temporária durante long press |
 | Resolução máxima | Vídeo | automática | limita a seleção de vídeo do Media3 |
@@ -70,8 +70,8 @@ A implementação do ReiAnix continua própria e usa SettingsStore, LibraryServi
 | Estilo embutido da legenda | Legendas | true | controla uso dos estilos/fontes declarados pela faixa |
 | Usar AniList | Metadata | true | bloqueia/permite chamadas remotas do AniListClient |
 | Auto-match AniList | Metadata | true | bloqueia novas buscas automáticas quando desativado |
-| Artwork remoto | Artwork | true | bloqueia/permite downloads remotos pelo ArtworkEngine |
-| Limite do cache de artwork | Artwork/Desempenho | 128 MB | altera o limite do único ArtworkEngine |
+| Artwork remoto | Artwork | true | bloqueia novos downloads externos no serviço de capas e as URLs temporárias do Coil, preservando arquivos já salvos |
+| Limite do cache de artwork | Artwork/Desempenho | 128 MB | aplica 64/128/256/512 MB aos arquivos descartáveis; referências canônicas não são eliminadas para atingir o limite |
 
 Media3 permite alterar TrackSelectionParameters antes e durante a reprodução, inclusive por restrições de seleção.
 
