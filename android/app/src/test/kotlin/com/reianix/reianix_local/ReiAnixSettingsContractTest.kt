@@ -17,12 +17,14 @@ class ReiAnixSettingsContractTest {
         assertEquals(ReiAnixSettingKind.LANGUAGE, ReiAnixSettingsContract.definitions["audio.preferred_language"]?.kind)
         assertEquals("0", ReiAnixSettingsContract.defaultFor("library.page_size"))
         assertNull(ReiAnixSettingsContract.defaultFor("future.legacy_key"))
+        assertNull(ReiAnixSettingsContract.defaultFor("library.grid_density"))
     }
 
     @Test fun missingPersistedSettingsUseContractDefaultsWithoutRewritingThem() {
         val effective = ReiAnixSettingsContract.withDefaults(emptyMap())
 
         assertEquals("8", effective["appearance.poster_size"])
+        assertNull(effective["library.grid_density"])
         assertEquals("true", effective["appearance.show_thumbnails"])
         assertEquals("dark", effective["appearance.theme"])
         assertEquals("0", effective["library.page_size"])
