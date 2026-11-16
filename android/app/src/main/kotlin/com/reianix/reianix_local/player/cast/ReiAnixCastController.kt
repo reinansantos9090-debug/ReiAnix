@@ -212,6 +212,17 @@ class ReiAnixCastController(
         }
     }
 
+    /** Adjust the receiver device volume rather than the silent local audio stream. */
+    fun adjustVolumeByFraction(delta: Float): Int? {
+        if (!isCasting) return null
+        val castSession = session ?: return null
+        return runCatching {
+            val next = (castSession.volume + delta.toDouble()).coerceIn(0.0, 1.0)
+            castSession.setVolume(next)
+            (next * 100.0).toInt()
+        }.getOrNull()
+    }
+
     fun togglePlayPause(): Boolean {
         if (!isCasting) return false
         if (playing()) client?.pause() else client?.play()
