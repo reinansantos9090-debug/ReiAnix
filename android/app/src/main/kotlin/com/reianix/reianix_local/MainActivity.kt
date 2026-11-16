@@ -532,14 +532,14 @@ class MainActivity : ComponentActivity() {
                 requestId = requestId,
                 origin = origin,
                 reason = reason,
-                includeAuthorizedDiagnostics = true,
+                includeMediaStoreScan = true,
                 onFinished = onSafScanFinished,
             )
             else -> scanConfiguredSafRoots(
                 requestId = requestId,
                 origin = origin,
                 reason = reason,
-                includeAuthorizedDiagnostics = source == null,
+                includeMediaStoreScan = source == null,
                 onFinished = onSafScanFinished,
             )
         }
@@ -2338,7 +2338,7 @@ class MainActivity : ComponentActivity() {
                                 pendingRequestId,
                                 "USER_REFRESH",
                                 "compose_library_refresh",
-                                includeAuthorizedDiagnostics = true,
+                                includeMediaStoreScan = true,
                             )
                         }
                         "play" -> {
@@ -2869,7 +2869,7 @@ class MainActivity : ComponentActivity() {
                         requestId,
                         "USER_REFRESH",
                         "compose_library_refresh",
-                        includeAuthorizedDiagnostics = true,
+                        includeMediaStoreScan = true,
                     )
                 }
                 "scan_tree" -> {
@@ -2952,7 +2952,7 @@ class MainActivity : ComponentActivity() {
                         requestId = requestId,
                         origin = "USER_REFRESH",
                         reason = "legacy_scan_all_storage",
-                        includeAuthorizedDiagnostics = true,
+                        includeMediaStoreScan = true,
                     )
                 }
                 "extract_thumbnail" -> {
@@ -3108,7 +3108,7 @@ class MainActivity : ComponentActivity() {
         requestId: String?,
         origin: String,
         reason: String,
-        includeAuthorizedDiagnostics: Boolean = false,
+        includeMediaStoreScan: Boolean = false,
         onFinished: (() -> Unit)? = null,
     ) {
         if (!activityResumed) {
@@ -3292,7 +3292,7 @@ class MainActivity : ComponentActivity() {
                     pendingSources += sourceKey to scanId
                 }
 
-                if (includeAuthorizedDiagnostics) {
+                if (includeMediaStoreScan) {
                     if (MediaStoreScanner.hasReadPermission(this@MainActivity)) {
                         requestedSources++
                         val mediaScanId = scanMediaStore(requestId)
@@ -3893,12 +3893,6 @@ class MainActivity : ComponentActivity() {
             JSONObject().put("type", "broad_storage_status")
                 .put("requestId", requestId ?: "")
                 .put("payload", broadAccess)
-                .put("diagnostics", JSONObject()
-                    .put("activity", javaClass.name)
-                    .put("taskId", taskId)
-                    .put("lifecycle", if (activityResumed) "RESUMED" else "PAUSED")
-                    .put("permissionState", if (broadGranted) "BROAD_STORAGE_AVAILABLE" else "BROAD_STORAGE_UNAVAILABLE")
-                    .put("capabilities", capabilities))
         )
         NativeMailbox.write(
             this,
@@ -3909,15 +3903,6 @@ class MainActivity : ComponentActivity() {
                     .put("access", mediaAccess)
                     .put("source", MediaStoreScanner.SOURCE)
                     .put("capabilities", capabilities))
-                .put("diagnostics", JSONObject()
-                    .put("activity", javaClass.name)
-                    .put("taskId", taskId)
-                    .put("lifecycle", if (activityResumed) "RESUMED" else "PAUSED")
-                    .put("permissionState", when (mediaAccess) {
-                        "full" -> "MEDIA_FULL"
-                        "partial" -> "MEDIA_PARTIAL"
-                        else -> "MEDIA_DENIED"
-                    }))
         )
         val volumeChanges = NativeIndex.updateVolumeSnapshot(this, NativeIndex.volumeSnapshot(this))
         if (volumeChanges.optBoolean("changed")) {
