@@ -177,7 +177,13 @@ fun ReiAnixNativePlayerTopControls(
         ) {
             AndroidView(
                 factory = { context ->
-                    MediaRouteButton(context).apply {
+                    MediaRouteButton(
+                        // Keep the player's own native/Compose theme unchanged.
+                        android.view.ContextThemeWrapper(
+                            context,
+                            androidx.appcompat.R.style.Theme_AppCompat_DayNight_NoActionBar,
+                        ),
+                    ).apply {
                         contentDescription = "Transmitir para TV (Google Cast)"
                         setRemoteIndicatorDrawable(
                             androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_reianix_cast),
