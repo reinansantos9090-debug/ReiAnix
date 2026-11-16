@@ -389,7 +389,7 @@ class ReiAnixSettingsRepository(
             launchNativeStorageSettingsAction(normalizedAction)
             return
         }
-        if (normalizedAction in NATIVE_BACKUP_DIAGNOSTIC_ACTIONS) {
+        if (normalizedAction in NATIVE_BACKUP_ACTIONS) {
             launchNativeSettingsFileAction(normalizedAction)
             return
         }
