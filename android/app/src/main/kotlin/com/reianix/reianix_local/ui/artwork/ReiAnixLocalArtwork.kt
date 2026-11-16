@@ -19,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -185,10 +184,6 @@ fun ReiAnixLocalArtwork(
             val diskCacheKey = remember(stableIdentity, source, sourceRevision) {
                 buildArtworkDiskCacheKey(source, sourceRevision)
             }
-            val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
-            val placeholderPainter = remember(placeholderColor) {
-                ColorPainter(placeholderColor)
-            }
             val request = remember(
                 context,
                 memoryCacheKey,
@@ -215,7 +210,6 @@ fun ReiAnixLocalArtwork(
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
-                placeholder = placeholderPainter,
                 onError = { state ->
                     Log.w(
                         TAG,
