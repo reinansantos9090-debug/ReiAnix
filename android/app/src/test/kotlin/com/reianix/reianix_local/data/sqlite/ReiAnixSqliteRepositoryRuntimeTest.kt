@@ -57,6 +57,45 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun timelineStatisticsSummarizeRealCanonicalRowsWithoutInventingDailyHours() = runBlocking {
+        createCanonicalFixture()
+        val now = System.currentTimeMillis() / 1_000.0
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "UPDATE episodes SET duration = ?, progress = ?, watched = ?, last_played_at = ? WHERE id = ?",
+                arrayOf(1200.0, 11.0, 1, now - 3600.0, 7L),
+            )
+            db.execSQL(
+                """
+                INSERT INTO episodes(id, anime_id, path, file_name, season, number,
+                                     duration, progress, watched, last_played_at)
+                VALUES(8, 1, '/media/show/episode-02.mkv', 'episode-02.mkv', 1, 2,
+                       600, 250, 0, ?)
+                """.trimIndent(),
+                arrayOf(now - 172800.0),
+            )
+            // Saved progress must be clamped to duration, not treated as actual hours.
+            db.execSQL(
+                """
+                INSERT INTO episodes(id, anime_id, path, file_name, season, number,
+                                     duration, progress, watched)
+                VALUES(9, 1, '/media/show/episode-03.mkv', 'episode-03.mkv', 1, 3,
+                       500, 1000, 0)
+                """.trimIndent(),
+            )
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val statistics = repository.timelineStatistics()
+        assertEquals(1, statistics.favoriteAnimeCount)
+        assertEquals(1, statistics.completedEpisodeCount)
+        assertEquals(1950L, statistics.estimatedSeconds)
+        assertEquals(7, statistics.activityDays.size)
+        assertEquals(2, statistics.activityDays.sumOf { it.episodeCount })
+        assertTrue(statistics.activityDays.all { it.episodeCount >= 0 })
+        assertEquals(29, repository.inspectSchema().schemaVersion)
+    }
+
+    @Test
     fun transactionOutcomeCallbackDistinguishesCommittedAndRolledBackWrites() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)
