@@ -1,6 +1,5 @@
 package com.reianix.reianix_local.data.backup
 
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.data.contract.arrayOrDefault
 import com.reianix.reianix_local.data.contract.intOrNull
 import com.reianix.reianix_local.data.contract.intRequired
@@ -107,21 +106,10 @@ class ReiAnixBackupService(context: Context) {
 
     fun createBackupFile(destination: File? = null): File = try {
         withCanonicalFileMaintenance { createBackupFileLocked(destination) }.also { file ->
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_BACKUP_CREATED",
-                source = "ReiAnixBackupService",
-                result = "COMPLETED",
-                context = mapOf("archive_bytes" to file.length()),
-            )
+
         }
     } catch (error: Exception) {
-        ReiAnixDiagnosticTimeline.record(
-            name = "NATIVE_BACKUP_CREATE_FAILED",
-            severity = "ERROR",
-            source = "ReiAnixBackupService",
-            result = "FAILED",
-            error = error,
-        )
+
         throw error
     }
 
@@ -257,24 +245,10 @@ class ReiAnixBackupService(context: Context) {
 
     fun restoreBackup(file: File): RestoreResult = try {
         withCanonicalFileMaintenance { restoreBackupLocked(file) }.also { result ->
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_BACKUP_RESTORE_COMPLETED",
-                source = "ReiAnixBackupService",
-                result = "COMPLETED",
-                context = mapOf(
-                    "imported_rows" to result.importedRows,
-                    "manual_artwork_reconnected" to result.manualArtworkReconnected,
-                ),
-            )
+
         }
     } catch (error: Exception) {
-        ReiAnixDiagnosticTimeline.record(
-            name = "NATIVE_BACKUP_RESTORE_FAILED",
-            severity = "ERROR",
-            source = "ReiAnixBackupService",
-            result = "FAILED",
-            error = error,
-        )
+
         throw error
     }
 
@@ -410,24 +384,10 @@ class ReiAnixBackupService(context: Context) {
      */
     fun restoreRecoveryBackup(file: File): RestoreResult = try {
         withCanonicalFileMaintenance { restoreRecoveryBackupLocked(file) }.also { result ->
-            ReiAnixDiagnosticTimeline.record(
-                name = "NATIVE_RECOVERY_RESTORE_COMPLETED",
-                source = "ReiAnixBackupService",
-                result = "COMPLETED",
-                context = mapOf(
-                    "imported_rows" to result.importedRows,
-                    "manual_artwork_reconnected" to result.manualArtworkReconnected,
-                ),
-            )
+
         }
     } catch (error: Exception) {
-        ReiAnixDiagnosticTimeline.record(
-            name = "NATIVE_RECOVERY_RESTORE_FAILED",
-            severity = "ERROR",
-            source = "ReiAnixBackupService",
-            result = "FAILED",
-            error = error,
-        )
+
         throw error
     }
 

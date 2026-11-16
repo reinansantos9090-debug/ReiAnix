@@ -2,7 +2,6 @@ package com.reianix.reianix_local.storage
 
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.ReiAnixAppDependencies
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -276,31 +275,11 @@ object VideoThumbnailExtractor {
     ): Result? {
         val cacheDir = File(context.cacheDir, "reianix/thumbnails")
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_CACHE_DIRECTORY_FAILED",
-                severity = "ERROR",
-                source = "VideoThumbnailExtractor",
-                result = "FAILED",
-                error = IllegalStateException("THUMBNAIL_CACHE_DIRECTORY_UNAVAILABLE"),
-                context = mapOf("stage" to "cache_directory", "source_scheme" to uri.scheme.orEmpty()),
-            )
+
             return null
         }
         if (!cacheDir.isDirectory || !cacheDir.canRead() || !cacheDir.canWrite()) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_CACHE_ACCESS_FAILED",
-                severity = "ERROR",
-                source = "VideoThumbnailExtractor",
-                result = "FAILED",
-                error = IllegalStateException("THUMBNAIL_CACHE_NOT_ACCESSIBLE"),
-                context = mapOf(
-                    "stage" to "cache_directory",
-                    "is_directory" to cacheDir.isDirectory,
-                    "readable" to cacheDir.canRead(),
-                    "writable" to cacheDir.canWrite(),
-                    "source_scheme" to uri.scheme.orEmpty(),
-                ),
-            )
+
             return null
         }
 
@@ -316,32 +295,10 @@ object VideoThumbnailExtractor {
         val initialCacheEntryValid = target.isFile && target.length() > 0L &&
             isValidCachedThumbnail(target)
         if (targetExistsAtRequest && !initialCacheEntryValid) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_CACHE_ENTRY_INVALID",
-                severity = "WARN",
-                source = "VideoThumbnailExtractor",
-                result = "UNUSABLE",
-                requestId = requestId,
-                context = mapOf(
-                    "stage" to "cache_read",
-                    "cache_entry_bytes" to target.length().coerceAtLeast(0L),
-                    "is_file" to target.isFile,
-                ),
-            )
+
         }
         val requestStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
-        ReiAnixDiagnosticTimeline.record(
-            name = "THUMBNAIL_REQUESTED",
-            source = "VideoThumbnailExtractor",
-            result = "STARTED",
-            requestId = requestId,
-            context = mapOf(
-                "source_scheme" to uri.scheme.orEmpty(),
-                "source_size_bytes" to size.coerceAtLeast(0L),
-                "source_modified_at_ms" to modifiedAt.coerceAtLeast(0L),
-                "has_media_identity" to !mediaIdentity.isNullOrBlank(),
-            ),
-        )
+
         NativeMailbox.writeBestEffort(
             context,
             org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
@@ -379,29 +336,11 @@ object VideoThumbnailExtractor {
                             ),
                     )
                 }
-                ReiAnixDiagnosticTimeline.record(
-                    name = "THUMBNAIL_CACHE_HIT",
-                    source = "VideoThumbnailExtractor",
-                    result = "COMPLETED",
-                    requestId = requestId,
-                    context = mapOf(
-                        "width" to cached.result.width,
-                        "height" to cached.result.height,
-                        "cache_bytes" to target.length(),
-                        "duration_ms" to cached.result.durationMs,
-                        "elapsed_ms" to ((android.os.SystemClock.elapsedRealtimeNanos() - requestStartedNs) / 1_000_000L),
-                    ),
-                )
+
                 return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
             }
         }
-        ReiAnixDiagnosticTimeline.record(
-            name = "THUMBNAIL_CACHE_MISS",
-            source = "VideoThumbnailExtractor",
-            result = "MISS",
-            requestId = requestId,
-            context = mapOf("source_size_bytes" to size.coerceAtLeast(0L)),
-        )
+
         NativeMailbox.writeBestEffort(
             context,
             org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
@@ -421,28 +360,11 @@ object VideoThumbnailExtractor {
                 permitAcquired = true
                 if (target.exists() && !target.delete()) {
                     val error = IOException("THUMBNAIL_INVALID_CACHE_ENTRY_COULD_NOT_BE_REMOVED")
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "THUMBNAIL_CACHE_WRITE_FAILED",
-                        severity = "ERROR",
-                        source = "VideoThumbnailExtractor",
-                        result = "FAILED",
-                        requestId = requestId,
-                        error = error,
-                        context = mapOf(
-                            "stage" to "cache_invalidation",
-                            "cache_entry_bytes" to target.length().coerceAtLeast(0L),
-                        ),
-                    )
+
                     return null
                 }
                 val startedNs = android.os.SystemClock.elapsedRealtimeNanos()
-                ReiAnixDiagnosticTimeline.record(
-                    name = "THUMBNAIL_GENERATION_STARTED",
-                    source = "VideoThumbnailExtractor",
-                    result = "RUNNING",
-                    requestId = requestId,
-                    context = mapOf("source_scheme" to uri.scheme.orEmpty()),
-                )
+
                 NativeMailbox.writeBestEffort(
                     context,
                     org.json.JSONObject().put("type", "diagnostic").put("requestId", requestId)
@@ -463,33 +385,10 @@ object VideoThumbnailExtractor {
                             .put("durationMs", (android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000.0)),
                 )
                 if (result == null) {
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "THUMBNAIL_FAILED",
-                        severity = "ERROR",
-                        source = "VideoThumbnailExtractor",
-                        result = "FAILED",
-                        requestId = requestId,
-                        error = IllegalStateException("THUMBNAIL_EXTRACTION_RETURNED_NULL"),
-                        context = mapOf(
-                            "stage" to "extract",
-                            "elapsed_ms" to ((android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000L),
-                        ),
-                    )
+
                     return null
                 }
-                ReiAnixDiagnosticTimeline.record(
-                    name = "THUMBNAIL_GENERATION_FINISHED",
-                    source = "VideoThumbnailExtractor",
-                    result = "COMPLETED",
-                    requestId = requestId,
-                    context = mapOf(
-                        "width" to result.width,
-                        "height" to result.height,
-                        "cache_bytes" to target.length(),
-                        "duration_ms" to result.durationMs,
-                        "elapsed_ms" to ((android.os.SystemClock.elapsedRealtimeNanos() - startedNs) / 1_000_000L),
-                    ),
-                )
+
                 return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, result)
             } finally {
                 if (permitAcquired) extractionPermits.release()
@@ -524,31 +423,13 @@ object VideoThumbnailExtractor {
                 ) == true
         }.getOrElse { error ->
             android.util.Log.w("VideoThumbnailExtractor", "Canonical thumbnail registration failed", error)
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_ARTWORK_ASSOCIATION_FAILED",
-                severity = "ERROR",
-                source = "VideoThumbnailExtractor",
-                result = "FAILED",
-                error = error,
-                context = mapOf("width" to result.width, "height" to result.height),
-            )
+
             false
         }
         if (!registered) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_ARTWORK_ASSOCIATION_MISSING",
-                severity = "WARN",
-                source = "VideoThumbnailExtractor",
-                result = "NOT_REGISTERED",
-                context = mapOf("width" to result.width, "height" to result.height),
-            )
+
         } else {
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_ARTWORK_ASSOCIATED",
-                source = "VideoThumbnailExtractor",
-                result = "COMPLETED",
-                context = mapOf("width" to result.width, "height" to result.height),
-            )
+
         }
         return result.copy(canonicalArtworkRegistered = registered)
     }
@@ -592,25 +473,13 @@ object VideoThumbnailExtractor {
                 "file" -> {
                     val path = uri.path
                     if (path.isNullOrBlank()) {
-                        ReiAnixDiagnosticTimeline.record(
-                            name = "THUMBNAIL_SOURCE_READ_FAILED",
-                            severity = "ERROR",
-                            source = "VideoThumbnailExtractor",
-                            result = "FAILED",
-                            context = mapOf("stage" to "source_uri", "source_scheme" to "file"),
-                        )
+
                         return null
                     }
                     retriever.setDataSource(path)
                 }
                 else -> {
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "THUMBNAIL_SOURCE_READ_FAILED",
-                        severity = "ERROR",
-                        source = "VideoThumbnailExtractor",
-                        result = "FAILED",
-                        context = mapOf("stage" to "source_uri", "source_scheme" to uri.scheme.orEmpty()),
-                    )
+
                     return null
                 }
             }
@@ -697,20 +566,7 @@ object VideoThumbnailExtractor {
                 if (selectedCandidate == null || quality == null) {
                     if (!decodedAtTimestamp) {
                         failedCandidates++
-                        ReiAnixDiagnosticTimeline.record(
-                            name = "THUMBNAIL_FRAME_CANDIDATE_FAILED",
-                            severity = if (lastFrameError != null) "WARN" else "INFO",
-                            source = "VideoThumbnailExtractor",
-                            result = if (lastFrameError != null) "DECODE_EXCEPTION" else "NO_FRAME_RETURNED",
-                            error = lastFrameError,
-                            context = mapOf(
-                                "stage" to "frame_decode",
-                                "timestamp_ms" to timestampUs / 1_000L,
-                                "android_api" to android.os.Build.VERSION.SDK_INT,
-                                "sync_fallback_attempted" to syncFallbackUsed,
-                                "attempt" to decodedCandidates + failedCandidates,
-                            ),
-                        )
+
                     }
                     return@forEach
                 }
@@ -728,54 +584,13 @@ object VideoThumbnailExtractor {
             }
 
             if (bitmap == null) {
-                ReiAnixDiagnosticTimeline.record(
-                    name = "THUMBNAIL_DECODE_FAILED",
-                    severity = "ERROR",
-                    source = "VideoThumbnailExtractor",
-                    result = "FAILED",
-                    context = mapOf(
-                        "stage" to "frame_decode",
-                        "reason" to "no_usable_frame",
-                        "attempted_timestamps" to candidateTimestampsUs.size,
-                        "decoded_candidates" to decodedCandidates,
-                        "rejected_candidates" to rejectedCandidates,
-                        "failed_candidates" to failedCandidates,
-                        "sync_fallback_attempts" to syncFallbackAttempts,
-                    ),
-                )
+
                 return null
             }
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_FRAME_SELECTED",
-                source = "VideoThumbnailExtractor",
-                result = "COMPLETED",
-                context = mapOf(
-                    "attempted_timestamps" to candidateTimestampsUs.size,
-                    "decoded_candidates" to decodedCandidates,
-                    "rejected_candidates" to rejectedCandidates,
-                    "failed_candidates" to failedCandidates,
-                    "sync_fallback_attempts" to syncFallbackAttempts,
-                    "selected_timestamp_ms" to selectedTimestampUs / 1_000L,
-                    "selected_mean_luminance" to selectedQuality?.meanLuminance,
-                    "selected_standard_deviation" to selectedQuality?.standardDeviation,
-                    "selected_dynamic_range" to selectedQuality?.dynamicRange,
-                ),
-            )
+
             diagnosticStage = "image_transform"
             var outputBitmap = bitmap ?: return null
 
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_DECODED",
-                source = "VideoThumbnailExtractor",
-                result = "COMPLETED",
-                context = mapOf(
-                    "source_width" to width,
-                    "source_height" to height,
-                    "decoded_width" to outputBitmap.width,
-                    "decoded_height" to outputBitmap.height,
-                    "rotation_degrees" to rotation,
-                ),
-            )
             if (outputBitmap.width > MAX_FRAME_DIMENSION || outputBitmap.height > MAX_FRAME_DIMENSION) {
                 val scale = minOf(
                     MAX_FRAME_DIMENSION.toFloat() / outputBitmap.width.toFloat(),
@@ -816,26 +631,12 @@ object VideoThumbnailExtractor {
             } else {
                 if (target.exists() && !target.delete()) {
                     temp.delete()
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "THUMBNAIL_CACHE_WRITE_FAILED",
-                        severity = "ERROR",
-                        source = "VideoThumbnailExtractor",
-                        result = "FAILED",
-                        error = IOException("THUMBNAIL_CACHE_ATOMIC_REPLACE_FAILED"),
-                        context = mapOf("stage" to "cache_commit", "cache_entry_bytes" to target.length()),
-                    )
+
                     return null
                 }
                 if (!temp.renameTo(target)) {
                 temp.delete()
-                    ReiAnixDiagnosticTimeline.record(
-                        name = "THUMBNAIL_CACHE_WRITE_FAILED",
-                        severity = "ERROR",
-                        source = "VideoThumbnailExtractor",
-                        result = "FAILED",
-                        error = IOException("THUMBNAIL_CACHE_ATOMIC_RENAME_FAILED"),
-                        context = mapOf("stage" to "cache_commit", "temporary_bytes" to temp.length()),
-                    )
+
                     return null
                 }
             }
@@ -846,17 +647,7 @@ object VideoThumbnailExtractor {
             if (!isDecodableThumbnailFile(target.absolutePath)) {
                 target.delete()
                 cacheMetadataFile(target).delete()
-                ReiAnixDiagnosticTimeline.record(
-                    name = "THUMBNAIL_CACHE_OUTPUT_INVALID",
-                    severity = "ERROR",
-                    source = "VideoThumbnailExtractor",
-                    result = "REJECTED",
-                    error = IOException("THUMBNAIL_OUTPUT_FAILED_DECODE_VALIDATION"),
-                    context = mapOf(
-                        "stage" to "cache_commit_validation",
-                        "output_bytes" to target.length().coerceAtLeast(0L),
-                    ),
-                )
+
                 return null
             }
 
@@ -881,14 +672,7 @@ object VideoThumbnailExtractor {
                 "cache_write" -> "THUMBNAIL_CACHE_WRITE_FAILED"
                 else -> "THUMBNAIL_IMAGE_PROCESSING_FAILED"
             }
-            ReiAnixDiagnosticTimeline.record(
-                name = eventName,
-                severity = "ERROR",
-                source = "VideoThumbnailExtractor",
-                result = "FAILED",
-                error = error,
-                context = mapOf("stage" to diagnosticStage),
-            )
+
             null
         } finally {
             bitmap?.recycle()
@@ -909,16 +693,7 @@ object VideoThumbnailExtractor {
         val metadataFile = cacheMetadataFile(target)
         val metadata = readCacheMetadata(metadataFile, key, size, modifiedAt)
         if (metadataFile.exists() && metadata == null) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_CACHE_METADATA_UNUSABLE",
-                severity = "WARN",
-                source = "VideoThumbnailExtractor",
-                result = "UNUSABLE",
-                context = mapOf(
-                    "stage" to "cache_metadata_read",
-                    "metadata_bytes" to metadataFile.length().coerceAtLeast(0L),
-                ),
-            )
+
         }
         if (metadata?.durationMs == null) {
             val durationMs = readDurationMs(context, uri)
@@ -959,14 +734,7 @@ object VideoThumbnailExtractor {
                 retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             )
         } catch (error: Exception) {
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_SOURCE_METADATA_READ_FAILED",
-                severity = "WARN",
-                source = "VideoThumbnailExtractor",
-                result = "PARTIAL",
-                error = error,
-                context = mapOf("stage" to "duration_read"),
-            )
+
             0L
         } finally {
             runCatching { retriever.release() }
@@ -1033,14 +801,7 @@ object VideoThumbnailExtractor {
                 throw IOException("THUMBNAIL_CACHE_METADATA_ATOMIC_RENAME_FAILED")
             }
         }.onFailure { error ->
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_CACHE_METADATA_WRITE_FAILED",
-                severity = "ERROR",
-                source = "VideoThumbnailExtractor",
-                result = "FAILED",
-                error = error,
-                context = mapOf("stage" to "cache_metadata_write"),
-            )
+
         }
     }
 
@@ -1068,14 +829,7 @@ object VideoThumbnailExtractor {
                     if (!jpg.isFile) metadata.delete()
                 }
         }.onFailure { error ->
-            ReiAnixDiagnosticTimeline.record(
-                name = "THUMBNAIL_CACHE_TRIM_FAILED",
-                severity = "WARN",
-                source = "VideoThumbnailExtractor",
-                result = "PARTIAL",
-                error = error,
-                context = mapOf("stage" to "cache_trim"),
-            )
+
         }
     }
 

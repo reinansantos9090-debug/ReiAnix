@@ -35,7 +35,6 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Dimension
 import coil.size.Size
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
 import com.reianix.reianix_local.ui.ReiAnixArtworkMissingState
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import java.io.File
@@ -176,39 +175,12 @@ fun ReiAnixLocalArtwork(
 
         if (source == null) {
             LaunchedEffect(stableIdentity, candidates) {
-                ReiAnixDiagnosticTimeline.recordOffMain(
-                    name = "ARTWORK_SOURCE_NOT_FOUND",
-                    severity = "WARN",
-                    source = "ReiAnixLocalArtwork",
-                    result = if (candidates.isEmpty()) "NOT_CONFIGURED" else "CANDIDATES_EXHAUSTED",
-                    requestId = artworkTraceId,
-                    context = mapOf(
-                        "entity_type" to artworkEntityType,
-                        "entity_id" to artworkEntityId,
-                        "artwork_type" to artworkType,
-                        "candidate_count" to candidates.size,
-                        "local_source_present" to candidates.any { !it.startsWith("http://", true) && !it.startsWith("https://", true) },
-                        "remote_source_present" to candidates.any { it.startsWith("http://", true) || it.startsWith("https://", true) },
-                        "source_kind" to "none",
-                    ),
-                )
+
             }
             ReiAnixArtworkMissingState(label = placeholder)
         } else if (effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
             LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
-                ReiAnixDiagnosticTimeline.recordOffMain(
-                    name = "ARTWORK_LOAD_DEFERRED",
-                    source = "ReiAnixLocalArtwork",
-                    result = "NOT_REQUESTED",
-                    requestId = artworkTraceId,
-                    context = mapOf(
-                        "entity_type" to artworkEntityType,
-                        "entity_id" to artworkEntityId,
-                        "artwork_type" to artworkType,
-                        "width_px" to effectiveWidthPx,
-                        "height_px" to effectiveHeightPx,
-                    ),
-                )
+
             }
             Box(
                 modifier = Modifier
@@ -262,23 +234,7 @@ fun ReiAnixLocalArtwork(
             }
 
             LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
-                ReiAnixDiagnosticTimeline.recordOffMain(
-                    name = "ARTWORK_LOAD_REQUESTED",
-                    source = "ReiAnixLocalArtwork",
-                    result = "STARTED",
-                    requestId = artworkTraceId,
-                    context = mapOf(
-                        "entity_type" to artworkEntityType,
-                        "entity_id" to artworkEntityId,
-                        "artwork_type" to artworkType,
-                        "source_kind" to artworkSourceKind(source),
-                        "source_scheme" to (source.substringBefore(':').takeIf { ':' in source } ?: "file"),
-                        "candidate_index" to candidateIndex,
-                        "candidate_count" to candidates.size,
-                        "width_px" to effectiveWidthPx,
-                        "height_px" to effectiveHeightPx,
-                    ),
-                )
+
             }
             AsyncImage(
                 model = request,
@@ -288,57 +244,14 @@ fun ReiAnixLocalArtwork(
                 contentScale = contentScale,
                 placeholder = placeholderPainter,
                 onLoading = {
-                    ReiAnixDiagnosticTimeline.recordOffMain(
-                        name = "ARTWORK_LOAD_STARTED",
-                        source = "ReiAnixLocalArtwork",
-                        result = "RUNNING",
-                        requestId = artworkTraceId,
-                        context = mapOf(
-                            "entity_type" to artworkEntityType,
-                            "entity_id" to artworkEntityId,
-                            "artwork_type" to artworkType,
-                            "source_kind" to artworkSourceKind(source),
-                            "candidate_index" to candidateIndex,
-                        ),
-                    )
+
                 },
                 onSuccess = { state ->
                     val dataSource = (state.result as? coil.request.SuccessResult)?.dataSource?.name ?: "UNKNOWN"
                     if (dataSource.contains("CACHE", ignoreCase = true)) {
-                        ReiAnixDiagnosticTimeline.recordOffMain(
-                            name = "ARTWORK_CACHE_HIT",
-                            source = "ReiAnixLocalArtwork",
-                            result = dataSource,
-                            requestId = artworkTraceId,
-                            context = mapOf(
-                                "entity_type" to artworkEntityType,
-                                "entity_id" to artworkEntityId,
-                                "artwork_type" to artworkType,
-                                "source_kind" to artworkSourceKind(source),
-                                "candidate_index" to candidateIndex,
-                                "width_px" to effectiveWidthPx,
-                                "height_px" to effectiveHeightPx,
-                            ),
-                        )
+
                     }
-                    ReiAnixDiagnosticTimeline.recordOffMain(
-                        name = "ARTWORK_IMAGE_READY",
-                        source = "ReiAnixLocalArtwork",
-                        result = "COMPLETED",
-                        requestId = artworkTraceId,
-                        context = mapOf(
-                            "entity_type" to artworkEntityType,
-                            "entity_id" to artworkEntityId,
-                            "artwork_type" to artworkType,
-                            "source_kind" to artworkSourceKind(source),
-                            "width_px" to effectiveWidthPx,
-                            "height_px" to effectiveHeightPx,
-                            "candidate_index" to candidateIndex,
-                            "source_scheme" to (source.substringBefore(':').takeIf { ':' in source } ?: "file"),
-                            "data_source" to dataSource,
-                            "elapsed_ms" to (SystemClock.elapsedRealtime() - artworkRequestStartedAt).coerceAtLeast(0L),
-                        ),
-                    )
+
                 },
                 onError = { state ->
                     Log.w(
@@ -347,25 +260,7 @@ fun ReiAnixLocalArtwork(
                             " candidateIndex=" + candidateIndex,
                         state.result.throwable,
                     )
-                    ReiAnixDiagnosticTimeline.recordOffMain(
-                        name = "ARTWORK_LOAD_FAILED",
-                        severity = "ERROR",
-                        source = "ReiAnixLocalArtwork",
-                        result = "FAILED",
-                        requestId = artworkTraceId,
-                        error = state.result.throwable,
-                        context = mapOf(
-                            "entity_type" to artworkEntityType,
-                            "entity_id" to artworkEntityId,
-                            "artwork_type" to artworkType,
-                            "source_kind" to artworkSourceKind(source),
-                            "candidate_index" to candidateIndex,
-                            "candidate_count" to candidates.size,
-                            "width_px" to effectiveWidthPx,
-                            "height_px" to effectiveHeightPx,
-                            "elapsed_ms" to (SystemClock.elapsedRealtime() - artworkRequestStartedAt).coerceAtLeast(0L),
-                        ),
-                    )
+
                     if (candidateIndex < candidates.lastIndex) {
                         isMissing = false
                         candidateIndex += 1
