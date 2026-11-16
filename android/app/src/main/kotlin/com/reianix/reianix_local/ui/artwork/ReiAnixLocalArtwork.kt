@@ -42,6 +42,57 @@ import kotlin.math.roundToInt
 private const val TAG = "ReiAnixLocalArtwork"
 
 /**
+ * Holds ONLY memory-cache keys (never Bitmaps or Drawables). On a return from
+ * Home/Details to Library, Coil can paint the previous successful decode while
+ * resolving a changed target size or local-file revision of that SAME source.
+ *
+ * This supplements Coil's memory/disk caches without pinning large posters or
+ * modifying their download order. An evicted entry simply yields no placeholder.
+ */
+internal class ArtworkLastSuccessfulMemoryKeys(private val maxEntries: Int = 128) {
+    init { require(maxEntries > 0) }
+    private data class SuccessKeyEntry(
+        val source: String,
+        val revision: String,
+        val memoryKey: String,
+    )
+    private val entries = object : LinkedHashMap<String, SuccessKeyEntry>(16, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, SuccessKeyEntry>?,
+        ): Boolean = size > maxEntries
+    }
+
+    private fun slot(identity: String, type: String) = type + "|" + identity
+
+    @Synchronized
+    fun placeholderKey(
+        identity: String,
+        type: String,
+        source: String,
+        revision: String,
+        currentKey: String,
+    ): String {
+        // Never show a different candidate or stale regenerated file.
+        return entries[slot(identity, type)]?.takeIf {
+            it.source == source && it.revision == revision
+        }?.memoryKey ?: currentKey
+    }
+
+    @Synchronized
+    fun recordSuccess(
+        identity: String,
+        type: String,
+        source: String,
+        revision: String,
+        key: String,
+    ) {
+        entries[slot(identity, type)] = SuccessKeyEntry(source, revision, key)
+    }
+}
+
+private val lastSuccessfulArtworkKeys = ArtworkLastSuccessfulMemoryKeys()
+
+/**
  * One process-wide Coil loader for Compose artwork.
  *
  * ReiAnixArtworkService owns persistent artwork materialization for Compose.
@@ -184,10 +235,20 @@ fun ReiAnixLocalArtwork(
             val diskCacheKey = remember(stableIdentity, source, sourceRevision) {
                 buildArtworkDiskCacheKey(source, sourceRevision)
             }
+            val placeholderKey = remember(stableIdentity, artworkType, source, sourceRevision, memoryCacheKey) {
+                lastSuccessfulArtworkKeys.placeholderKey(
+                    identity = stableIdentity,
+                    type = artworkType,
+                    source = source,
+                    revision = sourceRevision,
+                    currentKey = memoryCacheKey,
+                )
+            }
             val request = remember(
                 context,
                 memoryCacheKey,
                 diskCacheKey,
+                placeholderKey,
             ) {
                 ImageRequest.Builder(context)
                     .data(coilData(source))
@@ -200,7 +261,7 @@ fun ReiAnixLocalArtwork(
                     .crossfade(false)
                     .memoryCacheKey(memoryCacheKey)
                     .diskCacheKey(diskCacheKey)
-                    .placeholderMemoryCacheKey(memoryCacheKey)
+                    .placeholderMemoryCacheKey(placeholderKey)
                     .build()
             }
 
@@ -210,6 +271,19 @@ fun ReiAnixLocalArtwork(
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
+                onSuccess = {
+                    // The same source may become readable after its revision
+                    // changes. A prior terminal failure must not keep the
+                    // "Sem poster" overlay above a successfully decoded image.
+                    if (isMissing) isMissing = false
+                    lastSuccessfulArtworkKeys.recordSuccess(
+                        identity = stableIdentity,
+                        type = artworkType,
+                        source = source,
+                        revision = sourceRevision,
+                        key = memoryCacheKey,
+                    )
+                },
                 onError = { state ->
                     Log.w(
                         TAG,
