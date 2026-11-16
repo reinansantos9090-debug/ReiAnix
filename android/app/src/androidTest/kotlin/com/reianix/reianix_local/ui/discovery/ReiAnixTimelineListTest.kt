@@ -3,12 +3,12 @@ package com.reianix.reianix_local.ui.discovery
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reianix.reianix_local.data.library.ReiAnixLibraryDiscovery
 import com.reianix.reianix_local.data.sqlite.ReiAnixTimelineSourceRecord
@@ -63,7 +63,7 @@ class ReiAnixTimelineListTest {
         composeRule.onNodeWithText("Anime 001").assertIsDisplayed()
         // A distant item must not be eagerly composed when the list opens.
         composeRule.onNodeWithText("Anime 120").assertDoesNotExist()
-        composeRule.onRoot().performScrollToNode(hasText("Anime 120"))
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(120)
         composeRule.onNodeWithText("Anime 120").performClick()
         assertEquals(120L, openedId)
     }
