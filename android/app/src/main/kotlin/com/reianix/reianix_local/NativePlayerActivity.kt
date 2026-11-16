@@ -2671,6 +2671,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // Menu + dismiss scrim are the last root children, above Compose controls.
     }
 
+    private fun updateMorePanelBounds() {
+        // The panel was moved from controls to root; preserve the old gesture
+        // inset and resize bounds when orientation/configuration changes.
+        val panel = findViewByTag<View>("reianix_more_panel") ?: return
+        val params = panel.layoutParams as? FrameLayout.LayoutParams ?: return
+        val widthPixels = resources.displayMetrics.widthPixels
+        val heightPixels = resources.displayMetrics.heightPixels
+        params.width = minOf(dp(410), (widthPixels - dp(24)).coerceAtLeast(dp(240)))
+        params.height = minOf(dp(380), (heightPixels - dp(72)).coerceAtLeast(dp(220)))
+        params.rightMargin = dp(8) + max(dp(4), gestureSafeRight)
+        panel.layoutParams = params
+    }
+
     private fun initializeGoogleCast() {
         if (castController != null) return
         castController = ReiAnixCastController(
@@ -3056,6 +3069,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             max(dp(4), gestureSafeRight),
             0,
         )
+        updateMorePanelBounds()
         syncComposePlayerUiState()
     }
 
@@ -5144,6 +5158,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateComposeOverlayBounds()
+        updateMorePanelBounds()
         logPlayer("onConfigurationChanged orientation=" + newConfig.orientation)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
 
