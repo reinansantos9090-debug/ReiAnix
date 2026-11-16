@@ -565,9 +565,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     }
 
     /**
-     * Clears externally managed artwork through the canonical v29 SQLite store.
-     * Local/manual artwork references are retained, and cache files are unlinked
-     * only when no persisted artwork row still references them.
+     * Clears disposable artwork files without invalidating published artwork or
+     * anime metadata. Cache files still referenced by SQLite stay available,
+     * so navigating back to Library never blanks already-downloaded covers.
      */
     suspend fun clearManagedCache(): Int {
         check(cacheClearInProgress.compareAndSet(false, true)) {
@@ -631,8 +631,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             db.delete(
                 "artwork",
                 "entity_type='episode' AND artwork_type='episode_thumbnail' AND source='generated' " +
-                    "AND local_path LIKE ?",
-                arrayOf(root.replace("%", "\\%").replace("_", "\\_") + "%"),
+                    "AND substr(local_path, 1, ?) = ?",
+                arrayOf(root.length.toString(), root),
             )
         }
     }
@@ -2082,12 +2082,17 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     }
 
     /** All online artwork paths converge here before an HTTP download. */
-    private fun remoteArtworkEnabled(): Boolean = database.read { db ->
-        db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1",
-            arrayOf("artwork.enabled")).use { cursor ->
-            if (!cursor.moveToFirst()) true
-            else cursor.getString(0).equals("true", ignoreCase = true)
+    private fun remoteArtworkEnabled(): Boolean = runCatching {
+        database.read { db ->
+            db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1",
+                arrayOf("artwork.enabled")).use { cursor ->
+                if (!cursor.moveToFirst()) true
+                else cursor.getString(0).equals("true", ignoreCase = true)
+            }
         }
+    }.getOrElse { error ->
+        Log.w(TAG, "Could not read artwork download preference", error)
+        true
     }
 
     private fun trimCache() {
