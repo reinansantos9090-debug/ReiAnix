@@ -41,6 +41,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavHostController
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
 import com.reianix.reianix_local.ui.ReiAnixTopBar
 import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
@@ -57,6 +61,26 @@ import kotlin.random.Random
  * Collections live in the existing SQLite preferences table; this view only
  * uses the already-materialized canonical catalog and its local posters.
  */
+/** Dedicated navigation destination: collections replace the Library content, not a modal. */
+@Composable
+fun ReiAnixCollectionsRoute(
+    navController: NavHostController,
+    viewModel: ReiAnixLibraryViewModel,
+) {
+    val catalog by viewModel.uiState.collectAsStateWithLifecycle()
+    ReiAnixCollectionsScreen(
+        viewModel = viewModel,
+        animes = catalog.animes,
+        onOpenAnime = { animeId ->
+            navController.navigateToDetails(
+                animeId = animeId.toString(),
+                origin = ReiAnixRoutes.COLLECTIONS,
+            )
+        },
+        onDismiss = { navController.popBackStack() },
+    )
+}
+
 @Composable
 fun ReiAnixCollectionsScreen(
     viewModel: ReiAnixLibraryViewModel,
