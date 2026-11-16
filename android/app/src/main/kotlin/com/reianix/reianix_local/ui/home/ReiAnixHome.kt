@@ -72,7 +72,6 @@ import com.reianix.reianix_local.ui.ReiAnixAnimeCard
 import com.reianix.reianix_local.ui.ReiAnixIconActionButton
 import com.reianix.reianix_local.ui.ReiAnixTopBar
 import com.reianix.reianix_local.ui.ReiAnixEmptyState
-import com.reianix.reianix_local.ui.ReiAnixLoadingState
 import com.reianix.reianix_local.ui.ReiAnixMetadata
 import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
 import com.reianix.reianix_local.ui.ReiAnixProgressIndicator
@@ -1289,12 +1288,10 @@ private data class HomeGenreSection(
 )
 
 @Composable
-private fun HomeLoading() {
-    ReiAnixLoadingState(
-        title = "Carregando biblioteca",
-        message = "Lendo o catálogo local…",
-        modifier = Modifier.fillMaxSize(),
-    )
+private fun ColumnScope.HomeLoading() {
+    // Legacy Home entry point follows the same quiet bootstrap as the
+    // observed Home route: no one-second blue loading message.
+    Spacer(modifier = Modifier.weight(1f))
 }
 
 @Composable
