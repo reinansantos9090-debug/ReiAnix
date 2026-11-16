@@ -215,7 +215,7 @@ fun ReiAnixPrimaryButton(
             },
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
+            containerColor = ReiAnixTokens.Colors.primaryButton,
             contentColor = MaterialTheme.colorScheme.onPrimary,
             disabledContainerColor = ReiAnixTokens.Colors.accentDisabled,
             disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),

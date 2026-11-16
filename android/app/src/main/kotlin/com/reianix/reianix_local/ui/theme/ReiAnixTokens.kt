@@ -34,6 +34,8 @@ object ReiAnixTokens {
         val playerScrim = Color(0xFF000000)
 
         val primary = Color(0xFF2579FF)
+        // Slightly deeper than the accent blue so small white button labels stay legible.
+        val primaryButton = Color(0xFF1D69D2)
         val primaryContainer = surfaceRaised
         val onPrimary = Color(0xFFFFFFFF)
         val onPrimaryContainer = Color(0xFFFFFFFF)
