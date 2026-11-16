@@ -305,7 +305,7 @@ data class ReiAnixAnimeUiModel(
      * Flattened once per immutable anime instance. The previous computed getter
      * allocated a new list every time cards, filters and projections queried it.
      */
-    private val flattenedEpisodes: List<ReiAnixEpisodeUiModel> by lazy(LazyThreadSafetyMode.NONE) {
+    private val flattenedEpisodes: List<ReiAnixEpisodeUiModel> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         buildList {
             seasons.forEach { season -> addAll(season.episodes) }
             addAll(specials)
@@ -316,8 +316,38 @@ data class ReiAnixAnimeUiModel(
     val contentEpisodes: List<ReiAnixEpisodeUiModel>
         get() = flattenedEpisodes
 
+    // The Home, Library, filters and counters access these getters repeatedly.
+    // Cache their immutable per-anime result in one pass instead of scanning
+    // episodes three separate times for every unrelated state emission.
+    private data class EpisodeSummary(
+        val availableCount: Int,
+        val isWatching: Boolean,
+        val isCompleted: Boolean,
+    )
+
+    private val episodeSummary: EpisodeSummary by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val episodes = contentEpisodes
+        var availableCount = 0
+        var watching = false
+        var completed = episodes.isNotEmpty()
+        for (episode in episodes) {
+            if (episode.media.availability == ReiAnixMediaAvailability.AVAILABLE) {
+                availableCount++
+            }
+            if (episode.consumptionState == ReiAnixConsumptionState.IN_PROGRESS) {
+                watching = true
+            }
+            if (episode.media.availability == ReiAnixMediaAvailability.MISSING ||
+                episode.media.availability == ReiAnixMediaAvailability.SCOPE_UNAVAILABLE ||
+                episode.media.availability == ReiAnixMediaAvailability.VOLUME_UNAVAILABLE ||
+                !episode.isCompleted
+            ) completed = false
+        }
+        EpisodeSummary(availableCount, watching, completed)
+    }
+
     val availableContentCount: Int
-        get() = contentEpisodes.count { it.media.availability == ReiAnixMediaAvailability.AVAILABLE }
+        get() = episodeSummary.availableCount
 
     val episodeCountLabel: String
         get() = when (availableContentCount) {
@@ -326,18 +356,10 @@ data class ReiAnixAnimeUiModel(
         }
 
     val isWatching: Boolean
-        get() = contentEpisodes.any {
-            it.consumptionState == ReiAnixConsumptionState.IN_PROGRESS
-        }
+        get() = episodeSummary.isWatching
 
     val isCompleted: Boolean
-        get() = contentEpisodes.isNotEmpty() &&
-            contentEpisodes.all { episode ->
-                episode.media.availability != ReiAnixMediaAvailability.MISSING &&
-                    episode.media.availability != ReiAnixMediaAvailability.SCOPE_UNAVAILABLE &&
-                    episode.media.availability != ReiAnixMediaAvailability.VOLUME_UNAVAILABLE &&
-                    episode.isCompleted
-            }
+        get() = episodeSummary.isCompleted
 }
 
 @Immutable
