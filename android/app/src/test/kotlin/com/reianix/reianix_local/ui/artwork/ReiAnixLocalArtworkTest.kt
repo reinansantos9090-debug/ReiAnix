@@ -8,6 +8,47 @@ import org.junit.Test
 class ReiAnixLocalArtworkTest {
 
     @Test
+    fun previouslyDecodedPosterIsAvailableAsMemoryPlaceholderOnNavigation() {
+        val keys = ArtworkLastSuccessfulMemoryKeys(maxEntries = 2)
+        val poster = "/saved/rezero-poster.webp"
+        assertEquals("decode-320", keys.placeholderKey("anime:8", "poster", poster, "decode-320"))
+        keys.recordSuccess("anime:8", "poster", poster, "decode-320")
+
+        // Same poster source but a different Home/Library image request size.
+        assertEquals("decode-320", keys.placeholderKey("anime:8", "poster", poster, "decode-512"))
+    }
+
+    @Test
+    fun memoryPlaceholderNeverReusesAnotherAnimeOrAnOldPosterSource() {
+        val keys = ArtworkLastSuccessfulMemoryKeys(maxEntries = 2)
+        keys.recordSuccess("anime:8", "poster", "/saved/old.webp", "old-success")
+
+        assertEquals(
+            "new-request",
+            keys.placeholderKey("anime:9", "poster", "/saved/old.webp", "new-request"),
+        )
+        assertEquals(
+            "new-request",
+            keys.placeholderKey("anime:8", "backdrop", "/saved/old.webp", "new-request"),
+        )
+        assertEquals(
+            "new-request",
+            keys.placeholderKey("anime:8", "poster", "/saved/corrected.webp", "new-request"),
+        )
+    }
+
+    @Test
+    fun rememberedMemoryKeysHaveABoundedSizeAndNeverPinBitmaps() {
+        val keys = ArtworkLastSuccessfulMemoryKeys(maxEntries = 2)
+        keys.recordSuccess("anime:1", "poster", "a", "key-a")
+        keys.recordSuccess("anime:2", "poster", "b", "key-b")
+        keys.recordSuccess("anime:3", "poster", "c", "key-c")
+        assertEquals("new-a", keys.placeholderKey("anime:1", "poster", "a", "new-a"))
+        assertEquals("key-b", keys.placeholderKey("anime:2", "poster", "b", "new-b"))
+        assertEquals("key-c", keys.placeholderKey("anime:3", "poster", "c", "new-c"))
+    }
+
+    @Test
     fun sampleSizeDownscalesWhenSourceExceedsRequestedDimension() {
         assertEquals(2, calculateSampleSize(1000, 700, 512))
         assertEquals(4, calculateSampleSize(2048, 1200, 512))
