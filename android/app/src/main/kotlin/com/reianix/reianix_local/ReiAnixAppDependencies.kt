@@ -197,10 +197,14 @@ class ReiAnixAppDependencies(context: Context) {
             candidateMetadataPublisher = { animeId, candidate ->
                 candidateMetadataService.offerAniList(animeId, candidate)
             },
+            explicitArtworkPublisher = { animeId ->
+                artworkService.requestAnimeArtwork(animeId, force = true)
+                Unit
+            },
             metadataCommitPublisher = { animeId, requestArtwork ->
                 val requestId = UUID.randomUUID().toString()
 
-                if (requestArtwork) artworkService.requestAnimeArtwork(animeId, force = true)
+                if (requestArtwork) artworkService.requestAnimeArtwork(animeId, force = false)
                 candidateMetadataService.notifyVerifiedMetadataCommitted(animeId)
                 NativeMailbox.write(
                     appContext,

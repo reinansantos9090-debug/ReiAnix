@@ -241,6 +241,7 @@ class ReiAnixAniListIntegrationService(
     private val artworkCandidatePublisher: ((Long, List<ReiAnixArtworkCandidate>) -> Boolean)? = null,
     private val traceMoeClient: ReiAnixTraceMoeClient = ReiAnixTraceMoeClient(),
     private val candidateMetadataPublisher: ((Long, AniListAnime) -> Unit)? = null,
+    private val explicitArtworkPublisher: ((Long) -> Unit)? = null,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -264,10 +265,15 @@ class ReiAnixAniListIntegrationService(
         descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
             File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
         ),
+        explicitArtworkPublisher = { animeId ->
+            ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.artworkService?.requestAnimeArtwork(animeId, force = true)
+            Unit
+        },
         metadataCommitPublisher = { animeId, requestArtwork ->
             if (requestArtwork) {
                 ReiAnixAppDependencies.existingOrNull(context.applicationContext)
-                    ?.artworkService?.requestAnimeArtwork(animeId, force = true)
+                    ?.artworkService?.requestAnimeArtwork(animeId, force = false)
             }
             NativeMailbox.write(
                 context.applicationContext,
@@ -1456,6 +1462,9 @@ class ReiAnixAniListIntegrationService(
                     // backfill the JSON column into the canonical registry later.
                     Log.w(TAG, "AniList metadata committed but genre registry sync failed", error)
                 }
+            }
+            if (artworkEnabled && (manual || traceMoeConfirmed)) {
+                explicitArtworkPublisher?.invoke(updated.id)
             }
             enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled)
             AniListResult.Success(updated)

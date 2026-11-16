@@ -429,7 +429,7 @@ class ReiAnixExternalCatalogIntegrationService(
                     }
                 }
             if (pendingArtwork.isNotEmpty() &&
-                artwork.requestAnimeArtworkCandidates(anime.id, pendingArtwork, force = true)
+                artwork.requestAnimeArtworkCandidates(anime.id, pendingArtwork, force = false)
             ) {
                 record(source, "ARTWORK_CANDIDATES_QUEUED", anime.id)
                 changed = true
