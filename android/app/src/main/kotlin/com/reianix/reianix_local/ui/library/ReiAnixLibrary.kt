@@ -88,7 +88,6 @@ import com.reianix.reianix_local.ui.model.presentationStateLabel
 import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
-import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
 import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
 import com.reianix.reianix_local.ui.navigation.navigateToDetails
 import com.reianix.reianix_local.ui.navigation.navigateToTopLevel
@@ -1120,31 +1119,10 @@ private fun LibraryAnimeCard(
     modifier: Modifier = Modifier,
 ) {
     val renderData = remember(anime) {
-        val episodes = anime.contentEpisodes
-        var availableCount = 0
-        var completed = episodes.isNotEmpty()
-        var watching = false
-        var watched = false
-        var progress: Float? = null
-        // One pass instead of count + all + firstOrNull + any + any.
-        // Keep the first in-progress episode and all existing badge semantics.
-        for (episode in episodes) {
-            val availability = episode.media.availability
-            if (availability == ReiAnixMediaAvailability.AVAILABLE) availableCount++
-            if (availability == ReiAnixMediaAvailability.MISSING ||
-                availability == ReiAnixMediaAvailability.SCOPE_UNAVAILABLE ||
-                availability == ReiAnixMediaAvailability.VOLUME_UNAVAILABLE ||
-                !episode.isCompleted
-            ) completed = false
-            if (episode.consumptionState ==
-                com.reianix.reianix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS
-            ) watching = true
-            if (episode.isWatched) watched = true
-            if (progress == null && !episode.isCompleted) {
-                val fraction = episode.progressFraction
-                if (fraction > 0f) progress = fraction
-            }
-        }
+        // AnimeUiModel keeps this summary lazy and cached for its immutable snapshot.
+        // Grid scrolling can create many cards at once, so never walk each anime's
+        // episode list again from the card composition path.
+        val availableCount = anime.availableContentCount
         LibraryCardRenderData(
             availableCount = availableCount,
             metadata = buildList {
@@ -1159,11 +1137,11 @@ private fun LibraryAnimeCard(
                     )
                 }
             },
-            progress = progress,
+            progress = anime.resumeProgressFraction,
             favorite = anime.favorite,
-            watching = watching,
-            watched = watched,
-            completed = completed,
+            watching = anime.isWatching,
+            watched = anime.hasWatchedEpisode,
+            completed = anime.isCompleted,
         )
     }
 
