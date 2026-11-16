@@ -98,6 +98,50 @@ fun ReiAnixLocalArtwork(
     val context = LocalContext.current
     val density = LocalDensity.current
 
+    // Source selection, identity and the Coil loader are independent of layout.
+    // Hoist them out of BoxWithConstraints so each lazy item subcomposes only
+    // the image request whose first-frame dimensions must remain exact.
+    val candidates = remember(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl, artworkType) {
+        artworkCandidatesForType(
+            artworkType = artworkType,
+            localPath = localPath,
+            fallbackLocalPath = fallbackLocalPath,
+            externalUrl = externalUrl,
+            fallbackExternalUrl = fallbackExternalUrl,
+        )
+    }
+    val stableIdentity = remember(
+        identity,
+        localPath,
+        fallbackLocalPath,
+        externalUrl,
+        fallbackExternalUrl,
+    ) {
+        identity?.trim().takeUnless { it.isNullOrEmpty() }
+            ?: candidates.firstOrNull().orEmpty()
+    }
+    val artworkEntityId = remember(identity, artworkType) {
+        val keyPrefix = if (artworkType == "episode_thumbnail") "episode:" else "anime:"
+        identity?.takeIf { it.startsWith(keyPrefix) }
+            ?.removePrefix(keyPrefix)
+            ?.substringBefore(':')
+            ?.toLongOrNull()
+            ?.toString()
+    }
+    val artworkEntityType = if (artworkType == "episode_thumbnail") "episode" else "anime_or_movie"
+
+    var candidateIndex by remember(stableIdentity, candidates) {
+        mutableIntStateOf(0)
+    }
+    val source = candidates.getOrNull(candidateIndex)
+    val artworkTraceId = remember(stableIdentity, source) {
+        "art-" + Integer.toHexString((stableIdentity + "|" + source.orEmpty()).hashCode())
+    }
+    var isMissing by remember(stableIdentity, candidates) {
+        mutableStateOf(false)
+    }
+    val imageLoader = ReiAnixArtworkImageLoader.get(context)
+
     BoxWithConstraints(
         modifier = modifier
             .clip(shape)
@@ -125,53 +169,14 @@ fun ReiAnixLocalArtwork(
         val effectiveWidthPx = if (requestWidthPx > 0) requestWidthPx else fallbackDimensionPx
         val effectiveHeightPx = if (requestHeightPx > 0) requestHeightPx else fallbackDimensionPx
 
-        val candidates = remember(localPath, fallbackLocalPath, externalUrl, fallbackExternalUrl, artworkType) {
-            artworkCandidatesForType(
-                artworkType = artworkType,
-                localPath = localPath,
-                fallbackLocalPath = fallbackLocalPath,
-                externalUrl = externalUrl,
-                fallbackExternalUrl = fallbackExternalUrl,
-            )
-        }
-        val stableIdentity = remember(
-            identity,
-            localPath,
-            fallbackLocalPath,
-            externalUrl,
-            fallbackExternalUrl,
-        ) {
-            identity?.trim().takeUnless { it.isNullOrEmpty() }
-                ?: candidates.firstOrNull().orEmpty()
-        }
-        val artworkEntityId = remember(identity, artworkType) {
-            val keyPrefix = if (artworkType == "episode_thumbnail") "episode:" else "anime:"
-            identity?.takeIf { it.startsWith(keyPrefix) }
-                ?.removePrefix(keyPrefix)
-                ?.substringBefore(':')
-                ?.toLongOrNull()
-                ?.toString()
-        }
-        val artworkEntityType = if (artworkType == "episode_thumbnail") "episode" else "anime_or_movie"
-
-        var candidateIndex by remember(stableIdentity, candidates) {
-            mutableIntStateOf(0)
-        }
-        val source = candidates.getOrNull(candidateIndex)
-        val artworkTraceId = remember(stableIdentity, source) {
-            "art-" + Integer.toHexString((stableIdentity + "|" + source.orEmpty()).hashCode())
-        }
         val artworkRequestStartedAt = remember(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
             SystemClock.elapsedRealtime()
         }
-        var isMissing by remember(stableIdentity, candidates) {
-            mutableStateOf(false)
-        }
-        val imageLoader = ReiAnixArtworkImageLoader.get(context)
+
 
         if (source == null) {
             LaunchedEffect(stableIdentity, candidates) {
-                ReiAnixDiagnosticTimeline.record(
+                ReiAnixDiagnosticTimeline.recordOffMain(
                     name = "ARTWORK_SOURCE_NOT_FOUND",
                     severity = "WARN",
                     source = "ReiAnixLocalArtwork",
@@ -191,7 +196,7 @@ fun ReiAnixLocalArtwork(
             ReiAnixArtworkMissingState(label = placeholder)
         } else if (effectiveWidthPx <= 0 || effectiveHeightPx <= 0) {
             LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
-                ReiAnixDiagnosticTimeline.record(
+                ReiAnixDiagnosticTimeline.recordOffMain(
                     name = "ARTWORK_LOAD_DEFERRED",
                     source = "ReiAnixLocalArtwork",
                     result = "NOT_REQUESTED",
@@ -257,7 +262,7 @@ fun ReiAnixLocalArtwork(
             }
 
             LaunchedEffect(artworkTraceId, effectiveWidthPx, effectiveHeightPx) {
-                ReiAnixDiagnosticTimeline.record(
+                ReiAnixDiagnosticTimeline.recordOffMain(
                     name = "ARTWORK_LOAD_REQUESTED",
                     source = "ReiAnixLocalArtwork",
                     result = "STARTED",
@@ -283,7 +288,7 @@ fun ReiAnixLocalArtwork(
                 contentScale = contentScale,
                 placeholder = placeholderPainter,
                 onLoading = {
-                    ReiAnixDiagnosticTimeline.record(
+                    ReiAnixDiagnosticTimeline.recordOffMain(
                         name = "ARTWORK_LOAD_STARTED",
                         source = "ReiAnixLocalArtwork",
                         result = "RUNNING",
@@ -300,7 +305,7 @@ fun ReiAnixLocalArtwork(
                 onSuccess = { state ->
                     val dataSource = (state.result as? coil.request.SuccessResult)?.dataSource?.name ?: "UNKNOWN"
                     if (dataSource.contains("CACHE", ignoreCase = true)) {
-                        ReiAnixDiagnosticTimeline.record(
+                        ReiAnixDiagnosticTimeline.recordOffMain(
                             name = "ARTWORK_CACHE_HIT",
                             source = "ReiAnixLocalArtwork",
                             result = dataSource,
@@ -316,7 +321,7 @@ fun ReiAnixLocalArtwork(
                             ),
                         )
                     }
-                    ReiAnixDiagnosticTimeline.record(
+                    ReiAnixDiagnosticTimeline.recordOffMain(
                         name = "ARTWORK_IMAGE_READY",
                         source = "ReiAnixLocalArtwork",
                         result = "COMPLETED",
@@ -342,7 +347,7 @@ fun ReiAnixLocalArtwork(
                             " candidateIndex=" + candidateIndex,
                         state.result.throwable,
                     )
-                    ReiAnixDiagnosticTimeline.record(
+                    ReiAnixDiagnosticTimeline.recordOffMain(
                         name = "ARTWORK_LOAD_FAILED",
                         severity = "ERROR",
                         source = "ReiAnixLocalArtwork",

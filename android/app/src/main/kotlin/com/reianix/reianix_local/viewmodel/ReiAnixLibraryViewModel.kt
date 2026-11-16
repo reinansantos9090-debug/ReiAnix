@@ -822,6 +822,8 @@ class ReiAnixLibraryViewModel(
             )
         }
         .distinctUntilChanged()
+        // Counting all episodes is a catalog-change operation, never a frame-time UI task.
+        .flowOn(Dispatchers.Default)
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
@@ -830,10 +832,10 @@ class ReiAnixLibraryViewModel(
 
     val libraryPresentationState: StateFlow<ReiAnixLibraryPresentationUiState> = combine(
         libraryAvailabilitySource,
-        canonicalCatalog,
+        catalogCounts,
         pagedLibraryState,
-    ) { source, canonical, page ->
-        val canonicalReady = canonical.isNotEmpty()
+    ) { source, counts, page ->
+        val canonicalReady = counts.animeCount > 0
         val dataState = when {
             canonicalReady && page.error != null ->
                 ReiAnixLibraryDataState.CANONICAL_READY_PAGE_ERROR
@@ -872,9 +874,9 @@ class ReiAnixLibraryViewModel(
             status = status,
             dataState = dataState,
             error = page.error ?: source.error,
-            animeCount = canonical.size,
-            availableEpisodeCount = canonical.sumOf { it.availableContentCount },
-            favoriteCount = canonical.count { it.favorite },
+            animeCount = counts.animeCount,
+            availableEpisodeCount = counts.availableEpisodeCount,
+            favoriteCount = counts.favoriteCount,
         )
     }
         .distinctUntilChanged()

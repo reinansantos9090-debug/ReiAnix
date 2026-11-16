@@ -822,9 +822,8 @@ private fun HomeHero(
     onSecondaryAction: (ReiAnixHomeAnimeUiModel) -> Unit,
     secondaryLabel: (ReiAnixHomeAnimeUiModel) -> String,
 ) {
-    BoxWithConstraints(
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    // No constraint-dependent branch: a regular Box avoids an extra subcompose pass.
+    Box(modifier = Modifier.fillMaxWidth()) {
         val heroHeight = LocalReiAnixResponsiveMetrics.current.homeHeroHeight()
 
         Box(
@@ -845,6 +844,8 @@ private fun HomeHero(
                 sourceRevisions = anime.artwork?.sourceRevisions.orEmpty(),
             )
 
+            // Draw the same two gradients on one node: no extra full-size Box
+            // to measure/place during Home composition. Overlay order is unchanged.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -856,12 +857,7 @@ private fun HomeHero(
                             0.82f to MaterialTheme.colorScheme.background.copy(alpha = 0.76f),
                             1f to MaterialTheme.colorScheme.background.copy(alpha = 0.99f),
                         ),
-                    ),
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
+                    )
                     .background(
                         Brush.horizontalGradient(
                             0f to MaterialTheme.colorScheme.background.copy(alpha = 0.68f),
