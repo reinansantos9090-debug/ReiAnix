@@ -12,8 +12,16 @@
     <item name="android:windowLightNavigationBar">false</item>
   </style>
 
-  <!-- Native Media3 player system bars are controlled exclusively by SystemUiController. -->
-  <style name="ReiAnixPlayerTheme" parent="android:style/Theme.Material.NoActionBar">
+  <!-- Cast's AndroidX MediaRouter creates AppCompatDialog fragments using the
+       owning FragmentActivity theme (not the MediaRouteButton view wrapper).
+       Keep the player fullscreen/black while providing the required AppCompat
+       dialog theme so tapping Cast cannot crash during dialog inflation. -->
+  <style name="ReiAnixPlayerTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <item name="colorPrimary">#2579FF</item>
+    <item name="colorPrimaryDark">#000000</item>
+    <item name="colorAccent">#2579FF</item>
+    <item name="android:colorAccent">#2579FF</item>
+    <item name="android:windowBackground">#000000</item>
     <item name="android:fontFamily">sans</item>
     <item name="android:windowActionModeOverlay">true</item>
     <item name="android:windowNoTitle">true</item>
