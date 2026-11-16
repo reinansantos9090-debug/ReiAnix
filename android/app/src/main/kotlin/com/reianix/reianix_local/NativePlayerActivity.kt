@@ -238,10 +238,21 @@ class NativePlayerActivity : FragmentActivity() {
         touchControls()
     }
 
+    // Keep the native list/radio logic, but reuse the ⋮ menu's rounded
+    // translucent charcoal surface for every options dialog.
+    private fun showPlayerMenuDialog(dialog: AlertDialog) {
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(R.drawable.reianix_player_menu_dialog_background)
+            val availableWidth = (resources.displayMetrics.widthPixels - dp(32)).coerceAtLeast(dp(240))
+            setLayout(minOf(dp(410), availableWidth), WindowManager.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
     private fun showSleepTimerSelection() {
         if (episodeChangePending || sleepTimerDialog?.isShowing == true) return
         val choices = arrayOf("15 minutos", "30 minutos", "45 minutos", "60 minutos", "90 minutos", "Personalizado", "Desativar")
-        sleepTimerDialog = AlertDialog.Builder(this)
+        sleepTimerDialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Temporizador")
             .setItems(choices) { _, which ->
                 when (which) {
@@ -251,7 +262,7 @@ class NativePlayerActivity : FragmentActivity() {
                 }
             }
             .setNegativeButton("Cancelar", null)
-            .create().also { it.show() }
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun showCustomSleepTimer() {
@@ -260,8 +271,11 @@ class NativePlayerActivity : FragmentActivity() {
             hint = "Minutos (1 a 1440)"
             setSingleLine(true)
             setPadding(dp(24), dp(12), dp(24), dp(12))
+            setTextColor(Color.WHITE)
+            setHintTextColor(0xFFBDBDBD.toInt())
+            backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
         }
-        val dialog = AlertDialog.Builder(this).setTitle("Temporizador").setView(input)
+        val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme).setTitle("Temporizador").setView(input)
             .setPositiveButton("Iniciar", null).setNegativeButton("Cancelar", null).create()
         sleepTimerDialog = dialog
         dialog.setOnShowListener {
@@ -271,7 +285,7 @@ class NativePlayerActivity : FragmentActivity() {
                 else { setSleepTimer(minutes); dialog.dismiss() }
             }
         }
-        dialog.show()
+        showPlayerMenuDialog(dialog)
     }
 
     private var lastSavedPosition = -1L
@@ -3205,7 +3219,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val labels = speeds.map { String.format(java.util.Locale.US, "%.2fx", it) }.toTypedArray()
         val currentIndex = speeds.indices.minByOrNull { abs(speeds[it] - player.playbackParameters.speed) } ?: 2
         touchControls()
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Velocidade")
             .setSingleChoiceItems(labels, currentIndex) { dialog, which ->
                 player.setPlaybackSpeed(speeds[which])
@@ -3218,7 +3232,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 dialog.dismiss()
             }
             .setNegativeButton("Cancelar", null)
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private var episodePlaylistOverlay: FrameLayout? = null
@@ -3512,12 +3526,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun showPlaybackHistory() {
         touchControls()
-        val loadingDialog = AlertDialog.Builder(this)
+        val loadingDialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Histórico")
             .setMessage("Carregando histórico…")
             .setNegativeButton("Fechar", null)
             .create()
-        loadingDialog.show()
+        showPlayerMenuDialog(loadingDialog)
 
         lifecycleScope.launch {
             try {
@@ -3549,11 +3563,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     showFeedback("Nenhum histórico de reprodução encontrado")
                     return@launch
                 }
-                AlertDialog.Builder(this@NativePlayerActivity)
+                AlertDialog.Builder(this@NativePlayerActivity, R.style.ReiAnixPlayerMenuDialogTheme)
                     .setTitle("Histórico")
                     .setItems(historyItems.toTypedArray(), null)
                     .setNegativeButton("Fechar", null)
-                    .show()
+                    .create().also { showPlayerMenuDialog(it) }
             } catch (cancelled: CancellationException) {
                 if (loadingDialog.isShowing) loadingDialog.dismiss()
                 throw cancelled
@@ -3570,11 +3584,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun showTechnicalInfo() {
         if (!::player.isInitialized) return
         touchControls()
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Informações técnicas")
             .setMessage(buildTechnicalInfo())
             .setPositiveButton("Fechar", null)
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
     private fun showTrackSelection(trackType: Int, label: String) {
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
@@ -3648,7 +3662,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }.let { if (it >= 0) it else 0 }
 
         val labels = options.map { it.title }.toTypedArray()
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle(label)
             .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
                 val option = options.getOrNull(which) ?: return@setSingleChoiceItems
@@ -3686,7 +3700,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 dialog.dismiss()
             }
             .setNegativeButton("Cancelar", null)
-            .show()
+            .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun seekBy(deltaMs: Long, feedbackText: String) {
@@ -5404,7 +5418,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
         }
 
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Marcadores e notas locais")
             .setView(container)
             .setNeutralButton("Nota no tempo atual") { _, _ ->
@@ -5457,7 +5471,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setTextColor(Color.WHITE)
             setTextSize(14f)
         }
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Nota em " + formatTime(if (::player.isInitialized) player.currentPosition else 0L))
             .setView(input)
             .setNegativeButton("Cancelar", null)
