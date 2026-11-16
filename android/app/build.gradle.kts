@@ -105,6 +105,10 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
+    // Cast Application Framework discovers Chromecast / Google Cast receivers.
+    implementation("com.google.android.gms:play-services-cast-framework:22.3.1")
+    // The native Cast route dialog requires a FragmentActivity host.
+    implementation("androidx.fragment:fragment:1.8.9")
 
     testImplementation("junit:junit:4.13.2")
     // Robolectric exercises Android SQLiteDatabase on the JVM; no emulator or instrumentation runner.
