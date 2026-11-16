@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -237,47 +238,47 @@ fun ReiAnixCollectionsDialog(
                             }
                         }
                     } else {
-                        val members = remember(selected, animeById) {
-                            selected.animeIds.mapNotNull(animeById::get)
-                        }
                         if (selected.animeIds.isEmpty()) {
                             Text("Esta coleção está vazia. Toque em Adicionar animes.")
-                        } else if (members.isEmpty()) {
-                            Text("Os arquivos desta coleção não estão na biblioteca atual.")
                         }
                         LazyColumn(
                             modifier = Modifier.fillMaxWidth().heightIn(max = 315.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            items(members, key = { it.id }) { anime ->
-                                val index = selected.animeIds.indexOf(anime.id)
+                            itemsIndexed(
+                                items = selected.animeIds,
+                                key = { _, animeId -> animeId },
+                            ) { index, animeId ->
+                                val anime = animeById[animeId]
                                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
                                     Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             CollectionPoster(anime, modifier = Modifier.size(40.dp, 56.dp))
                                             Text(
-                                                anime.title,
-                                                modifier = Modifier.weight(1f).clickable { onOpenAnime(anime.id) },
+                                                anime?.title ?: "Anime ausente (ID $animeId)",
+                                                modifier = if (anime != null) {
+                                                    Modifier.weight(1f).clickable { onOpenAnime(animeId) }
+                                                } else Modifier.weight(1f),
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                         }
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                             TextButton(
-                                                enabled = !busy,
-                                                onClick = { applyEdit { repository.setCover(selected.id, anime.id) } },
-                                            ) { Text(if (selected.effectiveCoverId == anime.id) "★ Capa" else "Usar capa") }
+                                                enabled = !busy && anime != null,
+                                                onClick = { applyEdit { repository.setCover(selected.id, animeId) } },
+                                            ) { Text(if (selected.effectiveCoverId == animeId) "★ Capa" else "Usar capa") }
                                             IconButton(
                                                 enabled = !busy && index > 0,
-                                                onClick = { applyEdit { repository.moveAnime(selected.id, anime.id, -1) } },
+                                                onClick = { applyEdit { repository.moveAnime(selected.id, animeId, -1) } },
                                             ) { Icon(Icons.Filled.ArrowUpward, contentDescription = "Subir anime") }
                                             IconButton(
                                                 enabled = !busy && index < selected.animeIds.lastIndex,
-                                                onClick = { applyEdit { repository.moveAnime(selected.id, anime.id, 1) } },
+                                                onClick = { applyEdit { repository.moveAnime(selected.id, animeId, 1) } },
                                             ) { Icon(Icons.Filled.ArrowDownward, contentDescription = "Descer anime") }
                                             TextButton(
                                                 enabled = !busy,
-                                                onClick = { applyEdit { repository.toggleAnime(selected.id, anime.id) } },
+                                                onClick = { applyEdit { repository.toggleAnime(selected.id, animeId) } },
                                             ) { Text("Remover") }
                                         }
                                     }
