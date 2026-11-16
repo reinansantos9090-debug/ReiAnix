@@ -234,7 +234,36 @@ object MediaStoreScanner {
                 var localCancelled=false
                 var volumeVideos=0
                 val collection=if(Build.VERSION.SDK_INT>=29)MediaStore.Video.Media.getContentUri(volumeName)else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                resolver.query(collection,projection.toTypedArray(),null,null,MediaStore.Video.Media.DISPLAY_NAME+" COLLATE NOCASE ASC")?.use{cursor->
+                // Scope the provider query when RELATIVE_PATH is available. Always keep the
+                // original per-row authorization check below; fall back to a full query when
+                // the provider rejects the optional filter or returns an empty scoped cursor.
+                val scopeRoots = if (Build.VERSION.SDK_INT >= 29) {
+                    authorizedScopes.asSequence()
+                        .filter { it.authority == "com.android.externalstorage.documents" }
+                        .filter { volumeMatches(it, volumeName, baseVolumeUuid) }
+                        .map { normalizeScopePath(it.treeDocumentId) }
+                        .filter(String::isNotBlank)
+                        .distinct()
+                        .toList()
+                } else emptyList()
+                val relativePathSelection = scopeRoots.takeIf { it.isNotEmpty() }?.joinToString(" OR ") {
+                    "${MediaStore.Video.Media.RELATIVE_PATH} LIKE ?"
+                }
+                val relativePathArgs = scopeRoots.map { "$it/%" }.toTypedArray()
+                val orderByName = MediaStore.Video.Media.DISPLAY_NAME + " COLLATE NOCASE ASC"
+                val columns = projection.toTypedArray()
+                val scopedCursor = if (relativePathSelection != null) {
+                    runCatching {
+                        resolver.query(collection, columns, relativePathSelection, relativePathArgs, orderByName)
+                    }.getOrNull()
+                } else null
+                val useFullScan = scopedCursor == null ||
+                    runCatching { scopedCursor.count == 0 }.getOrDefault(true)
+                val cursorToRead = if (useFullScan) {
+                    scopedCursor?.close()
+                    resolver.query(collection, columns, null, null, orderByName)
+                } else scopedCursor
+                cursorToRead?.use{cursor->
                     val idCol=cursor.getColumnIndex(MediaStore.Video.Media._ID);val nameCol=cursor.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
                     val mimeCol=cursor.getColumnIndex(MediaStore.Video.Media.MIME_TYPE);val sizeCol=cursor.getColumnIndex(MediaStore.Video.Media.SIZE)
                     val modCol=cursor.getColumnIndex(MediaStore.Video.Media.DATE_MODIFIED);val relCol=if(Build.VERSION.SDK_INT>=29)cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)else -1

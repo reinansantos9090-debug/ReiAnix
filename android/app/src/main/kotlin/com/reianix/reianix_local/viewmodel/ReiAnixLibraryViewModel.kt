@@ -335,6 +335,8 @@ class ReiAnixLibraryViewModel(
     // identical SQLite catalog reads while the previous reload is still in flight.
     private val projectionRefreshRequests = Channel<Unit>(Channel.CONFLATED)
     private val nativePageGeneration = AtomicLong(0L)
+    // Cancel superseded SQLite page requests rather than merely discarding their results.
+    private var nativePageJob: Job? = null
     private val nativePagedLibraryState = MutableStateFlow(ReiAnixLibraryPagedUiState())
 
     private val repository = ReiAnixLibraryRepository(context)
@@ -1296,39 +1298,30 @@ class ReiAnixLibraryViewModel(
                 ),
             )
 
-            val selectedIds = mutableListOf<Long>()
-            var offset = 0
-            var hasMore = true
+            // Request the same two-page result window in one SQLite traversal.
+            // A second offset query previously repeated normalization of every candidate.
             var queryError: String? = null
-            var pagesFetched = 0
-            val maxPages = 2
-            while (hasMore && queryError == null && pagesFetched < maxPages) {
-                when (val result = nativeLibraryQueries.searchAnime(
-                    searchText = request.settledQuery,
-                    genreKey = filters.selectedGenreKey,
-                    favoritesOnly = filters.favoritesOnly,
-                    watchingOnly = filters.watchingOnly,
-                    completedOnly = filters.completedOnly,
-                    sortLabel = filters.sort,
-                    limit = ReiAnixLibraryQueryService.MAX_PAGE_SIZE,
-                    offset = offset,
-                    libraryOnly = true,
-                )) {
-                    is ReiAnixLibraryQueryResult.Success -> {
-                        val page = result.value
-                        selectedIds += page.animeIds
-                        hasMore = page.hasMore
-                        offset += page.limit
-                        pagesFetched++
-                    }
-                    is ReiAnixLibraryQueryResult.Empty -> hasMore = false
-                    is ReiAnixLibraryQueryResult.Failure -> {
-                        queryError = result.cause.message?.takeIf(String::isNotBlank)
-                            ?: "Não foi possível pesquisar no banco SQLite da biblioteca."
-                    }
-                    is ReiAnixLibraryQueryResult.NotFound -> {
-                        queryError = "O banco SQLite não encontrou o item solicitado."
-                    }
+            val selectedIds = when (val result = nativeLibraryQueries.searchAnime(
+                searchText = request.settledQuery,
+                genreKey = filters.selectedGenreKey,
+                favoritesOnly = filters.favoritesOnly,
+                watchingOnly = filters.watchingOnly,
+                completedOnly = filters.completedOnly,
+                sortLabel = filters.sort,
+                limit = ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS,
+                offset = 0,
+                libraryOnly = true,
+            )) {
+                is ReiAnixLibraryQueryResult.Success -> result.value.animeIds
+                is ReiAnixLibraryQueryResult.Empty -> emptyList()
+                is ReiAnixLibraryQueryResult.Failure -> {
+                    queryError = result.cause.message?.takeIf(String::isNotBlank)
+                        ?: "Não foi possível pesquisar no banco SQLite da biblioteca."
+                    emptyList()
+                }
+                is ReiAnixLibraryQueryResult.NotFound -> {
+                    queryError = "O banco SQLite não encontrou o item solicitado."
+                    emptyList()
                 }
             }
 
@@ -2191,9 +2184,10 @@ class ReiAnixLibraryViewModel(
         // Periodic notifications arrive at the existing 15-second checkpoint, not the
         // 250 ms UI clock, so Compose remains responsive without excessive full queries.
         viewModelScope.launch {
+            // Every committed episode matters when refreshes are scoped per anime.
+            // Conflation/cancel-latest could silently lose a different anime's update.
             ReiAnixConsumptionService.playbackChanges
-                .conflate()
-                .collectLatest { change ->
+                .collect { change ->
                     Log.d(
                         TAG,
                         "Native playback committed episodeId=${change.episodeId} " +
@@ -2201,7 +2195,9 @@ class ReiAnixLibraryViewModel(
                             "playerGeneration=${change.playerGeneration} " +
                             "transitionGeneration=${change.transitionGeneration}",
                     )
-                    refreshNativeCatalog()
+                    val animeId = nativeLibraryRepository.getEpisode(change.episodeId)?.animeId
+                    if (animeId != null) refreshNativeCatalog(setOf(animeId))
+                    else refreshNativeCatalog()
                 }
         }
 
@@ -2284,7 +2280,8 @@ class ReiAnixLibraryViewModel(
                     if (incremental) affectedAnimeIds else null,
                 )
                 // A new catalog member also needs canonical ordering; use the full path.
-                val previousRows = nativeCatalogRows.associateBy { it.anime.id }
+                val previousRows = if (incremental) nativeCatalogRows.associateBy { it.anime.id }
+                    else emptyMap()
                 val canPatch = incremental && changedRows.all { changed ->
                     val previous = previousRows[changed.anime.id]?.anime
                     previous != null && previous.title == changed.anime.title &&
@@ -2312,7 +2309,7 @@ class ReiAnixLibraryViewModel(
                 } else if (incremental) nativeLibraryRepository.loadLibraryCatalogRows() else changedRows
                 val unchanged = if (canPatch) nativeCatalogState.value.animes
                     .filterNot { it.id in affectedAnimeIds.orEmpty() }.associateBy { it.id } else emptyMap()
-                val projected = withContext(Dispatchers.IO) {
+                val projected = withContext(Dispatchers.Default) {
                     com.reianix.reianix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(rows, unchanged)
                 }
                 nativeCatalogRows = rows
@@ -2424,7 +2421,8 @@ class ReiAnixLibraryViewModel(
             previous
         }
 
-        viewModelScope.launch(Dispatchers.Default) {
+        if (reset) nativePageJob?.cancel()
+        nativePageJob = viewModelScope.launch(Dispatchers.Default) {
             val catalog = nativeCatalogState.value
             if (catalog.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING) return@launch
             if (generation != nativePageGeneration.get()) return@launch

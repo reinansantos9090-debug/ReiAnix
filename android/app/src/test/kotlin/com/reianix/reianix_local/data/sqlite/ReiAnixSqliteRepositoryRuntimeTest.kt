@@ -1767,6 +1767,59 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun searchCombinedResultWindowMatchesTwoPagesAndPreservesAllItems() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.beginTransaction()
+            try {
+                for (animeId in 10L until 235L) {
+                    db.execSQL(
+                        "INSERT INTO anime(id, lookup_title, title, added_at, favorite) VALUES (?, ?, ?, ?, 0)",
+                        arrayOf(animeId, "bulk-" + animeId, "Bulk " + animeId, animeId.toDouble()),
+                    )
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        }
+
+        val queries = ReiAnixLibraryQueryService(context)
+        suspend fun search(limit: Int, offset: Int) =
+            queries.searchAnime(
+                searchText = "bulk",
+                sortLabel = "Nome A-Z",
+                limit = limit,
+                offset = offset,
+            )
+
+        val first = search(ReiAnixLibraryQueryService.MAX_PAGE_SIZE, 0)
+        val second = search(
+            ReiAnixLibraryQueryService.MAX_PAGE_SIZE,
+            ReiAnixLibraryQueryService.MAX_PAGE_SIZE,
+        )
+        val combined = search(ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS, 0)
+
+        assertTrue(first is ReiAnixLibraryQueryResult.Success)
+        assertTrue(second is ReiAnixLibraryQueryResult.Success)
+        assertTrue(combined is ReiAnixLibraryQueryResult.Success)
+        val firstPage = (first as ReiAnixLibraryQueryResult.Success).value
+        val secondPage = (second as ReiAnixLibraryQueryResult.Success).value
+        val combinedPage = (combined as ReiAnixLibraryQueryResult.Success).value
+        assertEquals(225, combinedPage.totalCount)
+        assertEquals(225, combinedPage.animeIds.size)
+        assertEquals(firstPage.animeIds + secondPage.animeIds, combinedPage.animeIds)
+        assertTrue(firstPage.hasMore)
+        assertFalse(secondPage.hasMore)
+        assertFalse(combinedPage.hasMore)
+
+        val allResults = ReiAnixSqliteLibraryRepository(context).searchAnimeIds(
+            "bulk", null, false, false, false, "Nome A-Z", 1, 0, allResults = true,
+        )
+        assertEquals(combinedPage.animeIds, allResults.animeIds)
+    }
+
+    @Test
     fun personalListMembershipIsIdempotentAndIndependentFromPlaybackProgress() = runBlocking {
         createCanonicalFixture()
         val service = ReiAnixPersonalListService(context)
