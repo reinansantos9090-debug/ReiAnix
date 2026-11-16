@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,11 +27,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.reianix.reianix_local.data.library.ReiAnixLibraryDiscovery
 import com.reianix.reianix_local.ui.ReiAnixCompactButton
+import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import com.reianix.reianix_local.ui.model.ReiAnixArtworkUiModel
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import kotlinx.coroutines.CancellationException
 import java.text.SimpleDateFormat
@@ -40,6 +46,7 @@ fun ReiAnixTimelineDialog(
     viewModel: ReiAnixLibraryViewModel,
     onDismiss: () -> Unit,
     onOpenAnime: (Long) -> Unit,
+    artworkByAnimeId: Map<Long, ReiAnixArtworkUiModel?> = emptyMap(),
 ) {
     var groups by remember(viewModel) { mutableStateOf<List<ReiAnixLibraryDiscovery.TimelineGroup>?>(null) }
     var loading by remember(viewModel) { mutableStateOf(true) }
@@ -72,40 +79,11 @@ fun ReiAnixTimelineDialog(
                 empty = !loading && error == null && groups.orEmpty().isEmpty(),
                 emptyMessage = "A biblioteca ainda não possui itens para a linha do tempo.",
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    groups.orEmpty().forEach { group ->
-                        Text(group.label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        group.items.forEach { item ->
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpenAnime(item.id) },
-                                shape = MaterialTheme.shapes.medium,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(item.title.ifBlank { "Anime local" }, style = MaterialTheme.typography.bodyMedium)
-                                        val secondary = listOfNotNull(
-                                            item.season?.takeIf(String::isNotBlank),
-                                            item.status?.takeIf(String::isNotBlank),
-                                        ).joinToString(" • ")
-                                        if (secondary.isNotBlank()) {
-                                            Text(secondary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                    Text("Abrir", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(2.dp))
-                    }
-                }
+                ReiAnixTimelineList(
+                    groups = groups.orEmpty(),
+                    artworkByAnimeId = artworkByAnimeId,
+                    onOpenAnime = onOpenAnime,
+                )
             }
         },
         confirmButton = { ReiAnixCompactButton(text = "Fechar", onClick = onDismiss) },
@@ -114,6 +92,73 @@ fun ReiAnixTimelineDialog(
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
+}
+
+/**
+ * Preserve the canonical year groups and anime IDs, but compose/decode only the
+ * visible rows. Images are read from the Home's resolved local posters (or the
+ * timeline SQLite cover_cache fallback); no metadata lookup or artwork download.
+ */
+@Composable
+internal fun ReiAnixTimelineList(
+    groups: List<ReiAnixLibraryDiscovery.TimelineGroup>,
+    artworkByAnimeId: Map<Long, ReiAnixArtworkUiModel?>,
+    onOpenAnime: (Long) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        groups.forEach { group ->
+            item(key = "year:${group.year ?: "unknown"}", contentType = "year") {
+                Text(
+                    group.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            items(
+                items = group.items,
+                key = { anime -> "anime:${anime.id}" },
+                contentType = { "anime" },
+            ) { anime ->
+                val artwork = artworkByAnimeId[anime.id]
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(role = Role.Button) { onOpenAnime(anime.id) },
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        ReiAnixPoster(
+                            localPath = artwork?.localPath ?: anime.coverCache,
+                            contentDescription = "Capa de ${anime.title.ifBlank { "Anime local" }}",
+                            identity = "anime:${anime.id}",
+                            modifier = Modifier.size(width = 44.dp, height = 62.dp),
+                            maxDimensionPx = 160,
+                            sourceRevisions = artwork?.sourceRevisions.orEmpty(),
+                            // Timeline is a read-only view: never trigger remote downloads.
+                            externalUrl = null,
+                        )
+                        Text(
+                            text = anime.title.ifBlank { "Anime local" },
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
