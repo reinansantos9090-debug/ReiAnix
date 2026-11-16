@@ -183,22 +183,7 @@ class MainActivity : ComponentActivity() {
                     "resultCode=" + result.resultCode + " controlled=" + controlled +
                     " reason=" + reason.ifBlank { "-" },
             )
-            NativeMailbox.writeBestEffort(
-                this,
-                JSONObject()
-                    .put("type", "diagnostic")
-                    .put("requestId", requestId ?: "")
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("event", "PLAYER_ACTIVITY_RESULT")
-                            .put("resultCode", result.resultCode)
-                            .put("controlled", controlled)
-                            .put("reason", reason)
-                            .put("activityInstanceId", activityInstanceId ?: "")
-                            .put("unexpectedCancellation", result.resultCode == RESULT_CANCELED && !controlled),
-                    ),
-            )
+
             if (result.resultCode == RESULT_CANCELED && !controlled) {
                 Log.e(
                     tag,
@@ -691,7 +676,7 @@ class MainActivity : ComponentActivity() {
         // Android's callback map is only a notification; the current package permissions are authoritative.
         val granted = access != "denied"
         Log.i(tag, "MEDIA_PERMISSION_CALLBACK grants=" + grants + " access=" + access + " granted=" + granted)
-        NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "PERMISSION_RESULT").put("source", MediaStoreScanner.SOURCE).put("access", access)))
+
         NativeMailbox.write(this, JSONObject().put("type", "mediastore_permission")
             .put("requestId", requestId ?: "")
             .put("payload", JSONObject()
@@ -930,10 +915,7 @@ class MainActivity : ComponentActivity() {
         val now = System.currentTimeMillis()
         Log.i(tag, "SAF_PICKER_STATE requestId=" + (requestId ?: "-") +
             " phase=" + phase.name + " at=" + now)
-        NativeMailbox.write(this, JSONObject().put("type", "diagnostic")
-            .put("requestId", requestId ?: "")
-            .put("payload", JSONObject().put("event", "SAF_PICKER_STATE")
-                .put("state", phase.name).put("requestId", requestId ?: "").put("timestamp", now)))
+
     }
 
     private fun clearSafPickerPending(requestId: String?, terminalPhase: SafPickerPhase) {
@@ -1231,33 +1213,7 @@ class MainActivity : ComponentActivity() {
                     SafScanner.STATUS_UNAVAILABLE else SafScanner.STATUS_FAILED, treeUri = uri)
         }
     }
-    private fun logLifecycle(event: String, intent: Intent? = null) {
-        val data = intent?.data
-        val action = data?.getQueryParameter("action")
-        val requestId = data?.getQueryParameter("request_id")
-        Log.i(
-            tag,
-            "LIFECYCLE $event instance=${System.identityHashCode(this)} task=$taskId resumed=$activityResumed " +
-                "focused=${window?.decorView?.hasWindowFocus() == true} finishing=$isFinishing " +
-                "action=${action ?: "-"} requestId=${requestId ?: "-"} flags=0x${intent?.flags?.toString(16) ?: "0"}"
-        )
 
-        NativeMailbox.writeBestEffort(
-            this,
-            JSONObject().put("type", "diagnostic")
-                .put("requestId", requestId ?: "")
-                .put("payload", JSONObject()
-                    .put("event", "MAIN_ACTIVITY_LIFECYCLE")
-                    .put("lifecycle", event)
-                    .put("requestId", requestId ?: "")
-                    .put("activeRequestId", activePlayerRequestId ?: "")
-                    .put("activeCommandCreatedAtMs", activePlayerCommandCreatedAtMs)
-                    .put("activityElapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
-                    .put("resumed", activityResumed)
-                    .put("focused", window?.decorView?.hasWindowFocus() == true)
-                    .put("finishing", isFinishing)),
-        )
-    }
 
     private fun publishInteractionProfileIfChanged(force: Boolean = false) {
         val profile = DeviceInteractionProfile.detect(this)
@@ -1335,8 +1291,8 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState?.containsKey(STATE_LAST_OBSERVED_BROAD_ACCESS) == true) {
             lastObservedBroadAccess = savedInstanceState.getBoolean(STATE_LAST_OBSERVED_BROAD_ACCESS)
         }
-        logLifecycle("onCreate", intent)
-        NativeMailbox.write(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "APP_START").put("lifecycle", "onCreate")))
+
+
         systemUiController = SystemUiController(window)
         lifecycleScope.launch {
             SafTreeChangeMonitor.changes.collect {
@@ -1399,7 +1355,7 @@ class MainActivity : ComponentActivity() {
     public override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        logLifecycle("onNewIntent", intent)
+
         if (!nativeBootstrapDecisionComplete || !::composeLibraryHost.isInitialized) {
             synchronized(pendingNativeIntentsBeforeBootstrap) {
                 pendingNativeIntentsBeforeBootstrap.add(intent)
@@ -2161,7 +2117,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         registerStorageReceiver()
         MediaStoreScanner.startChangeObserver(this) { scheduleMediaStoreIncrementalRescan() }
-        logLifecycle("onStart")
+
         applyApplicationSystemUi()
     }
 
@@ -2170,8 +2126,8 @@ class MainActivity : ComponentActivity() {
 
 
         activityResumed = true
-        logLifecycle("onResume")
-        NativeMailbox.writeBestEffort(this, JSONObject().put("type", "diagnostic").put("payload", JSONObject().put("event", "ON_RESUME").put("lifecycle", "onResume")))
+
+
         applyApplicationSystemUi()
         if (safPickerPending) {
             // onResume marks return even when a provider omits the separate focus-loss callback.
@@ -2474,7 +2430,7 @@ class MainActivity : ComponentActivity() {
             safPickerFocusLost = true
             safPickerFocusRegainedAtMs = 0L
         }
-        logLifecycle("onPause")
+
         super.onPause()
     }
 
@@ -2482,7 +2438,7 @@ class MainActivity : ComponentActivity() {
         // SAF tree observers are process-scoped and intentionally remain registered
         // while the Activity is backgrounded. MediaStore/UI observers keep their
         // existing lifecycle because they are separate capabilities.
-        logLifecycle("onStop")
+
         unregisterStorageReceiver()
         MediaStoreScanner.stopChangeObserver(this)
         defaultFolderScanHandler.removeCallbacks(defaultFolderScanRunnable)
@@ -2498,7 +2454,7 @@ class MainActivity : ComponentActivity() {
         googleSignInJob = null
         googleSignOutJob?.cancel()
         googleSignOutJob = null
-        logLifecycle("onDestroy")
+
         if (isFinishing) NativeScanController.cancelAll()
         unregisterStorageReceiver()
         super.onDestroy()
@@ -4741,22 +4697,6 @@ class MainActivity : ComponentActivity() {
                     " reason=revoked_origin originRequestId=" + originRequestId,
             )
 
-            NativeMailbox.writeBestEffort(
-                this,
-                JSONObject()
-                    .put("type", "diagnostic")
-                    .put("requestId", requestId)
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("event", staleOriginDiagnosticEvent)
-                            .put("requestId", requestId)
-                            .put("originRequestId", originRequestId)
-                            .put("originPlayerSessionId", originPlayerSessionId)
-                            .put("currentPlayerSessionId", activePlayerSessionId ?: "")
-                            .put("reason", "revoked_origin"),
-                    ),
-            )
             return false
         }
         if (originRequestId.isNotBlank()) {
@@ -4788,24 +4728,6 @@ class MainActivity : ComponentActivity() {
                         " originCreatedAtMs=" + originCreatedAtMs,
                 )
 
-                NativeMailbox.writeBestEffort(
-                    this,
-                    JSONObject()
-                        .put("type", "diagnostic")
-                        .put("requestId", requestId)
-                        .put(
-                            "payload",
-                            JSONObject()
-                                .put("event", staleOriginDiagnosticEvent)
-                                .put("requestId", requestId)
-                                .put("originRequestId", originRequestId)
-                                .put("originPlayerSessionId", originPlayerSessionId)
-                                .put("currentPlayerSessionId", activePlayerSessionId ?: "")
-                                .put("originCreatedAtMs", originCreatedAtMs)
-                                .put("lastPlayerExitAtMs", lastPlayerExitAtMs)
-                                .put("reason", result),
-                        ),
-                )
                 return false
             }
         }
@@ -4899,21 +4821,7 @@ class MainActivity : ComponentActivity() {
                     " flags=0x" + intent.flags.toString(16) +
                     " reuse=" + reusingPlayerActivity,
             )
-            NativeMailbox.writeBestEffort(
-                this,
-                JSONObject()
-                    .put("type", "diagnostic")
-                    .put("requestId", requestId)
-                    .put(
-                        "payload",
-                        JSONObject()
-                            .put("event", "PLAYER_HANDOFF_START")
-                            .put("stage", "start_activity")
-                            .put("uri", localUri.toString())
-                            .put("component", resolvedActivity.flattenToShortString())
-                            .put("reuse", reusingPlayerActivity),
-                    ),
-            )
+
             Log.i(tag, "PLAY_HANDOFF_START requestId=" + requestId.ifEmpty { "-" } + " component=" + intent.component)
 
             if (reusingPlayerActivity) {
@@ -5069,7 +4977,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        logLifecycle("onWindowFocusChanged")
+
         if (hasFocus) {
             applyApplicationSystemUi()
          publishInteractionProfileIfChanged()
