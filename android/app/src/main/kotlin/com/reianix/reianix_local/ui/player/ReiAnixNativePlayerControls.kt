@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
@@ -117,6 +118,7 @@ fun ReiAnixNativePlayerControls(
             ReiAnixNativePlayerTopControls(
                 state = state,
                 onBack = onBack,
+                onToggleLock = onToggleLock,
             )
             ReiAnixNativePlayerCenterControls(
                 state = state,
@@ -139,6 +141,7 @@ fun ReiAnixNativePlayerControls(
 fun ReiAnixNativePlayerTopControls(
     state: ReiAnixNativePlayerUiState,
     onBack: () -> Unit,
+    onToggleLock: () -> Unit,
 ) {
     val safeTop = with(LocalDensity.current) { state.safeTopPx.toDp() }
 
@@ -152,69 +155,62 @@ fun ReiAnixNativePlayerTopControls(
                 bottom = ReiAnixTokens.PlayerDimensions.topBottomPadding,
             ),
     ) {
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .size(48.dp)
-                .align(Alignment.TopStart)
-                .semantics {
-                    contentDescription = "Voltar"
-                    role = Role.Button
-                },
-        ) {
-            Icon(
-                imageVector = Icons.Filled.ArrowBack,
-                contentDescription = null,
-                tint = ReiAnixTokens.Colors.playerControl,
-            )
-        }
-
-        // The fourth bottom action (three-dot menu) is centered in the last
-        // quarter of the same 8.dp-inset viewport. Match that exact x-axis.
+        // Both upper actions share the center of their respective bottom-menu
+        // quarter. The first episode line begins 2.dp below the content top and
+        // has 16.dp line height; moving the *48.dp touch targets* up by 14.dp
+        // centers the unchanged icons on that line without moving the title.
+        val episodeLineOffset = (-14).dp
         Box(
-            modifier = Modifier.fillMaxWidth(0.25f).align(Alignment.TopEnd),
+            modifier = Modifier
+                .fillMaxWidth(0.25f)
+                .align(Alignment.TopStart),
             contentAlignment = Alignment.Center,
         ) {
-            AndroidView(
-                factory = { context ->
-                    // The route dialog is a Fragment on NativePlayerActivity;
-                    // using the Activity's AppCompat theme avoids giving the
-                    // route button and its dialog inconsistent theme contexts.
-                    object : MediaRouteButton(context) {
-                        // Synchronous MediaRouter / FragmentManager failures must
-                        // not kill the playback Activity. Deferred dialog failures
-                        // are addressed by the Activity's AppCompat theme.
-                        override fun showDialog(): Boolean {
-                            return try {
-                                super.showDialog()
-                            } catch (error: RuntimeException) {
-                                android.util.Log.e("ReiAnixCast", "CAST_DEVICE_PICKER_FAILED", error)
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "Não foi possível abrir a seleção de TVs",
-                                    android.widget.Toast.LENGTH_SHORT,
-                                ).show()
-                                false
-                            }
-                        }
-                    }.apply {
-                        contentDescription = "Transmitir para TV (Google Cast)"
-                        setRemoteIndicatorDrawable(
-                            androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_reianix_cast),
-                        )
-                        // Cast owns device discovery and route selection; no DLNA.
-                        // Cast is optional: devices without Play services must
-                        // still be able to open and use the local player.
-                        runCatching {
-                            CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
-                        }.onFailure { error ->
-                            android.util.Log.w("ReiAnixCast", "CAST_BUTTON_INIT_FAILED", error)
-                            visibility = android.view.View.GONE
-                        }
-                    }
-                },
-                modifier = Modifier.size(48.dp),
-            )
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(48.dp)
+                    .offset(y = episodeLineOffset)
+                    .semantics {
+                        contentDescription = "Voltar"
+                        role = Role.Button
+                    },
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowBack,
+                    contentDescription = null,
+                    tint = ReiAnixTokens.Colors.playerControl,
+                )
+            }
+        }
+
+        // Top-right lock matches the horizontal center of the bottom three dots.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.25f)
+                .align(Alignment.TopEnd),
+            contentAlignment = Alignment.Center,
+        ) {
+            IconButton(
+                onClick = onToggleLock,
+                enabled = !state.episodeTransitionInProgress,
+                modifier = Modifier
+                    .size(ReiAnixTokens.PlayerDimensions.actionButtonSize)
+                    .offset(y = episodeLineOffset)
+                    .semantics {
+                        contentDescription = "Bloquear toques"
+                        role = Role.Button
+                    },
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = null,
+                    tint = if (state.episodeTransitionInProgress) {
+                        ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f)
+                    } else ReiAnixTokens.Colors.playerControl,
+                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
+                )
+            }
         }
 
         Column(
@@ -596,14 +592,7 @@ fun ReiAnixNativePlayerBottomControls(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PlayerBottomAction(
-                icon = Icons.Filled.Lock,
-                label = "Bloquear toques",
-                showLabel = !landscape,
-                contentDescription = "Bloquear toques",
-                onClick = onToggleLock,
-                enabled = !state.episodeTransitionInProgress,
-            )
+            PlayerBottomCastAction(showLabel = !landscape)
             PlayerBottomAction(
                 icon = Icons.Filled.PlaylistPlay,
                 label = "Episódios",
@@ -639,6 +628,58 @@ fun ReiAnixNativePlayerBottomControls(
                 },
                 onClick = onSource,
                 enabled = !state.episodeTransitionInProgress,
+            )
+        }
+    }
+}
+
+/**
+ * Keep the same 48.dp MediaRouteButton and the existing Cast SDK behaviour.
+ * Only its layout slot changes: the first of four equally weighted actions.
+ */
+@Composable
+private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
+    Column(
+        modifier = Modifier.weight(1f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        AndroidView(
+            factory = { context ->
+                object : MediaRouteButton(context) {
+                    override fun showDialog(): Boolean {
+                        return try {
+                            super.showDialog()
+                        } catch (error: RuntimeException) {
+                            android.util.Log.e("ReiAnixCast", "CAST_DEVICE_PICKER_FAILED", error)
+                            android.widget.Toast.makeText(
+                                context,
+                                "Não foi possível abrir a seleção de TVs",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            false
+                        }
+                    }
+                }.apply {
+                    contentDescription = "Transmitir para TV (Google Cast)"
+                    setRemoteIndicatorDrawable(
+                        androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_reianix_cast),
+                    )
+                    runCatching {
+                        CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
+                    }.onFailure { error ->
+                        android.util.Log.w("ReiAnixCast", "CAST_BUTTON_INIT_FAILED", error)
+                        visibility = android.view.View.GONE
+                    }
+                }
+            },
+            modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionButtonSize),
+        )
+        if (showLabel) {
+            Text(
+                text = "Transmitir",
+                style = ReiAnixTokens.TypographyTokens.playerActionLabel,
+                color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.92f),
+                maxLines = 1,
             )
         }
     }
