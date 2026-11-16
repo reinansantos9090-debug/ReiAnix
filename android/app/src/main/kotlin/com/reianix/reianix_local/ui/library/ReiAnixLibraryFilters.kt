@@ -98,6 +98,37 @@ object ReiAnixLibraryFilterEngine {
     ): List<ReiAnixAnimeUiModel> {
         if (animes.size < 2 || sortLabel.isBlank()) return animes
 
+        // Common library sorts never depend on episode metadata. Previously
+        // even "Mais recentes" scanned every episode to build unused metrics
+        // on each fallback sort during a catalog refresh.
+        val quickComparator: Comparator<ReiAnixAnimeUiModel>? =
+            when (ReiAnixLibrarySort.fromLabel(sortLabel)) {
+                ReiAnixLibrarySort.RECENT ->
+                    compareByDescending<ReiAnixAnimeUiModel> { it.addedAt ?: 0.0 }
+                        .thenBy { it.title.trim().lowercase() }
+                        .thenByDescending { it.id }
+                ReiAnixLibrarySort.RECENTLY_WATCHED ->
+                    compareByDescending<ReiAnixAnimeUiModel> { it.lastPlayedAt ?: 0.0 }
+                        .thenBy { it.title.trim().lowercase() }
+                        .thenByDescending { it.id }
+                ReiAnixLibrarySort.FAVORITES_FIRST ->
+                    compareByDescending<ReiAnixAnimeUiModel> { it.favorite }
+                        .thenBy { it.title.trim().lowercase() }
+                        .thenByDescending { it.id }
+                ReiAnixLibrarySort.PINNED_FIRST ->
+                    compareByDescending<ReiAnixAnimeUiModel> { it.pinned }
+                        .thenBy { it.title.trim().lowercase() }
+                        .thenByDescending { it.id }
+                ReiAnixLibrarySort.TITLE_ASC ->
+                    compareBy<ReiAnixAnimeUiModel> { it.title.trim().lowercase() }
+                        .thenBy { it.id }
+                ReiAnixLibrarySort.TITLE_DESC ->
+                    compareByDescending<ReiAnixAnimeUiModel> { it.title.trim().lowercase() }
+                        .thenByDescending { it.id }
+                else -> null // progress/episode/duration/size still use full metrics
+            }
+        if (quickComparator != null) return animes.sortedWith(quickComparator)
+
         val decorated = animes.map { anime ->
             val episodes = anime.contentEpisodes
             val available = episodes.filter {

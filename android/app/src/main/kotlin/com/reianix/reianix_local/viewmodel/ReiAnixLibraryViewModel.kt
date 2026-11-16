@@ -48,6 +48,8 @@ import java.util.Locale
 import java.util.UUID
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiState
+import com.reianix.reianix_local.ui.model.matchesRefreshRequest
+import com.reianix.reianix_local.ui.model.visiblePageCount
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryDataState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -2325,19 +2327,48 @@ class ReiAnixLibraryViewModel(
             }
         }
         val normalizedGenre = genre.takeIf { it != "Todos" }?.trim()
+        val normalizedQuery = query.trim()
+        val normalizedSort = sort.trim().ifEmpty { "Mais recentes" }
         val previous = nativePagedLibraryState.value
+        val retainVisiblePage = reset && previous.matchesRefreshRequest(
+            pageSize = normalizedPageSize,
+            query = normalizedQuery,
+            genreKey = normalizedGenre,
+            favoritesOnly = favoritesOnly,
+            watchingOnly = watchingOnly,
+            completedOnly = completedOnly,
+            sort = normalizedSort,
+        )
+        // Do not replace a visible grid with the full-catalog fallback (and
+        // re-sort every episode) just because an artwork/metadata row changed.
+        // Real filter changes intentionally do not retain the old results.
+        val visiblePageCount = if (retainVisiblePage) previous.visiblePageCount(normalizedPageSize) else 0
+        val refreshedItemLimit = normalizedPageSize.toLong() * visiblePageCount.toLong()
+        val refreshAll = normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS ||
+            (retainVisiblePage && refreshedItemLimit > ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS)
+        val refreshLimit = when {
+            refreshAll -> ReiAnixLibraryQueryService.DEFAULT_PAGE_SIZE
+            retainVisiblePage -> maxOf(normalizedPageSize, refreshedItemLimit.toInt())
+            else -> normalizedPageSize
+        }
         nativePagedLibraryState.value = if (reset) {
             ReiAnixLibraryPagedUiState(
-                status = com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+                status = if (retainVisiblePage) previous.status else
+                    com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING,
+                animes = if (retainVisiblePage) previous.animes else emptyList(),
+                totalCount = if (retainVisiblePage) previous.totalCount else 0,
+                // No load-next-page while refreshing page zero.
+                hasMore = false,
+                loadedPage = -1,
                 isLoading = true,
                 pageSize = normalizedPageSize,
                 generation = generation,
-                query = query.trim(),
+                query = normalizedQuery,
                 genreKey = normalizedGenre,
                 favoritesOnly = favoritesOnly,
                 watchingOnly = watchingOnly,
                 completedOnly = completedOnly,
-                sort = sort.trim().ifEmpty { "Mais recentes" },
+                sort = normalizedSort,
             )
         } else if (previous.generation == generation) {
             previous.copy(
@@ -2372,14 +2403,10 @@ class ReiAnixLibraryViewModel(
                 watchingOnly = watchingOnly,
                 completedOnly = completedOnly,
                 sortLabel = sort,
-                limit = if (normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS) {
-                    ReiAnixLibraryQueryService.DEFAULT_PAGE_SIZE
-                } else {
-                    normalizedPageSize
-                },
-                offset = if (normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS) 0 else offset,
+                limit = if (requestedPage == 0) refreshLimit else normalizedPageSize,
+                offset = if (refreshAll) 0 else offset,
                 libraryOnly = true,
-                allResults = normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS,
+                allResults = refreshAll && requestedPage == 0,
             )) {
                 is ReiAnixLibraryQueryResult.Success -> {
                     val pageResult = result.value
@@ -2417,7 +2444,9 @@ class ReiAnixLibraryViewModel(
                         animes = pageAnimes,
                         totalCount = pageResult.totalCount,
                         hasMore = pageResult.hasMore,
-                        loadedPage = requestedPage,
+                        loadedPage = if (requestedPage == 0 && normalizedPageSize > 0) {
+                            (pageAnimes.size - 1).coerceAtLeast(0) / normalizedPageSize
+                        } else requestedPage,
                         isLoading = false,
                         pageSize = normalizedPageSize,
                         requestId = null,

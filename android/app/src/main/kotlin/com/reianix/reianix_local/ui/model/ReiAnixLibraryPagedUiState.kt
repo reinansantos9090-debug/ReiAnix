@@ -44,3 +44,35 @@ data class ReiAnixLibraryPagedUiState(
     val isLoadingMore: Boolean
         get() = isLoading && loadedPage >= 0
 }
+
+/**
+ * A catalog/artwork refresh may keep the current cards on screen while page zero
+ * is re-queried. Never carry a page across a real search/filter/sort/size change:
+ * the new filter must not briefly display unrelated titles.
+ */
+internal fun ReiAnixLibraryPagedUiState.matchesRefreshRequest(
+    pageSize: Int,
+    query: String,
+    genreKey: String?,
+    favoritesOnly: Boolean,
+    watchingOnly: Boolean,
+    completedOnly: Boolean,
+    sort: String,
+): Boolean =
+    animes.isNotEmpty() &&
+        this.pageSize == pageSize &&
+        this.query == query &&
+        this.genreKey == genreKey &&
+        this.favoritesOnly == favoritesOnly &&
+        this.watchingOnly == watchingOnly &&
+        this.completedOnly == completedOnly &&
+        this.sort == sort
+
+/**
+ * How many original pages must be fetched to leave the scroll position valid
+ * after a background refresh. A partial final page still counts as one page.
+ */
+internal fun ReiAnixLibraryPagedUiState.visiblePageCount(pageSize: Int): Int {
+    if (pageSize <= 0 || animes.isEmpty()) return 0
+    return (animes.size - 1) / pageSize + 1
+}
