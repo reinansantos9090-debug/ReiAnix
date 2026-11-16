@@ -286,6 +286,9 @@ class NativePlayerActivity : FragmentActivity() {
     private var completionReported = false
     private var controlsVisible = true
     private var moreVisible = false
+    // Lives above the controls overlay: the options menu must remain usable after
+    // the 3.5s player-controls timeout hides the playback UI.
+    private var menuDismissScrim: View? = null
     private var lastControlsInteraction = 0L
     private var requestId = ""
     private var originRequestId = ""
@@ -463,8 +466,7 @@ class NativePlayerActivity : FragmentActivity() {
                 topBar.visibility = View.GONE
                 centerControls.visibility = View.GONE
                 bottomBar.visibility = View.GONE
-                moreVisible = false
-                findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+                setMorePanelVisible(false)
             }
         }
     }
@@ -1037,8 +1039,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         updateEpisodeNavigationButtons()
         findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
-        moreVisible = false
-        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+        setMorePanelVisible(false)
         setControlsVisible(true)
 
         try {
@@ -2534,6 +2535,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         val morePanel = ComposeView(this).apply {
             tag = "reianix_more_panel"
+            visibility = View.GONE
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 ReiAnixComposeTheme {
@@ -2618,7 +2620,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val panelWidth = minOf(dp(410), availablePanelWidth)
         val availablePanelHeight = (resources.displayMetrics.heightPixels - dp(72)).coerceAtLeast(dp(220))
         val panelHeight = minOf(dp(380), availablePanelHeight)
-        controls.addView(morePanel, FrameLayout.LayoutParams(
+        // A transparent, clickable layer consumes outside taps without triggering
+        // seek/pause gestures on the video underneath. It stays independent from
+        // the controls layer and is only visible while the options menu is open.
+        menuDismissScrim = View(this).apply {
+            tag = "reianix_more_dismiss_scrim"
+            visibility = View.GONE
+            isClickable = true
+            contentDescription = "Fechar menu do player"
+            setOnClickListener { setMorePanelVisible(false) }
+        }.also { scrim ->
+            root.addView(
+                scrim,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+        root.addView(morePanel, FrameLayout.LayoutParams(
             panelWidth,
             panelHeight,
         ).apply {
@@ -2634,7 +2654,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         bottomBar.visibility = View.GONE
         findViewByTag<View>("reianix_marker_row")?.visibility = View.GONE
         installComposePlayerControls()
-        controls.bringToFront()
+        // Menu + dismiss scrim are the last root children, above Compose controls.
     }
 
     private fun initializeGoogleCast() {
@@ -2910,17 +2930,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
         preparingIndicator.visibility = if (composeIndicatorVisible) View.GONE else View.VISIBLE
     }
 
-    private fun toggleMorePanel() {
-        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
-        moreVisible = !moreVisible
+    private fun setMorePanelVisible(visible: Boolean) {
+        val canShow = visible && !locked && !inPictureInPicture && !errorVisible
+        moreVisible = canShow
         val panel = findViewByTag<View>("reianix_more_panel")
-        panel?.visibility = if (moreVisible) View.VISIBLE else View.GONE
-        if (moreVisible) {
+        menuDismissScrim?.visibility = if (canShow) View.VISIBLE else View.GONE
+        panel?.visibility = if (canShow) View.VISIBLE else View.GONE
+        if (canShow) {
             optionsPanelResetSignal.value += 1
+            menuDismissScrim?.bringToFront()
             panel?.bringToFront()
         }
-        controls.bringToFront()
+    }
+
+    private fun toggleMorePanel() {
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
+        val opening = !moreVisible
         touchControls()
+        setMorePanelVisible(opening)
     }
 
     private fun hideLegacyPrimaryControls() {
@@ -2979,9 +3006,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     if (episodePlaylistOverlay != null) { closeEpisodePlaylist(); return }
                     logPlayer("PLAYER_BACK ANDROID_BACK requestId=" + requestId.ifEmpty { "-" })
                     if (moreVisible) {
-                        moreVisible = false
-                        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
-                        touchControls()
+                        setMorePanelVisible(false)
                         return
                     }
                     finishPlayer("back_button")
@@ -3708,8 +3733,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         if (inPictureInPicture) {
             handler.removeCallbacks(controlsHider)
-            moreVisible = false
-            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+            setMorePanelVisible(false)
             controls.visibility = View.INVISIBLE
             hideLegacyPrimaryControls()
             syncComposePlayerUiState()
@@ -3721,7 +3745,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             topBar.visibility = View.GONE
             bottomBar.visibility = View.GONE
             centerControls.visibility = View.GONE
-            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+            setMorePanelVisible(false)
             findViewByTag<View>("reianix_back_button")?.visibility = View.GONE
             findViewByTag<View>("reianix_more_button")?.visibility = View.GONE
             if (visible) {
@@ -3746,8 +3770,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (composeControlsEnabled) View.GONE else View.VISIBLE
         findViewByTag<View>("reianix_more_button")?.visibility =
             if (composeControlsEnabled) View.GONE else View.VISIBLE
-        moreVisible = false
-        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+        // Never close the options menu just because the playback controls
+        // auto-hide, or when a regular player interaction shows them again.
         syncComposePlayerUiState()
     }
 
@@ -3784,8 +3808,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         if (locked) {
             handler.removeCallbacks(controlsHider)
-            moreVisible = false
-            findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
+            setMorePanelVisible(false)
             findViewByTag<View>("reianix_back_button")?.visibility = View.GONE
             findViewByTag<View>("reianix_more_button")?.visibility = View.GONE
             controls.visibility = View.VISIBLE
@@ -3945,9 +3968,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         retryCount += 1
         errorVisible = false
         playbackErrorForGeneration = false
-        moreVisible = false
+        setMorePanelVisible(false)
         findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
-        findViewByTag<View>("reianix_more_panel")?.visibility = View.GONE
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
         logPlayer(
             "PLAYER_RETRY requestId=" + requestId.ifEmpty { "-" } +
