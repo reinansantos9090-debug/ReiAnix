@@ -104,7 +104,6 @@ fun ReiAnixLibraryRoute(
     navController: NavHostController,
     viewModel: ReiAnixLibraryViewModel,
     cardSize: String = "medium",
-    gridDensity: String = "medium",
     pageSize: Int = 0,
     defaultSortKey: String = "added_desc",
 ) {
@@ -130,7 +129,6 @@ fun ReiAnixLibraryRoute(
         visibleAnimes = visibleAnimes,
         genres = genres,
         cardSize = cardSize,
-        gridDensity = gridDensity,
         isRefreshing = isRefreshing,
         missingArtworkRetryState = missingArtworkRetryState,
         onRetryMissingArtwork = viewModel::retryMissingArtwork,
@@ -212,7 +210,6 @@ fun ReiAnixLibraryScreen(
     state: ReiAnixLibraryUiState,
     filters: ReiAnixLibraryFilters,
     cardSize: String = "medium",
-    gridDensity: String = "medium",
     visibleAnimes: List<ReiAnixAnimeUiModel>,
     genres: List<ReiAnixGenreUiModel>,
     isRefreshing: Boolean = false,
@@ -250,7 +247,6 @@ fun ReiAnixLibraryScreen(
         state = presentation,
         filters = filters,
         cardSize = cardSize,
-        gridDensity = gridDensity,
         visibleAnimes = visibleAnimes,
         genres = genres,
         isRefreshing = isRefreshing,
@@ -277,7 +273,6 @@ private fun ReiAnixLibraryPresentationScreen(
     state: com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState,
     filters: ReiAnixLibraryFilters,
     cardSize: String = "medium",
-    gridDensity: String = "medium",
     visibleAnimes: List<ReiAnixAnimeUiModel>,
     genres: List<ReiAnixGenreUiModel>,
     isRefreshing: Boolean = false,
@@ -489,7 +484,6 @@ private fun LibraryHeader(
 private fun ColumnScope.LibraryReadyContent(
     state: com.reianix.reianix_local.ui.model.ReiAnixLibraryPresentationUiState,
     cardSize: String = "medium",
-    gridDensity: String = "medium",
     filters: ReiAnixLibraryFilters,
     visibleAnimes: List<ReiAnixAnimeUiModel>,
     genres: List<ReiAnixGenreUiModel>,
@@ -520,17 +514,12 @@ private fun ColumnScope.LibraryReadyContent(
     val availableEpisodeCount = state.availableEpisodeCount
     val responsive = LocalReiAnixResponsiveMetrics.current
     val posterSize = LocalReiAnixPosterSize.current
-    val posterGridMinimum = responsive.libraryPosterGridMinWidth(posterSize, gridDensity)
+    val posterGridMinimum = responsive.posterCardWidth(posterSize)
     val posterRequestDimensionPx = with(LocalDensity.current) {
         (posterGridMinimum / ReiAnixTokens.Dimensions.posterAspectRatio).roundToPx().coerceAtLeast(1)
     }
     val posterGridPadding = responsive.posterRailPadding(posterSize)
-    val posterGridSpacing = responsive.posterGridSpacing(posterSize) +
-        when (gridDensity.trim().lowercase()) {
-            "small" -> 2.dp
-            "large" -> 0.dp
-            else -> 1.dp
-        }
+    val posterGridSpacing = responsive.posterGridSpacing(posterSize) + 1.dp
     val gridState = rememberSaveable(
         saver = LazyGridState.Saver,
     ) {
@@ -961,13 +950,6 @@ private fun ColumnScope.LibraryReadyContent(
 @Composable
 private fun libraryGridMinWidth(preference: String): androidx.compose.ui.unit.Dp =
     LocalReiAnixResponsiveMetrics.current.libraryGridMinWidth(preference)
-
-private fun libraryGridSpacing(preference: String): androidx.compose.ui.unit.Dp =
-    when (preference.trim().lowercase()) {
-        "small" -> ReiAnixTokens.Dimensions.libraryGridSpacingRelaxed
-        "large" -> ReiAnixTokens.Dimensions.libraryGridSpacingDense
-        else -> ReiAnixTokens.Dimensions.libraryGridSpacingBalanced
-    }
 
 @Composable
 private fun LibrarySourceSummaryCard(
