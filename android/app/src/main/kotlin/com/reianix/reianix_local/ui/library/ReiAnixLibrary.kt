@@ -53,6 +53,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -545,19 +546,27 @@ private fun ColumnScope.LibraryReadyContent(
         }
     }
 
-    LaunchedEffect(gridState, visibleAnimes.size, hasMore, isLoadingMore) {
+    // Scroll observation should not restart its coroutine whenever the page
+    // count or background scan state changes. Read the latest callback/flags
+    // from snapshot state, while preserving the exact prefetch threshold.
+    val currentOnLoadMore by rememberUpdatedState(onLoadMore)
+    val currentCanLoadMore by rememberUpdatedState(hasMore && !isLoadingMore)
+    LaunchedEffect(gridState) {
         snapshotFlow {
-            gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
-        }.collect { lastVisibleIndex ->
-            val total = gridState.layoutInfo.totalItemsCount
+            val layout = gridState.layoutInfo
+            Triple(
+                layout.visibleItemsInfo.lastOrNull()?.index,
+                layout.totalItemsCount,
+                currentCanLoadMore,
+            )
+        }.collect { (lastVisibleIndex, total, canLoadMore) ->
             if (
-                hasMore &&
-                !isLoadingMore &&
+                canLoadMore &&
                 lastVisibleIndex != null &&
                 total > 0 &&
                 lastVisibleIndex >= total - 6
             ) {
-                onLoadMore()
+                currentOnLoadMore()
             }
         }
     }
