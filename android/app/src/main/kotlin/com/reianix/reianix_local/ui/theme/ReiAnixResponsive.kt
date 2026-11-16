@@ -212,7 +212,7 @@ val LocalReiAnixResponsiveMetrics = staticCompositionLocalOf {
 }
 
 /** User-selected poster size (0..16), supplied from canonical SQLite settings. */
-val LocalReiAnixPosterSize = staticCompositionLocalOf { 5 }
+val LocalReiAnixPosterSize = staticCompositionLocalOf { 8 }
 
 @Composable
 fun ReiAnixResponsiveRoot(
