@@ -11,41 +11,46 @@ class ReiAnixLocalArtworkTest {
     fun previouslyDecodedPosterIsAvailableAsMemoryPlaceholderOnNavigation() {
         val keys = ArtworkLastSuccessfulMemoryKeys(maxEntries = 2)
         val poster = "/saved/rezero-poster.webp"
-        assertEquals("decode-320", keys.placeholderKey("anime:8", "poster", poster, "decode-320"))
-        keys.recordSuccess("anime:8", "poster", poster, "decode-320")
+        assertEquals("decode-320", keys.placeholderKey("anime:8", "poster", poster, "v1", "decode-320"))
+        keys.recordSuccess("anime:8", "poster", poster, "v1", "decode-320")
 
-        // Same poster source but a different Home/Library image request size.
-        assertEquals("decode-320", keys.placeholderKey("anime:8", "poster", poster, "decode-512"))
+        // Same validated poster and file revision at different Home/Library sizes.
+        assertEquals("decode-320", keys.placeholderKey("anime:8", "poster", poster, "v1", "decode-512"))
     }
 
     @Test
     fun memoryPlaceholderNeverReusesAnotherAnimeOrAnOldPosterSource() {
         val keys = ArtworkLastSuccessfulMemoryKeys(maxEntries = 2)
-        keys.recordSuccess("anime:8", "poster", "/saved/old.webp", "old-success")
+        keys.recordSuccess("anime:8", "poster", "/saved/old.webp", "v1", "old-success")
 
         assertEquals(
             "new-request",
-            keys.placeholderKey("anime:9", "poster", "/saved/old.webp", "new-request"),
+            keys.placeholderKey("anime:9", "poster", "/saved/old.webp", "v1", "new-request"),
         )
         assertEquals(
             "new-request",
-            keys.placeholderKey("anime:8", "backdrop", "/saved/old.webp", "new-request"),
+            keys.placeholderKey("anime:8", "backdrop", "/saved/old.webp", "v1", "new-request"),
         )
         assertEquals(
             "new-request",
-            keys.placeholderKey("anime:8", "poster", "/saved/corrected.webp", "new-request"),
+            keys.placeholderKey("anime:8", "poster", "/saved/corrected.webp", "v1", "new-request"),
+        )
+        // A regenerated file must never display the previous (potentially wrong) poster.
+        assertEquals(
+            "corrected-request",
+            keys.placeholderKey("anime:8", "poster", "/saved/old.webp", "v2", "corrected-request"),
         )
     }
 
     @Test
     fun rememberedMemoryKeysHaveABoundedSizeAndNeverPinBitmaps() {
         val keys = ArtworkLastSuccessfulMemoryKeys(maxEntries = 2)
-        keys.recordSuccess("anime:1", "poster", "a", "key-a")
-        keys.recordSuccess("anime:2", "poster", "b", "key-b")
-        keys.recordSuccess("anime:3", "poster", "c", "key-c")
-        assertEquals("new-a", keys.placeholderKey("anime:1", "poster", "a", "new-a"))
-        assertEquals("key-b", keys.placeholderKey("anime:2", "poster", "b", "new-b"))
-        assertEquals("key-c", keys.placeholderKey("anime:3", "poster", "c", "new-c"))
+        keys.recordSuccess("anime:1", "poster", "a", "v1", "key-a")
+        keys.recordSuccess("anime:2", "poster", "b", "v1", "key-b")
+        keys.recordSuccess("anime:3", "poster", "c", "v1", "key-c")
+        assertEquals("new-a", keys.placeholderKey("anime:1", "poster", "a", "v1", "new-a"))
+        assertEquals("key-b", keys.placeholderKey("anime:2", "poster", "b", "v1", "new-b"))
+        assertEquals("key-c", keys.placeholderKey("anime:3", "poster", "c", "v1", "new-c"))
     }
 
     @Test
