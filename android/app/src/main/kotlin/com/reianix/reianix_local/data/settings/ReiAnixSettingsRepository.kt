@@ -7,6 +7,7 @@ import android.os.FileObserver
 import android.util.Log
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
+import com.reianix.reianix_local.storage.VideoThumbnailExtractor
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteAccountRepository
@@ -540,7 +541,12 @@ class ReiAnixSettingsRepository(
         Log.i(TAG, "SETTINGS_ACTION_START requestId=" + requestId + " action=clear_anilist_cache owner=kotlin")
         scope.launch {
             try {
-                val removed = nativeArtworkService.clearManagedCache()
+                val removedArtwork = nativeArtworkService.clearManagedCache()
+                // Episode thumbnails live in a separate cache, not the artwork directory.
+                // They can be regenerated on demand; never delete video media itself.
+                val removedThumbnails = VideoThumbnailExtractor.clearCachedThumbnails(appContext)
+                nativeArtworkService.clearCachedGeneratedThumbnailReferences()
+                val removed = removedArtwork + removedThumbnails
                 synchronized(stateLock) {
                     val current = _state.value
                     val existing = current.operations[requestId]
@@ -550,7 +556,7 @@ class ReiAnixSettingsRepository(
                                 current.operations,
                                 existing.copy(
                                     state = ReiAnixSettingsOperationState.SUCCESS,
-                                    message = "Cache de capas limpo.",
+                                    message = "Cache temporário limpo; capas persistentes preservadas.",
                                     error = null,
                                     timestampMs = System.currentTimeMillis(),
                                 ),
