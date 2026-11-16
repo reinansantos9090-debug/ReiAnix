@@ -86,6 +86,95 @@ class ReiAnixSqliteLibraryRepository(
 
 
 
+    /**
+     * One on-demand, read-only SQLite snapshot for the Timeline's Statistics tab.
+     * This does not create an events table or infer per-day watch duration from
+     * last_played_at: each date counts episodes whose LAST play occurred that day.
+     */
+    suspend fun timelineStatistics(): ReiAnixTimelineStatistics = withContext(Dispatchers.IO) {
+        val today = java.util.Calendar.getInstance()
+        today.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        today.set(java.util.Calendar.MINUTE, 0)
+        today.set(java.util.Calendar.SECOND, 0)
+        today.set(java.util.Calendar.MILLISECOND, 0)
+        val firstDay = (today.clone() as java.util.Calendar).apply {
+            add(java.util.Calendar.DAY_OF_YEAR, -6)
+        }
+        val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        val labelFormat = java.text.SimpleDateFormat("EEE", java.util.Locale("pt", "BR"))
+        val nowEpochSeconds = System.currentTimeMillis() / 1_000.0
+        val startEpochSeconds = firstDay.timeInMillis / 1_000.0
+
+        database.read { connection ->
+            val summary = connection.rawQuery(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM anime WHERE favorite = 1) AS favorites,
+                    (SELECT COUNT(*) FROM episodes WHERE watched = 1) AS completed,
+                    (SELECT COALESCE(SUM(
+                        CASE
+                            WHEN watched = 1 AND duration > 0 THEN duration
+                            WHEN progress > 0 AND duration > 0 THEN MIN(progress, duration)
+                            WHEN progress > 0 THEN progress
+                            ELSE 0.0
+                        END
+                    ), 0.0) FROM episodes) AS estimated_seconds
+                """.trimIndent(),
+                null,
+            ).use { cursor ->
+                check(cursor.moveToFirst()) { "Timeline statistics query returned no row." }
+                Triple(
+                    cursor.getInt(cursor.getColumnIndexOrThrow("favorites")),
+                    cursor.getInt(cursor.getColumnIndexOrThrow("completed")),
+                    cursor.getDouble(cursor.getColumnIndexOrThrow("estimated_seconds")),
+                )
+            }
+
+            val countsByDate = HashMap<String, Int>(7)
+            connection.rawQuery(
+                """
+                SELECT date(last_played_at, 'unixepoch', 'localtime') AS playback_day,
+                       COUNT(*) AS episode_count
+                FROM episodes
+                WHERE last_played_at >= ? AND last_played_at <= ?
+                GROUP BY playback_day
+                """.trimIndent(),
+                arrayOf(startEpochSeconds.toString(), nowEpochSeconds.toString()),
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val day = cursor.optionalString("playback_day") ?: continue
+                    countsByDate[day] = cursor.getInt(cursor.getColumnIndexOrThrow("episode_count"))
+                }
+            }
+            val day = firstDay.clone() as java.util.Calendar
+            val activityDays = buildList {
+                repeat(7) {
+                    val date = dateFormat.format(day.time)
+                    add(
+                        ReiAnixTimelineActivityDay(
+                            date = date,
+                            label = labelFormat.format(day.time)
+                                .removeSuffix(".")
+                                .replaceFirstChar { char -> char.titlecase(java.util.Locale("pt", "BR")) },
+                            episodeCount = countsByDate[date] ?: 0,
+                        ),
+                    )
+                    day.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                }
+            }
+            val estimatedSeconds = summary.third
+                .takeIf { it.isFinite() && it > 0.0 }
+                ?.coerceAtMost(Long.MAX_VALUE.toDouble())
+                ?.toLong() ?: 0L
+            ReiAnixTimelineStatistics(
+                estimatedSeconds = estimatedSeconds,
+                favoriteAnimeCount = summary.first,
+                completedEpisodeCount = summary.second,
+                activityDays = activityDays,
+            )
+        }
+    }
+
     /** Same local anime projection as LibraryStore.timeline_items(), read from canonical SQLite. */
     suspend fun timelineItems(): List<ReiAnixTimelineSourceRecord> = withContext(Dispatchers.IO) {
         database.read { connection ->
