@@ -2678,10 +2678,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val params = panel.layoutParams as? FrameLayout.LayoutParams ?: return
         val widthPixels = resources.displayMetrics.widthPixels
         val heightPixels = resources.displayMetrics.heightPixels
-        params.width = minOf(dp(410), (widthPixels - dp(24)).coerceAtLeast(dp(240)))
-        params.height = minOf(dp(380), (heightPixels - dp(72)).coerceAtLeast(dp(220)))
-        params.rightMargin = dp(8) + max(dp(4), gestureSafeRight)
-        panel.layoutParams = params
+        val desiredWidth = minOf(dp(410), (widthPixels - dp(24)).coerceAtLeast(dp(240)))
+        val desiredHeight = minOf(dp(380), (heightPixels - dp(72)).coerceAtLeast(dp(220)))
+        val desiredRightMargin = dp(8) + max(dp(4), gestureSafeRight)
+        // Avoid requesting another layout on every insets delivery.
+        if (params.width != desiredWidth || params.height != desiredHeight ||
+            params.rightMargin != desiredRightMargin
+        ) {
+            params.width = desiredWidth
+            params.height = desiredHeight
+            params.rightMargin = desiredRightMargin
+            panel.layoutParams = params
+        }
     }
 
     private fun initializeGoogleCast() {
