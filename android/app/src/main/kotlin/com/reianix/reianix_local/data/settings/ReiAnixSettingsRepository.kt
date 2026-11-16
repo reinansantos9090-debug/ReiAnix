@@ -47,7 +47,7 @@ class ReiAnixSettingsRepository(
             "check_storage_access",
             "open_broad_storage_settings",
         )
-        private val NATIVE_BACKUP_DIAGNOSTIC_ACTIONS = setOf(
+        private val NATIVE_BACKUP_ACTIONS = setOf(
             "backup_create",
             "backup_restore",
             "backup_recovery_restore",
@@ -55,19 +55,6 @@ class ReiAnixSettingsRepository(
             "backup_recovery_snapshot",
             "backup_integrity",
             "backup_reconcile",
-            "diagnostic_export",
-            "diagnostic_run_general",
-            "diagnostic_run_system",
-            "diagnostic_run_logs",
-            "diagnostic_run_storage",
-            "diagnostic_run_scanner",
-            "diagnostic_run_sqlite",
-            "diagnostic_run_thumbnails",
-            "diagnostic_run_bridge",
-            "diagnostic_run_performance",
-            "diagnostic_import_logcat",
-            "diagnostic_clear",
-            "diagnostic_cancel",
         )
 
         /**

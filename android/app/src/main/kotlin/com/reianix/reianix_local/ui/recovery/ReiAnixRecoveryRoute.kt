@@ -45,8 +45,7 @@ fun ReiAnixRecoveryRoute(
         .filter {
             it.action == "backup_recovery_restore" ||
                 it.action == "backup_recovery_restore_local" ||
-                it.action == "backup_recovery_snapshot" ||
-                it.action == "diagnostic_export"
+                it.action == "backup_recovery_snapshot"
         }
         .maxByOrNull { it.timestampMs }
     val busy = operation?.state == ReiAnixSettingsOperationState.QUEUED ||
@@ -171,14 +170,6 @@ fun ReiAnixRecoveryRoute(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Criar snapshot bruto de segurança")
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { viewModel.requestAction("diagnostic_export") },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Exportar diagnóstico")
             }
         }
     }

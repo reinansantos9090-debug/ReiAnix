@@ -73,8 +73,6 @@ import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
 import com.reianix.reianix_local.ui.model.ReiAnixSettingsOperationState
 import com.reianix.reianix_local.ui.model.ReiAnixSettingsUiState
 import com.reianix.reianix_local.viewmodel.ReiAnixSettingsViewModel
-import com.reianix.reianix_local.data.diagnostics.ReiAnixDiagnosticTimeline
-import com.reianix.reianix_local.data.diagnostics.ReiAnixManualDiagnostics
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.foundation.layout.widthIn
 import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
@@ -99,7 +97,6 @@ data class ReiAnixSettingsCategoryUiModel(
             ReiAnixSettingsCategoryUiModel("Backup e Restauração", "Backup, restore e integridade", Icons.Filled.Backup),
             ReiAnixSettingsCategoryUiModel("Privacidade", "Dados locais e conectividade", Icons.Filled.PrivacyTip),
             ReiAnixSettingsCategoryUiModel("Varredura", "Estado e histórico do scanner", Icons.Filled.Refresh),
-            ReiAnixSettingsCategoryUiModel("Diagnóstico", "Informações técnicas e diagnóstico", Icons.Filled.BugReport),
             ReiAnixSettingsCategoryUiModel("Sobre", "Versão e informações do ReiAnix", Icons.Filled.Info),
         )
     }
@@ -454,22 +451,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
     val latestOperationError = state.operations.values.lastOrNull()
         ?.takeIf { it.state == ReiAnixSettingsOperationState.ERROR }
-    val diagnosticEvents by ReiAnixDiagnosticTimeline.events.collectAsStateWithLifecycle()
-    val diagnosticContext = androidx.compose.ui.platform.LocalContext.current
-    val diagnosticWorkRunning = state.operations.values.any {
-        it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" &&
-            it.state in setOf(
-                ReiAnixSettingsOperationState.QUEUED,
-                ReiAnixSettingsOperationState.RUNNING,
-            )
-    }
-    val diagnosticCollectionRunning = state.operations.values.any {
-        it.action.startsWith("diagnostic_run_") &&
-            it.state in setOf(
-                ReiAnixSettingsOperationState.QUEUED,
-                ReiAnixSettingsOperationState.RUNNING,
-            )
-    }
 
     var pendingConfirmationAction by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf<String?>(null)
@@ -509,11 +490,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     "Restaurar backup?",
                     "O BackupService existente validará o arquivo antes de alterar o estado lógico local.",
                     "Continuar",
-                )
-                "diagnostic_clear" -> Triple(
-                    "Limpar dados de diagnóstico?",
-                    "Serão removidos os resultados coletados, o histórico local e a timeline em memória. A biblioteca e o banco SQLite canônico não serão alterados.",
-                    "Limpar dados",
                 )
                 else -> Triple(
                     "Confirmar ação",
@@ -1215,273 +1191,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         }
                     }
                 }
-                "about_diagnostics" -> {
-                    val diagnosticStorage = state.storage
-                    item(key = "data-cache:info") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Dados locais",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "As preferências continuam persistidas pelo SettingsStore existente.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixBadge(
-                                    text = "Fonte única: SettingsStore",
-                                    tone = ReiAnixBadgeTone.Neutral,
-                                )
-                            }
-                        }
-                    }
-                    item(key = "backup:info") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Backup e restauração",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "O backup reúne os dados locais e as configurações do aplicativo.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    item(key = "diagnostic:info") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Diagnóstico técnico",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Versão: ${BuildConfig.VERSION_NAME}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "Revisão do snapshot: ${state.revision}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = "API Android: ${storageApiLabel(diagnosticStorage.api)} • ciclo: ${diagnosticStorage.lifecycleStateLabel()}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                ReiAnixBadge(
-                                    text = "DiagnosticsService existente",
-                                    tone = ReiAnixBadgeTone.Neutral,
-                                )
-                            }
-                        }
-                    }
-                    item(key = "diagnostic:actions") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                Text(
-                                    text = "Nenhuma verificação é iniciada ao abrir esta tela. Escolha explicitamente uma categoria; a coleta geral executa todas as categorias abaixo. Não há varredura de biblioteca, limpeza de cache ou envio remoto automático.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                SettingsActionRow(
-                                    text = "Executar diagnóstico geral",
-                                    onClick = { onAction("diagnostic_run_general") },
-                                    enabled = !diagnosticWorkRunning,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                SettingsSectionLabel("Verificações individuais")
-                                val diagnosticActions = listOf(
-                                    "Sistema Android" to "diagnostic_run_system",
-                                    "Logcat disponível" to "diagnostic_run_logs",
-                                    "Armazenamento e permissões" to "diagnostic_run_storage",
-                                    "Scanner e indexação" to "diagnostic_run_scanner",
-                                    "SQLite e biblioteca" to "diagnostic_run_sqlite",
-                                    "Thumbnails, capas e cache" to "diagnostic_run_thumbnails",
-                                    "Ponte e comunicação interna" to "diagnostic_run_bridge",
-                                    "Desempenho e estabilidade" to "diagnostic_run_performance",
-                                )
-                                diagnosticActions.forEach { (label, action) ->
-                                    SettingsActionRow(
-                                        text = label,
-                                        onClick = { onAction(action) },
-                                        enabled = !diagnosticWorkRunning,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                "about_reports" -> {
-                    val latestDiagnosticOperation = state.operations.values
-                        .filter { it.action.startsWith("diagnostic_") && it.action != "diagnostic_cancel" }
-                        .maxByOrNull { it.timestampMs }
-                    item(key = "diagnostic:reports") {
-                        ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(ReiAnixTokens.Spacing.lg),
-                                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                            ) {
-                                SettingsActionRow(
-                                    text = "Importar logcat (ADB)",
-                                    onClick = { onAction("diagnostic_import_logcat") },
-                                    enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_import_logcat"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                SettingsActionRow(
-                                    text = "Cancelar coleta atual",
-                                    onClick = { onAction("diagnostic_cancel") },
-                                    enabled = diagnosticCollectionRunning,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                SettingsActionRow(
-                                    text = "Exportar relatório coletado",
-                                    onClick = { onAction("diagnostic_export") },
-                                    enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_export"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                SettingsActionRow(
-                                    text = "Limpar resultados e histórico",
-                                    onClick = { pendingConfirmationAction = "diagnostic_clear" },
-                                    enabled = !diagnosticWorkRunning && !actionBusy("diagnostic_clear"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                Text(
-                                    text = latestDiagnosticOperation?.let { operation ->
-                                        val stateLabel = when (operation.state) {
-                                            ReiAnixSettingsOperationState.QUEUED -> "AGUARDANDO"
-                                            ReiAnixSettingsOperationState.RUNNING -> "EXECUTANDO"
-                                            ReiAnixSettingsOperationState.SUCCESS -> "CONCLUÍDA"
-                                            ReiAnixSettingsOperationState.CANCELLED -> "CANCELADA"
-                                            ReiAnixSettingsOperationState.ERROR -> "FALHOU"
-                                            ReiAnixSettingsOperationState.IDLE -> "AGUARDANDO"
-                                        }
-                                        "Estado da operação: " + stateLabel + " • " +
-                                            (operation.message ?: operation.error ?: operation.action)
-                                    } ?: "Estado da operação: aguardando ação manual.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = "Resultados da última coleta:\n" +
-                                        ReiAnixManualDiagnostics.resultSummary(diagnosticContext),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = "Histórico local:\n" +
-                                        ReiAnixManualDiagnostics.historySummary(diagnosticContext),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    item(key = "diagnostic:timeline:heading") {
-                        SettingsSectionLabel("Eventos nativos recentes")
-                    }
-                    if (diagnosticEvents.isEmpty()) {
-                        item(key = "diagnostic:timeline:empty") {
-                            ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = "Ainda não há eventos nativos nesta sessão. Os eventos ficam limitados à memória do processo.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(ReiAnixTokens.Spacing.lg),
-                                )
-                            }
-                        }
-                    } else {
-                        items(
-                            diagnosticEvents.take(20),
-                            key = { event -> "diagnostic:event:" + event.id },
-                        ) { event ->
-                            ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(ReiAnixTokens.Spacing.md),
-                                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = event.name,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.weight(1f),
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                        Text(
-                                            text = event.severity,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (event.severity == "ERROR") MaterialTheme.colorScheme.error
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(start = ReiAnixTokens.Spacing.sm),
-                                        )
-                                    }
-                                    Text(
-                                        text = (event.source ?: "Android") + " • " +
-                                            java.text.DateFormat.getDateTimeInstance().format(java.util.Date(event.timestampMs)),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    val details = listOfNotNull(
-                                        event.result?.let { "Resultado: " + it },
-                                        event.requestId?.takeIf { it != "<redacted-ref>" }?.let { "Solicitação: " + it },
-                                        event.sessionId?.takeIf { it != "<redacted-ref>" }?.let { "Sessão: " + it },
-                                        event.error?.let { "Falha: " + it },
-                                    )
-                                    details.forEach { detail ->
-                                        Text(
-                                            text = detail,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (detail.startsWith("Falha:")) MaterialTheme.colorScheme.error
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 3,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
 
-                }
 
                 }
                 }
@@ -1952,7 +1662,6 @@ private fun categorySummary(label: String, settings: Map<String, String>): Strin
         "Varredura" -> "ScanCoordinator existente"
         "Dados e Cache" -> "Preferências locais"
         "Backup e Restauração" -> "BackupService existente"
-        "Diagnóstico" -> "Diagnóstico local"
         "Sobre" -> "ReiAnix"
         else -> ""
     }
