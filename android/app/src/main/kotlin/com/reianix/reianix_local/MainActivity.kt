@@ -1989,7 +1989,7 @@ class MainActivity : ComponentActivity() {
                         withContext(Dispatchers.IO) {
                             writeSettingsFileActionResult(
                                 requestId, action, "SUCCESS", "SUCCESS",
-                                message = "Reconciliação concluída. Referências locais verificadas: " + updated +
+                                message = "Reconciliação concluída. Referências atualizadas: " + updated +
                                     ". URIs SAF/MediaStore permanecem sob o scanner nativo.",
                             )
                         }
