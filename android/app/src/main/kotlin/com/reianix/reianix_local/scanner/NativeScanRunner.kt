@@ -1108,8 +1108,6 @@ object NativeScanRunner {
                     .put("scopeKind", "global").put("scopeRef", MediaStoreScanner.SOURCE)
                 val finalStatus = result.optJSONObject("stats")?.optString("status").orEmpty().uppercase()
                 if (finalStatus == NativeIndex.STATUS_WAITING_FOR_MEDIASTORE) {
-                    NativeMailbox.write(appContext, JSONObject().put("type", "diagnostic")
-                        .put("payload", JSONObject().put("event", "WAITING_FOR_MEDIASTORE").put("scanId", scanId).put("requestId", requestId ?: "")))
                     MediaStoreRetryScheduler.schedule(
                         appContext,
                         reason = "media_store_indexing_completed",
