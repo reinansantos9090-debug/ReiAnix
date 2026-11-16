@@ -180,7 +180,24 @@ fun ReiAnixNativePlayerTopControls(
                     // The route dialog is a Fragment on NativePlayerActivity;
                     // using the Activity's AppCompat theme avoids giving the
                     // route button and its dialog inconsistent theme contexts.
-                    MediaRouteButton(context).apply {
+                    object : MediaRouteButton(context) {
+                        // Synchronous MediaRouter / FragmentManager failures must
+                        // not kill the playback Activity. Deferred dialog failures
+                        // are addressed by the Activity's AppCompat theme.
+                        override fun showDialog(): Boolean {
+                            return try {
+                                super.showDialog()
+                            } catch (error: RuntimeException) {
+                                android.util.Log.e("ReiAnixCast", "CAST_DEVICE_PICKER_FAILED", error)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Não foi possível abrir a seleção de TVs",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                                false
+                            }
+                        }
+                    }.apply {
                         contentDescription = "Transmitir para TV (Google Cast)"
                         setRemoteIndicatorDrawable(
                             androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_reianix_cast),
@@ -190,7 +207,8 @@ fun ReiAnixNativePlayerTopControls(
                         // still be able to open and use the local player.
                         runCatching {
                             CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
-                        }.onFailure {
+                        }.onFailure { error ->
+                            android.util.Log.w("ReiAnixCast", "CAST_BUTTON_INIT_FAILED", error)
                             visibility = android.view.View.GONE
                         }
                     }
