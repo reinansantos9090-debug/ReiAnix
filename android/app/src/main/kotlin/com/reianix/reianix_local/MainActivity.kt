@@ -834,6 +834,9 @@ class MainActivity : ComponentActivity() {
                     val result = ReiAnixSettingsFileService(appDependencies.sqliteSettingsRepository)
                         .importJson(raw)
                     settingsViewModel.refresh()
+                    if ("artwork.cache_limit_mb" in result.values) {
+                        appDependencies.artworkService.requestCacheTrim()
+                    }
                     if (result.values.isNotEmpty()) {
                         val settingsPayload = JSONObject().apply {
                             result.values.forEach { (key, value) -> put(key, value) }
