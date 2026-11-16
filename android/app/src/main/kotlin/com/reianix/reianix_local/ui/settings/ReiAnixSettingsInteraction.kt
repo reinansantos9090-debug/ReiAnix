@@ -72,7 +72,6 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "folders" -> Icons.Filled.FolderOpen
     "appearance.theme" -> Icons.Filled.Palette
     "appearance.card_size" -> Icons.Filled.CropPortrait
-    "library.grid_density" -> Icons.Filled.ViewModule
     "appearance.poster_size" -> Icons.Filled.PhotoSizeSelectSmall
     "appearance.show_thumbnails" -> Icons.Filled.Collections
     "library.continue_watching" -> Icons.Filled.VideoLibrary
