@@ -7,6 +7,9 @@
   </queries>
 
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
   
   <!-- Runtime media access; selected-only access is not equivalent to a SAF tree grant. -->
@@ -19,7 +22,15 @@
   <uses-feature android:name="android.software.leanback" android:required="false" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-  <application android:name=".ReiAnixApplication" android:theme="@style/ReiAnixTheme" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
+  <application android:name=".ReiAnixApplication" android:theme="@style/ReiAnixTheme" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:usesCleartextTraffic="true" android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
+    <!-- The receiver fetches local files over a temporary authenticated LAN HTTP URL. -->
+    <meta-data
+        android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+        android:value="com.reianix.reianix_local.player.cast.ReiAnixCastOptionsProvider" />
+    <service
+        android:name=".player.cast.CastStreamingService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback" />
     <activity android:name=".AniListAccountActivity" android:exported="false" />
     <activity android:name=".AniListOAuthCallbackActivity" android:exported="true" android:noHistory="true" android:excludeFromRecents="true">
       <intent-filter>
