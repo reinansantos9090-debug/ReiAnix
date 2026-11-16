@@ -2,7 +2,6 @@ package com.reianix.reianix_local.ui.scroll
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -18,7 +17,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import kotlin.math.roundToInt
 
@@ -101,13 +99,9 @@ fun ReiAnixScrollAwareHeader(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val density = LocalDensity.current
-    val visibleHeight = with(density) { state.visibleHeightPx.toDp() }
-    val collapseOffsetPx = state.collapseOffsetPx
-
-    // No SubcomposeLayout: the header has exactly one always-present child.
-    // Regular Layout keeps the same clipping and collapse geometry with less
-    // composition work per drag. Height still follows the original scroll policy.
+    // Read the drag-driven height in the measure phase, not in Composition.
+    // The user's existing collapse gesture still changes occupied layout height,
+    // but no longer recomposes the header on every scroll delta.
     Layout(
         content = {
             Box(
@@ -120,15 +114,15 @@ fun ReiAnixScrollAwareHeader(
         },
         modifier = modifier
             .fillMaxWidth()
-            .height(visibleHeight)
             .clipToBounds(),
     ) { measurables, constraints ->
         val header = measurables.single().measure(
             constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity),
         )
-        val layoutHeight = visibleHeight.roundToPx().coerceAtMost(constraints.maxHeight)
+        val layoutHeight = state.visibleHeightPx.roundToInt()
+            .coerceIn(constraints.minHeight, constraints.maxHeight)
         layout(constraints.maxWidth, layoutHeight) {
-            header.placeRelative(x = 0, y = -collapseOffsetPx.roundToInt())
+            header.placeRelative(x = 0, y = -state.collapseOffsetPx.roundToInt())
         }
     }
 }
