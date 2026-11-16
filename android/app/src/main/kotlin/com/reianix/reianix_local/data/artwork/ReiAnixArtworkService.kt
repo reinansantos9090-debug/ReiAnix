@@ -227,6 +227,9 @@ internal fun shouldRetryArtworkRequest(
 internal fun artworkCacheLimitBytes(raw: String?): Long =
     (raw?.trim()?.toIntOrNull()?.takeIf { it in setOf(64, 128, 256, 512) } ?: 128).toLong() * 1024L * 1024L
 
+internal fun artworkDownloadsAllowed(raw: String?): Boolean =
+    raw == null || raw.trim().equals("true", ignoreCase = true)
+
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
@@ -2087,7 +2090,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             db.rawQuery("SELECT value FROM preferences WHERE key=? LIMIT 1",
                 arrayOf("artwork.enabled")).use { cursor ->
                 if (!cursor.moveToFirst()) true
-                else cursor.getString(0).equals("true", ignoreCase = true)
+                else artworkDownloadsAllowed(cursor.getString(0))
             }
         }
     }.getOrElse { error ->
