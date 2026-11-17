@@ -74,14 +74,16 @@ fun ReiAnixTimelineHubRoute(
         error = null
         try {
             groups = viewModel.queryNativeTimelineGroups()
+            loadedToken = retryToken
         } catch (cancelled: CancellationException) {
+            // Switching tabs cancels this read. Do not mark a partial result as loaded.
             throw cancelled
         } catch (failure: Exception) {
             groups = null
             error = failure.message?.takeIf(String::isNotBlank)
                 ?: "Não foi possível carregar a linha do tempo local."
-        } finally {
             loadedToken = retryToken
+        } finally {
             loading = false
         }
     }
