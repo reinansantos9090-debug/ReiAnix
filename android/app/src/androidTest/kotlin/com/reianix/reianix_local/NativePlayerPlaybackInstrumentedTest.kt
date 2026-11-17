@@ -654,6 +654,28 @@ class NativePlayerPlaybackInstrumentedTest {
             activity!!.requestedOrientation == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR,
         )
 
+        // Regression: after portrait -> landscape -> portrait -> landscape,
+        // the TextureView must not retain an old fractional scale.
+        rotationDevice.setOrientationLeft()
+        await("Player must return to landscape a second time") {
+            activity!!.resources.configuration.orientation ==
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        }
+        await("Landscape video surface must fill its layout without a stale transform") {
+            onMain {
+                val surface = playerView.videoSurfaceView
+                playerView.width > playerView.height &&
+                    surface != null && surface.width > 0 && surface.height > 0 &&
+                    kotlin.math.abs(surface.scaleX - 1f) <= 0.01f &&
+                    kotlin.math.abs(surface.scaleY - 1f) <= 0.01f
+            }
+        }
+        rotationDevice.setOrientationNatural()
+        await("Player must restore portrait after the size regression check") {
+            activity!!.resources.configuration.orientation ==
+                android.content.res.Configuration.ORIENTATION_PORTRAIT
+        }
+
         val beforeSeek = onMain { player.currentPosition }
         onMain { player.seekTo(0L) }
         await("Media3 seek must reach the beginning") { player.currentPosition <= 200L }
@@ -746,24 +768,27 @@ class NativePlayerPlaybackInstrumentedTest {
 
         logStage("PINCH_ZOOM")
         pinch(gestureLayer, zoom = true)
-        await("Pinch out must keep Media3 on FIT while applying manual zoom") {
-            playerView.resizeMode == androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+        await("Pinch out must apply Media3 ZOOM with a bounded TextureView correction") {
+            playerView.resizeMode == androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
         }
         assertTrue(
-            "Pinch out must actually transform the video surface, not only change resize mode",
+            "Pinch-out correction must be finite and nonzero",
             onMain {
                 val video = playerView.videoSurfaceView
-                if (video !is TextureView) {
-                    false
-                } else {
-                    val matrix = Matrix()
-                    video.getTransform(matrix)
-                    val values = FloatArray(9)
-                    matrix.getValues(values)
-                    values[Matrix.MSCALE_X] > 1.01f && values[Matrix.MSCALE_Y] > 1.01f
-                }
+                video is TextureView && video.scaleX.isFinite() && video.scaleX > 0f &&
+                    video.scaleY.isFinite() && video.scaleY > 0f
             },
         )
+        SystemClock.sleep(250L)
+        val panBefore = onMain { playerView.videoSurfaceView?.translationX ?: 0f }
+        swipe(
+            gestureLayer,
+            gestureSize.first * 0.46f, gestureSize.second * 0.50f,
+            gestureSize.first * 0.68f, gestureSize.second * 0.50f,
+        )
+        await("Panning a zoomed video must move the TextureView") {
+            kotlin.math.abs(onMain { playerView.videoSurfaceView?.translationX ?: 0f } - panBefore) > 1f
+        }
         logStage("PINCH_FIT")
         pinch(gestureLayer, zoom = false)
         await("Pinch in must select FIT") {
