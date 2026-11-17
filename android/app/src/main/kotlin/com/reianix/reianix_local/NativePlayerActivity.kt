@@ -1028,13 +1028,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         applySubtitlePreferences()
         zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", zoomEnabled)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
+        // A missing aspect extra must not convert the human-readable label
+        // "Preencher" into a FIT preference when reusing this Activity.
         val incomingAspectRatio = newIntent.getStringExtra("setting_player_aspect_ratio")
-        playerView.resizeMode = if (incomingAspectRatio != null) {
-            resizeModeFromSetting(newIntent.getStringExtra("setting_player_aspect_ratio"))
-        } else {
-            resizeModeFromSetting(aspectModeLabel)
-        }
-        aspectModeLabel = aspectLabelFromSetting(incomingAspectRatio ?: aspectModeLabel)
+            ?: if (aspectModeLabel == "Preencher") "fill" else "fit"
+        intent.putExtra("setting_player_aspect_ratio", incomingAspectRatio)
+        playerView.resizeMode = resizeModeFromSetting(incomingAspectRatio)
+        aspectModeLabel = aspectLabelFromSetting(incomingAspectRatio)
         findViewByTag<TextView>("reianix_aspect_button")?.apply {
             text = aspectModeLabel
             isSelected = aspectModeLabel == "Preencher"
