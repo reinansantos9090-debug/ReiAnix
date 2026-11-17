@@ -90,6 +90,22 @@ class ReiAnixPersonalCollectionsRepository(
         }
     }
 
+    /**
+     * Reorders the entire collection in one atomic write, on drop only.
+     * Reject stale/partial/duplicated lists instead of silently losing members.
+     */
+    suspend fun reorderAnimes(id: String, orderedIds: List<Long>): List<ReiAnixPersonalCollection> =
+        edit { existing ->
+            update(existing, id) { collection ->
+                require(
+                    orderedIds.size == collection.animeIds.size &&
+                        orderedIds.distinct().size == orderedIds.size &&
+                        orderedIds.toSet() == collection.animeIds.toSet()
+                ) { "A coleção mudou. Reabra-a antes de reorganizar os animes." }
+                collection.copy(animeIds = orderedIds.toList())
+            }
+        }
+
     suspend fun setCover(id: String, animeId: Long?): List<ReiAnixPersonalCollection> = edit { existing ->
         update(existing, id) { collection ->
             require(animeId == null || animeId in collection.animeIds) {

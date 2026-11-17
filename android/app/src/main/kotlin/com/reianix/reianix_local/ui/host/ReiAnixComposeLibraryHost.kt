@@ -629,6 +629,7 @@ class ReiAnixComposeLibraryHost(
             ReiAnixRoutes.MY_LIST -> controller.navigateToMyList()
 
             ReiAnixRoutes.ORGANIZE,
+            ReiAnixRoutes.COLLECTIONS,
             ReiAnixRoutes.SETTINGS,
             ReiAnixRoutes.STORAGE,
             -> controller.navigate(

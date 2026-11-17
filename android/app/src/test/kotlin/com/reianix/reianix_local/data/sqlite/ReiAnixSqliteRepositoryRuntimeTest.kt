@@ -76,6 +76,20 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(listOf(2L, 1L), persisted.animeIds)
         assertEquals(2L, persisted.effectiveCoverId)
 
+        // Dropping a dragged anime persists its entire new ordering in one write.
+        reopened.reorderAnimes(collection.id, listOf(1L, 2L))
+        assertEquals(listOf(1L, 2L), ReiAnixPersonalCollectionsRepository(context).load().single().animeIds)
+        assertEquals(2L, reopened.load().single().effectiveCoverId)
+
+        // Reject duplicates or stale drag snapshots without deleting any member.
+        try {
+            reopened.reorderAnimes(collection.id, listOf(1L, 1L))
+            fail("Reordering cannot duplicate or lose an anime.")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("coleção"))
+        }
+        assertEquals(listOf(1L, 2L), reopened.load().single().animeIds)
+
         try {
             reopened.setCover(collection.id, 900L)
             fail("A capa deve ser um anime membro.")

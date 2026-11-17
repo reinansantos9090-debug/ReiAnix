@@ -28,6 +28,7 @@ import androidx.navigation.navOptions
 import com.reianix.reianix_local.ui.details.ReiAnixDetailsRoute
 import com.reianix.reianix_local.ui.details.ReiAnixAniListDetailsRoute
 import com.reianix.reianix_local.ui.collector.ReiAnixCollectorJourneyRoute
+import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsRoute
 import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
@@ -42,6 +43,7 @@ object ReiAnixRoutes {
     const val HOME = "home"
     const val LIBRARY = "library"
     const val MY_LIST = "my_list"
+    const val COLLECTIONS = "collections"
     const val SEARCH = "search"
 
     const val SETTINGS = "settings"
@@ -69,6 +71,7 @@ object ReiAnixRoutes {
         val normalized = route.trim()
         return topLevelDestinations.any { it.route == normalized } ||
             normalized == MY_LIST ||
+            normalized == COLLECTIONS ||
             normalized == STORAGE ||
             normalized == ORGANIZE ||
             normalized == RECOVERY ||
@@ -281,6 +284,12 @@ fun ReiAnixNavigationHost(
             )
         },
         myList = myList,
+        collections = {
+            ReiAnixCollectionsRoute(
+                navController = navController,
+                viewModel = homeViewModel,
+            )
+        },
         organize = organize,
         collector = collector,
         search = {
@@ -318,6 +327,7 @@ fun ReiAnixNavigationHost(
     home: @Composable () -> Unit,
     library: @Composable () -> Unit,
     myList: @Composable () -> Unit = {},
+    collections: @Composable () -> Unit = {},
     organize: @Composable () -> Unit = {},
     collector: @Composable () -> Unit = {},
     search: @Composable () -> Unit,
@@ -353,6 +363,9 @@ fun ReiAnixNavigationHost(
         .orEmpty()
     val selectedBottomRoute = when {
         currentRoute == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
+        currentRoute == ReiAnixRoutes.COLLECTIONS -> ReiAnixRoutes.LIBRARY
+        currentRoute == ReiAnixRoutes.DETAILS &&
+            detailOrigin == ReiAnixRoutes.COLLECTIONS -> ReiAnixRoutes.LIBRARY
         currentRoute == ReiAnixRoutes.DETAILS &&
             detailOrigin == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
         currentRoute == ReiAnixRoutes.DETAILS &&
@@ -386,6 +399,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.HOME) { home() }
             composable(ReiAnixRoutes.LIBRARY) { library() }
             composable(ReiAnixRoutes.MY_LIST) { myList() }
+            composable(ReiAnixRoutes.COLLECTIONS) { collections() }
             composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
             composable(ReiAnixRoutes.SETTINGS) { settings() }
