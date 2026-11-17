@@ -30,6 +30,7 @@ on:
       - "android/app/src/test/kotlin/com/reianix/reianix_local/data/anilist/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/data/settings/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/home/**"
+      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/collector/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/host/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/library/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/model/**"
