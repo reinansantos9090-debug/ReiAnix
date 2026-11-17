@@ -1615,6 +1615,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     " unappliedRotationDegrees=" + videoSize.unappliedRotationDegrees +
                     " pixelWidthHeightRatio=" + videoSize.pixelWidthHeightRatio,
             )
+            if (::playerView.isInitialized) {
+                playerView.requestLayout()
+                findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
+            }
         }
 
         override fun onSurfaceSizeChanged(width: Int, height: Int) {
@@ -2293,6 +2297,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 FrameLayout.LayoutParams.MATCH_PARENT,
             )
         )
+        // A configuration event can arrive before the new viewport is measured.
+        // Reconcile geometry after Android lays out the new landscape/portrait size.
+        root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                gestureLayer.refreshZoomForLayout()
+                playerView.requestLayout()
+            }
+        }
     }
 
     private fun installControls() {
@@ -5170,18 +5182,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
         updateComposeOverlayBounds()
         updateMorePanelBounds()
         logPlayer("onConfigurationChanged orientation=" + newConfig.orientation)
-        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
-
+        // GestureLayer can still contain a pre-rotation TextureView scale or a
+        // cancelled pinch. Keeping that transform while the viewport changes
+        // produces the small centered video shown after portrait -> landscape.
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomForViewportChange()
+        playerView.requestLayout()
+        playerView.videoSurfaceView?.requestLayout()
+        root.requestLayout()
         ViewCompat.requestApplyInsets(root)
         applyImmersiveAfterLayout()
-        findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
-        window.decorView.post {
-            if (::player.isInitialized &&
-                player.playbackState == Player.STATE_READY &&
-                !firstFrameRenderedForTesting &&
-                sessionState == SessionState.ACTIVE
-            ) {
-
+        root.post {
+            if (!isFinishing && ::playerView.isInitialized) {
+                findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
             }
         }
     }
@@ -5787,7 +5799,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             context,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-                    if (!gestureInteractionAllowed() ||
+                    if (!zoomEnabled ||
+                        !gestureInteractionAllowed() ||
                         !::playerView.isInitialized ||
                         !::player.isInitialized
                     ) {
@@ -5813,7 +5826,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
 
                 override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    if (!pinchActive || !gestureInteractionAllowed()) return true
+                    if (!zoomEnabled || !pinchActive || !gestureInteractionAllowed()) return true
                     val rawFactor = detector.scaleFactor
                     if (!rawFactor.isFinite() || rawFactor <= 0f) return true
 
@@ -6288,20 +6301,29 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         fun refreshZoomForLayout() {
-            if (zoomScale > 1.01f) {
+            if (!::playerView.isInitialized) return
+            if (zoomTransformActive && zoomScale > 1.01f) {
                 applyZoomTransform()
             } else {
+                // A prior gesture can be cancelled with scale=1 while its
+                // TextureView remains in ZOOM and scaled by 1/fillZoomLimit.
                 zoomScale = 1f
                 zoomTranslationX = 0f
                 zoomTranslationY = 0f
-                val video = playerView.videoSurfaceView
-                video?.apply {
-                    scaleX = 1f
-                    scaleY = 1f
-                    translationX = 0f
-                    translationY = 0f
-                }
+                restoreConfiguredAspectMode()
             }
+        }
+
+        /** Orientation changes discard transient pinch/pan, not user FIT/FILL. */
+        fun resetZoomForViewportChange() {
+            cancelInteractions()
+            setFillSnapVisible(false)
+            zoomAnimator?.cancel()
+            zoomAnimator = null
+            zoomScale = 1f
+            zoomTranslationX = 0f
+            zoomTranslationY = 0f
+            restoreConfiguredAspectMode()
         }
 
         fun cancelInteractions() {
@@ -6506,10 +6528,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         private fun restoreConfiguredAspectMode() {
             zoomTransformActive = false
-            playerView.videoSurfaceView?.apply { scaleX = 1f; scaleY = 1f; translationX = 0f; translationY = 0f }
-            val value = "fit"
+            playerView.videoSurfaceView?.apply {
+                scaleX = 1f
+                scaleY = 1f
+                translationX = 0f
+                translationY = 0f
+            }
+            val value = intent.getStringExtra("setting_player_aspect_ratio")
             val label = aspectLabelFromSetting(value)
-            playerView.resizeMode = resizeModeFromSetting(value)
+            val configuredMode = resizeModeFromSetting(value)
+            if (playerView.resizeMode != configuredMode) playerView.resizeMode = configuredMode
+            aspectModeLabel = label
             findViewByTag<TextView>("reianix_aspect_button")?.apply {
                 text = label
                 isSelected = label == "Preencher"
@@ -6539,8 +6568,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             video.pivotY = video.height * .5f
             video.scaleX = surfaceScale
             video.scaleY = surfaceScale
-            video.translationX = 0f
-            video.translationY = 0f
+            // Respect the clamped pan accumulated by applyPanDelta instead of
+            // overwriting it on every frame (previously pan always snapped back).
+            video.translationX = zoomTranslationX
+            video.translationY = zoomTranslationY
             video.invalidate()
         }
 
