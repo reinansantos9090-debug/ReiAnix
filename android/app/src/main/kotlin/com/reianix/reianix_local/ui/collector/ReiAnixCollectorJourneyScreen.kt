@@ -44,6 +44,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
+private data class CollectorCatalogSignal(
+    val id: Long,
+    val year: Int?,
+    val genres: List<String>,
+    val watchedEpisodes: Int,
+    val availableEpisodes: Int,
+)
+
 @Composable
 fun ReiAnixCollectorJourneyRoute(
     navController: NavHostController,
@@ -87,12 +95,31 @@ private fun CollectorJourneyObserved(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Refresh only for canonical library changes; no polling or duplicate store.
+    // Artwork, episode progress seconds and sort-order updates must not restart
+    // the Collector's SQLite read or visibly replace its header every few seconds.
+    // Only changes relevant to collection stats/unlocks trigger a refresh.
     LaunchedEffect(libraryViewModel, viewModel) {
-        combine(
-            libraryViewModel.uiState.map { it.animes }.distinctUntilChanged(),
-            libraryViewModel.continueWatching,
-        ) { _, _ -> Unit }.collect {
+        val catalogSignals = libraryViewModel.uiState.map { state ->
+            state.animes.map { anime ->
+                CollectorCatalogSignal(
+                    id = anime.id,
+                    year = anime.year,
+                    genres = anime.genres.map { it.name },
+                    watchedEpisodes = anime.contentEpisodes.count { it.isWatched },
+                    availableEpisodes = anime.availableContentCount,
+                )
+            }
+        }.distinctUntilChanged()
+        val activitySignals = libraryViewModel.continueWatching.map { episodes ->
+            episodes.map { item ->
+                // Ignore per-second playback progress; only first activity and
+                // which episode is active may matter for Collector achievements.
+                item.episodeId to ((item.progressSeconds ?: 0.0) > 0.0)
+            }
+        }.distinctUntilChanged()
+        combine(catalogSignals, activitySignals) { catalog, activity ->
+            catalog to activity
+        }.distinctUntilChanged().collect {
             viewModel.refresh()
         }
     }
@@ -145,11 +172,12 @@ private fun ReiAnixCollectorJourneyScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (state.isLoading) {
-                Text("Atualizando…", style = MaterialTheme.typography.labelSmall)
-            } else {
-                OutlinedButton(onClick = onRefresh) { Text("Atualizar") }
-            }
+            // Stable dimensions: swapping a button for loading text caused
+            // the layout to jump on every async refresh.
+            OutlinedButton(
+                onClick = onRefresh,
+                enabled = !state.isLoading && !state.isSaving,
+            ) { Text("Atualizar") }
         }
 
         if (state.error != null) {

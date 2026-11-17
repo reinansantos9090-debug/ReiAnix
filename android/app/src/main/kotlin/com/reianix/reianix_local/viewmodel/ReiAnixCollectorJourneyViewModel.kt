@@ -29,9 +29,15 @@ class ReiAnixCollectorJourneyViewModel(
     private var loadJob: Job? = null
 
     fun refresh() {
-        loadJob?.cancel()
+        // Do not cancel and restart the same local query for every state emission.
+        if (loadJob?.isActive == true || mutableState.value.isSaving) return
         loadJob = viewModelScope.launch {
-            mutableState.value = mutableState.value.copy(isLoading = true, error = null)
+            // Once data is visible, keep the screen stable while refreshing it.
+            // The first load still exposes its loading state.
+            val firstLoad = mutableState.value.journey == null
+            if (firstLoad) {
+                mutableState.value = mutableState.value.copy(isLoading = true, error = null)
+            }
             try {
                 val result = service.loadJourney()
                 mutableState.value = mutableState.value.copy(

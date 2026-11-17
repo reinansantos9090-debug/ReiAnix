@@ -2,6 +2,7 @@ package com.reianix.reianix_local.ui.collections
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -95,6 +96,8 @@ fun ReiAnixCollectionsScreen(
     var collections by remember(repository) { mutableStateOf<List<ReiAnixPersonalCollection>>(emptyList()) }
     var loading by remember(repository) { mutableStateOf(true) }
     var busy by remember(repository) { mutableStateOf(false) }
+    // Per-row optimistic membership: never disable or repaint the entire list for a one-row save.
+    var pendingMembership by remember(repository) { mutableStateOf<Map<Pair<String, Long>, Boolean>>(emptyMap()) }
     var error by remember(repository) { mutableStateOf<String?>(null) }
     var retryToken by remember(repository) { mutableStateOf(0) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -139,6 +142,28 @@ fun ReiAnixCollectionsScreen(
                 error = failure.message ?: "Não foi possível salvar a coleção."
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    fun toggleMember(collectionId: String, animeId: Long) {
+        val key = collectionId to animeId
+        if (loading || busy || pendingMembership.containsKey(key)) return
+        val current = collections.firstOrNull { it.id == collectionId } ?: return
+        // Display the intended checkbox state immediately, without a global loading frame.
+        pendingMembership = pendingMembership + (key to (animeId !in current.animeIds))
+        scope.launch {
+            try {
+                val saved = repository.toggleAnime(collectionId, animeId)
+                collections = saved
+                error = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // Removing the optimistic state restores the last confirmed checkbox.
+                error = failure.message ?: "Não foi possível salvar o anime na coleção."
+            } finally {
+                pendingMembership = pendingMembership - key
             }
         }
     }
@@ -257,12 +282,17 @@ fun ReiAnixCollectionsScreen(
                             verticalArrangement = Arrangement.spacedBy(5.dp),
                         ) {
                             items(available, key = { it.id }) { anime ->
-                                val included = anime.id in selected.animeIds
+                                val included = pendingMembership[selected.id to anime.id]
+                                    ?: (anime.id in selected.animeIds)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable(enabled = !busy) {
-                                            applyEdit { repository.toggleAnime(selected.id, anime.id) }
+                                        .clickable(
+                                            enabled = !busy,
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                        ) {
+                                            toggleMember(selected.id, anime.id)
                                         }
                                         .padding(vertical = 3.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -279,7 +309,7 @@ fun ReiAnixCollectionsScreen(
                                     Checkbox(
                                         checked = included,
                                         onCheckedChange = {
-                                            applyEdit { repository.toggleAnime(selected.id, anime.id) }
+                                            toggleMember(selected.id, anime.id)
                                         },
                                         enabled = !busy,
                                     )

@@ -28,6 +28,7 @@ import androidx.navigation.navOptions
 import com.reianix.reianix_local.ui.details.ReiAnixDetailsRoute
 import com.reianix.reianix_local.ui.details.ReiAnixAniListDetailsRoute
 import com.reianix.reianix_local.ui.collector.ReiAnixCollectorJourneyRoute
+import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsRoute
 import com.reianix.reianix_local.ui.discovery.ReiAnixTimelineHubRoute
 import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
