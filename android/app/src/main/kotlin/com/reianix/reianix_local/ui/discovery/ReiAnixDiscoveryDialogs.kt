@@ -104,9 +104,10 @@ internal fun ReiAnixTimelineList(
     groups: List<ReiAnixLibraryDiscovery.TimelineGroup>,
     artworkByAnimeId: Map<Long, ReiAnixArtworkUiModel?>,
     onOpenAnime: (Long) -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         groups.forEach { group ->
