@@ -1,10 +1,13 @@
 package com.reianix.reianix_local.ui.collections
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -372,7 +375,7 @@ private fun CollectionPoster(anime: ReiAnixAnimeUiModel?, modifier: Modifier = M
     )
 }
 
-/** Roulette uses the same canonical, already-loaded library and collection memberships. */
+/** Previous modal entry point kept for existing consumers and previews. */
 @Composable
 fun ReiAnixRouletteDialog(
     viewModel: ReiAnixLibraryViewModel,
@@ -380,6 +383,44 @@ fun ReiAnixRouletteDialog(
     onWatch: (Long, Long) -> Unit,
     onOpenAnime: (Long) -> Unit,
     onDismiss: () -> Unit,
+) {
+    ReiAnixRouletteContent(
+        viewModel = viewModel,
+        animes = animes,
+        onWatch = onWatch,
+        onOpenAnime = onOpenAnime,
+        onDismiss = onDismiss,
+        embedded = false,
+    )
+}
+
+/** Inline roulette on the full-screen Timeline; no AlertDialog overlay. */
+@Composable
+fun ReiAnixRouletteTab(
+    viewModel: ReiAnixLibraryViewModel,
+    animes: List<ReiAnixAnimeUiModel>,
+    onWatch: (Long, Long) -> Unit,
+    onOpenAnime: (Long) -> Unit,
+) {
+    ReiAnixRouletteContent(
+        viewModel = viewModel,
+        animes = animes,
+        onWatch = onWatch,
+        onOpenAnime = onOpenAnime,
+        onDismiss = {},
+        embedded = true,
+    )
+}
+
+/** Roulette uses the already-loaded canonical catalog and current collections. */
+@Composable
+private fun ReiAnixRouletteContent(
+    viewModel: ReiAnixLibraryViewModel,
+    animes: List<ReiAnixAnimeUiModel>,
+    onWatch: (Long, Long) -> Unit,
+    onOpenAnime: (Long) -> Unit,
+    onDismiss: () -> Unit,
+    embedded: Boolean,
 ) {
     val repository = viewModel.personalCollectionsRepository
     var collections by remember(repository) { mutableStateOf<List<ReiAnixPersonalCollection>>(emptyList()) }
@@ -419,10 +460,7 @@ fun ReiAnixRouletteDialog(
     }
     val selectedAnime = candidates.firstOrNull { it.id == selectedId }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Roleta de animes") },
-        text = {
+    val rouletteBody: @Composable () -> Unit = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     "Não sabe o que assistir? Sorteie um anime da sua biblioteca.",
@@ -509,18 +547,38 @@ fun ReiAnixRouletteDialog(
                     Text("Toque em Sortear para escolher um anime.")
                 }
             }
-        },
-        confirmButton = {
+        }
+    val onSort: () -> Unit = {
+        val pool = if (candidates.size > 1) candidates.filterNot { it.id == selectedId }
+        else candidates
+        if (pool.isNotEmpty()) selectedId = pool[Random.nextInt(pool.size)].id
+    }
+    if (embedded) {
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Text("Roleta de animes", style = MaterialTheme.typography.titleMedium)
+            rouletteBody()
             Button(
                 enabled = candidates.isNotEmpty(),
-                onClick = {
-                    val pool = if (candidates.size > 1) candidates.filterNot { it.id == selectedId }
-                    else candidates
-                    selectedId = pool[Random.nextInt(pool.size)].id
-                },
+                onClick = onSort,
+                modifier = Modifier.fillMaxWidth(),
             ) { Text(if (selectedAnime == null) "Sortear" else "Sortear novamente") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Fechar") } },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-    )
+        }
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Roleta de animes") },
+            text = rouletteBody,
+            confirmButton = {
+                Button(
+                    enabled = candidates.isNotEmpty(),
+                    onClick = onSort,
+                ) { Text(if (selectedAnime == null) "Sortear" else "Sortear novamente") }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Fechar") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
+    }
 }
