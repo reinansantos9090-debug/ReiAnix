@@ -6535,6 +6535,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 translationY = 0f
             }
             val value = intent.getStringExtra("setting_player_aspect_ratio")
+                ?: if (aspectModeLabel == "Preencher") "fill" else "fit"
             val label = aspectLabelFromSetting(value)
             val configuredMode = resizeModeFromSetting(value)
             if (playerView.resizeMode != configuredMode) playerView.resizeMode = configuredMode
