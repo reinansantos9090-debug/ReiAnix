@@ -49,13 +49,45 @@ fun ReiAnixCollectorJourneyRoute(
     navController: NavHostController,
     libraryViewModel: ReiAnixLibraryViewModel = rememberReiAnixLibraryViewModel(),
 ) {
+    CollectorJourneyObserved(
+        libraryViewModel = libraryViewModel,
+        showBack = true,
+        onBack = {
+            if (!navController.popBackStack()) {
+                navController.navigateToTopLevel(ReiAnixRoutes.HOME)
+            }
+        },
+    )
+}
+
+/**
+ * Embedded version uses the exact same ViewModel, SQLite-backed progress and
+ * event-driven refresh as the standalone Collector destination.
+ */
+@Composable
+fun ReiAnixCollectorJourneyTab(
+    libraryViewModel: ReiAnixLibraryViewModel,
+) {
+    CollectorJourneyObserved(
+        libraryViewModel = libraryViewModel,
+        showBack = false,
+        onBack = {},
+    )
+}
+
+@Composable
+private fun CollectorJourneyObserved(
+    libraryViewModel: ReiAnixLibraryViewModel,
+    showBack: Boolean,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     val viewModel: ReiAnixCollectorJourneyViewModel = viewModel(
         factory = ReiAnixCollectorJourneyViewModelFactory(context),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Rebuild on native catalog/consumption projections; this is event-driven, not polling.
+    // Refresh only for canonical library changes; no polling or duplicate store.
     LaunchedEffect(libraryViewModel, viewModel) {
         combine(
             libraryViewModel.uiState.map { it.animes }.distinctUntilChanged(),
@@ -67,11 +99,8 @@ fun ReiAnixCollectorJourneyRoute(
 
     ReiAnixCollectorJourneyScreen(
         state = state,
-        onBack = {
-            if (!navController.popBackStack()) {
-                navController.navigateToTopLevel(ReiAnixRoutes.HOME)
-            }
-        },
+        onBack = onBack,
+        showBack = showBack,
         onRefresh = viewModel::refresh,
         onSelectTitle = viewModel::selectActiveTitle,
     )
@@ -83,6 +112,7 @@ private fun ReiAnixCollectorJourneyScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onSelectTitle: (String) -> Unit,
+    showBack: Boolean = true,
 ) {
     Column(
         modifier = Modifier
@@ -95,11 +125,13 @@ private fun ReiAnixCollectorJourneyScreen(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Voltar",
-                )
+            if (showBack) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Voltar",
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(

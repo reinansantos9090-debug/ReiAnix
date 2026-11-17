@@ -87,8 +87,6 @@ import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeader
 import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeaderState
 import com.reianix.reianix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
 import com.reianix.reianix_local.ui.discovery.ReiAnixDurationAnomalyDialog
-import com.reianix.reianix_local.ui.discovery.ReiAnixTimelineDialog
-import com.reianix.reianix_local.ui.collections.ReiAnixRouletteDialog
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixHomeAnimeUiModel
@@ -157,51 +155,16 @@ fun ReiAnixHomeRoute(
         onOpenLibrary = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) },
         onRefresh = viewModel::refresh,
         onSelectSource = viewModel::selectSafTree,
-        onOpenTimeline = { activeDiscoveryDialog = "timeline" },
-        onOpenRoulette = { activeDiscoveryDialog = "roulette" },
+        onOpenTimeline = {
+            navController.navigate(ReiAnixRoutes.timeline("animes")) { launchSingleTop = true }
+        },
+        onOpenRoulette = {
+            navController.navigate(ReiAnixRoutes.timeline("roleta")) { launchSingleTop = true }
+        },
         onOpenDurationAnomalies = { activeDiscoveryDialog = "duration" },
     )
 
     when (activeDiscoveryDialog) {
-        "timeline" -> ReiAnixTimelineDialog(
-            viewModel = viewModel,
-            // Home already holds canonical, validated poster paths. Reuse them,
-            // without querying the full catalog or downloading images again.
-            artworkByAnimeId = remember(state.animes) {
-                state.animes.associate { anime -> anime.id to anime.artwork }
-            },
-            onDismiss = { activeDiscoveryDialog = null },
-            onOpenAnime = { animeId ->
-                activeDiscoveryDialog = null
-                navController.navigateToDetails(
-                    animeId = animeId.toString(),
-                    origin = ReiAnixRoutes.HOME,
-                )
-            },
-        )
-        "roulette" -> {
-            val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
-            ReiAnixRouletteDialog(
-                viewModel = viewModel,
-                animes = catalogState.animes,
-                onDismiss = { activeDiscoveryDialog = null },
-                onOpenAnime = { animeId ->
-                    activeDiscoveryDialog = null
-                    navController.navigateToDetails(
-                        animeId = animeId.toString(),
-                        origin = ReiAnixRoutes.HOME,
-                    )
-                },
-                onWatch = { episodeId, animeId ->
-                    activeDiscoveryDialog = null
-                    navController.navigateToPlayer(
-                        episodeId = episodeId.toString(),
-                        animeId = animeId.toString(),
-                        origin = ReiAnixRoutes.HOME,
-                    )
-                },
-            )
-        }
         "duration" -> ReiAnixDurationAnomalyDialog(
             viewModel = viewModel,
             onDismiss = { activeDiscoveryDialog = null },
