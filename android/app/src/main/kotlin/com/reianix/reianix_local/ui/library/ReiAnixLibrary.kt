@@ -71,7 +71,7 @@ import kotlinx.coroutines.flow.collect
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.reianix.reianix_local.ui.ReiAnixAnimeCard
-import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsDialog
+import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsScreen
 import com.reianix.reianix_local.ui.ReiAnixIconActionButton
 import com.reianix.reianix_local.ui.ReiAnixTopBar
 import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeader
@@ -109,7 +109,6 @@ fun ReiAnixLibraryRoute(
     pageSize: Int = 0,
     defaultSortKey: String = "added_desc",
 ) {
-    var showCollections by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(pageSize) {
         viewModel.applyLibraryPageSize(pageSize)
     }
@@ -157,26 +156,11 @@ fun ReiAnixLibraryRoute(
             )
         },
         onToggleFavorite = viewModel::toggleFavorite,
-        onOpenCollections = { showCollections = true },
+        onOpenCollections = { navController.navigate(ReiAnixRoutes.COLLECTIONS) { launchSingleTop = true } },
         hasMore = pageState.hasMore,
         isLoadingMore = pageState.isLoadingMore,
         onLoadMore = viewModel::loadNextLibraryPage,
     )
-    if (showCollections) {
-        val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
-        ReiAnixCollectionsDialog(
-            viewModel = viewModel,
-            animes = catalogState.animes,
-            onOpenAnime = { animeId ->
-                showCollections = false
-                navController.navigateToDetails(
-                    animeId = animeId.toString(),
-                    origin = ReiAnixRoutes.LIBRARY,
-                )
-            },
-            onDismiss = { showCollections = false },
-        )
-    }
 }
 
 @Composable
@@ -193,6 +177,17 @@ fun ReiAnixLibraryRoute(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val missingArtworkRetryState by viewModel.missingArtworkRetryState.collectAsStateWithLifecycle()
     val state = baseState
+
+    if (showCollections) {
+        val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
+        ReiAnixCollectionsScreen(
+            viewModel = viewModel,
+            animes = catalogState.animes,
+            onOpenAnime = onOpenDetails,
+            onDismiss = { showCollections = false },
+        )
+        return
+    }
 
     ReiAnixLibraryPresentationScreen(
         state = state,
@@ -218,18 +213,6 @@ fun ReiAnixLibraryRoute(
         isLoadingMore = pageState.isLoadingMore,
         onLoadMore = viewModel::loadNextLibraryPage,
     )
-    if (showCollections) {
-        val catalogState by viewModel.uiState.collectAsStateWithLifecycle()
-        ReiAnixCollectionsDialog(
-            viewModel = viewModel,
-            animes = catalogState.animes,
-            onOpenAnime = { animeId ->
-                showCollections = false
-                onOpenDetails(animeId)
-            },
-            onDismiss = { showCollections = false },
-        )
-    }
 }
 
 /**

@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.collections
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,17 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -38,11 +37,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavHostController
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
+import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
+import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reianix.reianix_local.data.collections.ReiAnixPersonalCollection
 import com.reianix.reianix_local.data.collections.ReiAnixPersonalCollectionsRepository
 import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
@@ -56,8 +63,28 @@ import kotlin.random.Random
  * Collections live in the existing SQLite preferences table; this view only
  * uses the already-materialized canonical catalog and its local posters.
  */
+/** Dedicated navigation destination: collections replace the Library content, not a modal. */
 @Composable
-fun ReiAnixCollectionsDialog(
+fun ReiAnixCollectionsRoute(
+    navController: NavHostController,
+    viewModel: ReiAnixLibraryViewModel,
+) {
+    val catalog by viewModel.uiState.collectAsStateWithLifecycle()
+    ReiAnixCollectionsScreen(
+        viewModel = viewModel,
+        animes = catalog.animes,
+        onOpenAnime = { animeId ->
+            navController.navigateToDetails(
+                animeId = animeId.toString(),
+                origin = ReiAnixRoutes.COLLECTIONS,
+            )
+        },
+        onDismiss = { navController.popBackStack() },
+    )
+}
+
+@Composable
+fun ReiAnixCollectionsScreen(
     viewModel: ReiAnixLibraryViewModel,
     animes: List<ReiAnixAnimeUiModel>,
     onOpenAnime: (Long) -> Unit,
@@ -70,7 +97,7 @@ fun ReiAnixCollectionsDialog(
     var busy by remember(repository) { mutableStateOf(false) }
     var error by remember(repository) { mutableStateOf<String?>(null) }
     var retryToken by remember(repository) { mutableStateOf(0) }
-    var selectedId by remember { mutableStateOf<String?>(null) }
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingNameId by remember { mutableStateOf<String?>(null) }
     var showNameDialog by remember { mutableStateOf(false) }
     var nameDraft by remember { mutableStateOf("") }
@@ -116,11 +143,31 @@ fun ReiAnixCollectionsDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (selected == null) "Minhas coleções" else selected.name, maxLines = 1) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val goBack: () -> Unit = {
+        when {
+            adding -> { adding = false; search = "" }
+            selectedId != null -> { selectedId = null; search = "" }
+            else -> onDismiss()
+        }
+    }
+    BackHandler(enabled = selected != null || adding) { goBack() }
+
+    ReiAnixResponsiveRoot {
+        Column(
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        ) {
+            ReiAnixTopBar(
+                title = if (selected == null) "Coleções" else selected.name,
+                subtitle = if (selected == null) "Organize seus animes" else "${selected.animeIds.size} anime(s)",
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                onNavigationClick = goBack,
+            )
+            Column(
+                modifier = Modifier.fillMaxSize().padding(
+                    horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+                ).padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 if (loading) Text("Carregando coleções…")
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 if (selected == null) {
@@ -135,7 +182,7 @@ fun ReiAnixCollectionsDialog(
                         Text("Crie sua primeira coleção, como Obras-primas ou Quero reassistir.")
                     }
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 370.dp),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(collections, key = { it.id }) { collection ->
@@ -172,7 +219,6 @@ fun ReiAnixCollectionsDialog(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = { selectedId = null; adding = false }) { Text("Voltar") }
                         TextButton(
                             enabled = !busy,
                             onClick = {
@@ -187,7 +233,7 @@ fun ReiAnixCollectionsDialog(
                         ) { Text("Excluir") }
                     }
                     Text(
-                        "A capa da coleção é a capa do anime marcado. Use as setas para escolher a ordem.",
+                        "Segure um anime e arraste para mudar sua posição. A capa da coleção é a do anime escolhido.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -207,7 +253,7 @@ fun ReiAnixCollectionsDialog(
                             animes.filter { it.title.contains(search.trim(), ignoreCase = true) }
                         }
                         LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 310.dp),
+                            modifier = Modifier.fillMaxWidth().weight(1f),
                             verticalArrangement = Arrangement.spacedBy(5.dp),
                         ) {
                             items(available, key = { it.id }) { anime ->
@@ -243,60 +289,29 @@ fun ReiAnixCollectionsDialog(
                     } else {
                         if (selected.animeIds.isEmpty()) {
                             Text("Esta coleção está vazia. Toque em Adicionar animes.")
-                        }
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 315.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            itemsIndexed(
-                                items = selected.animeIds,
-                                key = { _, animeId -> animeId },
-                            ) { index, animeId ->
-                                val anime = animeById[animeId]
-                                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
-                                    Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            CollectionPoster(anime, modifier = Modifier.size(40.dp, 56.dp))
-                                            Text(
-                                                anime?.title ?: "Anime ausente (ID $animeId)",
-                                                modifier = if (anime != null) {
-                                                    Modifier.weight(1f).clickable { onOpenAnime(animeId) }
-                                                } else Modifier.weight(1f),
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            TextButton(
-                                                enabled = !busy && anime != null,
-                                                onClick = { applyEdit { repository.setCover(selected.id, animeId) } },
-                                            ) { Text(if (selected.effectiveCoverId == animeId) "★ Capa" else "Usar capa") }
-                                            IconButton(
-                                                enabled = !busy && index > 0,
-                                                onClick = { applyEdit { repository.moveAnime(selected.id, animeId, -1) } },
-                                            ) { Icon(Icons.Filled.ArrowUpward, contentDescription = "Subir anime") }
-                                            IconButton(
-                                                enabled = !busy && index < selected.animeIds.lastIndex,
-                                                onClick = { applyEdit { repository.moveAnime(selected.id, animeId, 1) } },
-                                            ) { Icon(Icons.Filled.ArrowDownward, contentDescription = "Descer anime") }
-                                            TextButton(
-                                                enabled = !busy,
-                                                onClick = { applyEdit { repository.toggleAnime(selected.id, animeId) } },
-                                            ) { Text("Remover") }
-                                        }
-                                    }
-                                }
-                            }
+                        } else {
+                            ReiAnixCollectionReorderList(
+                                collection = selected,
+                                animeById = animeById,
+                                busy = busy,
+                                modifier = Modifier.weight(1f),
+                                onOpenAnime = onOpenAnime,
+                                onSetCover = { id ->
+                                    applyEdit { repository.setCover(selected.id, id) }
+                                },
+                                onRemove = { id ->
+                                    applyEdit { repository.toggleAnime(selected.id, id) }
+                                },
+                                onReorder = { order ->
+                                    applyEdit { repository.reorderAnimes(selected.id, order) }
+                                },
+                            )
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Fechar") }
-        },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-    )
+        }
+    }
 
     if (showNameDialog) {
         AlertDialog(
@@ -363,7 +378,7 @@ fun ReiAnixCollectionsDialog(
 }
 
 @Composable
-private fun CollectionPoster(anime: ReiAnixAnimeUiModel?, modifier: Modifier = Modifier) {
+internal fun CollectionPoster(anime: ReiAnixAnimeUiModel?, modifier: Modifier = Modifier) {
     ReiAnixPoster(
         localPath = anime?.artwork?.localPath,
         contentDescription = anime?.title?.let { "Capa de $it" },

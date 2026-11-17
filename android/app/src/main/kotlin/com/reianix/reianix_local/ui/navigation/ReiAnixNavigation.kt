@@ -43,6 +43,7 @@ object ReiAnixRoutes {
     const val HOME = "home"
     const val LIBRARY = "library"
     const val MY_LIST = "my_list"
+    const val COLLECTIONS = "collections"
     const val SEARCH = "search"
 
     const val SETTINGS = "settings"
@@ -72,6 +73,7 @@ object ReiAnixRoutes {
         val normalized = route.trim()
         return topLevelDestinations.any { it.route == normalized } ||
             normalized == MY_LIST ||
+            normalized == COLLECTIONS ||
             normalized == STORAGE ||
             normalized == ORGANIZE ||
             normalized == RECOVERY ||
@@ -292,6 +294,12 @@ fun ReiAnixNavigationHost(
             )
         },
         myList = myList,
+        collections = {
+            ReiAnixCollectionsRoute(
+                navController = navController,
+                viewModel = homeViewModel,
+            )
+        },
         organize = organize,
         collector = collector,
         timeline = { section ->
@@ -336,6 +344,7 @@ fun ReiAnixNavigationHost(
     home: @Composable () -> Unit,
     library: @Composable () -> Unit,
     myList: @Composable () -> Unit = {},
+    collections: @Composable () -> Unit = {},
     organize: @Composable () -> Unit = {},
     collector: @Composable () -> Unit = {},
     timeline: @Composable (String) -> Unit = {},
@@ -407,6 +416,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.HOME) { home() }
             composable(ReiAnixRoutes.LIBRARY) { library() }
             composable(ReiAnixRoutes.MY_LIST) { myList() }
+            composable(ReiAnixRoutes.COLLECTIONS) { collections() }
             composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
             composable(ReiAnixRoutes.SETTINGS) { settings() }
