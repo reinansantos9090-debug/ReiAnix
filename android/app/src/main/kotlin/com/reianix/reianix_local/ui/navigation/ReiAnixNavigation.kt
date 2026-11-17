@@ -28,6 +28,7 @@ import androidx.navigation.navOptions
 import com.reianix.reianix_local.ui.details.ReiAnixDetailsRoute
 import com.reianix.reianix_local.ui.details.ReiAnixAniListDetailsRoute
 import com.reianix.reianix_local.ui.collector.ReiAnixCollectorJourneyRoute
+import com.reianix.reianix_local.ui.discovery.ReiAnixTimelineHubRoute
 import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
@@ -49,6 +50,8 @@ object ReiAnixRoutes {
     const val ORGANIZE = "organize"
     const val RECOVERY = "recovery"
     const val COLLECTOR = "collector"
+    const val TIMELINE = "timeline/{section}"
+    const val ARG_SECTION = "section"
     const val DETAILS = "details/{animeId}?origin={origin}"
     const val ANILIST_DETAILS = "anilist_details/{anilistId}?origin={origin}"
     const val PLAYER = "player/{episodeId}?animeId={animeId}&origin={origin}"
@@ -90,6 +93,14 @@ object ReiAnixRoutes {
                 "Navigation arguments must not be blank"
             }
         }
+
+    /** Strictly scoped deep link; the Timeline owns tab switching in place. */
+    fun timeline(section: String = "animes"): String {
+        require(section in setOf("animes", "roleta", "colecionador")) {
+            "Seção da linha do tempo inválida."
+        }
+        return "timeline/" + section
+    }
 
     fun details(animeId: String, origin: String): String =
         "details/" + encode(animeId) + "?origin=" + encode(origin)
@@ -283,6 +294,13 @@ fun ReiAnixNavigationHost(
         myList = myList,
         organize = organize,
         collector = collector,
+        timeline = { section ->
+            ReiAnixTimelineHubRoute(
+                navController = navController,
+                viewModel = homeViewModel,
+                initialSection = section,
+            )
+        },
         search = {
             ReiAnixSearchRoute(
                 navController = navController,
@@ -320,6 +338,7 @@ fun ReiAnixNavigationHost(
     myList: @Composable () -> Unit = {},
     organize: @Composable () -> Unit = {},
     collector: @Composable () -> Unit = {},
+    timeline: @Composable (String) -> Unit = {},
     search: @Composable () -> Unit,
     settings: @Composable () -> Unit,
     storage: @Composable () -> Unit = {},
@@ -353,6 +372,7 @@ fun ReiAnixNavigationHost(
         .orEmpty()
     val selectedBottomRoute = when {
         currentRoute == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
+        currentRoute == ReiAnixRoutes.TIMELINE -> ReiAnixRoutes.HOME
         currentRoute == ReiAnixRoutes.DETAILS &&
             detailOrigin == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
         currentRoute == ReiAnixRoutes.DETAILS &&
@@ -364,6 +384,7 @@ fun ReiAnixNavigationHost(
     }
     val shouldShowBottomNavigation = showBottomNavigation &&
         currentRoute != ReiAnixRoutes.STORAGE &&
+        currentRoute != ReiAnixRoutes.TIMELINE &&
         (selectedBottomRoute != null ||
             currentRoute == ReiAnixRoutes.DETAILS ||
             currentRoute == ReiAnixRoutes.ANILIST_DETAILS)
@@ -392,6 +413,17 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }
             composable(ReiAnixRoutes.COLLECTOR) { collector() }
+            composable(
+                route = ReiAnixRoutes.TIMELINE,
+                arguments = listOf(
+                    navArgument(ReiAnixRoutes.ARG_SECTION) {
+                        type = NavType.StringType
+                        defaultValue = "animes"
+                    },
+                ),
+            ) { entry ->
+                timeline(entry.arguments?.getString(ReiAnixRoutes.ARG_SECTION) ?: "animes")
+            }
 
             composable(
                 route = ReiAnixRoutes.DETAILS,
