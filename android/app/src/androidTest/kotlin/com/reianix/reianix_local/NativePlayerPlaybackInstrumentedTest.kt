@@ -654,6 +654,28 @@ class NativePlayerPlaybackInstrumentedTest {
             activity!!.requestedOrientation == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR,
         )
 
+        // Regression: after portrait -> landscape -> portrait -> landscape,
+        // the TextureView must not retain an old fractional scale.
+        rotationDevice.setOrientationLeft()
+        await("Player must return to landscape a second time") {
+            activity!!.resources.configuration.orientation ==
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        }
+        await("Landscape video surface must fill its layout without a stale transform") {
+            onMain {
+                val surface = playerView.videoSurfaceView
+                playerView.width > playerView.height &&
+                    surface != null && surface.width > 0 && surface.height > 0 &&
+                    kotlin.math.abs(surface.scaleX - 1f) <= 0.01f &&
+                    kotlin.math.abs(surface.scaleY - 1f) <= 0.01f
+            }
+        }
+        rotationDevice.setOrientationNatural()
+        await("Player must restore portrait after the size regression check") {
+            activity!!.resources.configuration.orientation ==
+                android.content.res.Configuration.ORIENTATION_PORTRAIT
+        }
+
         val beforeSeek = onMain { player.currentPosition }
         onMain { player.seekTo(0L) }
         await("Media3 seek must reach the beginning") { player.currentPosition <= 200L }
