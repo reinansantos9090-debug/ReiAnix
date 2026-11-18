@@ -1,3 +1,4 @@
+' App entrypoint: Roku ECP launch/dev passes URL + playback metadata as parameters.
 sub Main(args as Dynamic)
     screen = CreateObject("roSGScreen")
     port = CreateObject("roMessagePort")
@@ -5,16 +6,11 @@ sub Main(args as Dynamic)
     scene = screen.CreateScene("MainScene")
     screen.show()
 
-    content = invalid
-    if args <> invalid and args.contentId <> invalid
-        parts = args.contentId.Split("|")
-        if parts.Count() > 0 then
-            content = { url: parts[0], title: "ReiAnix" }
-            if parts.Count() > 1 then content.title = parts[1]
+    if args <> invalid
+        if args.contentId <> invalid
+            scene.callFunc("playContent", receiverContent(args))
         end if
     end if
-
-    if content <> invalid then scene.callFunc("playContent", content)
 
     input = CreateObject("roInput")
     input.setMessagePort(port)
@@ -22,14 +18,31 @@ sub Main(args as Dynamic)
         msg = wait(0, port)
         if type(msg) = "roInputEvent"
             data = msg.GetInfo()
-            if data <> invalid and data.contentId <> invalid
-                parts = data.contentId.Split("|")
-                if parts.Count() > 0
-                    item = { url: parts[0], title: "ReiAnix" }
-                    if parts.Count() > 1 then item.title = parts[1]
-                    scene.callFunc("playContent", item)
+            if data <> invalid
+                if data.reianix_command <> invalid
+                    scene.callFunc("controlPlayback", data)
+                else if data.contentId <> invalid
+                    scene.callFunc("playContent", receiverContent(data))
                 end if
             end if
+        else if type(msg) = "roSGScreenEvent"
+            if msg.isScreenClosed() then exit while
         end if
     end while
+    screen.close()
 end sub
+
+function receiverContent(params as Object) as Object
+    item = {
+        url: params.contentId
+        title: "ReiAnix"
+        format: "mp4"
+        position: "0"
+        autoplay: "1"
+    }
+    if params.title <> invalid then item.title = params.title
+    if params.format <> invalid then item.format = params.format
+    if params.position <> invalid then item.position = params.position
+    if params.autoplay <> invalid then item.autoplay = params.autoplay
+    return item
+end function
