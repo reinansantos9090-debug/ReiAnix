@@ -5,6 +5,8 @@ import com.reianix.reianix_local.storage.StorageAuthorization
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.CancellationSignal
+import android.os.OperationCanceledException
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -289,7 +291,7 @@ object SafScanner {
 
     fun displayName(context:Context,treeUri:Uri):String = runCatching{DocumentFile.fromTreeUri(context,treeUri)?.name}.getOrNull()?.trim()?.takeIf{it.isNotBlank()} ?: "Pasta da biblioteca"
 
-    fun scan(context:Context,treeUri:Uri,onProgress:((JSONObject)->Unit)?=null,shouldCancel:()->Boolean={false},scanId:String?=null,onBatch:((JSONObject)->Unit)?=null):JSONObject {
+    fun scan(context:Context,treeUri:Uri,onProgress:((JSONObject)->Unit)?=null,shouldCancel:()->Boolean={false},scanId:String?=null,cancellationSignal:CancellationSignal?=null,onBatch:((JSONObject)->Unit)?=null):JSONObject {
         val identity=treeIdentity(treeUri)
         if(!hasPersistedReadPermission(context,treeUri)){
             Log.w(TAG,"LIBRARY_SOURCE_PERMISSION_LOST identity=" + identity.identity)
@@ -324,7 +326,7 @@ object SafScanner {
                 stats.put("failedQueries",stats.getInt("failedQueries")+1); errors.put("Não foi possível abrir a subpasta: "+currentPath); continue
             }
             try{
-                val cursor=resolver.query(childrenUri,arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,DocumentsContract.Document.COLUMN_MIME_TYPE,DocumentsContract.Document.COLUMN_SIZE,DocumentsContract.Document.COLUMN_LAST_MODIFIED),null,null,null)
+                val cursor=resolver.query(childrenUri,arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,DocumentsContract.Document.COLUMN_MIME_TYPE,DocumentsContract.Document.COLUMN_SIZE,DocumentsContract.Document.COLUMN_LAST_MODIFIED),null,null,null,cancellationSignal)
                 if(cursor==null){stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("O provedor SAF não conseguiu listar: "+currentPath);continue}
                 cursor.use{c->
                     val idCol=c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID); val nameCol=c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME); val mimeCol=c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
@@ -446,6 +448,8 @@ object SafScanner {
                     }
                 }
                 if(cancelled)break
+            }catch(e:OperationCanceledException){
+                cancelled=true
             }catch(e:SecurityException){
                 stats.put("failedQueries",stats.getInt("failedQueries")+1)
                 errors.put("A autorização do provedor SAF foi negada ao ler: "+currentPath)
