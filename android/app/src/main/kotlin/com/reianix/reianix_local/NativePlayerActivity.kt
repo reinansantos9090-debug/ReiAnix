@@ -2600,8 +2600,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             showSpeedSelection(TextView(this@NativePlayerActivity))
                         },
                         onRestart = {
-                            if (::player.isInitialized && !episodeChangePending) {
-                                player.seekTo(0L)
+                            if (::player.isInitialized && !episodeChangePending &&
+                                seekCurrentMediaTo(0L, "restart") != null
+                            ) {
                                 saveProgress("player_progress", force = true)
                                 showFeedback("00:00")
                             }
@@ -3161,9 +3162,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             player.playbackState == Player.STATE_ENDED -> {
                 // The UI exposes a replay affordance for an ended item, so tapping
                 // it must explicitly rewind before playback.
-                player.seekTo(0L)
-                player.play()
-                logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
+                if (seekCurrentMediaTo(0L, "replay") != null) {
+                    player.play()
+                    logPlayer("PLAYER_PLAY requestId=" + requestId.ifEmpty { "-" } + " reason=replay")
+                }
             }
             player.isPlaying -> {
                 player.pause()
