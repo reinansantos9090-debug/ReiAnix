@@ -33,6 +33,8 @@ internal class RokuCastController(
     private var progressClockMs = 0L
     private var duration = 0L
     private var remotePlaying = false
+    private var pendingPositionMs = 0L
+    private var pendingWasPlaying = false
 
     init {
         activeController = WeakReference(this)
@@ -78,7 +80,11 @@ internal class RokuCastController(
     private fun transmit(current: ReiAnixCastController.Video, target: RokuEcpClient.Device) {
         val requestId = serial.incrementAndGet()
         val priorPosition = current.positionMs.coerceAtLeast(0L)
-        val priorPlaying = current.shouldPlay
+        // Preserve remote playback intent when advancing episodes: the phone
+        // player is deliberately paused during the previous Roku session.
+        val priorPlaying = if (device != null) remotePlaying else current.shouldPlay
+        pendingPositionMs = priorPosition
+        pendingWasPlaying = priorPlaying
         pending = true
         pauseLocal()
         onState()
@@ -192,8 +198,8 @@ internal class RokuCastController(
     fun disconnect() {
         val target = device
         val hadSession = target != null || pending
-        val position = positionMs()
-        val shouldPlay = remotePlaying
+        val position = if (pending && target == null) pendingPositionMs else positionMs()
+        val shouldPlay = if (pending && target == null) pendingWasPlaying else remotePlaying
         serial.incrementAndGet()
         device = null
         source = null
@@ -209,8 +215,8 @@ internal class RokuCastController(
 
     private fun onServiceStopped() {
         if (device == null && !pending) return
-        val position = positionMs()
-        val shouldPlay = remotePlaying
+        val position = if (pending && device == null) pendingPositionMs else positionMs()
+        val shouldPlay = if (pending && device == null) pendingWasPlaying else remotePlaying
         serial.incrementAndGet()
         device = null
         source = null
