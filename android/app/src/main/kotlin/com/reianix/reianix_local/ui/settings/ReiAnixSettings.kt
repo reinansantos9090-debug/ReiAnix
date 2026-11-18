@@ -924,24 +924,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "player_controls" -> {
-                    item(key = "setting:player.zoom_enabled") {
-                        BooleanSettingRow(
-                            keyName = "player.zoom_enabled",
-                            title = "Zoom por gesto",
-                            description = "Permite ampliar e mover o vídeo com gesto de pinça.",
-                            checked = state.settings["player.zoom_enabled"] == "true",
-                            onCheckedChange = { onUpdateSetting("player.zoom_enabled", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:player.lock_mode") {
-                        BooleanSettingRow(
-                            keyName = "player.lock_mode",
-                            title = "Bloqueio dos controles",
-                            description = "Define o estado persistido de bloqueio dos controles ao abrir o player.",
-                            checked = state.settings["player.lock_mode"] == "true",
-                            onCheckedChange = { onUpdateSetting("player.lock_mode", it.toString()) },
-                        )
-                    }
                     item(key = "setting:player.double_tap_seek_seconds") {
                         ChoiceSettingRow(
                             keyName = "player.double_tap_seek_seconds",
@@ -960,24 +942,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             selectedValue = state.settings["player.long_press_speed"],
                             choices = longPressSpeedChoices,
                             onSelected = { onUpdateSetting("player.long_press_speed", it) },
-                        )
-                    }
-                    item(key = "setting:gestures.volume") {
-                        BooleanSettingRow(
-                            keyName = "gestures.volume",
-                            title = "Gestos de volume",
-                            description = "Swipe vertical no lado direito ajusta o volume quando ativado.",
-                            checked = state.settings["gestures.volume"] == "true",
-                            onCheckedChange = { onUpdateSetting("gestures.volume", it.toString()) },
-                        )
-                    }
-                    item(key = "setting:gestures.brightness") {
-                        BooleanSettingRow(
-                            keyName = "gestures.brightness",
-                            title = "Gestos de brilho",
-                            description = "Swipe vertical no lado esquerdo ajusta o brilho quando ativado.",
-                            checked = state.settings["gestures.brightness"] == "true",
-                            onCheckedChange = { onUpdateSetting("gestures.brightness", it.toString()) },
                         )
                     }
                     item(key = "setting:gestures.horizontal_seek") {
