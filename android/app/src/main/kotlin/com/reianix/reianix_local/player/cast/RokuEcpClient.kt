@@ -121,9 +121,46 @@ internal object RokuEcpClient {
             }
         }
 
+    /** Authoritative playback state from Roku OS, when ECP reporting is available. */
+    internal data class PlaybackStatus(
+        val state: String,
+        val positionMs: Long?,
+        val durationMs: Long?,
+        val receiverActive: Boolean,
+        val error: Boolean,
+    )
+
+    suspend fun playbackStatus(device: Device): PlaybackStatus? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val response = request(device, "GET", "/query/media-player")
+                if (response.status != 200) return@runCatching null
+                parsePlaybackStatus(response.body)
+            }.getOrNull()
+        }
+
+    internal fun parsePlaybackStatus(xml: String): PlaybackStatus? {
+        val player = Regex("""(?is)<player\\b([^>]*)>""").find(xml) ?: return null
+        val attrs = player.groupValues[1]
+        val state = Regex("""(?i)\\bstate=["']([^"']+)["']""")
+            .find(attrs)?.groupValues?.get(1)?.lowercase() ?: return null
+        val pluginId = Regex("""(?is)<plugin\\b[^>]*\\bid=["']([^"']+)["']""")
+            .find(xml)?.groupValues?.get(1)
+        fun milliseconds(tag: String): Long? =
+            Regex("(?is)<$tag>\\\\s*(\\\\d+)\\\\s*(?:ms)?\\\\s*</$tag>")
+                .find(xml)?.groupValues?.get(1)?.toLongOrNull()
+        return PlaybackStatus(
+            state = state,
+            positionMs = milliseconds("position"),
+            durationMs = milliseconds("duration"),
+            receiverActive = pluginId == "dev",
+            error = Regex("""(?i)\\berror=["']true["']""").containsMatchIn(attrs),
+        )
+    }
+
     suspend fun volumeKey(device: Device, up: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val response = request(device, "POST", "/keypress/" + if (up) "VolumeUp" else "VolumeDown")
+            val response = request(device, "POST", "/keypress/" + (if (up) "VolumeUp" else "VolumeDown"))
             check(response.status in 200..299) {
                 "O volume da Roku não pôde ser ajustado"
             }
