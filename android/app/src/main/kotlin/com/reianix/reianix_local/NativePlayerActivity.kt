@@ -2729,7 +2729,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         title = titleValue,
                         positionMs = player.currentPosition.coerceAtLeast(0L),
                         shouldPlay = player.playWhenReady && !sleepTimerPaused,
-                        durationMs = player.duration.coerceAtLeast(0L),
+                        durationMs = effectiveDurationMs(),
                     )
                 } else null
             },
@@ -4265,8 +4265,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         exitReported = true
         suppressExitEvent = true
-        val rawDuration = if (::player.isInitialized) player.duration else 0L
-        val currentDuration = if (rawDuration > 0L) rawDuration else 0L
+        val currentDuration = effectiveDurationMs()
         val rawPosition = if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L
         val currentPosition = if (currentDuration > 0L) rawPosition.coerceAtMost(currentDuration) else rawPosition
         val exitCapturedAt = nextPlayerEventCreatedAt()
@@ -4542,7 +4541,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("episodeId", currentEpisodeId())
             .put("animeId", intent.getStringExtra("animeId").orEmpty())
             .put("positionMs", player.currentPosition.coerceAtLeast(0L))
-            .put("durationMs", player.duration.coerceAtLeast(0L))
+            .put("durationMs", effectiveDurationMs())
             .put("createdAt", startedAtMs)
             .put("buttonPressedAtMs", startedAtMs)
             .put("monotonicNs", monotonicNs)
@@ -5248,7 +5247,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             outState.putString("session_request_id", requestId)
             outState.putString("session_uri", if (::uri.isInitialized) uri.toString() else intent.getStringExtra("uri").orEmpty())
             outState.putLong("position_ms", player.currentPosition.coerceAtLeast(0L))
-            outState.putLong("duration_ms", player.duration.coerceAtLeast(0L))
+            outState.putLong("duration_ms", effectiveDurationMs())
             outState.putFloat("playback_speed", player.playbackParameters.speed)
             outState.putBoolean("play_when_ready", player.playWhenReady)
             outState.putBundle("track_selection_parameters", player.trackSelectionParameters.toBundle())
