@@ -11,6 +11,7 @@ import com.reianix.reianix_local.player.PlayerMediaPolicy
 import com.reianix.reianix_local.player.PlayerStartupMetrics
 import com.reianix.reianix_local.player.PlayerTimeFormatter
 import com.reianix.reianix_local.player.cast.ReiAnixCastController
+import com.reianix.reianix_local.player.cast.RokuCastController
 import com.reianix.reianix_local.player.SystemUiController
 import com.reianix.reianix_local.scanner.BroadStorageScanner
 import com.reianix.reianix_local.scanner.MediaStoreScanner
@@ -143,6 +144,7 @@ class NativePlayerActivity : FragmentActivity() {
     private lateinit var localMetadataStore: PlayerLocalMetadataStore
     private var mediaControls: PlayerMediaControls? = null
     private var castController: ReiAnixCastController? = null
+    private var rokuController: RokuCastController? = null
     private val consumptionService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAppDependencies.from(applicationContext).consumptionService
     }
@@ -792,6 +794,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             sleepTimerPaused = savedInstanceState?.getBoolean("sleep_timer_paused", false) ?: false
             if (sleepTimerDeadlineMs > 0L) handler.post(sleepTimerTick)
             initializeGoogleCast()
+            initializeRokuCast()
             prepareCurrentMedia("initial", savedInstanceState?.takeIf { it.containsKey("play_when_ready") }?.getBoolean("play_when_ready"))
         } catch (exception: Exception) {
             if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
@@ -1367,6 +1370,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     try {
                         player.prepare()
                         castController?.onLocalMediaPrepared()
+                        rokuController?.onLocalMediaPrepared()
                     } catch (error: Exception) {
                         logPlayer(
                             "MEDIA3_PREPARE_FAILED requestId=" + requestId.ifEmpty { "-" } +
@@ -2752,6 +2756,49 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             },
         ).also { it.start() }
+    }
+
+    /** Roku sends the local video itself, not an Android screen mirror. */
+    private fun initializeRokuCast() {
+        if (rokuController != null) return
+        rokuController = RokuCastController(
+            activity = this,
+            video = {
+                if (::uri.isInitialized && ::player.isInitialized &&
+                    player.currentMediaItem != null
+                ) {
+                    ReiAnixCastController.Video(
+                        uri = uri,
+                        title = titleValue,
+                        positionMs = player.currentPosition.coerceAtLeast(0L),
+                        shouldPlay = player.playWhenReady && !sleepTimerPaused,
+                        durationMs = player.duration.coerceAtLeast(0L),
+                    )
+                } else null
+            },
+            pauseLocal = {
+                if (::player.isInitialized) player.pause()
+                syncComposePlayerUiState()
+            },
+            resumeLocal = { position, shouldPlay ->
+                if (::player.isInitialized && !isFinishing) {
+                    player.seekTo(PlayerMediaPolicy.safeResumePosition(position, player.duration))
+                    if (shouldPlay && !sleepTimerPaused && !errorVisible &&
+                        lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+                    ) {
+                        player.play()
+                    } else {
+                        playbackWasRequestedBeforeStop = shouldPlay
+                    }
+                    updateProgressUi()
+                }
+            },
+            onState = { syncComposePlayerUiState() },
+            onMessage = { message ->
+                logPlayer("ROKU_STATUS message=$message")
+                Toast.makeText(this@NativePlayerActivity, message, Toast.LENGTH_SHORT).show()
+            },
+        )
     }
 
     private fun installComposePlayerControls() {
@@ -5083,6 +5130,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         logPlayer("onResume requestId=" + requestId.ifEmpty { "-" })
         if (!inPictureInPicture) applyImmersiveAfterLayout()
         castController?.onLocalMediaPrepared()
+        rokuController?.onLocalMediaPrepared()
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
         if (::player.isInitialized && !errorVisible && !playbackErrorForGeneration) {
             if (!sleepTimerPaused && !isPictureInPictureActive() && playbackWasRequestedBeforeStop &&
