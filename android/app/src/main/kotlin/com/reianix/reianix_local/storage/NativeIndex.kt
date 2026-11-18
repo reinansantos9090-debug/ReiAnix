@@ -987,7 +987,7 @@ object NativeIndex {
             )
         } else null
         if (shouldCancel()) return@synchronized 0
-        if (committedCount != null) {
+        if (committed != null && committedCount != null) {
             var sequence = 0
             return@synchronized NativeBatch.readNdjsonBatches(committed, batchSize, shouldCancel) {
                 sequence += 1
