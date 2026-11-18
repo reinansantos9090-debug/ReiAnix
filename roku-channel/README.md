@@ -14,7 +14,7 @@ O botão **Transmitir** do player oferece duas tecnologias diferentes:
 5. Em **Configurações > Sistema > Configurações avançadas do sistema > Controle por apps móveis** da Roku (nome sujeito a modelo/versão), habilite controle por aplicativos, caso necessário.
 6. No ReiAnix, abra um **vídeo local**, toque **Transmitir**, escolha a Roku encontrada e aguarde a TV abrir o ReiAnix Receiver.
 
-**Limitações reais:** o receptor instalado é de desenvolvimento, não uma publicação na Roku Streaming Store. A Roku aceita somente formatos e codecs suportados por seu modelo; a transmissão não faz transcodificação. Arquivos MP4/MKV compatíveis podem funcionar, mas alguns MKV, áudios e legendas não serão suportados. É necessário manter o celular na mesma rede e o serviço de transmissão ativo. O avanço exibido no celular é estimado, pois ECP não fornece progresso contínuo do player. Um HTTP 200 ao lançar o canal confirma o comando, **não** a decodificação do arquivo.
+**Limitações reais:** o receptor instalado é de desenvolvimento, não uma publicação na Roku Streaming Store. A Roku aceita somente formatos e codecs suportados por seu modelo; a transmissão não faz transcodificação. Arquivos MP4/MKV compatíveis podem funcionar, mas alguns MKV, áudios e legendas não serão suportados. É necessário manter o celular na mesma rede e o serviço de transmissão ativo. O progresso é consultado periodicamente em `query/media-player`; quando a Roku não disponibiliza esse estado, o celular mostra uma estimativa até a próxima confirmação. Um HTTP 200 ao lançar o canal confirma o comando, **não** a decodificação do arquivo.
 
 ## Arquitetura
 
