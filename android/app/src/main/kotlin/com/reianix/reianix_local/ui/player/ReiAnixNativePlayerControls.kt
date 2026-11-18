@@ -1,8 +1,6 @@
 package com.reianix.reianix_local.ui.player
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,7 +40,6 @@ import androidx.mediarouter.app.MediaRouteChooserDialogFragment
 import androidx.mediarouter.app.MediaRouteControllerDialogFragment
 import androidx.mediarouter.app.MediaRouteDialogFactory
 import com.google.android.gms.cast.framework.CastButtonFactory
-import com.reianix.reianix_local.player.cast.RokuEcpClient
 import com.reianix.reianix_local.R
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
@@ -52,7 +49,6 @@ import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,6 +99,7 @@ data class ReiAnixNativePlayerUiState(
     val longPressEnabled: Boolean = true,
     val safeTopPx: Int = 0,
     val safeBottomPx: Int = 0,
+    val webVideoCasterSharing: Boolean = false,
 )
 
 /**
@@ -415,11 +412,8 @@ fun ReiAnixNativePlayerBottomControls(
     onResize: () -> Unit,
     onSource: () -> Unit,
     onNext: () -> Unit,
-    onSelectRoku: (String) -> Unit = {},
-    onStopRoku: () -> Unit = {},
-    onBeforeGoogleCast: () -> Unit = {},
-    rokuActive: Boolean = false,
-    rokuLoading: Boolean = false,
+    onWebVideoCaster: () -> Unit = {},
+    onStopWebVideoCaster: () -> Unit = {},
 ) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
@@ -599,11 +593,9 @@ fun ReiAnixNativePlayerBottomControls(
         ) {
             PlayerBottomCastAction(
                 showLabel = !landscape,
-                rokuActive = rokuActive,
-                rokuLoading = rokuLoading,
-                onSelectRoku = onSelectRoku,
-                onStopRoku = onStopRoku,
-                onBeforeGoogleCast = onBeforeGoogleCast,
+                isSharingExternal = state.webVideoCasterSharing,
+                onWebVideoCaster = onWebVideoCaster,
+                onStopWebVideoCaster = onStopWebVideoCaster,
             )
             PlayerBottomAction(
                 icon = Icons.Filled.PlaylistPlay,
@@ -646,40 +638,20 @@ fun ReiAnixNativePlayerBottomControls(
 }
 
 /**
- * Direct casting to the Roku receiver ALREADY installed on the TV.
- * The visible 48.dp Google Cast button and its alignment remain unchanged.
+ * The native Google Cast route button remains attached with its existing
+ * vertical centering and 48.dp hit target. One tap offers Google Cast or the
+ * official Web Video Caster app, like CloudStream's external player action.
  */
 @Composable
 private fun RowScope.PlayerBottomCastAction(
     showLabel: Boolean,
-    rokuActive: Boolean,
-    rokuLoading: Boolean,
-    onSelectRoku: (String) -> Unit,
-    onStopRoku: () -> Unit,
-    onBeforeGoogleCast: () -> Unit,
+    isSharingExternal: Boolean,
+    onWebVideoCaster: () -> Unit,
+    onStopWebVideoCaster: () -> Unit,
 ) {
     val context = LocalContext.current
     var pickerOpen by remember { mutableStateOf(false) }
-    var castButton by remember { mutableStateOf<MediaRouteButton?>(null) }
-    var scanVersion by remember { mutableIntStateOf(0) }
-    var scanning by remember { mutableStateOf(false) }
-    var rokuDevices by remember { mutableStateOf(emptyList<RokuEcpClient.Device>()) }
-    var scanError by remember { mutableStateOf(false) }
-
-    LaunchedEffect(pickerOpen, scanVersion) {
-        if (pickerOpen) {
-            scanning = true
-            scanError = false
-            try {
-                rokuDevices = RokuEcpClient.discover(context.applicationContext)
-            } catch (_: Exception) {
-                rokuDevices = emptyList()
-                scanError = true
-            } finally {
-                scanning = false
-            }
-        }
-    }
+    var nativeCastButton by remember { mutableStateOf<MediaRouteButton?>(null) }
 
     Column(
         modifier = Modifier.weight(1f),
@@ -690,6 +662,7 @@ private fun RowScope.PlayerBottomCastAction(
                 object : MediaRouteButton(viewContext) {
                     override fun onDraw(canvas: android.graphics.Canvas) {
                         val saved = canvas.save()
+                        // Optical adjustment approved in PR #364.
                         canvas.translate(0f, 2f * resources.displayMetrics.density)
                         canvas.scale(0.8f, 0.8f, width / 2f, height / 2f)
                         super.onDraw(canvas)
@@ -697,7 +670,6 @@ private fun RowScope.PlayerBottomCastAction(
                     }
 
                     override fun performClick(): Boolean {
-                        // Offer both output types; never launch Android Smart View.
                         playSoundEffect(android.view.SoundEffectConstants.CLICK)
                         pickerOpen = true
                         return true
@@ -708,13 +680,13 @@ private fun RowScope.PlayerBottomCastAction(
                     } catch (error: RuntimeException) {
                         android.util.Log.e("ReiAnixCast", "GOOGLE_CAST_PICKER_FAILED", error)
                         android.widget.Toast.makeText(
-                            viewContext, "Não foi possível abrir o Google Cast",
+                            viewContext, "Não foi possível abrir o Chromecast",
                             android.widget.Toast.LENGTH_SHORT,
                         ).show()
                         false
                     }
                 }.apply {
-                    contentDescription = "Transmitir vídeo para Chromecast ou Roku"
+                    contentDescription = "Transmitir para TV: Chromecast ou Web Video Caster"
                     setRemoteIndicatorDrawable(
                         androidx.core.content.ContextCompat.getDrawable(
                             viewContext, R.drawable.ic_reianix_cast,
@@ -725,13 +697,15 @@ private fun RowScope.PlayerBottomCastAction(
                             viewContext.applicationContext, this,
                         )
                         setDialogFactory(PlayerCastDialogFactory)
-                    }.onFailure {
-                        android.util.Log.w("ReiAnixCast", "GOOGLE_CAST_INIT_FAILED", it)
+                    }.onFailure { error ->
+                        // Google Cast may be unavailable but the Web Video Caster
+                        // action remains accessible through this same control.
+                        android.util.Log.w("ReiAnixCast", "GOOGLE_CAST_INIT_FAILED", error)
                     }
-                    castButton = this
+                    nativeCastButton = this
                 }
             },
-            update = { castButton = it },
+            update = { nativeCastButton = it },
             modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionButtonSize),
         )
         if (showLabel) {
@@ -747,77 +721,51 @@ private fun RowScope.PlayerBottomCastAction(
     if (pickerOpen) {
         AlertDialog(
             onDismissRequest = { pickerOpen = false },
-            title = { Text("Transmitir vídeo para TV") },
+            title = { Text("Transmitir para TV") },
             text = {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 280.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         onClick = {
-                            pickerOpen = false
-                            onBeforeGoogleCast()
-                            val shown = runCatching { castButton?.showDialog() == true }
-                                .getOrDefault(false)
-                            if (!shown) {
+                            if (isSharingExternal) {
                                 android.widget.Toast.makeText(
-                                    context, "Google Cast indisponível nesta rede",
+                                    context, "Pare o Web Video Caster antes de usar Chromecast",
                                     android.widget.Toast.LENGTH_SHORT,
                                 ).show()
+                            } else {
+                                pickerOpen = false
+                                val opened = runCatching {
+                                    nativeCastButton?.showDialog() == true
+                                }.getOrDefault(false)
+                                if (!opened) {
+                                    android.widget.Toast.makeText(
+                                        context, "Nenhum Chromecast disponível",
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
                             }
                         },
                     ) { Text("Chromecast / Google Cast") }
 
-                    Text(
-                        text = "Roku • reproduzir vídeo na TV",
-                        style = ReiAnixTokens.TypographyTokens.playerActionLabel,
-                    )
-                    if (rokuLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            color = ReiAnixTokens.Colors.primary,
-                        )
-                        Text("Enviando vídeo para Roku…")
-                    }
-                    if (rokuActive) {
-                        TextButton(onClick = {
+                    TextButton(
+                        onClick = {
                             pickerOpen = false
-                            onStopRoku()
-                        }) { Text("Parar transmissão Roku") }
-                    }
-                    if (scanning) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            color = ReiAnixTokens.Colors.primary,
-                        )
-                        Text("Procurando TVs Roku…")
-                    } else {
-                        rokuDevices.take(8).forEach { device ->
-                            TextButton(
-                                enabled = !rokuLoading,
-                                onClick = {
-                                    pickerOpen = false
-                                    onSelectRoku(device.id)
-                                },
-                            ) { Text(device.name) }
-                        }
-                        if (rokuDevices.isEmpty()) {
-                            Text(
-                                if (scanError) "Não foi possível pesquisar a rede."
-                                else "Nenhuma Roku encontrada na mesma rede Wi-Fi.",
-                            )
-                        }
-                        TextButton(onClick = { scanVersion++ }) {
-                            Text("Pesquisar Roku novamente")
-                        }
+                            onWebVideoCaster()
+                        },
+                    ) { Text("Web Video Caster • Roku e outras TVs") }
+
+                    if (isSharingExternal) {
+                        TextButton(
+                            onClick = {
+                                pickerOpen = false
+                                onStopWebVideoCaster()
+                            },
+                        ) { Text("Parar compartilhamento com Web Video Caster") }
                     }
                     Text(
-                        "Ao selecionar a Roku, o vídeo local será enviado diretamente à TV. " +
-                            "Funciona com o ReiAnix Receiver que você já instalou; " +
-                            "sem Smart View ou espelhamento de tela.",
+                        text = "O vídeo local será aberto no Web Video Caster. " +
+                            "Escolha sua Roku lá para começar a assistir.",
                         style = ReiAnixTokens.TypographyTokens.playerActionLabel,
+                        color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.82f),
                     )
                 }
             },
