@@ -345,6 +345,7 @@ object SafScanner {
                     val videoChildren=mutableListOf<Child>()
                     var containsNoMediaMarker=false
                     while(c.moveToNext()){
+                        if(shouldCancel()){cancelled=true;break}
                         val id=c.getString(idCol)?.trim().orEmpty()
                         if(id.isBlank()){stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("O provedor SAF retornou um documento sem ID em: "+currentPath);continue}
                         val providerName=c.getString(nameCol)?.trim()?.takeIf{it.isNotEmpty()}
@@ -373,6 +374,7 @@ object SafScanner {
                         if(!mimeVideo&&!extensionVideo)continue
                         videoChildren.add(Child(id,name,providerName != null,mime,providerMime != null,size,modified))
                     }
+                    if(cancelled)return@use
                     val parentUri = runCatching {
                         DocumentsContract.buildDocumentUriUsingTree(treeUri, parentId)
                     }.getOrElse {
@@ -384,6 +386,7 @@ object SafScanner {
                         stats.put("nomediaDirectories",stats.getInt("nomediaDirectories")+1)
                     }
                     for((childId,childName) in directoriesToVisit){
+                        if(shouldCancel()){cancelled=true;break}
                         val relative=if(currentPath.isEmpty())childName else currentPath+"/"+childName
                         if (!isDocumentWithinTree(context, treeUri, childId)) {
                             stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
@@ -442,6 +445,7 @@ object SafScanner {
                         if(stats.getInt("files")-lastFiles>=100){lastFiles=stats.getInt("files");onProgress?.invoke(identityPayload(treeUri).put("phase","scanning").put("source","saf").put("directories",stats.getInt("directories")).put("files",lastFiles).put("videos",stats.getInt("videos")).put("currentPath",currentPath))}
                     }
                 }
+                if(cancelled)break
             }catch(e:SecurityException){
                 stats.put("failedQueries",stats.getInt("failedQueries")+1)
                 errors.put("A autorização do provedor SAF foi negada ao ler: "+currentPath)
