@@ -136,14 +136,24 @@ object NativeIndex {
      * Legacy item maps are reusable only when every value is a document and
      * their count agrees with the persisted completion status.
      */
-    private fun legacySnapshotCount(items: JSONObject?, status: String): Int? {
+    private fun legacySnapshotCount(
+        items: JSONObject?,
+        status: String,
+        shouldCancel: () -> Boolean = { false },
+    ): Int? {
         if (items == null) return null
         var count = 0
+        var cancelled = false
         val keys = items.keys()
         while (keys.hasNext()) {
+            if (shouldCancel()) {
+                cancelled = true
+                break
+            }
             if (items.optJSONObject(keys.next()) == null) return null
             count++
         }
+        if (cancelled || shouldCancel()) return null
         return when {
             status.equals(STATUS_COMPLETED, ignoreCase = true) -> count.takeIf { it > 0 }
             status.equals(STATUS_EMPTY_COMPLETE, ignoreCase = true) -> count.takeIf { it == 0 }
@@ -987,7 +997,7 @@ object NativeIndex {
         if (shouldCancel()) return@synchronized 0
         val items = scope.optJSONObject("items") ?: return@synchronized 0
         val legacyStatus = scope.optString("legacyItemsStatus").trim().ifBlank { currentStatus }
-        if (legacySnapshotCount(items, legacyStatus) == null) return@synchronized 0
+        if (legacySnapshotCount(items, legacyStatus, shouldCancel) == null) return@synchronized 0
         var sequence = 0
         var batch = JSONArray()
         var total = 0
