@@ -261,6 +261,9 @@ object MediaStoreScanner {
                         cancelled = true
                         localCancelled = true
                         null
+                    } catch (_: Exception) {
+                        // Keep the existing fallback to the unfiltered provider query.
+                        null
                     }
                 } else null
                 val useFullScan = !localCancelled && (scopedCursor == null ||
@@ -283,7 +286,7 @@ object MediaStoreScanner {
                     if (cursorToRead == null && !localCancelled) {
                         localErrors.put("O MediaStore não conseguiu consultar o volume "+volumeName+".")
                     }
-                    cursorToRead?.use{cursor->{
+                    cursorToRead?.use{cursor->
                     val idCol=cursor.getColumnIndex(MediaStore.Video.Media._ID);val nameCol=cursor.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
                     val mimeCol=cursor.getColumnIndex(MediaStore.Video.Media.MIME_TYPE);val sizeCol=cursor.getColumnIndex(MediaStore.Video.Media.SIZE)
                     val modCol=cursor.getColumnIndex(MediaStore.Video.Media.DATE_MODIFIED);val relCol=if(Build.VERSION.SDK_INT>=29)cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)else -1
