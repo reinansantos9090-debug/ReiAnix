@@ -265,17 +265,31 @@ object MediaStoreScanner {
                         localCancelled = true
                         null
                     } catch (_: Exception) {
-                        // Keep the existing fallback to the unfiltered provider query.
+                        // Keep the existing fallback to the unfiltered provider query unless
+                        // the exception was raised while the user was cancelling this scan.
+                        if (shouldCancel()) {
+                            cancelled = true
+                            localCancelled = true
+                        }
                         null
                     }
                 } else null
-                val useFullScan = !localCancelled && (scopedCursor == null ||
-                    runCatching { scopedCursor.count == 0 }.getOrDefault(true))
+                val scopedCursorEmpty = scopedCursor == null ||
+                    runCatching { scopedCursor.count == 0 }.getOrDefault(true)
+                if (shouldCancel()) {
+                    cancelled = true
+                    localCancelled = true
+                }
+                val useFullScan = !localCancelled && scopedCursorEmpty
                 val cursorToRead = when {
                     localCancelled -> null
                     useFullScan -> {
                         scopedCursor?.close()
-                        try {
+                        if (shouldCancel()) {
+                            cancelled = true
+                            localCancelled = true
+                            null
+                        } else try {
                             resolver.query(collection, columns, null, null, orderByName, cancellationSignal)
                         } catch (_: OperationCanceledException) {
                             cancelled = true
