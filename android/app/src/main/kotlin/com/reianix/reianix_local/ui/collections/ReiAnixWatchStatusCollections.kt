@@ -28,6 +28,8 @@ import com.reianix.reianix_local.data.personal.ReiAnixPersonalAnimeService
 import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
 import com.reianix.reianix_local.ui.ReiAnixTopBar
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
 
 /** Read-only view of the named tracking categories edited on the anime details screen. */
@@ -38,8 +40,11 @@ fun ReiAnixWatchStatusCollections(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val settings = remember(context) { ReiAnixAppDependencies.from(context).sqliteSettingsRepository }
+    val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
+    val settings = remember(dependencies) { dependencies.sqliteSettingsRepository }
+    val library = remember(dependencies) { dependencies.sqliteLibraryRepository }
     var statusById by remember { mutableStateOf<Map<Long, ReiAnixWatchStatus>>(emptyMap()) }
+    var trackedTitles by remember { mutableStateOf<List<Pair<Long, String>>>(emptyList()) }
     var selected by remember { mutableStateOf(ReiAnixWatchStatus.WATCHING) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -49,11 +54,28 @@ fun ReiAnixWatchStatusCollections(
         loading = true
         try {
             val preferences = settings.allPreferences()
-            statusById = animes.mapNotNull { anime ->
-                val value = preferences[ReiAnixPersonalAnimeService.statusKey(anime.id)]
+            val saved = preferences.asSequence().mapNotNull { (key, value) ->
+                if (!key.startsWith("reianix.personal.status.")) return@mapNotNull null
+                val id = key.removePrefix("reianix.personal.status.").toLongOrNull()
+                    ?.takeIf { it > 0L } ?: return@mapNotNull null
                 val status = ReiAnixWatchStatus.entries.firstOrNull { it.name == value }
-                if (status == null) null else anime.id to status
+                    ?: return@mapNotNull null
+                id to status
             }.toMap()
+            statusById = saved
+            trackedTitles = withContext(Dispatchers.IO) {
+                buildList {
+                    var offset = 0
+                    while (true) {
+                        val page = library.listAnime(200, offset)
+                        page.forEach { anime ->
+                            if (anime.id in saved) add(anime.id to anime.title)
+                        }
+                        offset += page.size
+                        if (page.size < 200) break
+                    }
+                }
+            }
         } catch (_: Exception) {
             error = "Não foi possível carregar suas listas."
         } finally {
@@ -61,7 +83,7 @@ fun ReiAnixWatchStatusCollections(
         }
     }
 
-    val selectedAnimes = animes.filter { statusById[it.id] == selected }
+    val selectedAnimes = trackedTitles.filter { statusById[it.first] == selected }
     ReiAnixResponsiveRoot {
         Column(modifier = Modifier.fillMaxSize()) {
             ReiAnixTopBar(title = "Listas de acompanhamento")
@@ -93,11 +115,11 @@ fun ReiAnixWatchStatusCollections(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(selectedAnimes, key = { it.id }) { anime ->
+                    items(selectedAnimes, key = { it.first }) { anime ->
                         OutlinedButton(
-                            onClick = { onOpenAnime(anime.id) },
+                            onClick = { onOpenAnime(anime.first) },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text(anime.title) }
+                        ) { Text(anime.second) }
                     }
                 }
             }
