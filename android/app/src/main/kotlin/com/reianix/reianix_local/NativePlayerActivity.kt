@@ -8,9 +8,9 @@ import com.reianix.reianix_local.player.LocalSubtitleResolver
 import com.reianix.reianix_local.player.NativePlayerRequest
 import com.reianix.reianix_local.player.PlayerLocalMetadataStore
 import com.reianix.reianix_local.player.PlayerMediaPolicy
+import com.reianix.reianix_local.player.ExternalVideoChooser
 import com.reianix.reianix_local.player.PlayerStartupMetrics
 import com.reianix.reianix_local.player.PlayerTimeFormatter
-import com.reianix.reianix_local.player.cast.ReiAnixCastController
 import com.reianix.reianix_local.player.SystemUiController
 import com.reianix.reianix_local.scanner.BroadStorageScanner
 import com.reianix.reianix_local.scanner.MediaStoreScanner
@@ -142,7 +142,6 @@ class NativePlayerActivity : FragmentActivity() {
     private lateinit var systemUiController: SystemUiController
     private lateinit var localMetadataStore: PlayerLocalMetadataStore
     private var mediaControls: PlayerMediaControls? = null
-    private var castController: ReiAnixCastController? = null
     private val consumptionService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAppDependencies.from(applicationContext).consumptionService
     }
@@ -791,7 +790,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
             sleepTimerDeadlineMs = savedInstanceState?.getLong("sleep_timer_deadline_ms", 0L) ?: 0L
             sleepTimerPaused = savedInstanceState?.getBoolean("sleep_timer_paused", false) ?: false
             if (sleepTimerDeadlineMs > 0L) handler.post(sleepTimerTick)
-            initializeGoogleCast()
             prepareCurrentMedia("initial", savedInstanceState?.takeIf { it.containsKey("play_when_ready") }?.getBoolean("play_when_ready"))
         } catch (exception: Exception) {
             if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
@@ -1366,7 +1364,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
                     try {
                         player.prepare()
-                        castController?.onLocalMediaPrepared()
                     } catch (error: Exception) {
                         logPlayer(
                             "MEDIA3_PREPARE_FAILED requestId=" + requestId.ifEmpty { "-" } +
@@ -2638,6 +2635,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             touchControls()
                             syncComposePlayerUiState()
                         },
+                        onOpenWithExternal = { openCurrentVideoExternally() },
                         onPictureInPicture = { requestPictureInPicture() },
                         onHistory = { showPlaybackHistory() },
                         onInformation = { showTechnicalInfo() },
@@ -2707,51 +2705,32 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
-    private fun initializeGoogleCast() {
-        if (castController != null) return
-        castController = ReiAnixCastController(
-            activity = this,
-            video = {
-                if (::uri.isInitialized && ::player.isInitialized && player.currentMediaItem != null) {
-                    ReiAnixCastController.Video(
-                        uri = uri,
-                        title = titleValue,
-                        positionMs = player.currentPosition.coerceAtLeast(0L),
-                        shouldPlay = player.playWhenReady && !sleepTimerPaused,
-                        durationMs = player.duration.coerceAtLeast(0L),
-                    )
-                } else null
-            },
-            pauseLocal = {
-                if (::player.isInitialized) player.pause()
-                syncComposePlayerUiState()
-            },
-            resumeLocal = { position, shouldPlay ->
-                if (::player.isInitialized && !isFinishing) {
-                    val safePosition = PlayerMediaPolicy.safeResumePosition(position, player.duration)
-                    player.seekTo(safePosition)
-                    if (shouldPlay && !sleepTimerPaused && !errorVisible &&
-                        lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
-                    ) {
-                        player.play()
-                    } else {
-                        playbackWasRequestedBeforeStop = shouldPlay
-                    }
-                    updateProgressUi()
-                }
-            },
-            onState = { syncComposePlayerUiState() },
-            onFinished = {
-                saveProgress("player_completed", force = true, notifyUiAfterCommit = true)
-                if (autoplayNext && !episodeChangePending && intent.getBooleanExtra("canNext", false)) {
-                    requestEpisode("player_next_request")
-                }
-            },
-            onMessage = { message ->
-                logPlayer("CAST_STATUS message=$message")
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-            },
-        ).also { it.start() }
+    /**
+     * Delegate playback to an app chosen through Android's own "Abrir com".
+     * ReiAnix grants access to only this video; no TV discovery or Google Cast
+     * connection is involved. The local video remains intact.
+     */
+    private fun openCurrentVideoExternally() {
+        setMorePanelVisible(false)
+        if (!::uri.isInitialized || !::player.isInitialized || player.currentMediaItem == null) {
+            Toast.makeText(this, "Abra um vídeo local antes de escolher o aplicativo", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val chooser = ExternalVideoChooser.createIntent(this, uri)
+            startActivity(chooser)
+            player.pause()
+            playbackWasRequestedBeforeStop = false
+            saveProgress("player_progress", force = true)
+            syncComposePlayerUiState()
+        } catch (error: Exception) {
+            Log.w("NativePlayerActivity", "EXTERNAL_VIDEO_OPEN_FAILED", error)
+            Toast.makeText(
+                this,
+                "Não foi possível abrir o vídeo em outro aplicativo",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
     }
 
     private fun installComposePlayerControls() {
@@ -2765,7 +2744,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerTopControls(
                         state = composePlayerUiState.value,
                         onBack = { finishPlayer("back_button") },
-                        onToggleLock = { setLocked(!locked) },
                     )
                 }
             }
@@ -2796,13 +2774,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
                         onSeekTo = { targetMs ->
-                            val duration = if (castController?.isCasting == true) {
-                                castController?.durationMs() ?: 0L
-                            } else if (::player.isInitialized) player.duration else 0L
+                            val duration = if (::player.isInitialized) player.duration else 0L
                             if (duration > 0L && !episodeChangePending) {
                                 val safeTarget = targetMs.coerceIn(0L, duration)
-                                if (castController?.isCasting != true) player.seekTo(safeTarget)
-                                else castController?.seekTo(safeTarget)
+                                player.seekTo(safeTarget)
                                 saveProgress("player_progress", force = true)
                                 showFeedback(formatTime(safeTarget))
                                 touchControls()
@@ -2889,9 +2864,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun syncComposePlayerUiState() {
         if (!composeControlsEnabled) return
-        val remote = castController?.takeIf { it.isCasting }
-        val currentDuration = remote?.durationMs() ?: if (::player.isInitialized) player.duration else 0L
-        val currentPosition = remote?.positionMs() ?: if (::player.isInitialized) player.currentPosition else 0L
+        val currentDuration = if (::player.isInitialized) player.duration else 0L
+        val currentPosition = if (::player.isInitialized) player.currentPosition else 0L
         val videoSize = if (::player.isInitialized) player.videoSize else null
         val resolution = videoSize
             ?.takeIf { it.width > 0 && it.height > 0 }
@@ -2922,10 +2896,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             } else {
                 0L
             },
-            isPlaying = remote?.playing() ?: (::player.isInitialized && player.isPlaying),
-            isBuffering = if (remote != null) false else ::player.isInitialized && player.playbackState == Player.STATE_BUFFERING,
+            isPlaying = ::player.isInitialized && player.isPlaying,
+            isBuffering = ::player.isInitialized && player.playbackState == Player.STATE_BUFFERING,
             hasRenderedFirstFrame = firstFrameRenderedForTesting,
-            ended = remote?.ended() ?: (::player.isInitialized && player.playbackState == Player.STATE_ENDED),
+            ended = ::player.isInitialized && player.playbackState == Player.STATE_ENDED,
             errorVisible = errorVisible,
             controlsVisible = controlsVisible,
             locked = locked,
@@ -3132,11 +3106,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun togglePlayPause() {
-        if (castController?.togglePlayPause() == true) {
-            touchControls()
-            syncComposePlayerUiState()
-            return
-        }
         if (!::player.isInitialized || errorVisible) return
         expireSleepTimerIfDue()
         sleepTimerPaused = false
@@ -3206,9 +3175,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             syncComposePlayerUiState()
             return
         }
-        val remote = castController?.takeIf { it.isCasting }
-        val duration = remote?.durationMs() ?: player.duration
-        val position = remote?.positionMs() ?: player.currentPosition.coerceAtLeast(0L)
+        val duration = player.duration
+        val position = player.currentPosition.coerceAtLeast(0L)
         if (::seekBar.isInitialized && duration > 0L) {
             seekBar.progress = ((position.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
                 .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
@@ -3746,12 +3714,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer("PLAYER_COMMAND_IGNORED command=seek reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
             return
         }
-        if (castController?.seekBy(deltaMs) == true) {
-            saveProgress("player_progress")
-            showFeedback(feedbackText)
-            touchControls()
-            return
-        }
         if (!::player.isInitialized || player.duration <= 0L) return
         val target = PlayerGesturePolicy.seekTarget(
             currentPositionMs = player.currentPosition,
@@ -3972,11 +3934,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun adjustVolumeByFraction(deltaFraction: Float) {
-        if (castController?.isCasting == true) {
-            val remotePercent = castController?.adjustVolumeByFraction(deltaFraction)
-            if (remotePercent != null) showFeedback("Volume TV $remotePercent%", 900L)
-            return
-        }
         runCatching {
             val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val maxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
@@ -4926,10 +4883,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             return null
         }
-        val remote = castController?.takeIf { it.isCasting }
-        val rawDuration = remote?.durationMs() ?: player.duration
+        val rawDuration = player.duration
         val duration = if (rawDuration > 0L) rawDuration else 0L
-        val rawPosition = remote?.positionMs() ?: player.currentPosition.coerceAtLeast(0L)
+        val rawPosition = player.currentPosition.coerceAtLeast(0L)
         val position = if (duration > 0L) rawPosition.coerceAtMost(duration) else rawPosition
         if (!force && lastSavedPosition >= 0L && abs(position - lastSavedPosition) < PROGRESS_INTERVAL_MS) return null
         if (force && position == lastSavedPosition &&
@@ -4951,8 +4907,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     .put("positionMs", position)
                     .put("durationMs", duration)
                     .put("playerState", if (::player.isInitialized) player.playbackStateLabel() else "STATE_IDLE")
-                    .put("isPlaying", castController?.takeIf { it.isCasting }?.playing()
-                        ?: if (::player.isInitialized) player.isPlaying else false)
+                    .put("isPlaying", if (::player.isInitialized) player.isPlaying else false)
                     .put("playbackSpeed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
                     .put("playerSessionId", playerSessionId)
                     .put("activityInstanceId", activityInstanceId)
@@ -5082,7 +5037,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         logPlayer("onResume requestId=" + requestId.ifEmpty { "-" })
         if (!inPictureInPicture) applyImmersiveAfterLayout()
-        castController?.onLocalMediaPrepared()
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
         if (::player.isInitialized && !errorVisible && !playbackErrorForGeneration) {
             if (!sleepTimerPaused && !isPictureInPictureActive() && playbackWasRequestedBeforeStop &&
@@ -5270,8 +5224,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         mediaMetadataWorker.shutdownNow()
         mediaControls?.release()
         mediaControls = null
-        castController?.release()
-        castController = null
         if (::player.isInitialized) {
             activePlayerListener?.let { player.removeListener(it) }
             activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }

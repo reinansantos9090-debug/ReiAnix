@@ -31,13 +31,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.mediarouter.app.MediaRouteButton
-import androidx.mediarouter.app.MediaRouteChooserDialogFragment
-import androidx.mediarouter.app.MediaRouteControllerDialogFragment
-import androidx.mediarouter.app.MediaRouteDialogFactory
-import com.google.android.gms.cast.framework.CastButtonFactory
-import com.reianix.reianix_local.R
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
 import com.reianix.reianix_local.player.PlayerTimeFormatter
@@ -121,7 +114,6 @@ fun ReiAnixNativePlayerControls(
             ReiAnixNativePlayerTopControls(
                 state = state,
                 onBack = onBack,
-                onToggleLock = onToggleLock,
             )
             ReiAnixNativePlayerCenterControls(
                 state = state,
@@ -144,7 +136,6 @@ fun ReiAnixNativePlayerControls(
 fun ReiAnixNativePlayerTopControls(
     state: ReiAnixNativePlayerUiState,
     onBack: () -> Unit,
-    onToggleLock: () -> Unit,
 ) {
     val safeTop = with(LocalDensity.current) { state.safeTopPx.toDp() }
 
@@ -158,8 +149,7 @@ fun ReiAnixNativePlayerTopControls(
                 bottom = ReiAnixTokens.PlayerDimensions.topBottomPadding,
             ),
     ) {
-        // Return the back action to its original screen-edge position.
-        // The lock uses the same 48.dp row height, with no vertical offset.
+        // The top overlay contains only Back and the centered episode title.
         IconButton(
             onClick = onBack,
             modifier = Modifier
@@ -175,34 +165,6 @@ fun ReiAnixNativePlayerTopControls(
                 contentDescription = null,
                 tint = ReiAnixTokens.Colors.playerControl,
             )
-        }
-
-        // Top-right lock matches the horizontal center of the bottom three dots.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.25f)
-                .align(Alignment.TopEnd),
-            contentAlignment = Alignment.Center,
-        ) {
-            IconButton(
-                onClick = onToggleLock,
-                enabled = !state.episodeTransitionInProgress,
-                modifier = Modifier
-                    .size(ReiAnixTokens.PlayerDimensions.actionButtonSize)
-                    .semantics {
-                        contentDescription = "Bloquear toques"
-                        role = Role.Button
-                    },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Lock,
-                    contentDescription = null,
-                    tint = if (state.episodeTransitionInProgress) {
-                        ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f)
-                    } else ReiAnixTokens.Colors.playerControl,
-                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
-                )
-            }
         }
 
         Column(
@@ -584,7 +546,14 @@ fun ReiAnixNativePlayerBottomControls(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PlayerBottomCastAction(showLabel = !landscape)
+            PlayerBottomAction(
+                icon = Icons.Filled.Lock,
+                label = "Bloquear",
+                showLabel = !landscape,
+                contentDescription = "Bloquear toques",
+                onClick = onToggleLock,
+                enabled = !state.episodeTransitionInProgress,
+            )
             PlayerBottomAction(
                 icon = Icons.Filled.PlaylistPlay,
                 label = "Episódios",
@@ -623,97 +592,6 @@ fun ReiAnixNativePlayerBottomControls(
             )
         }
     }
-}
-
-/**
- * Keep the full touch area while matching the visual size of the other actions.
- */
-@Composable
-private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
-    Column(
-        modifier = Modifier.weight(1f),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        AndroidView(
-            factory = { context ->
-                object : MediaRouteButton(context) {
-                    override fun onDraw(canvas: android.graphics.Canvas) {
-                        val saveCount = canvas.save()
-                        // The native Cast indicator sits optically higher than the three
-                        // Compose action glyphs. Center its drawing without moving the
-                        // 48.dp button, so its touch target and row layout stay unchanged.
-                        canvas.translate(0f, 2f * resources.displayMetrics.density)
-                        canvas.scale(0.8f, 0.8f, width / 2f, height / 2f)
-                        super.onDraw(canvas)
-                        canvas.restoreToCount(saveCount)
-                    }
-
-                    override fun showDialog(): Boolean {
-                        return try {
-                            super.showDialog()
-                        } catch (error: RuntimeException) {
-                            android.util.Log.e("ReiAnixCast", "CAST_DEVICE_PICKER_FAILED", error)
-                            android.widget.Toast.makeText(
-                                context,
-                                "Não foi possível abrir a seleção de TVs",
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                            false
-                        }
-                    }
-                }.apply {
-                    contentDescription = "Transmitir para TV (Google Cast)"
-                    setRemoteIndicatorDrawable(
-                        androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_reianix_cast),
-                    )
-                    runCatching {
-                        CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
-                        setDialogFactory(PlayerCastDialogFactory)
-                    }.onFailure { error ->
-                        android.util.Log.w("ReiAnixCast", "CAST_BUTTON_INIT_FAILED", error)
-                        visibility = android.view.View.GONE
-                    }
-                }
-            },
-            modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionButtonSize),
-        )
-        if (showLabel) {
-            Text(
-                text = "Transmitir",
-                style = ReiAnixTokens.TypographyTokens.playerActionLabel,
-                color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.92f),
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-private object PlayerCastDialogFactory : MediaRouteDialogFactory() {
-    override fun onCreateChooserDialogFragment() = PlayerCastChooserDialogFragment()
-
-    override fun onCreateControllerDialogFragment() = PlayerCastControllerDialogFragment()
-}
-
-class PlayerCastChooserDialogFragment : MediaRouteChooserDialogFragment() {
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.applyPlayerCastAppearance()
-    }
-}
-
-class PlayerCastControllerDialogFragment : MediaRouteControllerDialogFragment() {
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.applyPlayerCastAppearance()
-    }
-}
-
-private fun android.view.Window.applyPlayerCastAppearance() {
-    setBackgroundDrawable(android.graphics.drawable.GradientDrawable().apply {
-        setColor(0xE61B1B1D.toInt())
-        cornerRadius = 18f * context.resources.displayMetrics.density
-    })
-    clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
 }
 
 @Composable

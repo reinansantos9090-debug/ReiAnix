@@ -222,6 +222,16 @@ jobs:
             -PreianixBuildVersion="0.2.1" \
             :app:compileReleaseKotlin
 
+      - name: Test native Android external-player chooser
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
+        run: |
+          set -euo pipefail
+          gradle -p android --no-daemon --console=plain \
+            :app:testDebugUnitTest --tests com.reianix.reianix_local.player.ExternalVideoChooserTest
+
       - name: Locate APK
         id: apk
         shell: bash

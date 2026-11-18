@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Replay
@@ -91,6 +92,7 @@ fun ReiAnixNativePlayerOptionsPanel(
     onZoomChanged: (Boolean) -> Unit,
     onDoubleTapChanged: (Boolean) -> Unit,
     onLongPressChanged: (Boolean) -> Unit,
+    onOpenWithExternal: () -> Unit,
     onPictureInPicture: () -> Unit,
     onInformation: () -> Unit,
 ) {
@@ -154,6 +156,12 @@ fun ReiAnixNativePlayerOptionsPanel(
                     icon = Icons.Filled.Gesture,
                     label = "Gestos",
                     onClick = { page = PlayerOptionsPage.GESTURES },
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.OpenInNew,
+                    label = "Abrir com...",
+                    enabled = !state.episodeTransitionInProgress,
+                    onClick = onOpenWithExternal,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.MoreHoriz,
