@@ -483,15 +483,28 @@ fun ReiAnixNativePlayerBottomControls(
         onDispose { previewFrames?.close() }
     }
     var previewFrame by remember(mediaUri) { mutableStateOf<Bitmap?>(null) }
-    val previewBucket = if (userDragging && duration > 0L) {
-        SeekPreviewPolicy.bucketTimeMs(displayPosition, duration)
-    } else -1L
-    LaunchedEffect(previewBucket, userDragging, previewFrames) {
+    LaunchedEffect(userDragging, previewFrames, duration) {
         previewFrame = null
-        if (userDragging && previewBucket >= 0L && previewFrames != null) {
-            // Debounce rapid scrubbing; only the current requested frame is shown.
-            delay(85L)
-            previewFrame = previewFrames.frameAt(previewBucket, duration)
+        if (!userDragging || duration <= 0L || previewFrames == null) return@LaunchedEffect
+        // Sample the moving thumb rather than debounce every change. Even when
+        // the user never pauses a drag, frames keep updating at a bounded rate.
+        var lastBucket = -1L
+        while (true) {
+            val bucket = SeekPreviewPolicy.bucketTimeMs(
+                (sliderFraction * duration.toFloat()).toLong(),
+                duration,
+            )
+            if (bucket != lastBucket) {
+                lastBucket = bucket
+                previewFrame = null
+                val decoded = previewFrames.frameAt(bucket, duration)
+                val currentBucket = SeekPreviewPolicy.bucketTimeMs(
+                    (sliderFraction * duration.toFloat()).toLong(),
+                    duration,
+                )
+                if (bucket == currentBucket) previewFrame = decoded
+            }
+            delay(120L)
         }
     }
     Column(
