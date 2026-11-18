@@ -23,14 +23,6 @@
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
   <application android:name=".ReiAnixApplication" android:theme="@style/ReiAnixTheme" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
-    <!-- The receiver fetches local files over a temporary authenticated LAN HTTP URL. -->
-    <meta-data
-        android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-        android:value="com.reianix.reianix_local.player.cast.ReiAnixCastOptionsProvider" />
-    <service
-        android:name=".player.cast.CastStreamingService"
-        android:exported="false"
-        android:foregroundServiceType="mediaPlayback" />
     <!-- Read access is granted only to the external video app selected by the user. -->
     <provider
         android:name="androidx.core.content.FileProvider"
