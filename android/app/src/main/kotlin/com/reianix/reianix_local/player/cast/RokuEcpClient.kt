@@ -140,21 +140,21 @@ internal object RokuEcpClient {
         }
 
     internal fun parsePlaybackStatus(xml: String): PlaybackStatus? {
-        val player = Regex("""(?is)<player\\b([^>]*)>""").find(xml) ?: return null
+        val player = Regex("""(?is)<player\b([^>]*)>""").find(xml) ?: return null
         val attrs = player.groupValues[1]
-        val state = Regex("""(?i)\\bstate=["']([^"']+)["']""")
+        val state = Regex("""(?i)\bstate=["']([^"']+)["']""")
             .find(attrs)?.groupValues?.get(1)?.lowercase() ?: return null
-        val pluginId = Regex("""(?is)<plugin\\b[^>]*\\bid=["']([^"']+)["']""")
+        val pluginId = Regex("""(?is)<plugin\b[^>]*\bid=["']([^"']+)["']""")
             .find(xml)?.groupValues?.get(1)
         fun milliseconds(tag: String): Long? =
-            Regex("(?is)<$tag>\\\\s*(\\\\d+)\\\\s*(?:ms)?\\\\s*</$tag>")
+            Regex("""(?is)<$tag>\s*(\d+)\s*(?:ms)?\s*</$tag>""")
                 .find(xml)?.groupValues?.get(1)?.toLongOrNull()
         return PlaybackStatus(
             state = state,
             positionMs = milliseconds("position"),
             durationMs = milliseconds("duration"),
             receiverActive = pluginId == "dev",
-            error = Regex("""(?i)\\berror=["']true["']""").containsMatchIn(attrs),
+            error = Regex("""(?i)\berror=["']true["']""").containsMatchIn(attrs),
         )
     }
 
