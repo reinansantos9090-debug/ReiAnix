@@ -5765,7 +5765,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun effectiveDurationMs(): Long {
-        val media3Duration = if (::player.isInitialized) player.duration else 0L
+        val media3Duration = if (
+            ::player.isInitialized &&
+            player.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
+        ) {
+            player.duration
+        } else {
+            0L
+        }
         return PlayerMediaPolicy.resolveDurationMs(media3Duration, metadataDurationMs)
     }
 
