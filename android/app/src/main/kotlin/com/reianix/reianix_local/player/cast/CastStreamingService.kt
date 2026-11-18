@@ -15,6 +15,10 @@ import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManager
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.reianix.reianix_local.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.net.InetAddress
 
 /**
  * Keeps the authenticated, read-only local HTTP endpoint reachable while the
@@ -26,13 +30,17 @@ class CastStreamingService : Service() {
     private val listener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarting(session: CastSession) = Unit
         override fun onSessionStarted(session: CastSession, sessionId: String) = Unit
-        override fun onSessionStartFailed(session: CastSession, error: Int) = stopSelf()
+        override fun onSessionStartFailed(session: CastSession, error: Int) = stopIfNotRoku()
         override fun onSessionEnding(session: CastSession) = Unit
-        override fun onSessionEnded(session: CastSession, error: Int) = stopSelf()
+        override fun onSessionEnded(session: CastSession, error: Int) = stopIfNotRoku()
         override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) = Unit
-        override fun onSessionResumeFailed(session: CastSession, error: Int) = stopSelf()
+        override fun onSessionResumeFailed(session: CastSession, error: Int) = stopIfNotRoku()
         override fun onSessionSuspended(session: CastSession, reason: Int) = Unit
+    }
+
+    private fun stopIfNotRoku() {
+        if (activeRokuAddress == null) stopSelf()
     }
 
     override fun onCreate() {
@@ -43,15 +51,28 @@ class CastStreamingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            runCatching { manager?.endCurrentSession(true) }
+            val rokuAddress = activeRokuAddress
+            if (rokuAddress != null) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    runCatching {
+                        val ip = InetAddress.getByName(rokuAddress)
+                        RokuEcpClient.command(RokuEcpClient.Device(ip, "Roku"), "stop")
+                    }
+                }
+            } else {
+                runCatching { manager?.endCurrentSession(true) }
+            }
             stopSelf()
             return START_NOT_STICKY
         }
+        val rokuTarget = intent?.getStringExtra(EXTRA_ROKU_ADDRESS)
+        if (rokuTarget != null) activeRokuAddress = rokuTarget
+        val isRoku = activeRokuAddress != null
         val notifications = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             notifications.createNotificationChannel(
                 NotificationChannel(CHANNEL, "Transmissão para TV", NotificationManager.IMPORTANCE_LOW)
-                    .apply { description = "Servidor local temporário de vídeos para Google Cast" },
+                    .apply { description = "Servidor local temporário de vídeos para TV" },
             )
         }
         val stopIntent = Intent(this, CastStreamingService::class.java).setAction(ACTION_STOP)
@@ -61,7 +82,7 @@ class CastStreamingService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("ReiAnix • transmitindo para TV")
-            .setContentText("O vídeo local está disponível para o Chromecast")
+            .setContentText(if (isRoku) "O vídeo local está disponível na Roku" else "O vídeo local está disponível para o Chromecast")
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -74,7 +95,10 @@ class CastStreamingService : Service() {
     override fun onDestroy() {
         manager?.let { runCatching { it.removeSessionManagerListener(listener, CastSession::class.java) } }
         manager = null
+        val wasRoku = activeRokuAddress != null
+        activeRokuAddress = null
         LocalCastMediaServer.stop()
+        if (wasRoku) RokuCastController.onStreamingServiceStopped()
         super.onDestroy()
     }
 
@@ -84,11 +108,18 @@ class CastStreamingService : Service() {
         private const val CHANNEL = "reianix_cast_stream"
         private const val NOTIFICATION_ID = 2308
         private const val ACTION_STOP = "com.reianix.reianix_local.STOP_CAST"
+        private const val EXTRA_ROKU_ADDRESS = "roku_address"
 
-        fun ensureRunning(context: Context) {
+        @Volatile var activeRokuAddress: String? = null
+            private set
+
+        fun ensureRunning(context: Context, rokuAddress: String? = null) {
+            if (rokuAddress != null) activeRokuAddress = rokuAddress
             ContextCompat.startForegroundService(
                 context,
-                Intent(context, CastStreamingService::class.java),
+                Intent(context, CastStreamingService::class.java).apply {
+                    if (rokuAddress != null) putExtra(EXTRA_ROKU_ADDRESS, rokuAddress)
+                },
             )
         }
 
