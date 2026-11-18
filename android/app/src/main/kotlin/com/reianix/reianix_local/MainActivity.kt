@@ -4078,6 +4078,7 @@ class MainActivity : ComponentActivity() {
                 val discovery = DefaultReiAnixFolderScanner.discover(
                     appContext, scanId,
                     isCancelled = { NativeScanController.isCancelled(scanId) },
+                    cancellationSignal = NativeScanController.cancellationSignal(scanId),
                 )
                 if (discovery.cancelled || NativeScanController.isCancelled(scanId)) {
                     NativeScanController.complete(scanId, "CANCELLED",
