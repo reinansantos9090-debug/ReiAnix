@@ -14,7 +14,7 @@ O ReiAnix oferece **duas opções no mesmo botão Transmitir**:
 5. Nas opções do Android ou no botão **Smart View** do painel de ajustes rápidos do Samsung, escolha sua Roku e aceite a solicitação na TV.
 6. Volte ao ReiAnix e reproduza o episódio. O vídeo aparece espelhado na TV enquanto o celular transmite a tela.
 
-Caso o atalho do Android não liste sua Roku, use **Smart View** pelo painel rápido. O ReiAnix não tem permissão pública para iniciar uma sessão Miracast silenciosamente: o sistema exige confirmação do usuário.
+Em celulares Samsung, o ReiAnix tenta abrir o **Smart View** diretamente quando a versão do One UI permite; nos demais aparelhos, abre as configurações oficiais de transmissão do Android. Caso o atalho não liste sua Roku, use **Smart View** pelo painel rápido. O ReiAnix não tem permissão pública para iniciar uma sessão Miracast silenciosamente: o sistema exige confirmação do usuário.
 
 ## Limitações e compatibilidade
 
