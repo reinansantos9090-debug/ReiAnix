@@ -50,7 +50,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.Role
@@ -569,7 +568,7 @@ fun ReiAnixNativePlayerBottomControls(
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
                 enabled = !state.episodeTransitionInProgress,
-                iconOpticalOffsetY = (-2).dp,
+                iconVisualScale = 0.75f,
             )
             PlayerBottomAction(
                 icon = Icons.Filled.PlaylistPlay,
@@ -620,7 +619,7 @@ private fun RowScope.PlayerBottomAction(
     enabled: Boolean = true,
     showLabel: Boolean = true,
     active: Boolean = false,
-    iconOpticalOffsetY: Dp = 0.dp,
+    iconVisualScale: Float = 1f,
 ) {
     Column(
         modifier = Modifier.weight(1f),
@@ -645,11 +644,15 @@ private fun RowScope.PlayerBottomAction(
                     active -> ReiAnixTokens.Colors.primary
                     else -> ReiAnixTokens.Colors.playerControl
                 },
-                // Shift only the Lock artwork to match the other glyphs' optical centers.
-                // The shared button bounds, hit target and row baseline stay unchanged.
+                // Lock has a much taller painted silhouette than the other three
+                // icons. Normalize only the visual artwork, centered within the
+                // identical button bounds; never shift the icon's baseline upward.
                 modifier = Modifier
                     .size(ReiAnixTokens.PlayerDimensions.actionIconSize)
-                    .offset(y = iconOpticalOffsetY),
+                    .graphicsLayer {
+                        scaleX = iconVisualScale
+                        scaleY = iconVisualScale
+                    },
             )
         }
         if (showLabel) {
