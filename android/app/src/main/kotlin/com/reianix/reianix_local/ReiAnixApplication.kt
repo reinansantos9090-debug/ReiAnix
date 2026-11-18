@@ -20,6 +20,10 @@ class ReiAnixApplication : Application() {
             .onFailure { Log.w("ReiAnixMigration", "Legacy metadata migration deferred", it) }
         dependencies = ReiAnixAppDependencies(this)
         dependencies.bootstrap.start()
+        if (com.reianix.reianix_local.data.releases.ReiAnixReleaseMonitor.enabled(this)) {
+            runCatching { com.reianix.reianix_local.data.releases.ReiAnixReleaseMonitor.schedule(this) }
+                .onFailure { Log.w(TAG, "Release alerts scheduling deferred", it) }
+        }
         Log.i(TAG, "APPLICATION_READY nativeDependencyGraph=lazy bootstrap=started")
     }
 

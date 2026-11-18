@@ -61,6 +61,7 @@ internal fun settingsPageForDestination(destination: String?): String? = when (d
 internal val SettingsDestinations = listOf(
     SettingsDestination("Geral", "Geral", "", listOf(
         SettingsEntry("setting:app.confirm_destructive", "Confirmar ações destrutivas"),
+        SettingsEntry("setting:releases.notifications", "Notificar novos episódios", "lançamento avisos anime biblioteca episódios"),
     )),
     SettingsDestination("Player", "Player", "", listOf(
         SettingsEntry("setting:player.reset", "Restaurar configurações do player", "Restaurar configurações do player Restaura somente as preferências do Player aos padrões existentes. Restaurar"),

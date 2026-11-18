@@ -29,6 +29,8 @@ data class ReiAnixCollectorAchievement(
     val icon: String,
 )
 
+data class ReiAnixMonthlyActivity(val month: String, val activeDays: Int)
+
 data class ReiAnixCollectorJourney(
     val xp: Int,
     val level: Int,
@@ -50,6 +52,7 @@ data class ReiAnixCollectorJourney(
     val achievements: List<ReiAnixCollectorAchievement>,
     val achievementsUnlocked: Int,
     val achievementsTotal: Int,
+    val monthlyActivity: List<ReiAnixMonthlyActivity> = emptyList(),
     val rebuildable: Boolean = true,
     val schemaVersion: Int = 1,
 )
@@ -217,6 +220,7 @@ internal object ReiAnixCollectorJourneyCalculator {
         addAchievement("episodes_500", "500 Episódios", "Conclua 500 episódios locais.", "Consumo", 500, completedEpisodeCount.toLong(), "FORMAT_LIST_NUMBERED")
         addAchievement("anime_1", "Primeiro Anime", "Conclua o primeiro título disponível na biblioteca.", "Consumo", 1, animeCompletedCount.toLong(), "MOVIE_OUTLINED")
         addAchievement("anime_10", "10 Animes", "Conclua 10 títulos da biblioteca.", "Consumo", 10, animeCompletedCount.toLong(), "MOVIE_OUTLINED")
+        addAchievement("anime_25", "25 Animes", "Conclua 25 títulos da biblioteca.", "Consumo", 25, animeCompletedCount.toLong(), "MOVIE_OUTLINED")
         addAchievement("library_10", "Colecionador", "Mantenha 10 títulos na biblioteca local.", "Coleção", 10, libraryTitleCount.toLong(), "STAR")
         addAchievement("library_50", "Grande Acervo", "Mantenha 50 títulos na biblioteca local.", "Coleção", 50, libraryTitleCount.toLong(), "STAR")
         addAchievement("genres_5", "Explorador de Gêneros", "Conclua títulos de 5 gêneros diferentes.", "Exploração", GENRE_DISCOVERY_TARGET.toLong(), completedGenres.size.toLong(), "LOCAL_OFFER_OUTLINED")
@@ -224,9 +228,11 @@ internal object ReiAnixCollectorJourneyCalculator {
         addAchievement("formats_2", "Formatos Diversos", "Conclua títulos de 2 formatos diferentes.", "Exploração", 2, completedFormats.size.toLong(), "MOVIE_OUTLINED")
         addAchievement("active_7", "Ritmo de Colecionador", "Tenha atividade de consumo significativa em 7 dias diferentes.", "Atividade", ACTIVE_DAY_TARGET.toLong(), activeDays.size.toLong(), "HISTORY")
         addAchievement("active_30", "Jornada Constante", "Tenha atividade de consumo significativa em 30 dias diferentes.", "Atividade", ACTIVE_DAY_VETERAN_TARGET.toLong(), activeDays.size.toLong(), "HISTORY")
+        addAchievement("active_14", "Duas Semanas Ativas", "Registre atividade em 14 dias diferentes.", "Atividade", 14, activeDays.size.toLong(), "HISTORY")
         addAchievement("marathon_10", "Maratonista Local", "Conclua 10 episódios de um mesmo título.", "Consumo", MARATHON_TITLE_TARGET.toLong(), maxCompletedInOneAnime.toLong(), "SCHEDULE_OUTLINED")
         addAchievement("content_10h", "10 Horas de Conteúdo", "Conclua pelo menos 10 horas de conteúdo local.", "Consumo", 10L * 3600L, completedDurationSeconds, "SCHEDULE_OUTLINED")
         addAchievement("content_50h", "50 Horas de Conteúdo", "Conclua pelo menos 50 horas de conteúdo local.", "Consumo", 50L * 3600L, completedDurationSeconds, "SCHEDULE_OUTLINED")
+        addAchievement("content_100h", "100 Horas de Conteúdo", "Conclua 100 horas de conteúdo local.", "Consumo", 100L * 3600L, completedDurationSeconds, "SCHEDULE_OUTLINED")
 
         val decadeNames = linkedMapOf(
             1980 to "Explorador dos anos 80",
@@ -296,6 +302,16 @@ internal object ReiAnixCollectorJourneyCalculator {
 
         val selectedTitle = titles.firstOrNull { it.id == savedActiveTitle && it.unlocked }
             ?: titles.firstOrNull { it.unlocked }
+        val monthCursor = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }
+        val monthlyActivity = (0..5).map {
+            val year = monthCursor.get(Calendar.YEAR)
+            val month = monthCursor.get(Calendar.MONTH) + 1
+            val key = String.format(Locale.ROOT, "%04d-%02d", year, month)
+            val label = String.format(Locale.ROOT, "%02d/%04d", month, year)
+            val active = activeDays.count { day -> day.startsWith("$key-") }
+            monthCursor.add(Calendar.MONTH, -1)
+            ReiAnixMonthlyActivity(label, active)
+        }.asReversed()
         return ReiAnixCollectorJourney(
             xp = xp,
             level = level,
@@ -317,6 +333,7 @@ internal object ReiAnixCollectorJourneyCalculator {
             achievements = achievements,
             achievementsUnlocked = achievements.count { it.unlocked },
             achievementsTotal = achievements.size,
+            monthlyActivity = monthlyActivity,
         )
     }
 

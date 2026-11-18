@@ -8,6 +8,7 @@
 
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -33,6 +34,7 @@
           android:name="android.support.FILE_PROVIDER_PATHS"
           android:resource="@xml/reianix_external_video_paths" />
     </provider>
+    <activity android:name=".data.releases.ReiAnixReleaseDestinationActivity" android:exported="false" />
     <activity android:name=".AniListAccountActivity" android:exported="false" />
     <activity android:name=".AniListOAuthCallbackActivity" android:exported="true" android:noHistory="true" android:excludeFromRecents="true">
       <intent-filter>

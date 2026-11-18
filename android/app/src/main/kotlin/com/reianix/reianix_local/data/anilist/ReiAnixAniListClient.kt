@@ -106,6 +106,115 @@ class ReiAnixAniListClient(
         }
     }
 
+
+    /** Characters are requested only when the user opens the character section. */
+    suspend fun getCharacters(id: Int, limit: Int = 18): AniListResult<List<ReiAnixAnimeCharacter>> {
+        if (id <= 0 || limit !in 1..25) {
+            return AniListResult.Failure(AniListError.InvalidRequest("Invalid character request"))
+        }
+        val gql = """
+            query AnimeCharacters(${'$'}id: Int, ${'$'}limit: Int) {
+              Media(id: ${'$'}id, type: ANIME) {
+                characters(perPage: ${'$'}limit, sort: [ROLE, FAVOURITES_DESC]) {
+                  edges { role node { id name { full } image { medium } } }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id).put("limit", limit)) { data ->
+            val media = data.optJSONObject("Media")
+                ?: return@execute AniListResult.Success(emptyList())
+            val edges = media.optJSONObject("characters")?.optJSONArray("edges")
+                ?: return@execute AniListResult.Success(emptyList())
+            val result = buildList {
+                for (i in 0 until edges.length()) {
+                    val edge = edges.optJSONObject(i) ?: continue
+                    val character = edge.optJSONObject("node") ?: continue
+                    val characterId = character.optInt("id").takeIf { it > 0 } ?: continue
+                    val name = character.optJSONObject("name")?.optString("full")
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    val role = when (edge.optString("role")) {
+                        "MAIN" -> "Principal"
+                        "SUPPORTING" -> "Secundário"
+                        else -> "Figurante"
+                    }
+                    val url = validReiAnixArtworkHttpUrl(
+                        character.optJSONObject("image")?.optString("medium")
+                    )
+                    add(ReiAnixAnimeCharacter(characterId, name, role, url))
+                }
+            }
+            AniListResult.Success(result)
+        }
+    }
+
+    /** Bounded batch lookup of recent airings for the opt-in release notifier only. */
+    suspend fun getRecentAirings(
+        ids: List<Int>, fromEpoch: Int, toEpoch: Int, page: Int = 1,
+    ): AniListResult<ReiAnixAiringPage> {
+        if (ids.isEmpty() || ids.size > 100 || ids.any { it <= 0 } ||
+            fromEpoch < 0 || toEpoch < fromEpoch || page !in 1..4
+        ) return AniListResult.Failure(AniListError.InvalidRequest("Invalid airing request"))
+        val gql = """
+            query ReiAnixRecentAirings(${'$'}ids: [Int], ${'$'}from: Int, ${'$'}to: Int, ${'$'}page: Int) {
+              Page(page: ${'$'}page, perPage: 50) {
+                pageInfo { hasNextPage }
+                airingSchedules(
+                  mediaId_in: ${'$'}ids,
+                  airingAt_greater: ${'$'}from,
+                  airingAt_lesser: ${'$'}to,
+                  sort: TIME_DESC
+                ) {
+                  id mediaId episode airingAt
+                  media {
+                    siteUrl
+                    externalLinks { site url type }
+                    streamingEpisodes { site url }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject()
+            .put("ids", JSONArray(ids))
+            .put("from", fromEpoch)
+            .put("to", toEpoch)
+            .put("page", page)) { data ->
+            val container = data.optJSONObject("Page")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("No Page"))
+            val array = container.optJSONArray("airingSchedules")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("No airings"))
+            val results = buildList {
+                for (i in 0 until array.length()) {
+                    val entry = array.optJSONObject(i) ?: continue
+                    val mediaId = entry.optInt("mediaId")
+                    val episode = entry.optInt("episode")
+                    val airedAt = entry.optInt("airingAt")
+                    if (mediaId !in ids || episode <= 0 || airedAt !in fromEpoch..toEpoch) continue
+                    val media = entry.optJSONObject("media")
+                    val links = buildList {
+                        listOf("streamingEpisodes", "externalLinks").forEach { key ->
+                            val raw = media?.optJSONArray(key)
+                            if (raw != null) for (index in 0 until raw.length()) {
+                                val item = raw.optJSONObject(index) ?: continue
+                                val site = item.optString("site")
+                                val url = item.optString("url")
+                                if (site.isNotBlank() && url.isNotBlank()) {
+                                    add(ReiAnixOfficialLink(site, url))
+                                }
+                            }
+                        }
+                    }.distinctBy { it.url }
+                    add(ReiAnixAiringRecord(mediaId, episode, airedAt, links))
+                }
+            }
+            AniListResult.Success(ReiAnixAiringPage(
+                results,
+                container.optJSONObject("pageInfo")?.optBoolean("hasNextPage") == true,
+            ))
+        }
+    }
+
     private suspend fun <T> execute(
         query: String,
         variables: JSONObject,
@@ -261,6 +370,25 @@ class ReiAnixAniListClient(
         """
     }
 }
+
+data class ReiAnixAnimeCharacter(
+    val id: Int,
+    val name: String,
+    val role: String,
+    val imageUrl: String?,
+)
+
+data class ReiAnixOfficialLink(val site: String, val url: String)
+data class ReiAnixAiringRecord(
+    val mediaId: Int,
+    val episode: Int,
+    val airedAt: Int,
+    val officialLinks: List<ReiAnixOfficialLink>,
+)
+data class ReiAnixAiringPage(
+    val items: List<ReiAnixAiringRecord>,
+    val hasNextPage: Boolean,
+)
 
 data class AniListAnime(
     val id: Int,

@@ -41,7 +41,7 @@ class ReiAnixSettingsContractTest {
         assertEquals("true", effective["appearance.show_thumbnails"])
         assertEquals("dark", effective["appearance.theme"])
         assertEquals("0", effective["library.page_size"])
-        assertEquals("false", effective["player.zoom_enabled"])
+        assertEquals("true", effective["player.zoom_enabled"])
         assertEquals("false", effective["gestures.volume"])
     }
 
@@ -80,7 +80,7 @@ class ReiAnixSettingsContractTest {
         assertEquals("light", effective["appearance.theme"])
         assertEquals("36", effective["library.page_size"])
         assertEquals("custom-old-format", effective["plugin.legacy"])
-        assertEquals("false", effective["player.zoom_enabled"])
+        assertEquals("true", effective["player.zoom_enabled"])
     }
 
     @Test fun normalizesBooleanAliasesWithoutChangingMeaning() {

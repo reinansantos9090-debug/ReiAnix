@@ -108,6 +108,7 @@ import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
 import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
 import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
 import com.reianix.reianix_local.ui.navigation.navigateToPlayer
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveBreakpoints
 import com.reianix.reianix_local.ui.theme.ReiAnixWindowWidthClass
@@ -241,6 +242,7 @@ fun ReiAnixDetailsRoute(
 
     ReiAnixDetailsScreen(
         state = state,
+        associationRevision = aniListState.associationRevision,
         showThumbnails = showThumbnails,
         onBack = { navController.popBackStack() },
         onRetry = { viewModel.refreshDetails(canonicalId) },
@@ -255,6 +257,7 @@ fun ReiAnixDetailsRoute(
             }
         },
         onToggleFavorite = viewModel::toggleFavorite,
+        onOpenRecommendedAnime = { recommendedId -> navController.navigateToDetails(recommendedId.toString(), origin) },
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
         onSelectSource = viewModel::selectSafTree,
         onManageAniList = { showAniListDialog = true },
@@ -291,11 +294,13 @@ fun ReiAnixDetailsRoute(
 @Composable
 fun ReiAnixDetailsScreen(
     state: ReiAnixDetailsUiState,
+    associationRevision: Long = 0L,
     showThumbnails: Boolean = true,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    onOpenRecommendedAnime: (Long) -> Unit = {},
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
     onSelectSource: () -> Unit = onRetry,
     onManageAniList: () -> Unit = {},
@@ -321,11 +326,13 @@ fun ReiAnixDetailsScreen(
                 state.anime?.let { anime ->
                     ReiAnixDetailsReady(
                         anime = anime,
+                        associationRevision = associationRevision,
                         showThumbnails = showThumbnails,
                         onBack = onBack,
                         onRefresh = onRetry,
                         onWatch = onWatch,
                         onToggleFavorite = onToggleFavorite,
+                        onOpenRecommendedAnime = onOpenRecommendedAnime,
                         onSetEpisodeWatched = onSetEpisodeWatched,
                         onManageAniList = onManageAniList,
                         onOpenMarathon = onOpenMarathon,
@@ -481,11 +488,13 @@ private fun DetailsSkeletonButton(modifier: Modifier = Modifier) {
 @Composable
 private fun ColumnScope.ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
+    associationRevision: Long,
     showThumbnails: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    onOpenRecommendedAnime: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
     onOpenMarathon: () -> Unit,
@@ -579,7 +588,6 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onRefresh = onRefresh,
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
-                onSetEpisodeWatched = onSetEpisodeWatched,
                 onManageAniList = onManageAniList,
                 onOpenMarathon = onOpenMarathon,
                 onTogglePinned = onTogglePinned,
@@ -612,7 +620,10 @@ private fun ColumnScope.ReiAnixDetailsReady(
             key = "details-about:" + anime.stableKey,
             contentType = "details-about",
         ) {
-            DetailsAboutSection(anime = anime)
+            Column {
+                DetailsAboutSection(anime = anime, associationRevision = associationRevision)
+                ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
+            }
         }
 
         if (hasSeasons) {
@@ -802,7 +813,6 @@ private fun DetailsHero(
     onRefresh: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
-    onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
     onOpenMarathon: () -> Unit,
     onTogglePinned: suspend (Long) -> Boolean,
@@ -1186,8 +1196,6 @@ private fun DetailsHero(
                         leadingIcon = Icons.Filled.PlayArrow,
                     )
                 }
-                val watched = target?.isWatched == true ||
-                    target?.consumptionState == ReiAnixConsumptionState.COMPLETED
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
@@ -1198,12 +1206,9 @@ private fun DetailsHero(
                         modifier = Modifier.weight(1f),
                         leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     )
-                    ReiAnixSecondaryButton(
-                        text = if (watched) "Desmarcar visto" else "Marcar visto",
-                        onClick = { target?.let { onSetEpisodeWatched(it.id, !watched) } },
-                        enabled = target != null,
+                    ReiAnixPersonalListButton(
+                        animeId = anime.id,
                         modifier = Modifier.weight(1f),
-                        leadingIcon = Icons.Filled.Check,
                     )
                 }
             }
@@ -1236,14 +1241,9 @@ private fun DetailsHero(
                     modifier = Modifier.weight(1f),
                     leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                 )
-                val watched = target?.isWatched == true ||
-                    target?.consumptionState == ReiAnixConsumptionState.COMPLETED
-                ReiAnixSecondaryButton(
-                    text = if (watched) "Desmarcar visto" else "Marcar visto",
-                    onClick = { target?.let { onSetEpisodeWatched(it.id, !watched) } },
-                    enabled = target != null,
+                ReiAnixPersonalListButton(
+                    animeId = anime.id,
                     modifier = Modifier.weight(1f),
-                    leadingIcon = Icons.Filled.Check,
                 )
             }
         }
@@ -1464,12 +1464,18 @@ private fun DetailsExpandableSynopsis(description: String) {
 }
 
 @Composable
-private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
+private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel, associationRevision: Long) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
         anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
             DetailsExpandableSynopsis(description)
         }
+        // Supplemental people appear with the synopsis and other metadata,
+        // not inside the personal experience panel or behind a button.
+        ReiAnixMetadataCharacters(
+            animeId = anime.id,
+            metadataRevision = associationRevision.toString() + ":" + anime.metadataAvailability.name + ":" + anime.presentationState.name,
+        )
         val knownTitles = sequenceOf(
             anime.title,
             anime.romajiTitle,
