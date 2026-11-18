@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Replay
@@ -34,7 +33,6 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -51,12 +49,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.reianix.reianix_local.R
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import java.util.Locale
 
@@ -183,21 +183,21 @@ fun ReiAnixNativePlayerOptionsPanel(
                     onBack = { page = PlayerOptionsPage.MAIN },
                 )
                 PlayerOptionToggleRow(
-                    icon = Icons.Filled.Gesture,
+                    icon = ImageVector.vectorResource(R.drawable.ic_gesture_horizontal_seek),
                     label = "Avançar e voltar",
                     checked = state.horizontalSeekEnabled,
                     description = "Ativar ou desativar o avanço e retrocesso por gesto horizontal",
                     onCheckedChange = onGesturesChanged,
                 )
                 PlayerOptionToggleRow(
-                    icon = Icons.Filled.VolumeUp,
+                    icon = ImageVector.vectorResource(R.drawable.ic_gesture_vertical_adjust),
                     label = "Brilho e volume",
                     checked = state.volumeGesturesEnabled || state.brightnessGesturesEnabled,
                     description = "Deslize verticalmente à direita para ajustar o volume e à esquerda para ajustar o brilho",
                     onCheckedChange = onBrightnessVolumeChanged,
                 )
                 PlayerOptionToggleRow(
-                    icon = Icons.Filled.AspectRatio,
+                    icon = ImageVector.vectorResource(R.drawable.ic_gesture_adjust_fill),
                     label = "Ajustar e preencher",
                     checked = state.zoomEnabled,
                     description = "Permite ajustar e preencher a tela com o vídeo usando gesto de pinça",
@@ -210,7 +210,7 @@ fun ReiAnixNativePlayerOptionsPanel(
                     onCheckedChange = onDoubleTapChanged,
                 )
                 PlayerOptionToggleRow(
-                    icon = Icons.Filled.PanTool,
+                    icon = ImageVector.vectorResource(R.drawable.ic_gesture_long_press),
                     label = "Pressão",
                     checked = state.longPressEnabled,
                     description = "Ativar ou desativar a pressão longa",
