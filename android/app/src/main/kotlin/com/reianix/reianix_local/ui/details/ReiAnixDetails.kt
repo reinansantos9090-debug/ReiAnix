@@ -584,7 +584,6 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onRefresh = onRefresh,
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
-                onSetEpisodeWatched = onSetEpisodeWatched,
                 onManageAniList = onManageAniList,
                 onOpenMarathon = onOpenMarathon,
                 onTogglePinned = onTogglePinned,
@@ -810,7 +809,6 @@ private fun DetailsHero(
     onRefresh: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
-    onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
     onOpenMarathon: () -> Unit,
     onTogglePinned: suspend (Long) -> Boolean,
@@ -1194,8 +1192,6 @@ private fun DetailsHero(
                         leadingIcon = Icons.Filled.PlayArrow,
                     )
                 }
-                val watched = target?.isWatched == true ||
-                    target?.consumptionState == ReiAnixConsumptionState.COMPLETED
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
@@ -1206,12 +1202,9 @@ private fun DetailsHero(
                         modifier = Modifier.weight(1f),
                         leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     )
-                    ReiAnixSecondaryButton(
-                        text = if (watched) "Desmarcar visto" else "Marcar visto",
-                        onClick = { target?.let { onSetEpisodeWatched(it.id, !watched) } },
-                        enabled = target != null,
+                    ReiAnixPersonalListButton(
+                        animeId = anime.id,
                         modifier = Modifier.weight(1f),
-                        leadingIcon = Icons.Filled.Check,
                     )
                 }
             }
@@ -1244,14 +1237,9 @@ private fun DetailsHero(
                     modifier = Modifier.weight(1f),
                     leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                 )
-                val watched = target?.isWatched == true ||
-                    target?.consumptionState == ReiAnixConsumptionState.COMPLETED
-                ReiAnixSecondaryButton(
-                    text = if (watched) "Desmarcar visto" else "Marcar visto",
-                    onClick = { target?.let { onSetEpisodeWatched(it.id, !watched) } },
-                    enabled = target != null,
+                ReiAnixPersonalListButton(
+                    animeId = anime.id,
                     modifier = Modifier.weight(1f),
-                    leadingIcon = Icons.Filled.Check,
                 )
             }
         }
@@ -1478,6 +1466,12 @@ private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
         anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
             DetailsExpandableSynopsis(description)
         }
+        // Supplemental people appear with the synopsis and other metadata,
+        // not inside the personal experience panel or behind a button.
+        ReiAnixMetadataCharacters(
+            animeId = anime.id,
+            metadataRevision = anime.metadataAvailability.name + ":" + anime.presentationState.name,
+        )
         val knownTitles = sequenceOf(
             anime.title,
             anime.romajiTitle,
