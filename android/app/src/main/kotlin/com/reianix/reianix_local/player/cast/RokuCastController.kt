@@ -8,6 +8,9 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -35,6 +38,7 @@ internal class RokuCastController(
     private var remotePlaying = false
     private var pendingPositionMs = 0L
     private var pendingWasPlaying = false
+    private var statusJob: Job? = null
 
     init {
         activeController = WeakReference(this)
@@ -110,8 +114,9 @@ internal class RokuCastController(
                 progressClockMs = SystemClock.elapsedRealtime()
                 duration = current.durationMs.coerceAtLeast(0L)
                 remotePlaying = priorPlaying
+                startStatusPolling(target)
                 onState()
-                onMessage("Vídeo enviado para Roku • use o controle da TV se necessário")
+                onMessage("Vídeo enviado para Roku")
             } catch (error: Exception) {
                 if (requestId != serial.get()) return@launch
                 pending = false
@@ -144,6 +149,7 @@ internal class RokuCastController(
                     duration = current.durationMs.coerceAtLeast(0L)
                     remotePlaying = true
                     pauseLocal()
+                    startStatusPolling(device!!)
                     onState()
                 }
             }
@@ -151,6 +157,36 @@ internal class RokuCastController(
         val target = device ?: return
         val current = video() ?: return
         if (!pending && source != current.uri.toString()) transmit(current, target)
+    }
+
+    /** Poll the Roku ECP player state, falling back to our estimated clock. */
+    private fun startStatusPolling(target: RokuEcpClient.Device) {
+        statusJob?.cancel()
+        val generation = serial.get()
+        statusJob = activity.lifecycleScope.launch {
+            delay(1_000L)
+            while (isActive && device == target && serial.get() == generation) {
+                val status = RokuEcpClient.playbackStatus(target)
+                if (status != null && status.receiverActive) {
+                    status.positionMs?.let { reportedPosition ->
+                        progressBaseMs = reportedPosition.coerceAtLeast(0L)
+                        progressClockMs = SystemClock.elapsedRealtime()
+                    }
+                    status.durationMs?.takeIf { it > 0 }?.let { duration = it }
+                    when (status.state) {
+                        "play", "playing" -> remotePlaying = true
+                        "pause", "paused", "stop", "none", "close" -> remotePlaying = false
+                    }
+                    onState()
+                    if (status.error) {
+                        onMessage("A Roku não conseguiu reproduzir este formato")
+                        disconnect()
+                        break
+                    }
+                }
+                delay(2_500L)
+            }
+        }
     }
 
     private fun send(name: String, seconds: Long? = null) {
@@ -201,6 +237,8 @@ internal class RokuCastController(
         val position = if (pending && target == null) pendingPositionMs else positionMs()
         val shouldPlay = if (pending && target == null) pendingWasPlaying else remotePlaying
         serial.incrementAndGet()
+        statusJob?.cancel()
+        statusJob = null
         device = null
         source = null
         pending = false
@@ -218,6 +256,8 @@ internal class RokuCastController(
         val position = if (pending && device == null) pendingPositionMs else positionMs()
         val shouldPlay = if (pending && device == null) pendingWasPlaying else remotePlaying
         serial.incrementAndGet()
+        statusJob?.cancel()
+        statusJob = null
         device = null
         source = null
         pending = false
@@ -229,6 +269,8 @@ internal class RokuCastController(
     /** Releasing the Activity must not stop the TV's foreground stream. */
     fun release() {
         serial.incrementAndGet()
+        statusJob?.cancel()
+        statusJob = null
         if (activeController?.get() === this) activeController = null
     }
 
