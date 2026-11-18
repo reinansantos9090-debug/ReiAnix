@@ -2773,6 +2773,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ReiAnixComposeTheme {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
+                        mediaUri = if (::uri.isInitialized) uri.toString() else null,
                         onSeekTo = { targetMs ->
                             val duration = if (::player.isInitialized) player.duration else 0L
                             if (duration > 0L && !episodeChangePending) {
