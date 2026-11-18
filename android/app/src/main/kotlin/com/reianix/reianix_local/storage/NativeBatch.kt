@@ -53,13 +53,18 @@ object NativeBatch {
      * Stream a committed NDJSON snapshot in bounded batches. The callback never
      * receives more than [batchSize] documents.
      */
-    fun readNdjsonBatches(file: File, batchSize: Int = DEFAULT_SIZE, onBatch: (JSONArray) -> Unit): Int {
+    fun readNdjsonBatches(
+        file: File,
+        batchSize: Int = DEFAULT_SIZE,
+        shouldCancel: () -> Boolean = { false },
+        onBatch: (JSONArray) -> Unit,
+    ): Int {
         if (!file.isFile) return 0
         val limit = normalizeSize(batchSize)
         var total = 0
         var batch = JSONArray()
         BufferedReader(InputStreamReader(FileInputStream(file), StandardCharsets.UTF_8)).use { reader ->
-            while (true) {
+            while (!shouldCancel()) {
                 val line = reader.readLine() ?: break
                 if (line.isBlank()) continue
                 runCatching { JSONObject(line) }.getOrNull()?.let { document ->
