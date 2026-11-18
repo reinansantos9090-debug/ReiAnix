@@ -90,6 +90,7 @@ object NativeIndex {
         scope: JSONObject,
         expectedStatus: String,
         requireCurrentGenerationMatch: Boolean = true,
+        shouldCancel: () -> Boolean = { false },
     ): Int? {
         val committed = committedFileFromScope(context, scope) ?: return null
         val batchDir = runCatching { batchDirectory(context).canonicalFile }.getOrNull() ?: return null
@@ -107,9 +108,14 @@ object NativeIndex {
         }
 
         var count = 0
+        var cancelled = false
         val readable = runCatching {
             BufferedReader(InputStreamReader(FileInputStream(target), Charsets.UTF_8)).use { reader ->
                 while (true) {
+                    if (shouldCancel()) {
+                        cancelled = true
+                        break
+                    }
                     val line = reader.readLine() ?: break
                     if (line.isBlank()) continue
                     JSONObject(line)
@@ -117,7 +123,7 @@ object NativeIndex {
                 }
             }
         }.isSuccess
-        if (!readable) return null
+        if (!readable || cancelled || shouldCancel()) return null
 
         return when {
             recordedStatus.equals(STATUS_COMPLETED, ignoreCase = true) -> count.takeIf { it > 0 }
@@ -963,16 +969,22 @@ object NativeIndex {
         val currentStatus = scope.optString("status")
         val committedStatus = scope.optString("committedStatus").trim().ifBlank { currentStatus }
         val committed = committedFileFromScope(context, scope)
-        if (committed != null && committedSnapshotCount(
-                context, scope, committedStatus, requireCurrentGenerationMatch = true
-            ) != null
-        ) {
+        val committedCount = if (committed != null) {
+            committedSnapshotCount(
+                context, scope, committedStatus,
+                requireCurrentGenerationMatch = true,
+                shouldCancel = shouldCancel,
+            )
+        } else null
+        if (shouldCancel()) return@synchronized 0
+        if (committedCount != null) {
             var sequence = 0
             return@synchronized NativeBatch.readNdjsonBatches(committed, batchSize, shouldCancel) {
                 sequence += 1
                 onBatch(it, sequence)
             }
         }
+        if (shouldCancel()) return@synchronized 0
         val items = scope.optJSONObject("items") ?: return@synchronized 0
         val legacyStatus = scope.optString("legacyItemsStatus").trim().ifBlank { currentStatus }
         if (legacySnapshotCount(items, legacyStatus) == null) return@synchronized 0
