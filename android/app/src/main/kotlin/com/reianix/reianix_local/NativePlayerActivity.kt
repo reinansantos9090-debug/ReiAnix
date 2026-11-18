@@ -1437,7 +1437,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val providerMime = runCatching { appContext.contentResolver.getType(localUri) }.getOrNull()
                 val resolvedMime = PlayerMediaPolicy.resolveVideoMimeType(providerMime, displayName)
                 val sizeBytes = localSizeBytes(appContext, localUri)
-                val extractedDurationMs = extractLocalDurationMs(appContext, localUri)
                 val subtitleTracks = runCatching {
                     LocalSubtitleResolver.resolve(appContext, localUri)
                 }.getOrElse { error ->
@@ -1449,6 +1448,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     emptyList()
                 }
                 deferredSubtitleCache[localUri.toString()] = subtitleTracks
+                // Duration extraction can be slow; keep subtitle discovery ahead of it in this queue.
+                val extractedDurationMs = extractLocalDurationMs(appContext, localUri)
 
                 handler.post {
                     if (
