@@ -3,6 +3,7 @@ package com.reianix.reianix_local.ui.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -46,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -209,17 +212,27 @@ fun ReiAnixNativePlayerCenterControls(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
+        // Anchor all three actions to the SAME geometric center. The two seek
+        // buttons use equal and opposite offsets, independent of screen aspect ratio
+        // and independent of the visual shape of the mirrored seek glyph.
+        BoxWithConstraints(
             modifier = Modifier
                 .widthIn(max = ReiAnixTokens.PlayerDimensions.centerControlsMaxWidth)
                 .fillMaxWidth()
                 .padding(horizontal = ReiAnixTokens.PlayerDimensions.centerHorizontalPadding),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            contentAlignment = Alignment.Center,
         ) {
+            val seekDistance =
+                ((maxWidth - ReiAnixTokens.PlayerDimensions.seekButtonSize) / 2)
+                    .coerceAtLeast(0.dp)
+            // Round ONCE, then mirror the same pixel offset in both directions.
+            // Independent Dp rounding of +x and -x can differ by one pixel.
+            val seekDistancePx = with(LocalDensity.current) { seekDistance.roundToPx() }
             Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.CenterStart,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset { IntOffset(x = -seekDistancePx, y = 0) },
+                contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
                     icon = Icons.Filled.Replay,
@@ -232,7 +245,7 @@ fun ReiAnixNativePlayerCenterControls(
             }
 
             Box(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.align(Alignment.Center),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -304,8 +317,10 @@ fun ReiAnixNativePlayerCenterControls(
             }
 
             Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.CenterEnd,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset { IntOffset(x = seekDistancePx, y = 0) },
+                contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
                     icon = Icons.Filled.Replay,
@@ -553,6 +568,7 @@ fun ReiAnixNativePlayerBottomControls(
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
                 enabled = !state.episodeTransitionInProgress,
+                iconVisualScale = 0.75f,
             )
             PlayerBottomAction(
                 icon = Icons.Filled.PlaylistPlay,
@@ -603,6 +619,7 @@ private fun RowScope.PlayerBottomAction(
     enabled: Boolean = true,
     showLabel: Boolean = true,
     active: Boolean = false,
+    iconVisualScale: Float = 1f,
 ) {
     Column(
         modifier = Modifier.weight(1f),
@@ -627,7 +644,15 @@ private fun RowScope.PlayerBottomAction(
                     active -> ReiAnixTokens.Colors.primary
                     else -> ReiAnixTokens.Colors.playerControl
                 },
-                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
+                // Lock has a much taller painted silhouette than the other three
+                // icons. Normalize only the visual artwork, centered within the
+                // identical button bounds; never shift the icon's baseline upward.
+                modifier = Modifier
+                    .size(ReiAnixTokens.PlayerDimensions.actionIconSize)
+                    .graphicsLayer {
+                        scaleX = iconVisualScale
+                        scaleY = iconVisualScale
+                    },
             )
         }
         if (showLabel) {
