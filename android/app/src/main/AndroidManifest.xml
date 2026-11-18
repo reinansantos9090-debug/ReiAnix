@@ -31,6 +31,16 @@
         android:name=".player.cast.CastStreamingService"
         android:exported="false"
         android:foregroundServiceType="mediaPlayback" />
+    <!-- Read access is granted only to the external video app selected by the user. -->
+    <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.videoexports"
+        android:exported="false"
+        android:grantUriPermissions="true">
+      <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/reianix_external_video_paths" />
+    </provider>
     <activity android:name=".AniListAccountActivity" android:exported="false" />
     <activity android:name=".AniListOAuthCallbackActivity" android:exported="true" android:noHistory="true" android:excludeFromRecents="true">
       <intent-filter>
