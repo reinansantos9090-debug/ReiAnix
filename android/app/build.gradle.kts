@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val reianixEnableR8 = providers.gradleProperty("reianixEnableR8")
+    .map { it.toBoolean() }
+    .getOrElse(true)
+
 android {
     namespace = "com.reianix.reianix_local"
     compileSdk = 36
@@ -50,10 +54,9 @@ android {
 
     buildTypes {
         getByName("release") {
-            // R8 optimizes Kotlin/Compose bytecode and removes unused code/resources.
-            // This variant is exercised by the existing CI build and certification.
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // CI disables R8 for PR preview builds and keeps it enabled on main releases.
+            isMinifyEnabled = reianixEnableR8
+            isShrinkResources = reianixEnableR8
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-cast.pro",

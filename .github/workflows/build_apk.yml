@@ -206,6 +206,7 @@ jobs:
           set -euo pipefail
           gradle -p android --no-daemon --console=plain --stacktrace \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
+            -PreianixEnableR8=${{ github.event_name != 'pull_request' }} \
             -PreianixBuildVersion="0.2.1" \
             :app:assembleRelease
 
@@ -217,6 +218,7 @@ jobs:
           set -euo pipefail
           gradle -p android --no-daemon --console=plain \
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
+            -PreianixEnableR8=${{ github.event_name != 'pull_request' }} \
             -PreianixBuildVersion="0.2.1" \
             :app:compileReleaseKotlin
 
