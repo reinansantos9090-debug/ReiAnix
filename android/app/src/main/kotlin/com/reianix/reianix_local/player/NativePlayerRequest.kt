@@ -142,7 +142,7 @@ data class NativePlayerRequest(
                 autoplay = get("autoplay")?.toBooleanStrictOrNull() ?: true,
                 defaultSpeed = get("setting_player_default_speed")?.toFloatOrNull()?.takeIf { it > 0f } ?: 1f,
                 aspectRatio = get("setting_player_aspect_ratio") ?: "fit",
-                zoomEnabled = get("setting_player_zoom_enabled")?.toBooleanStrictOrNull() ?: false,
+                zoomEnabled = get("setting_player_zoom_enabled")?.toBooleanStrictOrNull() ?: true,
                 immersive = get("setting_player_immersive") ?: "always",
                 rotation = get("setting_player_rotation") ?: "auto",
                 pip = get("setting_player_pip")?.toBooleanStrictOrNull() ?: true,

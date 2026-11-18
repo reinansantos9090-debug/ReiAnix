@@ -85,6 +85,7 @@ data class ReiAnixNativePlayerUiState(
     val subtitleTrackSelectionEnabled: Boolean = false,
     val autoplayNext: Boolean = true,
     val horizontalSeekEnabled: Boolean = true,
+    val zoomEnabled: Boolean = true,
     val volumeGesturesEnabled: Boolean = true,
     val brightnessGesturesEnabled: Boolean = true,
     val doubleTapEnabled: Boolean = true,

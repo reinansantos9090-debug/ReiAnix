@@ -656,7 +656,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         preferredAudioLanguage = intent.getStringExtra("setting_audio_preferred_language")?.trim().orEmpty()
         preferredSubtitleLanguage = intent.getStringExtra("setting_audio_preferred_subtitle_language")?.trim().orEmpty()
         subtitleMode = intent.getStringExtra("setting_audio_subtitles") ?: "auto"
-        zoomEnabled = intent.getBooleanExtra("setting_player_zoom_enabled", false)
+        zoomEnabled = intent.getBooleanExtra("setting_player_zoom_enabled", true)
         doubleTapSeekMs = PlayerGesturePolicy.seekIntervalMs(
             intent.getLongExtra("setting_player_double_tap_seek_seconds", 10L),
         )
@@ -2607,17 +2607,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             touchControls()
                             syncComposePlayerUiState()
                         },
-                        onVolumeGestureChanged = { enabled ->
+                        onBrightnessVolumeChanged = { enabled ->
                             volumeGesturesEnabled = enabled
+                            brightnessGesturesEnabled = enabled
                             persistCanonicalPlayerSetting("gestures.volume", enabled.toString())
-                            showFeedback(if (enabled) "Gesto de volume ligado" else "Gesto de volume desligado")
+                            persistCanonicalPlayerSetting("gestures.brightness", enabled.toString())
+                            showFeedback(if (enabled) "Gestos de brilho e volume ligados" else "Gestos de brilho e volume desligados")
                             touchControls()
                             syncComposePlayerUiState()
                         },
-                        onBrightnessGestureChanged = { enabled ->
-                            brightnessGesturesEnabled = enabled
-                            persistCanonicalPlayerSetting("gestures.brightness", enabled.toString())
-                            showFeedback(if (enabled) "Gesto de brilho ligado" else "Gesto de brilho desligado")
+                        onZoomChanged = { enabled ->
+                            zoomEnabled = enabled
+                            persistCanonicalPlayerSetting("player.zoom_enabled", enabled.toString())
+                            if (!enabled) findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
+                            showFeedback(if (enabled) "Zoom ligado" else "Zoom desligado")
                             touchControls()
                             syncComposePlayerUiState()
                         },
@@ -2940,6 +2943,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             horizontalSeekEnabled = horizontalSeekEnabled,
             volumeGesturesEnabled = volumeGesturesEnabled,
             brightnessGesturesEnabled = brightnessGesturesEnabled,
+            zoomEnabled = zoomEnabled,
             doubleTapEnabled = doubleTapEnabled,
             longPressEnabled = longPressEnabled,
             safeTopPx = gestureSafeTop,

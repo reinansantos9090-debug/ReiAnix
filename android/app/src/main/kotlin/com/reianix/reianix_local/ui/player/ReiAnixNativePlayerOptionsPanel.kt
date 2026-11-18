@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Brightness6
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -87,8 +87,8 @@ fun ReiAnixNativePlayerOptionsPanel(
     onMarkers: () -> Unit,
     onAutoplayChanged: (Boolean) -> Unit,
     onGesturesChanged: (Boolean) -> Unit,
-    onVolumeGestureChanged: (Boolean) -> Unit,
-    onBrightnessGestureChanged: (Boolean) -> Unit,
+    onBrightnessVolumeChanged: (Boolean) -> Unit,
+    onZoomChanged: (Boolean) -> Unit,
     onDoubleTapChanged: (Boolean) -> Unit,
     onLongPressChanged: (Boolean) -> Unit,
     onPictureInPicture: () -> Unit,
@@ -184,24 +184,24 @@ fun ReiAnixNativePlayerOptionsPanel(
                 )
                 PlayerOptionToggleRow(
                     icon = Icons.Filled.Gesture,
-                    label = "Gestos",
+                    label = "Avançar e voltar",
                     checked = state.horizontalSeekEnabled,
-                    description = "Ativar ou desativar gestos horizontais de busca temporal",
+                    description = "Ativar ou desativar o avanço e retrocesso por gesto horizontal",
                     onCheckedChange = onGesturesChanged,
                 )
                 PlayerOptionToggleRow(
                     icon = Icons.Filled.VolumeUp,
-                    label = "Volume",
-                    checked = state.volumeGesturesEnabled,
-                    description = "Ativar ou desativar o gesto de volume",
-                    onCheckedChange = onVolumeGestureChanged,
+                    label = "Brilho e volume",
+                    checked = state.volumeGesturesEnabled || state.brightnessGesturesEnabled,
+                    description = "Deslize verticalmente à direita para ajustar o volume e à esquerda para ajustar o brilho",
+                    onCheckedChange = onBrightnessVolumeChanged,
                 )
                 PlayerOptionToggleRow(
-                    icon = Icons.Filled.Brightness6,
-                    label = "Brilho",
-                    checked = state.brightnessGesturesEnabled,
-                    description = "Ativar ou desativar o gesto de brilho",
-                    onCheckedChange = onBrightnessGestureChanged,
+                    icon = Icons.Filled.ZoomIn,
+                    label = "Zoom",
+                    checked = state.zoomEnabled,
+                    description = "Permite ampliar e mover o vídeo com gesto de pinça",
+                    onCheckedChange = onZoomChanged,
                 )
                 PlayerOptionToggleRow(
                     icon = Icons.Filled.TouchApp,

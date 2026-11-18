@@ -83,7 +83,7 @@ object ReiAnixSettingsContract {
         bool("player.resume", true),
         decimal("player.default_speed", "1.0", "0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0"),
         enum("player.aspect_ratio", "fit", "fit", "fill"),
-        bool("player.zoom_enabled", false),
+        bool("player.zoom_enabled", true),
         enum("player.immersive", "always", "always", "landscape", "never"),
         enum("player.rotation", "auto", "auto", "portrait", "landscape"),
         bool("player.pip", true),

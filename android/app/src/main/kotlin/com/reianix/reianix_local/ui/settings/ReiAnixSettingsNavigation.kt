@@ -104,12 +104,8 @@ internal val SettingsDestinations = listOf(
         SettingsEntry("setting:player.max_video_frame_rate", "FPS máximo"),
     )),
     SettingsDestination("player_controls", "Controles e gestos", "Player", listOf(
-        SettingsEntry("setting:player.zoom_enabled", "Zoom por gesto"),
-        SettingsEntry("setting:player.lock_mode", "Bloqueio dos controles"),
         SettingsEntry("setting:player.double_tap_seek_seconds", "Salto com toque duplo"),
         SettingsEntry("setting:player.long_press_speed", "Velocidade da pressão longa"),
-        SettingsEntry("setting:gestures.volume", "Gestos de volume"),
-        SettingsEntry("setting:gestures.brightness", "Gestos de brilho"),
         SettingsEntry("setting:gestures.horizontal_seek", "Gestos horizontais"),
         SettingsEntry("setting:gestures.double_tap", "Toque duplo para avançar ou retroceder"),
         SettingsEntry("setting:gestures.long_press", "Ativar pressão longa"),
