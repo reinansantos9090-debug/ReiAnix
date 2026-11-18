@@ -106,6 +106,51 @@ class ReiAnixAniListClient(
         }
     }
 
+
+    /**
+     * Supplemental, user-initiated character lookup only. No studios, voice actors,
+     * posters or additional requests on the normal metadata/cover path.
+     */
+    suspend fun getCharacters(id: Int, limit: Int = 18): AniListResult<List<ReiAnixAnimeCharacter>> {
+        if (id <= 0 || limit !in 1..25) {
+            return AniListResult.Failure(AniListError.InvalidRequest("Invalid character request"))
+        }
+        val gql = """
+            query AnimeCharacters($id: Int, $limit: Int) {
+              Media(id: $id, type: ANIME) {
+                characters(perPage: $limit, sort: [ROLE, FAVOURITES_DESC]) {
+                  edges { role node { id name { full } image { medium } } }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id).put("limit", limit)) { data ->
+            val media = data.optJSONObject("Media")
+                ?: return@execute AniListResult.Success(emptyList())
+            val edges = media.optJSONObject("characters")?.optJSONArray("edges")
+                ?: return@execute AniListResult.Success(emptyList())
+            val result = buildList {
+                for (i in 0 until edges.length()) {
+                    val edge = edges.optJSONObject(i) ?: continue
+                    val character = edge.optJSONObject("node") ?: continue
+                    val characterId = character.optInt("id").takeIf { it > 0 } ?: continue
+                    val name = character.optJSONObject("name")?.optString("full")
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    val role = when (edge.optString("role")) {
+                        "MAIN" -> "Principal"
+                        "SUPPORTING" -> "Secundário"
+                        else -> "Figurante"
+                    }
+                    val url = validReiAnixArtworkHttpUrl(
+                        character.optJSONObject("image")?.optString("medium")
+                    )
+                    add(ReiAnixAnimeCharacter(characterId, name, role, url))
+                }
+            }
+            AniListResult.Success(result)
+        }
+    }
+
     private suspend fun <T> execute(
         query: String,
         variables: JSONObject,
@@ -261,6 +306,13 @@ class ReiAnixAniListClient(
         """
     }
 }
+
+data class ReiAnixAnimeCharacter(
+    val id: Int,
+    val name: String,
+    val role: String,
+    val imageUrl: String?,
+)
 
 data class AniListAnime(
     val id: Int,
