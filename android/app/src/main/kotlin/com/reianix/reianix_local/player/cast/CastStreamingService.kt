@@ -37,7 +37,9 @@ class CastStreamingService : Service() {
     }
 
     private fun stopIfCastOnly() {
-        if (!externalStreaming) stopSelf()
+        // A Cast SDK callback may arrive between startForegroundService()
+        // and the Web Video Caster start intent reaching onStartCommand().
+        if (!externalStreaming && !isWebVideoCasterStreaming) stopSelf()
     }
 
     override fun onCreate() {
@@ -113,6 +115,7 @@ class CastStreamingService : Service() {
         }
 
         fun stop(context: Context) {
+            isWebVideoCasterStreaming = false
             context.stopService(Intent(context, CastStreamingService::class.java))
         }
     }
