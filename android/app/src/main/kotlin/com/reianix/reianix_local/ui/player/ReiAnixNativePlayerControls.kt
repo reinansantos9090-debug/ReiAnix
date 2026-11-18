@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -47,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.Role
@@ -553,6 +555,7 @@ fun ReiAnixNativePlayerBottomControls(
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
                 enabled = !state.episodeTransitionInProgress,
+                iconOpticalOffsetY = 2.dp,
             )
             PlayerBottomAction(
                 icon = Icons.Filled.PlaylistPlay,
@@ -603,6 +606,7 @@ private fun RowScope.PlayerBottomAction(
     enabled: Boolean = true,
     showLabel: Boolean = true,
     active: Boolean = false,
+    iconOpticalOffsetY: Dp = 0.dp,
 ) {
     Column(
         modifier = Modifier.weight(1f),
@@ -627,7 +631,11 @@ private fun RowScope.PlayerBottomAction(
                     active -> ReiAnixTokens.Colors.primary
                     else -> ReiAnixTokens.Colors.playerControl
                 },
-                modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionIconSize),
+                // Move the artwork, not the shared 48dp hit target or row baseline.
+                // The Lock vector's visible center sits higher than the other icons.
+                modifier = Modifier
+                    .size(ReiAnixTokens.PlayerDimensions.actionIconSize)
+                    .offset(y = iconOpticalOffsetY),
             )
         }
         if (showLabel) {
