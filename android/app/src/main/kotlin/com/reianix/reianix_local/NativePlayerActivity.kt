@@ -2774,6 +2774,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
                         mediaUri = if (::uri.isInitialized) uri.toString() else null,
+                        onScrubInteraction = { dragging ->
+                            if (dragging) handler.removeCallbacks(controlsHider)
+                            else touchControls()
+                        },
                         onSeekTo = { targetMs ->
                             val duration = if (::player.isInitialized) player.duration else 0L
                             if (duration > 0L && !episodeChangePending) {
