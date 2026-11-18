@@ -38,6 +38,11 @@ internal object PlayerMediaPolicy {
 
     fun resolveVideoMimeType(providerMime: String?, displayName: String?): String? {
         val provider = providerMime?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        when (provider) {
+            "application/x-matroska" -> return "video/x-matroska"
+            "application/webm" -> return "video/webm"
+            "application/mp4" -> return "video/mp4"
+        }
         if (provider.startsWith("video/")) {
             return provider
         }
@@ -64,6 +69,24 @@ internal object PlayerMediaPolicy {
             "flv" -> "video/x-flv"
             else -> null
         }
+    }
+
+    /**
+     * Media3 reports TIME_UNSET until some local containers finish resolving.
+     * Prefer its timeline once known; the metadata value is only a local fallback.
+     */
+    fun resolveDurationMs(media3DurationMs: Long, metadataDurationMs: Long?): Long =
+        media3DurationMs.takeIf { it > 0L }
+            ?: metadataDurationMs?.takeIf { it > 0L }
+            ?: 0L
+
+    /** The seek command, rather than duration knowledge, decides whether seekTo is allowed. */
+    fun isSeekAllowed(seekCommandAvailable: Boolean): Boolean = seekCommandAvailable
+
+    /** Clamp only when a finite duration is known. */
+    fun clampSeekPosition(targetMs: Long, durationMs: Long): Long {
+        val nonNegativeTarget = targetMs.coerceAtLeast(0L)
+        return if (durationMs > 0L) nonNegativeTarget.coerceAtMost(durationMs) else nonNegativeTarget
     }
 
     fun safeResumePosition(requestedMs: Long, durationMs: Long): Long {
