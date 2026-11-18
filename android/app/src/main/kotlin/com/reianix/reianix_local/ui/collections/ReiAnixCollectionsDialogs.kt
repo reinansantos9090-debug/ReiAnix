@@ -71,17 +71,29 @@ fun ReiAnixCollectionsRoute(
     viewModel: ReiAnixLibraryViewModel,
 ) {
     val catalog by viewModel.uiState.collectAsStateWithLifecycle()
-    ReiAnixCollectionsScreen(
-        viewModel = viewModel,
-        animes = catalog.animes,
-        onOpenAnime = { animeId ->
-            navController.navigateToDetails(
-                animeId = animeId.toString(),
-                origin = ReiAnixRoutes.COLLECTIONS,
-            )
-        },
-        onDismiss = { navController.popBackStack() },
-    )
+    var tracking by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = tracking) { tracking = false }
+    val openAnime: (Long) -> Unit = { animeId ->
+        navController.navigateToDetails(
+            animeId = animeId.toString(),
+            origin = ReiAnixRoutes.COLLECTIONS,
+        )
+    }
+    if (tracking) {
+        ReiAnixWatchStatusCollections(
+            animes = catalog.animes,
+            onOpenAnime = openAnime,
+            onBack = { tracking = false },
+        )
+    } else {
+        ReiAnixCollectionsScreen(
+            viewModel = viewModel,
+            animes = catalog.animes,
+            onOpenAnime = openAnime,
+            onDismiss = { navController.popBackStack() },
+            onOpenTracking = { tracking = true },
+        )
+    }
 }
 
 @Composable
@@ -90,6 +102,7 @@ fun ReiAnixCollectionsScreen(
     animes: List<ReiAnixAnimeUiModel>,
     onOpenAnime: (Long) -> Unit,
     onDismiss: () -> Unit,
+    onOpenTracking: () -> Unit = {},
 ) {
     val repository = viewModel.personalCollectionsRepository
     val scope = rememberCoroutineScope()
@@ -200,6 +213,7 @@ fun ReiAnixCollectionsScreen(
                         onClick = { editingNameId = null; nameDraft = ""; showNameDialog = true },
                         enabled = !busy && !loading,
                     ) { Text("Nova coleção") }
+                    OutlinedButton(onClick = onOpenTracking) { Text("Listas de acompanhamento") }
                     if (!loading && error != null) {
                         TextButton(onClick = { retryToken++ }) { Text("Tentar novamente") }
                     }
