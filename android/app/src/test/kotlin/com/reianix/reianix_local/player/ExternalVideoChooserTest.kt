@@ -37,7 +37,7 @@ class ExternalVideoChooserTest {
         assertTrue(chooser.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         assertEquals(videoUri, target.clipData?.getItemAt(0)?.uri)
         assertEquals(videoUri, chooser.clipData?.getItemAt(0)?.uri)
-        assertEquals("Abrir com...", chooser.getStringExtra(Intent.EXTRA_TITLE))
+        assertEquals("Abrir com...", chooser.getCharSequenceExtra(Intent.EXTRA_TITLE))
     }
 
     @Test fun acceptsMediaStoreVideos() {
