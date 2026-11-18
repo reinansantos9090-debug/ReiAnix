@@ -27,7 +27,7 @@ class WebVideoCasterHandoffTest {
         @Suppress("DEPRECATION")
         val headers = intent.getBundleExtra("android.media.intent.extra.HTTP_HEADERS")
         assertNotNull(headers)
-        assertTrue(headers!!.isEmpty)
+        assertTrue(headers!!.keySet().isEmpty())
     }
 
     @Test fun doesNotLeakUnrelatedHttpUrlOrLocalStorageUri() {
