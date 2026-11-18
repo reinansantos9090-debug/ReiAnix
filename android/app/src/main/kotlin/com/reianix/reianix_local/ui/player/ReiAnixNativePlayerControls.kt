@@ -75,7 +75,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import com.reianix.reianix_local.player.LocalSeekPreviewFrames
-import com.reianix.reianix_local.player.SeekPreviewPolicy
 import android.net.Uri
 import android.graphics.Bitmap
 import kotlin.math.roundToInt
@@ -483,28 +482,27 @@ fun ReiAnixNativePlayerBottomControls(
         onDispose { previewFrames?.close() }
     }
     var previewFrame by remember(mediaUri) { mutableStateOf<Bitmap?>(null) }
+    val previewImage = remember(previewFrame) { previewFrame?.asImageBitmap() }
     LaunchedEffect(userDragging, previewFrames, duration) {
         previewFrame = null
         if (!userDragging || duration <= 0L || previewFrames == null) return@LaunchedEffect
-        // Sample the moving thumb rather than debounce every change. Even when
-        // the user never pauses a drag, frames keep updating at a bounded rate.
-        var lastBucket = -1L
-        while (true) {
-            val bucket = SeekPreviewPolicy.bucketTimeMs(
-                (sliderFraction * duration.toFloat()).toLong(),
-                duration,
-            )
-            if (bucket != lastBucket) {
-                lastBucket = bucket
-                previewFrame = null
-                val decoded = previewFrames.frameAt(bucket, duration)
-                val currentBucket = SeekPreviewPolicy.bucketTimeMs(
-                    (sliderFraction * duration.toFloat()).toLong(),
-                    duration,
-                )
-                if (bucket == currentBucket) previewFrame = decoded
+        try {
+            while (true) {
+                val targetMs = (sliderFraction * duration.toFloat()).toLong()
+                    .coerceIn(0L, duration)
+                // Never wait for a decoder on the Compose/UI thread.
+                previewFrames.requestScrub(targetMs, duration)
+                // Keep the last visible frame while a closer one is decoding.
+                // As soon as any cached image exists, show the nearest one.
+                val nearest = previewFrames.nearestCached(targetMs)
+                if (nearest != null && previewFrame !== nearest) {
+                    previewFrame = nearest
+                }
+                delay(80L)
             }
-            delay(120L)
+        } finally {
+            previewFrames.stopScrub()
+            previewFrame = null
         }
     }
     Column(
@@ -601,12 +599,24 @@ fun ReiAnixNativePlayerBottomControls(
                                     .background(Color(0xFF303035)),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                previewFrame?.let { bitmap ->
+                                if (previewImage != null) {
                                     Image(
-                                        bitmap = bitmap.asImageBitmap(),
+                                        bitmap = previewImage,
                                         contentDescription = "Prévia da cena do anime",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize(),
+                                    )
+                                } else if (previewFrames?.isUnavailable == true) {
+                                    Text(
+                                        text = "Prévia indisponível",
+                                        color = Color.White.copy(alpha = 0.72f),
+                                        fontSize = 11.sp,
+                                    )
+                                } else {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = Color.White.copy(alpha = 0.72f),
+                                        strokeWidth = 2.dp,
                                     )
                                 }
                             }
