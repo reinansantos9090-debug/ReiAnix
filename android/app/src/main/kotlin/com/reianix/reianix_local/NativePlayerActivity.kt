@@ -11,6 +11,7 @@ import com.reianix.reianix_local.player.PlayerMediaPolicy
 import com.reianix.reianix_local.player.PlayerStartupMetrics
 import com.reianix.reianix_local.player.PlayerTimeFormatter
 import com.reianix.reianix_local.player.cast.ReiAnixCastController
+import com.reianix.reianix_local.player.cast.RokuCastController
 import com.reianix.reianix_local.player.SystemUiController
 import com.reianix.reianix_local.scanner.BroadStorageScanner
 import com.reianix.reianix_local.scanner.MediaStoreScanner
@@ -143,6 +144,7 @@ class NativePlayerActivity : FragmentActivity() {
     private lateinit var localMetadataStore: PlayerLocalMetadataStore
     private var mediaControls: PlayerMediaControls? = null
     private var castController: ReiAnixCastController? = null
+    private var rokuController: RokuCastController? = null
     private val consumptionService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAppDependencies.from(applicationContext).consumptionService
     }
@@ -792,6 +794,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             sleepTimerPaused = savedInstanceState?.getBoolean("sleep_timer_paused", false) ?: false
             if (sleepTimerDeadlineMs > 0L) handler.post(sleepTimerTick)
             initializeGoogleCast()
+            initializeRokuCast()
             prepareCurrentMedia("initial", savedInstanceState?.takeIf { it.containsKey("play_when_ready") }?.getBoolean("play_when_ready"))
         } catch (exception: Exception) {
             if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
@@ -1367,6 +1370,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     try {
                         player.prepare()
                         castController?.onLocalMediaPrepared()
+        rokuController?.onLocalMediaPrepared()
                     } catch (error: Exception) {
                         logPlayer(
                             "MEDIA3_PREPARE_FAILED requestId=" + requestId.ifEmpty { "-" } +
@@ -2754,6 +2758,49 @@ override fun onCreate(savedInstanceState: Bundle?) {
         ).also { it.start() }
     }
 
+    /** Separate Roku SSDP/ECP output, sharing the existing local HTTP server. */
+    private fun initializeRokuCast() {
+        if (rokuController != null) return
+        rokuController = RokuCastController(
+            activity = this,
+            video = {
+                if (::uri.isInitialized && ::player.isInitialized &&
+                    player.currentMediaItem != null
+                ) {
+                    ReiAnixCastController.Video(
+                        uri = uri,
+                        title = titleValue,
+                        positionMs = player.currentPosition.coerceAtLeast(0L),
+                        shouldPlay = player.playWhenReady && !sleepTimerPaused,
+                        durationMs = player.duration.coerceAtLeast(0L),
+                    )
+                } else null
+            },
+            pauseLocal = {
+                if (::player.isInitialized) player.pause()
+                syncComposePlayerUiState()
+            },
+            resumeLocal = { position, shouldPlay ->
+                if (::player.isInitialized && !isFinishing) {
+                    player.seekTo(PlayerMediaPolicy.safeResumePosition(position, player.duration))
+                    if (shouldPlay && !sleepTimerPaused && !errorVisible &&
+                        lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+                    ) {
+                        player.play()
+                    } else {
+                        playbackWasRequestedBeforeStop = shouldPlay
+                    }
+                    updateProgressUi()
+                }
+            },
+            onState = { syncComposePlayerUiState() },
+            onMessage = { message ->
+                logPlayer("ROKU_STATUS message=$message")
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            },
+        )
+    }
+
     private fun installComposePlayerControls() {
         composeControlsEnabled = true
 
@@ -2796,13 +2843,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
                         onSeekTo = { targetMs ->
-                            val duration = if (castController?.isCasting == true) {
-                                castController?.durationMs() ?: 0L
-                            } else if (::player.isInitialized) player.duration else 0L
+                            val duration = when {
+                                castController?.isCasting == true -> castController?.durationMs() ?: 0L
+                                rokuController?.isCasting == true -> rokuController?.durationMs() ?: 0L
+                                ::player.isInitialized -> player.duration
+                                else -> 0L
+                            }
                             if (duration > 0L && !episodeChangePending) {
                                 val safeTarget = targetMs.coerceIn(0L, duration)
-                                if (castController?.isCasting != true) player.seekTo(safeTarget)
-                                else castController?.seekTo(safeTarget)
+                                when {
+                                    castController?.isCasting == true -> castController?.seekTo(safeTarget)
+                                    rokuController?.isCasting == true -> rokuController?.seekTo(safeTarget)
+                                    else -> player.seekTo(safeTarget)
+                                }
                                 saveProgress("player_progress", force = true)
                                 showFeedback(formatTime(safeTarget))
                                 touchControls()
@@ -2811,6 +2864,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onToggleLock = { setLocked(!locked) },
                         onResize = { showEpisodePlaylist() },
                         onSource = { toggleMorePanel() },
+                        onSelectRoku = { address ->
+                            if (castController?.isCasting == true ||
+                                castController?.isLoading == true
+                            ) {
+                                Toast.makeText(
+                                    this, "Desconecte o Chromecast antes de usar Roku",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            } else {
+                                rokuController?.connect(address)
+                            }
+                        },
+                        onStopRoku = { rokuController?.disconnect() },
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
                                 requestEpisode("player_next_request")
@@ -2890,8 +2956,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun syncComposePlayerUiState() {
         if (!composeControlsEnabled) return
         val remote = castController?.takeIf { it.isCasting }
-        val currentDuration = remote?.durationMs() ?: if (::player.isInitialized) player.duration else 0L
-        val currentPosition = remote?.positionMs() ?: if (::player.isInitialized) player.currentPosition else 0L
+        val roku = rokuController?.takeIf { it.isCasting }
+        val currentDuration = remote?.durationMs() ?: roku?.durationMs()
+            ?: if (::player.isInitialized) player.duration else 0L
+        val currentPosition = remote?.positionMs() ?: roku?.positionMs()
+            ?: if (::player.isInitialized) player.currentPosition else 0L
         val videoSize = if (::player.isInitialized) player.videoSize else null
         val resolution = videoSize
             ?.takeIf { it.width > 0 && it.height > 0 }
@@ -2922,10 +2991,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
             } else {
                 0L
             },
-            isPlaying = remote?.playing() ?: (::player.isInitialized && player.isPlaying),
-            isBuffering = if (remote != null) false else ::player.isInitialized && player.playbackState == Player.STATE_BUFFERING,
+            isPlaying = remote?.playing() ?: roku?.playing()
+                ?: (::player.isInitialized && player.isPlaying),
+            isBuffering = if (remote != null || roku != null) false
+                else ::player.isInitialized && player.playbackState == Player.STATE_BUFFERING,
             hasRenderedFirstFrame = firstFrameRenderedForTesting,
-            ended = remote?.ended() ?: (::player.isInitialized && player.playbackState == Player.STATE_ENDED),
+            ended = remote?.ended() ?: if (roku != null) false
+                else (::player.isInitialized && player.playbackState == Player.STATE_ENDED),
             errorVisible = errorVisible,
             controlsVisible = controlsVisible,
             locked = locked,
@@ -2948,6 +3020,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             longPressEnabled = longPressEnabled,
             safeTopPx = gestureSafeTop,
             safeBottomPx = gestureSafeBottom,
+            rokuCasting = roku != null,
+            rokuLoading = rokuController?.isLoading == true,
+            googleCasting = remote != null,
         )
         val unlockedOverlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
         val lockedAffordanceVisible = controlsVisible && locked && !errorVisible && !inPictureInPicture
@@ -3132,7 +3207,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun togglePlayPause() {
-        if (castController?.togglePlayPause() == true) {
+        if (castController?.togglePlayPause() == true ||
+            rokuController?.togglePlayPause() == true
+        ) {
             touchControls()
             syncComposePlayerUiState()
             return
@@ -3207,8 +3284,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
         val remote = castController?.takeIf { it.isCasting }
-        val duration = remote?.durationMs() ?: player.duration
-        val position = remote?.positionMs() ?: player.currentPosition.coerceAtLeast(0L)
+        val roku = rokuController?.takeIf { it.isCasting }
+        val duration = remote?.durationMs() ?: roku?.durationMs() ?: player.duration
+        val position = remote?.positionMs() ?: roku?.positionMs()
+            ?: player.currentPosition.coerceAtLeast(0L)
         if (::seekBar.isInitialized && duration > 0L) {
             seekBar.progress = ((position.toDouble() / duration.toDouble()) * SEEK_PROGRESS_MAX)
                 .roundToInt().coerceIn(0, SEEK_PROGRESS_MAX)
@@ -3746,7 +3825,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             logPlayer("PLAYER_COMMAND_IGNORED command=seek reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
             return
         }
-        if (castController?.seekBy(deltaMs) == true) {
+        if (castController?.seekBy(deltaMs) == true || rokuController?.seekBy(deltaMs) == true) {
             saveProgress("player_progress")
             showFeedback(feedbackText)
             touchControls()
@@ -3975,6 +4054,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (castController?.isCasting == true) {
             val remotePercent = castController?.adjustVolumeByFraction(deltaFraction)
             if (remotePercent != null) showFeedback("Volume TV $remotePercent%", 900L)
+            return
+        }
+        if (rokuController?.isCasting == true) {
+            if (rokuController?.adjustVolume(deltaFraction >= 0f) == true) {
+                showFeedback("Volume da Roku", 900L)
+            }
             return
         }
         runCatching {
@@ -4927,9 +5012,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return null
         }
         val remote = castController?.takeIf { it.isCasting }
-        val rawDuration = remote?.durationMs() ?: player.duration
+        val roku = rokuController?.takeIf { it.isCasting }
+        val rawDuration = remote?.durationMs() ?: roku?.durationMs() ?: player.duration
         val duration = if (rawDuration > 0L) rawDuration else 0L
-        val rawPosition = remote?.positionMs() ?: player.currentPosition.coerceAtLeast(0L)
+        val rawPosition = remote?.positionMs() ?: roku?.positionMs()
+            ?: player.currentPosition.coerceAtLeast(0L)
         val position = if (duration > 0L) rawPosition.coerceAtMost(duration) else rawPosition
         if (!force && lastSavedPosition >= 0L && abs(position - lastSavedPosition) < PROGRESS_INTERVAL_MS) return null
         if (force && position == lastSavedPosition &&
@@ -4952,6 +5039,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     .put("durationMs", duration)
                     .put("playerState", if (::player.isInitialized) player.playbackStateLabel() else "STATE_IDLE")
                     .put("isPlaying", castController?.takeIf { it.isCasting }?.playing()
+                        ?: roku?.playing()
                         ?: if (::player.isInitialized) player.isPlaying else false)
                     .put("playbackSpeed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
                     .put("playerSessionId", playerSessionId)
@@ -5083,9 +5171,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         logPlayer("onResume requestId=" + requestId.ifEmpty { "-" })
         if (!inPictureInPicture) applyImmersiveAfterLayout()
         castController?.onLocalMediaPrepared()
+        rokuController?.onLocalMediaPrepared()
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.refreshZoomForLayout()
         if (::player.isInitialized && !errorVisible && !playbackErrorForGeneration) {
             if (!sleepTimerPaused && !isPictureInPictureActive() && playbackWasRequestedBeforeStop &&
+                castController?.isCasting != true && rokuController?.isCasting != true &&
                 player.playbackState != Player.STATE_ENDED
             ) {
                 player.playWhenReady = true
@@ -5272,6 +5362,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         mediaControls = null
         castController?.release()
         castController = null
+        rokuController?.release()
+        rokuController = null
         if (::player.isInitialized) {
             activePlayerListener?.let { player.removeListener(it) }
             activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }
