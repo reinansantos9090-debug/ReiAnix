@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -197,10 +197,10 @@ fun ReiAnixNativePlayerOptionsPanel(
                     onCheckedChange = onBrightnessVolumeChanged,
                 )
                 PlayerOptionToggleRow(
-                    icon = Icons.Filled.ZoomIn,
-                    label = "Zoom",
+                    icon = Icons.Filled.AspectRatio,
+                    label = "Ajustar e preencher",
                     checked = state.zoomEnabled,
-                    description = "Permite ampliar e mover o vídeo com gesto de pinça",
+                    description = "Permite ajustar e preencher a tela com o vídeo usando gesto de pinça",
                     onCheckedChange = onZoomChanged,
                 )
                 PlayerOptionToggleRow(
