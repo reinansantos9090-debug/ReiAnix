@@ -33,6 +33,9 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.mediarouter.app.MediaRouteButton
+import androidx.mediarouter.app.MediaRouteChooserDialogFragment
+import androidx.mediarouter.app.MediaRouteControllerDialogFragment
+import androidx.mediarouter.app.MediaRouteDialogFactory
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.reianix.reianix_local.R
 import android.content.res.Configuration
@@ -623,8 +626,7 @@ fun ReiAnixNativePlayerBottomControls(
 }
 
 /**
- * Keep the same 48.dp MediaRouteButton and the existing Cast SDK behaviour.
- * Only its layout slot changes: the first of four equally weighted actions.
+ * Keep the full touch area while matching the visual size of the other actions.
  */
 @Composable
 private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
@@ -635,6 +637,13 @@ private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
         AndroidView(
             factory = { context ->
                 object : MediaRouteButton(context) {
+                    override fun onDraw(canvas: android.graphics.Canvas) {
+                        val saveCount = canvas.save()
+                        canvas.scale(0.8f, 0.8f, width / 2f, height / 2f)
+                        super.onDraw(canvas)
+                        canvas.restoreToCount(saveCount)
+                    }
+
                     override fun showDialog(): Boolean {
                         return try {
                             super.showDialog()
@@ -655,6 +664,7 @@ private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
                     )
                     runCatching {
                         CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
+                        setDialogFactory(PlayerCastDialogFactory)
                     }.onFailure { error ->
                         android.util.Log.w("ReiAnixCast", "CAST_BUTTON_INIT_FAILED", error)
                         visibility = android.view.View.GONE
@@ -672,6 +682,30 @@ private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
             )
         }
     }
+}
+
+private object PlayerCastDialogFactory : MediaRouteDialogFactory() {
+    override fun onCreateChooserDialogFragment() = object : MediaRouteChooserDialogFragment() {
+        override fun onStart() {
+            super.onStart()
+            dialog?.window?.applyPlayerCastAppearance()
+        }
+    }
+
+    override fun onCreateControllerDialogFragment() = object : MediaRouteControllerDialogFragment() {
+        override fun onStart() {
+            super.onStart()
+            dialog?.window?.applyPlayerCastAppearance()
+        }
+    }
+}
+
+private fun android.view.Window.applyPlayerCastAppearance() {
+    setBackgroundDrawable(android.graphics.drawable.GradientDrawable().apply {
+        setColor(0xE61B1B1D.toInt())
+        cornerRadius = 18f * context.resources.displayMetrics.density
+    })
+    clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
 }
 
 @Composable
