@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -225,10 +226,13 @@ fun ReiAnixNativePlayerCenterControls(
             val seekDistance =
                 ((maxWidth - ReiAnixTokens.PlayerDimensions.seekButtonSize) / 2)
                     .coerceAtLeast(0.dp)
+            // Round ONCE, then mirror the same pixel offset in both directions.
+            // Independent Dp rounding of +x and -x can differ by one pixel.
+            val seekDistancePx = with(LocalDensity.current) { seekDistance.roundToPx() }
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(x = -seekDistance),
+                    .offset { IntOffset(x = -seekDistancePx, y = 0) },
                 contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
@@ -316,7 +320,7 @@ fun ReiAnixNativePlayerCenterControls(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(x = seekDistance),
+                    .offset { IntOffset(x = seekDistancePx, y = 0) },
                 contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
