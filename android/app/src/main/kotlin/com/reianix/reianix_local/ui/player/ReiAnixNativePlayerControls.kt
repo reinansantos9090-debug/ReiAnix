@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +28,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,14 +42,18 @@ import androidx.mediarouter.app.MediaRouteChooserDialogFragment
 import androidx.mediarouter.app.MediaRouteControllerDialogFragment
 import androidx.mediarouter.app.MediaRouteDialogFactory
 import com.google.android.gms.cast.framework.CastButtonFactory
+import com.reianix.reianix_local.player.cast.RokuMirroringDiscovery
+import com.reianix.reianix_local.player.cast.RokuMirroringLauncher
 import com.reianix.reianix_local.R
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import com.reianix.reianix_local.player.PlayerTimeFormatter
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -626,26 +635,56 @@ fun ReiAnixNativePlayerBottomControls(
 }
 
 /**
- * Keep the full touch area while matching the visual size of the other actions.
+ * The same native 48.dp Cast button and optical adjustment remain intact.
+ * A single tap now offers Google Cast or the system Roku screen-mirroring flow.
+ * Roku is NOT connected using Google Cast or an unverified proprietary receiver.
  */
 @Composable
 private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
+    val context = LocalContext.current
+    var pickerOpen by remember { mutableStateOf(false) }
+    var castButton by remember { mutableStateOf<MediaRouteButton?>(null) }
+    var scanVersion by remember { mutableIntStateOf(0) }
+    var scanning by remember { mutableStateOf(false) }
+    var rokuDevices by remember { mutableStateOf(emptyList<RokuMirroringDiscovery.Device>()) }
+    var scanError by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pickerOpen, scanVersion) {
+        if (pickerOpen) {
+            scanning = true
+            scanError = false
+            try {
+                rokuDevices = RokuMirroringDiscovery.discover(context.applicationContext)
+            } catch (_: Exception) {
+                rokuDevices = emptyList()
+                scanError = true
+            } finally {
+                scanning = false
+            }
+        }
+    }
+
     Column(
         modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AndroidView(
-            factory = { context ->
-                object : MediaRouteButton(context) {
+            factory = { viewContext ->
+                object : MediaRouteButton(viewContext) {
                     override fun onDraw(canvas: android.graphics.Canvas) {
                         val saveCount = canvas.save()
-                        // The native Cast indicator sits optically higher than the three
-                        // Compose action glyphs. Center its drawing without moving the
-                        // 48.dp button, so its touch target and row layout stay unchanged.
+                        // Preserve the optical centering merged in PR #364.
                         canvas.translate(0f, 2f * resources.displayMetrics.density)
                         canvas.scale(0.8f, 0.8f, width / 2f, height / 2f)
                         super.onDraw(canvas)
                         canvas.restoreToCount(saveCount)
+                    }
+
+                    override fun performClick(): Boolean {
+                        // Do not open the Google-only picker before offering Roku.
+                        playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                        pickerOpen = true
+                        return true
                     }
 
                     override fun showDialog(): Boolean {
@@ -654,27 +693,34 @@ private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
                         } catch (error: RuntimeException) {
                             android.util.Log.e("ReiAnixCast", "CAST_DEVICE_PICKER_FAILED", error)
                             android.widget.Toast.makeText(
-                                context,
-                                "Não foi possível abrir a seleção de TVs",
+                                viewContext,
+                                "Não foi possível abrir a seleção de Chromecast",
                                 android.widget.Toast.LENGTH_SHORT,
                             ).show()
                             false
                         }
                     }
                 }.apply {
-                    contentDescription = "Transmitir para TV (Google Cast)"
+                    contentDescription = "Transmitir para TV: Chromecast ou Roku"
                     setRemoteIndicatorDrawable(
-                        androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_reianix_cast),
+                        androidx.core.content.ContextCompat.getDrawable(
+                            viewContext, R.drawable.ic_reianix_cast,
+                        ),
                     )
                     runCatching {
-                        CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
+                        CastButtonFactory.setUpMediaRouteButton(
+                            viewContext.applicationContext, this,
+                        )
                         setDialogFactory(PlayerCastDialogFactory)
                     }.onFailure { error ->
                         android.util.Log.w("ReiAnixCast", "CAST_BUTTON_INIT_FAILED", error)
-                        visibility = android.view.View.GONE
+                        // Keep the button visible for Roku mirroring even if the
+                        // optional Google Cast SDK is unavailable.
                     }
+                    castButton = this
                 }
             },
+            update = { castButton = it },
             modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.actionButtonSize),
         )
         if (showLabel) {
@@ -685,6 +731,95 @@ private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
                 maxLines = 1,
             )
         }
+    }
+
+    if (pickerOpen) {
+        AlertDialog(
+            onDismissRequest = { pickerOpen = false },
+            title = { Text("Transmitir para TV") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(
+                        onClick = {
+                            pickerOpen = false
+                            val shown = runCatching { castButton?.showDialog() == true }
+                                .getOrDefault(false)
+                            if (!shown) {
+                                android.widget.Toast.makeText(
+                                    context, "Google Cast indisponível nesta rede",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        },
+                    ) { Text("Chromecast / Google Cast") }
+
+                    Text(
+                        text = "Roku • espelhar tela (Smart View)",
+                        style = ReiAnixTokens.TypographyTokens.playerActionLabel,
+                    )
+                    if (scanning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            color = ReiAnixTokens.Colors.primary,
+                        )
+                        Text("Procurando Roku na rede…")
+                    } else {
+                        rokuDevices.take(4).forEach { device ->
+                            TextButton(
+                                onClick = {
+                                    pickerOpen = false
+                                    if (!RokuMirroringLauncher.openSystemCastSettings(context)) {
+                                        android.widget.Toast.makeText(
+                                            context, "Abra Smart View no painel rápido do celular",
+                                            android.widget.Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                },
+                            ) { Text(device.label + " • espelhar") }
+                        }
+                        if (rokuDevices.isEmpty()) {
+                            Text(
+                                text = if (scanError) "Não foi possível procurar Roku pela rede."
+                                    else "Nenhuma Roku localizada automaticamente.",
+                            )
+                        }
+                        TextButton(onClick = { scanVersion++ }) {
+                            Text("Pesquisar Roku novamente")
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            pickerOpen = false
+                            if (!RokuMirroringLauncher.openSystemCastSettings(context)) {
+                                android.widget.Toast.makeText(
+                                    context, "Abra Smart View no painel rápido do celular",
+                                    android.widget.Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
+                    ) { Text("Abrir Smart View / espelhamento") }
+                    Text(
+                        text = "Não precisa instalar aplicativo na Roku. " +
+                            "Se ela não aparecer na lista do Android, abra Smart View " +
+                            "nos atalhos rápidos, conecte à TV e volte ao ReiAnix. " +
+                            "Este modo espelha a tela do celular.",
+                        style = ReiAnixTokens.TypographyTokens.playerActionLabel,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { pickerOpen = false }) { Text("Fechar") }
+            },
+            shape = RoundedCornerShape(18.dp),
+            containerColor = Color(0xFF1B1B1D),
+            titleContentColor = ReiAnixTokens.Colors.playerControl,
+            textContentColor = ReiAnixTokens.Colors.playerControl,
+        )
     }
 }
 
