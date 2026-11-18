@@ -35,6 +35,32 @@ class RokuEcpClientTest {
         assertEquals("1", parsed.getQueryParameter("autoplay"))
     }
 
+    @Test fun rokuMediaPlayerStatusParsesRemotePositionAndState() {
+        val status = RokuEcpClient.parsePlaybackStatus(
+            """<player error="false" state="play">
+                <plugin id="dev" name="ReiAnix Receiver" />
+                <position>6916 ms</position>
+                <duration>887999 ms</duration>
+            </player>"""
+        )
+        assertEquals("play", status?.state)
+        assertEquals(6916L, status?.positionMs)
+        assertEquals(887999L, status?.durationMs)
+        assertTrue(status?.receiverActive == true)
+        assertFalse(status?.error == true)
+    }
+
+    @Test fun unrelatedRokuPlayerDoesNotLookLikeOurReceiver() {
+        val status = RokuEcpClient.parsePlaybackStatus(
+            """<player error="true" state="pause">
+                <plugin id="837" name="YouTube" />
+                <position>100 ms</position>
+            </player>"""
+        )
+        assertFalse(status?.receiverActive == true)
+        assertTrue(status?.error == true)
+    }
+
     @Test fun playbackFormatIsExplicitAndNeverPretendsToTranscode() {
         assertEquals("mp4", RokuEcpClient.streamFormat("video/mp4"))
         assertEquals("mkv", RokuEcpClient.streamFormat("video/x-matroska"))
