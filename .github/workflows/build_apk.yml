@@ -222,6 +222,14 @@ jobs:
             -PreianixBuildVersion="0.2.1" \
             :app:compileReleaseKotlin
 
+      - name: Test Roku discovery (no receiver / no ECP)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p android --no-daemon --console=plain \
+            :app:testDebugUnitTest --tests com.reianix.reianix_local.player.cast.RokuMirroringDiscoveryTest
+
       - name: Locate APK
         id: apk
         shell: bash
