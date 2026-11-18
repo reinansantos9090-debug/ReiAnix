@@ -30,6 +30,7 @@ on:
       - "android/app/src/test/kotlin/com/reianix/reianix_local/data/anilist/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/data/settings/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/home/**"
+      - "android/app/src/test/kotlin/com/reianix/reianix_local/ui/home/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/collector/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/host/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/library/**"
@@ -131,6 +132,7 @@ jobs:
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reianix.reianix_local.ReiAnixSettingsContractTest \
               --tests com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModelEpisodeSummaryTest \
+              --tests com.reianix.reianix_local.ui.home.ReiAnixLocalRecommendationPolicyTest \
               --tests com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
               --tests com.reianix.reianix_local.ReiAnixLibraryFiltersTest \
               --tests com.reianix.reianix_local.ReiAnixLibraryRefreshWindowTest \

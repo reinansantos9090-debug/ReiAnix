@@ -696,6 +696,9 @@ private fun ColumnScope.HomeReadyContent(
     val recentlyAdded = remember(animes) { buildRecentlyAddedItems(animes) }
     val recentlyWatched = remember(animes) { buildRecentlyWatchedItems(animes) }
     val favorites = remember(animes) { animes.filter { it.favorite }.distinctBy { it.id } }
+    val recommendations = remember(animes) {
+        ReiAnixLocalRecommendationPolicy.recommend(animes, limit = 8)
+    }
     val available = remember(animes) {
         topHomeItems(
             animes.asSequence().filter { it.availableContentCount > 0 }.distinctBy { it.id },
@@ -738,6 +741,18 @@ private fun ColumnScope.HomeReadyContent(
                     items = continueWatching,
                     showThumbnails = showThumbnails,
                     onWatch = onWatch,
+                    onSeeAll = onOpenLibrary,
+                )
+            }
+        }
+        if (recommendations.isNotEmpty()) {
+            item(key = "home-section-local-recommendations") {
+                HomeMediaSection(
+                    title = "Da sua biblioteca para você",
+                    items = recommendations,
+                    cardWidth = posterCardWidth,
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Sugestões personalizadas da biblioteca local",
                     onSeeAll = onOpenLibrary,
                 )
             }
