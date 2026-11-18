@@ -159,7 +159,7 @@ object MediaStoreScanner {
                 val baseVolumeUuid = volumeUuidCache.getOrPut(volumeName) { volumeUuid(context, volumeName) }
                 if(NativeIndex.canReuseMediaStoreVolume(context,volumeName,access,version,generation)){
                     val cachedGeneration=NativeIndex.cachedGeneration(context,scopeKey)
-                    val cachedCount=NativeIndex.forEachCachedBatch(context,scopeKey,NativeBatch.DEFAULT_SIZE) { batch,batchNumber ->
+                    val cachedCount=NativeIndex.forEachCachedBatch(context,scopeKey,NativeBatch.DEFAULT_SIZE,shouldCancel=shouldCancel) { batch,batchNumber ->
                         // Older physical-index generations predate parsedMedia/availability facts.
                         // Enrich the transient batch before publication without rewriting the
                         // cached snapshot or treating a cache hit as catalogue reconciliation.
@@ -209,13 +209,16 @@ object MediaStoreScanner {
                             .put("documents",batch))
                     }
                     files+=cachedCount;videos+=cachedCount
-                    volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",cachedGeneration).put("complete",true).put("reused",true).put("status",if(cachedCount==0) NativeIndex.STATUS_EMPTY_COMPLETE else NativeIndex.STATUS_COMPLETED)
+                    val cacheCancelled=shouldCancel()
+                    volumeScopes.put(JSONObject().put("volumeId",volumeName).put("scanGeneration",cachedGeneration).put("complete",!cacheCancelled).put("reused",true)
+                        .put("status",when { cacheCancelled -> NativeIndex.STATUS_CANCELLED; cachedCount==0 -> NativeIndex.STATUS_EMPTY_COMPLETE; else -> NativeIndex.STATUS_COMPLETED })
                         .put("generationId",NativeIndex.generationId(SOURCE,scopeKey,cachedGeneration))
                         .put("scanId",(scanId ?: "") + ":" + volumeName)
                         .put("scopeKind","volume").put("scopeRef",volumeName)
                         .put("batchCount",if(cachedCount==0) 0 else (cachedCount + NativeBatch.DEFAULT_SIZE - 1) / NativeBatch.DEFAULT_SIZE)
                         .put("processed",cachedCount).put("duplicates",0).put("removed",0))
-                    onProgress?.invoke(JSONObject().put("phase","reused").put("source",SOURCE).put("volumeId",volumeName).put("files",files).put("videos",videos))
+                    onProgress?.invoke(JSONObject().put("phase",if(cacheCancelled) "cancelled" else "reused").put("source",SOURCE).put("volumeId",volumeName).put("files",files).put("videos",videos))
+                    if(cacheCancelled){cancelled=true;break}
                     continue
                 }
                 val scopeMetadata=JSONObject().put("mediaStoreVersion",version).put("mediaStoreGeneration",generation).put("scanId",scanId ?: "")
