@@ -136,7 +136,7 @@ internal object SeekPreviewPolicy {
     fun bucketTimeMs(positionMs: Long, durationMs: Long): Long {
         if (durationMs <= 0L) return 0L
         val intervalMs = (durationMs / 100L).coerceIn(10_000L, 30_000L)
-        return ((positionMs.coerceIn(0L, durationMs) / intervalMs) * intervalMs)
-            .coerceAtMost((durationMs - 1L).coerceAtLeast(0L))
+        val lastValidMs = (durationMs - 1L).coerceAtLeast(0L)
+        return (positionMs.coerceIn(0L, lastValidMs) / intervalMs) * intervalMs
     }
 }
