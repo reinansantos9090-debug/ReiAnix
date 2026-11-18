@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.provider.Settings
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -91,6 +92,25 @@ internal object RokuMirroringDiscovery {
 /** Android, not ReiAnix, asks permission and connects to a wireless display. */
 internal object RokuMirroringLauncher {
     fun openSystemCastSettings(context: Context): Boolean {
+        // Best-effort Samsung shortcut: Smart View is an OEM system feature,
+        // not an independent APK. Availability/export status varies by One UI.
+        if (Build.MANUFACTURER.equals("samsung", ignoreCase = true)) {
+            try {
+                context.startActivity(
+                    Intent(Intent.ACTION_MAIN)
+                        .setClassName(
+                            "com.samsung.android.smartmirroring",
+                            "com.samsung.android.smartmirroring.welcome.WelcomeIntroActivity",
+                        )
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                return true
+            } catch (_: ActivityNotFoundException) {
+                // Older/newer One UI: use the public settings intent instead.
+            } catch (_: SecurityException) {
+                // Samsung may make this entry point private on this device.
+            }
+        }
         // OEM implementations may route the public Cast settings to Smart View.
         // Other devices can use the Smart View quick-settings tile instead.
         for (action in listOf(Settings.ACTION_CAST_SETTINGS, Settings.ACTION_DISPLAY_SETTINGS)) {
