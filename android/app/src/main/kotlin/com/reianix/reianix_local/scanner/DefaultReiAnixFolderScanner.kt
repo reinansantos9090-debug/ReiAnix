@@ -3,6 +3,8 @@ package com.reianix.reianix_local.scanner
 import android.content.ContentUris
 import android.content.Context
 import android.os.Build
+import android.os.CancellationSignal
+import android.os.OperationCanceledException
 import android.provider.MediaStore
 import android.util.Log
 import com.reianix.reianix_local.data.media.MediaFilenameParser
@@ -70,6 +72,7 @@ internal object DefaultReiAnixFolderScanner {
         context: Context,
         operationId: String,
         isCancelled: () -> Boolean,
+        cancellationSignal: CancellationSignal? = null,
     ): Discovery = withContext(Dispatchers.IO) {
         val items = ArrayList<NativeDiscoveredMedia>()
         val seenPaths = HashSet<String>()
@@ -110,7 +113,7 @@ internal object DefaultReiAnixFolderScanner {
                 val cursor = resolver.query(
                     collection, projection,
                     MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?",
-                    arrayOf("$FOLDER/%"), null,
+                    arrayOf("$FOLDER/%"), null, cancellationSignal,
                 )
                 if (cursor == null) {
                     errors.add("Provider returned no cursor: $collection")
@@ -175,6 +178,9 @@ internal object DefaultReiAnixFolderScanner {
                         )
                     }
                 }
+            } catch (_: OperationCanceledException) {
+                cancelled = true
+                break
             } catch (exception: CancellationException) {
                 throw exception
             } catch (exception: Exception) {
@@ -182,6 +188,7 @@ internal object DefaultReiAnixFolderScanner {
                 errors.add(exception.javaClass.simpleName + ": " + collection)
             }
         }
+        if (isCancelled()) cancelled = true
         Discovery(
             snapshot = snapshot(operationId, items, successfulQueries > 0, cancelled),
             readable = successfulQueries > 0,
