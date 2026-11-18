@@ -297,6 +297,33 @@ private fun ReiAnixCollectorJourneyScreen(
                 )
             }
             item {
+                MetricCard(
+                    firstLabel = "Horas concluídas",
+                    firstValue = (journey.completedDurationSeconds / 3600L).toString() + " h",
+                    secondLabel = "Formatos explorados",
+                    secondValue = journey.formatsExplored.toString(),
+                )
+            }
+            item {
+                Text("Atividade nos últimos 6 meses",
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Dias em que houve reprodução ou progresso registrado.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            items(journey.monthlyActivity, key = { it.month }) { month ->
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(month.month, style = MaterialTheme.typography.labelMedium)
+                    LinearProgressIndicator(
+                        progress = { (month.activeDays / 31f).coerceIn(0f, 1f) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(month.activeDays.toString() + " dias",
+                        style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            item {
                 Text("Títulos do colecionador", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
                     "Escolha apenas entre títulos realmente desbloqueados. A seleção é confirmada no SQLite antes de atualizar a interface.",
