@@ -66,6 +66,25 @@ class ReiAnixLocalRecommendationPolicyTest {
     }
 
     @Test
+    fun usesPreviouslyPlayedLocalTitlesAsGenreSignals() {
+        val playedDrama = anime(
+            id = 1,
+            title = "Previously played drama",
+            genres = listOf("Drama"),
+            action = "Reassistir",
+            lastPlayedAt = 42.0,
+        )
+        val dramaPick = anime(id = 2, title = "Drama pick", genres = listOf("Drama"))
+        val actionPick = anime(id = 3, title = "Action pick", genres = listOf("Action"))
+
+        val result = ReiAnixLocalRecommendationPolicy.recommend(
+            listOf(actionPick, dramaPick, playedDrama),
+        )
+
+        assertEquals(listOf(2L, 3L), result.map { it.id })
+    }
+
+    @Test
     fun usesRecentlyAddedOrderWhenNoLocalTasteSignalsExistAndHonorsLimit() {
         val older = anime(id = 1, title = "Older", addedAt = 10.0)
         val newer = anime(id = 2, title = "Newer", addedAt = 20.0)
@@ -89,6 +108,7 @@ class ReiAnixLocalRecommendationPolicyTest {
         action: String = "Assistir",
         available: Int = 1,
         addedAt: Double? = null,
+        lastPlayedAt: Double? = null,
     ): ReiAnixHomeAnimeUiModel = ReiAnixHomeAnimeUiModel(
         id = id,
         title = title,
@@ -102,5 +122,6 @@ class ReiAnixLocalRecommendationPolicyTest {
         playbackActionLabel = action,
         isWatching = watching,
         addedAt = addedAt,
+        lastPlayedAt = lastPlayedAt,
     )
 }
