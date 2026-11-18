@@ -228,7 +228,8 @@ private fun ReiAnixCollectorJourneyScreen(
 
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .weight(1f)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -304,7 +305,7 @@ private fun ReiAnixCollectorJourneyScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            items(journey.titles) { title ->
+            items(journey.titles, key = { "title:" + it.id }) { title ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -347,7 +348,7 @@ private fun ReiAnixCollectorJourneyScreen(
             item {
                 Text("Conquistas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
-            items(journey.achievements) { achievement ->
+            items(journey.achievements, key = { "achievement:" + it.id }) { achievement ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
