@@ -222,13 +222,13 @@ jobs:
             -PreianixBuildVersion="0.2.1" \
             :app:compileReleaseKotlin
 
-      - name: Test direct Roku ECP playback contract
+      - name: Validate Web Video Caster handoff
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --console=plain \
-            :app:testDebugUnitTest --tests com.reianix.reianix_local.player.cast.RokuEcpClientTest
+            :app:testDebugUnitTest --tests com.reianix.reianix_local.player.cast.WebVideoCasterHandoffTest
 
       - name: Locate APK
         id: apk
