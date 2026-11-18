@@ -1370,7 +1370,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     try {
                         player.prepare()
                         castController?.onLocalMediaPrepared()
-        rokuController?.onLocalMediaPrepared()
+                        rokuController?.onLocalMediaPrepared()
                     } catch (error: Exception) {
                         logPlayer(
                             "MEDIA3_PREPARE_FAILED requestId=" + requestId.ifEmpty { "-" } +
