@@ -9,6 +9,8 @@ import android.content.Context
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
+import android.os.CancellationSignal
+import android.os.OperationCanceledException
 import android.os.Handler
 import android.os.Looper
 import android.os.storage.StorageManager
@@ -121,7 +123,7 @@ object MediaStoreScanner {
         val candidate = relativePath.trim().trim('/').replace("\\", "/")
         return candidate == root || candidate.startsWith(root + "/")
     }
-    fun scan(context: Context,onProgress:((JSONObject)->Unit)?=null,shouldCancel:()->Boolean={false},scanId:String?=null,onBatch:((JSONObject)->Unit)?=null,libraryScopes:Collection<LibraryScope> = emptyList()):JSONObject {
+    fun scan(context: Context,onProgress:((JSONObject)->Unit)?=null,shouldCancel:()->Boolean={false},scanId:String?=null,onBatch:((JSONObject)->Unit)?=null,libraryScopes:Collection<LibraryScope> = emptyList(),cancellationSignal:CancellationSignal?=null):JSONObject {
         check(hasReadPermission(context)){"Permissão de vídeos não concedida."}
         val authorizedScopes = libraryScopes.toList()
         if(authorizedScopes.isEmpty()){
@@ -253,17 +255,35 @@ object MediaStoreScanner {
                 val orderByName = MediaStore.Video.Media.DISPLAY_NAME + " COLLATE NOCASE ASC"
                 val columns = projection.toTypedArray()
                 val scopedCursor = if (relativePathSelection != null) {
-                    runCatching {
-                        resolver.query(collection, columns, relativePathSelection, relativePathArgs, orderByName)
-                    }.getOrNull()
+                    try {
+                        resolver.query(collection, columns, relativePathSelection, relativePathArgs, orderByName, cancellationSignal)
+                    } catch (_: OperationCanceledException) {
+                        cancelled = true
+                        localCancelled = true
+                        null
+                    }
                 } else null
-                val useFullScan = scopedCursor == null ||
-                    runCatching { scopedCursor.count == 0 }.getOrDefault(true)
-                val cursorToRead = if (useFullScan) {
-                    scopedCursor?.close()
-                    resolver.query(collection, columns, null, null, orderByName)
-                } else scopedCursor
-                cursorToRead?.use{cursor->
+                val useFullScan = !localCancelled && (scopedCursor == null ||
+                    runCatching { scopedCursor.count == 0 }.getOrDefault(true))
+                val cursorToRead = when {
+                    localCancelled -> null
+                    useFullScan -> {
+                        scopedCursor?.close()
+                        try {
+                            resolver.query(collection, columns, null, null, orderByName, cancellationSignal)
+                        } catch (_: OperationCanceledException) {
+                            cancelled = true
+                            localCancelled = true
+                            null
+                        }
+                    }
+                    else -> scopedCursor
+                }
+                try {
+                    if (cursorToRead == null && !localCancelled) {
+                        localErrors.put("O MediaStore não conseguiu consultar o volume "+volumeName+".")
+                    }
+                    cursorToRead?.use{cursor->{
                     val idCol=cursor.getColumnIndex(MediaStore.Video.Media._ID);val nameCol=cursor.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
                     val mimeCol=cursor.getColumnIndex(MediaStore.Video.Media.MIME_TYPE);val sizeCol=cursor.getColumnIndex(MediaStore.Video.Media.SIZE)
                     val modCol=cursor.getColumnIndex(MediaStore.Video.Media.DATE_MODIFIED);val relCol=if(Build.VERSION.SDK_INT>=29)cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)else -1
@@ -312,7 +332,13 @@ object MediaStoreScanner {
                         ));videos++;volumeVideos++
                         if(videos%100==0)onProgress?.invoke(JSONObject().put("phase","scanning").put("source",SOURCE).put("volumeId",volumeName).put("files",files).put("videos",videos))
                     }
-                }?:localErrors.put("O MediaStore não conseguiu consultar o volume "+volumeName+".")
+                    }
+                } catch (_: OperationCanceledException) {
+                    // A provider can surface cancellation while advancing the returned cursor.
+                    // Preserve batches already discovered and close the generation as CANCELLED.
+                    cancelled = true
+                    localCancelled = true
+                }
                 if(!localCancelled && !cancelled && localErrors.length()==0 && StorageAuthorization.canReconcileMediaStore(accessState)) {
                     val postVersion=if(Build.VERSION.SDK_INT>=29)runCatching{MediaStore.getVersion(context,volumeName)}.getOrDefault(version) else version
                     val postGeneration=if(Build.VERSION.SDK_INT>=30)runCatching{MediaStore.getGeneration(context,volumeName)}.getOrDefault(generation) else generation
@@ -328,9 +354,14 @@ object MediaStoreScanner {
                         val stableGeneration=if(Build.VERSION.SDK_INT>=30)runCatching{MediaStore.getGeneration(context,volumeName)}.getOrDefault(postGeneration) else postGeneration
                         val changedAfterWait=consumeChangeNotification()
                         val probeHasMedia=if(!localCancelled && !cancelled && localErrors.length()==0){
-                            runCatching{
-                                resolver.query(collection,arrayOf(MediaStore.Video.Media._ID),null,null,null)?.use{probe->probe.moveToFirst()} ?: false
-                            }.getOrElse{
+                            try {
+                                resolver.query(collection,arrayOf(MediaStore.Video.Media._ID),null,null,null,cancellationSignal)
+                                    ?.use{probe->probe.moveToFirst()} ?: false
+                            } catch (_: OperationCanceledException) {
+                                cancelled = true
+                                localCancelled = true
+                                false
+                            } catch (exception: Exception) {
                                 localErrors.put("O MediaStore não conseguiu concluir a verificação de estabilidade do volume "+volumeName+".")
                                 false
                             }
