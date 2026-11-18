@@ -1327,15 +1327,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     initialPositionMsForGeneration = startupPositionMs.coerceAtLeast(0L)
 
                     val subtitleTracks = deferredSubtitleCache[localUri.toString()].orEmpty()
+                    val mimeHint = PlayerMediaPolicy.resolveVideoMimeType(
+                        contentMimeType,
+                        mediaDisplayName ?: localUri.lastPathSegment,
+                    )
                     val mediaItem = buildMediaItem(
                         mediaUri = localUri,
-                        mimeType = null,
+                        mimeType = mimeHint,
                         subtitleTracks = subtitleTracks,
                     )
                     logPlayer(
                         "MEDIA_ITEM requestId=" + requestId.ifEmpty { "-" } +
                             " uri=" + mediaItem.localConfiguration?.uri +
-                            " mime=auto subtitleCount=" + subtitleTracks.size +
+                            " mime=" + (mimeHint ?: "auto") +
+                            " displayName=" + (mediaDisplayName ?: "-") +
+                            " subtitleCount=" + subtitleTracks.size +
                             " reason=" + reason,
                     )
 
