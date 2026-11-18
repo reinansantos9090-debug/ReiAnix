@@ -2869,7 +2869,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                 castController?.isLoading == true
                             ) {
                                 Toast.makeText(
-                                    this, "Desconecte o Chromecast antes de usar Roku",
+                                    this@NativePlayerActivity, "Desconecte o Chromecast antes de usar Roku",
                                     Toast.LENGTH_SHORT,
                                 ).show()
                             } else {
