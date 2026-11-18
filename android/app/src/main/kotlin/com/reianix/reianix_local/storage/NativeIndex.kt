@@ -956,6 +956,7 @@ object NativeIndex {
         context: Context,
         scopeKey: String,
         batchSize: Int = BATCH_SIZE,
+        shouldCancel: () -> Boolean = { false },
         onBatch: (JSONArray, Int) -> Unit,
     ): Int = synchronized(this) {
         val scope = scopes(read(context)).optJSONObject(scopeKey) ?: return@synchronized 0
@@ -967,7 +968,7 @@ object NativeIndex {
             ) != null
         ) {
             var sequence = 0
-            return@synchronized NativeBatch.readNdjsonBatches(committed, batchSize) {
+            return@synchronized NativeBatch.readNdjsonBatches(committed, batchSize, shouldCancel) {
                 sequence += 1
                 onBatch(it, sequence)
             }
@@ -979,7 +980,7 @@ object NativeIndex {
         var batch = JSONArray()
         var total = 0
         val keys = items.keys()
-        while (keys.hasNext()) {
+        while (keys.hasNext() && !shouldCancel()) {
             val item = items.optJSONObject(keys.next()) ?: continue
             val document = JSONObject(item.toString()).also { it.remove("fingerprint") }
             batch.put(document)
