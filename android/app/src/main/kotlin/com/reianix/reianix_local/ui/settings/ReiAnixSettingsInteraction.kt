@@ -59,6 +59,7 @@ fun Modifier.settingsClickable(
  */
 internal fun settingsIcon(key: String): ImageVector = when (key) {
     "app.confirm_destructive" -> Icons.Filled.Security
+    "releases.notifications" -> Icons.Filled.NotificationsActive
     "player.reset" -> Icons.Filled.RestartAlt
     "metadata.anilist_enabled" -> Icons.Filled.Public
     "metadata.auto_match" -> Icons.Filled.AutoFixHigh
