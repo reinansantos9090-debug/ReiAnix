@@ -8,6 +8,7 @@ import com.reianix.reianix_local.player.LocalSubtitleResolver
 import com.reianix.reianix_local.player.NativePlayerRequest
 import com.reianix.reianix_local.player.PlayerLocalMetadataStore
 import com.reianix.reianix_local.player.PlayerMediaPolicy
+import com.reianix.reianix_local.player.ExternalVideoChooser
 import com.reianix.reianix_local.player.PlayerStartupMetrics
 import com.reianix.reianix_local.player.PlayerTimeFormatter
 import com.reianix.reianix_local.player.cast.ReiAnixCastController
@@ -791,7 +792,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
             sleepTimerDeadlineMs = savedInstanceState?.getLong("sleep_timer_deadline_ms", 0L) ?: 0L
             sleepTimerPaused = savedInstanceState?.getBoolean("sleep_timer_paused", false) ?: false
             if (sleepTimerDeadlineMs > 0L) handler.post(sleepTimerTick)
-            initializeGoogleCast()
             prepareCurrentMedia("initial", savedInstanceState?.takeIf { it.containsKey("play_when_ready") }?.getBoolean("play_when_ready"))
         } catch (exception: Exception) {
             if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
@@ -2638,6 +2638,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             touchControls()
                             syncComposePlayerUiState()
                         },
+                        onOpenWithExternal = { openCurrentVideoExternally() },
                         onPictureInPicture = { requestPictureInPicture() },
                         onHistory = { showPlaybackHistory() },
                         onInformation = { showTechnicalInfo() },
@@ -2754,6 +2755,34 @@ override fun onCreate(savedInstanceState: Bundle?) {
         ).also { it.start() }
     }
 
+    /**
+     * Delegate playback to an app chosen through Android's own "Abrir com".
+     * ReiAnix grants access to only this video; no TV discovery or Google Cast
+     * connection is involved. The local video remains intact.
+     */
+    private fun openCurrentVideoExternally() {
+        setMorePanelVisible(false)
+        if (!::uri.isInitialized || !::player.isInitialized || player.currentMediaItem == null) {
+            Toast.makeText(this, "Abra um vídeo local antes de escolher o aplicativo", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val chooser = ExternalVideoChooser.createIntent(this, uri)
+            startActivity(chooser)
+            player.pause()
+            playbackWasRequestedBeforeStop = false
+            saveProgress("player_progress", force = true)
+            syncComposePlayerUiState()
+        } catch (error: Exception) {
+            Log.w("NativePlayerActivity", "EXTERNAL_VIDEO_OPEN_FAILED", error)
+            Toast.makeText(
+                this,
+                "Não foi possível abrir o vídeo em outro aplicativo",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
     private fun installComposePlayerControls() {
         composeControlsEnabled = true
 
@@ -2765,7 +2794,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerTopControls(
                         state = composePlayerUiState.value,
                         onBack = { finishPlayer("back_button") },
-                        onToggleLock = { setLocked(!locked) },
                     )
                 }
             }
