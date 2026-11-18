@@ -403,6 +403,7 @@ fun ReiAnixNativePlayerBottomControls(
     state: ReiAnixNativePlayerUiState,
     onSeekTo: (Long) -> Unit,
     mediaUri: String? = null,
+    onScrubInteraction: (Boolean) -> Unit = {},
     onToggleLock: () -> Unit,
     onResize: () -> Unit,
     onSource: () -> Unit,
@@ -609,6 +610,7 @@ fun ReiAnixNativePlayerBottomControls(
                 Slider(
                     value = sliderFraction,
                     onValueChange = {
+                        if (!userDragging) onScrubInteraction(true)
                         userDragging = true
                         sliderFraction = it.coerceIn(0f, 1f)
                     },
@@ -621,6 +623,7 @@ fun ReiAnixNativePlayerBottomControls(
                             )
                         }
                         userDragging = false
+                        onScrubInteraction(false)
                     },
                     enabled = duration > 0L && !state.episodeTransitionInProgress,
                     modifier = Modifier
