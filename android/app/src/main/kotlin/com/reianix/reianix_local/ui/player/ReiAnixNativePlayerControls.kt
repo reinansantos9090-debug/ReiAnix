@@ -3,6 +3,7 @@ package com.reianix.reianix_local.ui.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -211,17 +212,24 @@ fun ReiAnixNativePlayerCenterControls(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
+        // Anchor all three actions to the SAME geometric center. The two seek
+        // buttons use equal and opposite offsets, independent of screen aspect ratio
+        // and independent of the visual shape of the mirrored seek glyph.
+        BoxWithConstraints(
             modifier = Modifier
                 .widthIn(max = ReiAnixTokens.PlayerDimensions.centerControlsMaxWidth)
                 .fillMaxWidth()
                 .padding(horizontal = ReiAnixTokens.PlayerDimensions.centerHorizontalPadding),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            contentAlignment = Alignment.Center,
         ) {
+            val seekDistance =
+                ((maxWidth - ReiAnixTokens.PlayerDimensions.seekButtonSize) / 2)
+                    .coerceAtLeast(0.dp)
             Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.CenterStart,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(x = -seekDistance),
+                contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
                     icon = Icons.Filled.Replay,
@@ -234,7 +242,7 @@ fun ReiAnixNativePlayerCenterControls(
             }
 
             Box(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.align(Alignment.Center),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -306,8 +314,10 @@ fun ReiAnixNativePlayerCenterControls(
             }
 
             Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.CenterEnd,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(x = seekDistance),
+                contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
                     icon = Icons.Filled.Replay,
@@ -555,7 +565,7 @@ fun ReiAnixNativePlayerBottomControls(
                 contentDescription = "Bloquear toques",
                 onClick = onToggleLock,
                 enabled = !state.episodeTransitionInProgress,
-                iconOpticalOffsetY = 2.dp,
+                iconOpticalOffsetY = (-2).dp,
             )
             PlayerBottomAction(
                 icon = Icons.Filled.PlaylistPlay,
@@ -631,8 +641,8 @@ private fun RowScope.PlayerBottomAction(
                     active -> ReiAnixTokens.Colors.primary
                     else -> ReiAnixTokens.Colors.playerControl
                 },
-                // Move the artwork, not the shared 48dp hit target or row baseline.
-                // The Lock vector's visible center sits higher than the other icons.
+                // Shift only the Lock artwork to match the other glyphs' optical centers.
+                // The shared button bounds, hit target and row baseline stay unchanged.
                 modifier = Modifier
                     .size(ReiAnixTokens.PlayerDimensions.actionIconSize)
                     .offset(y = iconOpticalOffsetY),
