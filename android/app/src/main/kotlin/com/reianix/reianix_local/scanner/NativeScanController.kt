@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.scanner
 
 
+import android.os.CancellationSignal
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +28,7 @@ object NativeScanController {
         val cancelled: AtomicBoolean,
         val sourceKey: String?,
         val startedAtMillis: Long,
+        var cancellationSignal: CancellationSignal? = null,
     )
 
     private val tokens = ConcurrentHashMap<String, Token>()
@@ -64,6 +66,15 @@ object NativeScanController {
     fun isCancelled(scanId: String): Boolean =
         tokens[scanId]?.cancelled?.get() == true
 
+    /** Lazily create a query signal so JVM coordinator tests stay platform-independent. */
+    @Synchronized
+    fun cancellationSignal(scanId: String): CancellationSignal? {
+        val token = tokens[scanId] ?: return null
+        val signal = token.cancellationSignal ?: CancellationSignal().also { token.cancellationSignal = it }
+        if (token.cancelled.get()) signal.cancel()
+        return signal
+    }
+
     @Synchronized
     fun launch(scanId: String, block: suspend CoroutineScope.() -> Unit): Boolean {
         if (!tokens.containsKey(scanId) || jobs.containsKey(scanId)) return false
@@ -85,6 +96,7 @@ object NativeScanController {
         val current = snapshot(scanId) ?: return false
         if (current.state.isTerminal) return false
         token.cancelled.set(true)
+        token.cancellationSignal?.cancel()
         putSnapshot(
             current.copy(
                 state = ScanLifecycleState.CANCELLATION_REQUESTED,
