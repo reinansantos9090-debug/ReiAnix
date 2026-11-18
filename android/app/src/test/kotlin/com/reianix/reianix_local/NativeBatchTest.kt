@@ -5,7 +5,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 import com.reianix.reianix_local.storage.NativeBatch
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import org.junit.Assert.assertEquals
