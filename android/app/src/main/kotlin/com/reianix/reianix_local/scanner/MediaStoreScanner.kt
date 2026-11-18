@@ -282,7 +282,10 @@ object MediaStoreScanner {
                 }
                 val useFullScan = !localCancelled && scopedCursorEmpty
                 val cursorToRead = when {
-                    localCancelled -> null
+                    localCancelled -> {
+                        scopedCursor?.close()
+                        null
+                    }
                     useFullScan -> {
                         scopedCursor?.close()
                         if (shouldCancel()) {
