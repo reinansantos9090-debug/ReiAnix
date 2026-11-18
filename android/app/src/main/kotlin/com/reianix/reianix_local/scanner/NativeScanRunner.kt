@@ -1103,7 +1103,8 @@ object NativeScanRunner {
                         batch.optLong("generation", NativeIndex.cachedGeneration(appContext, "mediastore:" + volume)),
                         batch,
                     )
-                    }
+                    },
+                    cancellationSignal = NativeScanController.cancellationSignal(scanId),
                 )
                 result.put("requestId", requestId ?: "").put("scanId", scanId)
                     .put("scopeKind", "global").put("scopeRef", MediaStoreScanner.SOURCE)
