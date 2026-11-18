@@ -100,10 +100,11 @@ class ReiAnixReleaseWorker(context: Context, params: WorkerParameters) :
         val checked = prefs.getLong("last_checked", now.toLong()).coerceAtLeast(0L)
         val from = maxOf(now.toLong() - 48L * 3600L, checked - 1800L)
             .coerceIn(0L, now.toLong()).toInt()
-        val candidates = try {
+        val candidates: Map<Int, String> = try {
             val db = ReiAnixAppDependencies.from(context).sqliteDatabase
             withContext(Dispatchers.IO) {
                 db.read { connection ->
+                    val matches = linkedMapOf<Int, String>()
                     connection.rawQuery(
                         """SELECT a.anilist_id, MIN(a.title) AS title
                            FROM anime a
@@ -115,14 +116,13 @@ class ReiAnixReleaseWorker(context: Context, params: WorkerParameters) :
                            LIMIT 100""",
                         null,
                     ).use { cursor ->
-                        buildMap {
-                            while (cursor.moveToNext()) {
-                                val id = cursor.getLong(0).takeIf { it in 1..Int.MAX_VALUE.toLong() }
-                                    ?.toInt() ?: continue
-                                put(id, cursor.getString(1) ?: "Anime")
-                            }
+                        while (cursor.moveToNext()) {
+                            val rawId = cursor.getLong(0)
+                            if (rawId <= 0L || rawId > Int.MAX_VALUE.toLong()) continue
+                            matches[rawId.toInt()] = cursor.getString(1) ?: "Anime"
                         }
                     }
+                    matches
                 }
             }
         } catch (_: Exception) { return Result.retry() }
