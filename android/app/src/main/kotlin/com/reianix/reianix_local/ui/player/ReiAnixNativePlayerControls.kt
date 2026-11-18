@@ -639,6 +639,10 @@ private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
                 object : MediaRouteButton(context) {
                     override fun onDraw(canvas: android.graphics.Canvas) {
                         val saveCount = canvas.save()
+                        // The native Cast indicator sits optically higher than the three
+                        // Compose action glyphs. Center its drawing without moving the
+                        // 48.dp button, so its touch target and row layout stay unchanged.
+                        canvas.translate(0f, 2f * resources.displayMetrics.density)
                         canvas.scale(0.8f, 0.8f, width / 2f, height / 2f)
                         super.onDraw(canvas)
                         canvas.restoreToCount(saveCount)
