@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component name="MainScene" extends="Scene">
+  <interface>
+    <function name="playContent" />
+    <function name="controlPlayback" />
+  </interface>
+  <children>
+    <Rectangle width="1920" height="1080" color="0x111115FF" />
+    <Video id="video" width="1920" height="1080" visible="false" />
+    <Label id="status" text="ReiAnix Receiver • aguardando vídeo" width="1920"
+           horizAlign="center" vertAlign="center" translation="[0, 510]" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+</component>
