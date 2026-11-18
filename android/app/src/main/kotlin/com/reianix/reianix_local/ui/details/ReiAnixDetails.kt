@@ -242,6 +242,7 @@ fun ReiAnixDetailsRoute(
 
     ReiAnixDetailsScreen(
         state = state,
+        associationRevision = aniListState.associationRevision,
         showThumbnails = showThumbnails,
         onBack = { navController.popBackStack() },
         onRetry = { viewModel.refreshDetails(canonicalId) },
@@ -293,6 +294,7 @@ fun ReiAnixDetailsRoute(
 @Composable
 fun ReiAnixDetailsScreen(
     state: ReiAnixDetailsUiState,
+    associationRevision: Long = 0L,
     showThumbnails: Boolean = true,
     onBack: () -> Unit,
     onRetry: () -> Unit,
@@ -324,6 +326,7 @@ fun ReiAnixDetailsScreen(
                 state.anime?.let { anime ->
                     ReiAnixDetailsReady(
                         anime = anime,
+                        associationRevision = associationRevision,
                         showThumbnails = showThumbnails,
                         onBack = onBack,
                         onRefresh = onRetry,
@@ -485,6 +488,7 @@ private fun DetailsSkeletonButton(modifier: Modifier = Modifier) {
 @Composable
 private fun ColumnScope.ReiAnixDetailsReady(
     anime: ReiAnixDetailsAnimeUiModel,
+    associationRevision: Long,
     showThumbnails: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
@@ -617,7 +621,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
             contentType = "details-about",
         ) {
             Column {
-                DetailsAboutSection(anime = anime)
+                DetailsAboutSection(anime = anime, associationRevision = associationRevision)
                 ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
             }
         }
@@ -1460,7 +1464,7 @@ private fun DetailsExpandableSynopsis(description: String) {
 }
 
 @Composable
-private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
+private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel, associationRevision: Long) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
         anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
@@ -1470,7 +1474,7 @@ private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
         // not inside the personal experience panel or behind a button.
         ReiAnixMetadataCharacters(
             animeId = anime.id,
-            metadataRevision = anime.metadataAvailability.name + ":" + anime.presentationState.name,
+            metadataRevision = associationRevision.toString() + ":" + anime.metadataAvailability.name + ":" + anime.presentationState.name,
         )
         val knownTitles = sequenceOf(
             anime.title,
