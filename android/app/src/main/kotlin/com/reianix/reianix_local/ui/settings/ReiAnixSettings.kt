@@ -639,6 +639,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("app.confirm_destructive", it.toString()) },
                         )
                     }
+                    item(key = "setting:releases.notifications") {
+                        ReiAnixReleaseAlertsSetting()
+                    }
                 }
 
                 "Player" -> {
