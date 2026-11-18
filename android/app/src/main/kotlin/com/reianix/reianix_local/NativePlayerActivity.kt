@@ -3567,7 +3567,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             append("Arquivo: ").append(mediaDisplayName ?: uri.lastPathSegment.orEmpty().ifBlank { "desconhecido" }).append('\n')
             append("MIME: ").append(contentMimeType ?: "não informado").append('\n')
             mediaSizeBytes?.let { append("Tamanho: ").append(it).append(" bytes").append('\n') }
-            append("Duração: ").append(formatTime(player.duration.coerceAtLeast(0L))).append('\n')
+            append("Duração: ").append(formatTime(effectiveDurationMs())).append('\n')
             append("Velocidade: ").append(String.format(Locale.US, "%.2fx", player.playbackParameters.speed)).append('\n')
             append("Decodificador vídeo: ").append(decoderVideoName ?: "não informado").append('\n')
             append("Decodificador áudio: ").append(decoderAudioName ?: "não informado").append('\n')
@@ -5408,7 +5408,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun updateMetadataControls(positionMs: Long) {
         if (!::root.isInitialized) return
         val position = positionMs.coerceAtLeast(0L)
-        val duration = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
+        val duration = effectiveDurationMs().takeIf { it > 0L }
         val opening = localMetadata.opening?.takeIf { duration == null || it.endMs <= duration }
         val ending = localMetadata.ending?.takeIf { duration == null || it.endMs <= duration }
         findViewByTag<TextView>("reianix_skip_opening")?.visibility =
@@ -5496,7 +5496,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val openingEndMs = parseTimestampMs(openingEnd.text?.toString())
                 val endingStartMs = parseTimestampMs(endingStart.text?.toString())
                 val endingEndMs = parseTimestampMs(endingEnd.text?.toString())
-                val durationMs = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
+                val durationMs = effectiveDurationMs().takeIf { it > 0L }
                 val fields = listOf(openingStart, openingEnd, endingStart, endingEnd)
                 val parsed = listOf(openingStartMs, openingEndMs, endingStartMs, endingEndMs)
                 if (fields.zip(parsed).any { (field, value) -> !field.text.isNullOrBlank() && value == null } ||
