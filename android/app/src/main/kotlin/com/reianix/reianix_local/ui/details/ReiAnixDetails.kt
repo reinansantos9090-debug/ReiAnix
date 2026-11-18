@@ -108,6 +108,7 @@ import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
 import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
 import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
 import com.reianix.reianix_local.ui.navigation.navigateToPlayer
+import com.reianix.reianix_local.ui.navigation.navigateToDetails
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveBreakpoints
 import com.reianix.reianix_local.ui.theme.ReiAnixWindowWidthClass
@@ -255,6 +256,7 @@ fun ReiAnixDetailsRoute(
             }
         },
         onToggleFavorite = viewModel::toggleFavorite,
+        onOpenRecommendedAnime = { recommendedId -> navController.navigateToDetails(recommendedId.toString(), origin) },
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
         onSelectSource = viewModel::selectSafTree,
         onManageAniList = { showAniListDialog = true },
@@ -296,6 +298,7 @@ fun ReiAnixDetailsScreen(
     onRetry: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    onOpenRecommendedAnime: (Long) -> Unit = {},
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
     onSelectSource: () -> Unit = onRetry,
     onManageAniList: () -> Unit = {},
@@ -326,6 +329,7 @@ fun ReiAnixDetailsScreen(
                         onRefresh = onRetry,
                         onWatch = onWatch,
                         onToggleFavorite = onToggleFavorite,
+                        onOpenRecommendedAnime = onOpenRecommendedAnime,
                         onSetEpisodeWatched = onSetEpisodeWatched,
                         onManageAniList = onManageAniList,
                         onOpenMarathon = onOpenMarathon,
@@ -486,6 +490,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onRefresh: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    onOpenRecommendedAnime: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
     onOpenMarathon: () -> Unit,
@@ -612,7 +617,10 @@ private fun ColumnScope.ReiAnixDetailsReady(
             key = "details-about:" + anime.stableKey,
             contentType = "details-about",
         ) {
-            DetailsAboutSection(anime = anime)
+            Column {
+                DetailsAboutSection(anime = anime)
+                ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
+            }
         }
 
         if (hasSeasons) {
