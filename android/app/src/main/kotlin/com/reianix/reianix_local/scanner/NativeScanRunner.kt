@@ -586,6 +586,7 @@ object NativeScanRunner {
                     onScanProgress,
                     shouldCancelScan,
                     scanId,
+                    cancellationSignal = NativeScanController.cancellationSignal(scanId),
                 ) { batch ->
                     NativeScanPublisher.publish(
                         appContext,
