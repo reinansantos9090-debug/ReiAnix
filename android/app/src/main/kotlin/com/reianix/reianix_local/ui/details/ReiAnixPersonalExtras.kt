@@ -1,8 +1,9 @@
 package com.reianix.reianix_local.ui.details
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -27,13 +27,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.ui.ReiAnixSecondaryButton
+import kotlinx.coroutines.CancellationException
 import com.reianix.reianix_local.data.anilist.AniListResult
+import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter
 import com.reianix.reianix_local.data.personal.ReiAnixCharacterCache
 import com.reianix.reianix_local.data.personal.ReiAnixLocalRecommendation
@@ -45,8 +58,8 @@ import java.util.Locale
 
 /**
  * Supplementary content is absent from the initial library projection.
- * Ratings/status use two local preference rows; characters and recommendations
- * load only after an explicit tap. No new cover/metadata search is triggered.
+ * Ratings stay locally persisted; recommendations load only after an explicit tap.
+ * Character imagery is rendered with other anime metadata, not in this panel.
  */
 @Composable
 fun ReiAnixPersonalExtras(
@@ -61,18 +74,12 @@ fun ReiAnixPersonalExtras(
             dependencies.sqliteLibraryRepository,
         )
     }
-    val charactersRepository = remember(dependencies) {
-        ReiAnixCharacterCache(context, dependencies.aniListClient)
-    }
     val scope = rememberCoroutineScope()
     var personal by remember(animeId) { mutableStateOf(ReiAnixPersonalAnimeState()) }
     var ratingSlider by remember(animeId) { mutableFloatStateOf(0f) }
     var isLoaded by remember(animeId) { mutableStateOf(false) }
     var saving by remember(animeId) { mutableStateOf(false) }
-    var statusMenu by remember(animeId) { mutableStateOf(false) }
     var error by remember(animeId) { mutableStateOf<String?>(null) }
-    var characters by remember(animeId) { mutableStateOf<List<ReiAnixAnimeCharacter>?>(null) }
-    var charactersBusy by remember(animeId) { mutableStateOf(false) }
     var recommendations by remember(animeId) { mutableStateOf<List<ReiAnixLocalRecommendation>?>(null) }
     var recommendationsBusy by remember(animeId) { mutableStateOf(false) }
 
@@ -82,16 +89,6 @@ fun ReiAnixPersonalExtras(
             ratingSlider = (it.ratingTenths ?: 0).toFloat()
         }.onFailure { error = "Não foi possível ler suas preferências." }
         isLoaded = true
-    }
-
-    fun saveStatus(value: ReiAnixWatchStatus?) {
-        if (saving) return
-        saving = true
-        scope.launch {
-            try { personal = service.setStatus(animeId, value); error = null }
-            catch (_: Exception) { error = "Não foi possível salvar a lista." }
-            finally { saving = false }
-        }
     }
 
     fun saveRating(value: Int?) {
@@ -110,28 +107,9 @@ fun ReiAnixPersonalExtras(
     ) {
         HorizontalDivider()
         Text("Minha experiência", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text("Listas e avaliações armazenadas somente neste dispositivo.",
+        Text("Avaliações pessoais armazenadas somente neste dispositivo.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column {
-                OutlinedButton(onClick = { statusMenu = true }, enabled = isLoaded && !saving) {
-                    Text(personal.status?.label ?: "Adicionar à lista")
-                }
-                DropdownMenu(expanded = statusMenu, onDismissRequest = { statusMenu = false }) {
-                    ReiAnixWatchStatus.entries.forEach { status ->
-                        DropdownMenuItem(text = { Text(status.label) }, onClick = {
-                            statusMenu = false
-                            saveStatus(status)
-                        })
-                    }
-                    DropdownMenuItem(text = { Text("Remover da lista") }, onClick = {
-                        statusMenu = false
-                        saveStatus(null)
-                    })
-                }
-            }
-        }
         Text("Minha nota: " + (personal.ratingTenths?.let {
             String.format(Locale.forLanguageTag("pt-BR"), "%.1f / 10", it / 10.0)
         } ?: "Sem avaliação"))
@@ -154,60 +132,6 @@ fun ReiAnixPersonalExtras(
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         HorizontalDivider()
 
-        Text("Personagens", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        OutlinedButton(
-            onClick = {
-                if (charactersBusy) return@OutlinedButton
-                charactersBusy = true
-                error = null
-                scope.launch {
-                    try {
-                        val aniListId = dependencies.sqliteLibraryRepository.getAnime(animeId)
-                            ?.anilistId?.toInt()?.takeIf { it > 0 }
-                        characters = if (aniListId == null) {
-                            error = "Este anime ainda não possui um ID confirmado no AniList."
-                            emptyList()
-                        } else when (val result = charactersRepository.load(aniListId)) {
-                            is AniListResult.Success -> result.value
-                            is AniListResult.Failure -> {
-                                error = "Não foi possível carregar os personagens. Tente novamente."
-                                null
-                            }
-                        }
-                    } catch (_: Exception) {
-                        error = "Não foi possível carregar os personagens."
-                    } finally { charactersBusy = false }
-                }
-            },
-            enabled = !charactersBusy,
-        ) {
-            Text(if (charactersBusy) "Carregando…" else "Ver personagens")
-        }
-        characters?.let { loaded ->
-            if (loaded.isEmpty()) {
-                Text("Nenhum personagem disponível.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(loaded, key = { it.id }) { character ->
-                        Card(modifier = Modifier.width(112.dp)) {
-                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                AsyncImage(
-                                    model = character.imageUrl,
-                                    contentDescription = character.name,
-                                    modifier = Modifier.fillMaxWidth().height(132.dp),
-                                )
-                                Text(character.name, style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(character.role, style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        HorizontalDivider()
         Text("Recomendações para você", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text("Sugestões da sua biblioteca, calculadas localmente por gêneros e favoritos.",
             style = MaterialTheme.typography.bodySmall,
@@ -238,5 +162,156 @@ fun ReiAnixPersonalExtras(
             }
         }
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+
+/** Hero action replacing "Marcar visto", backed by the original local watch-state service. */
+@Composable
+fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
+    val service = remember(dependencies) {
+        ReiAnixPersonalAnimeService(
+            dependencies.sqliteSettingsRepository,
+            dependencies.sqliteLibraryRepository,
+        )
+    }
+    val scope = rememberCoroutineScope()
+    var selected by remember(animeId) { mutableStateOf<ReiAnixWatchStatus?>(null) }
+    var loading by remember(animeId) { mutableStateOf(true) }
+    var saving by remember(animeId) { mutableStateOf(false) }
+    var expanded by remember(animeId) { mutableStateOf(false) }
+
+    LaunchedEffect(animeId) {
+        loading = true
+        try {
+            selected = service.load(animeId).status
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // An unavailable preference must not interfere with the normal Details hero.
+        } finally {
+            loading = false
+        }
+    }
+
+    fun save(value: ReiAnixWatchStatus?) {
+        if (loading || saving) return
+        expanded = false
+        saving = true
+        scope.launch {
+            try {
+                selected = service.setStatus(animeId, value).status
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Toast.makeText(context, "Não foi possível atualizar sua lista.", Toast.LENGTH_SHORT).show()
+            } finally {
+                saving = false
+            }
+        }
+    }
+
+    Box(modifier = modifier.semantics {
+        stateDescription = selected?.label ?: "Fora das listas de acompanhamento"
+    }) {
+        ReiAnixSecondaryButton(
+            text = "Adicionar à lista",
+            onClick = { expanded = true },
+            enabled = !loading && !saving,
+            modifier = Modifier.fillMaxWidth(),
+            leadingIcon = Icons.Filled.Add,
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            ReiAnixWatchStatus.entries.forEach { status ->
+                DropdownMenuItem(
+                    text = { Text(if (selected == status) "✓ " + status.label else status.label) },
+                    onClick = { save(status) },
+                )
+            }
+            if (selected != null) {
+                DropdownMenuItem(
+                    text = { Text("Remover da lista") },
+                    onClick = { save(null) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Display characters directly after the synopsis with other metadata.
+ * This is an independent, lazily composed Details-only effect, never part of
+ * library scanning, cover discovery or the existing AniList metadata client mutex.
+ */
+@Composable
+fun ReiAnixMetadataCharacters(
+    animeId: Long,
+    metadataRevision: String,
+) {
+    val context = LocalContext.current
+    val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
+    val charactersRepository = remember(dependencies) {
+        ReiAnixCharacterCache(context, ReiAnixAniListClient())
+    }
+    var characters by remember(animeId) { mutableStateOf<List<ReiAnixAnimeCharacter>>(emptyList()) }
+
+    LaunchedEffect(animeId, metadataRevision) {
+        try {
+            val associatedId = dependencies.sqliteLibraryRepository.getAnime(animeId)?.anilistId
+                ?.takeIf { it > 0 && it <= Int.MAX_VALUE.toLong() }?.toInt()
+            if (associatedId != null) {
+                when (val result = charactersRepository.load(associatedId)) {
+                    is AniListResult.Success -> characters = result.value
+                    is AniListResult.Failure -> Unit // do not impact Details when AniList is unavailable
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // This metadata enrichment is optional, never blocks the synopsis.
+        }
+    }
+
+    if (characters.isNotEmpty()) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            items(characters, key = { it.id }) { character ->
+                Column(
+                    modifier = Modifier.width(85.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    AsyncImage(
+                        model = character.imageUrl,
+                        contentDescription = "Personagem: " + character.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(70.dp).clip(CircleShape),
+                    )
+                    Text(
+                        text = character.name,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = character.role,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
