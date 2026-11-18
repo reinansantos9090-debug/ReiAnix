@@ -222,6 +222,29 @@ jobs:
             -PreianixBuildVersion="0.2.1" \
             :app:compileReleaseKotlin
 
+      - name: Test Roku ECP parsing and launch contract
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p android --no-daemon --console=plain \
+            :app:testDebugUnitTest --tests com.reianix.reianix_local.player.cast.RokuEcpClientTest
+
+      - name: Build Roku sideload receiver ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s roku-channel/manifest
+          test -s roku-channel/source/main.brs
+          test -s roku-channel/components/MainScene.brs
+          test -s roku-channel/components/MainScene.xml
+          mkdir -p build
+          (cd roku-channel && zip -X -9 -r ../build/ReiAnix-Roku-Receiver.zip manifest source/main.brs components/MainScene.brs components/MainScene.xml)
+          unzip -tq build/ReiAnix-Roku-Receiver.zip
+          unzip -Z1 build/ReiAnix-Roku-Receiver.zip | grep -Fxq 'manifest'
+          unzip -Z1 build/ReiAnix-Roku-Receiver.zip | grep -Fxq 'source/main.brs'
+          unzip -Z1 build/ReiAnix-Roku-Receiver.zip | grep -Fxq 'components/MainScene.xml'
+
       - name: Locate APK
         id: apk
         shell: bash
@@ -441,6 +464,15 @@ jobs:
           name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
           path: build/ReiAnix-apk.zip
           retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload Roku Receiver for TV installation
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-Roku-Receiver-${{ github.run_number }}
+          path: build/ReiAnix-Roku-Receiver.zip
+          retention-days: 7
           if-no-files-found: error
 
       - name: Remove temporary private signing keystore
