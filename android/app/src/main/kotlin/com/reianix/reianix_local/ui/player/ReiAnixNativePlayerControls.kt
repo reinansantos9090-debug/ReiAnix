@@ -685,18 +685,22 @@ private fun RowScope.PlayerBottomCastAction(showLabel: Boolean) {
 }
 
 private object PlayerCastDialogFactory : MediaRouteDialogFactory() {
-    override fun onCreateChooserDialogFragment() = object : MediaRouteChooserDialogFragment() {
-        override fun onStart() {
-            super.onStart()
-            dialog?.window?.applyPlayerCastAppearance()
-        }
-    }
+    override fun onCreateChooserDialogFragment() = PlayerCastChooserDialogFragment()
 
-    override fun onCreateControllerDialogFragment() = object : MediaRouteControllerDialogFragment() {
-        override fun onStart() {
-            super.onStart()
-            dialog?.window?.applyPlayerCastAppearance()
-        }
+    override fun onCreateControllerDialogFragment() = PlayerCastControllerDialogFragment()
+}
+
+class PlayerCastChooserDialogFragment : MediaRouteChooserDialogFragment() {
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.applyPlayerCastAppearance()
+    }
+}
+
+class PlayerCastControllerDialogFragment : MediaRouteControllerDialogFragment() {
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.applyPlayerCastAppearance()
     }
 }
 
