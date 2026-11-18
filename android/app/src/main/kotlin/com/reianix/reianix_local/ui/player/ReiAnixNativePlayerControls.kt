@@ -1,9 +1,13 @@
 package com.reianix.reianix_local.ui.player
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -17,6 +21,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlaylistPlay
@@ -38,7 +43,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import com.reianix.reianix_local.player.PlayerTimeFormatter
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,15 +55,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import com.reianix.reianix_local.player.LocalSeekPreviewFrames
+import com.reianix.reianix_local.player.SeekPreviewPolicy
+import android.net.Uri
+import android.graphics.Bitmap
+import kotlin.math.roundToInt
 
 data class ReiAnixNativePlayerUiState(
     val title: String = "Episódio",
@@ -380,6 +401,7 @@ private fun PlayerSeekIconButton(
 fun ReiAnixNativePlayerBottomControls(
     state: ReiAnixNativePlayerUiState,
     onSeekTo: (Long) -> Unit,
+    mediaUri: String? = null,
     onToggleLock: () -> Unit,
     onResize: () -> Unit,
     onSource: () -> Unit,
@@ -449,6 +471,27 @@ fun ReiAnixNativePlayerBottomControls(
     } else {
         state.positionMs.coerceAtLeast(0L)
     }
+    val context = LocalContext.current
+    val previewFrames = remember(mediaUri) {
+        mediaUri?.let { raw ->
+            runCatching { LocalSeekPreviewFrames(context.applicationContext, Uri.parse(raw)) }.getOrNull()
+        }
+    }
+    DisposableEffect(previewFrames) {
+        onDispose { previewFrames?.close() }
+    }
+    var previewFrame by remember(mediaUri) { mutableStateOf<Bitmap?>(null) }
+    val previewBucket = if (userDragging && duration > 0L) {
+        SeekPreviewPolicy.bucketTimeMs(displayPosition, duration)
+    } else -1L
+    LaunchedEffect(previewBucket, userDragging, previewFrames) {
+        previewFrame = null
+        if (userDragging && previewBucket >= 0L && previewFrames != null) {
+            // Debounce rapid scrubbing; only the current requested frame is shown.
+            delay(85L)
+            previewFrame = previewFrames.frameAt(previewBucket, duration)
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -506,6 +549,60 @@ fun ReiAnixNativePlayerBottomControls(
                                 .fillMaxHeight()
                                 .background(ReiAnixTokens.Colors.primary),
                         )
+                    }
+                }
+                if (userDragging && duration > 0L) {
+                    // Floating window renders outside the short landscape overlay
+                    // and does not alter the seekbar's position or tap target.
+                    val density = LocalDensity.current
+                    val inset = with(density) { 10.dp.roundToPx() }
+                    val gap = with(density) { 8.dp.roundToPx() }
+                    val positionProvider = remember(sliderFraction, inset, gap) {
+                        SeekPreviewPopupPosition(sliderFraction, inset, gap)
+                    }
+                    Popup(
+                        popupPositionProvider = positionProvider,
+                        properties = PopupProperties(
+                            focusable = false,
+                            dismissOnBackPress = false,
+                            dismissOnClickOutside = false,
+                            clippingEnabled = false,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .width(160.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xF01B1B1D))
+                                .border(1.dp, Color.White.copy(alpha = 0.24f), RoundedCornerShape(10.dp))
+                                .padding(5.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f / 9f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF303035)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                previewFrame?.let { bitmap ->
+                                    Image(
+                                        bitmap = bitmap.asImageBitmap(),
+                                        contentDescription = "Prévia da cena do anime",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                            }
+                            Text(
+                                text = PlayerTimeFormatter.format(displayPosition),
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
                     }
                 }
                 Slider(
@@ -648,7 +745,7 @@ private fun RowScope.PlayerBottomAction(
                 // icons. Normalize only the visual artwork, centered within the
                 // identical button bounds; never shift the icon's baseline upward.
                 modifier = Modifier
-                    .size(ReiAnixTokens.PlayerDimensions.actionIconSize)
+                    .size(ReiAnixTokens.PlayerDimensions.actionIconSize + 3.dp)
                     .graphicsLayer {
                         scaleX = iconVisualScale
                         scaleY = iconVisualScale
@@ -665,4 +762,26 @@ private fun RowScope.PlayerBottomAction(
         }
     }
 }
-
+ 
+/** Positions the thumbnail over the current seek handle, clamping to the screen. */
+private class SeekPreviewPopupPosition(
+    private val fraction: Float,
+    private val trackInsetPx: Int,
+    private val gapPx: Int,
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val width = (anchorBounds.width - 2 * trackInsetPx).coerceAtLeast(0)
+        val handleX = anchorBounds.left + trackInsetPx +
+            (width * fraction.coerceIn(0f, 1f)).roundToInt()
+        val x = (handleX - popupContentSize.width / 2)
+            .coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+        val y = (anchorBounds.top - popupContentSize.height - gapPx)
+            .coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
+        return IntOffset(x, y)
+    }
+}
