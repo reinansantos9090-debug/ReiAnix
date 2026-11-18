@@ -3518,7 +3518,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         .put("playbackSpeed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
         .put("audioTrackCount", if (::player.isInitialized) player.currentTracks.groups.count { it.type == C.TRACK_TYPE_AUDIO && it.isSupported } else 0)
         .put("subtitleTrackCount", if (::player.isInitialized) player.currentTracks.groups.count { it.type == C.TRACK_TYPE_TEXT && it.isSupported } else 0)
-.put("durationMs", if (::player.isInitialized) player.duration.coerceAtLeast(0L) else 0L)
+.put("durationMs", if (::player.isInitialized) effectiveDurationMs() else 0L)
         .put("firstFrameRendered", firstFrameRenderedForTesting)
         .put("sessionState", sessionState.name)
         .put("transitionPhase", transitionPhase.name)
@@ -4902,19 +4902,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun seekToSavedPosition(savedPositionMs: Long): Long {
         if (!::player.isInitialized) return 0L
         val normalizedRequested = savedPositionMs.coerceAtLeast(0L)
-        val safePosition = PlayerMediaPolicy.safeResumePosition(normalizedRequested, player.duration)
-        if (safePosition > 0L && player.duration > 0L) {
-            player.seekTo(safePosition)
-            logPlayer(
-                "RESUME_APPLIED positionMs=" + safePosition +
-                    " requestedMs=" + normalizedRequested +
-                    " durationMs=" + player.duration +
-                    " requestId=" + requestId.ifEmpty { "-" },
-            )
+        val duration = effectiveDurationMs()
+        val safePosition = PlayerMediaPolicy.safeResumePosition(normalizedRequested, duration)
+        if (safePosition > 0L && isCurrentMediaSeekAvailable()) {
+            val appliedPosition = seekCurrentMediaTo(safePosition, "saved_resume")
+            if (appliedPosition != null) {
+                logPlayer(
+                    "RESUME_APPLIED positionMs=" + appliedPosition +
+                        " requestedMs=" + normalizedRequested +
+                        " durationMs=" + duration +
+                        " requestId=" + requestId.ifEmpty { "-" },
+                )
+            }
         } else if (normalizedRequested > 0L) {
             logPlayer(
                 "RESUME_CLAMPED requestedMs=" + normalizedRequested +
-                    " durationMs=" + player.duration +
+                    " durationMs=" + duration +
+                    " seekCommandAvailable=" + isCurrentMediaSeekAvailable() +
                     " requestId=" + requestId.ifEmpty { "-" },
             )
         }
