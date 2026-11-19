@@ -28,9 +28,15 @@ class SystemUiController(private val window: Window) {
      * The application host is immersive; the explicit normal policy remains
      * available for temporary/external surfaces and player exit transitions.
      */
-    /** Shared application policy for the immersive Flet host. */
+    /** Immersive host policy; allow short-edge cutouts on Android 9 and 10. */
     fun applyApplicationImmersivePolicy(useContextAppearance: Boolean = true) {
         applyImmersive(useContextAppearance)
+        if (Build.VERSION.SDK_INT in 28..29) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
     }
 
     /** Backward-compatible normal policy for external/temporary surfaces. */
