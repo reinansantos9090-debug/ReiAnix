@@ -41,6 +41,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -130,6 +133,7 @@ import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModel
 import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModelFactory
 import com.reianix.reianix_local.data.anilist.AniListAnime
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import java.util.Locale
 
 @Composable
@@ -816,6 +820,73 @@ private fun DetailsSectionTabs(
     }
 }
 
+/** Direct pin toggle, with canonical persisted state supplied by the Details model. */
+@Composable
+internal fun DetailsPinAction(
+    pinned: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget)
+            .testTag("details-pin")
+            .semantics {
+                selected = pinned
+                stateDescription = if (pinned) "Fixado" else "Não fixado"
+            },
+    ) {
+        Icon(
+            imageVector = if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+            contentDescription = if (pinned) "Desafixar anime" else "Fixar anime",
+            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+            tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/** Metadata actions remain accessible without a redundant menu over the backdrop. */
+@Composable
+internal fun DetailsAniListAction(
+    animeId: Long,
+    onManageAniList: () -> Unit,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by rememberSaveable(animeId) { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        ReiAnixDetailsQuickAction(
+            label = "AniList",
+            icon = Icons.Outlined.Link,
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            DropdownMenuItem(
+                text = { Text("Associar ao AniList") },
+                leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onManageAniList()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Atualizar detalhes") },
+                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onRefresh()
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun DetailsHero(
     anime: ReiAnixDetailsAnimeUiModel,
@@ -835,7 +906,7 @@ private fun DetailsHero(
     onIdentifyWithTraceMoe: (Long) -> Unit,
     onCancelTraceMoe: (Long) -> Unit,
 ) {
-    val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
+    var pinSaving by remember(anime.id) { mutableStateOf(false) }
     var showNoteEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
     var actionError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
     var showTagsEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
@@ -917,49 +988,28 @@ private fun DetailsHero(
                 navigationContentDescription = "Voltar",
                 onNavigationClick = onBack,
                 actions = {
-                    Box {
-                        ReiAnixIconActionButton(
-                            icon = Icons.Filled.MoreVert,
-                            contentDescription = "Mais opções",
-                            onClick = { menuExpanded.value = true },
-                        )
-                        DropdownMenu(
-                            expanded = menuExpanded.value,
-                            onDismissRequest = { menuExpanded.value = false },
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Atualizar detalhes") },
-                                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded.value = false
-                                    onRefresh()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (anime.pinned) "Desafixar anime" else "Fixar anime") },
-                                onClick = {
-                                    menuExpanded.value = false
-                                    actionScope.launch {
-                                        try {
-                                            onTogglePinned(anime.id)
-                                        } catch (failure: Exception) {
-                                            actionError = failure.message
-                                                ?.takeIf(String::isNotBlank)
-                                                ?: "Não foi possível alterar o pin."
-                                        }
+                    DetailsPinAction(
+                        pinned = anime.pinned,
+                        enabled = !pinSaving,
+                        onClick = {
+                            if (!pinSaving) {
+                                pinSaving = true
+                                actionError = null
+                                actionScope.launch {
+                                    try {
+                                        onTogglePinned(anime.id)
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (failure: Exception) {
+                                        actionError = failure.message?.takeIf(String::isNotBlank)
+                                            ?: "Não foi possível fixar ou desafixar o anime."
+                                    } finally {
+                                        pinSaving = false
                                     }
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Associar ao AniList") },
-                                onClick = {
-                                    menuExpanded.value = false
-                                    onManageAniList()
-                                },
-                            )
-                        }
-                    }
+                                }
+                            }
+                        },
+                    )
                 },
             )
         }
@@ -1052,6 +1102,12 @@ private fun DetailsHero(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.Top,
         ) {
+            DetailsAniListAction(
+                animeId = anime.id,
+                onManageAniList = onManageAniList,
+                onRefresh = onRefresh,
+                modifier = Modifier.weight(1f).testTag("details-quick-anilist"),
+            )
             ReiAnixDetailsQuickAction(
                 label = "Favoritos",
                 icon = ReiAnixDetailsShortcutIcons.Favorite,
