@@ -64,7 +64,12 @@ fun ReiAnixAppShell(
         containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
         // Every destination owns its top inset at the actual header/scrolling
         // content. Do not reserve a permanent black strip in the viewport.
-        contentWindowInsets = reiAnixAppContentInsets(WindowInsets.safeDrawing),
+        contentWindowInsets = if (showBottomNavigation) {
+            reiAnixAppContentInsets(WindowInsets.safeDrawing)
+        } else {
+            // No app bottom bar to consume the visible Android navigation bar.
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+        },
         bottomBar = {
             if (showBottomNavigation) {
                 ReiAnixBottomNavigation(
