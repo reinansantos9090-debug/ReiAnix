@@ -60,4 +60,40 @@ class SeekPreviewPolicyTest {
         assertEquals(4_000L, SeekPreviewPolicy.focusBucketTimeMs(4_999L, 70_000L))
         assertEquals(0L, SeekPreviewPolicy.focusBucketTimeMs(7_000L, -1L))
     }
+
+    @Test fun controlsStayVisibleThroughoutRepeatedScrubEvents() {
+        val guard = SeekScrubVisibilityGuard()
+        assertTrue(!guard.active)
+        assertTrue(!guard.blocksHide(false, false, false))
+        assertTrue(guard.update(true))
+        repeat(20) {
+            // Repeated movement and playback callbacks cannot end the hold.
+            assertTrue(!guard.update(true))
+            assertTrue(guard.active)
+            assertTrue(guard.blocksHide(false, false, false))
+        }
+        assertTrue(guard.update(false))
+        assertTrue(!guard.active)
+        assertTrue(!guard.blocksHide(false, false, false))
+        assertTrue(!guard.update(false))
+    }
+
+    @Test fun terminalPlayerModesMayHideEvenDuringScrubbing() {
+        val guard = SeekScrubVisibilityGuard()
+        guard.update(true)
+        assertTrue(guard.blocksHide(false, false, false))
+        assertTrue(!guard.blocksHide(true, false, false))
+        assertTrue(!guard.blocksHide(false, true, false))
+        assertTrue(!guard.blocksHide(false, false, true))
+    }
+
+    @Test fun aCancelledScrubCanReleaseControlsAndBeginAgain() {
+        val guard = SeekScrubVisibilityGuard()
+        guard.update(true)
+        guard.update(false)
+        assertTrue(!guard.blocksHide(false, false, false))
+        assertTrue(guard.update(true))
+        assertTrue(guard.blocksHide(false, false, false))
+    }
+
 }
