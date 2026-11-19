@@ -38,28 +38,28 @@ class ReiAnixHomeInstrumentedTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun homeHeaderShowsHistorySearchAndDirectGeneralSettings() {
+    fun homeHeaderShowsHistorySearchAndProfile() {
         var timelineOpens = 0
         var searchOpens = 0
-        var settingsOpens = 0
+        var profileOpens = 0
         composeRule.setContent {
             ReiAnixComposeRoot {
                 HomeHeader(
                     onSearch = { searchOpens++ },
                     onOpenTimeline = { timelineOpens++ },
-                    onOpenGeneralSettings = { settingsOpens++ },
+                    onOpenProfile = { profileOpens++ },
                 )
             }
         }
 
         composeRule.onNodeWithContentDescription("Linha do tempo").assertIsDisplayed().performClick()
         composeRule.onNodeWithContentDescription("Pesquisar na biblioteca").assertIsDisplayed().performClick()
-        composeRule.onNodeWithContentDescription("Configurações gerais").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Meu perfil").assertIsDisplayed().performClick()
         composeRule.onNodeWithContentDescription("Mais opções da Home").assertDoesNotExist()
         composeRule.runOnIdle {
             assertEquals(1, timelineOpens)
             assertEquals(1, searchOpens)
-            assertEquals(1, settingsOpens)
+            assertEquals(1, profileOpens)
         }
     }
 
