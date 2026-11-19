@@ -2,6 +2,8 @@ package com.reianix.reianix_local.ui.player
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -66,7 +68,7 @@ class ReiAnixPlayerOptionsInstrumentedTest {
         composeRule.onNodeWithContentDescription("Selecionar faixa de áudio").assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(1, audioSelections) }
         composeRule.onNodeWithText("Somente áudio").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Somente áudio").performClick()
+        composeRule.onNode(hasContentDescription("Somente áudio") and hasClickAction()).performClick()
         composeRule.runOnIdle { assertEquals(true, uiState.value.audioOnly) }
         composeRule.onNodeWithContentDescription("Selecionar faixa de áudio").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Voltar").performClick()
