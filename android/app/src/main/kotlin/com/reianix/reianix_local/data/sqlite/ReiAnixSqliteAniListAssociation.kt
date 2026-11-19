@@ -23,6 +23,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         traceMoeConfirmed: Boolean = false,
         explicitRepair: Boolean = false,
         expectedAssociationId: Long? = null,
+        correctManualMusic: Boolean = false,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -53,11 +54,16 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             val protectedFields = currentAndManualFields.second
             // Explicit repair may replace an automatic association only if it has not
             // changed since the lookup. Manual associations and fields remain protected.
+            val allowManualMusicCorrection = explicitRepair && correctManualMusic &&
+                current.format.equals("MUSIC", true) && current.anilistMatchManual == true &&
+                current.anilistId == expectedAssociationId && current.anilistId != anilistId &&
+                score != null && score >= 0.86 && !patch.format.equals("MUSIC", true)
             if (explicitRepair && (current.anilistId != expectedAssociationId ||
-                    (current.anilistMatchManual == true && (!manual || current.anilistId != anilistId)))) {
+                    (current.anilistMatchManual == true && (!manual || current.anilistId != anilistId) &&
+                        !allowManualMusicCorrection))) {
                 return@transaction current
             }
-            if (!manual && (
+            if (!manual && !allowManualMusicCorrection && (
                     current.anilistMatchManual == true ||
                         current.metadataSource == "manual" ||
                         current.metadataStatus == "manual"
@@ -99,6 +105,20 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             patch.score?.let { if ("score" !in protectedFields) values.put("score", it) }
             patch.format?.takeIf(String::isNotBlank)?.let { if ("format" !in protectedFields) values.put("format", it) }
             patch.studio?.takeIf(String::isNotBlank)?.let { if ("studio" !in protectedFields) values.put("studio", it) }
+            // A changed automatic URL must not inherit an unverified legacy
+            // pointer from the previous identity. Preserve manual/local art and
+            // keep old files on disk; the normal downloader publishes new art.
+            if (explicitRepair && "cover_url" !in protectedFields &&
+                "cover_cache" !in protectedFields && !patch.coverUrl.isNullOrBlank() &&
+                patch.coverUrl != current.coverUrl
+            ) {
+                val userOwnedArt = connection.rawQuery(
+                    "SELECT 1 FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
+                        "AND artwork_type IN ('poster','cover') AND (COALESCE(manual,0)=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')) LIMIT 1",
+                    arrayOf(patch.animeId.toString()),
+                ).use { it.moveToFirst() }
+                if (!userOwnedArt) values.putNull("cover_cache")
+            }
             val remoteMetadataFieldsApplied = values.size() > 0
             patch.metadataFetchedAt?.let { values.put("metadata_fetched_at", it) }
 
@@ -112,7 +132,8 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             // contract even when the user explicitly changes the AniList link.
             // Do not make a metadata refresh look successful when every catalog
             // field was protected by metadata_manual_fields.
-            val metadataIsManual = current.metadataSource == "manual" || current.metadataStatus == "manual"
+            val metadataIsManual = !allowManualMusicCorrection &&
+                (current.metadataSource == "manual" || current.metadataStatus == "manual")
             if (remoteMetadataFieldsApplied && !metadataIsManual) {
                 values.put("metadata_source", "anilist")
                 values.put("metadata_status", "available")
