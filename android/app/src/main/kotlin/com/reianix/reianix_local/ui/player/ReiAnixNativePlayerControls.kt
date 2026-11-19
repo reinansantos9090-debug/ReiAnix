@@ -2,7 +2,6 @@ package com.reianix.reianix_local.ui.player
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import com.reianix.reianix_local.player.PlayerSkipSegment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -613,27 +612,6 @@ fun ReiAnixNativePlayerBottomControls(
                             val x = size.width * (position.toDouble() / duration).toFloat()
                             drawCircle(Color(0xFFFFD54F), 3.dp.toPx(), androidx.compose.ui.geometry.Offset(x, size.height / 2))
                         }
-                    }
-                }
-                val activeSegment = state.skipSegments.firstOrNull {
-                    state.positionMs >= it.startMs && state.positionMs < it.endMs
-                }
-                if (!userDragging && !seekPointerHeld && seekEnabled && activeSegment != null) {
-                    val density = LocalDensity.current
-                    val gap = with(density) { 10.dp.roundToPx() }
-                    Popup(
-                        popupPositionProvider = remember(gap) { SeekPreviewPopupPosition(1f, 0, gap) },
-                        properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false),
-                    ) {
-                        Text(
-                            text = activeSegment.label,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            modifier = Modifier.clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xED19191C))
-                                .clickable { onSeekTo(activeSegment.endMs) }
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                        )
                     }
                 }
                 if (userDragging && seekEnabled && !state.audioOnly) {

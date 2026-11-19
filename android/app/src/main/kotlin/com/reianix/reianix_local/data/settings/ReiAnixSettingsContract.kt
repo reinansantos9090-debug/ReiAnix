@@ -106,6 +106,8 @@ object ReiAnixSettingsContract {
         decimal("audio.subtitle_scale", "1.0", "0.75", "1.0", "1.25", "1.5"),
         int("audio.subtitle_bottom_padding", 8, 4, 8, 12, 16),
         bool("audio.subtitle_embedded_style", true),
+        enum("audio.subtitle_color", "system", "system", "white", "yellow", "cyan"),
+        enum("audio.subtitle_font", "system", "system", "sans", "serif", "mono"),
         bool("metadata.anilist_enabled", true),
         bool("metadata.auto_match", true),
         bool("artwork.enabled", true),

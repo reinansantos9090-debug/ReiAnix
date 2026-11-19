@@ -25,6 +25,7 @@ class PlayerLocalMetadataStore(context: Context) {
         val timestampMs: Long,
         val text: String,
         val createdAtMs: Long,
+        val favorite: Boolean = false,
     )
 
     data class Metadata(
@@ -88,7 +89,7 @@ class PlayerLocalMetadataStore(context: Context) {
     }
 
     @Synchronized
-    fun addNote(mediaId: String, timestampMs: Long, text: String, nowMs: Long = System.currentTimeMillis()): Metadata {
+    fun addNote(mediaId: String, timestampMs: Long, text: String, nowMs: Long = System.currentTimeMillis(), favorite: Boolean = false): Metadata {
         val normalized = normalizeMediaId(mediaId)
         val cleanText = text.trim().take(MAX_NOTE_LENGTH)
         if (normalized.isBlank() || timestampMs < 0L || cleanText.isBlank()) return get(normalized)
@@ -98,9 +99,11 @@ class PlayerLocalMetadataStore(context: Context) {
             timestampMs = timestampMs,
             text = cleanText,
             createdAtMs = nowMs,
+            favorite = favorite,
         )
         val updated = current.copy(notes = (current.notes + note).takeLast(MAX_NOTES_PER_MEDIA))
-        write(updateRoot(readRoot(), updated))
+        val written = write(updateRoot(readRoot(), updated))
+        if (favorite) check(written) { "Unable to persist favorite scene" }
         return updated
     }
 
@@ -171,6 +174,7 @@ class PlayerLocalMetadataStore(context: Context) {
                                 timestampMs = note.optLong("timestampMs", 0L).coerceAtLeast(0L),
                                 text = text,
                                 createdAtMs = note.optLong("createdAtMs", 0L).coerceAtLeast(0L),
+                                favorite = note.optBoolean("favorite", false),
                             ),
                         )
                     }
@@ -201,7 +205,8 @@ class PlayerLocalMetadataStore(context: Context) {
                                     .put("id", note.id)
                                     .put("timestampMs", note.timestampMs)
                                     .put("text", note.text)
-                                    .put("createdAtMs", note.createdAtMs),
+                                    .put("createdAtMs", note.createdAtMs)
+                                    .put("favorite", note.favorite),
                             )
                         }
                     },

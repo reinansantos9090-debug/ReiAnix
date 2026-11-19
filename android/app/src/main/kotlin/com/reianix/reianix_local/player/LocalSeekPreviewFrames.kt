@@ -120,10 +120,13 @@ internal class LocalSeekPreviewFrames(
                 progressiveTimes = SeekPreviewPolicy.progressivePositions(duration)
                 val disk = PersistentSeekPreviewCache(appContext, mediaUri, duration)
                 diskCache = disk
-                disk.availableTimes().filter { it in 0 until duration }.sortedBy { abs(it - requestedMs) }.take(43).forEach { time ->
-                    if (!closed.get() && !isStored(time)) disk.read(time)?.let { image ->
-                        if (time in progressiveTimes) progressiveCache.put(time, image)
-                        else focusedCache.put(time, image)
+                sourceMutex.withLock {
+                    disk.availableTimes().filter { it in 0 until duration }.sortedBy { abs(it - requestedMs) }.take(43).forEach { time ->
+                        currentCoroutineContext().ensureActive()
+                        if (!closed.get() && !isStored(time)) disk.read(time)?.let { image ->
+                            if (time in progressiveTimes) progressiveCache.put(time, image)
+                            else focusedCache.put(time, image)
+                        }
                     }
                 }
                 lastDuration = duration

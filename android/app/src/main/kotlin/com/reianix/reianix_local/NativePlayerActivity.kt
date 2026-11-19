@@ -200,6 +200,10 @@ class NativePlayerActivity : FragmentActivity() {
     private var subtitleBottomPaddingPercent = 8
     private var subtitleEmbeddedStyle = true
     private var audioOnly = false
+    private var smartSkipButton: TextView? = null
+    private var subtitleColor = "system"
+    private var subtitleFont = "system"
+    private var captionRevision = 0L
     private var remoteSkipSegments = emptyList<PlayerSkipSegment>()
     private var skipLookupGeneration = -1L
     private var skipLookupDuration = -1L
@@ -786,6 +790,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             applyGlobalTrackPreferences()
             applyAdvancedTrackConstraints()
             applySubtitlePreferences()
+            loadCaptionAppearance()
             autoplayNext = savedInstanceState?.takeIf { it.containsKey("autoplay_next") }?.getBoolean("autoplay_next")
                 ?: intent.getBooleanExtra("autoplay", true)
 
@@ -1036,6 +1041,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         applyGlobalTrackPreferences()
         applyAdvancedTrackConstraints()
         applySubtitlePreferences()
+        loadCaptionAppearance()
         zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", zoomEnabled)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
         // A missing aspect extra must not convert the human-readable label
@@ -2181,18 +2187,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
         playerView.subtitleView?.apply {
             setFractionalTextSize((SubtitleViewFraction.DEFAULT * subtitleScale).coerceIn(0.02f, 0.12f))
             setBottomPaddingFraction((subtitleBottomPaddingPercent / 100f).coerceIn(0f, 0.5f))
-            setApplyEmbeddedStyles(subtitleEmbeddedStyle)
-            setApplyEmbeddedFontSizes(subtitleEmbeddedStyle)
+            val custom = subtitleColor != "system" || subtitleFont != "system"
+            setApplyEmbeddedStyles(subtitleEmbeddedStyle && !custom)
+            setApplyEmbeddedFontSizes(subtitleEmbeddedStyle && subtitleScale == 1f && !custom)
             setUserDefaultStyle()
-            val appearance = getSharedPreferences("player_caption_appearance", MODE_PRIVATE)
-            if (appearance.contains("color") || appearance.contains("font")) {
-                val font = when (appearance.getString("font", "default")) {
+            if (custom) {
+                val font = when (subtitleFont) {
                     "serif" -> Typeface.SERIF
                     "mono" -> Typeface.MONOSPACE
                     "sans" -> Typeface.SANS_SERIF
                     else -> Typeface.DEFAULT
                 }
-                setStyle(CaptionStyleCompat(appearance.getInt("color", Color.WHITE),
+                val color = when (subtitleColor) {
+                    "yellow" -> Color.YELLOW
+                    "cyan" -> Color.CYAN
+                    else -> Color.WHITE
+                }
+                setStyle(CaptionStyleCompat(color,
                     Color.TRANSPARENT, Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE,
                     Color.BLACK, font))
             }
@@ -2222,7 +2233,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode)
 
     private fun canRequestPictureInPicture(): Boolean =
-        canEnterPictureInPicture() &&
+        !audioOnly && canEnterPictureInPicture() &&
             sessionState == SessionState.ACTIVE &&
             !errorVisible &&
             !playbackErrorForGeneration &&
@@ -2730,7 +2741,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         bottomBar.visibility = View.GONE
         findViewByTag<View>("reianix_marker_row")?.visibility = View.GONE
         installComposePlayerControls()
-        // Menu + dismiss scrim are the last root children, above Compose controls.
+        installSmartSkipButton()
+        // Menu and dismiss scrim are brought above other overlays when opened.
     }
 
     private fun updateMorePanelBounds() {
@@ -2984,6 +2996,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (::composeBottomView.isInitialized) composeBottomView.visibility =
             if (unlockedOverlaysVisible || lockedAffordanceVisible) View.VISIBLE else View.INVISIBLE
         syncBufferingIndicatorVisibility()
+        updateSmartSkipButton()
     }
 
     /**
@@ -3020,6 +3033,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             menuDismissScrim?.bringToFront()
             panel?.bringToFront()
         }
+        updateSmartSkipButton()
     }
 
     private fun toggleMorePanel() {
@@ -5395,6 +5409,60 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
+    private fun installSmartSkipButton() {
+        val button = actionButton("Pular abertura", 0) {
+            if (::player.isInitialized && !episodeChangePending && !locked) {
+                currentSkipSegments(player.duration).firstOrNull {
+                    player.currentPosition in it.startMs until it.endMs
+                }?.let { segment -> seekToMarker(segment.endMs, segment.label) }
+            }
+        }.apply {
+            tag = "reianix_smart_skip"
+            textSize = 14f
+            setPadding(dp(16), dp(4), dp(16), dp(4))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(0xED19191C.toInt())
+            }
+            visibility = View.GONE
+        }
+        smartSkipButton = button
+        root.addView(button, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, dp(44), Gravity.BOTTOM or Gravity.END,
+        ))
+        updateSmartSkipButton()
+    }
+
+    private fun updateSmartSkipButton() {
+        val button = smartSkipButton ?: return
+        val active = if (::player.isInitialized && sessionState == SessionState.ACTIVE &&
+            !locked && !errorVisible && !episodeChangePending && !inPictureInPicture &&
+            !moreVisible && !seekScrubVisibility.active && episodePlaylistOverlay == null
+        ) currentSkipSegments(player.duration).firstOrNull {
+            player.currentPosition in it.startMs until it.endMs
+        } else null
+        if (active == null) {
+            if (button.visibility != View.GONE) button.visibility = View.GONE
+            return
+        }
+        if (button.text != active.label) {
+            button.text = active.label
+            button.contentDescription = active.label
+        }
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val overlay = if (landscape) ReiAnixTokens.PlayerDimensions.bottomOverlayLandscapeHeight
+            else ReiAnixTokens.PlayerDimensions.bottomOverlayPortraitHeight
+        val bottom = (if (controlsVisible) dp(overlay) else gestureSafeBottom + dp(16)) + dp(8)
+        val right = gestureSafeRight + dp(12)
+        val params = button.layoutParams as FrameLayout.LayoutParams
+        if (params.bottomMargin != bottom || params.rightMargin != right) {
+            params.bottomMargin = bottom
+            params.rightMargin = right
+            button.layoutParams = params
+        }
+        if (button.visibility != View.VISIBLE) button.visibility = View.VISIBLE
+    }
+
     private fun currentSkipSegments(durationMs: Long): List<PlayerSkipSegment> {
         val manual = if (::uri.isInitialized && localMetadata.mediaId == uri.toString()) localMetadata
             else PlayerLocalMetadataStore.Metadata.empty()
@@ -5436,7 +5504,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun favoriteSceneNotes(): List<PlayerLocalMetadataStore.Note> =
         if (::uri.isInitialized && localMetadata.mediaId == uri.toString())
-            localMetadata.notes.filter { it.text.startsWith("★ ") } else emptyList()
+            localMetadata.notes.filter { it.favorite } else emptyList()
 
     private fun showFavoriteScenes() {
         if (!::uri.isInitialized || !::player.isInitialized || episodeChangePending) return
@@ -5444,7 +5512,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val position = player.currentPosition.coerceAtLeast(0L)
         val notes = favoriteSceneNotes()
         val items = listOf("Salvar cena atual • " + formatTime(position)) +
-            notes.map { formatTime(it.timestampMs) + " • " + it.text.removePrefix("★ ") }
+            notes.map { formatTime(it.timestampMs) + " • " + it.text }
         showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Cenas favoritas")
             .setItems(items.toTypedArray()) { _, index ->
@@ -5462,15 +5530,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             .setPositiveButton("Salvar") { _, _ ->
                                 if (uri.toString() == media) {
                                     val name = input.text.toString().trim().ifBlank { "Cena favorita" }
-                                    localMetadata = localMetadataStore.addNote(media, position, "★ " + name)
-                                    syncComposePlayerUiState()
-                                    showFeedback("Cena favorita salva")
+                                    try {
+                                        localMetadata = localMetadataStore.addNote(media, position, name, favorite = true)
+                                        syncComposePlayerUiState()
+                                        showFeedback("Cena favorita salva")
+                                    } catch (_: Exception) {
+                                        showFeedback("Não foi possível salvar a cena favorita")
+                                    }
                                 }
                             }.create())
                     } else {
                         val note = notes.getOrNull(index - 1)
                         if (note != null) showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-                            .setTitle(note.text.removePrefix("★ "))
+                            .setTitle(note.text)
                             .setItems(arrayOf("Ir para " + formatTime(note.timestampMs), "Remover dos favoritos")) { _, action ->
                                 if (uri.toString() == media) {
                                     if (action == 0) seekToMarker(note.timestampMs, "Cena favorita")
@@ -5485,11 +5557,26 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }.setNegativeButton("Fechar", null).create())
     }
 
+    private fun loadCaptionAppearance() {
+        val revision = ++captionRevision
+        lifecycleScope.launch {
+            val values = withContext(Dispatchers.IO) {
+                runCatching { ReiAnixSqliteSettingsRepository(applicationContext).allPreferences() }
+                    .getOrDefault(emptyMap())
+            }
+            if (revision == captionRevision && sessionState == SessionState.ACTIVE) {
+                subtitleColor = values["audio.subtitle_color"] ?: "system"
+                subtitleFont = values["audio.subtitle_font"] ?: "system"
+                applySubtitlePreferences()
+            }
+        }
+    }
+
     private fun showSubtitleAppearance() {
-        val preferences = getSharedPreferences("player_caption_appearance", MODE_PRIVATE)
         fun choose(title: String, labels: Array<String>, selected: (Int) -> Unit) {
             showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
                 .setTitle(title).setItems(labels) { _, index ->
+                    captionRevision += 1
                     selected(index)
                     applySubtitlePreferences()
                     showFeedback("Legendas atualizadas")
@@ -5507,22 +5594,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         subtitleBottomPaddingPercent = intArrayOf(4, 8, 12, 16)[i]
                         persistCanonicalPlayerSetting("audio.subtitle_bottom_padding", subtitleBottomPaddingPercent.toString())
                     }
-                    2 -> choose("Cor do texto", arrayOf("Branco", "Amarelo", "Ciano")) { i ->
-                        preferences.edit().putInt("color", intArrayOf(Color.WHITE, Color.YELLOW, Color.CYAN)[i]).apply()
-                        subtitleEmbeddedStyle = false
-                        persistCanonicalPlayerSetting("audio.subtitle_embedded_style", "false")
+                    2 -> choose("Cor do texto", arrayOf("Sistema", "Branco", "Amarelo", "Ciano")) { i ->
+                        subtitleColor = arrayOf("system", "white", "yellow", "cyan")[i]
+                        persistCanonicalPlayerSetting("audio.subtitle_color", subtitleColor)
                     }
-                    3 -> choose("Fonte", arrayOf("Padrão", "Sem serifa", "Serifada", "Monoespaçada")) { i ->
-                        preferences.edit().putString("font", arrayOf("default", "sans", "serif", "mono")[i]).apply()
-                        subtitleEmbeddedStyle = false
-                        persistCanonicalPlayerSetting("audio.subtitle_embedded_style", "false")
+                    3 -> choose("Fonte", arrayOf("Sistema", "Sem serifa", "Serifada", "Monoespaçada")) { i ->
+                        subtitleFont = arrayOf("system", "sans", "serif", "mono")[i]
+                        persistCanonicalPlayerSetting("audio.subtitle_font", subtitleFont)
                     }
                     4 -> choose("Estilos originais", arrayOf("Manter", "Ignorar")) { i ->
                         subtitleEmbeddedStyle = i == 0
                         persistCanonicalPlayerSetting("audio.subtitle_embedded_style", subtitleEmbeddedStyle.toString())
                     }
                     5 -> {
-                        preferences.edit().clear().apply()
+                        captionRevision += 1
+                        subtitleColor = "system"
+                        subtitleFont = "system"
+                        persistCanonicalPlayerSetting("audio.subtitle_color", "system")
+                        persistCanonicalPlayerSetting("audio.subtitle_font", "system")
                         subtitleScale = 1f
                         subtitleBottomPaddingPercent = 8
                         subtitleEmbeddedStyle = true
@@ -5544,8 +5633,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         audioOnly = enabled
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, enabled).build()
+        playerView.keepScreenOn = !enabled
         if (enabled) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        playerView.videoSurfaceView?.visibility = if (enabled) View.INVISIBLE else View.VISIBLE
+        updatePictureInPictureParams()
         showFeedback(if (enabled) "Somente áudio • tela pode ser apagada" else "Vídeo ativado")
         syncComposePlayerUiState()
         touchControls()
@@ -5632,12 +5724,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         if (localMetadata.notes.isNotEmpty()) {
             container.addView(android.widget.TextView(this).apply {
-                text = "Notas deste episódio"
+                text = "Notas e cenas deste episódio"
                 setTextColor(0xFFF5F5F5.toInt())
                 setPadding(0, dp(10), 0, dp(4))
             })
             localMetadata.notes.sortedBy { it.timestampMs }.forEach { note ->
-                val item = actionButton(formatTime(note.timestampMs) + " • " + note.text, 260) {
+                val item = actionButton(formatTime(note.timestampMs) + " • " + (if (note.favorite) "★ " else "") + note.text, 260) {
                     seekToMarker(note.timestampMs, formatTime(note.timestampMs))
                 }
                 item.gravity = Gravity.START or Gravity.CENTER_VERTICAL
