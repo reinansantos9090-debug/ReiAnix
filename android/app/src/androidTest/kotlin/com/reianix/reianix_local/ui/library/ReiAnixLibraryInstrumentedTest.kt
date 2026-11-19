@@ -228,7 +228,7 @@ class ReiAnixLibraryInstrumentedTest {
     }
 
     @Test
-    fun newFilterPanelStagesPersonalSelectionsUntilApply() {
+    fun filterPanelAppliesSelectionsImmediatelyAndCombinesTabs() {
         var applied: ReiAnixLibraryFilters? = null
         composeRule.setContent {
             ReiAnixComposeRoot {
@@ -249,38 +249,40 @@ class ReiAnixLibraryInstrumentedTest {
                 )
             }
         }
-        fun openFilterSheet() {
-            composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
-            composeRule.onNodeWithContentDescription("Ordenar").assertIsDisplayed()
-            composeRule.onNodeWithContentDescription("Gêneros").assertIsDisplayed()
-            composeRule.onNodeWithContentDescription("Estado").assertIsDisplayed()
-            composeRule.onNodeWithContentDescription("Etiqueta").assertIsDisplayed()
-        }
-        fun choosePersonalFilters() {
-            composeRule.onNodeWithContentDescription("Estado").performClick()
-            composeRule.onNodeWithText("Quero assistir").performClick()
-            composeRule.onNodeWithTag("library-filter-check", useUnmergedTree = true).assertIsDisplayed()
-            composeRule.onNodeWithContentDescription("Etiqueta").performClick()
-            composeRule.onNodeWithText("Com notas pessoais").performClick()
-            composeRule.onNodeWithTag("library-filter-check", useUnmergedTree = true).assertIsDisplayed()
-        }
+        composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
+        composeRule.onNodeWithContentDescription("Ordenar").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Gêneros").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Estado").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Etiqueta").assertIsDisplayed()
+        composeRule.onNodeWithText("Aplicar").assertDoesNotExist()
+        composeRule.onNodeWithText("Cancelar").assertDoesNotExist()
+        composeRule.onNodeWithText("Limpar").assertDoesNotExist()
 
-        openFilterSheet()
-        choosePersonalFilters()
-        composeRule.runOnIdle { assertTrue(applied == null) }
-        composeRule.onNodeWithText("Cancelar").performClick()
-        composeRule.runOnIdle { assertTrue(applied == null) }
-
-        openFilterSheet()
-        choosePersonalFilters()
-        composeRule.onNodeWithText("Limpar").performClick()
-        composeRule.runOnIdle { assertTrue(applied == null) }
-        composeRule.onNodeWithText("Todos").assertIsDisplayed()
-        choosePersonalFilters()
-        composeRule.onNodeWithText("Aplicar").performClick()
+        val list = composeRule.onNodeWithTag("library-filter-options", useUnmergedTree = true)
+        composeRule.onNodeWithContentDescription("Estado").performClick()
+        list.performScrollToIndex(1)
+        composeRule.onNodeWithText("Quero assistir").performClick()
+        composeRule.onNodeWithTag("library-filter-check", useUnmergedTree = true).assertIsDisplayed()
         composeRule.runOnIdle {
-            assertTrue(applied?.watchState == "PLANNING")
-            assertTrue(applied?.labelFilter == "WITH_NOTE")
+            assertEquals("PLANNING", applied?.watchState)
+            assertEquals("ALL", applied?.labelFilter)
+        }
+
+        composeRule.onNodeWithContentDescription("Etiqueta").performClick()
+        list.performScrollToIndex(1)
+        composeRule.onNodeWithText("Com notas pessoais").performClick()
+        composeRule.onNodeWithTag("library-filter-check", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertEquals("PLANNING", applied?.watchState)
+            assertEquals("WITH_NOTE", applied?.labelFilter)
+        }
+
+        // Reverting one selection to Todos preserves the filter on the other tab.
+        list.performScrollToIndex(0)
+        composeRule.onNodeWithText("Todos").performClick()
+        composeRule.runOnIdle {
+            assertEquals("PLANNING", applied?.watchState)
+            assertEquals("ALL", applied?.labelFilter)
         }
     }
 
@@ -309,23 +311,23 @@ class ReiAnixLibraryInstrumentedTest {
         composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
         val panel = composeRule.onNodeWithTag("library-filter-sheet", useUnmergedTree = true)
         val list = composeRule.onNodeWithTag("library-filter-options", useUnmergedTree = true)
-        val apply = composeRule.onNodeWithText("Aplicar")
+        val tabs = composeRule.onNodeWithContentDescription("Ordenar")
         val header = composeRule.onNodeWithText("Filtros da biblioteca")
         val panelBounds = panel.fetchSemanticsNode().boundsInRoot
         // The old modifier constrained the anchor itself, leaving the sheet at
         // the top. Allow system-bar insets while checking the lower placement.
         assertTrue("Painel precisa começar abaixo do topo da janela",
-            panelBounds.top > windowHeight * 0.25f)
+            panelBounds.top > windowHeight * 0.35f)
         assertTrue("Painel precisa terminar junto à parte inferior",
             panelBounds.bottom >= windowHeight * 0.90f)
-        assertTrue("Painel deve ocupar aproximadamente 60% da altura",
-            panelBounds.height in (windowHeight * 0.50f)..(windowHeight * 0.72f))
-        val buttonBounds = apply.fetchSemanticsNode().boundsInRoot
+        assertTrue("Painel deve ocupar aproximadamente 48% da altura",
+            panelBounds.height in (windowHeight * 0.40f)..(windowHeight * 0.60f))
+        val tabBounds = tabs.fetchSemanticsNode().boundsInRoot
         val headerBounds = header.fetchSemanticsNode().boundsInRoot
 
         fun assertAnchored() {
             assertEquals(panelBounds, panel.fetchSemanticsNode().boundsInRoot)
-            assertEquals(buttonBounds, apply.fetchSemanticsNode().boundsInRoot)
+            assertEquals(tabBounds, tabs.fetchSemanticsNode().boundsInRoot)
             assertEquals(headerBounds, header.fetchSemanticsNode().boundsInRoot)
         }
 
@@ -346,7 +348,7 @@ class ReiAnixLibraryInstrumentedTest {
         composeRule.onNodeWithContentDescription("Etiqueta").performClick()
         list.performTouchInput { swipeDown() }
         assertAnchored()
-        apply.assertIsDisplayed()
+        tabs.assertIsDisplayed()
     }
 
     @Test
