@@ -1,6 +1,11 @@
 package com.reianix.reianix_local.ui
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.KeyboardActions
@@ -591,6 +596,9 @@ fun ReiAnixTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // Protect controls locally. A scrolling header releases this inset
+            // with its own height instead of padding every destination.
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
             .heightIn(min = ReiAnixTokens.Dimensions.topBarMinHeight)
             .then(
                 if (applyResponsiveHorizontalPadding) {
