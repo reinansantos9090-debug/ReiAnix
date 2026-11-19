@@ -90,7 +90,7 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
-    fun fourHeaderShortcutsArePresentAndFavoriteDispatchesExistingAction() {
+    fun fiveHeaderShortcutsArePresentAndFavoriteDispatchesExistingAction() {
         var favoriteAnimeId: Long? = null
         val initial = detailsStateWithEpisodes(1)
         val state = initial.copy(
@@ -109,7 +109,7 @@ class ReiAnixDetailsInstrumentedTest {
         }
         composeRule.onNodeWithTag("details-episode-list")
             .performScrollToNode(hasTestTag("details-quick-actions"))
-        listOf("favorite", "note", "tags", "list").forEach { shortcut ->
+        listOf("anilist", "favorite", "note", "tags", "list").forEach { shortcut ->
             composeRule.onNodeWithTag("details-quick-" + shortcut).assertIsDisplayed()
         }
         composeRule.onNodeWithTag("details-quick-favorite").performClick()
@@ -121,6 +121,50 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithText("Cancelar").performClick()
         composeRule.onNodeWithTag("details-quick-tags").performClick()
         composeRule.onNodeWithText("Tags pessoais").assertIsDisplayed()
+    }
+
+    @Test
+    fun headerPinChangesDirectlyAndAniListMenuKeepsBothActions() {
+        val state = mutableStateOf(detailsStateWithEpisodes(1))
+        var pinCalls = 0
+        var managed = 0
+        var refreshed = 0
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state.value,
+                    onBack = {},
+                    onRetry = { refreshed++ },
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    onManageAniList = { managed++ },
+                    onTogglePinned = { id ->
+                        assertEquals(700L, id)
+                        val current = requireNotNull(state.value.anime)
+                        val pinned = !current.pinned
+                        pinCalls++
+                        state.value = state.value.copy(anime = current.copy(pinned = pinned))
+                        pinned
+                    },
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Mais opções").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Fixar anime").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Desafixar anime").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Fixar anime").assertIsDisplayed()
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-quick-actions"))
+        composeRule.onNodeWithText("Associar ao AniList").assertDoesNotExist()
+        composeRule.onNodeWithTag("details-quick-anilist").performClick()
+        composeRule.onNodeWithText("Associar ao AniList").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("details-quick-anilist").performClick()
+        composeRule.onNodeWithText("Atualizar detalhes").assertIsDisplayed().performClick()
+        composeRule.runOnIdle {
+            assertEquals(2, pinCalls)
+            assertEquals(1, managed)
+            assertEquals(1, refreshed)
+        }
     }
 
     @Test
