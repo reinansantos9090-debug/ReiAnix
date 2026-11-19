@@ -5608,7 +5608,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (index != 5) dialog.dismiss()
                 when (index) {
                     0 -> choose("Tamanho", arrayOf("Pequeno", "Normal", "Grande", "Muito grande"),
-                        sizes.indexOf(subtitleScale)) { i ->
+                        sizes.indexOfFirst { it == subtitleScale }) { i ->
                         subtitleScale = sizes[i]
                         persistCanonicalPlayerSetting("audio.subtitle_scale", subtitleScale.toString())
                     }
