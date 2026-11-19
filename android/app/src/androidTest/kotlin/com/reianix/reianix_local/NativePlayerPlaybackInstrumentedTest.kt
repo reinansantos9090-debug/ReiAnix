@@ -66,6 +66,84 @@ class NativePlayerPlaybackInstrumentedTest {
     }
 
     @Test
+    fun favoriteSceneTransitionsStayInThePlayerWindowAndPreserveTheEpisode() {
+        launchMainActivityForPlayer()
+        val uri = insertFixtureIntoMediaStore()
+        fixtureUri = uri
+        sendPlayDeepLink(
+            requestId = "instrumented-favorite-transition",
+            uri = uri.toString(),
+            playerSessionId = "instrumented-favorite-transition-session",
+            autoplay = false,
+        )
+        await("Original player must be resumed") {
+            val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                .getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                .firstOrNull { it is NativePlayerActivity } as? NativePlayerActivity
+            activity = resumed
+            resumed != null
+        }
+        val view = awaitView<PlayerView>("reianix_player_view")
+        val player = onMain { requireNotNull(view.player) }
+        await("Original episode must have a rendered frame") {
+            player.playbackState == Player.STATE_READY && activity!!.firstFrameRenderedForTesting
+        }
+        val store = com.reianix.reianix_local.player.PlayerLocalMetadataStore(target)
+        val duration = onMain { player.duration }
+        val name = "Teste de transição " + SystemClock.uptimeMillis()
+        val note = store.saveFavoriteClip(uri.toString(), 1_000L, minOf(5_000L, duration),
+            duration, name, "Fixture", "Episódio 1").notes.first { it.text == name }
+        try {
+            val originalWindow = onMain { activity!!.window.decorView }
+            val originalItem = onMain { requireNotNull(player.currentMediaItem) }
+            val originalPosition = onMain { player.currentPosition }
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            onMain { awaitViewForFavoriteMenu().performClick() }
+            requireNotNull(device.wait(Until.findObject(By.desc("Salvar cena")), 5_000L)).click()
+            val gallery = awaitView<View>("reianix_favorite_scene_page")
+            assertTrue("Gallery must belong to the original player window", onMain { gallery.rootView === originalWindow })
+            requireNotNull(device.wait(Until.findObject(By.text(name)), 5_000L)).click()
+            await("Clip must open directly after a frame is rendered") {
+                player.currentMediaItem?.mediaId == "favorite-clip:" + note.id &&
+                    activity!!.firstFrameRenderedForTesting &&
+                    originalWindow.findViewWithTag<View>("reianix_favorite_scene_page") == null
+            }
+            assertTrue("The original rendering surface and player must stay attached", onMain {
+                view.player === player && view.rootView === originalWindow
+            })
+            onMain {
+                activity!!.onBackPressedDispatcher.onBackPressed()
+                assertTrue("Returning must already display the gallery, before media restoration",
+                    originalWindow.findViewWithTag<View>("reianix_favorite_scene_page") != null)
+            }
+            await("Original media and its first frame must be restored below the gallery") {
+                player.currentMediaItem == originalItem && player.playbackState == Player.STATE_READY &&
+                    activity!!.firstFrameRenderedForTesting
+            }
+            assertTrue("Episode checkpoint must not be replaced by clip progress", onMain {
+                kotlin.math.abs(player.currentPosition - originalPosition) <= 1_000L
+            })
+            requireNotNull(device.wait(Until.findObject(By.text("+ Salvar cena")), 5_000L)).click()
+            requireNotNull(device.wait(Until.findObject(By.desc("Prévia do vídeo")), 5_000L))
+            val editorPage = awaitView<View>("reianix_favorite_scene_page")
+            assertTrue("Editor must use the same window, not a fullscreen Dialog", onMain {
+                editorPage.rootView === originalWindow
+            })
+            onMain { activity!!.onBackPressedDispatcher.onBackPressed() }
+            requireNotNull(device.wait(Until.findObject(By.text(name)), 5_000L))
+            assertTrue("Editor back must return to the gallery in the same window", onMain {
+                originalWindow.findViewWithTag<View>("reianix_favorite_scene_page") != null
+            })
+        } finally {
+            store.deleteNote(uri.toString(), note.id)
+        }
+    }
+
+    private fun awaitViewForFavoriteMenu(): View =
+        requireNotNull(activity!!.window.decorView.findViewWithTag<View>("reianix_more_button"))
+
+    @Test
     fun pictureInPicture_mediaSessionControlsWorkAndPlayerCanReopenAfterDismissal() {
         launchMainActivityForPlayer()
         val uri = insertFixtureIntoMediaStore()
