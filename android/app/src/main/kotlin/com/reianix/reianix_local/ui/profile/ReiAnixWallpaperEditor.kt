@@ -61,7 +61,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
             error = null
             scope.launch {
                 try {
-                    val imported = store.import(uri)
+                    val imported = store.importWallpaper(uri)
                     val previous = image
                     image = imported
                     zoom = 1f; x = 0.5f; y = 0.5f
