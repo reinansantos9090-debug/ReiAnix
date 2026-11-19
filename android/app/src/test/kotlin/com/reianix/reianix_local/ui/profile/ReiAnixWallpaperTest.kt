@@ -4,7 +4,8 @@ import android.app.Application
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaper
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
-import com.reianix.reianix_local.ui.theme.boxBlurPixels
+import com.reianix.reianix_local.ui.theme.automaticWallpaperDim
+import com.reianix.reianix_local.ui.theme.transformWallpaper
 import com.reianix.reianix_local.ui.theme.wallpaperCrop
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -36,25 +37,36 @@ class ReiAnixWallpaperTest {
     @Test
     fun invalidTuningIsNormalizedAndDefaultRemainsDisabled() {
         val value = ReiAnixWallpaper(zoom = Float.NaN, positionX = -1f,
-            positionY = 5f, dim = Float.POSITIVE_INFINITY, blur = 3f).normalized()
+            positionY = 5f).normalized()
         assertNull(value.imageName)
         assertEquals(1f, value.zoom, 0f)
         assertEquals(0f, value.positionX, 0f)
         assertEquals(1f, value.positionY, 0f)
-        assertEquals(.65f, value.dim, 0f)
-        assertEquals(1f, value.blur, 0f)
     }
 
     @Test
-    fun blurKeepsUniformPixelsAndSoftensContrast() {
+    fun automaticContrastDarkensBrightImagesWithoutManualControls() {
         val white = 0xFFFFFFFF.toInt()
         val black = 0xFF000000.toInt()
-        assertArrayEquals(IntArray(9) { white }, boxBlurPixels(IntArray(9) { white }, 3, 3, 8))
-        val source = intArrayOf(black, white, black)
-        val result = boxBlurPixels(source, 3, 1, 1)
-        assertTrue((result[1] and 255) in 1..254)
-        assertTrue((result[0] and 255) in 1..254)
-        assertArrayEquals(source, boxBlurPixels(source, 3, 1, 0))
+        val dark = automaticWallpaperDim(IntArray(100) { black })
+        val bright = automaticWallpaperDim(IntArray(100) { white })
+        assertTrue(bright > dark)
+        assertEquals(.52f, dark, .001f)
+        assertEquals(.72f, bright, .001f)
+    }
+
+    @Test
+    fun pinchKeepsGestureCenterAndDragClampsToImageEdges() {
+        val initial = ReiAnixWallpaper()
+        val enlarged = transformWallpaper(initial, 1000, 1000, 500, 500, 250f, 250f, 0f, 0f, 2f)
+        assertEquals(2f, enlarged.zoom, .001f)
+        assertEquals(.5f, enlarged.positionX, .001f)
+        assertEquals(.5f, enlarged.positionY, .001f)
+        val dragged = transformWallpaper(enlarged, 1000, 1000, 500, 500, 250f, 250f, 10000f, -10000f, 1f)
+        assertEquals(0f, dragged.positionX, .001f)
+        assertEquals(1f, dragged.positionY, .001f)
+        val crop = wallpaperCrop(1000, 1000, 500, 500, dragged)
+        assertTrue(crop.x <= 0 && crop.y <= 0 && crop.x + crop.width >= 500 && crop.y + crop.height >= 500)
     }
 
     @Test
@@ -68,12 +80,14 @@ class ReiAnixWallpaperTest {
         file.parentFile?.mkdirs()
         file.writeBytes(byteArrayOf(1, 2, 3))
         try {
-            store.save(ReiAnixWallpaper(imageName = name, zoom = 2f, dim = .8f, blur = .25f))
+            store.save(ReiAnixWallpaper(imageName = name, zoom = 2f, positionX = .8f))
             assertEquals(name, store.state.value.imageName)
             assertEquals(2f, store.state.value.zoom, 0f)
             val prefs = context.getSharedPreferences("reianix_wallpaper_v1", 0)
             assertEquals(name, prefs.getString("image", null))
-            assertEquals(.8f, prefs.getFloat("dim", 0f), 0f)
+            assertEquals(.8f, prefs.getFloat("x", 0f), 0f)
+            assertFalse(prefs.contains("dim"))
+            assertFalse(prefs.contains("blur"))
             store.discard(name)
             assertTrue(file.isFile)
             try {
