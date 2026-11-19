@@ -85,7 +85,11 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Column(
                         Modifier
-                            .then(if (useSystemInsets) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
+                            .then(
+                                if (useSystemInsets) Modifier.windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                                ) else Modifier,
+                            )
                             .verticalScroll(rememberScrollState()),
                     ) {
                         SettingsHeader(title = "Contas e Avançado", subtitle = "", onBack = onBack)
