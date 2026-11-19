@@ -8,6 +8,8 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -85,6 +87,40 @@ class ReiAnixDetailsInstrumentedTest {
         assertEquals(71L, watchedEpisodeId)
         assertEquals(42L, favoriteAnimeId)
         assertEquals(1, backCount)
+    }
+
+    @Test
+    fun synopsisIsInHeaderBeforeTraceMoe() {
+        val original = detailsStateWithEpisodes(1)
+        val state = original.copy(
+            anime = original.anime!!.copy(
+                description = "Sinopse de teste para verificar a organização dos detalhes.",
+            ),
+        )
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                )
+            }
+        }
+
+        val synopsis = composeRule.onNode(
+            hasText("Sinopse") and hasAnyAncestor(hasTestTag("details-header-metadata")),
+            useUnmergedTree = true,
+        )
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-header-metadata"))
+        synopsis.assertExists()
+        val metadata = composeRule.onNodeWithTag("details-header-metadata", useUnmergedTree = true)
+            .fetchSemanticsNode()
+        val traceMoe = composeRule.onNodeWithTag("details-tracemoe-identify-button", useUnmergedTree = true)
+            .fetchSemanticsNode()
+        org.junit.Assert.assertTrue(metadata.positionInRoot.y < traceMoe.positionInRoot.y)
     }
 
     @Test
