@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.ui.navigation
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -54,7 +57,16 @@ class ReiAnixNavigationInstrumentedTest {
             ReiAnixComposeRoot {
                 ReiAnixNavigationHost(
                     navController = navController,
-                    home = { NavigationTestScreen("Início") },
+                    home = {
+                        Box(Modifier.fillMaxSize().testTag("profile-transition-home")) {
+                            NavigationTestScreen("Início")
+                        }
+                    },
+                    profile = {
+                        Box(Modifier.fillMaxSize().testTag("profile-transition-profile")) {
+                            Text("Meu perfil de teste")
+                        }
+                    },
                     library = { NavigationTestScreen("Biblioteca", includeScroll = true) },
                     myList = { NavigationTestScreen("Minha Lista") },
                     search = { NavigationTestScreen("Buscar") },
@@ -101,6 +113,38 @@ class ReiAnixNavigationInstrumentedTest {
         composeRule.onNodeWithContentDescription("Pesquisar na biblioteca").assertIsDisplayed()
         composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun returningFromProfileRestoresHomeAndBottomBarWithoutCrossfade() {
+        val home = composeRule.onNodeWithTag("profile-transition-home")
+        val profile = composeRule.onNodeWithTag("profile-transition-profile")
+        val bottomBarItem = composeRule.onNodeWithContentDescription("Início")
+        val originalBounds = home.getUnclippedBoundsInRoot()
+
+        composeRule.onNodeWithText("Increment Início").performClick()
+        composeRule.runOnIdle { navController.navigate(ReiAnixRoutes.PROFILE) }
+        profile.assertIsDisplayed()
+        home.assertDoesNotExist()
+        bottomBarItem.assertDoesNotExist()
+
+        // A normal NavHost crossfade would still retain the outgoing profile
+        // at this early frame. The replacement and bar must be atomic.
+        composeRule.mainClock.autoAdvance = false
+        try {
+            composeRule.runOnIdle { navController.popBackStack() }
+            composeRule.mainClock.advanceTimeBy(64L)
+            home.assertIsDisplayed()
+            profile.assertDoesNotExist()
+            bottomBarItem.assertIsDisplayed()
+            assertEquals(originalBounds, home.getUnclippedBoundsInRoot())
+            composeRule.onNodeWithText("Início counter=1").assertIsDisplayed()
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+        composeRule.waitForIdle()
+        assertEquals(ReiAnixRoutes.HOME, navController.currentBackStackEntry?.destination?.route)
+        assertEquals(originalBounds, home.getUnclippedBoundsInRoot())
     }
 
     @Test
