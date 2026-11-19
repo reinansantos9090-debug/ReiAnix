@@ -1,29 +1,25 @@
 package com.reianix.reianix_local.player
 
 import android.app.AlertDialog
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
-import android.text.InputFilter
 import android.util.LruCache
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
-import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.TextView
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.TrackSelectionParameters
 import com.reianix.reianix_local.R
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -31,7 +27,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
-import kotlin.math.roundToLong
 
 /** Local, virtual clips: the original media remains the only video file. */
 internal object FavoriteClipRange {
@@ -42,6 +37,23 @@ internal object FavoriteClipRange {
         val minLength = minOf(1_000L, durationMs)
         val start = positionMs.coerceIn(0L, durationMs - minLength)
         return PlayerLocalMetadataStore.Segment(start, start + minOf(DEFAULT_LENGTH_MS, durationMs - start))
+    }
+
+    /** New edits match the gallery reference: show the complete original filmstrip first. */
+    fun editorInitial(durationMs: Long, positionMs: Long, existing: PlayerLocalMetadataStore.Note?): PlayerLocalMetadataStore.Segment {
+        require(durationMs > 0L)
+        if (existing == null) return PlayerLocalMetadataStore.Segment(0L, durationMs)
+        val savedEnd = existing.clipEndMs
+        if (savedEnd != null && existing.timestampMs >= 0L &&
+            savedEnd > existing.timestampMs && savedEnd <= durationMs) {
+            return PlayerLocalMetadataStore.Segment(existing.timestampMs, savedEnd)
+        }
+        return initial(existing.timestampMs.takeIf { it >= 0L } ?: positionMs, durationMs)
+    }
+
+    fun thumbnailTime(durationMs: Long, index: Int, count: Int): Long {
+        require(durationMs > 0L && count > 0 && index in 0 until count)
+        return (durationMs.toDouble() * (index + 0.5) / count).toLong().coerceIn(0L, durationMs - 1L)
     }
 
     fun editStart(request: Long, end: Long, duration: Long): Long =
@@ -61,6 +73,7 @@ internal class FavoriteSceneDialogs(
     private val thumbnailMutex = Mutex()
     private val thumbnails = LruCache<String, Bitmap>(24)
     private var currentDialog: AlertDialog? = null
+    private var currentEditor: FavoriteClipEditor? = null
 
     private fun dp(value: Int) = (value * activity.resources.displayMetrics.density).roundToInt()
     private fun label(value: String, size: Float = 14f, color: Int = Color.WHITE) =
@@ -83,6 +96,9 @@ internal class FavoriteSceneDialogs(
     }
 
     fun dismiss() {
+        val editor = currentEditor
+        currentEditor = null
+        editor?.dismiss()
         currentDialog?.dismiss()
         currentDialog = null
     }
@@ -232,6 +248,8 @@ internal class FavoriteSceneDialogs(
 
     fun editor(
         mediaId: String,
+        previewItem: MediaItem,
+        trackSelection: TrackSelectionParameters?,
         durationMs: Long,
         positionMs: Long,
         existing: PlayerLocalMetadataStore.Note?,
@@ -240,103 +258,26 @@ internal class FavoriteSceneDialogs(
         onBack: () -> Unit,
     ) {
         if (durationMs <= 0L) { report("Duração indisponível para criar um clipe"); return }
-        val initial = FavoriteClipRange.initial(existing?.timestampMs ?: positionMs, durationMs)
-        var start = initial.startMs
-        var end = existing?.clipEndMs?.takeIf { it > start && it <= durationMs } ?: initial.endMs
-        // Preserve the original exact range when editing a valid saved clip.
-        if (existing != null && existing.timestampMs in 0 until end) start = existing.timestampMs
-        val content = column().apply { setPadding(dp(20), dp(8), dp(20), dp(8)) }
-        val preview = thumbnail()
-        content.addView(preview, LinearLayout.LayoutParams(-1, dp(132)))
-        val durationLabel = label("", 15f)
-        val startLabel = label("")
-        val endLabel = label("")
-        val sliderMax = minOf(durationMs, Int.MAX_VALUE.toLong()).toInt()
-        val startSlider = SeekBar(activity).apply { max = sliderMax; contentDescription = "Início do clipe" }
-        val endSlider = SeekBar(activity).apply { max = sliderMax; contentDescription = "Fim do clipe" }
-        fun asProgress(time: Long) = (time.toDouble() / durationMs * sliderMax).roundToInt().coerceIn(0, sliderMax)
-        fun asTime(progress: Int) = (progress.toDouble() / sliderMax * durationMs).roundToLong().coerceIn(0L, durationMs)
-        fun render() {
-            startLabel.text = "Início: " + format(start)
-            endLabel.text = "Fim: " + format(end)
-            durationLabel.text = "Duração do clipe: " + format(end - start)
-            startSlider.progress = asProgress(start)
-            endSlider.progress = asProgress(end)
+        dismiss()
+        if (activity.isFinishing || activity.isDestroyed) return
+        val editor = FavoriteClipEditor(
+            host = activity,
+            item = previewItem,
+            trackSelection = trackSelection,
+            mediaId = mediaId,
+            durationMs = durationMs,
+            positionMs = positionMs,
+            existing = existing,
+            format = format,
+            report = report,
+            onSave = onSave,
+            onSaved = onSaved,
+            onBack = onBack,
+        )
+        currentEditor = editor
+        editor.setOnDismissListener {
+            if (currentEditor === editor) currentEditor = null
         }
-        var imageJob: Job? = null
-        fun updatePreview(time: Long) {
-            imageJob?.cancel()
-            imageJob = activity.lifecycleScope.launch {
-                preview.setImageBitmap(loadFrame(mediaId, time.coerceIn(0L, durationMs - 1L)))
-            }
-        }
-        fun addControl(title: TextView, slider: SeekBar, isStart: Boolean) {
-            content.addView(title)
-            content.addView(slider)
-            val fine = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-            fun change(value: Long) {
-                if (isStart) start = FavoriteClipRange.editStart(value, end, durationMs)
-                else end = FavoriteClipRange.editEnd(value, start, durationMs)
-                render()
-            }
-            for (delta in listOf(-1_000L, 1_000L)) {
-                fine.addView(action(if (delta < 0) "−1 s" else "+1 s") {
-                    change((if (isStart) start else end) + delta)
-                    updatePreview(if (isStart) start else end)
-                }, LinearLayout.LayoutParams(0, dp(44), 1f))
-            }
-            content.addView(fine)
-            slider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onStartTrackingTouch(bar: SeekBar) = Unit
-                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                    if (fromUser) change(asTime(progress))
-                }
-                override fun onStopTrackingTouch(bar: SeekBar) { updatePreview(if (isStart) start else end) }
-            })
-        }
-        addControl(startLabel, startSlider, true)
-        addControl(endLabel, endSlider, false)
-        content.addView(durationLabel)
-        val name = EditText(activity).apply {
-            hint = "Nome da cena (opcional)"
-            setSingleLine(true)
-            setTextColor(Color.WHITE)
-            filters = arrayOf(InputFilter.LengthFilter(500))
-            setText(existing?.text.orEmpty())
-        }
-        content.addView(name)
-        val scroll = ScrollView(activity).apply { addView(content) }
-        val dialog = AlertDialog.Builder(activity, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle(if (existing == null) "Salvar cena favorita" else "Editar cena favorita")
-            .setView(scroll).setNegativeButton("Voltar") { _, _ -> onBack() }
-            .setPositiveButton("Salvar", null).create()
-        var saving = false
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (saving) return@setOnClickListener
-                saving = true
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                dialog.getButton(AlertDialog.BUTTON_NEGATIVE).isEnabled = false
-                dialog.setCancelable(false)
-                dialog.setCanceledOnTouchOutside(false)
-                activity.lifecycleScope.launch {
-                    try {
-                        onSave(start, end, name.text.toString())
-                        dialog.dismiss()
-                        onSaved()
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) {
-                        saving = false
-                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).isEnabled = true
-                        dialog.setCancelable(true)
-                        report("Não foi possível salvar a cena. Verifique o intervalo e o limite de notas.")
-                    }
-                }
-            }
-        }
-        render()
-        present(dialog) { imageJob?.cancel() }
-        if (dialog.isShowing) updatePreview(start)
+        editor.show()
     }
 }
