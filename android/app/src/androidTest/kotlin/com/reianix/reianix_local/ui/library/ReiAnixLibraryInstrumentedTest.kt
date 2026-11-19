@@ -6,6 +6,11 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reianix.reianix_local.ui.ReiAnixComposeRoot
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
@@ -274,6 +279,61 @@ class ReiAnixLibraryInstrumentedTest {
             assertTrue(applied?.watchState == "PLANNING")
             assertTrue(applied?.labelFilter == "WITH_NOTE")
         }
+    }
+
+    @Test
+    fun filterSheetStaysFixedAtScrollBoundariesAndAcrossTabs() {
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixLibraryScreen(
+                    state = readyState(),
+                    filters = ReiAnixLibraryFilters(),
+                    visibleAnimes = listOf(anime(7L, "Example Anime")),
+                    genres = emptyList(),
+                    onQueryChange = {},
+                    onGenreSelected = {},
+                    onToggleFavorites = {},
+                    onToggleWatching = {},
+                    onToggleCompleted = {},
+                    onClearFilters = {},
+                    onRefresh = {},
+                    onOpenDetails = {},
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
+        val panel = composeRule.onNodeWithTag("library-filter-sheet", useUnmergedTree = true)
+        val list = composeRule.onNodeWithTag("library-filter-options", useUnmergedTree = true)
+        val apply = composeRule.onNodeWithText("Aplicar")
+        val header = composeRule.onNodeWithText("Filtros da biblioteca")
+        val panelBounds = panel.fetchSemanticsNode().boundsInRoot
+        val buttonBounds = apply.fetchSemanticsNode().boundsInRoot
+        val headerBounds = header.fetchSemanticsNode().boundsInRoot
+
+        fun assertAnchored() {
+            assertEquals(panelBounds, panel.fetchSemanticsNode().boundsInRoot)
+            assertEquals(buttonBounds, apply.fetchSemanticsNode().boundsInRoot)
+            assertEquals(headerBounds, header.fetchSemanticsNode().boundsInRoot)
+        }
+
+        list.performScrollToIndex(ReiAnixLibrarySort.OPTIONS.lastIndex)
+        repeat(3) {
+            list.performTouchInput { swipeUp() }
+            assertAnchored()
+        }
+        list.performScrollToIndex(0)
+        repeat(3) {
+            list.performTouchInput { swipeDown() }
+            assertAnchored()
+        }
+        // A short list must not resize or drag the modal sheet, either.
+        composeRule.onNodeWithContentDescription("Gêneros").performClick()
+        list.performTouchInput { swipeUp() }
+        assertAnchored()
+        composeRule.onNodeWithContentDescription("Etiqueta").performClick()
+        list.performTouchInput { swipeDown() }
+        assertAnchored()
+        apply.assertIsDisplayed()
     }
 
     @Test
