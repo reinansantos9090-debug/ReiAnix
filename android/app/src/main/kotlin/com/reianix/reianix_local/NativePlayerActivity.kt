@@ -5931,13 +5931,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         container.addView(endingStart)
         container.addView(endingEnd)
 
-        if (localMetadata.notes.isNotEmpty()) {
+        if (localMetadata.notes.any { !it.favorite }) {
             container.addView(android.widget.TextView(this).apply {
                 text = "Notas e cenas deste episódio"
                 setTextColor(0xFFF5F5F5.toInt())
                 setPadding(0, dp(10), 0, dp(4))
             })
-            localMetadata.notes.sortedBy { it.timestampMs }.forEach { note ->
+            localMetadata.notes.filterNot { it.favorite }.sortedBy { it.timestampMs }.forEach { note ->
                 val item = actionButton(formatTime(note.timestampMs) + " • " + (if (note.favorite) "★ " else "") + note.text, 260) {
                     seekToMarker(note.timestampMs, formatTime(note.timestampMs))
                 }
@@ -5947,7 +5947,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         localMetadata = localMetadataStore.deleteNote(uri.toString(), note.id)
                     } catch (_: Exception) {
                         showFeedback("Não foi possível excluir a nota")
-                        return@setOnClickListener
+                        return@setOnLongClickListener true
                     }
                     showFeedback("Nota removida")
                     showLocalMetadataEditor()
