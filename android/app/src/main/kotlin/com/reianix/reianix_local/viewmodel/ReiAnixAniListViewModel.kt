@@ -36,6 +36,11 @@ data class ReiAnixAniListUiState(
     val isMetadataRefreshLoading: Boolean = false,
     val lastAssociationMessage: String? = null,
     val associationRevision: Long = 0L,
+    val repairAnimeId: Long? = null,
+    val repairMessage: String? = null,
+    val repairFailed: Boolean = false,
+    val repairRunning: Boolean = false,
+    val repairRevision: Long = 0L,
 ) {
     val isLoading: Boolean
         get() = isSearchLoading || isManualAssociationLoading || isAutoMatchLoading || isMetadataRefreshLoading
@@ -163,6 +168,41 @@ class ReiAnixAniListViewModel(
         }
     }
     /** Refreshes only a local anime's existing AniList association through the native service. */
+    /** One explicit action, with independent progress and no modal selection. */
+    fun repairAniListMetadata(animeId: Long) {
+        if (animeId <= 0L || _aniListUiState.value.repairRunning) return
+        _aniListUiState.value = _aniListUiState.value.copy(
+            repairAnimeId = animeId, repairRunning = true, repairMessage = null, repairFailed = false,
+        )
+        viewModelScope.launch {
+            try {
+                when (val result = integration.repairMetadataAndArtwork(animeId)) {
+                    is AniListResult.Success -> {
+                        val current = _aniListUiState.value
+                        _aniListUiState.value = current.copy(
+                            repairMessage = "Metadados verificados. Atualização da capa solicitada.",
+                            associationRevision = current.associationRevision + 1,
+                        )
+                    }
+                    is AniListResult.Failure -> _aniListUiState.value = _aniListUiState.value.copy(
+                        repairMessage = result.error.userMessage(), repairFailed = true,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _aniListUiState.value = _aniListUiState.value.copy(
+                    repairMessage = failure.message ?: "Não foi possível verificar o anime.", repairFailed = true,
+                )
+            } finally {
+                val current = _aniListUiState.value
+                _aniListUiState.value = current.copy(
+                    repairRunning = false, repairRevision = current.repairRevision + 1,
+                )
+            }
+        }
+    }
+
     fun refreshAniListMetadata(animeId: Long) {
         metadataRefreshJob?.cancel()
         val requestId = ++metadataRefreshRequestId
