@@ -637,6 +637,15 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Geral" -> {
+                    item(key = "setting:app.immersive") {
+                        BooleanSettingRow(
+                            keyName = "app.immersive",
+                            title = "Modo imersivo",
+                            description = "Oculta as barras do Android. Desativar mantém o Edge-to-Edge com relógio, bateria e notificações visíveis.",
+                            checked = com.reianix.reianix_local.data.settings.ReiAnixSettingsContract.appImmersiveEnabled(state.settings["app.immersive"]),
+                            onCheckedChange = { onUpdateSetting("app.immersive", it.toString()) },
+                        )
+                    }
                     item(key = "setting:app.confirm_destructive") {
                         BooleanSettingRow(
                             keyName = "app.confirm_destructive",
