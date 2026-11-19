@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -86,6 +87,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -631,6 +634,12 @@ private fun LibraryFiltersDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        // The sheet is anchored at a constant height and never inherits drags
+        // or leftover fling velocity from the options list.
+        modifier = Modifier.fillMaxHeight(0.60f).testTag("library-filter-sheet"),
+        sheetMaxWidth = Dp.Unspecified,
+        sheetGesturesEnabled = false,
+        dragHandle = null,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         containerColor = colors.background,
         contentColor = colors.onBackground,
@@ -638,9 +647,8 @@ private fun LibraryFiltersDialog(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp)
-                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                .fillMaxSize()
+                .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
@@ -698,7 +706,11 @@ private fun LibraryFiltersDialog(
             // One bounded scrolling surface and a stationary action bar.
             key(tab) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f).selectableGroup(),
+                    modifier = Modifier.fillMaxWidth().weight(1f).selectableGroup()
+                        .testTag("library-filter-options"),
+                    // Disable the Android stretch/bounce at either scroll boundary
+                    // for this list only. The library grid keeps its own behavior.
+                    overscrollEffect = null,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     contentPadding = PaddingValues(vertical = 4.dp),
                 ) {
