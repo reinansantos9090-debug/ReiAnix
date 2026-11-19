@@ -20,6 +20,21 @@ class ReiAnixSettingsContractTest {
         assertNull(ReiAnixSettingsContract.defaultFor("library.grid_density"))
     }
 
+    @Test fun applicationImmersivePreferenceDefaultsOnAndIsIndependentOfPlayer() {
+        val key = ReiAnixSettingsContract.APP_IMMERSIVE_KEY
+        assertEquals("true", ReiAnixSettingsContract.defaultFor(key))
+        assertEquals(true, ReiAnixSettingsContract.appImmersiveEnabled(null))
+        assertEquals(true, ReiAnixSettingsContract.appImmersiveEnabled("true"))
+        assertEquals(false, ReiAnixSettingsContract.appImmersiveEnabled("false"))
+        assertEquals(false, ReiAnixSettingsContract.appImmersiveEnabled("0"))
+        assertEquals(false, ReiAnixSettingsContract.appImmersiveEnabled(
+            ReiAnixSettingsContract.withDefaults(mapOf(key to "false"))[key],
+        ))
+        assertEquals(false, key in ReiAnixSettingsContract.keysForReset(playerOnly = true))
+        assertEquals(true, key in ReiAnixSettingsContract.keysForReset(playerOnly = false))
+        assertEquals("always", ReiAnixSettingsContract.defaultFor("player.immersive"))
+    }
+
     @Test fun resettingPlayerIncludesAudioSubtitlesAndGestures() {
         val playerKeys = ReiAnixSettingsContract.keysForReset(playerOnly = true)
         assertEquals(5, playerKeys.count { it.startsWith("gestures.") })
