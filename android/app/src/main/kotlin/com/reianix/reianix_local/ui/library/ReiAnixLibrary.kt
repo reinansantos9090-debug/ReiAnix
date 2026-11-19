@@ -9,7 +9,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.semantics.Role
@@ -22,8 +21,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material3.Button
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -353,8 +350,7 @@ private fun ReiAnixLibraryPresentationScreen(
             filters = filters,
             genres = genres,
             onDismiss = { showFilters = false },
-            onApply = { draft ->
-                showFilters = false
+            onSelection = { draft ->
                 if (onApplyFilters != null) onApplyFilters(draft) else {
                     onSortSelected(draft.sort)
                     onGenreSelected(draft.selectedGenreKey)
@@ -581,7 +577,7 @@ private fun LibraryWhiteIconButton(icon: ImageVector, description: String, onCli
 }
 
 /**
- * Single modal sheet with four tabs; selections remain local until Apply.
+ * Single modal sheet with four tabs; selections apply immediately.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -589,7 +585,7 @@ private fun LibraryFiltersDialog(
     filters: ReiAnixLibraryFilters,
     genres: List<ReiAnixGenreUiModel>,
     onDismiss: () -> Unit,
-    onApply: (ReiAnixLibraryFilters) -> Unit,
+    onSelection: (ReiAnixLibraryFilters) -> Unit,
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
 ) {
@@ -649,17 +645,10 @@ private fun LibraryFiltersDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 // Size the content, not the anchor's parent constraints.
-                .fillMaxHeight(0.60f)
+                .fillMaxHeight(0.48f)
                 .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Decorative handle, not draggable: scrolling stays isolated inside the list.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .size(width = 32.dp, height = 4.dp)
-                    .background(colors.onBackground.copy(alpha = 0.70f), RoundedCornerShape(2.dp)),
-            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -713,7 +702,7 @@ private fun LibraryFiltersDialog(
                 }
             }
 
-            // One bounded scrolling surface and a stationary action bar.
+            // One bounded scrolling surface; heading and tabs remain fixed.
             key(tab) {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f).selectableGroup()
@@ -734,11 +723,21 @@ private fun LibraryFiltersDialog(
                                     enabled = !closing,
                                     role = Role.RadioButton,
                                     onClick = {
-                                        when (tab) {
-                                            0 -> sort = value ?: ReiAnixLibrarySort.DEFAULT.label
-                                            1 -> genre = value
-                                            2 -> state = value ?: "ALL"
-                                            else -> label = value ?: "ALL"
+                                        if (!selected) {
+                                            when (tab) {
+                                                0 -> sort = value ?: ReiAnixLibrarySort.DEFAULT.label
+                                                1 -> genre = value
+                                                2 -> state = value ?: "ALL"
+                                                else -> label = value ?: "ALL"
+                                            }
+                                            // Apply each selection immediately, preserving other
+                                            // tabs and the existing search/quick filters.
+                                            onSelection(filters.copy(
+                                                sort = sort,
+                                                selectedGenreKey = genre,
+                                                watchState = state,
+                                                labelFilter = label,
+                                            ))
                                         }
                                     },
                                 )
@@ -772,32 +771,6 @@ private fun LibraryFiltersDialog(
                         }
                     }
                 }
-            }
-            HorizontalDivider(color = colors.outlineVariant)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(
-                    enabled = !closing,
-                    onClick = {
-                        sort = ReiAnixLibrarySort.DEFAULT.label
-                        genre = null
-                        state = "ALL"
-                        label = "ALL"
-                    },
-                ) { Text("Limpar") }
-                Spacer(Modifier.weight(1f))
-                TextButton(enabled = !closing, onClick = { closeThen(onDismiss) }) {
-                    Text("Cancelar")
-                }
-                Button(
-                    enabled = !closing,
-                    onClick = {
-                        val draft = filters.copy(sort = sort, selectedGenreKey = genre, watchState = state, labelFilter = label)
-                        closeThen { onApply(draft) }
-                    },
-                ) { Text("Aplicar") }
             }
         }
     }
