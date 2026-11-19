@@ -1,6 +1,23 @@
 package com.reianix.reianix_local.ui.details
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
+import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
@@ -24,7 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,16 +75,11 @@ import com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter
 import com.reianix.reianix_local.data.personal.ReiAnixCharacterCache
 import com.reianix.reianix_local.data.personal.ReiAnixLocalRecommendation
 import com.reianix.reianix_local.data.personal.ReiAnixPersonalAnimeService
-import com.reianix.reianix_local.data.personal.ReiAnixPersonalAnimeState
 import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/**
- * Supplementary content is absent from the initial library projection.
- * Ratings stay locally persisted; recommendations load only after an explicit tap.
- * Character imagery is rendered with other anime metadata, not in this panel.
- */
+/** Automatically loaded only in Details, with existing local covers. */
 @Composable
 fun ReiAnixPersonalExtras(
     animeId: Long,
@@ -77,100 +88,219 @@ fun ReiAnixPersonalExtras(
     val context = LocalContext.current
     val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
     val service = remember(dependencies) {
-        ReiAnixPersonalAnimeService(
-            dependencies.sqliteSettingsRepository,
-            dependencies.sqliteLibraryRepository,
-        )
+        ReiAnixPersonalAnimeService(dependencies.sqliteSettingsRepository, dependencies.sqliteLibraryRepository)
     }
-    val scope = rememberCoroutineScope()
-    var personal by remember(animeId) { mutableStateOf(ReiAnixPersonalAnimeState()) }
-    var ratingSlider by remember(animeId) { mutableFloatStateOf(0f) }
-    var isLoaded by remember(animeId) { mutableStateOf(false) }
-    var saving by remember(animeId) { mutableStateOf(false) }
-    var error by remember(animeId) { mutableStateOf<String?>(null) }
     var recommendations by remember(animeId) { mutableStateOf<List<ReiAnixLocalRecommendation>?>(null) }
-    var recommendationsBusy by remember(animeId) { mutableStateOf(false) }
+    var failed by remember(animeId) { mutableStateOf(false) }
+    var showAll by remember(animeId) { mutableStateOf(false) }
 
     LaunchedEffect(animeId) {
-        runCatching { service.load(animeId) }.onSuccess {
-            personal = it
-            ratingSlider = (it.ratingTenths ?: 0).toFloat()
-        }.onFailure { error = "Não foi possível ler suas preferências." }
-        isLoaded = true
-    }
-
-    fun saveRating(value: Int?) {
-        if (saving) return
-        saving = true
-        scope.launch {
-            try { personal = service.setRating(animeId, value); error = null }
-            catch (_: Exception) { error = "Não foi possível salvar sua nota." }
-            finally { saving = false }
+        try {
+            recommendations = service.recommendLocal(animeId, limit = 12)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            failed = true
         }
     }
 
+    val suggestions = recommendations
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        HorizontalDivider()
-        Text("Minha experiência", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text("Avaliações pessoais armazenadas somente neste dispositivo.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Minha nota: " + (personal.ratingTenths?.let {
-            String.format(Locale.forLanguageTag("pt-BR"), "%.1f / 10", it / 10.0)
-        } ?: "Sem avaliação"))
-        Slider(
-            value = ratingSlider,
-            onValueChange = { ratingSlider = it },
-            onValueChangeFinished = {
-                saveRating(((ratingSlider / 5f).toInt() * 5).coerceIn(0, 100))
-            },
-            valueRange = 0f..100f,
-            steps = 19,
-            enabled = isLoaded && !saving,
-        )
-        OutlinedButton(onClick = {
-            ratingSlider = 0f
-            saveRating(null)
-        }, enabled = isLoaded && !saving && personal.ratingTenths != null) {
-            Text("Remover minha nota")
-        }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        HorizontalDivider()
-
-        Text("Recomendações para você", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text("Sugestões da sua biblioteca, calculadas localmente por gêneros e favoritos.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(
-            enabled = !recommendationsBusy,
-            onClick = {
-                recommendationsBusy = true
-                scope.launch {
-                    try {
-                        recommendations = service.recommendLocal(animeId)
-                        error = null
-                    } catch (_: Exception) {
-                        error = "Não foi possível calcular recomendações."
-                    } finally { recommendationsBusy = false }
-                }
-            },
-        ) { Text(if (recommendationsBusy) "Analisando…" else "Ver recomendações") }
-        recommendations?.let { local ->
-            if (local.isEmpty()) Text("Sem sugestões suficientes na biblioteca por enquanto.")
-            local.forEach { suggestion ->
-                OutlinedButton(onClick = { onOpenAnime(suggestion.animeId) }, modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(suggestion.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(suggestion.reason, style = MaterialTheme.typography.bodySmall)
-                    }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Recomendações para você", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold)
+            if (!suggestions.isNullOrEmpty()) {
+                IconButton(onClick = { showAll = true }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Todas as sugestões")
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
+        when {
+            failed -> Text("Não foi possível carregar as sugestões.", style = MaterialTheme.typography.bodySmall)
+            suggestions == null -> Text("Carregando sugestões…", style = MaterialTheme.typography.bodySmall)
+            suggestions.isEmpty() -> Text("Sem sugestões suficientes na biblioteca.", style = MaterialTheme.typography.bodySmall)
+            else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(suggestions.take(6), key = { it.animeId }) { suggestion ->
+                    RecommendationPoster(suggestion) { onOpenAnime(suggestion.animeId) }
+                }
+            }
+        }
     }
+    if (showAll && !suggestions.isNullOrEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showAll = false },
+            title = { Text("Sugestões") },
+            text = {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(92.dp),
+                    modifier = Modifier.heightIn(max = 420.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(suggestions, key = { it.animeId }) { suggestion ->
+                        RecommendationPoster(suggestion, Modifier.fillMaxWidth()) {
+                            showAll = false
+                            onOpenAnime(suggestion.animeId)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showAll = false }) { Text("Fechar") } },
+        )
+    }
+}
+
+@Composable
+private fun RecommendationPoster(
+    suggestion: ReiAnixLocalRecommendation,
+    modifier: Modifier = Modifier.width(108.dp),
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier.clickable(role = Role.Button, onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        ReiAnixPoster(
+            localPath = suggestion.posterPath,
+            contentDescription = null,
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
+            identity = "recommendation:" + suggestion.animeId,
+            maxDimensionPx = 320,
+        )
+        Text(suggestion.title, style = MaterialTheme.typography.bodySmall,
+            maxLines = 3, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Written note and optional numerical rating share one editor; existing stores remain intact. */
+@Composable
+internal fun ReiAnixPersonalNoteDialog(
+    animeId: Long,
+    initialNote: String?,
+    onSaveNote: suspend (Long, String?) -> String?,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
+    val service = remember(dependencies) {
+        ReiAnixPersonalAnimeService(dependencies.sqliteSettingsRepository, dependencies.sqliteLibraryRepository)
+    }
+    val scope = rememberCoroutineScope()
+    var note by rememberSaveable(animeId) { mutableStateOf(initialNote.orEmpty()) }
+    var rating by rememberSaveable(animeId) { mutableStateOf<Int?>(null) }
+    var originalRating by rememberSaveable(animeId) { mutableStateOf<Int?>(null) }
+    var loaded by remember(animeId) { mutableStateOf(false) }
+    var saving by remember(animeId) { mutableStateOf(false) }
+    var error by remember(animeId) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(animeId) {
+        try {
+            val state = service.load(animeId)
+            originalRating = state.ratingTenths
+            rating = state.ratingTenths
+            loaded = true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            error = "Não foi possível ler a avaliação salva."
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Nota pessoal") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { if (it.length <= 2000) note = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Nota privada") },
+                    minLines = 3,
+                    maxLines = 5,
+                    enabled = !saving,
+                    supportingText = {
+                        Text(note.length.toString() + "/2000")
+                    },
+                )
+                HorizontalDivider()
+                Text("Minha avaliação", style = MaterialTheme.typography.titleSmall)
+                Text(rating?.let { String.format(Locale.forLanguageTag("pt-BR"), "%.1f / 10", it / 10.0) }
+                    ?: "Sem avaliação", color = MaterialTheme.colorScheme.primary)
+                Slider(
+                    value = (rating ?: 0).toFloat(),
+                    onValueChange = { rating = (it / 5f).roundToInt().times(5).coerceIn(0, 100) },
+                    valueRange = 0f..100f,
+                    steps = 19,
+                    enabled = loaded && !saving,
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("0", style = MaterialTheme.typography.labelSmall)
+                    Text("5", style = MaterialTheme.typography.labelSmall)
+                    Text("10", style = MaterialTheme.typography.labelSmall)
+                }
+                if (rating != null) {
+                    TextButton(onClick = { rating = null }, enabled = loaded && !saving) {
+                        Text("Remover avaliação")
+                    }
+                } else {
+                    TextButton(onClick = { rating = 0 }, enabled = loaded && !saving) {
+                        Text("Avaliar com 0")
+                    }
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            ReiAnixPrimaryButton(
+                text = if (saving) "Salvando…" else "Salvar",
+                enabled = !saving && loaded,
+                onClick = {
+                    if (!saving && loaded) {
+                        saving = true
+                        error = null
+                        scope.launch {
+                            try {
+                                if (note.trim() != initialNote.orEmpty().trim()) {
+                                    onSaveNote(animeId, note.trim().takeIf { it.isNotEmpty() })
+                                }
+                                if (rating != originalRating) {
+                                    service.setRating(animeId, rating)
+                                    originalRating = rating
+                                }
+                                onDismiss()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                error = "Não foi possível concluir o salvamento. Tente novamente."
+                            } finally {
+                                saving = false
+                            }
+                        }
+                    }
+                },
+            )
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onDismiss, enabled = !saving) { Text("Cancelar") }
+                if (note.isNotBlank()) {
+                    TextButton(onClick = { note = "" }, enabled = !saving) { Text("Apagar texto") }
+                }
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
 }
 
 
