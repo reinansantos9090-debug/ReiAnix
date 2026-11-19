@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
-import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -858,7 +857,7 @@ internal fun DetailsAniListAction(
     Box(modifier = modifier) {
         ReiAnixDetailsQuickAction(
             label = "AniList",
-            icon = Icons.Outlined.Link,
+            icon = ReiAnixDetailsShortcutIcons.AniList,
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -869,7 +868,7 @@ internal fun DetailsAniListAction(
         ) {
             DropdownMenuItem(
                 text = { Text("Associar ao AniList") },
-                leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
+                leadingIcon = { Icon(ReiAnixDetailsShortcutIcons.AniList, contentDescription = null) },
                 onClick = {
                     expanded = false
                     onManageAniList()
@@ -1090,11 +1089,11 @@ private fun DetailsHero(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // Shift the shortcuts down 12 dp, absorbing the old extra gap
-                // above the synopsis instead of making the header taller.
+                // Move all five equal-width slots slightly toward the start
+                // without changing their shared center-to-center distance.
                 .padding(
-                    start = responsive.horizontalPadding,
-                    end = responsive.horizontalPadding,
+                    start = responsive.horizontalPadding - minOf(4.dp, responsive.horizontalPadding),
+                    end = responsive.horizontalPadding + minOf(4.dp, responsive.horizontalPadding),
                     top = 16.dp,
                     bottom = ReiAnixTokens.Spacing.xs,
                 )
