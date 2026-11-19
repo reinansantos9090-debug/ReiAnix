@@ -1,24 +1,23 @@
 package com.reianix.reianix_local.player
 
 import android.app.AlertDialog
-import android.app.Dialog
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.text.InputFilter
+import android.view.LayoutInflater
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
@@ -61,7 +60,8 @@ internal class FavoriteClipEditor(
     private val onSave: suspend (Long, Long, String) -> Unit,
     private val onSaved: () -> Unit,
     private val onBack: () -> Unit,
-) : Dialog(host, android.R.style.Theme_Material_NoActionBar_Fullscreen) {
+    private val initialFrame: Bitmap?,
+) {
     private val initial = FavoriteClipRange.editorInitial(durationMs, positionMs, existing)
     private var start = initial.startMs
     private var end = initial.endMs
@@ -70,6 +70,7 @@ internal class FavoriteClipEditor(
     private var name = originalName
     private var saving = false
     private var closed = false
+    private var leaving = false
     private var dragging = false
     private var lastSeekAt = -1_000L
     private var previewPlayer: ExoPlayer? = null
@@ -78,6 +79,7 @@ internal class FavoriteClipEditor(
     private var nameDialog: AlertDialog? = null
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var preview: PlayerView
+    private lateinit var placeholder: ImageView
     private lateinit var filmstrip: FavoriteClipTimeline
     private lateinit var timeLabel: TextView
     private lateinit var play: TextView
@@ -101,7 +103,7 @@ internal class FavoriteClipEditor(
         setPadding(dp(10), 0, dp(10), 0)
         isClickable = true
         isFocusable = true
-        setOnClickListener { if (!saving) click() }
+        setOnClickListener { if (!saving && !leaving) click() }
     }
     private fun pill() = GradientDrawable().apply {
         setColor(Color.TRANSPARENT)
@@ -126,8 +128,7 @@ internal class FavoriteClipEditor(
         }
     }
 
-    override fun onCreate(state: Bundle?) {
-        super.onCreate(state)
+    fun createView(): View {
         val root = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
@@ -159,15 +160,27 @@ internal class FavoriteClipEditor(
 
         // The video occupies the central viewport rather than a tiny image in
         // an AlertDialog. FIT preserves the actual aspect ratio of the source.
-        preview = PlayerView(host).apply {
+        preview = (LayoutInflater.from(host).inflate(R.layout.native_player_view, null) as PlayerView).apply {
+            setKeepContentOnPlayerReset(true)
+            setShutterBackgroundColor(Color.BLACK)
             useController = false
             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)
             keepScreenOn = true
-            setOnClickListener { if (!saving) togglePlayback() }
+            setOnClickListener { if (!saving && !leaving) togglePlayback() }
             contentDescription = "Prévia do vídeo"
         }
-        root.addView(preview, LinearLayout.LayoutParams(-1, 0, 1f))
+        placeholder = ImageView(host).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(Color.BLACK)
+            setImageBitmap(initialFrame)
+            visibility = if (initialFrame != null) View.VISIBLE else View.GONE
+        }
+        val previewBox = FrameLayout(host).apply {
+            addView(preview, FrameLayout.LayoutParams(-1, -1))
+            addView(placeholder, FrameLayout.LayoutParams(-1, -1))
+        }
+        root.addView(previewBox, LinearLayout.LayoutParams(-1, 0, 1f))
 
         val bottom = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -196,7 +209,7 @@ internal class FavoriteClipEditor(
         bottom.addView(playRow, LinearLayout.LayoutParams(-2, -2))
         filmstrip = FavoriteClipTimeline(host, durationMs).apply {
             onDrag = { target, time, finished ->
-                if (!saving) handleDrag(target, time, finished)
+                if (!saving && !leaving) handleDrag(target, time, finished)
             }
         }
         val stripBox = FrameLayout(host).apply {
@@ -209,20 +222,11 @@ internal class FavoriteClipEditor(
         rangeLabel = text("", 11f).apply { setTextColor(0xFFAAAAAA.toInt()) }
         bottom.addView(rangeLabel)
         root.addView(bottom, LinearLayout.LayoutParams(-1, -2))
-        setContentView(root)
-        setCanceledOnTouchOutside(false)
         render()
-        ViewCompat.requestApplyInsets(root)
+        return root
     }
 
-    override fun onStart() {
-        super.onStart()
-        window?.apply {
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            setBackgroundDrawableResource(android.R.color.black)
-            addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            SystemUiController(this).applyImmersive(false)
-        }
+    fun startPreview() {
         if (previewPlayer != null || closed) return
         try {
             val p = ExoPlayer.Builder(host).build()
@@ -237,6 +241,12 @@ internal class FavoriteClipEditor(
                     .build()
             }
             p.addListener(object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    if (!closed) {
+                        placeholder.visibility = View.GONE
+                        placeholder.setImageDrawable(null)
+                    }
+                }
                 override fun onIsPlayingChanged(isPlaying: Boolean) { render() }
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { render() }
                 override fun onPlayerError(error: PlaybackException) {
@@ -346,17 +356,16 @@ internal class FavoriteClipEditor(
             .create().also { dialog ->
                 dialog.setOnDismissListener {
                     nameDialog = null
-                    window?.let { SystemUiController(it).applyImmersive(false) }
+                    host.window.let { SystemUiController(it).applyImmersive(false) }
                 }
                 dialog.show()
             }
     }
 
     private fun persist() {
-        if (saving || closed) return
+        if (saving || closed || leaving) return
         previewPlayer?.pause()
         saving = true
-        setCancelable(false)
         render()
         saveJob = host.lifecycleScope.launch {
             try {
@@ -364,7 +373,7 @@ internal class FavoriteClipEditor(
                 if (!closed) {
                     // Do not cancel the currently completing save in onStop.
                     saveJob = null
-                    dismiss()
+                    leaving = true
                     onSaved()
                 }
             } catch (cancelled: CancellationException) {
@@ -372,7 +381,6 @@ internal class FavoriteClipEditor(
             } catch (_: Exception) {
                 if (!closed) {
                     saving = false
-                    setCancelable(true)
                     render()
                     report("Não foi possível salvar a cena. Verifique o intervalo e o limite de notas.")
                 }
@@ -381,13 +389,13 @@ internal class FavoriteClipEditor(
     }
 
     private fun leave() {
-        if (saving || closed) return
-        dismiss()
+        if (saving || closed || leaving) return
+        leaving = true
+        previewPlayer?.pause()
         onBack()
     }
 
-    @Deprecated("Dialog back navigation")
-    override fun onBackPressed() { leave() }
+    fun handleBack() { leave() }
 
     private fun loadFilmstrip() {
         framesJob = host.lifecycleScope.launch {
@@ -427,7 +435,8 @@ internal class FavoriteClipEditor(
         }
     }
 
-    override fun onStop() {
+    fun close() {
+        if (closed) return
         closed = true
         handler.removeCallbacks(tick)
         framesJob?.cancel()
@@ -437,6 +446,5 @@ internal class FavoriteClipEditor(
         if (::preview.isInitialized) preview.player = null
         previewPlayer?.release()
         previewPlayer = null
-        super.onStop()
     }
 }
