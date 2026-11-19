@@ -340,7 +340,7 @@ class NativePlayerActivity : FragmentActivity() {
     private var restoredPositionMs: Long? = null
     private var localMetadata = PlayerLocalMetadataStore.Metadata.empty()
     private val favoriteSceneDialogs by lazy {
-        FavoriteSceneDialogs(this, ::formatTime) {
+        FavoriteSceneDialogs(this, { root }, ::formatTime) {
             Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
         }
     }
@@ -358,7 +358,9 @@ class NativePlayerActivity : FragmentActivity() {
     private val inFavoriteClip: Boolean get() = favoriteClipSession?.restoring == false
     private val effectiveSeekMs: Long get() = if (inFavoriteClip) 10_000L else doubleTapSeekMs
     private var favoriteSceneUiRevision = 0L
-    private var favoriteSceneTransitionCover: View? = null
+    private var cachedFavoriteScenes: List<PlayerLocalMetadataStore.FavoriteScene>? = null
+    private var favoriteRestoreWaitingForFrame = false
+    private var favoriteOpeningWaitingForFrame = false
     private var aspectModeLabel = "Ajustar"
     private var episodeChangePending = false
     private var episodeChangeTimeoutRequestId = ""
@@ -1551,7 +1553,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (!isCurrent()) return
             if (events.contains(Player.EVENT_RENDERED_FIRST_FRAME)) {
                 firstFrameRenderedForTesting = true
-                if (inFavoriteClip) hideFavoriteSceneTransitionCover()
+                if (inFavoriteClip && favoriteOpeningWaitingForFrame) revealFavoriteClip()
+                if (favoriteRestoreWaitingForFrame) {
+                    favoriteRestoreWaitingForFrame = false
+                    favoriteSceneDialogs.setBusy(false)
+                    playerView.setKeepContentOnPlayerReset(true)
+                }
 
                 if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
                 syncComposePlayerUiState()
@@ -1704,16 +1711,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 favoriteClipSession = null
                 completionReported = clipSession?.originalCompletion == true
                 touchControls()
-                if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-                    handler.post {
-                        if (favoriteScenesAvailable() && favoriteClipSession == null) showFavoriteScenes()
-                        else hideFavoriteSceneTransitionCover()
-                    }
-                } else hideFavoriteSceneTransitionCover()
+                val needsFrame = state == Player.STATE_READY && !audioOnly &&
+                    player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO) && !firstFrameRenderedForTesting
+                favoriteRestoreWaitingForFrame = needsFrame
+                if (!needsFrame) {
+                    favoriteSceneDialogs.setBusy(false)
+                    playerView.setKeepContentOnPlayerReset(true)
+                }
             }
-            if (inFavoriteClip && (state == Player.STATE_ENDED ||
+            if (inFavoriteClip && favoriteOpeningWaitingForFrame && (state == Player.STATE_ENDED ||
                     (state == Player.STATE_READY && (audioOnly || !player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO))))) {
-                hideFavoriteSceneTransitionCover()
+                revealFavoriteClip()
             }
             val label = when (state) {
                 Player.STATE_IDLE -> "STATE_IDLE"
@@ -1939,7 +1947,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 handler.post { if (inFavoriteClip && !isFinishing && !isDestroyed) exitFavoriteClip() }
                 return
             }
-            if (favoriteClipSession?.restoring == true) hideFavoriteSceneTransitionCover()
+            if (favoriteClipSession?.restoring == true || favoriteRestoreWaitingForFrame) {
+                favoriteRestoreWaitingForFrame = false
+                favoriteSceneDialogs.dismiss()
+                playerView.setKeepContentOnPlayerReset(true)
+            }
 
             val exoError = error as? ExoPlaybackException
             val rendererIndex = exoError?.rendererIndex?.takeIf { it >= 0 }
@@ -3166,6 +3178,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             this,
             object : androidx.activity.OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    if (favoriteSceneDialogs.handleBack()) return
                     if (episodePlaylistOverlay != null) { closeEpisodePlaylist(); return }
                     logPlayer("PLAYER_BACK ANDROID_BACK requestId=" + requestId.ifEmpty { "-" })
                     if (moreVisible) {
@@ -4467,6 +4480,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun finishPlayer(reason: String) {
+        if (favoriteRestoreWaitingForFrame && reason in setOf("back_button", "user_button", "android_back")) return
         if (inFavoriteClip && reason in setOf("back_button", "user_button", "android_back", "player_error_back")) {
             exitFavoriteClip()
             return
@@ -5606,21 +5620,29 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 localMetadataStore.favoriteScenes()
             }
             if (revision != favoriteSceneUiRevision || !favoriteScenesAvailable() || uri.toString() != source) return@launch
-            favoriteSceneDialogs.gallery(
-                scenes = scenes,
-                canCreate = player.duration > 0L && player.isCurrentMediaItemSeekable,
-                onCreate = { editFavoriteScene(null) },
-                onPlay = ::playFavoriteClip,
-                onEdit = ::editFavoriteScene,
-                onDelete = ::confirmDeleteFavoriteScene,
-                onBack = { favoriteSceneUiRevision += 1L },
-            )
-            hideFavoriteSceneTransitionCover()
+            cachedFavoriteScenes = scenes
+            presentFavoriteGallery(scenes, player.duration > 0L && player.isCurrentMediaItemSeekable)
         }
     }
 
+    private fun presentFavoriteGallery(scenes: List<PlayerLocalMetadataStore.FavoriteScene>, canCreate: Boolean) {
+        favoriteSceneDialogs.gallery(
+            scenes = scenes,
+            canCreate = canCreate,
+            onCreate = { editFavoriteScene(null) },
+            onPlay = ::playFavoriteClip,
+            onEdit = ::editFavoriteScene,
+            onDelete = ::confirmDeleteFavoriteScene,
+            onBack = {
+                favoriteSceneUiRevision += 1L
+                favoriteSceneDialogs.dismiss()
+                touchControls()
+            },
+        )
+    }
+
     private fun editFavoriteScene(scene: PlayerLocalMetadataStore.FavoriteScene?) {
-        if (!favoriteScenesAvailable()) return
+        if (!favoriteScenesAvailable() || favoriteClipSession != null || favoriteRestoreWaitingForFrame) return
         val revision = ++favoriteSceneUiRevision
         val media = scene?.mediaId ?: uri.toString()
         val sameMedia = media == uri.toString()
@@ -5630,6 +5652,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ?: if (sameMedia) titleValue else ""
         val episode = scene?.note?.episodeLabel?.takeIf { it.isNotBlank() }
             ?: if (sameMedia) currentEpisodeLabel() else "Episódio local"
+        val initialFrame = if (scene == null && sameMedia) {
+            val texture = playerView.videoSurfaceView as? android.view.TextureView
+            if (texture?.isAvailable == true && texture.width > 0 && texture.height > 0) {
+                val scale = minOf(1f, 720f / maxOf(texture.width, texture.height))
+                runCatching { texture.getBitmap((texture.width * scale).toInt().coerceAtLeast(1),
+                    (texture.height * scale).toInt().coerceAtLeast(1)) }.getOrNull()
+            } else null
+        } else null
+        favoriteSceneDialogs.setBusy(true)
         lifecycleScope.launch {
             val duration = if (knownDuration > 0L) knownDuration else favoriteSceneDialogs.durationOf(media)
             if (revision != favoriteSceneUiRevision || !favoriteScenesAvailable()) return@launch
@@ -5649,6 +5680,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 durationMs = duration,
                 positionMs = position,
                 existing = scene?.note,
+                initialFrame = initialFrame,
                 onSave = { start, end, name ->
                     val updated = withContext(Dispatchers.IO) {
                         localMetadataStore.saveFavoriteClip(
@@ -5700,7 +5732,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     /** Play clipped media using the existing ExoPlayer and the normal player UI. */
     private fun playFavoriteClip(scene: PlayerLocalMetadataStore.FavoriteScene) {
-        if (!favoriteScenesAvailable() || favoriteClipSession != null || errorVisible ||
+        if (!favoriteScenesAvailable() || favoriteClipSession != null || favoriteRestoreWaitingForFrame || errorVisible ||
             player.duration <= 0L || player.playbackState == Player.STATE_IDLE) return
         val end = scene.note.clipEndMs ?: return
         val start = scene.note.timestampMs
@@ -5716,6 +5748,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val originalDuration = player.duration
         val tracks = player.trackSelectionParameters
         val originalCompleted = completionReported
+        favoriteSceneDialogs.setBusy(true)
         lifecycleScope.launch {
             val duration = if (sameMedia) originalDuration else favoriteSceneDialogs.durationOf(scene.mediaId)
             val sidecars = if (sameMedia) emptyList() else withContext(Dispatchers.IO) {
@@ -5723,7 +5756,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             if (revision != favoriteSceneUiRevision || !favoriteScenesAvailable() || uri != source ||
                 favoriteClipSession != null || player.currentMediaItem != originalItem ||
-                player.currentPosition != originalPosition || player.isPlaying) return@launch
+                player.currentPosition != originalPosition || player.isPlaying) {
+                if (revision == favoriteSceneUiRevision) favoriteSceneDialogs.setBusy(false)
+                return@launch
+            }
             if (duration <= 0L || end > duration) {
                 Toast.makeText(this@NativePlayerActivity, "Arquivo original indisponível ou trecho inválido", Toast.LENGTH_LONG).show()
                 showFavoriteScenes()
@@ -5749,9 +5785,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (!sameMedia) selection.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
                     .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                     .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                showFavoriteSceneTransitionCover()
-                replaceFavoritePlaybackItem(item, 0L, selection.build(), true)
-                favoriteSceneDialogs.dismiss()
+                favoriteOpeningWaitingForFrame = true
+                replaceFavoritePlaybackItem(item, 0L, selection.build(), false)
+                val opening = favoriteClipSession
+                handler.postDelayed({
+                    if (favoriteOpeningWaitingForFrame && favoriteClipSession === opening && inFavoriteClip) {
+                        Toast.makeText(this, "A cena não conseguiu carregar", Toast.LENGTH_SHORT).show()
+                        exitFavoriteClip()
+                    }
+                }, 10_000L)
             } catch (error: Exception) {
                 logPlayer("FAVORITE_CLIP_START_FAILED", error)
                 Toast.makeText(this@NativePlayerActivity, "Não foi possível abrir a cena", Toast.LENGTH_SHORT).show()
@@ -5775,10 +5817,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
         player.pause()
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
-        detachPlayerViewForMediaReset("favorite_scene")
+        playerView.setKeepContentOnPlayerReset(false)
         player.trackSelectionParameters = tracks
         player.setMediaItem(item, position)
-        reattachPlayerViewAfterMediaReset("favorite_scene")
         player.playWhenReady = play && !sleepTimerPaused && !expireSleepTimerIfDue()
         player.prepare()
         touchControls()
@@ -5786,58 +5827,50 @@ override fun onCreate(savedInstanceState: Bundle?) {
         updatePictureInPictureParams()
     }
 
+    private fun revealFavoriteClip() {
+        favoriteOpeningWaitingForFrame = false
+        playerView.setKeepContentOnPlayerReset(true)
+        favoriteSceneDialogs.dismiss()
+        if (!sleepTimerPaused && !expireSleepTimerIfDue() && player.playbackState != Player.STATE_ENDED) player.play()
+        touchControls()
+    }
+
     private fun restoreOriginalEpisode() {
         val session = favoriteClipSession ?: return
+        favoriteOpeningWaitingForFrame = false
+        favoriteRestoreWaitingForFrame = false
         session.restoring = true
-        showFavoriteSceneTransitionCover()
         try {
+            // Immediately display the last gallery, while the original episode
+            // is restored underneath it. Never expose the old clip or a blank screen.
+            cachedFavoriteScenes?.let { presentFavoriteGallery(it, session.originalDurationMs > 0L) }
+            favoriteSceneDialogs.setBusy(true)
             replaceFavoritePlaybackItem(session.originalItem, session.originalPositionMs,
                 session.originalTracks.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioOnly).build(), false)
+            val generation = playerGeneration
+            handler.postDelayed({
+                if (generation == playerGeneration && (favoriteRestoreWaitingForFrame || favoriteClipSession?.restoring == true)) {
+                    favoriteRestoreWaitingForFrame = false
+                    favoriteSceneDialogs.dismiss()
+                    playerView.setKeepContentOnPlayerReset(true)
+                    showPlayerError("Não foi possível restaurar o episódio.", "media3_error")
+                }
+            }, 10_000L)
         } catch (error: Exception) {
-            hideFavoriteSceneTransitionCover()
+            favoriteSceneDialogs.dismiss()
+            playerView.setKeepContentOnPlayerReset(true)
             logPlayer("FAVORITE_CLIP_RESTORE_FAILED", error)
-            // Keep the original position snapshot protected even on failure.
             showPlayerError("Não foi possível restaurar o episódio.", "media3_error")
         }
     }
 
     private fun exitFavoriteClip() {
-        restoreOriginalEpisode()
-        // The normal player remains underneath the gallery. Wait for READY
-        // before allowing another clip or editing the episode.
-    }
-
-    // Cover the old surface while Media3 changes sources. Do not retain the
-    // previous episode/clip frame during this particular media reset.
-    private fun showFavoriteSceneTransitionCover() {
-        if (!::root.isInitialized) return
-        hideFavoriteSceneTransitionCover()
-        if (::playerView.isInitialized) playerView.setKeepContentOnPlayerReset(false)
-        val cover = View(this).apply {
-            setBackgroundColor(Color.BLACK)
-            isClickable = true
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }
-        favoriteSceneTransitionCover = cover
-        root.addView(cover, FrameLayout.LayoutParams(-1, -1))
-        cover.bringToFront()
-        // Never leave an opaque touch-blocking layer on a stalled decoder.
-        handler.postDelayed({
-            if (favoriteSceneTransitionCover === cover) hideFavoriteSceneTransitionCover()
-        }, 4000L)
-    }
-
-    private fun hideFavoriteSceneTransitionCover() {
-        val cover = favoriteSceneTransitionCover ?: return
-        favoriteSceneTransitionCover = null
-        (cover.parent as? ViewGroup)?.removeView(cover)
-        if (::playerView.isInitialized) playerView.setKeepContentOnPlayerReset(true)
+        if (favoriteClipSession?.restoring != true) restoreOriginalEpisode()
     }
 
     private fun dismissFavoriteSceneUi() {
         favoriteSceneUiRevision += 1L
         favoriteSceneDialogs.dismiss()
-        hideFavoriteSceneTransitionCover()
     }
 
     private fun loadCaptionAppearance() {
