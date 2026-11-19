@@ -36,8 +36,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class AniListAccountActivity : ComponentActivity() {
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) com.reianix.reianix_local.player.SystemUiController(window).applyApplicationImmersivePolicy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.reianix.reianix_local.player.SystemUiController(window).applyApplicationImmersivePolicy()
         setContent {
             ReiAnixComposeTheme {
                 ReiAnixSettingsRoot {
@@ -181,6 +187,7 @@ private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Uni
 class AniListOAuthCallbackActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.reianix.reianix_local.player.SystemUiController(window).applyApplicationImmersivePolicy()
         val callback = intent.data
         // Clear the credential-bearing URI immediately; never log or save it in instance state.
         intent.data = null
