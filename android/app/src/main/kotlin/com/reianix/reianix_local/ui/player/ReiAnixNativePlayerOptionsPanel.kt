@@ -129,6 +129,7 @@ fun ReiAnixNativePlayerOptionsPanel(
                     icon = Icons.Filled.PlayCircle,
                     label = "Autoplay",
                     checked = state.autoplayNext,
+                    enabled = !state.favoriteClipMode,
                     onCheckedChange = onAutoplayChanged,
                 )
                 PlayerOptionActionRow(
@@ -167,8 +168,13 @@ fun ReiAnixNativePlayerOptionsPanel(
                 PlayerOptionActionRow(
                     icon = Icons.Filled.OpenInNew,
                     label = "Abrir com...",
-                    enabled = !state.episodeTransitionInProgress,
+                    enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
                     onClick = onOpenWithExternal,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.BookmarkBorder,
+                    label = "Salvar cena",
+                    onClick = onFavoriteScenes,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.MoreHoriz,
@@ -288,13 +294,9 @@ fun ReiAnixNativePlayerOptionsPanel(
                 PlayerOptionActionRow(
                     icon = Icons.Filled.BookmarkBorder,
                     label = "Marcadores",
+                    enabled = !state.favoriteClipMode,
                     showChevron = false,
                     onClick = onMarkers,
-                )
-                PlayerOptionActionRow(
-                    icon = Icons.Filled.BookmarkBorder,
-                    label = "Cenas favoritas",
-                    onClick = onFavoriteScenes,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Info,
