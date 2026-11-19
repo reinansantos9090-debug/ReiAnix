@@ -51,7 +51,7 @@ class ReiAnixWallpaperStore private constructor(context: Context) {
         blur = prefs.getFloat("blur", 0f),
     ).normalized()
 
-    suspend fun import(uri: Uri): String = importPersonalImage(app, directory, uri, 1600)
+    suspend fun importWallpaper(uri: Uri): String = importPersonalImage(app, directory, uri, 1600)
 
     suspend fun discard(name: String?) = withContext(Dispatchers.IO) {
         mutex.withLock {
