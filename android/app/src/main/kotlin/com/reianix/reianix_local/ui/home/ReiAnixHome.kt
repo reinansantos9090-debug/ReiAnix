@@ -31,12 +31,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -86,7 +84,6 @@ import com.reianix.reianix_local.ui.library.rememberReiAnixLibraryViewModel
 import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeader
 import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeaderState
 import com.reianix.reianix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
-import com.reianix.reianix_local.ui.discovery.ReiAnixDurationAnomalyDialog
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixContinueWatchingUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixHomeAnimeUiModel
@@ -121,7 +118,6 @@ fun ReiAnixHomeRoute(
     val state by viewModel.homeState.collectAsStateWithLifecycle()
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
     val personalListMutationError by viewModel.personalListMutationError.collectAsStateWithLifecycle()
-    var activeDiscoveryDialog by rememberSaveable { mutableStateOf<String?>(null) }
     val visibleContinueWatching = if (continueWatchingEnabled) {
         continueWatching.take(continueWatchingLimit.coerceAtLeast(0))
     } else {
@@ -135,7 +131,7 @@ fun ReiAnixHomeRoute(
         onDismissMutationError = viewModel::clearPersonalListMutationError,
         cardSize = cardSize,
         showThumbnails = showThumbnails,
-        onOpenCollector = onOpenCollector,
+        onOpenGeneralSettings = { navController.navigate(ReiAnixRoutes.SETTINGS_GENERAL) { launchSingleTop = true } },
         onSearch = { navController.navigateToTopLevel(ReiAnixRoutes.SEARCH) },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
@@ -158,18 +154,7 @@ fun ReiAnixHomeRoute(
         onOpenTimeline = {
             navController.navigate(ReiAnixRoutes.timeline("animes")) { launchSingleTop = true }
         },
-        onOpenRoulette = {
-            navController.navigate(ReiAnixRoutes.timeline("roleta")) { launchSingleTop = true }
-        },
-        onOpenDurationAnomalies = { activeDiscoveryDialog = "duration" },
     )
-
-    when (activeDiscoveryDialog) {
-        "duration" -> ReiAnixDurationAnomalyDialog(
-            viewModel = viewModel,
-            onDismiss = { activeDiscoveryDialog = null },
-        )
-    }
 }
 
 
@@ -181,7 +166,7 @@ private fun ReiAnixHomeObservedScreen(
     onDismissMutationError: () -> Unit,
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
-    onOpenCollector: () -> Unit = {},
+    onOpenGeneralSettings: () -> Unit,
     onSearch: () -> Unit,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
@@ -191,8 +176,6 @@ private fun ReiAnixHomeObservedScreen(
     onRefresh: () -> Unit,
     onSelectSource: () -> Unit,
     onOpenTimeline: () -> Unit,
-    onOpenDurationAnomalies: () -> Unit,
-    onOpenRoulette: (() -> Unit)? = null,
 ) {
     ReiAnixResponsiveRoot {
     val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
@@ -209,12 +192,9 @@ private fun ReiAnixHomeObservedScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 HomeHeader(
-                    onOpenCollector = onOpenCollector,
                     onSearch = onSearch,
-                    onRefresh = onRefresh,
                     onOpenTimeline = onOpenTimeline,
-                    onOpenDurationAnomalies = onOpenDurationAnomalies,
-                    onOpenRoulette = onOpenRoulette,
+                    onOpenGeneralSettings = onOpenGeneralSettings,
                 )
             }
         }
@@ -394,6 +374,7 @@ fun ReiAnixHomeScreen(
     onOpenMyList: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
     onSelectSource: () -> Unit = onRefresh,
+    onOpenGeneralSettings: () -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -403,7 +384,7 @@ fun ReiAnixHomeScreen(
     ) {
         HomeHeader(
             onSearch = onSearch,
-            onRefresh = onRefresh,
+            onOpenGeneralSettings = onOpenGeneralSettings,
         )
 
         when (state.status) {
@@ -565,76 +546,19 @@ private fun HomeNotice(
 
 @Composable
 internal fun HomeHeader(
-    onOpenCollector: () -> Unit = {},
     onSearch: () -> Unit,
-    onRefresh: () -> Unit,
     onOpenTimeline: (() -> Unit)? = null,
-    onOpenDurationAnomalies: (() -> Unit)? = null,
-    onOpenRoulette: (() -> Unit)? = null,
+    onOpenGeneralSettings: () -> Unit = {},
 ) {
-    val menuExpanded = rememberSaveable { mutableStateOf(false) }
-
     ReiAnixTopBar(
         title = "ReiAnix",
         titleStyle = ReiAnixTokens.TypographyTokens.brandTitle,
         actions = {
             if (onOpenTimeline != null) {
-                ReiAnixIconActionButton(
-                    icon = Icons.Filled.History,
-                    contentDescription = "Linha do tempo",
-                    onClick = onOpenTimeline,
-                )
+                ReiAnixIconActionButton(Icons.Filled.History, "Linha do tempo", onOpenTimeline)
             }
-            ReiAnixIconActionButton(
-                icon = Icons.Filled.Search,
-                contentDescription = "Pesquisar na biblioteca",
-                onClick = onSearch,
-            )
-            Box {
-                ReiAnixIconActionButton(
-                    icon = Icons.Filled.MoreVert,
-                    contentDescription = "Mais opções da Home",
-                    onClick = { menuExpanded.value = true },
-                )
-                DropdownMenu(
-                    expanded = menuExpanded.value,
-                    onDismissRequest = { menuExpanded.value = false },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Atualizar biblioteca") },
-                        onClick = {
-                            menuExpanded.value = false
-                            onRefresh()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Abrir Collector") },
-                        onClick = {
-                            menuExpanded.value = false
-                            onOpenCollector()
-                        },
-                    )
-                    if (onOpenRoulette != null) {
-                        DropdownMenuItem(
-                            text = { Text("Roleta de animes") },
-                            onClick = {
-                                menuExpanded.value = false
-                                onOpenRoulette()
-                            },
-                        )
-                    }
-                    if (onOpenDurationAnomalies != null) {
-                        DropdownMenuItem(
-                            text = { Text("Durações incomuns") },
-                            onClick = {
-                                menuExpanded.value = false
-                                onOpenDurationAnomalies()
-                            },
-                        )
-                    }
-                }
-            }
+            ReiAnixIconActionButton(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
+            ReiAnixIconActionButton(Icons.Filled.Settings, "Configurações gerais", onOpenGeneralSettings)
         },
     )
     Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))

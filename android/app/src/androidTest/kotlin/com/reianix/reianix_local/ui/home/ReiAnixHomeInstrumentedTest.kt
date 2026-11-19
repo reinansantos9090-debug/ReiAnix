@@ -38,28 +38,29 @@ class ReiAnixHomeInstrumentedTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun timelineHistoryIconAndDurationMenuOpenTheirActions() {
+    fun homeHeaderShowsHistorySearchAndDirectGeneralSettings() {
         var timelineOpens = 0
-        var durationOpens = 0
+        var searchOpens = 0
+        var settingsOpens = 0
         composeRule.setContent {
             ReiAnixComposeRoot {
                 HomeHeader(
-                    onSearch = {},
-                    onRefresh = {},
+                    onSearch = { searchOpens++ },
                     onOpenTimeline = { timelineOpens++ },
-                    onOpenDurationAnomalies = { durationOpens++ },
+                    onOpenGeneralSettings = { settingsOpens++ },
                 )
             }
         }
 
-        composeRule.onNodeWithContentDescription("Linha do tempo").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Pesquisar na biblioteca").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Linha do tempo").performClick()
-        assertEquals(1, timelineOpens)
-
-        composeRule.onNodeWithContentDescription("Mais opções da Home").performClick()
-        composeRule.onNodeWithText("Durações incomuns").performClick()
-        assertEquals(1, durationOpens)
+        composeRule.onNodeWithContentDescription("Linha do tempo").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Pesquisar na biblioteca").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Configurações gerais").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Mais opções da Home").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(1, timelineOpens)
+            assertEquals(1, searchOpens)
+            assertEquals(1, settingsOpens)
+        }
     }
 
     @Test
