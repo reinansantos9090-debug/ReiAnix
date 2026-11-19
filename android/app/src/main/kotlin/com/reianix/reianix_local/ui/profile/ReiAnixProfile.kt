@@ -133,7 +133,8 @@ internal fun profileStatistics(animes: List<ReiAnixAnimeRecord>, rows: List<ReiA
             if (row.watched == true) duration else safe(row.progress).coerceAtMost(duration)
         } else safe(row.progress)
     }
-    val genres = animes.filter { anime -> started.any { it.animeId == anime.id } }
+    val startedIds = started.mapTo(HashSet()) { it.animeId }
+    val genres = animes.filter { it.id in startedIds }
         .flatMap { anime ->
             runCatching {
                 val json = JSONArray(anime.genresJson ?: "[]")
@@ -141,11 +142,11 @@ internal fun profileStatistics(animes: List<ReiAnixAnimeRecord>, rows: List<ReiA
             }.getOrDefault(emptyList())
         }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key to it.value }
     return ProfileStats(animes.size, available.size, completed.size, watched, animes.count { it.favorite == true },
-        started.map { it.animeId }.distinct().size, genres)
+        startedIds.size, genres)
 }
 
 private fun timeText(seconds: Double): String {
-    val minutes = (seconds.coerceAtLeast(0.0) / 60).toLong()
+    val minutes = ((seconds.takeIf { it.isFinite() } ?: 0.0).coerceAtLeast(0.0) / 60).toLong()
     return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
 }
 private fun sceneTime(ms: Long) = "%02d:%02d".format(ms / 60_000, (ms / 1000) % 60)
@@ -166,7 +167,6 @@ fun ReiAnixProfileRoute(navController: NavHostController, viewModel: ReiAnixLibr
     var error by remember { mutableStateOf<String?>(null) }
     var retry by remember { mutableStateOf(0) }
     var loading by remember { mutableStateOf(true) }
-    val scope = rememberCoroutineScope()
     val openAnime: (Long) -> Unit = { id -> navController.navigateToDetails(id.toString(), ReiAnixRoutes.PROFILE) }
     val playEpisode: (Long, Long) -> Unit = { episodeId, animeId ->
         navController.navigateToPlayer(episodeId.toString(), animeId.toString(), ReiAnixRoutes.PROFILE)
@@ -206,7 +206,7 @@ fun ReiAnixProfileRoute(navController: NavHostController, viewModel: ReiAnixLibr
             return
         }
         "scenes" -> {
-            ProfileScenes(viewModel, goBack, records, onError = { error = it })
+            ProfileScenes(viewModel, goBack, records)
             return
         }
     }
@@ -299,7 +299,7 @@ fun ReiAnixProfileRoute(navController: NavHostController, viewModel: ReiAnixLibr
                 }
             }
             "history" -> {
-                val history = episodes.filter { (it.lastPlayedAt ?: 0.0) > 0.0 }.sortedByDescending { it.lastPlayedAt }
+                val history = episodes.filter { it.lastPlayedAt?.let { timestamp -> timestamp.isFinite() && timestamp > 0.0 } == true }.sortedByDescending { it.lastPlayedAt }
                 if (history.isEmpty()) Text(if (loading) "Carregando…" else "Nenhuma reprodução registrada.", Modifier.padding(20.dp))
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
                     items(history, key = { it.id }) { row ->
@@ -481,7 +481,7 @@ private fun ProfileEditor(
 }
 
 @Composable
-private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit, records: List<ReiAnixAnimeRecord>, onError: (String) -> Unit) {
+private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit, records: List<ReiAnixAnimeRecord>) {
     val context = LocalContext.current
     val repository = remember(context) { ReiAnixAppDependencies.from(context).sqliteLibraryRepository }
     val store = remember(context) { PlayerLocalMetadataStore(context) }
@@ -496,10 +496,11 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
     val scope = rememberCoroutineScope()
     LaunchedEffect(records, reload) {
         loading = true
+        error = null
         try {
             val saved = withContext(Dispatchers.IO) { store.favoriteScenes() }
             val wanted = saved.map { it.mediaId }.toSet()
-            val found = if (wanted.isEmpty()) emptyMap() else buildMap {
+            val found: Map<String, ReiAnixEpisodeRecord> = if (wanted.isEmpty()) emptyMap() else buildMap {
                 for (anime in records) {
                     repository.listEpisodes(anime.id).forEach { episode ->
                         val path = normalizedMedia(episode.path)
