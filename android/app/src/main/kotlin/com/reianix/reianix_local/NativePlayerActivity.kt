@@ -5563,8 +5563,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 showFavoriteScenes()
                 return@launch
             }
+            // Pause the original episode; editing has its own short-lived preview.
+            player.pause()
+            val previewItem = if (sameMedia) player.currentMediaItem ?: MediaItem.fromUri(Uri.parse(media))
+                else MediaItem.fromUri(Uri.parse(media))
             favoriteSceneDialogs.editor(
                 mediaId = media,
+                previewItem = previewItem,
+                trackSelection = if (sameMedia) player.trackSelectionParameters else null,
                 durationMs = duration,
                 positionMs = position,
                 existing = scene?.note,
