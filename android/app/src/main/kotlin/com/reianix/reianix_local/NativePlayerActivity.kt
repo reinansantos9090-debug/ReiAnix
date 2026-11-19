@@ -11,6 +11,7 @@ import com.reianix.reianix_local.player.PlayerMediaPolicy
 import com.reianix.reianix_local.player.ExternalVideoChooser
 import com.reianix.reianix_local.player.PlayerStartupMetrics
 import com.reianix.reianix_local.player.PlayerTimeFormatter
+import com.reianix.reianix_local.player.SeekScrubVisibilityGuard
 import com.reianix.reianix_local.player.SystemUiController
 import com.reianix.reianix_local.scanner.BroadStorageScanner
 import com.reianix.reianix_local.scanner.MediaStoreScanner
@@ -298,6 +299,7 @@ class NativePlayerActivity : FragmentActivity() {
     private var autoplayNext = true
     private var completionReported = false
     private var controlsVisible = true
+    private val seekScrubVisibility = SeekScrubVisibilityGuard()
     private var moreVisible = false
     // Lives above the controls overlay: the options menu must remain usable after
     // the 3.5s player-controls timeout hides the playback UI.
@@ -451,7 +453,8 @@ class NativePlayerActivity : FragmentActivity() {
 
     private val controlsHider = object : Runnable {
         override fun run() {
-            if (!controlsVisible ||
+            if (seekScrubVisibility.active ||
+                !controlsVisible ||
                 errorVisible ||
                 locked ||
                 !::player.isInitialized ||
@@ -2515,16 +2518,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
 
                 override fun onStartTrackingTouch(bar: SeekBar?) {
-                    touchControls()
+                    setSeekScrubActive(true)
                 }
 
                 override fun onStopTrackingTouch(bar: SeekBar?) {
-                    if (!::player.isInitialized || player.duration <= 0L) return
-                    val target = player.duration * seekBar.progress.toLong() / SEEK_PROGRESS_MAX
-                    player.seekTo(target.coerceIn(0L, player.duration))
-                    saveProgress("player_progress", force = true)
-                    showFeedback(formatTime(target))
-                    scheduleControlsHide()
+                    try {
+                        if (!::player.isInitialized || player.duration <= 0L) return
+                        val target = player.duration * seekBar.progress.toLong() / SEEK_PROGRESS_MAX
+                        player.seekTo(target.coerceIn(0L, player.duration))
+                        saveProgress("player_progress", force = true)
+                        showFeedback(formatTime(target))
+                    } finally {
+                        setSeekScrubActive(false)
+                    }
                 }
             })
         }
@@ -2774,10 +2780,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
                         mediaUri = if (::uri.isInitialized) uri.toString() else null,
-                        onScrubInteraction = { dragging ->
-                            if (dragging) handler.removeCallbacks(controlsHider)
-                            else touchControls()
-                        },
+                        onScrubInteraction = ::setSeekScrubActive,
                         onSeekTo = { targetMs ->
                             val duration = if (::player.isInitialized) player.duration else 0L
                             if (duration > 0L && !episodeChangePending) {
@@ -3746,6 +3749,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun setControlsVisible(visible: Boolean) {
+        // All ordinary hide paths, including delayed callbacks and taps, must
+        // respect an active seekbar gesture. PiP/lock/error still take precedence.
+        if (!visible && seekScrubVisibility.blocksHide(inPictureInPicture, locked, errorVisible)) {
+            handler.removeCallbacks(controlsHider)
+            return
+        }
         controlsVisible = visible
         if (!visible) {
             handler.removeCallbacks(controlsHider)
@@ -3794,6 +3803,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
         syncComposePlayerUiState()
     }
 
+    private fun setSeekScrubActive(active: Boolean) {
+        if (active && (locked || errorVisible || inPictureInPicture ||
+                sessionState != SessionState.ACTIVE || episodeChangePending)
+        ) return
+        if (!seekScrubVisibility.update(active)) return
+        handler.removeCallbacks(controlsHider)
+        // On release, start a complete new timeout instead of continuing the
+        // timer that was active before the user touched the seekbar.
+        if (sessionState == SessionState.ACTIVE && !locked && !errorVisible && !inPictureInPicture) {
+            touchControls()
+        }
+    }
+
     private fun touchControls() {
         if (locked) {
             handler.removeCallbacks(controlsHider)
@@ -3807,7 +3829,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         hideLegacyPrimaryControls()
         lastControlsInteraction = System.currentTimeMillis()
         handler.removeCallbacks(controlsHider)
-        if (::player.isInitialized && player.isPlaying && !errorVisible && autoHideTimeoutMs > 0L) {
+        if (!seekScrubVisibility.active && ::player.isInitialized &&
+            player.isPlaying && !errorVisible && autoHideTimeoutMs > 0L
+        ) {
             handler.postDelayed(controlsHider, autoHideTimeoutMs)
         }
         syncComposePlayerUiState()
@@ -3818,6 +3842,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun setLocked(value: Boolean, persist: Boolean = true, announce: Boolean = true) {
+        if (value) seekScrubVisibility.update(false)
         locked = value
         if (persist) {
             persistCanonicalPlayerSetting("player.lock_mode", locked.toString())
@@ -5073,6 +5098,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onStop() {
+        seekScrubVisibility.update(false)
+        handler.removeCallbacks(controlsHider)
         closeEpisodePlaylist()
 
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
@@ -5125,6 +5152,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         inPictureInPicture = isInPictureInPictureMode
         updatePictureInPictureParams()
         if (isInPictureInPictureMode) {
+            seekScrubVisibility.update(false)
             pictureInPictureSession = true
             handler.removeCallbacks(controlsHider)
             findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
@@ -5214,6 +5242,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         invalidateTransition("destroy")
         transitionGeneration += 1L
         sessionState = SessionState.DESTROYED
+        seekScrubVisibility.update(false)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.dispose()
         handler.removeCallbacks(progressReporter)
