@@ -19,6 +19,7 @@ internal class FavoriteClipTimeline(context: Context, private val durationMs: Lo
     private val frames = arrayOfNulls<Bitmap>(FRAME_COUNT)
     private val density = resources.displayMetrics.density
     private var target: Target? = null
+    private var touchOffset = 0f
     private var startMs = 0L
     private var endMs = durationMs
     private var positionMs = 0L
@@ -112,15 +113,20 @@ internal class FavoriteClipTimeline(context: Context, private val durationMs: Lo
                     distanceEnd <= touchRadius -> Target.END
                     else -> Target.CURSOR
                 }
+                touchOffset = when (target) {
+                    Target.START -> event.x - sx
+                    Target.END -> event.x - ex
+                    else -> 0f
+                }
                 if (target == Target.CURSOR) onDrag(Target.CURSOR, time(event.x), false)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                target?.let { onDrag(it, time(event.x), false) }
+                target?.let { onDrag(it, time(event.x - touchOffset), false) }
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                target?.let { onDrag(it, time(event.x), true) }
+                target?.let { onDrag(it, time(event.x - touchOffset), true) }
                 target = null
                 parent?.requestDisallowInterceptTouchEvent(false)
                 performClick()
