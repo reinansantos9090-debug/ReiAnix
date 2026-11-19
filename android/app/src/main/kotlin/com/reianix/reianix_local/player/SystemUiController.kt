@@ -39,6 +39,27 @@ class SystemUiController(private val window: Window) {
         }
     }
 
+    /** App preference only; the native player retains its independent policy. */
+    fun applyAppPreference(immersive: Boolean, themeMode: String = "dark") {
+        if (immersive) applyApplicationImmersivePolicy(useContextAppearance = false)
+        else {
+            applyNormal(useContextAppearance = false)
+            if (Build.VERSION.SDK_INT in 28..29) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+        }
+        val light = when (themeMode) {
+            "light" -> true
+            "system" -> (window.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES
+            else -> false
+        }
+        controller.isAppearanceLightStatusBars = light
+        controller.isAppearanceLightNavigationBars = light
+    }
+
     /** Backward-compatible normal policy for external/temporary surfaces. */
     fun applyApplicationPolicy(useContextAppearance: Boolean = true) {
         applyNormal(useContextAppearance)
