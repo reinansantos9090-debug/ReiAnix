@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
@@ -29,8 +31,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
@@ -1021,14 +1021,21 @@ private fun DetailsHero(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs)
+                // Shift the shortcuts down 12 dp, absorbing the old extra gap
+                // above the synopsis instead of making the header taller.
+                .padding(
+                    start = responsive.horizontalPadding,
+                    end = responsive.horizontalPadding,
+                    top = 16.dp,
+                    bottom = ReiAnixTokens.Spacing.xs,
+                )
                 .testTag("details-quick-actions"),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.Top,
         ) {
             ReiAnixDetailsQuickAction(
                 label = "Favoritos",
-                icon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                icon = ReiAnixDetailsShortcutIcons.Favorite,
                 onClick = { onToggleFavorite(anime.id) },
                 active = anime.favorite,
                 modifier = Modifier.weight(1f).testTag("details-quick-favorite").semantics {
@@ -1037,7 +1044,7 @@ private fun DetailsHero(
             )
             ReiAnixDetailsQuickAction(
                 label = "Nota pessoal",
-                icon = Icons.Filled.EditNote,
+                icon = ReiAnixDetailsShortcutIcons.Note,
                 onClick = {
                     noteDraft = anime.personalNote.orEmpty()
                     noteError = null
@@ -1048,7 +1055,7 @@ private fun DetailsHero(
             )
             ReiAnixDetailsQuickAction(
                 label = "Adicionar tag",
-                icon = Icons.Filled.LocalOffer,
+                icon = ReiAnixDetailsShortcutIcons.Tag,
                 onClick = {
                     tagsDraft = anime.userTags.joinToString(", ")
                     tagsError = null
@@ -1070,11 +1077,7 @@ private fun DetailsHero(
                 .testTag("details-header-metadata"),
         ) {
             anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
-                Column(
-                    modifier = Modifier.padding(top = ReiAnixTokens.Spacing.md),
-                ) {
-                    DetailsExpandableSynopsis(description)
-                }
+                DetailsExpandableSynopsis(description)
             }
             ReiAnixMetadataCharacters(
                 animeId = anime.id,
@@ -1249,15 +1252,28 @@ private fun DetailsHero(
                 }
             }
         }
-        ReiAnixPrimaryButton(
-            text = if (target?.isPlayable == true) target.playbackActionLabel else "Reprodução indisponível",
-            onClick = { target?.takeIf { it.isPlayable }?.let { onWatch(it.id) } },
-            enabled = target?.isPlayable == true,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md),
-            leadingIcon = Icons.Filled.PlayArrow,
-        )
+                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md)
+                .height(IntrinsicSize.Min)
+                .testTag("details-playback-actions"),
+            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+        ) {
+            ReiAnixPrimaryButton(
+                text = if (target?.isPlayable == true) target.playbackActionLabel else "Reprodução indisponível",
+                onClick = { target?.takeIf { it.isPlayable }?.let { onWatch(it.id) } },
+                enabled = target?.isPlayable == true,
+                modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-play-action"),
+                leadingIcon = Icons.Filled.PlayArrow,
+            )
+            ReiAnixSecondaryButton(
+                text = "Maratona",
+                onClick = onOpenMarathon,
+                enabled = hasMarathonContent,
+                modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-marathon-action"),
+            )
+        }
         if (anime.userTags.isNotEmpty()) {
             Text(
                 text = "Tags: " + anime.userTags.joinToString(" • "),
@@ -1276,14 +1292,6 @@ private fun DetailsHero(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        ReiAnixSecondaryButton(
-            text = "Maratona",
-            onClick = onOpenMarathon,
-            enabled = hasMarathonContent,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
-        )
         if (showTagsEditor) {
             AlertDialog(
                 onDismissRequest = { if (!tagsSaving) showTagsEditor = false },
