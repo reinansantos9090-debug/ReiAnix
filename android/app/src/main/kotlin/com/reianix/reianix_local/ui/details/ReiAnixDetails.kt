@@ -904,8 +904,10 @@ private fun DetailsHero(
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.88f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                // A minimal scrim keeps controls readable while
+                                // preserving the original brightness of the banner.
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.16f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
                                 Color.Transparent,
                             ),
                         ),
