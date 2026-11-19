@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import com.reianix.reianix_local.player.SystemUiController
+import com.reianix.reianix_local.player.ReiAnixAppWindowPreference
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,14 +32,21 @@ import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
 
 /** Shown only on notification tap. No permanent calendar tab is created. */
 class ReiAnixReleaseDestinationActivity : ComponentActivity() {
+    private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
+
+    override fun onResume() {
+        super.onResume()
+        appWindowPreference.refresh()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) SystemUiController(window).applyApplicationImmersivePolicy()
+        if (hasFocus) appWindowPreference.apply()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        SystemUiController(window).applyApplicationImmersivePolicy()
+        appWindowPreference.apply()
         val title = intent.getStringExtra("title").orEmpty().take(180)
         val episode = intent.getIntExtra("episode", -1)
         val aniListId = intent.getIntExtra("anilist_id", -1)
