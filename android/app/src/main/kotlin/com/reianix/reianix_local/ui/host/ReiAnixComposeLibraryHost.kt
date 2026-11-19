@@ -428,6 +428,48 @@ class ReiAnixComposeLibraryHost(
                                 },
                             )
                         },
+                        settingsGeneral = {
+                            ReiAnixSettingsRoute(
+                                viewModel = settingsViewModel,
+                                initialDestination = "Geral",
+                                onBack = {
+                                    if (!navController.popBackStack()) {
+                                        handleBack()
+                                    }
+                                },
+                                onOpenCategory = { label ->
+                                    // Every known Settings category is now owned by
+                                    // ReiAnixSettingsRoute. Keep this callback only as a
+                                    // defensive boundary for an unexpected future label;
+                                    // never leave the Compose Settings surface for a
+                                    // legacy/Flet category view.
+                                    android.util.Log.w(
+                                        TAG,
+                                        "Ignoring unsupported Compose Settings category=" + label,
+                                    )
+                                },
+                                onOpenStorage = {
+                                    navController.navigate(
+                                        ReiAnixRoutes.STORAGE,
+                                        navOptions {
+                                            launchSingleTop = true
+                                        },
+                                    )
+                                },
+                                scanInProgress = libraryState.scanInProgress,
+                                scanState = libraryState.scanState,
+                                lastScanStatus = libraryState.lastScanStatus,
+                                libraryFoldersContent = { onFoldersBack ->
+                                    com.reianix.reianix_local.ui.storage.ReiAnixLibraryFoldersRoute(
+                                        libraryViewModel,
+                                        onBack = onFoldersBack,
+                                        onSelectDefaultReiAnixFolder = {
+                                            activity.requestDefaultReiAnixFolderAuthorization()
+                                        },
+                                    )
+                                },
+                            )
+                        },
                         recovery = {
                             ReiAnixRecoveryRoute(
                                 viewModel = settingsViewModel,
