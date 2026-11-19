@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.player
 
-import android.app.AlertDialog
+import android.app.Dialog
+import android.graphics.drawable.ColorDrawable
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
@@ -19,7 +22,6 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.TrackSelectionParameters
-import com.reianix.reianix_local.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -66,13 +68,12 @@ internal object FavoriteClipRange {
 /** Native dialogs share the player's existing theme and are dismissed with its lifecycle. */
 internal class FavoriteSceneDialogs(
     private val activity: FragmentActivity,
-    private val show: (AlertDialog) -> Unit,
     private val format: (Long) -> String,
     private val report: (String) -> Unit,
 ) {
     private val thumbnailMutex = Mutex()
     private val thumbnails = LruCache<String, Bitmap>(24)
-    private var currentDialog: AlertDialog? = null
+    private var currentDialog: Dialog? = null
     private var currentEditor: FavoriteClipEditor? = null
 
     private fun dp(value: Int) = (value * activity.resources.displayMetrics.density).roundToInt()
@@ -103,15 +104,48 @@ internal class FavoriteSceneDialogs(
         currentDialog = null
     }
 
-    private fun present(dialog: AlertDialog, onClose: () -> Unit = {}) {
+    private fun fullScreen(title: String, onBack: () -> Unit, body: LinearLayout.() -> Unit, onClose: () -> Unit = {}) {
         dismiss()
         if (activity.isFinishing || activity.isDestroyed) return
-        currentDialog = dialog
+        val dialog = Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen)
+        val root = column().apply {
+            setBackgroundColor(Color.BLACK)
+            val header = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(action("‹") {
+                    dialog.dismiss()
+                    onBack()
+                }.apply {
+                    contentDescription = "Voltar"
+                    textSize = 28f
+                    setTextColor(Color.WHITE)
+                }, LinearLayout.LayoutParams(dp(52), dp(52)))
+                addView(label(title, 20f), LinearLayout.LayoutParams(0, -2, 1f))
+            }
+            addView(header, LinearLayout.LayoutParams(-1, -2))
+            body()
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            view.setPadding(cutout.left, cutout.top, cutout.right, maxOf(cutout.bottom, dp(12)))
+            insets
+        }
+        dialog.setContentView(root)
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.setOnCancelListener { onBack() }
         dialog.setOnDismissListener {
             onClose()
             if (currentDialog === dialog) currentDialog = null
         }
-        show(dialog)
+        currentDialog = dialog
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.BLACK))
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            SystemUiController(this).applyImmersive(false)
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private suspend fun loadFrame(mediaId: String, positionMs: Long): Bitmap? {
@@ -214,36 +248,42 @@ internal class FavoriteSceneDialogs(
                     val scene = scenes[index]
                     dismiss()
                     val note = scene.note
-                    val options = if (note.clipEndMs != null) arrayOf("Reproduzir trecho", "Editar trecho", "Excluir")
-                        else arrayOf("Editar e transformar em clipe", "Excluir")
-                    val dialog = AlertDialog.Builder(activity, R.style.ReiAnixPlayerMenuDialogTheme)
-                        .setTitle(note.text)
-                        .setItems(options) { _, which ->
-                            if (note.clipEndMs != null && which == 0) onPlay(scene)
-                            else if (which == options.lastIndex) onDelete(scene)
-                            else onEdit(scene)
+                    fullScreen(note.text, onBack = {
+                        gallery(scenes, canCreate, onCreate, onPlay, onEdit, onDelete)
+                    }, body = {
+                        val details = listOf(note.animeTitle, note.episodeLabel)
+                            .filter(String::isNotBlank).joinToString(" • ")
+                        if (details.isNotBlank()) addView(label(details, 14f, 0xFFAAAAAA.toInt()).apply {
+                            setPadding(dp(20), dp(12), dp(20), dp(8))
+                        })
+                        if (note.clipEndMs != null) {
+                            addView(action("Reproduzir trecho") { dismiss(); onPlay(scene) })
+                            addView(action("Editar trecho") { dismiss(); onEdit(scene) })
+                        } else {
+                            addView(action("Editar e transformar em clipe") { dismiss(); onEdit(scene) })
                         }
-                        .setNegativeButton("Voltar") { _, _ -> gallery(scenes, canCreate, onCreate, onPlay, onEdit, onDelete) }
-                        .create()
-                    present(dialog)
+                        addView(action("Excluir") { dismiss(); onDelete(scene) })
+                    })
                 }
             }
-            val maxHeight = minOf(dp(384), (activity.resources.displayMetrics.heightPixels * 0.46f).roundToInt())
-            content.addView(list, LinearLayout.LayoutParams(-1, maxHeight.coerceAtLeast(dp(80))))
+            list.setBackgroundColor(Color.BLACK)
+            list.divider = ColorDrawable(0xFF181818.toInt())
+            list.dividerHeight = dp(1)
+            content.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        val dialog = AlertDialog.Builder(activity, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Cenas favoritas").setView(content).setNegativeButton("Fechar", null).create()
-        present(dialog) { jobs.values.forEach { it.cancel() }; jobs.clear() }
+        fullScreen("Cenas favoritas", onBack = {}, body = {
+            addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
+        }, onClose = { jobs.values.forEach { it.cancel() }; jobs.clear() })
     }
 
     fun confirmDelete(name: String, onCancel: () -> Unit, onDelete: () -> Unit) {
-        val dialog = AlertDialog.Builder(activity, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Excluir cena favorita?")
-            .setMessage(name + "\nO arquivo original não será alterado.")
-            .setNegativeButton("Cancelar") { _, _ -> onCancel() }
-            .setPositiveButton("Excluir") { _, _ -> onDelete() }
-            .create()
-        present(dialog)
+        fullScreen("Excluir cena favorita?", onBack = onCancel, body = {
+            addView(label(name + "\nO arquivo original não será alterado.").apply {
+                setPadding(dp(20), dp(20), dp(20), dp(20))
+            })
+            addView(action("Excluir") { dismiss(); onDelete() })
+            addView(action("Cancelar") { dismiss(); onCancel() })
+        })
     }
 
     fun editor(
