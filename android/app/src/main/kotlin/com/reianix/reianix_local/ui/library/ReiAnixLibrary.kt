@@ -1,6 +1,20 @@
 package com.reianix.reianix_local.ui.library
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -119,6 +133,7 @@ fun ReiAnixLibraryRoute(
     val baseState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
     val pageState by viewModel.pagedLibraryState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { viewModel.refreshPersonalLibraryFilters() }
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -140,6 +155,7 @@ fun ReiAnixLibraryRoute(
         onToggleWatching = viewModel::toggleLibraryWatchingFilter,
         onToggleCompleted = viewModel::toggleLibraryCompletedFilter,
         onSortSelected = viewModel::setLibrarySort,
+        onApplyFilters = viewModel::applyLibraryFilters,
         onClearFilters = viewModel::clearLibraryFilters,
         onRefresh = viewModel::refresh,
         onSelectSource = viewModel::selectSafTree,
@@ -172,6 +188,7 @@ fun ReiAnixLibraryRoute(
     val baseState by viewModel.libraryPresentationState.collectAsStateWithLifecycle()
     val pageState by viewModel.pagedLibraryState.collectAsStateWithLifecycle()
     val filters by viewModel.libraryFilters.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { viewModel.refreshPersonalLibraryFilters() }
     val visibleAnimes by viewModel.filteredLibraryAnimes.collectAsStateWithLifecycle()
     val genres by viewModel.libraryGenres.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -203,6 +220,7 @@ fun ReiAnixLibraryRoute(
         onToggleWatching = viewModel::toggleLibraryWatchingFilter,
         onToggleCompleted = viewModel::toggleLibraryCompletedFilter,
         onSortSelected = viewModel::setLibrarySort,
+        onApplyFilters = viewModel::applyLibraryFilters,
         onClearFilters = viewModel::clearLibraryFilters,
         onRefresh = viewModel::refresh,
         onSelectSource = viewModel::selectSafTree,
@@ -237,6 +255,7 @@ fun ReiAnixLibraryScreen(
     onToggleWatching: () -> Unit,
     onToggleCompleted: () -> Unit,
     onSortSelected: (String) -> Unit = {},
+    onApplyFilters: ((ReiAnixLibraryFilters) -> Unit)? = null,
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
     onOpenDetails: (Long) -> Unit,
@@ -275,6 +294,7 @@ fun ReiAnixLibraryScreen(
         onToggleWatching = onToggleWatching,
         onToggleCompleted = onToggleCompleted,
         onSortSelected = onSortSelected,
+        onApplyFilters = onApplyFilters,
         onClearFilters = onClearFilters,
         onRefresh = onRefresh,
         onSelectSource = onSelectSource,
@@ -302,6 +322,7 @@ private fun ReiAnixLibraryPresentationScreen(
     onToggleWatching: () -> Unit,
     onToggleCompleted: () -> Unit,
     onSortSelected: (String) -> Unit = {},
+    onApplyFilters: ((ReiAnixLibraryFilters) -> Unit)? = null,
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
     onOpenDetails: (Long) -> Unit,
@@ -315,6 +336,23 @@ private fun ReiAnixLibraryPresentationScreen(
     onSelectSource: () -> Unit = onRefresh,
 ) {
     ReiAnixResponsiveRoot {
+    var showFilters by rememberSaveable { mutableStateOf(false) }
+    if (showFilters) {
+        LibraryFiltersDialog(
+            filters = filters,
+            genres = genres,
+            onDismiss = { showFilters = false },
+            onApply = { draft ->
+                showFilters = false
+                if (onApplyFilters != null) onApplyFilters(draft) else {
+                    onSortSelected(draft.sort)
+                    onGenreSelected(draft.selectedGenreKey)
+                }
+            },
+            onRefresh = { showFilters = false; onRefresh() },
+            isRefreshing = isRefreshing,
+        )
+    }
     val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
     Column(
         modifier = Modifier
@@ -333,6 +371,9 @@ private fun ReiAnixLibraryPresentationScreen(
                     onRefresh = onRefresh,
                     isRefreshing = isRefreshing,
                     onOpenCollections = onOpenCollections,
+                    missingArtworkRetryState = missingArtworkRetryState,
+                    onRetryMissingArtwork = onRetryMissingArtwork,
+                    onFilters = { showFilters = true },
                 )
             }
         }
@@ -455,63 +496,165 @@ private fun LibraryHeader(
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
     onOpenCollections: (() -> Unit)? = null,
+    missingArtworkRetryState: ReiAnixMissingArtworkRetryUiState,
+    onRetryMissingArtwork: () -> Unit,
+    onFilters: () -> Unit,
 ) {
-    var actionsExpanded by rememberSaveable { mutableStateOf(false) }
     ReiAnixTopBar(
         title = "Biblioteca",
         actions = {
-            if (onSearch != null) {
-                ReiAnixIconActionButton(
-                    icon = Icons.Filled.Search,
-                    contentDescription = "Pesquisar na biblioteca",
-                    onClick = onSearch,
-                )
-            }
-            Box {
-                ReiAnixIconActionButton(
-                    icon = Icons.Filled.MoreVert,
-                    contentDescription = "Mais ações da biblioteca",
-                    onClick = { actionsExpanded = true },
-                )
-                DropdownMenu(
-                    expanded = actionsExpanded,
-                    onDismissRequest = { actionsExpanded = false },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    if (onOpenCollections != null) {
-                        DropdownMenuItem(
-                            text = { Text("Coleções") },
-                            leadingIcon = { Icon(Icons.Filled.Folder, contentDescription = null) },
-                            onClick = {
-                                actionsExpanded = false
-                                onOpenCollections()
-                            },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                if (isRefreshing) "Atualizando biblioteca…" else "Atualizar biblioteca",
-                            )
-                        },
-                        enabled = !isRefreshing,
-                        onClick = {
-                            actionsExpanded = false
-                            onRefresh()
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = null,
-                            )
-                        },
+            IconButton(
+                onClick = onRetryMissingArtwork,
+                enabled = !missingArtworkRetryState.isRunning,
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
+                    contentDescription = "Baixar capas que faltam"
+                },
+            ) {
+                if (missingArtworkRetryState.isRunning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+                        strokeWidth = 2.dp,
                     )
-
+                } else {
+                    Canvas(Modifier.size(ReiAnixTokens.Dimensions.iconMedium)) {
+                        val u = size.width / 32f
+                        val stroke = 2f * u
+                        val white = Color.White
+                        drawRoundRect(white, Offset(3*u,4*u), Size(24*u,22*u),
+                            cornerRadius = CornerRadius(2*u), style = Stroke(stroke))
+                        drawLine(white, Offset(3*u,21*u), Offset(11*u,13*u), stroke, StrokeCap.Round)
+                        drawLine(white, Offset(11*u,13*u), Offset(17*u,19*u), stroke, StrokeCap.Round)
+                        drawCircle(white, 2*u, Offset(20*u,10*u), style = Stroke(stroke))
+                        drawRoundRect(Color.Black, Offset(16*u,16*u), Size(16*u,16*u), CornerRadius(2*u))
+                        drawLine(white, Offset(24*u,18*u), Offset(24*u,29*u), stroke, StrokeCap.Round)
+                        drawLine(white, Offset(19*u,24*u), Offset(24*u,29*u), stroke, StrokeCap.Round)
+                        drawLine(white, Offset(29*u,24*u), Offset(24*u,29*u), stroke, StrokeCap.Round)
+                    }
+                }
+            }
+            if (onOpenCollections != null) {
+                ReiAnixIconActionButton(Icons.Outlined.Folder, "Coleções", onOpenCollections)
+            }
+            if (onSearch != null) {
+                ReiAnixIconActionButton(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
+            }
+            IconButton(
+                onClick = onFilters,
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
+                    contentDescription = "Filtros da biblioteca"
+                },
+            ) {
+                Canvas(Modifier.size(ReiAnixTokens.Dimensions.iconMedium)) {
+                    val u = size.width / 48f
+                    val stroke = 3.5f * u
+                    drawLine(Color.White, Offset(8*u,12*u), Offset(40*u,12*u), stroke, StrokeCap.Round)
+                    drawLine(Color.White, Offset(14*u,24*u), Offset(34*u,24*u), stroke, StrokeCap.Round)
+                    drawLine(Color.White, Offset(21*u,36*u), Offset(27*u,36*u), stroke, StrokeCap.Round)
                 }
             }
         },
     )
     Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
+}
+
+@Composable
+private fun LibraryFiltersDialog(
+    filters: ReiAnixLibraryFilters,
+    genres: List<ReiAnixGenreUiModel>,
+    onDismiss: () -> Unit,
+    onApply: (ReiAnixLibraryFilters) -> Unit,
+    onRefresh: () -> Unit,
+    isRefreshing: Boolean,
+) {
+    var sort by rememberSaveable { mutableStateOf(filters.sort) }
+    var genre by rememberSaveable { mutableStateOf(filters.selectedGenreKey) }
+    var state by rememberSaveable { mutableStateOf(filters.watchState) }
+    var label by rememberSaveable { mutableStateOf(filters.labelFilter) }
+    fun reset() {
+        sort = ReiAnixLibrarySort.DEFAULT.label
+        genre = null
+        state = "ALL"
+        label = "ALL"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.background,
+        title = { Text("Filtros da biblioteca") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LibraryFilterSelector(
+                        title = "Ordenar", value = sort,
+                        options = ReiAnixLibrarySort.OPTIONS.map { it.label to it.label },
+                        onSelect = { sort = it.orEmpty() }, modifier = Modifier.weight(1f),
+                    )
+                    LibraryFilterSelector(
+                        title = "Gêneros", value = genres.firstOrNull { it.stableKey == genre }?.name ?: "Todos",
+                        options = listOf(null to "Todos") + genres.map { it.stableKey to it.name },
+                        onSelect = { genre = it }, modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LibraryFilterSelector(
+                        title = "Estado", value = ReiAnixLibraryFilters.WATCH_STATES.first { it.first == state }.second,
+                        options = ReiAnixLibraryFilters.WATCH_STATES,
+                        onSelect = { state = it ?: "ALL" }, modifier = Modifier.weight(1f),
+                    )
+                    LibraryFilterSelector(
+                        title = "Etiqueta", value = ReiAnixLibraryFilters.LABEL_FILTERS.first { it.first == label }.second,
+                        options = ReiAnixLibraryFilters.LABEL_FILTERS,
+                        onSelect = { label = it ?: "ALL" }, modifier = Modifier.weight(1f),
+                    )
+                }
+                TextButton(onClick = onRefresh, enabled = !isRefreshing) {
+                    Text(if (isRefreshing) "Atualizando biblioteca…" else "Atualizar biblioteca")
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onApply(filters.copy(sort = sort, selectedGenreKey = genre, watchState = state, labelFilter = label)) }) {
+                Text("Aplicar")
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { reset() }) { Text("Limpar") }
+                TextButton(onClick = onDismiss) { Text("Cancelar") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun LibraryFilterSelector(
+    title: String,
+    value: String,
+    options: List<Pair<String?, String>>,
+    onSelect: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier = modifier) {
+        Text(title, style = MaterialTheme.typography.labelMedium)
+        Box {
+            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
+                Text(value, modifier = Modifier.weight(1f), maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text("▾")
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false },
+                modifier = Modifier.heightIn(max = 320.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                options.forEach { (key, label) ->
+                    DropdownMenuItem(text = { Text(label) }, onClick = { expanded = false; onSelect(key) })
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -542,8 +685,6 @@ private fun ColumnScope.LibraryReadyContent(
     modifier: Modifier = Modifier,
     scrollHeaderState: ReiAnixScrollAwareHeaderState? = null,
 ) {
-    var sortMenuExpanded by rememberSaveable { mutableStateOf(false) }
-    var genreMenuExpanded by rememberSaveable { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState()
     val availableEpisodeCount = state.availableEpisodeCount
     val responsive = LocalReiAnixResponsiveMetrics.current
@@ -691,125 +832,6 @@ private fun ColumnScope.LibraryReadyContent(
                         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
                         contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
                     ) {
-                        item(key = "sort") {
-                            Box {
-                                ReiAnixChip(
-                                    text = "Ordenar",
-                                    selected = filters.sort != ReiAnixLibrarySort.DEFAULT.label,
-                                    onClick = { sortMenuExpanded = true },
-                                    modifier = Modifier.semantics {
-                                        contentDescription = "Ordenar. Opção atual: " + filters.sort
-                                    },
-                                )
-                                DropdownMenu(
-                                    expanded = sortMenuExpanded,
-                                    onDismissRequest = { sortMenuExpanded = false },
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                ) {
-                                    ReiAnixLibrarySort.OPTIONS.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = { Text(option.label) },
-                                            onClick = {
-                                                sortMenuExpanded = false
-                                                onSortSelected(option.label)
-                                            },
-                                            trailingIcon = if (filters.sort == option.label) {
-                                                {
-                                                    Text(
-                                                        text = "✓",
-                                                        color = MaterialTheme.colorScheme.primary,
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                    )
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        item(key = "filter-genre") {
-                            Box {
-                                ReiAnixChip(
-                                    text = "Gêneros",
-                                    selected = filters.selectedGenreKey != null,
-                                    enabled = genres.isNotEmpty(),
-                                    onClick = { genreMenuExpanded = true },
-                                    modifier = Modifier.semantics {
-                                        contentDescription = if (filters.selectedGenreKey == null) {
-                                            "Gêneros"
-                                        } else {
-                                            "Gênero selecionado"
-                                        }
-                                    },
-                                )
-                                if (genreMenuExpanded) {
-                                    androidx.compose.material3.AlertDialog(
-                                        onDismissRequest = { genreMenuExpanded = false },
-                                        title = { Text("Filtrar por gênero") },
-                                        text = {
-                                            androidx.compose.foundation.lazy.LazyColumn(
-                                                modifier = Modifier.heightIn(
-                                                    max = ReiAnixTokens.Dimensions.libraryGenrePickerMaxHeight,
-                                                ),
-                                            ) {
-                                                item(key = "genre-all") {
-                                                    DropdownMenuItem(
-                                                        text = { Text("Todos os gêneros") },
-                                                        onClick = {
-                                                            genreMenuExpanded = false
-                                                            onGenreSelected(null)
-                                                        },
-                                                        trailingIcon = if (filters.selectedGenreKey == null) {
-                                                            {
-                                                                Text(
-                                                                    text = "✓",
-                                                                    color = MaterialTheme.colorScheme.primary,
-                                                                    style = MaterialTheme.typography.labelLarge,
-                                                                )
-                                                            }
-                                                        } else {
-                                                            null
-                                                        },
-                                                    )
-                                                }
-                                                items(
-                                                    items = genres,
-                                                    key = { genre -> genre.stableKey },
-                                                ) { genre ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(genre.name) },
-                                                        onClick = {
-                                                            genreMenuExpanded = false
-                                                            onGenreSelected(genre.stableKey)
-                                                        },
-                                                        trailingIcon = if (filters.selectedGenreKey == genre.stableKey) {
-                                                            {
-                                                                Text(
-                                                                    text = "✓",
-                                                                    color = MaterialTheme.colorScheme.primary,
-                                                                    style = MaterialTheme.typography.labelLarge,
-                                                                )
-                                                            }
-                                                        } else {
-                                                            null
-                                                        },
-                                                    )
-                                                }
-                                            }
-                                        },
-                                        confirmButton = {
-                                            ReiAnixCompactButton(
-                                                text = "Fechar",
-                                                onClick = { genreMenuExpanded = false },
-                                            )
-                                        },
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    )
-                                }
-                            }
-                        }
                         item(key = "filter-favorite") {
                             LibraryFilterChip(
                                 text = "Favoritos",
@@ -833,22 +855,7 @@ private fun ColumnScope.LibraryReadyContent(
                         }
                     }
 
-                    ReiAnixChip(
-                        text = if (missingArtworkRetryState.isRunning) {
-                            "Buscando capas..."
-                        } else {
-                            "Baixar capas que faltam"
-                        },
-                        enabled = !missingArtworkRetryState.isRunning,
-                        onClick = onRetryMissingArtwork,
-                        modifier = Modifier.semantics {
-                            contentDescription = "Baixar capas que faltam"
-                        },
-                    )
-                    Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.sm))
-                    if (onOpenStorage != null) {
-                        ReiAnixChip(text = "Adicionar pasta", onClick = onOpenStorage)
-                    }
+
                 }
             }
 
