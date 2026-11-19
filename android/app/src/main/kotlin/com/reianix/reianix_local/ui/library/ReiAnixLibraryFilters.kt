@@ -11,13 +11,34 @@ data class ReiAnixLibraryFilters(
     val watchingOnly: Boolean = false,
     val completedOnly: Boolean = false,
     val sort: String = ReiAnixLibrarySort.DEFAULT.label,
+    val watchState: String = "ALL",
+    val labelFilter: String = "ALL",
 ) {
     val hasAnyFilter: Boolean
         get() = query.isNotBlank() ||
             selectedGenreKey != null ||
             favoritesOnly ||
             watchingOnly ||
-            completedOnly
+            completedOnly ||
+            watchState != "ALL" || labelFilter != "ALL"
+
+    val hasPersonalFilters: Boolean
+        get() = watchState != "ALL" || labelFilter != "ALL"
+
+    companion object {
+        val WATCH_STATES = listOf(
+            "ALL" to "Todos",
+            *com.reianix.reianix_local.data.personal.ReiAnixWatchStatus.entries.map { it.name to it.label }.toTypedArray(),
+            "NONE" to "Sem estado",
+        )
+        val LABEL_FILTERS = listOf(
+            "ALL" to "Todos",
+            "WITH_NOTE" to "Com notas pessoais",
+            "WITHOUT_NOTE" to "Sem notas pessoais",
+            "WITH_TAGS" to "Com tags",
+            "WITHOUT_TAGS" to "Sem tags",
+        )
+    }
 }
 
 enum class ReiAnixLibrarySort(val label: String) {
