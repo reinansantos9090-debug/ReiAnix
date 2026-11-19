@@ -1,11 +1,47 @@
 package com.reianix.reianix_local.ui.scroll
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import com.reianix.reianix_local.ui.shell.reiAnixAppContentInsets
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReiAnixScrollAwareHeaderStateTest {
+
+    @Test
+    fun sharedViewportNeverReservesTopCutoutButProtectsHorizontalEdges() {
+        val density = Density(1f)
+        val insets = reiAnixAppContentInsets(WindowInsets(8, 32, 12, 24))
+
+        assertEquals(0, insets.getTop(density))
+        assertEquals(8, insets.getLeft(density, LayoutDirection.Ltr))
+        assertEquals(12, insets.getRight(density, LayoutDirection.Ltr))
+        assertEquals(0, insets.getBottom(density))
+    }
+
+    @Test
+    fun headerWithTopCutoutInsetCollapsesAllTheWayToZero() {
+        val state = ReiAnixScrollAwareHeaderState()
+        // The measured scrolling header includes the 24 px top safety inset.
+        state.updateMeasuredHeight(72 + 24)
+        val collapse = state.nestedScrollConnection.onPreScroll(
+            Offset(0f, -150f),
+            NestedScrollSource.UserInput,
+        )
+        assertEquals(-96f, collapse.y, 0.01f)
+        assertEquals(0f, state.visibleHeightPx, 0.01f)
+
+        state.updateContentAtTop(true)
+        val expand = state.nestedScrollConnection.onPreScroll(
+            Offset(0f, 150f),
+            NestedScrollSource.UserInput,
+        )
+        assertEquals(96f, expand.y, 0.01f)
+        assertEquals(96f, state.visibleHeightPx, 0.01f)
+    }
 
     @Test
     fun returningToTopDoesNotSnapPartiallyCollapsedHeaderOpen() {

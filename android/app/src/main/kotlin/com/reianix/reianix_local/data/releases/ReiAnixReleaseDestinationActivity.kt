@@ -7,6 +7,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.reianix.reianix_local.player.ReiAnixAppWindowPreference
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,8 +32,21 @@ import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
 
 /** Shown only on notification tap. No permanent calendar tab is created. */
 class ReiAnixReleaseDestinationActivity : ComponentActivity() {
+    private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
+
+    override fun onResume() {
+        super.onResume()
+        appWindowPreference.refresh()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) appWindowPreference.apply()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appWindowPreference.apply()
         val title = intent.getStringExtra("title").orEmpty().take(180)
         val episode = intent.getIntExtra("episode", -1)
         val aniListId = intent.getIntExtra("anilist_id", -1)
@@ -35,7 +56,11 @@ class ReiAnixReleaseDestinationActivity : ComponentActivity() {
         setContent {
             ReiAnixComposeTheme {
                 Column(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    modifier = Modifier.fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                        .verticalScroll(rememberScrollState())
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                        .padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     Text("Novo episódio", style = MaterialTheme.typography.headlineMedium)

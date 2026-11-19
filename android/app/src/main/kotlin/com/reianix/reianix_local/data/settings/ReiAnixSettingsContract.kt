@@ -60,6 +60,11 @@ data class ReiAnixSettingDefinition(
 }
 
 object ReiAnixSettingsContract {
+    const val APP_IMMERSIVE_KEY = "app.immersive"
+
+    fun appImmersiveEnabled(value: String?): Boolean =
+        value?.let { runCatching { normalize(APP_IMMERSIVE_KEY, it) }.getOrNull() } != "false"
+
     private fun bool(key: String, default: Boolean) =
         ReiAnixSettingDefinition(key, ReiAnixSettingKind.BOOLEAN, default.toString())
     private fun int(key: String, default: Int, vararg choices: Int) =
@@ -71,6 +76,7 @@ object ReiAnixSettingsContract {
 
     val definitions: Map<String, ReiAnixSettingDefinition> = listOf(
         bool("app.confirm_destructive", true),
+        bool(APP_IMMERSIVE_KEY, true),
         enum("appearance.theme", "dark", "system", "light", "dark"),
         enum("appearance.card_size", "medium", "small", "medium", "large"),
         int("appearance.poster_size", 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16),

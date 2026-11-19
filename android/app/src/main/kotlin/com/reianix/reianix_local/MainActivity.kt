@@ -62,6 +62,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -95,6 +98,8 @@ class MainActivity : ComponentActivity() {
     private val MAX_SETTINGS_FILE_BYTES = 1024 * 1024
     private val SETTINGS_FILE_REQUEST_ID_REGEX = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     private lateinit var systemUiController: SystemUiController
+    private var appImmersiveEnabled = true
+    private var appSystemBarTheme = "dark"
     private var broadStoragePermissionPending = false
     private var mediaPermissionRequestPending = false
     private var safPickerPending = false
@@ -1297,6 +1302,7 @@ class MainActivity : ComponentActivity() {
 
 
         systemUiController = SystemUiController(window)
+        systemUiController.applyAppPreference(appImmersiveEnabled, appSystemBarTheme)
         lifecycleScope.launch {
             SafTreeChangeMonitor.changes.collect {
                 if (activityResumed) dispatchPendingSafTreeChanges()
@@ -1315,6 +1321,22 @@ class MainActivity : ComponentActivity() {
             if (isFinishing || isDestroyed) return@launch
 
             nativeBootstrapDecisionComplete = true
+            // Observe only the two window preferences; changes never rebuild the
+            // Activity, reset navigation, or touch scanning/playback state.
+            lifecycleScope.launch {
+                settingsViewModel.uiState
+                    .map { state ->
+                        ReiAnixSettingsContract.appImmersiveEnabled(
+                            state.settings[ReiAnixSettingsContract.APP_IMMERSIVE_KEY],
+                        ) to (state.settings["appearance.theme"] ?: "dark")
+                    }
+                    .distinctUntilChanged()
+                    .collect { (immersive, theme) ->
+                        appImmersiveEnabled = immersive
+                        appSystemBarTheme = theme
+                        applyApplicationSystemUi()
+                    }
+            }
             composeLibraryHost = ReiAnixComposeLibraryHost(this@MainActivity, libraryViewModel, settingsViewModel)
             composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
             if (recoveryRequired) {
@@ -1351,7 +1373,7 @@ class MainActivity : ComponentActivity() {
         }
         // The existing SystemUiController remains the single Android system-bar
         // authority while the Compose shell and legacy Flet surfaces coexist.
-        systemUiController.applyApplicationPolicy(useContextAppearance = false)
+        systemUiController.applyAppPreference(appImmersiveEnabled, appSystemBarTheme)
         // The initial intent is processed once, after the bootstrap selects the safe route.
     }
 
@@ -2574,7 +2596,7 @@ class MainActivity : ComponentActivity() {
             // MainActivity owns the immersive application surface. External Android
             // Activities may temporarily reveal their own system UI; focus/resume
             // re-applies this single host policy when ReiAnix returns foreground.
-            systemUiController.applyApplicationImmersivePolicy(useContextAppearance = false)
+            systemUiController.applyAppPreference(appImmersiveEnabled, appSystemBarTheme)
             publishInteractionProfileIfChanged(force = true)
             ViewCompat.requestApplyInsets(window.decorView)
         }

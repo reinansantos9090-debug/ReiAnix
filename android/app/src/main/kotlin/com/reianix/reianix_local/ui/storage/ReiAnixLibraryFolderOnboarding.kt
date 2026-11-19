@@ -1,6 +1,11 @@
 package com.reianix.reianix_local.ui.storage
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,7 +65,8 @@ fun ReiAnixLibraryFolderOnboarding(
             Column(
                 modifier = Modifier.fillMaxWidth().weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(top = 44.dp, bottom = 20.dp),
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                    .padding(top = 20.dp, bottom = 20.dp),
                 horizontalAlignment = Alignment.Start,
             ) {
                 Icon(

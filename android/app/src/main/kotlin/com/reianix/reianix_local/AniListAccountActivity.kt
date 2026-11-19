@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import com.reianix.reianix_local.player.ReiAnixAppWindowPreference
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reianix.reianix_local.ui.ReiAnixTopBar
 import com.reianix.reianix_local.ui.account.ReiAnixAccountAvatar
@@ -36,8 +37,21 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class AniListAccountActivity : ComponentActivity() {
+    private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
+
+    override fun onResume() {
+        super.onResume()
+        appWindowPreference.refresh()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) appWindowPreference.apply()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appWindowPreference.apply()
         setContent {
             ReiAnixComposeTheme {
                 ReiAnixSettingsRoot {
@@ -85,7 +99,11 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Column(
                         Modifier
-                            .then(if (useSystemInsets) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
+                            .then(
+                                if (useSystemInsets) Modifier.windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                                ) else Modifier,
+                            )
                             .verticalScroll(rememberScrollState()),
                     ) {
                         SettingsHeader(title = "Contas e Avançado", subtitle = "", onBack = onBack)
@@ -175,8 +193,16 @@ private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Uni
 
 /** Dedicated callback: OAuth fragments never enter the player/diagnostic intent handlers. */
 class AniListOAuthCallbackActivity : ComponentActivity() {
+    private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
+
+    override fun onResume() {
+        super.onResume()
+        appWindowPreference.refresh()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appWindowPreference.apply()
         val callback = intent.data
         // Clear the credential-bearing URI immediately; never log or save it in instance state.
         intent.data = null

@@ -60,6 +60,7 @@ internal fun settingsPageForDestination(destination: String?): String? = when (d
 
 internal val SettingsDestinations = listOf(
     SettingsDestination("Geral", "Geral", "", listOf(
+        SettingsEntry("setting:app.immersive", "Modo imersivo", "tela cheia edge-to-edge barra de status notificações relógio bateria"),
         SettingsEntry("setting:app.confirm_destructive", "Confirmar ações destrutivas"),
         SettingsEntry("setting:releases.notifications", "Notificar novos episódios", "lançamento avisos anime biblioteca episódios"),
     )),

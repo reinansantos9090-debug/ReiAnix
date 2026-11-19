@@ -46,6 +46,10 @@ data class ReiAnixBottomNavDestination(
     val contentDescription: String = label,
 )
 
+/** Keep only the horizontal cutout clearance on the shared viewport. */
+internal fun reiAnixAppContentInsets(safeInsets: WindowInsets): WindowInsets =
+    safeInsets.only(WindowInsetsSides.Horizontal)
+
 @Composable
 fun ReiAnixAppShell(
     selectedRoute: String?,
@@ -58,9 +62,14 @@ fun ReiAnixAppShell(
     Scaffold(
         modifier = modifier,
         containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-        ),
+        // Every destination owns its top inset at the actual header/scrolling
+        // content. Do not reserve a permanent black strip in the viewport.
+        contentWindowInsets = if (showBottomNavigation) {
+            reiAnixAppContentInsets(WindowInsets.safeDrawing)
+        } else {
+            // No app bottom bar to consume the visible Android navigation bar.
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+        },
         bottomBar = {
             if (showBottomNavigation) {
                 ReiAnixBottomNavigation(

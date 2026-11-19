@@ -1,6 +1,11 @@
 package com.reianix.reianix_local.ui.settings
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -352,7 +357,9 @@ fun ReiAnixSettingsScreen(
                     com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
                         item(key = "settings:top-bar") {
                             Row(
-                                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                                Modifier.fillMaxWidth()
+                                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                                    .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 if (account.connected) {
@@ -630,6 +637,15 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Geral" -> {
+                    item(key = "setting:app.immersive") {
+                        BooleanSettingRow(
+                            keyName = "app.immersive",
+                            title = "Modo imersivo",
+                            description = "Oculta as barras do Android. Desativar mantém o Edge-to-Edge com relógio, bateria e notificações visíveis.",
+                            checked = com.reianix.reianix_local.data.settings.ReiAnixSettingsContract.appImmersiveEnabled(state.settings["app.immersive"]),
+                            onCheckedChange = { onUpdateSetting("app.immersive", it.toString()) },
+                        )
+                    }
                     item(key = "setting:app.confirm_destructive") {
                         BooleanSettingRow(
                             keyName = "app.confirm_destructive",

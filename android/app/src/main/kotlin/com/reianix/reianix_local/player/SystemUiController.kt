@@ -6,6 +6,8 @@ import android.os.Build
 import android.view.Window
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
@@ -28,9 +30,36 @@ class SystemUiController(private val window: Window) {
      * The application host is immersive; the explicit normal policy remains
      * available for temporary/external surfaces and player exit transitions.
      */
-    /** Shared application policy for the immersive Flet host. */
+    /** Immersive host policy; allow short-edge cutouts on Android 9 and 10. */
     fun applyApplicationImmersivePolicy(useContextAppearance: Boolean = true) {
         applyImmersive(useContextAppearance)
+        if (Build.VERSION.SDK_INT in 28..29) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
+
+    /** App preference only; the native player retains its independent policy. */
+    fun applyAppPreference(immersive: Boolean, themeMode: String = "dark") {
+        if (immersive) applyApplicationImmersivePolicy(useContextAppearance = false)
+        else {
+            applyNormal(useContextAppearance = false)
+            if (Build.VERSION.SDK_INT in 28..29) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+        }
+        val light = when (themeMode) {
+            "light" -> true
+            "system" -> (window.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES
+            else -> false
+        }
+        controller.isAppearanceLightStatusBars = light
+        controller.isAppearanceLightNavigationBars = light
     }
 
     /** Backward-compatible normal policy for external/temporary surfaces. */
@@ -87,6 +116,36 @@ class SystemUiController(private val window: Window) {
         controller.apply {
             isAppearanceLightStatusBars = !darkTheme
             isAppearanceLightNavigationBars = !darkTheme
+        }
+    }
+}
+
+/** Standalone app-owned screens follow the same persisted preference as MainActivity. */
+internal class ReiAnixAppWindowPreference(private val activity: androidx.activity.ComponentActivity) {
+    private val controller = SystemUiController(activity.window)
+    private var immersive = true
+    private var readJob: kotlinx.coroutines.Job? = null
+
+    fun apply() {
+        controller.applyAppPreference(immersive)
+    }
+
+    fun refresh() {
+        readJob?.cancel()
+        readJob = activity.lifecycleScope.launch {
+            try {
+                val value = com.reianix.reianix_local.ReiAnixAppDependencies.from(activity)
+                    .sqliteSettingsRepository.getPreference(
+                        com.reianix.reianix_local.data.settings.ReiAnixSettingsContract.APP_IMMERSIVE_KEY,
+                        "true",
+                    )
+                immersive = com.reianix.reianix_local.data.settings.ReiAnixSettingsContract.appImmersiveEnabled(value)
+                if (!activity.isFinishing && !activity.isDestroyed) apply()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Preserve the last applied policy if local preferences are unavailable.
+            }
         }
     }
 }

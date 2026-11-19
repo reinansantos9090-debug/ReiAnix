@@ -56,6 +56,14 @@ class ReiAnixSettingsNavigationTest {
         icons.forEach { assertNotEquals(Icons.Filled.Settings, it) }
     }
 
+    @Test fun immersiveApplicationOptionLivesInGeneralSettings() {
+        val general = settingsDestination("Geral")!!
+        assertEquals("Modo imersivo", general.entries.first { it.key == "setting:app.immersive" }.title)
+        assertEquals(true, searchSettings("modo imersivo").any {
+            it.destination.id == "Geral" && it.entry.key == "setting:app.immersive"
+        })
+    }
+
     @Test fun settingLabelsExplainTheirActualBehavior() {
         val library = SettingsDestinations.first { it.id == "Biblioteca" }
         assertEquals("Animes por lote", library.entries.first { it.key == "setting:library.page_size" }.title)

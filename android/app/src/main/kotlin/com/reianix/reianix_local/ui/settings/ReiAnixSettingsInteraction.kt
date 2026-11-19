@@ -58,6 +58,7 @@ fun Modifier.settingsClickable(
  * Each action has its own symbol; unknown future keys use the safe Settings fallback.
  */
 internal fun settingsIcon(key: String): ImageVector = when (key) {
+    "app.immersive" -> Icons.Filled.FullscreenExit
     "app.confirm_destructive" -> Icons.Filled.Security
     "releases.notifications" -> Icons.Filled.NotificationsActive
     "player.reset" -> Icons.Filled.RestartAlt
