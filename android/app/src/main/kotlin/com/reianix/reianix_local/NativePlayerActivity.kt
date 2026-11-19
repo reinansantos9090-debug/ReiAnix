@@ -5573,36 +5573,62 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun showSubtitleAppearance() {
-        fun choose(title: String, labels: Array<String>, selected: (Int) -> Unit) {
-            showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-                .setTitle(title).setItems(labels) { _, index ->
+        if (episodeChangePending || isFinishing || isDestroyed) return
+
+        // The radio dialog is deliberately not dismissed by a selection.
+        // Android's single-choice list updates the checked row immediately.
+        fun choose(title: String, labels: Array<String>, currentIndex: Int, selected: (Int) -> Unit) {
+            val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+                .setTitle(title)
+                .setSingleChoiceItems(labels, currentIndex) { _, index ->
                     captionRevision += 1
                     selected(index)
                     applySubtitlePreferences()
-                    showFeedback("Legendas atualizadas")
-                }.setNegativeButton("Cancelar", null).create())
+                }
+                .setNegativeButton("Voltar") { _, _ -> showSubtitleAppearance() }
+                .setPositiveButton("Fechar", null)
+                .setOnCancelListener { showSubtitleAppearance() }
+                .create()
+            showPlayerMenuDialog(dialog)
         }
-        showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+        val sizes = floatArrayOf(0.75f, 1f, 1.25f, 1.5f)
+        val positions = intArrayOf(4, 8, 12, 16)
+        val colors = arrayOf("system", "white", "yellow", "cyan")
+        val fonts = arrayOf("system", "sans", "serif", "mono")
+
+        val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
             .setTitle("Personalizar legendas")
-            .setItems(arrayOf("Tamanho", "Posição vertical", "Cor do texto", "Fonte", "Estilos originais", "Restaurar padrão")) { _, index ->
+            .setItems(arrayOf("Tamanho", "Posição vertical", "Cor do texto", "Fonte", "Estilos originais", "Restaurar padrão"), null)
+            .setNegativeButton("Fechar", null)
+            .create()
+        // Override the default item click so resetting the settings keeps this
+        // page open. Entering a category dismisses only the parent dialog.
+        dialog.setOnShowListener {
+            dialog.listView.setOnItemClickListener { _, _, index, _ ->
+                if (index != 5) dialog.dismiss()
                 when (index) {
-                    0 -> choose("Tamanho", arrayOf("Pequeno", "Normal", "Grande", "Muito grande")) { i ->
-                        subtitleScale = floatArrayOf(0.75f, 1f, 1.25f, 1.5f)[i]
+                    0 -> choose("Tamanho", arrayOf("Pequeno", "Normal", "Grande", "Muito grande"),
+                        sizes.indexOf(subtitleScale)) { i ->
+                        subtitleScale = sizes[i]
                         persistCanonicalPlayerSetting("audio.subtitle_scale", subtitleScale.toString())
                     }
-                    1 -> choose("Posição vertical", arrayOf("Mais baixa", "Normal", "Mais alta", "Alta")) { i ->
-                        subtitleBottomPaddingPercent = intArrayOf(4, 8, 12, 16)[i]
+                    1 -> choose("Posição vertical", arrayOf("Mais baixa", "Normal", "Mais alta", "Alta"),
+                        positions.indexOf(subtitleBottomPaddingPercent)) { i ->
+                        subtitleBottomPaddingPercent = positions[i]
                         persistCanonicalPlayerSetting("audio.subtitle_bottom_padding", subtitleBottomPaddingPercent.toString())
                     }
-                    2 -> choose("Cor do texto", arrayOf("Sistema", "Branco", "Amarelo", "Ciano")) { i ->
-                        subtitleColor = arrayOf("system", "white", "yellow", "cyan")[i]
+                    2 -> choose("Cor do texto", arrayOf("Sistema", "Branco", "Amarelo", "Ciano"),
+                        colors.indexOf(subtitleColor)) { i ->
+                        subtitleColor = colors[i]
                         persistCanonicalPlayerSetting("audio.subtitle_color", subtitleColor)
                     }
-                    3 -> choose("Fonte", arrayOf("Sistema", "Sem serifa", "Serifada", "Monoespaçada")) { i ->
-                        subtitleFont = arrayOf("system", "sans", "serif", "mono")[i]
+                    3 -> choose("Fonte", arrayOf("Sistema", "Sem serifa", "Serifada", "Monoespaçada"),
+                        fonts.indexOf(subtitleFont)) { i ->
+                        subtitleFont = fonts[i]
                         persistCanonicalPlayerSetting("audio.subtitle_font", subtitleFont)
                     }
-                    4 -> choose("Estilos originais", arrayOf("Manter", "Ignorar")) { i ->
+                    4 -> choose("Estilos originais", arrayOf("Manter", "Ignorar"),
+                        if (subtitleEmbeddedStyle) 0 else 1) { i ->
                         subtitleEmbeddedStyle = i == 0
                         persistCanonicalPlayerSetting("audio.subtitle_embedded_style", subtitleEmbeddedStyle.toString())
                     }
@@ -5610,18 +5636,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         captionRevision += 1
                         subtitleColor = "system"
                         subtitleFont = "system"
-                        persistCanonicalPlayerSetting("audio.subtitle_color", "system")
-                        persistCanonicalPlayerSetting("audio.subtitle_font", "system")
                         subtitleScale = 1f
                         subtitleBottomPaddingPercent = 8
                         subtitleEmbeddedStyle = true
+                        persistCanonicalPlayerSetting("audio.subtitle_color", "system")
+                        persistCanonicalPlayerSetting("audio.subtitle_font", "system")
                         persistCanonicalPlayerSetting("audio.subtitle_scale", "1.0")
                         persistCanonicalPlayerSetting("audio.subtitle_bottom_padding", "8")
                         persistCanonicalPlayerSetting("audio.subtitle_embedded_style", "true")
                         applySubtitlePreferences()
+                        showFeedback("Legendas restauradas")
                     }
                 }
-            }.setNegativeButton("Fechar", null).create())
+            }
+        }
+        showPlayerMenuDialog(dialog)
     }
 
     private fun setAudioOnly(enabled: Boolean) {
