@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
@@ -59,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -111,7 +114,6 @@ import com.reianix.reianix_local.ui.navigation.navigateToPlayer
 import com.reianix.reianix_local.ui.navigation.navigateToDetails
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveBreakpoints
-import com.reianix.reianix_local.ui.theme.ReiAnixWindowWidthClass
 import androidx.compose.foundation.layout.widthIn
 import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
@@ -967,8 +969,17 @@ private fun DetailsHero(
                         modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             } else {
-                Row(modifier = Modifier.fillMaxWidth().height(ReiAnixTokens.Dimensions.detailsHeroPosterHeight), verticalAlignment = Alignment.Top) {
-                    Box(modifier = Modifier.offset(y = -posterOverlap)) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    // Reserve only the visible part of the overlapping poster; the
+                    // old fixed-height row left a phantom gap under the artwork.
+                    Box(modifier = Modifier.layout { measurable, constraints ->
+                        val poster = measurable.measure(constraints)
+                        val overlap = posterOverlap.roundToPx().coerceIn(0, poster.height)
+                        val height = (poster.height - overlap).coerceAtLeast(constraints.minHeight)
+                        layout(poster.width, height) {
+                            poster.placeRelative(0, -overlap)
+                        }
+                    }) {
                         ReiAnixPoster(localPath = posterPath, contentDescription = null,
                             modifier = Modifier.width(ReiAnixTokens.Dimensions.detailsHeroPosterWidth).aspectRatio(ReiAnixTokens.Dimensions.posterAspectRatio).clip(ReiAnixTokens.Shapes.artwork),
                             identity = anime.stableKey + ":poster",
@@ -1007,8 +1018,51 @@ private fun DetailsHero(
                 )
             }
         }
-        // Keep the synopsis and optional character strip directly below the title
-        // and metadata, above genres and Trace.moe, independently of the About tab.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs)
+                .testTag("details-quick-actions"),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            ReiAnixDetailsQuickAction(
+                label = "Favoritos",
+                icon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                onClick = { onToggleFavorite(anime.id) },
+                active = anime.favorite,
+                modifier = Modifier.weight(1f).testTag("details-quick-favorite").semantics {
+                    stateDescription = if (anime.favorite) "Favoritado" else "Não favoritado"
+                },
+            )
+            ReiAnixDetailsQuickAction(
+                label = "Nota pessoal",
+                icon = Icons.Filled.EditNote,
+                onClick = {
+                    noteDraft = anime.personalNote.orEmpty()
+                    noteError = null
+                    showNoteEditor = true
+                },
+                active = !anime.personalNote.isNullOrBlank(),
+                modifier = Modifier.weight(1f).testTag("details-quick-note"),
+            )
+            ReiAnixDetailsQuickAction(
+                label = "Adicionar tag",
+                icon = Icons.Filled.LocalOffer,
+                onClick = {
+                    tagsDraft = anime.userTags.joinToString(", ")
+                    tagsError = null
+                    showTagsEditor = true
+                },
+                active = anime.userTags.isNotEmpty(),
+                modifier = Modifier.weight(1f).testTag("details-quick-tags"),
+            )
+            ReiAnixPersonalListButton(
+                animeId = anime.id,
+                modifier = Modifier.weight(1f).testTag("details-quick-list"),
+            )
+        }
+        // Synopsis and character strip stay before genres and Trace.moe.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1195,80 +1249,15 @@ private fun DetailsHero(
                 }
             }
         }
-        if (responsive.widthClass == ReiAnixWindowWidthClass.COMPACT) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-            ) {
-                if (target?.isPlayable == true) {
-                    ReiAnixPrimaryButton(
-                        text = target.playbackActionLabel,
-                        onClick = { onWatch(target.id) },
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = Icons.Filled.PlayArrow,
-                    )
-                } else {
-                    ReiAnixPrimaryButton(
-                        text = "Reprodução indisponível",
-                        onClick = {},
-                        enabled = false,
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = Icons.Filled.PlayArrow,
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                ) {
-                    ReiAnixSecondaryButton(
-                        text = if (anime.favorite) "Favoritado" else "Favoritar",
-                        onClick = { onToggleFavorite(anime.id) },
-                        modifier = Modifier.weight(1f),
-                        leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    )
-                    ReiAnixPersonalListButton(
-                        animeId = anime.id,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md),
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-            ) {
-                if (target?.isPlayable == true) {
-                    ReiAnixPrimaryButton(
-                        text = target.playbackActionLabel,
-                        onClick = { onWatch(target.id) },
-                        modifier = Modifier.weight(1.7f),
-                        leadingIcon = Icons.Filled.PlayArrow,
-                    )
-                } else {
-                    ReiAnixPrimaryButton(
-                        text = "Reprodução indisponível",
-                        onClick = {},
-                        enabled = false,
-                        modifier = Modifier.weight(1.7f),
-                        leadingIcon = Icons.Filled.PlayArrow,
-                    )
-                }
-                ReiAnixSecondaryButton(
-                    text = if (anime.favorite) "Favoritado" else "Favoritar",
-                    onClick = { onToggleFavorite(anime.id) },
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = if (anime.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                )
-                ReiAnixPersonalListButton(
-                    animeId = anime.id,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+        ReiAnixPrimaryButton(
+            text = if (target?.isPlayable == true) target.playbackActionLabel else "Reprodução indisponível",
+            onClick = { target?.takeIf { it.isPlayable }?.let { onWatch(it.id) } },
+            enabled = target?.isPlayable == true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md),
+            leadingIcon = Icons.Filled.PlayArrow,
+        )
         if (anime.userTags.isNotEmpty()) {
             Text(
                 text = "Tags: " + anime.userTags.joinToString(" • "),
@@ -1277,15 +1266,6 @@ private fun DetailsHero(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        ReiAnixSecondaryButton(
-            text = if (anime.userTags.isEmpty()) "Adicionar tags" else "Editar tags",
-            onClick = {
-                tagsDraft = anime.userTags.joinToString(", ")
-                tagsError = null
-                showTagsEditor = true
-            },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
-        )
         anime.personalNote?.takeIf(String::isNotBlank)?.let { note ->
             Text(
                 text = note,
@@ -1296,17 +1276,6 @@ private fun DetailsHero(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        ReiAnixSecondaryButton(
-            text = if (anime.personalNote.isNullOrBlank()) "Adicionar nota pessoal" else "Editar nota pessoal",
-            onClick = {
-                noteDraft = anime.personalNote.orEmpty()
-                noteError = null
-                showNoteEditor = true
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
-        )
         ReiAnixSecondaryButton(
             text = "Maratona",
             onClick = onOpenMarathon,
