@@ -7,11 +7,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.RadioButton
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
@@ -650,16 +650,24 @@ private fun LibraryFiltersDialog(
                 .fillMaxWidth()
                 // Size the content, not the anchor's parent constraints.
                 .fillMaxHeight(0.60f)
-                .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp),
+                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Decorative handle, not draggable: scrolling stays isolated inside the list.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(width = 32.dp, height = 4.dp)
+                    .background(colors.onBackground.copy(alpha = 0.70f), RoundedCornerShape(2.dp)),
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     "Filtros da biblioteca",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(
@@ -713,7 +721,7 @@ private fun LibraryFiltersDialog(
                     // Disable the Android stretch/bounce at either scroll boundary
                     // for this list only. The library grid keeps its own behavior.
                     overscrollEffect = null,
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
                     contentPadding = PaddingValues(vertical = 4.dp),
                 ) {
                     items(options, key = { it.first ?: "__all_genres__" }) { (value, title) ->
@@ -721,8 +729,6 @@ private fun LibraryFiltersDialog(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (selected) accent.copy(alpha = 0.14f) else Color.Transparent)
                                 .selectable(
                                     selected = selected,
                                     enabled = !closing,
@@ -736,16 +742,31 @@ private fun LibraryFiltersDialog(
                                         }
                                     },
                                 )
-                                .heightIn(min = 52.dp)
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                .heightIn(min = 48.dp)
+                                .padding(horizontal = 0.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            RadioButton(selected = selected, onClick = null, enabled = !closing)
+                            // The empty leading slot keeps every label aligned; only the
+                            // selected option draws the lightweight checkmark.
+                            Box(
+                                modifier = Modifier.size(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (selected) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = null,
+                                        tint = colors.onBackground,
+                                        modifier = Modifier.size(22.dp).testTag("library-filter-check"),
+                                    )
+                                }
+                            }
                             Text(
                                 title,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = if (selected) accent else colors.onBackground,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) colors.onBackground else colors.onBackground.copy(alpha = 0.65f),
                                 modifier = Modifier.weight(1f),
                             )
                         }
