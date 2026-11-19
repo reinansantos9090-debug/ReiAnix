@@ -64,10 +64,10 @@ class ReiAnixPlayerOptionsInstrumentedTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("Cenas favoritas").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Salvar cena").performScrollTo().assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(1, favoriteOpens) }
         composeRule.onNodeWithContentDescription("Outras opções").performScrollTo().performClick()
-        composeRule.onNodeWithText("Cenas favoritas").assertDoesNotExist()
+        composeRule.onNodeWithText("Salvar cena").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Voltar").performClick()
         composeRule.onNodeWithText("Personalizar legendas").assertDoesNotExist()
         composeRule.onNodeWithText("Somente áudio").assertDoesNotExist()
