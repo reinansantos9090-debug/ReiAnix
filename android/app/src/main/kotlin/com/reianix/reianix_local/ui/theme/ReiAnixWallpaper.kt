@@ -78,40 +78,44 @@ internal fun boxBlurPixels(input: IntArray, width: Int, height: Int, radius: Int
 
 @Composable
 fun rememberWallpaperBitmap(store: ReiAnixWallpaperStore, wallpaper: ReiAnixWallpaper): ImageBitmap? {
-    val name = wallpaper.imageName
+    val name = wallpaper.imageName ?: return null
     val blurStep = (wallpaper.normalized().blur * 20).roundToInt()
-    // Decode only when the file or blur level changes, never during navigation or scrolling.
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, store, name, blurStep) {
-        if (name == null) {
-            value = null
-            return@produceState
+    // The source bitmap is loaded once for each image; dim, position, zoom and
+    // repeated scrolling do not reload it. Blur edits reuse this same source.
+    return key(store, name) {
+        val source by produceState<Bitmap?>(initialValue = null, store, name) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = store.file(name) ?: return@runCatching null
+                    BitmapFactory.decodeFile(file.absolutePath)
+                }.getOrNull()
+            }
         }
-        delay(90)
-        val decoded = withContext(Dispatchers.IO) {
-            runCatching {
-                val file = store.file(name) ?: return@runCatching null
-                val source = BitmapFactory.decodeFile(file.absolutePath) ?: return@runCatching null
-                if (blurStep == 0) source.asImageBitmap()
-                else {
-                    val factor = minOf(1f, 400f / maxOf(source.width, source.height))
-                    val w = (source.width * factor).roundToInt().coerceAtLeast(1)
-                    val h = (source.height * factor).roundToInt().coerceAtLeast(1)
-                    val reduced = Bitmap.createScaledBitmap(source, w, h, true)
-                    try {
-                        val pixels = IntArray(w * h)
-                        reduced.getPixels(pixels, 0, w, 0, 0, w, h)
-                        val blurred = boxBlurPixels(pixels, w, h, blurStep * 2)
-                        Bitmap.createBitmap(blurred, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
-                    } finally {
-                        if (reduced !== source) reduced.recycle()
-                        source.recycle()
+        val decoded = source
+        if (decoded == null) null else {
+            val original = remember(decoded) { decoded.asImageBitmap() }
+            if (blurStep == 0) original else {
+                val blurred by produceState<ImageBitmap?>(initialValue = null, decoded, blurStep) {
+                    delay(90)
+                    value = withContext(Dispatchers.Default) {
+                        val factor = minOf(1f, 400f / maxOf(decoded.width, decoded.height))
+                        val w = (decoded.width * factor).roundToInt().coerceAtLeast(1)
+                        val h = (decoded.height * factor).roundToInt().coerceAtLeast(1)
+                        val reduced = Bitmap.createScaledBitmap(decoded, w, h, true)
+                        try {
+                            val pixels = IntArray(w * h)
+                            reduced.getPixels(pixels, 0, w, 0, 0, w, h)
+                            val filtered = boxBlurPixels(pixels, w, h, blurStep * 2)
+                            Bitmap.createBitmap(filtered, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
+                        } finally {
+                            if (reduced !== decoded) reduced.recycle()
+                        }
                     }
                 }
-            }.getOrNull()
+                blurred ?: original
+            }
         }
-        value = decoded
     }
-    return if (name == null) null else bitmap
 }
 
 /** The same crop renderer is used by the global layer and the editor preview. */
