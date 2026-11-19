@@ -233,6 +233,29 @@ class PlayerLocalMetadataStoreTest {
     }
 
     @Test
+    fun visualEditorStartsWithFullEpisodeAndPreservesExistingClip() {
+        val policy = com.reianix.reianix_local.player.FavoriteClipRange
+        assertEquals(PlayerLocalMetadataStore.Segment(0L, 100_000L),
+            policy.editorInitial(100_000L, 30_000L, null))
+        val note = store().saveFavoriteClip("episode-a", 12_000L, 42_000L,
+            100_000L, "Cena", "Anime A", "Episódio 1").notes.single()
+        assertEquals(PlayerLocalMetadataStore.Segment(12_000L, 42_000L),
+            policy.editorInitial(100_000L, 12_000L, note))
+        val legacy = note.copy(clipEndMs = null)
+        assertEquals(PlayerLocalMetadataStore.Segment(12_000L, 72_000L),
+            policy.editorInitial(100_000L, 12_000L, legacy))
+    }
+
+    @Test
+    fun filmstripSamplesCoverEpisodeWithoutSeekingOutsideIt() {
+        val policy = com.reianix.reianix_local.player.FavoriteClipRange
+        val times = (0 until 8).map { policy.thumbnailTime(80_000L, it, 8) }
+        assertEquals(listOf(5_000L, 15_000L, 25_000L, 35_000L,
+            45_000L, 55_000L, 65_000L, 75_000L), times)
+        assertEquals(0L, policy.thumbnailTime(1L, 7, 8))
+    }
+
+    @Test
     fun oldNotesRemainNormalNotes() {
         val saved = store().addNote("episode-a", 5_000L, "Nota comum")
         assertFalse(saved.notes.single().favorite)
