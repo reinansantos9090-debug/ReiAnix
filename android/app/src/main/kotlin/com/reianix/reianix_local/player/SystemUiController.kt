@@ -6,6 +6,8 @@ import android.os.Build
 import android.view.Window
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
@@ -114,6 +116,36 @@ class SystemUiController(private val window: Window) {
         controller.apply {
             isAppearanceLightStatusBars = !darkTheme
             isAppearanceLightNavigationBars = !darkTheme
+        }
+    }
+}
+
+/** Standalone app-owned screens follow the same persisted preference as MainActivity. */
+internal class ReiAnixAppWindowPreference(private val activity: androidx.activity.ComponentActivity) {
+    private val controller = SystemUiController(activity.window)
+    private var immersive = true
+    private var readJob: kotlinx.coroutines.Job? = null
+
+    fun apply() {
+        controller.applyAppPreference(immersive)
+    }
+
+    fun refresh() {
+        readJob?.cancel()
+        readJob = activity.lifecycleScope.launch {
+            try {
+                val value = com.reianix.reianix_local.ReiAnixAppDependencies.from(activity)
+                    .sqliteSettingsRepository.getPreference(
+                        com.reianix.reianix_local.data.settings.ReiAnixSettingsContract.APP_IMMERSIVE_KEY,
+                        "true",
+                    )
+                immersive = com.reianix.reianix_local.data.settings.ReiAnixSettingsContract.appImmersiveEnabled(value)
+                if (!activity.isFinishing && !activity.isDestroyed) apply()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Preserve the last applied policy if local preferences are unavailable.
+            }
         }
     }
 }
