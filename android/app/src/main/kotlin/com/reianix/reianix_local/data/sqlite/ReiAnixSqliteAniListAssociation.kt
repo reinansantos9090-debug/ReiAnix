@@ -57,7 +57,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             val allowManualMusicCorrection = explicitRepair && correctManualMusic &&
                 current.format.equals("MUSIC", true) && current.anilistMatchManual == true &&
                 current.anilistId == expectedAssociationId && current.anilistId != anilistId &&
-                score != null && score >= 0.86 && !patch.format.equals("MUSIC", true)
+                score != null && score >= 0.86 && !patch.format.isNullOrBlank() && !patch.format.equals("MUSIC", true)
             if (explicitRepair && (current.anilistId != expectedAssociationId ||
                     (current.anilistMatchManual == true && (!manual || current.anilistId != anilistId) &&
                         !allowManualMusicCorrection))) {
@@ -117,7 +117,34 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                         "AND artwork_type IN ('poster','cover') AND (COALESCE(manual,0)=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')) LIMIT 1",
                     arrayOf(patch.animeId.toString()),
                 ).use { it.moveToFirst() }
-                if (!userOwnedArt) values.putNull("cover_cache")
+                if (!userOwnedArt) {
+                    values.putNull("cover_cache")
+                    // Give the corrected ready URL priority even when the file
+                    // was downloaded earlier and the downloader hits its cache.
+                    connection.execSQL(
+                        "UPDATE artwork SET priority=CASE WHEN external_url=? THEN 400 ELSE MIN(COALESCE(priority,350),350) END " +
+                            "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type IN ('poster','cover') " +
+                            "AND COALESCE(manual,0)=0 AND LOWER(COALESCE(source,'')) NOT IN ('local','manual')",
+                        arrayOf(patch.coverUrl, patch.animeId.toString()),
+                    )
+                    val correctCachedPath = connection.rawQuery(
+                        "SELECT local_path FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
+                            "AND artwork_type IN ('poster','cover') AND external_url=? AND status='ready' " +
+                            "AND local_path IS NOT NULL ORDER BY priority DESC,updated_at DESC LIMIT 1",
+                        arrayOf(patch.animeId.toString(), patch.coverUrl),
+                    ).use { if (it.moveToFirst()) it.getString(0) else null }
+                    if (!correctCachedPath.isNullOrBlank()) values.put("cover_cache", correctCachedPath)
+                }
+            }
+            if (explicitRepair && "banner_url" !in protectedFields &&
+                !patch.bannerUrl.isNullOrBlank() && patch.bannerUrl != current.bannerUrl
+            ) {
+                connection.execSQL(
+                    "UPDATE artwork SET priority=CASE WHEN external_url=? THEN 400 ELSE MIN(COALESCE(priority,350),350) END " +
+                        "WHERE entity_type IN ('anime','movie') AND entity_id=? AND artwork_type IN ('banner','backdrop') " +
+                        "AND COALESCE(manual,0)=0 AND LOWER(COALESCE(source,'')) NOT IN ('local','manual')",
+                    arrayOf(patch.bannerUrl, patch.animeId.toString()),
+                )
             }
             val remoteMetadataFieldsApplied = values.size() > 0
             patch.metadataFetchedAt?.let { values.put("metadata_fetched_at", it) }
