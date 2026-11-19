@@ -6,6 +6,8 @@ import com.reianix.reianix_local.data.artwork.ReiAnixAniListCoverCandidate
 import com.reianix.reianix_local.data.artwork.aniListArtworkCandidateKey
 import com.reianix.reianix_local.data.artwork.validReiAnixArtworkHttpUrl
 import com.reianix.reianix_local.data.media.MediaTitleNormalizer
+import com.reianix.reianix_local.data.media.MediaFilenameParser
+import com.reianix.reianix_local.data.sqlite.ReiAnixEpisodeRecord
 
 import com.reianix.reianix_local.data.tracemoe.MAX_TRACE_MOE_EPISODE_SAMPLES
 import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeClient
@@ -337,7 +339,8 @@ class ReiAnixAniListIntegrationService(
             val local = library.getAnime(animeId) ?: return AniListResult.Failure(
                 AniListError.InvalidRequest("Anime não encontrado na biblioteca."),
             )
-            val titles = explicitAniListRepairTitles(local)
+            val evidence = explicitAniListLocalEvidence(library.listEpisodes(animeId))
+            val titles = explicitAniListRepairTitles(local, evidence)
             // Give each distinct stored title a query slot before spending
             // remaining slots on cleaned variants of the same title.
             val terms = explicitAniListRepairSearchTerms(titles)
@@ -352,16 +355,23 @@ class ReiAnixAniListIntegrationService(
                 is AniListResult.Failure -> return result
             }
             val ranked = withContext(Dispatchers.Default) {
-                rankExplicitAniListRepair(local, anchor, candidates)
+                rankExplicitAniListRepair(local, anchor, candidates, evidence)
             }
+            Log.d(TAG, "Explicit AniList repair animeId=$animeId queries=${terms.size} returned=${candidates.size} " +
+                "music=${candidates.count { it.format.equals("MUSIC", true) }} ranked=${ranked.size} " +
+                "top=${ranked.take(5).joinToString { "${it.anime.id}:${it.anime.format}:${it.score}" }}")
             val best = ranked.firstOrNull() ?: return AniListResult.Failure(
                 AniListError.InvalidRequest("Nenhuma correspondência confiável no AniList. Dados atuais preservados."),
             )
             val margin = best.score - (ranked.getOrNull(1)?.score ?: 0.0)
-            if (best.score < EXPLICIT_REPAIR_MIN_SCORE || margin < EXPLICIT_REPAIR_MIN_MARGIN) return AniListResult.Failure(
+            if (best.score < EXPLICIT_REPAIR_MIN_SCORE) return AniListResult.Failure(
                 AniListError.InvalidRequest("Identificação inconclusiva. Capa e metadados atuais preservados."),
             )
-            if (local.anilistMatchManual == true && local.anilistId != best.anime.id.toLong()) {
+            val correctManualMusic = local.anilistMatchManual == true &&
+                local.anilistId != best.anime.id.toLong() && local.format.equals("MUSIC", true) &&
+                (evidence.episodeCount >= 2 || (evidence.durationMinutes ?: 0.0) >= 10.0) &&
+                best.score >= 0.86
+            if (local.anilistMatchManual == true && local.anilistId != best.anime.id.toLong() && !correctManualMusic) {
                 return AniListResult.Failure(
                     AniListError.InvalidRequest("A associação escolhida manualmente foi preservada."),
                 )
@@ -374,8 +384,9 @@ class ReiAnixAniListIntegrationService(
                 AniListError.InvalidRequest("A identificação mudou durante a busca. Tente novamente."),
             )
             return applyRemote(
-                latest, best.anime, manual = latest.anilistMatchManual == true,
+                latest, best.anime, manual = latest.anilistMatchManual == true && !correctManualMusic,
                 score = best.score, margin = margin.coerceIn(0.0, 1.0), explicitRepair = true,
+                correctManualMusic = correctManualMusic,
             )
         } finally {
             explicitRepairInFlight.remove(animeId)
@@ -1424,6 +1435,7 @@ class ReiAnixAniListIntegrationService(
         margin: Double?,
         traceMoeConfirmed: Boolean = false,
         explicitRepair: Boolean = false,
+        correctManualMusic: Boolean = false,
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
             // Artwork preference controls whether the remote URL becomes eligible
@@ -1489,6 +1501,7 @@ class ReiAnixAniListIntegrationService(
                 traceMoeConfirmed = traceMoeConfirmed,
                 explicitRepair = explicitRepair,
                 expectedAssociationId = local.anilistId,
+                correctManualMusic = correctManualMusic,
             )
             if ((!manual || explicitRepair) && updated.anilistId != remote.id.toLong()) {
                 return AniListResult.Failure(
@@ -1739,12 +1752,37 @@ class ReiAnixAniListIntegrationService(
 }
 
 // Only the user-initiated repair uses these more permissive thresholds.
-internal const val EXPLICIT_REPAIR_MIN_SCORE = 0.60
-internal const val EXPLICIT_REPAIR_MIN_MARGIN = 0.025
+internal const val EXPLICIT_REPAIR_MIN_SCORE = 0.50
+internal const val EXPLICIT_REPAIR_MIN_MARGIN = 0.0
 
-internal fun explicitAniListRepairTitles(local: ReiAnixAnimeRecord): List<String> = buildList {
+internal data class ExplicitAniListLocalEvidence(
+    val titles: List<String> = emptyList(),
+    val episodeCount: Int = 0,
+    val durationMinutes: Double? = null,
+)
+
+internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>): ExplicitAniListLocalEvidence {
+    val available = episodes.filter { it.missing != true }
+    val durations = available.mapNotNull { it.duration?.takeIf { seconds -> seconds.isFinite() && seconds > 0 } }
+        .sorted()
+    val generic = Regex("(?i)^(?:episode|epis[oó]dio|ep|s|temporada|season|video|anime|download|downloads|reianix|adm|home animes)[ ._-]*\\d*$")
+    val titles = buildList {
+        available.take(8).forEach { ep ->
+            val file = ep.fileName.substringAfterLast('/')
+            val parsed = MediaFilenameParser.parseVideoPath(file, allowStandaloneMovie = true)
+            add(parsed.animeTitle)
+            val folder = ep.path.replace('\\\\', '/').substringBeforeLast('/', "").substringAfterLast('/')
+            if (folder.isNotBlank() && !folder.contains(':') && !folder.contains('%')) add(folder)
+        }
+    }.map(String::trim).filter { it.length in 3..120 && it.any(Char::isLetter) && !generic.matches(it) }
+        .distinctBy(MediaTitleNormalizer::normalizeTitle).take(8)
+    return ExplicitAniListLocalEvidence(titles, available.size, durations.getOrNull(durations.size / 2)?.div(60.0))
+}
+
+internal fun explicitAniListRepairTitles(local: ReiAnixAnimeRecord, evidence: ExplicitAniListLocalEvidence = ExplicitAniListLocalEvidence()): List<String> = buildList {
     add(local.lookupTitle)
     add(local.title)
+    addAll(evidence.titles.take(2))
     add(local.romaji.orEmpty())
     add(local.english.orEmpty())
     add(local.nativeTitle.orEmpty())
@@ -1761,7 +1799,7 @@ internal fun explicitAniListRepairSearchTerms(titles: List<String>): List<String
     // Preserve a useful cleaned title as well as native/English/romaji aliases.
     val cleanedOriginal = variants.firstOrNull().orEmpty().drop(1).take(1)
     return (preferred.take(1) + cleanedOriginal + preferred.drop(1) + variants.flatten())
-        .distinctBy(MediaTitleNormalizer::normalizeTitle).take(6)
+        .distinctBy(MediaTitleNormalizer::normalizeTitle).take(8)
 }
 
 /** Flexible repair ranking. No changes to automatic library discovery. */
@@ -1769,6 +1807,7 @@ internal fun rankExplicitAniListRepair(
     local: ReiAnixAnimeRecord,
     anchor: String,
     candidates: List<AniListAnime>,
+    evidence: ExplicitAniListLocalEvidence = ExplicitAniListLocalEvidence(),
 ): List<ReiAnixAniListMatcher.RankedCandidate> {
     fun plain(value: String): String = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
         .replace(Regex("\\p{M}+"), "").lowercase(Locale.ROOT)
@@ -1776,7 +1815,9 @@ internal fun rankExplicitAniListRepair(
     fun words(value: String?): Set<String> = plain(value.orEmpty()).split(" ")
         .filter { it.length >= 4 }.toSet()
     val originalTitle = plain(anchor)
-    val alternateTitles = explicitAniListRepairTitles(local).filter { plain(it) != originalTitle }
+    val alternateTitles = explicitAniListRepairTitles(local, evidence).filter { plain(it) != originalTitle }
+    val localMusic = local.format.equals("MUSIC", true)
+    val fileKeys = evidence.titles.map(::plain).filter(String::isNotBlank).toSet()
     val independentlySourced = local.anilistId == null &&
         !local.metadataSource.orEmpty().contains("anilist", ignoreCase = true) &&
         !local.metadataSource.orEmpty().endsWith("_candidate", ignoreCase = true)
@@ -1784,16 +1825,14 @@ internal fun rankExplicitAniListRepair(
         (0 until raw.length()).map { plain(raw.optString(it)) }.toSet()
     }.orEmpty()
     val localSynopsis = words(local.descriptionOriginal ?: local.description)
-    val context = ReiAnixAniListMatcher.Context(mediaKind = local.mediaKind)
+    val context = ReiAnixAniListMatcher.Context()
     return candidates.asSequence()
         .distinctBy { it.id }
         .filter { candidate ->
             val format = candidate.format.orEmpty().uppercase(Locale.ROOT)
             format != "MUSIC" &&
                 (format.isBlank() || format in setOf("TV", "TV_SHORT", "MOVIE", "OVA", "ONA", "SPECIAL")) &&
-                candidate.coverCandidates.isNotEmpty() &&
-                (format.isBlank() || !local.mediaKind.equals("movie", true) || format == "MOVIE") &&
-                (!local.mediaKind.equals("series", true) || format != "MOVIE")
+                candidate.coverCandidates.isNotEmpty()
         }
         .mapNotNull { candidate ->
             val remoteTitles = listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) + candidate.synonyms
@@ -1809,9 +1848,9 @@ internal fun rankExplicitAniListRepair(
             // aliases borrowed from a previously wrong association.
             val originalScore = if (exactOriginal) 0.98 else original.score * 0.94
             val alternateScore = if (exactAlternate) 0.91 else (alternate?.score ?: 0.0) * 0.90
-            var score = maxOf(originalScore, alternateScore)
-            if (score < 0.58) return@mapNotNull null
-            val corroborate = independentlySourced || candidate.id.toLong() == local.anilistId
+            val exactFile = fileKeys.any { it in remoteKeys }
+            var score = maxOf(originalScore, alternateScore, if (exactFile) 0.97 else 0.0)
+            val corroborate = !localMusic && (independentlySourced || candidate.id.toLong() == local.anilistId)
             if (corroborate) {
                 if (local.year != null && candidate.seasonYear == local.year) score += 0.025
                 if (local.format != null && local.format.equals(candidate.format, true)) score += 0.015
@@ -1825,9 +1864,20 @@ internal fun rankExplicitAniListRepair(
             // Do not let metadata from the current association outrank an exact
             // original-title match when repairing a different work.
             val ceiling = if (exactOriginal) 1.0 else if (exactAlternate && original.score < 0.58) 0.94 else 0.95
-            if (candidate.format.isNullOrBlank()) score -= 0.025
+            if (!localMusic && local.format.equals(candidate.format, true)) score += 0.01
+            val remoteDuration = candidate.durationMinutes
+            val localDuration = evidence.durationMinutes
+            if (remoteDuration != null && localDuration != null && localDuration >= 5) {
+                val difference = kotlin.math.abs(remoteDuration - localDuration)
+                if (difference <= 5) score += 0.035
+                else if (difference >= 25) score -= 0.015
+            }
+            if (evidence.episodeCount > 1 && (candidate.episodes ?: 0) >= evidence.episodeCount) score += 0.015
+            if (candidate.format.isNullOrBlank()) score -= 0.01
+            // Keep a match to an independent filename above unrelated cached aliases.
+            if (exactFile) score = maxOf(score, 0.97)
             val best = if ((alternate?.score ?: 0.0) > original.score) alternate ?: original else original
-            best.copy(score = score.coerceIn(0.0, ceiling))
+            best.copy(score = score.coerceIn(0.0, if (exactFile) maxOf(ceiling, 0.98) else ceiling))
         }.sortedWith(compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }.thenBy { it.anime.id })
         .toList()
 }
