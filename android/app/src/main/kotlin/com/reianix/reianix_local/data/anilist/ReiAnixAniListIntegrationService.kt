@@ -1771,7 +1771,7 @@ internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>):
             val file = ep.fileName.substringAfterLast('/')
             val parsed = MediaFilenameParser.parseVideoPath(file, allowStandaloneMovie = true)
             add(parsed.animeTitle)
-            val folder = ep.path.replace('\\\\', '/').substringBeforeLast('/', "").substringAfterLast('/')
+            val folder = ep.path.replace('\\', '/').substringBeforeLast('/', "").substringAfterLast('/')
             if (folder.isNotBlank() && !folder.contains(':') && !folder.contains('%')) add(folder)
         }
     }.map(String::trim).filter { it.length in 3..120 && it.any(Char::isLetter) && !generic.matches(it) }
