@@ -405,6 +405,12 @@ fun ReiAnixNavigationHost(
         bottomDestinations = topLevelDestinations,
         onBottomDestinationClick = navController::navigateToTopLevel,
         showBottomNavigation = shouldShowBottomNavigation,
+        // Scrolling headers own their top safety inset, so content can use the
+        // full viewport after the header scrolls out. Other routes retain
+        // the original safe boundary for non-scrolling controls.
+        drawBehindTopInset = (currentRoute ?: effectiveStartDestination) in setOf(
+            ReiAnixRoutes.HOME, ReiAnixRoutes.LIBRARY, ReiAnixRoutes.DETAILS,
+        ),
         navigationContent = { innerPadding ->
         NavHost(
             navController = navController,
