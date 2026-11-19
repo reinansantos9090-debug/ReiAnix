@@ -122,6 +122,40 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
+    fun playbackAndMarathonShareOneRowAndEqualDimensions() {
+        var watchedEpisodeId: Long? = null
+        var marathonOpened = false
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = { watchedEpisodeId = it },
+                    onToggleFavorite = {},
+                    onOpenMarathon = { marathonOpened = true },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-playback-actions"))
+        val play = composeRule.onNodeWithTag("details-play-action")
+        val marathon = composeRule.onNodeWithTag("details-marathon-action")
+        play.assertIsDisplayed()
+        marathon.assertIsDisplayed()
+        val playBounds = play.fetchSemanticsNode().boundsInRoot
+        val marathonBounds = marathon.fetchSemanticsNode().boundsInRoot
+        assertEquals(playBounds.width, marathonBounds.width, 1f)
+        assertEquals(playBounds.height, marathonBounds.height, 1f)
+        assertEquals(playBounds.top, marathonBounds.top, 1f)
+        org.junit.Assert.assertTrue(playBounds.right < marathonBounds.left)
+        play.performClick()
+        assertEquals(1L, watchedEpisodeId)
+        marathon.performClick()
+        assertEquals(true, marathonOpened)
+    }
+
+    @Test
     fun synopsisIsInHeaderBeforeTraceMoe() {
         val original = detailsStateWithEpisodes(1)
         val state = original.copy(
