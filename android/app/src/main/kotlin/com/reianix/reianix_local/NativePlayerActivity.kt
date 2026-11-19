@@ -5661,7 +5661,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 setShowNextButton(false)
                 setShowPreviousButton(false)
                 setShowShuffleButton(false)
-                setShowRepeatButton(false)
                 setBackgroundColor(Color.BLACK)
                 this.player = clip
                 keepScreenOn = true
@@ -5944,7 +5943,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
                 item.gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 item.setOnLongClickListener {
-                    localMetadata = localMetadataStore.deleteNote(uri.toString(), note.id)
+                    try {
+                        localMetadata = localMetadataStore.deleteNote(uri.toString(), note.id)
+                    } catch (_: Exception) {
+                        showFeedback("Não foi possível excluir a nota")
+                        return@setOnClickListener
+                    }
                     showFeedback("Nota removida")
                     showLocalMetadataEditor()
                     true
@@ -6016,13 +6020,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .setView(input)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar") { _, _ ->
-                localMetadata = localMetadataStore.addNote(
-                    uri.toString(),
-                    if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L,
-                    input.text?.toString().orEmpty(),
-                )
-                updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
-                showFeedback("Nota salva")
+                try {
+                    localMetadata = localMetadataStore.addNote(
+                        uri.toString(),
+                        if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L,
+                        input.text?.toString().orEmpty(),
+                    )
+                    updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
+                    showFeedback("Nota salva")
+                } catch (_: Exception) {
+                    showFeedback("Não foi possível salvar a nota")
+                }
             }
             .create().also { showPlayerMenuDialog(it) }
     }
