@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.storage
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -211,7 +213,7 @@ private fun ReiAnixLibraryFoldersSection(
         state.lastCommandAction.equals("remove_saf", ignoreCase = true) &&
             state.lastCommandStatus?.uppercase() in setOf("QUEUED", "RUNNING")
 
-    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(modifier = modifier.fillMaxSize(), color = reiAnixScreenBackground(), contentColor = MaterialTheme.colorScheme.onBackground) {
         Box(Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
                 item(key = "folders-header") {

@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.storage
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -101,9 +103,9 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(Modifier.fillMaxSize(), color = reiAnixScreenBackground(), contentColor = MaterialTheme.colorScheme.onBackground) {
         Column(
-            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp),
+            Modifier.fillMaxSize().background(reiAnixScreenBackground()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(

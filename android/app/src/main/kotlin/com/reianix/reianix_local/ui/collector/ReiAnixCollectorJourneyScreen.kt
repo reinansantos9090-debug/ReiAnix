@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.collector
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
@@ -149,7 +151,7 @@ private fun ReiAnixCollectorJourneyScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(reiAnixScreenBackground()),
     ) {
         Row(
             modifier = Modifier

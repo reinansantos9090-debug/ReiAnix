@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.organize
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import android.net.Uri
 
 import androidx.compose.foundation.background
@@ -185,7 +187,7 @@ fun ReiAnixOrganizeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(reiAnixScreenBackground()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         OrganizeTopBar(
