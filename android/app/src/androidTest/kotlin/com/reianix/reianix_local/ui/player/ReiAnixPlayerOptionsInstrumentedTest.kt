@@ -30,6 +30,7 @@ class ReiAnixPlayerOptionsInstrumentedTest {
         var audioSelections = 0
         var subtitleSelections = 0
         var appearanceOpens = 0
+        var favoriteOpens = 0
         composeRule.setContent {
             ReiAnixComposeTheme {
                 ReiAnixNativePlayerOptionsPanel(
@@ -55,6 +56,7 @@ class ReiAnixPlayerOptionsInstrumentedTest {
                     onPictureInPicture = {},
                     onInformation = {},
                     onSubtitleAppearance = { appearanceOpens++ },
+                    onFavoriteScenes = { favoriteOpens++ },
                     onAudioOnlyChanged = { enabled ->
                         uiState.value = uiState.value.copy(audioOnly = enabled)
                     },
@@ -62,6 +64,11 @@ class ReiAnixPlayerOptionsInstrumentedTest {
             }
         }
 
+        composeRule.onNodeWithContentDescription("Cenas favoritas").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertEquals(1, favoriteOpens) }
+        composeRule.onNodeWithContentDescription("Outras opções").performScrollTo().performClick()
+        composeRule.onNodeWithText("Cenas favoritas").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Voltar").performClick()
         composeRule.onNodeWithText("Personalizar legendas").assertDoesNotExist()
         composeRule.onNodeWithText("Somente áudio").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Áudio").performScrollTo().performClick()
