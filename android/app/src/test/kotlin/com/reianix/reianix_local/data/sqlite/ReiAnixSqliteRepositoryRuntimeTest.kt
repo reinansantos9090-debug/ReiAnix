@@ -1819,6 +1819,37 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun personalLibraryFiltersUseLocalStatusAndNotesBeforePagination() = runBlocking {
+        createCanonicalFixture()
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE anime SET personal_note=?, user_tags=?, status=? WHERE id=1",
+                arrayOf("Minha nota", "[\"Ação\"]", "FINISHED"))
+            db.execSQL("INSERT INTO anime(id, lookup_title, title, added_at, favorite, personal_note, user_tags) VALUES (2, 'second', 'Second', 2000, 0, '', '[]')")
+            db.execSQL("INSERT INTO anime(id, lookup_title, title, added_at, favorite, personal_note, user_tags) VALUES (3, 'third', 'Third', 3000, 0, '   ', '[]')")
+        }
+        val settings = ReiAnixSqliteSettingsRepository(context)
+        settings.setPreference("reianix.personal.status.1", "WATCHING")
+        settings.setPreference("reianix.personal.status.2", "PLANNING")
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        suspend fun ids(state: String = "ALL", label: String = "ALL", offset: Int = 0) =
+            repository.searchAnimeIds("", null, false, false, false, "Nome A-Z", 1, offset,
+                watchState = state, labelFilter = label)
+        assertEquals(listOf(1L), ids("WATCHING", "WITH_NOTE").animeIds)
+        assertEquals(listOf(1L), ids("WATCHING", "WITH_TAGS").animeIds)
+        assertTrue(ids("WATCHING", "WITHOUT_TAGS").animeIds.isEmpty())
+        assertEquals(listOf(2L), ids("PLANNING", "WITHOUT_NOTE").animeIds)
+        assertEquals(listOf(3L), ids("NONE", "WITHOUT_TAGS").animeIds)
+        assertTrue(ids("COMPLETED").animeIds.isEmpty())
+        val first = ids(label = "WITHOUT_NOTE")
+        val second = ids(label = "WITHOUT_NOTE", offset = 1)
+        assertEquals(2, first.totalCount)
+        assertEquals(listOf(2L), first.animeIds)
+        assertTrue(first.hasMore)
+        assertEquals(listOf(3L), second.animeIds)
+        assertFalse(second.hasMore)
+    }
+
+    @Test
     fun searchCombinedResultWindowMatchesTwoPagesAndPreservesAllItems() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
