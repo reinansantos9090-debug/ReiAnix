@@ -31,7 +31,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -69,6 +68,7 @@ import com.reianix.reianix_local.ui.ReiAnixCompactButton
 import com.reianix.reianix_local.ui.ReiAnixAnimeCard
 import com.reianix.reianix_local.ui.ReiAnixIconActionButton
 import com.reianix.reianix_local.ui.ReiAnixTopBar
+import com.reianix.reianix_local.ui.profile.ReiAnixProfileHeaderAction
 import com.reianix.reianix_local.ui.ReiAnixEmptyState
 import com.reianix.reianix_local.ui.ReiAnixMetadata
 import com.reianix.reianix_local.ui.ReiAnixPrimaryButton
@@ -131,7 +131,7 @@ fun ReiAnixHomeRoute(
         onDismissMutationError = viewModel::clearPersonalListMutationError,
         cardSize = cardSize,
         showThumbnails = showThumbnails,
-        onOpenGeneralSettings = { navController.navigate(ReiAnixRoutes.SETTINGS_GENERAL) { launchSingleTop = true } },
+        onOpenProfile = { navController.navigate(ReiAnixRoutes.PROFILE) { launchSingleTop = true } },
         onSearch = { navController.navigateToTopLevel(ReiAnixRoutes.SEARCH) },
         onOpenDetails = { animeId ->
             navController.navigateToDetails(
@@ -166,7 +166,7 @@ private fun ReiAnixHomeObservedScreen(
     onDismissMutationError: () -> Unit,
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
-    onOpenGeneralSettings: () -> Unit,
+    onOpenProfile: () -> Unit,
     onSearch: () -> Unit,
     onOpenDetails: (Long) -> Unit,
     onWatch: (Long, Long) -> Unit,
@@ -194,7 +194,7 @@ private fun ReiAnixHomeObservedScreen(
                 HomeHeader(
                     onSearch = onSearch,
                     onOpenTimeline = onOpenTimeline,
-                    onOpenGeneralSettings = onOpenGeneralSettings,
+                    onOpenProfile = onOpenProfile,
                 )
             }
         }
@@ -374,7 +374,7 @@ fun ReiAnixHomeScreen(
     onOpenMyList: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
     onSelectSource: () -> Unit = onRefresh,
-    onOpenGeneralSettings: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -384,7 +384,7 @@ fun ReiAnixHomeScreen(
     ) {
         HomeHeader(
             onSearch = onSearch,
-            onOpenGeneralSettings = onOpenGeneralSettings,
+            onOpenProfile = onOpenProfile,
         )
 
         when (state.status) {
@@ -548,7 +548,7 @@ private fun HomeNotice(
 internal fun HomeHeader(
     onSearch: () -> Unit,
     onOpenTimeline: (() -> Unit)? = null,
-    onOpenGeneralSettings: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
 ) {
     ReiAnixTopBar(
         title = "ReiAnix",
@@ -558,7 +558,7 @@ internal fun HomeHeader(
                 ReiAnixIconActionButton(Icons.Filled.History, "Linha do tempo", onOpenTimeline)
             }
             ReiAnixIconActionButton(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
-            ReiAnixIconActionButton(Icons.Filled.Settings, "Configurações gerais", onOpenGeneralSettings)
+            ReiAnixProfileHeaderAction(onClick = onOpenProfile)
         },
     )
     Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
