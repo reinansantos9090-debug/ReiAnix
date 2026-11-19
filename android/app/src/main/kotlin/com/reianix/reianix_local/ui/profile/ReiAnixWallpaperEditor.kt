@@ -71,7 +71,8 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
             }
         }
     }
-    val preview = rememberWallpaperImage(store, draft)
+    val previewState = rememberWallpaperImage(store, draft)
+    val preview = previewState.image
     val config = LocalConfiguration.current
     val ratio = (config.screenWidthDp.toFloat() / config.screenHeightDp.coerceAtLeast(1)).coerceIn(0.3f, 3f)
 
@@ -84,12 +85,12 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center) {
             if (preview == null) {
-                if (image != null && error == null) {
+                if (previewState.loading) {
                     CircularProgressIndicator(Modifier.size(30.dp))
-                    TextButton(onClick = { picker.launch("image/*") }, enabled = !busy,
-                        modifier = Modifier.align(Alignment.BottomCenter)) { Text("Escolher outra imagem") }
                 } else {
-                    Text("Escolha uma imagem da galeria.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (image != null) "Imagem indisponível. Escolha outra ou remova o papel de parede."
+                        else "Escolha uma imagem da galeria.",
+                        textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 val frameWidth = minOf(maxWidth, maxHeight * ratio)
