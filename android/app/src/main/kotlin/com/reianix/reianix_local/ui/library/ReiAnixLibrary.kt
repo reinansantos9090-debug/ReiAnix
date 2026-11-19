@@ -1,6 +1,19 @@
 package com.reianix.reianix_local.ui.library
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -9,13 +22,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,8 +64,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -570,6 +577,10 @@ private fun LibraryWhiteIconButton(icon: ImageVector, description: String, onCli
     }
 }
 
+/**
+ * Single modal sheet with four tabs; selections remain local until Apply.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryFiltersDialog(
     filters: ReiAnixLibraryFilters,
@@ -579,98 +590,179 @@ private fun LibraryFiltersDialog(
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val tabs = listOf("Ordenar", "Gêneros", "Estado", "Etiqueta")
+    var tab by rememberSaveable { mutableStateOf(0) }
     var sort by rememberSaveable { mutableStateOf(filters.sort) }
     var genre by rememberSaveable { mutableStateOf(filters.selectedGenreKey) }
     var state by rememberSaveable { mutableStateOf(filters.watchState) }
     var label by rememberSaveable { mutableStateOf(filters.labelFilter) }
-    fun reset() {
-        sort = ReiAnixLibrarySort.DEFAULT.label
-        genre = null
-        state = "ALL"
-        label = "ALL"
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.background,
-        title = { Text("Filtros da biblioteca") },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LibraryFilterSelector(
-                        title = "Ordenar", value = sort,
-                        options = ReiAnixLibrarySort.OPTIONS.map { it.label to it.label },
-                        onSelect = { sort = it.orEmpty() }, modifier = Modifier.weight(1f),
-                    )
-                    LibraryFilterSelector(
-                        title = "Gêneros", value = genres.firstOrNull { it.stableKey == genre }?.name ?: "Todos",
-                        options = listOf(null to "Todos") + genres.map { it.stableKey to it.name },
-                        onSelect = { genre = it }, modifier = Modifier.weight(1f),
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LibraryFilterSelector(
-                        title = "Estado", value = ReiAnixLibraryFilters.WATCH_STATES.first { it.first == state }.second,
-                        options = ReiAnixLibraryFilters.WATCH_STATES,
-                        onSelect = { state = it ?: "ALL" }, modifier = Modifier.weight(1f),
-                    )
-                    LibraryFilterSelector(
-                        title = "Etiqueta", value = ReiAnixLibraryFilters.LABEL_FILTERS.first { it.first == label }.second,
-                        options = ReiAnixLibraryFilters.LABEL_FILTERS,
-                        onSelect = { label = it ?: "ALL" }, modifier = Modifier.weight(1f),
-                    )
-                }
-                TextButton(onClick = onRefresh, enabled = !isRefreshing) {
-                    Text(if (isRefreshing) "Atualizando biblioteca…" else "Atualizar biblioteca")
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onApply(filters.copy(sort = sort, selectedGenreKey = genre, watchState = state, labelFilter = label)) }) {
-                Text("Aplicar")
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = { reset() }) { Text("Limpar") }
-                TextButton(onClick = onDismiss) { Text("Cancelar") }
-            }
-        },
-    )
-}
+    var closing by remember { mutableStateOf(false) }
 
-@Composable
-private fun LibraryFilterSelector(
-    title: String,
-    value: String,
-    options: List<Pair<String?, String>>,
-    onSelect: (String?) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Column(modifier = modifier) {
-        Text(title, style = MaterialTheme.typography.labelMedium)
-        Box {
-            OutlinedButton(
-                onClick = { expanded = true },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics {
-                    contentDescription = title
-                },
-                shape = MaterialTheme.shapes.medium,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            ) {
-                Text(value, modifier = Modifier.weight(1f), maxLines = 2,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text("▾")
+    fun closeThen(action: () -> Unit) {
+        if (closing) return
+        closing = true
+        scope.launch {
+            try {
+                sheetState.hide()
+                if (!sheetState.isVisible) action()
+            } finally {
+                closing = false
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false },
-                modifier = Modifier.heightIn(max = 320.dp),
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                options.forEach { (key, label) ->
-                    DropdownMenuItem(text = { Text(label) }, onClick = { expanded = false; onSelect(key) })
+        }
+    }
+
+    val options: List<Pair<String?, String>> = when (tab) {
+        0 -> ReiAnixLibrarySort.OPTIONS.map { it.label to it.label }
+        1 -> listOf(null to "Todos") + genres.map { it.stableKey to it.name }
+        2 -> ReiAnixLibraryFilters.WATCH_STATES
+        else -> ReiAnixLibraryFilters.LABEL_FILTERS
+    }
+    val selectedKey = when (tab) {
+        0 -> sort
+        1 -> genre
+        2 -> state
+        else -> label
+    }
+    val colors = MaterialTheme.colorScheme
+    val accent = colors.primary
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        containerColor = colors.background,
+        contentColor = colors.onBackground,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 520.dp)
+                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Filtros da biblioteca",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    enabled = !isRefreshing && !closing,
+                    onClick = { closeThen(onRefresh) },
+                    modifier = Modifier.semantics { contentDescription = "Atualizar biblioteca" },
+                ) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null)
                 }
+            }
+
+            Row(Modifier.fillMaxWidth().selectableGroup()) {
+                tabs.forEachIndexed { index, title ->
+                    val active = index == tab
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .selectable(
+                                selected = active,
+                                enabled = !closing,
+                                role = Role.Tab,
+                                onClick = { tab = index },
+                            )
+                            .semantics { contentDescription = title },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(
+                            modifier = Modifier.heightIn(min = 44.dp).fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                title,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (active) accent else colors.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        Box(
+                            Modifier.fillMaxWidth().height(3.dp)
+                                .background(if (active) accent else colors.outlineVariant, RoundedCornerShape(2.dp)),
+                        )
+                    }
+                }
+            }
+
+            // One bounded scrolling surface and a stationary action bar.
+            key(tab) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f).selectableGroup(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(vertical = 4.dp),
+                ) {
+                    items(options, key = { it.first ?: "__all_genres__" }) { (value, title) ->
+                        val selected = value == selectedKey
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (selected) accent.copy(alpha = 0.14f) else Color.Transparent)
+                                .selectable(
+                                    selected = selected,
+                                    enabled = !closing,
+                                    role = Role.RadioButton,
+                                    onClick = {
+                                        when (tab) {
+                                            0 -> sort = value ?: ReiAnixLibrarySort.DEFAULT.label
+                                            1 -> genre = value
+                                            2 -> state = value ?: "ALL"
+                                            else -> label = value ?: "ALL"
+                                        }
+                                    },
+                                )
+                                .heightIn(min = 52.dp)
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            RadioButton(selected = selected, onClick = null, enabled = !closing)
+                            Text(
+                                title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (selected) accent else colors.onBackground,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(color = colors.outlineVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    enabled = !closing,
+                    onClick = {
+                        sort = ReiAnixLibrarySort.DEFAULT.label
+                        genre = null
+                        state = "ALL"
+                        label = "ALL"
+                    },
+                ) { Text("Limpar") }
+                Spacer(Modifier.weight(1f))
+                TextButton(enabled = !closing, onClick = { closeThen(onDismiss) }) {
+                    Text("Cancelar")
+                }
+                Button(
+                    enabled = !closing,
+                    onClick = {
+                        val draft = filters.copy(sort = sort, selectedGenreKey = genre, watchState = state, labelFilter = label)
+                        closeThen { onApply(draft) }
+                    },
+                ) { Text("Aplicar") }
             }
         }
     }
