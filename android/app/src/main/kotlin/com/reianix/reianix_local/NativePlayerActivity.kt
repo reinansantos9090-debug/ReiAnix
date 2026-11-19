@@ -849,11 +849,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onNewIntent(newIntent: Intent) {
-        dismissFavoriteSceneUi()
-        favoriteOpeningWaitingForFrame = false
-        favoriteRestoreWaitingForFrame = false
-        cachedFavoriteScenes = null
-        if (::playerView.isInitialized) playerView.setKeepContentOnPlayerReset(true)
         if (sessionState != SessionState.ACTIVE) {
             logPlayer(
                 "PLAYER_REUSE_IGNORED requestId=" +
@@ -906,6 +901,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             return
         }
+
+        dismissFavoriteSceneUi()
+        favoriteOpeningWaitingForFrame = false
+        favoriteRestoreWaitingForFrame = false
+        cachedFavoriteScenes = null
+        if (::playerView.isInitialized) playerView.setKeepContentOnPlayerReset(true)
 
         if (favoriteClipSession != null) {
             activePlayerListener?.let { player.removeListener(it) }
