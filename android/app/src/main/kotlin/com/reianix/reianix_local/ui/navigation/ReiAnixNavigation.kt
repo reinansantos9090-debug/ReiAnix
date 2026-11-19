@@ -48,6 +48,7 @@ object ReiAnixRoutes {
     const val SEARCH = "search"
 
     const val SETTINGS = "settings"
+    const val SETTINGS_GENERAL = "settings_general"
     const val STORAGE = "storage"
     const val ORGANIZE = "organize"
     const val RECOVERY = "recovery"
@@ -272,6 +273,7 @@ fun ReiAnixNavigationHost(
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,
     onOpenCollector: () -> Unit = {},
+    settingsGeneral: @Composable () -> Unit = settings,
 ) {
     ReiAnixNavigationHost(
         home = {
@@ -320,6 +322,7 @@ fun ReiAnixNavigationHost(
         appearanceCardSize = appearanceCardSize,
         appearanceShowThumbnails = appearanceShowThumbnails,
         settings = settings,
+        settingsGeneral = settingsGeneral,
         storage = storage,
         recovery = recovery,
         details = { args ->
@@ -362,6 +365,7 @@ fun ReiAnixNavigationHost(
     startDestination: String = ReiAnixRoutes.HOME,
     showBottomNavigation: Boolean = true,
     onOpenCollector: () -> Unit = {},
+    settingsGeneral: @Composable () -> Unit = settings,
 ) {
     val effectiveStartDestination = ReiAnixRoutes.normalizeStartDestination(startDestination)
     LaunchedEffect(startDestination, effectiveStartDestination) {
@@ -421,6 +425,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
             composable(ReiAnixRoutes.SETTINGS) { settings() }
+            composable(ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }
             composable(ReiAnixRoutes.COLLECTOR) { collector() }
