@@ -56,6 +56,7 @@ internal class LocalSeekPreviewFrames(
     @Volatile private var currentDurationMs = 0L
     @Volatile private var sourceUnavailable = false
 
+    private var diskCache: PersistentSeekPreviewCache? = null
     private var retriever: MediaMetadataRetriever? = null
     private var worker: Job? = null
 
@@ -117,6 +118,17 @@ internal class LocalSeekPreviewFrames(
             }
             if (lastDuration != duration) {
                 progressiveTimes = SeekPreviewPolicy.progressivePositions(duration)
+                val disk = PersistentSeekPreviewCache(appContext, mediaUri, duration)
+                diskCache = disk
+                sourceMutex.withLock {
+                    disk.availableTimes().filter { it in 0 until duration }.sortedBy { abs(it - requestedMs) }.take(43).forEach { time ->
+                        currentCoroutineContext().ensureActive()
+                        if (!closed.get() && !isStored(time)) disk.read(time)?.let { image ->
+                            if (time in progressiveTimes) progressiveCache.put(time, image)
+                            else focusedCache.put(time, image)
+                        }
+                    }
+                }
                 lastDuration = duration
             }
 
@@ -149,8 +161,11 @@ internal class LocalSeekPreviewFrames(
             currentCoroutineContext().ensureActive()
             if (closed.get() || !isScrubbing || isStored(timeMs)) return@withLock
             try {
-                val source = openSource() ?: return@withLock
-                val image = captureSmallFrame(source, timeMs)
+                val stored = diskCache?.read(timeMs)
+                val image = stored ?: run {
+                    val source = openSource() ?: return@withLock
+                    captureSmallFrame(source, timeMs)
+                }
                 currentCoroutineContext().ensureActive()
                 if (image == null || image.width <= 1 || image.height <= 1) {
                     if (image != null) image.recycle()
@@ -158,6 +173,7 @@ internal class LocalSeekPreviewFrames(
                 } else if (!closed.get()) {
                     if (timeMs in progressiveTimes) progressiveCache.put(timeMs, image)
                     else focusedCache.put(timeMs, image)
+                    if (stored == null) diskCache?.put(timeMs, image)
                 } else {
                     image.recycle()
                 }

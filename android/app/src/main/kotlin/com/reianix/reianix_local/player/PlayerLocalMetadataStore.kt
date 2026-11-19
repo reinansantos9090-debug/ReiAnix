@@ -25,7 +25,13 @@ class PlayerLocalMetadataStore(context: Context) {
         val timestampMs: Long,
         val text: String,
         val createdAtMs: Long,
+        val favorite: Boolean = false,
+        val clipEndMs: Long? = null,
+        val animeTitle: String = "",
+        val episodeLabel: String = "",
     )
+
+    data class FavoriteScene(val mediaId: String, val note: Note)
 
     data class Metadata(
         val mediaId: String,
@@ -88,7 +94,7 @@ class PlayerLocalMetadataStore(context: Context) {
     }
 
     @Synchronized
-    fun addNote(mediaId: String, timestampMs: Long, text: String, nowMs: Long = System.currentTimeMillis()): Metadata {
+    fun addNote(mediaId: String, timestampMs: Long, text: String, nowMs: Long = System.currentTimeMillis(), favorite: Boolean = false): Metadata {
         val normalized = normalizeMediaId(mediaId)
         val cleanText = text.trim().take(MAX_NOTE_LENGTH)
         if (normalized.isBlank() || timestampMs < 0L || cleanText.isBlank()) return get(normalized)
@@ -98,9 +104,69 @@ class PlayerLocalMetadataStore(context: Context) {
             timestampMs = timestampMs,
             text = cleanText,
             createdAtMs = nowMs,
+            favorite = favorite,
         )
-        val updated = current.copy(notes = (current.notes + note).takeLast(MAX_NOTES_PER_MEDIA))
-        write(updateRoot(readRoot(), updated))
+        val combined = current.notes + note
+        // Legacy ordinary notes must never evict persisted favorite clips.
+        val retained = if (combined.size <= MAX_NOTES_PER_MEDIA) combined else {
+            val removable = combined.firstOrNull { !it.favorite && it.id != note.id }
+                ?: error("Limite de cenas e notas deste episódio atingido")
+            combined.filterNot { it.id == removable.id }
+        }
+        val updated = current.copy(notes = retained)
+        val written = write(updateRoot(readRoot(), updated))
+        if (favorite) check(written) { "Unable to persist favorite scene" }
+        return updated
+    }
+
+    /** All saved scenes, including legacy timestamp-only favorites. */
+    @Synchronized
+    fun favoriteScenes(): List<FavoriteScene> {
+        val root = readRoot()
+        val items = root.optJSONObject("items") ?: return emptyList()
+        return items.keys().asSequence()
+            .mapNotNull { key -> items.optJSONObject(key)?.optString("mediaId")?.takeIf(String::isNotBlank) }
+            .flatMap { mediaId -> decode(root, mediaId).notes.asSequence()
+                .filter { it.favorite }.map { FavoriteScene(mediaId, it) } }
+            .sortedByDescending { it.note.createdAtMs }
+            .toList()
+    }
+
+    /** Persist only the interval and identity, never a duplicate video file. */
+    @Synchronized
+    fun saveFavoriteClip(
+        mediaId: String,
+        startMs: Long,
+        endMs: Long,
+        durationMs: Long,
+        title: String,
+        animeTitle: String,
+        episodeLabel: String,
+        existingId: String? = null,
+    ): Metadata {
+        val normalized = normalizeMediaId(mediaId)
+        require(normalized.isNotBlank() && durationMs > 0L &&
+            isValidSegment(startMs, endMs, durationMs)) { "Invalid favorite scene interval" }
+        val current = get(normalized)
+        val existing = existingId?.let { id -> current.notes.firstOrNull { it.id == id && it.favorite }
+            ?: error("Favorite scene no longer exists") }
+        val note = Note(
+            id = existing?.id ?: UUID.randomUUID().toString(),
+            timestampMs = startMs,
+            text = title.trim().take(MAX_NOTE_LENGTH).ifBlank { "Cena favorita" },
+            createdAtMs = existing?.createdAtMs ?: System.currentTimeMillis(),
+            favorite = true,
+            clipEndMs = endMs,
+            animeTitle = animeTitle.trim().take(MAX_NOTE_LENGTH),
+            episodeLabel = episodeLabel.trim().take(MAX_NOTE_LENGTH),
+        )
+        // Never silently delete a saved clip to make room for another one.
+        require(existing != null || current.notes.size < MAX_NOTES_PER_MEDIA) {
+            "Limite de cenas e notas deste episódio atingido"
+        }
+        val notes = current.notes.filterNot { it.id == note.id } + note
+        val updated = current.copy(notes = notes.sortedBy { it.timestampMs })
+        check(write(updateRoot(readRoot(), updated))) { "Unable to persist favorite clip" }
         return updated
     }
 
@@ -110,7 +176,7 @@ class PlayerLocalMetadataStore(context: Context) {
         if (normalized.isBlank()) return Metadata.empty()
         val current = get(normalized)
         val updated = current.copy(notes = current.notes.filterNot { it.id == noteId })
-        write(updateRoot(readRoot(), updated))
+        check(write(updateRoot(readRoot(), updated))) { "Unable to delete local player note" }
         return updated
     }
 
@@ -165,12 +231,18 @@ class PlayerLocalMetadataStore(context: Context) {
                         val id = note.optString("id").trim()
                         val text = note.optString("text").trim().take(MAX_NOTE_LENGTH)
                         if (id.isBlank() || text.isBlank()) continue
+                        val timestamp = note.optLong("timestampMs", 0L).coerceAtLeast(0L)
+                        val favorite = note.optBoolean("favorite", false)
                         add(
                             Note(
                                 id = id,
-                                timestampMs = note.optLong("timestampMs", 0L).coerceAtLeast(0L),
+                                timestampMs = timestamp,
                                 text = text,
                                 createdAtMs = note.optLong("createdAtMs", 0L).coerceAtLeast(0L),
+                                favorite = favorite,
+                                clipEndMs = note.optLongOrNull("clipEndMs")?.takeIf { favorite && it > timestamp },
+                                animeTitle = note.optString("animeTitle", "").take(MAX_NOTE_LENGTH),
+                                episodeLabel = note.optString("episodeLabel", "").take(MAX_NOTE_LENGTH),
                             ),
                         )
                     }
@@ -201,7 +273,11 @@ class PlayerLocalMetadataStore(context: Context) {
                                     .put("id", note.id)
                                     .put("timestampMs", note.timestampMs)
                                     .put("text", note.text)
-                                    .put("createdAtMs", note.createdAtMs),
+                                    .put("createdAtMs", note.createdAtMs)
+                                    .put("favorite", note.favorite)
+                                    .put("clipEndMs", note.clipEndMs ?: JSONObject.NULL)
+                                    .put("animeTitle", note.animeTitle)
+                                    .put("episodeLabel", note.episodeLabel),
                             )
                         }
                     },

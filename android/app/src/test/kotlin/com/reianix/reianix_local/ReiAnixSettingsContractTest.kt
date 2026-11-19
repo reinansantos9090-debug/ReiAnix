@@ -38,8 +38,12 @@ class ReiAnixSettingsContractTest {
     @Test fun resettingPlayerIncludesAudioSubtitlesAndGestures() {
         val playerKeys = ReiAnixSettingsContract.keysForReset(playerOnly = true)
         assertEquals(5, playerKeys.count { it.startsWith("gestures.") })
-        assertEquals(6, playerKeys.count { it.startsWith("audio.") })
+        assertEquals(8, playerKeys.count { it.startsWith("audio.") })
         assertEquals(true, "player.resume" in playerKeys)
+        assertEquals(true, "player.smart_resume" in playerKeys)
+        assertEquals("false", ReiAnixSettingsContract.defaultFor("player.smart_resume"))
+        assertEquals("system", ReiAnixSettingsContract.defaultFor("audio.subtitle_color"))
+        assertEquals("system", ReiAnixSettingsContract.defaultFor("audio.subtitle_font"))
         assertEquals(false, "appearance.poster_size" in playerKeys)
         assertEquals(false, "artwork.cache_limit_mb" in playerKeys)
         assertEquals(

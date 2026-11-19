@@ -1,6 +1,8 @@
 package com.reianix.reianix_local.ui.player
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
+import com.reianix.reianix_local.player.PlayerSkipSegment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -119,6 +121,9 @@ data class ReiAnixNativePlayerUiState(
     val longPressEnabled: Boolean = true,
     val safeTopPx: Int = 0,
     val safeBottomPx: Int = 0,
+    val skipSegments: List<PlayerSkipSegment> = emptyList(),
+    val favoriteSceneTimes: List<Long> = emptyList(),
+    val audioOnly: Boolean = false,
 )
 
 /**
@@ -508,9 +513,9 @@ fun ReiAnixNativePlayerBottomControls(
     }
     var previewFrame by remember(mediaUri) { mutableStateOf<Bitmap?>(null) }
     val previewImage = remember(previewFrame) { previewFrame?.asImageBitmap() }
-    LaunchedEffect(userDragging, previewFrames, duration, seekEnabled) {
+    LaunchedEffect(userDragging, previewFrames, duration, seekEnabled, state.audioOnly) {
         previewFrame = null
-        if (!userDragging || !seekEnabled || previewFrames == null) return@LaunchedEffect
+        if (!userDragging || !seekEnabled || state.audioOnly || previewFrames == null) return@LaunchedEffect
         try {
             while (true) {
                 val targetMs = (sliderFraction * duration.toFloat()).toLong()
@@ -589,7 +594,27 @@ fun ReiAnixNativePlayerBottomControls(
                         )
                     }
                 }
-                if (userDragging && seekEnabled) {
+                if (duration > 0L && (state.skipSegments.isNotEmpty() || state.favoriteSceneTimes.isNotEmpty())) {
+                    Canvas(Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(6.dp)) {
+                        for (segment in state.skipSegments) {
+                            val start = size.width * (segment.startMs.toDouble() / duration).toFloat().coerceIn(0f, 1f)
+                            val end = size.width * (segment.endMs.toDouble() / duration).toFloat().coerceIn(0f, 1f)
+                            val tint = when (segment.kind) {
+                                "op" -> Color(0xFF42DDB5)
+                                "ed" -> Color(0xFFB78BFF)
+                                else -> Color(0xFFFFAE55)
+                            }
+                            drawLine(tint, androidx.compose.ui.geometry.Offset(start, size.height / 2),
+                                androidx.compose.ui.geometry.Offset(end, size.height / 2), strokeWidth = 4.dp.toPx())
+                        }
+                        for (position in state.favoriteSceneTimes) {
+                            if (position !in 0L..duration) continue
+                            val x = size.width * (position.toDouble() / duration).toFloat()
+                            drawCircle(Color(0xFFFFD54F), 3.dp.toPx(), androidx.compose.ui.geometry.Offset(x, size.height / 2))
+                        }
+                    }
+                }
+                if (userDragging && seekEnabled && !state.audioOnly) {
                     // Floating window renders outside the short landscape overlay
                     // and does not alter the seekbar's position or tap target.
                     val density = LocalDensity.current

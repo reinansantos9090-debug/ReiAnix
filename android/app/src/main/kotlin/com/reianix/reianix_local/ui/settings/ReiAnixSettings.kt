@@ -899,6 +899,15 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.resume", it.toString()) },
                         )
                     }
+                    item(key = "setting:player.smart_resume") {
+                        BooleanSettingRow(
+                            keyName = "player.smart_resume",
+                            title = "Retomada inteligente",
+                            description = "Volta 5 segundos ao continuar um episódio.",
+                            checked = state.settings["player.smart_resume"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.smart_resume", it.toString()) },
+                        )
+                    }
                     item(key = "setting:player.default_speed") {
                         ChoiceSettingRow(
                             keyName = "player.default_speed",
@@ -1038,6 +1047,28 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             selectedValue = state.settings["audio.subtitle_bottom_padding"],
                             choices = subtitlePaddingChoices,
                             onSelected = { onUpdateSetting("audio.subtitle_bottom_padding", it) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitle_color") {
+                        ChoiceSettingRow(
+                            keyName = "audio.subtitle_color",
+                            title = "Cor das legendas",
+                            description = "Personaliza o texto das legendas selecionáveis.",
+                            selectedValue = state.settings["audio.subtitle_color"],
+                            choices = listOf(SettingChoice("system", "Sistema"), SettingChoice("white", "Branco"),
+                                SettingChoice("yellow", "Amarelo"), SettingChoice("cyan", "Ciano")),
+                            onSelected = { onUpdateSetting("audio.subtitle_color", it) },
+                        )
+                    }
+                    item(key = "setting:audio.subtitle_font") {
+                        ChoiceSettingRow(
+                            keyName = "audio.subtitle_font",
+                            title = "Fonte das legendas",
+                            description = "Altera as legendas de texto, não as que fazem parte do vídeo.",
+                            selectedValue = state.settings["audio.subtitle_font"],
+                            choices = listOf(SettingChoice("system", "Sistema"), SettingChoice("sans", "Sem serifa"),
+                                SettingChoice("serif", "Serifada"), SettingChoice("mono", "Monoespaçada")),
+                            onSelected = { onUpdateSetting("audio.subtitle_font", it) },
                         )
                     }
                     item(key = "setting:audio.subtitle_embedded_style") {

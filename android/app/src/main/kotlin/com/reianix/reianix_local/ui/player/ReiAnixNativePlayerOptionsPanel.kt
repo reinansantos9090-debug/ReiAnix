@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,6 +64,8 @@ import java.util.Locale
 
 private enum class PlayerOptionsPage {
     MAIN,
+    AUDIO,
+    SUBTITLES,
     GESTURES,
     OTHER,
 }
@@ -95,19 +98,23 @@ fun ReiAnixNativePlayerOptionsPanel(
     onOpenWithExternal: () -> Unit,
     onPictureInPicture: () -> Unit,
     onInformation: () -> Unit,
+    onFavoriteScenes: () -> Unit = {},
+    onSubtitleAppearance: () -> Unit = {},
+    onAudioOnlyChanged: (Boolean) -> Unit = {},
 ) {
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
     LaunchedEffect(resetSignal) {
         page = PlayerOptionsPage.MAIN
     }
     val panelShape = RoundedCornerShape(18.dp)
+    val scrollState = key(page, resetSignal) { rememberScrollState() }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .shadow(16.dp, panelShape, clip = false)
             .clip(panelShape)
             .background(Color(0xE61B1B1D))
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(vertical = 5.dp),
     ) {
         when (page) {
@@ -140,17 +147,17 @@ fun ReiAnixNativePlayerOptionsPanel(
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.VolumeUp,
-                    label = "Faixas de áudio",
-                    value = if (state.audioTrackSelectionEnabled) state.audioTrackLabel else "Indisponível",
-                    enabled = state.audioTrackSelectionEnabled && !state.episodeTransitionInProgress,
-                    onClick = onAudioTracks,
+                    label = "Áudio",
+                    value = if (state.audioOnly) "Somente áudio" else if (state.audioTrackSelectionEnabled) state.audioTrackLabel else "Indisponível",
+                    enabled = !state.episodeTransitionInProgress,
+                    onClick = { page = PlayerOptionsPage.AUDIO },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Subtitles,
                     label = "Legendas",
                     value = if (state.subtitleTrackSelectionEnabled) state.subtitleTrackLabel else "Indisponível",
-                    enabled = state.subtitleTrackSelectionEnabled && !state.episodeTransitionInProgress,
-                    onClick = onSubtitles,
+                    enabled = !state.episodeTransitionInProgress,
+                    onClick = { page = PlayerOptionsPage.SUBTITLES },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Gesture,
@@ -182,6 +189,47 @@ fun ReiAnixNativePlayerOptionsPanel(
                     enabled = !state.episodeTransitionInProgress,
                     showChevron = false,
                     onClick = onRestart,
+                )
+            }
+
+            PlayerOptionsPage.AUDIO -> {
+                PlayerOptionsSubpageHeader(
+                    title = "Áudio",
+                    onBack = { page = PlayerOptionsPage.MAIN },
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.VolumeUp,
+                    label = "Selecionar faixa de áudio",
+                    value = if (state.audioTrackSelectionEnabled) state.audioTrackLabel else "Indisponível",
+                    enabled = state.audioTrackSelectionEnabled && !state.episodeTransitionInProgress,
+                    onClick = onAudioTracks,
+                )
+                PlayerOptionToggleRow(
+                    icon = Icons.Filled.VolumeUp,
+                    label = "Somente áudio",
+                    checked = state.audioOnly,
+                    enabled = !state.episodeTransitionInProgress && (state.audioOnly || state.audioTrackSelectionEnabled),
+                    onCheckedChange = onAudioOnlyChanged,
+                )
+            }
+
+            PlayerOptionsPage.SUBTITLES -> {
+                PlayerOptionsSubpageHeader(
+                    title = "Legendas",
+                    onBack = { page = PlayerOptionsPage.MAIN },
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Subtitles,
+                    label = "Selecionar legendas",
+                    value = if (state.subtitleTrackSelectionEnabled) state.subtitleTrackLabel else "Indisponível",
+                    enabled = state.subtitleTrackSelectionEnabled && !state.episodeTransitionInProgress,
+                    onClick = onSubtitles,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Subtitles,
+                    label = "Personalizar legendas",
+                    enabled = !state.episodeTransitionInProgress,
+                    onClick = onSubtitleAppearance,
                 )
             }
 
@@ -242,6 +290,11 @@ fun ReiAnixNativePlayerOptionsPanel(
                     label = "Marcadores",
                     showChevron = false,
                     onClick = onMarkers,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.BookmarkBorder,
+                    label = "Cenas favoritas",
+                    onClick = onFavoriteScenes,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Info,
@@ -415,6 +468,7 @@ private fun PlayerOptionToggleRow(
     label: String,
     checked: Boolean,
     description: String = label,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
@@ -442,6 +496,7 @@ private fun PlayerOptionToggleRow(
         )
         Switch(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
