@@ -1297,6 +1297,7 @@ class MainActivity : ComponentActivity() {
 
 
         systemUiController = SystemUiController(window)
+        systemUiController.applyApplicationImmersivePolicy(useContextAppearance = false)
         lifecycleScope.launch {
             SafTreeChangeMonitor.changes.collect {
                 if (activityResumed) dispatchPendingSafTreeChanges()
@@ -1351,7 +1352,7 @@ class MainActivity : ComponentActivity() {
         }
         // The existing SystemUiController remains the single Android system-bar
         // authority while the Compose shell and legacy Flet surfaces coexist.
-        systemUiController.applyApplicationPolicy(useContextAppearance = false)
+        systemUiController.applyApplicationImmersivePolicy(useContextAppearance = false)
         // The initial intent is processed once, after the bootstrap selects the safe route.
     }
 
