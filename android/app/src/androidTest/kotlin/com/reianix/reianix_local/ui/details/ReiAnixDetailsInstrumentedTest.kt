@@ -134,7 +134,7 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
-    fun headerPinChangesDirectlyAndAniListMenuKeepsBothActions() {
+    fun headerPinChangesDirectlyAndAniListRepairsWithoutOpeningMenu() {
         val state = mutableStateOf(detailsStateWithEpisodes(1))
         var pinCalls = 0
         var managed = 0
@@ -165,15 +165,13 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithContentDescription("Fixar anime").assertIsDisplayed()
         composeRule.onNodeWithTag("details-episode-list")
             .performScrollToNode(hasTestTag("details-quick-actions"))
+        composeRule.onNodeWithTag("details-quick-anilist").performClick()
         composeRule.onNodeWithText("Associar ao AniList").assertDoesNotExist()
-        composeRule.onNodeWithTag("details-quick-anilist").performClick()
-        composeRule.onNodeWithText("Associar ao AniList").assertIsDisplayed().performClick()
-        composeRule.onNodeWithTag("details-quick-anilist").performClick()
-        composeRule.onNodeWithText("Atualizar detalhes").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Atualizar detalhes").assertDoesNotExist()
         composeRule.runOnIdle {
             assertEquals(2, pinCalls)
             assertEquals(1, managed)
-            assertEquals(1, refreshed)
+            assertEquals(0, refreshed)
         }
     }
 
