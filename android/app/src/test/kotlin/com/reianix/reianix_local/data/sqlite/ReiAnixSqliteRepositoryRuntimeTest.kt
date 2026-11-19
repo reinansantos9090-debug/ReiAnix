@@ -1085,7 +1085,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             explicitRepair = true, expectedAssociationId = 98L)
         assertEquals(99L, stale.anilistId)
         assertEquals("https://example.invalid/old-cover.jpg", stale.coverUrl)
-        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.79, 0.035,
+        val belowThreshold = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.59, 0.035,
+            explicitRepair = true, expectedAssociationId = 99L)
+        assertEquals(99L, belowThreshold.anilistId)
+        assertEquals("https://example.invalid/old-cover.jpg", belowThreshold.coverUrl)
+        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.60, 0.035,
             explicitRepair = true, expectedAssociationId = 99L)
         assertEquals(42L, corrected.anilistId)
         assertEquals("https://example.invalid/official.jpg", corrected.coverUrl)
