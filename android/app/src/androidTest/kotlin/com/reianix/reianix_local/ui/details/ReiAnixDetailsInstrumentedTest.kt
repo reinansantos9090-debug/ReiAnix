@@ -8,6 +8,8 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -85,6 +87,106 @@ class ReiAnixDetailsInstrumentedTest {
         assertEquals(71L, watchedEpisodeId)
         assertEquals(42L, favoriteAnimeId)
         assertEquals(1, backCount)
+    }
+
+    @Test
+    fun fourHeaderShortcutsArePresentAndFavoriteDispatchesExistingAction() {
+        var favoriteAnimeId: Long? = null
+        val initial = detailsStateWithEpisodes(1)
+        val state = initial.copy(
+            anime = initial.anime!!.copy(description = "Sinopse para teste."),
+        )
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = { favoriteAnimeId = it },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-quick-actions"))
+        listOf("favorite", "note", "tags", "list").forEach { shortcut ->
+            composeRule.onNodeWithTag("details-quick-" + shortcut).assertIsDisplayed()
+        }
+        composeRule.onNodeWithTag("details-quick-favorite").performClick()
+        assertEquals(700L, favoriteAnimeId)
+        composeRule.onNodeWithTag("details-quick-note").performClick()
+        composeRule.onNodeWithText("Nota privada").assertIsDisplayed()
+        composeRule.onNodeWithText("Cancelar").performClick()
+        composeRule.onNodeWithTag("details-quick-tags").performClick()
+        composeRule.onNodeWithText("Tags pessoais").assertIsDisplayed()
+    }
+
+    @Test
+    fun playbackAndMarathonShareOneRowAndEqualDimensions() {
+        var watchedEpisodeId: Long? = null
+        var marathonOpened = false
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = { watchedEpisodeId = it },
+                    onToggleFavorite = {},
+                    onOpenMarathon = { marathonOpened = true },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-playback-actions"))
+        val play = composeRule.onNodeWithTag("details-play-action")
+        val marathon = composeRule.onNodeWithTag("details-marathon-action")
+        play.assertIsDisplayed()
+        marathon.assertIsDisplayed()
+        val playBounds = play.fetchSemanticsNode().boundsInRoot
+        val marathonBounds = marathon.fetchSemanticsNode().boundsInRoot
+        assertEquals(playBounds.width, marathonBounds.width, 1f)
+        assertEquals(playBounds.height, marathonBounds.height, 1f)
+        assertEquals(playBounds.top, marathonBounds.top, 1f)
+        org.junit.Assert.assertTrue(playBounds.right < marathonBounds.left)
+        play.performClick()
+        assertEquals(1L, watchedEpisodeId)
+        marathon.performClick()
+        assertEquals(true, marathonOpened)
+    }
+
+    @Test
+    fun synopsisIsInHeaderBeforeTraceMoe() {
+        val original = detailsStateWithEpisodes(1)
+        val state = original.copy(
+            anime = original.anime!!.copy(
+                description = "Sinopse de teste para verificar a organização dos detalhes.",
+            ),
+        )
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                )
+            }
+        }
+
+        val synopsis = composeRule.onNode(
+            hasText("Sinopse") and hasAnyAncestor(hasTestTag("details-header-metadata")),
+            useUnmergedTree = true,
+        )
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-header-metadata"))
+        synopsis.assertExists()
+        val metadata = composeRule.onNodeWithTag("details-header-metadata", useUnmergedTree = true)
+            .fetchSemanticsNode()
+        val traceMoe = composeRule.onNodeWithTag("details-tracemoe-identify-button", useUnmergedTree = true)
+            .fetchSemanticsNode()
+        org.junit.Assert.assertTrue(metadata.positionInRoot.y < traceMoe.positionInRoot.y)
     }
 
     @Test
