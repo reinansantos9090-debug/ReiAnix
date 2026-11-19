@@ -230,7 +230,8 @@ jobs:
         run: |
           set -euo pipefail
           gradle -p android --no-daemon --console=plain \
-            :app:testDebugUnitTest --tests com.reianix.reianix_local.player.ExternalVideoChooserTest
+            :app:testDebugUnitTest --tests com.reianix.reianix_local.player.ExternalVideoChooserTest \
+            --tests com.reianix.reianix_local.player.SeekPreviewPolicyTest
 
       - name: Locate APK
         id: apk
