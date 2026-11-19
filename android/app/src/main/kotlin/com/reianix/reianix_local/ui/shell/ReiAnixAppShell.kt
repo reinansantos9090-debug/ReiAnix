@@ -30,6 +30,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
+import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 /**
  * Global Compose chrome for the ReiAnix incremental native cutover.
@@ -61,7 +63,8 @@ fun ReiAnixAppShell(
 ) {
     Scaffold(
         modifier = modifier,
-        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
+        containerColor = reiAnixScreenBackground(),
+        contentColor = MaterialTheme.colorScheme.onBackground,
         // Every destination owns its top inset at the actual header/scrolling
         // content. Do not reserve a permanent black strip in the viewport.
         contentWindowInsets = if (showBottomNavigation) {
@@ -104,7 +107,7 @@ private fun ReiAnixBottomNavigation(
             .semantics {
                 isTraversalGroup = true
             },
-        containerColor = navigationContainerColor,
+        containerColor = if (LocalReiAnixWallpaperVisible.current) navigationContainerColor.copy(alpha = 0.78f) else navigationContainerColor,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = ReiAnixTokens.Elevation.none,
         windowInsets = NavigationBarDefaults.windowInsets,
