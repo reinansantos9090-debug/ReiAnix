@@ -38,6 +38,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -250,6 +253,21 @@ fun ReiAnixCollectionsScreen(
                 subtitle = if (selected == null) "Organize seus animes" else "${selected.animeIds.size} anime(s)",
                 navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
                 onNavigationClick = goBack,
+                actions = {
+                    if (selected != null) {
+                        CollectionOptionsMenu(
+                            collectionId = selected.id,
+                            enabled = !busy && !loading && pendingMembership.isEmpty(),
+                            onRename = {
+                                editingNameId = selected.id
+                                nameDraft = selected.name
+                                error = null
+                                showNameEditor = true
+                            },
+                            onDelete = { pendingDeleteId = selected.id },
+                        )
+                    }
+                },
             )
             Column(
                 modifier = Modifier.fillMaxSize().padding(
@@ -376,33 +394,27 @@ fun ReiAnixCollectionsScreen(
                         }
                     }
                 } else {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        TextButton(
+                        OutlinedButton(
                             enabled = !busy,
-                            onClick = {
-                                editingNameId = selected.id
-                                nameDraft = selected.name
-                                error = null
-                                showNameEditor = true
-                            },
-                        ) { Text("Renomear") }
-                        TextButton(
-                            enabled = !busy,
-                            onClick = { pendingDeleteId = selected.id },
-                        ) { Text("Excluir") }
+                            onClick = { adding = !adding; search = "" },
+                            modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(0.78f)
+                                .heightIn(min = 48.dp),
+                        ) {
+                            Icon(
+                                if (adding) Icons.AutoMirrored.Filled.ArrowBack else Icons.Filled.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Text(
+                                if (adding) "Voltar aos animes" else "Adicionar animes",
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
                     }
-                    Text(
-                        "Segure um anime e arraste para mudar sua posição. A capa da coleção é a do anime escolhido.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = { adding = !adding; search = "" },
-                    ) { Text(if (adding) "Voltar aos animes" else "Adicionar animes") }
                     if (adding) {
                         OutlinedTextField(
                             value = search,
@@ -460,7 +472,7 @@ fun ReiAnixCollectionsScreen(
                             ReiAnixCollectionReorderList(
                                 collection = selected,
                                 animeById = animeById,
-                                busy = busy,
+                                busy = busy || pendingMembership.isNotEmpty(),
                                 modifier = Modifier.weight(1f),
                                 onOpenAnime = onOpenAnime,
                                 onSetCover = { id ->
@@ -501,6 +513,33 @@ fun ReiAnixCollectionsScreen(
                 TextButton(enabled = !busy, onClick = { pendingDeleteId = null }) { Text("Cancelar") }
             },
         )
+    }
+}
+
+@Composable
+internal fun CollectionOptionsMenu(
+    collectionId: String,
+    enabled: Boolean,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var expanded by remember(collectionId) { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, enabled = enabled) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "Opções da coleção")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Renomear") },
+                enabled = enabled,
+                onClick = { expanded = false; onRename() },
+            )
+            DropdownMenuItem(
+                text = { Text("Excluir") },
+                enabled = enabled,
+                onClick = { expanded = false; onDelete() },
+            )
+        }
     }
 }
 
