@@ -1007,6 +1007,32 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun explicitRepairReplacesWrongAutomaticAssociationButRejectsStaleOrManualAssociation() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            connection.execSQL("UPDATE anime SET anilist_id = 99, anilist_match_manual = 0, anilist_match_status = 'matched' WHERE id = 1")
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val patch = ReiAnixAnimeMetadataPatch(animeId = 1L, coverUrl = "https://example.invalid/official.jpg")
+        val stale = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.99, 0.5,
+            explicitRepair = true, expectedAssociationId = 98L)
+        assertEquals(99L, stale.anilistId)
+        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.99, 0.5,
+            explicitRepair = true, expectedAssociationId = 99L)
+        assertEquals(42L, corrected.anilistId)
+        assertEquals("https://example.invalid/official.jpg", corrected.coverUrl)
+        database.transaction { connection ->
+            connection.execSQL("UPDATE anime SET anilist_match_manual = 1, anilist_match_status = 'manual' WHERE id = 1")
+        }
+        val protected = repository.updateAniListMetadataAndAssociation(
+            patch.copy(coverUrl = "https://example.invalid/wrong.jpg"), 77L, false, 0.99, 0.5,
+            explicitRepair = true, expectedAssociationId = 42L)
+        assertEquals(42L, protected.anilistId)
+        assertEquals("https://example.invalid/official.jpg", protected.coverUrl)
+    }
+
+    @Test
     fun traceMoeCannotReplaceManualAssociationOrManualMetadata() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)
