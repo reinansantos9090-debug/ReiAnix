@@ -1,6 +1,5 @@
 package com.reianix.reianix_local.player
 
-import android.app.Dialog
 import android.graphics.drawable.ColorDrawable
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -15,6 +14,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
@@ -67,16 +68,58 @@ internal object FavoriteClipRange {
         request.coerceIn(start + minOf(1_000L, duration - start), duration)
 }
 
-/** Native dialogs share the player's existing theme and are dismissed with its lifecycle. */
+/** Full-screen pages in the existing player window; no extra fullscreen surfaces. */
 internal class FavoriteSceneDialogs(
     private val activity: FragmentActivity,
+    private val container: () -> FrameLayout,
     private val format: (Long) -> String,
     private val report: (String) -> Unit,
 ) {
     private val thumbnailMutex = Mutex()
     private val thumbnails = LruCache<String, Bitmap>(24)
-    private var currentDialog: Dialog? = null
-    private var currentEditor: FavoriteClipEditor? = null
+    private var page: View? = null
+    private var closePage: (() -> Unit)? = null
+    private var backPage: (() -> Unit)? = null
+    private var busyLayer: View? = null
+    val isShowing: Boolean get() = page != null
+
+    fun handleBack(): Boolean {
+        val back = backPage ?: return false
+        if (busyLayer == null) back()
+        return true
+    }
+
+    fun setBusy(busy: Boolean) {
+        busyLayer?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        busyLayer = null
+        if (!busy || page == null) return
+        val layer = FrameLayout(activity).apply {
+            isClickable = true
+            isFocusable = true
+            addView(ProgressBar(activity).apply { contentDescription = "Carregando cena" },
+                FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER))
+        }
+        busyLayer = layer
+        container().addView(layer, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun showPage(view: View, back: () -> Unit, close: () -> Unit = {}) {
+        setBusy(false)
+        val previous = page
+        val previousClose = closePage
+        view.isClickable = true
+        view.isFocusable = true
+        view.setBackgroundColor(Color.BLACK)
+        view.tag = "reianix_favorite_scene_page"
+        container().addView(view, FrameLayout.LayoutParams(-1, -1))
+        view.bringToFront()
+        page = view
+        closePage = close
+        backPage = back
+        previous?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        previousClose?.invoke()
+        ViewCompat.requestApplyInsets(view)
+    }
 
     private fun dp(value: Int) = (value * activity.resources.displayMetrics.density).roundToInt()
     private fun label(value: String, size: Float = 14f, color: Int = Color.WHITE) =
@@ -99,31 +142,23 @@ internal class FavoriteSceneDialogs(
     }
 
     fun dismiss() {
-        val editor = currentEditor
-        currentEditor = null
-        editor?.dismiss()
-        currentDialog?.dismiss()
-        currentDialog = null
+        setBusy(false)
+        val previous = page
+        val previousClose = closePage
+        page = null
+        closePage = null
+        backPage = null
+        previous?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        previousClose?.invoke()
     }
 
     private fun fullScreen(title: String, onBack: () -> Unit, body: LinearLayout.() -> Unit, onClose: () -> Unit = {}) {
         if (activity.isFinishing || activity.isDestroyed) return
-        val previous = currentDialog
-        val previousEditor = currentEditor
-        val dialog = Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen)
-        dialog.window?.apply {
-            setWindowAnimations(0)
-            setBackgroundDrawable(ColorDrawable(Color.BLACK))
-        }
         val root = column().apply {
-            setBackgroundColor(Color.BLACK)
             val header = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(action("‹") {
-                    dialog.dismiss()
-                    onBack()
-                }.apply {
+                addView(action("‹") { if (busyLayer == null) onBack() }.apply {
                     contentDescription = "Voltar"
                     textSize = 28f
                     setTextColor(Color.WHITE)
@@ -138,24 +173,7 @@ internal class FavoriteSceneDialogs(
             view.setPadding(cutout.left, cutout.top, cutout.right, maxOf(cutout.bottom, dp(12)))
             insets
         }
-        dialog.setContentView(root)
-        dialog.setCanceledOnTouchOutside(false)
-        dialog.setOnCancelListener { onBack() }
-        dialog.setOnDismissListener {
-            onClose()
-            if (currentDialog === dialog) currentDialog = null
-        }
-        currentDialog = dialog
-        dialog.show()
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.BLACK))
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            SystemUiController(this).applyImmersive(false)
-        }
-        ViewCompat.requestApplyInsets(root)
-        // Replace the window only after the new black surface is visible.
-        previous?.dismiss()
-        previousEditor?.dismiss()
+        showPage(root, onBack, onClose)
     }
 
     private suspend fun loadFrame(mediaId: String, positionMs: Long): Bitmap? {
@@ -268,8 +286,9 @@ internal class FavoriteSceneDialogs(
                         (textColumn.getChildAt(2) as TextView).text = note.clipEndMs?.let {
                             format(note.timestampMs) + " – " + format(it) + " • " + format(it - note.timestampMs)
                         } ?: ("Marcador antigo • " + format(note.timestampMs))
-                        image.setImageDrawable(null)
-                        jobs[row] = activity.lifecycleScope.launch {
+                        val cached = thumbnails.get("${scene.mediaId}@${note.timestampMs}")
+                        image.setImageBitmap(cached)
+                        if (cached == null) jobs[row] = activity.lifecycleScope.launch {
                             val bitmap = loadFrame(scene.mediaId, note.timestampMs)
                             image.setImageBitmap(bitmap)
                         }
@@ -314,11 +333,10 @@ internal class FavoriteSceneDialogs(
         onSave: suspend (Long, Long, String) -> Unit,
         onSaved: () -> Unit,
         onBack: () -> Unit,
+        initialFrame: Bitmap? = null,
     ) {
         if (durationMs <= 0L) { report("Duração indisponível para criar um clipe"); return }
         if (activity.isFinishing || activity.isDestroyed) return
-        val previous = currentDialog
-        val previousEditor = currentEditor
         val editor = FavoriteClipEditor(
             host = activity,
             item = previewItem,
@@ -332,14 +350,9 @@ internal class FavoriteSceneDialogs(
             onSave = onSave,
             onSaved = onSaved,
             onBack = onBack,
+            initialFrame = initialFrame ?: thumbnails.get("$mediaId@$positionMs"),
         )
-        currentEditor = editor
-        editor.setOnDismissListener {
-            if (currentEditor === editor) currentEditor = null
-        }
-        editor.window?.setWindowAnimations(0)
-        editor.show()
-        previous?.dismiss()
-        previousEditor?.dismiss()
+        showPage(editor.createView(), editor::handleBack, editor::close)
+        editor.startPreview()
     }
 }
