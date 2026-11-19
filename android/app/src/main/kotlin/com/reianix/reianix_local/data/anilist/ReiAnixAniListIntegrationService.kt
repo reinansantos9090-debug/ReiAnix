@@ -337,26 +337,16 @@ class ReiAnixAniListIntegrationService(
             val local = library.getAnime(animeId) ?: return AniListResult.Failure(
                 AniListError.InvalidRequest("Anime não encontrado na biblioteca."),
             )
-            val titles = buildList {
-                add(local.lookupTitle)
-                add(local.title)
-                add(local.romaji.orEmpty())
-                add(local.english.orEmpty())
-                add(local.nativeTitle.orEmpty())
-                local.aliasesJson?.let { raw ->
-                    runCatching { JSONArray(raw) }.getOrNull()?.let { aliases ->
-                        for (i in 0 until aliases.length()) add(aliases.optString(i))
-                    }
-                }
-            }
-            val terms = boundedAniListSearchTerms(titles, limit = 6)
+            val titles = explicitAniListRepairTitles(local)
+            // Give each distinct stored title a query slot before spending
+            // remaining slots on cleaned variants of the same title.
+            val terms = explicitAniListRepairSearchTerms(titles)
             val anchor = local.lookupTitle.takeIf(String::isNotBlank) ?: local.title
             if (terms.isEmpty() || anchor.isBlank()) return AniListResult.Failure(
                 AniListError.InvalidRequest("O anime não tem título válido para identificação."),
             )
-            // The existing association may itself be wrong. Never let aliases,
-            // year or synopsis copied from that association choose another anime
-            // without independent agreement with the original library title.
+            // All returned candidates are evaluated against every stored title.
+            // The original name is a preference, not a mandatory match.
             val candidates = when (val result = client.searchAnimeAliases(terms)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> return result
@@ -366,7 +356,7 @@ class ReiAnixAniListIntegrationService(
                 AniListError.InvalidRequest("Nenhuma correspondência confiável no AniList. Dados atuais preservados."),
             )
             val margin = best.score - (ranked.getOrNull(1)?.score ?: 0.0)
-            if (best.score < 0.86 || margin < 0.05) return AniListResult.Failure(
+            if (best.score < EXPLICIT_REPAIR_MIN_SCORE || margin < EXPLICIT_REPAIR_MIN_MARGIN) return AniListResult.Failure(
                 AniListError.InvalidRequest("Identificação inconclusiva. Capa e metadados atuais preservados."),
             )
             if (local.anilistMatchManual == true && local.anilistId != best.anime.id.toLong()) {
@@ -1746,17 +1736,45 @@ class ReiAnixAniListIntegrationService(
     }
 }
 
-/** Conservative repair ranking, isolated from first-load artwork discovery. */
+// Only the user-initiated repair uses these more permissive thresholds.
+internal const val EXPLICIT_REPAIR_MIN_SCORE = 0.72
+internal const val EXPLICIT_REPAIR_MIN_MARGIN = 0.025
+
+internal fun explicitAniListRepairTitles(local: ReiAnixAnimeRecord): List<String> = buildList {
+    add(local.lookupTitle)
+    add(local.title)
+    add(local.romaji.orEmpty())
+    add(local.english.orEmpty())
+    add(local.nativeTitle.orEmpty())
+    local.aliasesJson?.let { raw ->
+        runCatching { JSONArray(raw) }.getOrNull()?.let { aliases ->
+            for (i in 0 until aliases.length()) add(aliases.optString(i))
+        }
+    }
+}.map(String::trim).filter(String::isNotBlank).distinctBy(MediaTitleNormalizer::normalizeTitle)
+
+internal fun explicitAniListRepairSearchTerms(titles: List<String>): List<String> {
+    val variants = titles.map(MediaTitleNormalizer::searchTitleVariants)
+    val preferred = variants.mapNotNull { list -> list.firstOrNull() }
+    // Preserve a useful cleaned title as well as native/English/romaji aliases.
+    val cleanedOriginal = variants.firstOrNull().orEmpty().drop(1).take(1)
+    return (preferred.take(1) + cleanedOriginal + preferred.drop(1) + variants.flatten())
+        .distinctBy(MediaTitleNormalizer::normalizeTitle).take(6)
+}
+
+/** Flexible repair ranking. No changes to automatic library discovery. */
 internal fun rankExplicitAniListRepair(
     local: ReiAnixAnimeRecord,
     anchor: String,
     candidates: List<AniListAnime>,
 ): List<ReiAnixAniListMatcher.RankedCandidate> {
     fun plain(value: String): String = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
-        .lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+        .replace(Regex("\\p{M}+"), "").lowercase(Locale.ROOT)
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
     fun words(value: String?): Set<String> = plain(value.orEmpty()).split(" ")
         .filter { it.length >= 4 }.toSet()
     val originalTitle = plain(anchor)
+    val alternateTitles = explicitAniListRepairTitles(local).filter { plain(it) != originalTitle }
     val independentlySourced = local.anilistId == null &&
         !local.metadataSource.orEmpty().contains("anilist", ignoreCase = true) &&
         !local.metadataSource.orEmpty().endsWith("_candidate", ignoreCase = true)
@@ -1764,39 +1782,50 @@ internal fun rankExplicitAniListRepair(
         (0 until raw.length()).map { plain(raw.optString(it)) }.toSet()
     }.orEmpty()
     val localSynopsis = words(local.descriptionOriginal ?: local.description)
-    val context = ReiAnixAniListMatcher.Context(
-        year = local.year.takeIf { independentlySourced },
-        mediaKind = local.mediaKind,
-    )
+    val context = ReiAnixAniListMatcher.Context(mediaKind = local.mediaKind)
     return candidates.asSequence()
         .distinctBy { it.id }
         .filter { candidate ->
-            candidate.format.orEmpty().uppercase(Locale.ROOT) in setOf("TV", "TV_SHORT", "MOVIE", "OVA", "ONA", "SPECIAL") &&
+            val format = candidate.format.orEmpty().uppercase(Locale.ROOT)
+            format != "MUSIC" &&
+                (format.isBlank() || format in setOf("TV", "TV_SHORT", "MOVIE", "OVA", "ONA", "SPECIAL")) &&
                 candidate.coverCandidates.isNotEmpty() &&
-                (!local.mediaKind.equals("movie", true) || candidate.format.equals("MOVIE", true)) &&
-                (!local.mediaKind.equals("series", true) || !candidate.format.equals("MOVIE", true))
+                (format.isBlank() || !local.mediaKind.equals("movie", true) || format == "MOVIE") &&
+                (!local.mediaKind.equals("series", true) || format != "MOVIE")
         }
         .mapNotNull { candidate ->
-            val ranked = ReiAnixAniListMatcher.rank(anchor, listOf(candidate), context).firstOrNull()
-                ?: return@mapNotNull null
-            val exact = (listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) +
-                candidate.synonyms).any { plain(it) == originalTitle }
-            // Exact original titles beat fuzzy season/part variants, even when
-            // the ordinary matcher normalizes away a season marker.
-            var score = if (exact) 1.0 else ranked.score.coerceAtMost(0.93)
-            if (ranked.score < 0.86 && !exact) return@mapNotNull null
+            val remoteTitles = listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) + candidate.synonyms
+            val remoteKeys = remoteTitles.map(::plain).filter(String::isNotBlank).toSet()
+            val original = ReiAnixAniListMatcher.rank(anchor, listOf(candidate), context).first()
+            val alternate = alternateTitles.map { title ->
+                ReiAnixAniListMatcher.rank(title, listOf(candidate), context).first()
+            }.maxByOrNull { it.score }
+            val exactOriginal = originalTitle.isNotBlank() && originalTitle in remoteKeys
+            val exactAlternate = alternateTitles.any { plain(it) in remoteKeys }
+            // Aliases can identify an anime even when the folder/lookup name is
+            // quite different. A literal original-title match still wins over
+            // aliases borrowed from a previously wrong association.
+            val originalScore = if (exactOriginal) 0.98 else original.score * 0.94
+            val alternateScore = if (exactAlternate) 0.91 else (alternate?.score ?: 0.0) * 0.90
+            var score = maxOf(originalScore, alternateScore)
+            if (score < 0.58) return@mapNotNull null
             val corroborate = independentlySourced || candidate.id.toLong() == local.anilistId
-            if (corroborate && !exact) {
-                if (local.year != null && candidate.seasonYear == local.year) score += 0.015
-                if (local.format != null && local.format.equals(candidate.format, true)) score += 0.01
-                if (local.episodesCount != null && local.episodesCount == candidate.episodes) score += 0.01
-                if (localGenres.intersect(candidate.genres.map(::plain).toSet()).isNotEmpty()) score += 0.01
+            if (corroborate) {
+                if (local.year != null && candidate.seasonYear == local.year) score += 0.025
+                if (local.format != null && local.format.equals(candidate.format, true)) score += 0.015
+                if (local.episodesCount != null && local.episodesCount == candidate.episodes) score += 0.015
+                if (localGenres.intersect(candidate.genres.map(::plain).toSet()).isNotEmpty()) score += 0.015
                 val synopsis = words(candidate.description)
                 if (localSynopsis.size >= 5 && synopsis.size >= 5 &&
                     localSynopsis.intersect(synopsis).size.toDouble() / minOf(localSynopsis.size, synopsis.size) >= 0.45
-                ) score += 0.015
+                ) score += 0.025
             }
-            ranked.copy(score = score.coerceIn(0.0, if (exact) 1.0 else 0.95))
+            // Do not let metadata from the current association outrank an exact
+            // original-title match when repairing a different work.
+            val ceiling = if (exactOriginal) 1.0 else if (exactAlternate && original.score < 0.58) 0.94 else 0.96
+            if (candidate.format.isNullOrBlank()) score -= 0.025
+            val best = if ((alternate?.score ?: 0.0) > original.score) alternate ?: original else original
+            best.copy(score = score.coerceIn(0.0, ceiling))
         }.sortedWith(compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }.thenBy { it.anime.id })
         .toList()
 }
