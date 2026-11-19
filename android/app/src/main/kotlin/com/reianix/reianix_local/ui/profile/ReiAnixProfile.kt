@@ -462,7 +462,7 @@ private fun ProfileEditor(
                 ProfileRow(Icons.Outlined.Image, "Personalizar papel de parede") {
                     if (!busy) showWallpaper = true
                 }
-                Text("Altere o fundo das telas do ReiAnix.", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text("Personalize o fundo do Perfil e dos Ajustes.", color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
                 Text("Anime favorito em destaque", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
                 TextButton(onClick = { featured = null }, enabled = !busy) { Text(if (featured == null) "✓ Nenhum" else "Nenhum") }
