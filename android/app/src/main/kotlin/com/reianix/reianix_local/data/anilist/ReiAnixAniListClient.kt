@@ -82,16 +82,16 @@ class ReiAnixAniListClient(
 
     /** Explicit repair only: query a bounded set of aliases in one HTTP request.
      * The ordinary search API and its rate limiting remain unchanged. */
-    suspend fun searchAnimeAliases(terms: List<String>, limit: Int = 10): AniListResult<List<AniListAnime>> {
-        val searches = terms.map(String::trim).filter(String::isNotBlank).distinct().take(6)
+    suspend fun searchAnimeAliases(terms: List<String>, limit: Int = 20): AniListResult<List<AniListAnime>> {
+        val searches = terms.map(String::trim).filter(String::isNotBlank).distinct().take(8)
         if (searches.isEmpty()) return AniListResult.Success(emptyList())
-        require(limit in 1..10)
+        require(limit in 1..20)
         val variables = JSONObject()
         val declarations = searches.indices.joinToString(", ") { i -> "$" + "term" + i + ": String!" }
         val fields = searches.mapIndexed { i, term ->
             variables.put("term$i", term)
             "alias$i: Page(page: 1, perPage: $limit) { media(search: " +
-                "$" + "term" + i + ", type: ANIME, sort: SEARCH_MATCH) { $MEDIA_FIELDS } }"
+                "$" + "term" + i + ", type: ANIME, format_not: MUSIC, sort: SEARCH_MATCH) { $MEDIA_FIELDS } }"
         }.joinToString("\n")
         return execute("query RepairAnime($declarations) { $fields }", variables) { data ->
             val results = linkedMapOf<Int, AniListAnime>()
