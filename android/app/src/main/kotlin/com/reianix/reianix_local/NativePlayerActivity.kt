@@ -1845,6 +1845,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     updatePlayPauseButton()
                     updateProgressUi()
                     startProgressReporting()
+                    // A profile request is explicit, validated against the canonical
+                    // episode and consumed once. Reuse the existing virtual clip flow.
+                    if (favoriteClipSession == null && !episodeChangePending) {
+                        val scene = com.reianix.reianix_local.player.ProfileClipHandoff.take(requestId, uri.toString())
+                        if (scene != null) {
+                            handler.post {
+                                if (isCurrent() && favoriteScenesAvailable() && !errorVisible) {
+                                    playFavoriteClip(scene)
+                                }
+                            }
+                        }
+                    }
                     if (!firstFrameRenderedForTesting && !errorVisible) {
 
                     }

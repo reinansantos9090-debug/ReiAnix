@@ -31,6 +31,7 @@ import com.reianix.reianix_local.ui.collector.ReiAnixCollectorJourneyRoute
 import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsRoute
 import com.reianix.reianix_local.ui.discovery.ReiAnixTimelineHubRoute
 import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
+import com.reianix.reianix_local.ui.profile.ReiAnixProfileRoute
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
@@ -49,6 +50,7 @@ object ReiAnixRoutes {
 
     const val SETTINGS = "settings"
     const val SETTINGS_GENERAL = "settings_general"
+    const val PROFILE = "profile"
     const val STORAGE = "storage"
     const val ORGANIZE = "organize"
     const val RECOVERY = "recovery"
@@ -323,6 +325,7 @@ fun ReiAnixNavigationHost(
         appearanceShowThumbnails = appearanceShowThumbnails,
         settings = settings,
         settingsGeneral = settingsGeneral,
+        profile = { ReiAnixProfileRoute(navController, homeViewModel) },
         storage = storage,
         recovery = recovery,
         details = { args ->
@@ -366,6 +369,7 @@ fun ReiAnixNavigationHost(
     showBottomNavigation: Boolean = true,
     onOpenCollector: () -> Unit = {},
     settingsGeneral: @Composable () -> Unit = settings,
+    profile: @Composable () -> Unit = {},
 ) {
     val effectiveStartDestination = ReiAnixRoutes.normalizeStartDestination(startDestination)
     LaunchedEffect(startDestination, effectiveStartDestination) {
@@ -426,6 +430,7 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.SEARCH) { search() }
             composable(ReiAnixRoutes.SETTINGS) { settings() }
             composable(ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
+            composable(ReiAnixRoutes.PROFILE) { profile() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }
             composable(ReiAnixRoutes.COLLECTOR) { collector() }

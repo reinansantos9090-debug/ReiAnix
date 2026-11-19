@@ -2811,7 +2811,7 @@ class ReiAnixLibraryViewModel(
         )
     }
 
-    fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null): String? {
+    fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null, favoriteSceneId: String? = null): String? {
         val requestId = UUID.randomUUID().toString()
         val duplicateRequestId = synchronized(nativePlayerHandoffLock) {
             val existing = pendingNativePlayerHandoffRequestId
@@ -2887,6 +2887,13 @@ class ReiAnixLibraryViewModel(
                     else -> throw IllegalArgumentException(
                         "O ReiAnix aceita somente mídias locais autorizadas.",
                     )
+                }
+
+                val favoriteScene = favoriteSceneId?.let { id ->
+                    com.reianix.reianix_local.player.PlayerLocalMetadataStore(appContext).favoriteScenes()
+                        .firstOrNull { it.note.id == id && it.mediaId == mediaUri.toString() &&
+                            (it.note.clipEndMs ?: -1L) > it.note.timestampMs }
+                        ?: throw IllegalArgumentException("A cena favorita não está mais disponível.")
                 }
 
                 val resumeEnabled = preferenceValue("player.resume").toBooleanStrictOrNull() ?: true
@@ -2984,7 +2991,15 @@ class ReiAnixLibraryViewModel(
                         false
                     } else {
 
-                        appContext.startActivity(intent)
+                        favoriteScene?.let {
+                            com.reianix.reianix_local.player.ProfileClipHandoff.put(requestId, it)
+                        }
+                        try {
+                            appContext.startActivity(intent)
+                        } catch (failure: Exception) {
+                            com.reianix.reianix_local.player.ProfileClipHandoff.clear(requestId)
+                            throw failure
+                        }
                         true
                     }
                 }

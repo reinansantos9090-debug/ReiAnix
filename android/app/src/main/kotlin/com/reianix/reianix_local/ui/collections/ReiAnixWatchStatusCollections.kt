@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.ui.collections
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -85,8 +88,8 @@ fun ReiAnixWatchStatusCollections(
 
     val selectedAnimes = trackedTitles.filter { statusById[it.first] == selected }
     ReiAnixResponsiveRoot {
-        Column(modifier = Modifier.fillMaxSize()) {
-            ReiAnixTopBar(title = "Listas de acompanhamento")
+        Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            ReiAnixTopBar(title = "Listas de acompanhamento", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack)
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                     .padding(horizontal = 12.dp),
@@ -102,10 +105,6 @@ fun ReiAnixWatchStatusCollections(
                     )
                 }
             }
-            OutlinedButton(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                onClick = onBack,
-            ) { Text("Voltar para coleções") }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (loading) Text("Carregando suas listas…", modifier = Modifier.padding(16.dp))
             else if (selectedAnimes.isEmpty()) {

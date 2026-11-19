@@ -1,0 +1,133 @@
+package com.reianix.reianix_local.data.profile
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.UUID
+
+/** User-owned local profile, entirely independent of catalog metadata and external accounts. */
+data class ReiAnixProfile(
+    val name: String = "",
+    val bio: String = "",
+    val avatar: String = "person",
+    val photo: String? = null,
+    val banner: String? = null,
+    val frame: String = "none",
+    val color: String = "blue",
+    val featuredAnimeId: Long? = null,
+) {
+    val displayName get() = name.ifBlank { "Nome do usuário" }
+    val displayBio get() = bio.ifBlank { "Explorando o mundo dos animes." }
+}
+
+class ReiAnixProfileStore private constructor(context: Context) {
+    private val app = context.applicationContext
+    private val prefs = app.getSharedPreferences("reianix_local_profile_v1", Context.MODE_PRIVATE)
+    private val directory = File(app.filesDir, "local_profile")
+    private val mutex = Mutex()
+    private val current = MutableStateFlow(read())
+    val state = current.asStateFlow()
+
+    private fun read() = ReiAnixProfile(
+        name = prefs.getString("name", "").orEmpty(),
+        bio = prefs.getString("bio", "").orEmpty(),
+        avatar = prefs.getString("avatar", "person").orEmpty(),
+        photo = prefs.getString("photo", null),
+        banner = prefs.getString("banner", null),
+        frame = prefs.getString("frame", "none").orEmpty(),
+        color = prefs.getString("color", "blue").orEmpty(),
+        featuredAnimeId = prefs.getLong("featured", 0L).takeIf { it > 0L },
+    )
+
+    fun image(name: String?): File? =
+        name?.takeIf { it.matches(Regex("[a-f0-9-]+[.]jpg")) }
+            ?.let { File(directory, it) }
+
+    suspend fun importImage(uri: Uri, banner: Boolean): String = withContext(Dispatchers.IO) {
+        val limit = if (banner) 1600 else 512
+        val bitmap = if (Build.VERSION.SDK_INT >= 28) {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(app.contentResolver, uri)) { decoder, info, _ ->
+                val largest = maxOf(info.size.width, info.size.height)
+                require(largest > 0) { "Imagem inválida." }
+                if (largest > limit) decoder.setTargetSize(
+                    (info.size.width.toLong() * limit / largest).toInt().coerceAtLeast(1),
+                    (info.size.height.toLong() * limit / largest).toInt().coerceAtLeast(1),
+                )
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }
+        } else {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            app.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Imagem inválida." }
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / inSampleSize > limit * 2) inSampleSize *= 2
+            }
+            app.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+                ?: error("Não foi possível abrir a imagem.")
+        }
+        check(directory.isDirectory || directory.mkdirs()) { "Não foi possível criar a pasta do perfil." }
+        val name = UUID.randomUUID().toString() + ".jpg"
+        val target = File(directory, name)
+        try {
+            val largest = maxOf(bitmap.width, bitmap.height)
+            val scaled = if (largest > limit) Bitmap.createScaledBitmap(bitmap,
+                (bitmap.width.toLong() * limit / largest).toInt().coerceAtLeast(1),
+                (bitmap.height.toLong() * limit / largest).toInt().coerceAtLeast(1), true) else bitmap
+            try {
+                target.outputStream().use { check(scaled.compress(Bitmap.CompressFormat.JPEG, 88, it)) }
+            } finally {
+                if (scaled !== bitmap) scaled.recycle()
+            }
+            name
+        } catch (e: Exception) {
+            target.delete()
+            throw e
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    /** Only temporary selections can be discarded; never delete the active photo. */
+    suspend fun discard(name: String?) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val selected = current.value
+            if (name != selected.photo && name != selected.banner) image(name)?.delete()
+        }
+    }
+
+    suspend fun save(profile: ReiAnixProfile) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val clean = profile.copy(name = profile.name.trim().take(40), bio = profile.bio.trim().take(160))
+            require(clean.photo == null || image(clean.photo)?.isFile == true) { "Foto indisponível." }
+            require(clean.banner == null || image(clean.banner)?.isFile == true) { "Banner indisponível." }
+            val old = current.value
+            check(prefs.edit().putString("name", clean.name).putString("bio", clean.bio)
+                .putString("avatar", clean.avatar).putString("photo", clean.photo)
+                .putString("banner", clean.banner).putString("frame", clean.frame)
+                .putString("color", clean.color).putLong("featured", clean.featuredAnimeId ?: 0L)
+                .commit()) { "Não foi possível salvar o perfil." }
+            current.value = clean
+            listOf(old.photo, old.banner).distinct().forEach {
+                if (it != clean.photo && it != clean.banner) image(it)?.delete()
+            }
+        }
+    }
+
+    companion object {
+        @Volatile private var instance: ReiAnixProfileStore? = null
+        fun from(context: Context): ReiAnixProfileStore = instance ?: synchronized(this) {
+            instance ?: ReiAnixProfileStore(context).also { instance = it }
+        }
+    }
+}
