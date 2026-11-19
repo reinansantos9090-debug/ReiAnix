@@ -19,6 +19,8 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         score: Double?,
         margin: Double?,
         traceMoeConfirmed: Boolean = false,
+        explicitRepair: Boolean = false,
+        expectedAssociationId: Long? = null,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -47,13 +49,19 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
             val current = currentAndManualFields.first
             val protectedFields = currentAndManualFields.second
+            // Explicit repair may replace an automatic association only if it has not
+            // changed since the lookup. Manual associations and fields remain protected.
+            if (explicitRepair && (current.anilistId != expectedAssociationId ||
+                    (current.anilistMatchManual == true && (!manual || current.anilistId != anilistId)))) {
+                return@transaction current
+            }
             if (!manual && (
                     current.anilistMatchManual == true ||
                         current.metadataSource == "manual" ||
                         current.metadataStatus == "manual"
                 )
             ) return@transaction current
-            if (!manual && !traceMoeConfirmed &&
+            if (!manual && !traceMoeConfirmed && !explicitRepair &&
                 current.anilistId != null && current.anilistId != anilistId
             ) return@transaction current
             if (!manual && traceMoeConfirmed && (score == null || score < 0.86)) {
