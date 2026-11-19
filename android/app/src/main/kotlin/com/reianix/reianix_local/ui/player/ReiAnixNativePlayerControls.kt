@@ -124,6 +124,9 @@ data class ReiAnixNativePlayerUiState(
     val skipSegments: List<PlayerSkipSegment> = emptyList(),
     val favoriteSceneTimes: List<Long> = emptyList(),
     val audioOnly: Boolean = false,
+    val favoriteClipMode: Boolean = false,
+    val favoriteClipStartMs: Long = 0L,
+    val favoriteClipSourceDurationMs: Long = 0L,
 )
 
 /**
@@ -513,7 +516,7 @@ fun ReiAnixNativePlayerBottomControls(
     }
     var previewFrame by remember(mediaUri) { mutableStateOf<Bitmap?>(null) }
     val previewImage = remember(previewFrame) { previewFrame?.asImageBitmap() }
-    LaunchedEffect(userDragging, previewFrames, duration, seekEnabled, state.audioOnly) {
+    LaunchedEffect(userDragging, previewFrames, duration, seekEnabled, state.audioOnly, state.favoriteClipStartMs, state.favoriteClipSourceDurationMs) {
         previewFrame = null
         if (!userDragging || !seekEnabled || state.audioOnly || previewFrames == null) return@LaunchedEffect
         try {
@@ -521,10 +524,12 @@ fun ReiAnixNativePlayerBottomControls(
                 val targetMs = (sliderFraction * duration.toFloat()).toLong()
                     .coerceIn(0L, duration)
                 // Never wait for a decoder on the Compose/UI thread.
-                previewFrames.requestScrub(targetMs, duration)
+                val sourceTarget = targetMs + state.favoriteClipStartMs
+                val sourceDuration = state.favoriteClipSourceDurationMs.takeIf { it > 0L } ?: duration
+                previewFrames.requestScrub(sourceTarget, sourceDuration)
                 // Keep the last visible frame while a closer one is decoding.
                 // As soon as any cached image exists, show the nearest one.
-                val nearest = previewFrames.nearestCached(targetMs)
+                val nearest = previewFrames.nearestCached(sourceTarget)
                 if (nearest != null && previewFrame !== nearest) {
                     previewFrame = nearest
                 }
@@ -777,7 +782,7 @@ fun ReiAnixNativePlayerBottomControls(
                 showLabel = !landscape,
                 contentDescription = "Abrir lista de episódios",
                 onClick = onResize,
-                enabled = !state.episodeTransitionInProgress,
+                enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
                 active = false,
             )
             PlayerBottomAction(
