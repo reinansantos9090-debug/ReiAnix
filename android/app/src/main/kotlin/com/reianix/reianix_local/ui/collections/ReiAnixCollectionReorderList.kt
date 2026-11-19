@@ -16,7 +16,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +43,7 @@ import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
+import java.util.Locale
 
 /**
  * Long-press any card, then drag over another card to change its position.
@@ -148,45 +157,110 @@ internal fun ReiAnixCollectionReorderList(
         itemsIndexed(items = order, key = { _, id -> id }) { _, animeId ->
             val anime = animeById[animeId]
             val dragging = draggedId == animeId
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
-                color = if (dragging) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceVariant,
-                tonalElevation = if (dragging) 4.dp else 0.dp,
+            CollectionAnimeRow(
+                animeId = animeId,
+                anime = anime,
+                isCover = collection.effectiveCoverId == animeId,
+                busy = busy || draggedId != null,
+                dragging = dragging,
+                onOpen = { onOpenAnime(animeId) },
+                onSetCover = { onSetCover(animeId) },
+                onRemove = { onRemove(animeId) },
+            )
+        }
+    }
+}
+
+/** Render only the canonical local snapshot: no extra metadata or artwork requests. */
+@Composable
+internal fun CollectionAnimeRow(
+    animeId: Long,
+    anime: ReiAnixAnimeUiModel?,
+    isCover: Boolean,
+    busy: Boolean,
+    dragging: Boolean = false,
+    onOpen: () -> Unit,
+    onSetCover: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val gold = Color(0xFFEAC54F)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = if (dragging) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = if (dragging) 4.dp else 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CollectionPoster(anime, modifier = Modifier.size(60.dp, 84.dp))
+            Column(
+                modifier = Modifier.weight(1f).then(
+                    if (anime == null || busy) Modifier else Modifier.clickable(onClick = onOpen)
+                ),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        CollectionPoster(anime, modifier = Modifier.size(44.dp, 62.dp))
+                Text(
+                    anime?.title ?: "Anime ausente (ID $animeId)",
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (anime != null) {
+                    Text(
+                        if (anime.availableContentCount == 1) "1 episódio disponível"
+                        else "${anime.availableContentCount} episódios disponíveis",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val details = remember(anime.year, anime.genres) {
+                        buildList {
+                            anime.year?.takeIf { it > 0 }?.let { add(it.toString()) }
+                            addAll(anime.genres.map { it.name.trim() }.filter(String::isNotBlank).distinct().take(2))
+                        }.joinToString(" • ")
+                    }
+                    if (details.isNotBlank()) {
                         Text(
-                            anime?.title ?: "Anime ausente (ID $animeId)",
-                            modifier = Modifier.weight(1f).then(
-                                if (anime == null || busy || dragging) Modifier
-                                else Modifier.clickable { onOpenAnime(animeId) }
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 2,
+                            details,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(
-                            enabled = anime != null && !busy && !dragging,
-                            onClick = { onSetCover(animeId) },
-                        ) {
-                            Text(if (collection.effectiveCoverId == animeId) "★ Capa" else "Usar capa")
+                    anime.score?.takeIf { it.isFinite() && it > 0.0 && it <= 100.0 }?.let { score ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Filled.Star, contentDescription = null, tint = gold, modifier = Modifier.size(13.dp))
+                            Text(
+                                String.format(Locale("pt", "BR"), "%.1f/10", score / 10.0),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = gold,
+                            )
                         }
-                        TextButton(
-                            enabled = !busy && !dragging,
-                            onClick = { onRemove(animeId) },
-                        ) { Text("Remover") }
                     }
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(
+                    onClick = onSetCover,
+                    enabled = anime != null && !busy && !isCover,
+                    modifier = Modifier.semantics { selected = isCover },
+                ) {
+                    Icon(
+                        if (isCover) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (isCover) "Capa da coleção" else "Usar capa",
+                        tint = if (isCover) gold else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                IconButton(onClick = onRemove, enabled = !busy) {
+                    Icon(
+                        Icons.Outlined.Delete,
+                        contentDescription = "Remover da coleção",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }

@@ -1,6 +1,23 @@
 package com.reianix.reianix_local.ui.collections
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.FolderCopy
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
@@ -21,6 +38,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -106,9 +126,9 @@ fun ReiAnixCollectionsScreen(
     var error by remember(repository) { mutableStateOf<String?>(null) }
     var retryToken by remember(repository) { mutableStateOf(0) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
-    var editingNameId by remember { mutableStateOf<String?>(null) }
-    var showNameDialog by remember { mutableStateOf(false) }
-    var nameDraft by remember { mutableStateOf("") }
+    var editingNameId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showNameEditor by rememberSaveable { mutableStateOf(false) }
+    var nameDraft by rememberSaveable { mutableStateOf("") }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
@@ -175,12 +195,54 @@ fun ReiAnixCollectionsScreen(
 
     val goBack: () -> Unit = {
         when {
+            showNameEditor -> {
+                if (!busy) {
+                    showNameEditor = false
+                    error = null
+                }
+            }
             adding -> { adding = false; search = "" }
             selectedId != null -> { selectedId = null; search = "" }
             else -> onDismiss()
         }
     }
-    BackHandler(enabled = selected != null || adding) { goBack() }
+    BackHandler(enabled = showNameEditor || selectedId != null || adding) { goBack() }
+
+    if (showNameEditor) {
+        ReiAnixResponsiveRoot {
+            CollectionNameScreen(
+                name = nameDraft,
+                onNameChange = { nameDraft = it.take(64) },
+                editing = editingNameId != null,
+                busy = busy || loading,
+                error = error,
+                onBack = goBack,
+                onSave = {
+                    val name = nameDraft
+                    val id = editingNameId
+                    var createdId: String? = null
+                    applyEdit(
+                        change = {
+                            if (id == null) {
+                                val created = repository.create(name)
+                                createdId = created.id
+                                repository.load()
+                            } else repository.rename(id, name)
+                        },
+                        onSaved = {
+                            showNameEditor = false
+                            createdId?.let { newId ->
+                                selectedId = newId
+                                adding = true
+                                search = ""
+                            }
+                        },
+                    )
+                },
+            )
+        }
+        return
+    }
 
     ReiAnixResponsiveRoot {
         Column(
@@ -191,6 +253,21 @@ fun ReiAnixCollectionsScreen(
                 subtitle = if (selected == null) "Organize seus animes" else "${selected.animeIds.size} anime(s)",
                 navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
                 onNavigationClick = goBack,
+                actions = {
+                    if (selected != null) {
+                        CollectionOptionsMenu(
+                            collectionId = selected.id,
+                            enabled = !busy && !loading && pendingMembership.isEmpty(),
+                            onRename = {
+                                editingNameId = selected.id
+                                nameDraft = selected.name
+                                error = null
+                                showNameEditor = true
+                            },
+                            onDelete = { pendingDeleteId = selected.id },
+                        )
+                    }
+                },
             )
             Column(
                 modifier = Modifier.fillMaxSize().padding(
@@ -204,85 +281,140 @@ fun ReiAnixCollectionsScreen(
                     if (!loading && error != null) {
                         TextButton(onClick = { retryToken++ }) { Text("Tentar novamente") }
                     }
-                    // Keep existing collections accessible when present; center the two
-                    // primary actions in the available space rather than pinning them to the top.
-                    Column(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-                    ) {
-                        Button(
-                            onClick = { editingNameId = null; nameDraft = ""; showNameDialog = true },
-                            enabled = !busy && !loading,
-                            modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().heightIn(min = 56.dp),
-                        ) { Text("Nova coleção") }
-                        OutlinedButton(
-                            onClick = onAddFolder,
-                            modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().heightIn(min = 56.dp),
-                        ) { Text("Adicionar pasta") }
+                    val createCollection = {
+                        editingNameId = null
+                        nameDraft = ""
+                        error = null
+                        showNameEditor = true
                     }
-                    if (collections.isNotEmpty()) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(collections, key = { it.id }) { collection ->
-                            val cover = collection.effectiveCoverId?.let(animeById::get)
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    selectedId = collection.id
-                                    adding = false
-                                    search = ""
-                                },
-                                shape = MaterialTheme.shapes.medium,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
+                    if (collections.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .widthIn(max = 480.dp)
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(18.dp),
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                Icon(
+                                    Icons.Outlined.FolderCopy,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(64.dp),
+                                )
+                                Text("Suas coleções", style = MaterialTheme.typography.headlineSmall)
+                                Text(
+                                    "Organize seus animes do seu jeito.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                CollectionsPrimaryActions(
+                                    enabled = !busy && !loading && error == null,
+                                    onCreate = createCollection,
+                                    onAddFolder = onAddFolder,
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(bottom = 24.dp),
+                        ) {
+                            item(key = "collection-actions") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
-                                    CollectionPoster(cover, modifier = Modifier.size(44.dp, 62.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(collection.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        Text(
-                                            "${collection.animeIds.size} anime(s)",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    Column(Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
+                                        CollectionsPrimaryActions(
+                                            enabled = !busy && !loading && error == null,
+                                            onCreate = createCollection,
+                                            onAddFolder = onAddFolder,
                                         )
+                                    }
+                                }
+                            }
+                            item(key = "collection-heading") {
+                                Text(
+                                    "Suas coleções",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    modifier = Modifier.padding(top = 12.dp),
+                                )
+                            }
+                            items(collections, key = { "collection-" + it.id }) { collection ->
+                                val cover = collection.effectiveCoverId?.let(animeById::get)
+                                Surface(
+                                    onClick = {
+                                        selectedId = collection.id
+                                        adding = false
+                                        search = ""
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    ) {
+                                        if (cover != null) {
+                                            CollectionPoster(cover, modifier = Modifier.size(52.dp, 74.dp))
+                                        } else {
+                                            Icon(
+                                                Icons.Outlined.Folder,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(52.dp, 74.dp),
+                                            )
+                                        }
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(collection.name, style = MaterialTheme.typography.titleMedium,
+                                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            Text(
+                                                "${collection.animeIds.size} anime(s)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
                         }
                     }
-                    }
                 } else {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        TextButton(
+                        OutlinedButton(
                             enabled = !busy,
-                            onClick = {
-                                editingNameId = selected.id
-                                nameDraft = selected.name
-                                showNameDialog = true
-                            },
-                        ) { Text("Renomear") }
-                        TextButton(
-                            enabled = !busy,
-                            onClick = { pendingDeleteId = selected.id },
-                        ) { Text("Excluir") }
+                            onClick = { adding = !adding; search = "" },
+                            modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(0.78f)
+                                .heightIn(min = 48.dp),
+                        ) {
+                            Icon(
+                                if (adding) Icons.AutoMirrored.Filled.ArrowBack else Icons.Filled.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Text(
+                                if (adding) "Voltar aos animes" else "Adicionar animes",
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
                     }
-                    Text(
-                        "Segure um anime e arraste para mudar sua posição. A capa da coleção é a do anime escolhido.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedButton(
-                        enabled = !busy,
-                        onClick = { adding = !adding; search = "" },
-                    ) { Text(if (adding) "Voltar aos animes" else "Adicionar animes") }
                     if (adding) {
                         OutlinedTextField(
                             value = search,
@@ -340,7 +472,7 @@ fun ReiAnixCollectionsScreen(
                             ReiAnixCollectionReorderList(
                                 collection = selected,
                                 animeById = animeById,
-                                busy = busy,
+                                busy = busy || pendingMembership.isNotEmpty(),
                                 modifier = Modifier.weight(1f),
                                 onOpenAnime = onOpenAnime,
                                 onSetCover = { id ->
@@ -358,46 +490,6 @@ fun ReiAnixCollectionsScreen(
                 }
             }
         }
-    }
-
-    if (showNameDialog) {
-        AlertDialog(
-            onDismissRequest = { if (!busy) showNameDialog = false },
-            title = { Text(if (editingNameId == null) "Nova coleção" else "Renomear coleção") },
-            text = {
-                OutlinedTextField(
-                    value = nameDraft,
-                    onValueChange = { nameDraft = it.take(64) },
-                    label = { Text("Nome da coleção") },
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                Button(
-                    enabled = !busy && nameDraft.isNotBlank(),
-                    onClick = {
-                        val name = nameDraft
-                        val id = editingNameId
-                        var createdId: String? = null
-                        applyEdit(
-                            change = {
-                                if (id == null) {
-                                    createdId = repository.create(name).id
-                                    repository.load()
-                                } else repository.rename(id, name)
-                            },
-                            onSaved = {
-                                showNameDialog = false
-                                if (createdId != null) selectedId = createdId
-                            },
-                        )
-                    },
-                ) { Text("Salvar") }
-            },
-            dismissButton = {
-                TextButton(enabled = !busy, onClick = { showNameDialog = false }) { Text("Cancelar") }
-            },
-        )
     }
 
     if (pendingDeleteId != null) {
@@ -421,6 +513,182 @@ fun ReiAnixCollectionsScreen(
                 TextButton(enabled = !busy, onClick = { pendingDeleteId = null }) { Text("Cancelar") }
             },
         )
+    }
+}
+
+@Composable
+internal fun CollectionOptionsMenu(
+    collectionId: String,
+    enabled: Boolean,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var expanded by remember(collectionId) { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, enabled = enabled) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "Opções da coleção")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Renomear") },
+                enabled = enabled,
+                onClick = { expanded = false; onRename() },
+            )
+            DropdownMenuItem(
+                text = { Text("Excluir") },
+                enabled = enabled,
+                onClick = { expanded = false; onDelete() },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun CollectionsPrimaryActions(
+    enabled: Boolean,
+    onCreate: () -> Unit,
+    onAddFolder: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CollectionActionCard(
+            title = "Nova coleção",
+            description = "Agrupe seus animes favoritos.",
+            icon = Icons.Outlined.CreateNewFolder,
+            enabled = enabled,
+            onClick = onCreate,
+        )
+        CollectionActionCard(
+            title = "Adicionar pasta",
+            description = "Importe animes do armazenamento.",
+            icon = Icons.Outlined.FolderOpen,
+            enabled = true,
+            onClick = onAddFolder,
+        )
+    }
+}
+
+@Composable
+private fun CollectionActionCard(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(description, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+internal fun CollectionNameScreen(
+    name: String,
+    onNameChange: (String) -> Unit,
+    editing: Boolean,
+    busy: Boolean,
+    error: String?,
+    onBack: () -> Unit,
+    onSave: () -> Unit,
+) {
+    val canSave = !busy && name.isNotBlank()
+    Column(
+        modifier = Modifier.fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .imePadding()
+            .navigationBarsPadding(),
+    ) {
+        ReiAnixTopBar(
+            title = if (editing) "Renomear coleção" else "Nova coleção",
+            navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+            onNavigationClick = onBack,
+        )
+        Box(
+            modifier = Modifier.fillMaxWidth().weight(1f).padding(
+                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+            ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()
+                    .verticalScroll(rememberScrollState()).padding(vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.CreateNewFolder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(64.dp),
+                )
+                Text(
+                    if (editing) "Renomeie sua coleção" else "Crie sua coleção",
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    if (editing) "Escolha um novo nome." else "Organize seus animes em um só lugar.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { onNameChange(it.take(64)) },
+                    enabled = !busy,
+                    label = { Text("Nome da coleção") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (canSave) onSave() }),
+                )
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium)
+                }
+                Button(
+                    enabled = canSave,
+                    onClick = onSave,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text(if (editing) "Salvar nome" else "Criar coleção",
+                            style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+        }
     }
 }
 
