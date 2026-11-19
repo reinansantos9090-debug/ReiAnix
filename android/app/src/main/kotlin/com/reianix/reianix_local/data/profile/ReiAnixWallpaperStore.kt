@@ -10,21 +10,17 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** App-only wallpaper; never changes the Android system wallpaper or media catalog. */
+/** Wallpaper for Profile and Settings only; independent of the device wallpaper and catalog. */
 data class ReiAnixWallpaper(
     val imageName: String? = null,
     val zoom: Float = 1f,
     val positionX: Float = 0.5f,
     val positionY: Float = 0.5f,
-    val dim: Float = 0.65f,
-    val blur: Float = 0f,
 ) {
     fun normalized() = copy(
         zoom = zoom.finiteIn(1f, 3f, 1f),
         positionX = positionX.finiteIn(0f, 1f, 0.5f),
         positionY = positionY.finiteIn(0f, 1f, 0.5f),
-        dim = dim.finiteIn(0f, 1f, 0.65f),
-        blur = blur.finiteIn(0f, 1f, 0f),
     )
 }
 
@@ -47,8 +43,6 @@ class ReiAnixWallpaperStore private constructor(context: Context) {
         zoom = prefs.getFloat("zoom", 1f),
         positionX = prefs.getFloat("x", 0.5f),
         positionY = prefs.getFloat("y", 0.5f),
-        dim = prefs.getFloat("dim", 0.65f),
-        blur = prefs.getFloat("blur", 0f),
     ).normalized()
 
     suspend fun importWallpaper(uri: Uri): String = importPersonalImage(app, directory, uri, 1600)
@@ -66,7 +60,7 @@ class ReiAnixWallpaperStore private constructor(context: Context) {
             val previous = current.value
             check(prefs.edit().putString("image", clean.imageName)
                 .putFloat("zoom", clean.zoom).putFloat("x", clean.positionX).putFloat("y", clean.positionY)
-                .putFloat("dim", clean.dim).putFloat("blur", clean.blur).commit()) {
+                .remove("dim").remove("blur").commit()) {
                 "Não foi possível salvar o papel de parede."
             }
             current.value = clean
