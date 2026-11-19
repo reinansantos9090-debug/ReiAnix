@@ -57,7 +57,7 @@ class ReiAnixProfileTest {
             } catch (_: IllegalArgumentException) { }
             assertEquals(saved, store.state.value)
         } finally {
-            store.save(original.copy(photo = null, banner = null))
+            store.save(original.copy(photo = null))
         }
     }
 
