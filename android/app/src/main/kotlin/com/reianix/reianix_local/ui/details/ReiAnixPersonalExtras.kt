@@ -305,7 +305,7 @@ internal fun ReiAnixPersonalNoteDialog(
 
 
 /**
- * Four consistent outline silhouettes based on the Details shortcut reference.
+ * Five consistent outline silhouettes based on the Details shortcut reference.
  * Each vector shares a 24-unit viewport, round caps/joins and a 2-unit stroke.
  */
 internal object ReiAnixDetailsShortcutIcons {
@@ -316,6 +316,24 @@ internal object ReiAnixDetailsShortcutIcons {
                 strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
                 pathBuilder = draw)
         }.build()
+
+    // Diagonal link fills the same optical area as the heart, note and tag.
+    // Use the shared 24 dp viewport and rounded 2-unit stroke, not Material's
+    // shorter horizontal chain silhouette.
+    val AniList = outline("DetailsAniListLink") {
+        moveTo(10f, 13f)
+        curveTo(11.9f, 15.5f, 15.3f, 15.7f, 17.5f, 13.5f)
+        lineTo(20.5f, 10.5f)
+        curveTo(22.5f, 8.5f, 22.5f, 5.5f, 20.5f, 3.5f)
+        curveTo(18.5f, 1.5f, 15.5f, 1.5f, 13.5f, 3.5f)
+        lineTo(11.8f, 5.2f)
+        moveTo(14f, 11f)
+        curveTo(12.1f, 8.5f, 8.7f, 8.3f, 6.5f, 10.5f)
+        lineTo(3.5f, 13.5f)
+        curveTo(1.5f, 15.5f, 1.5f, 18.5f, 3.5f, 20.5f)
+        curveTo(5.5f, 22.5f, 8.5f, 22.5f, 10.5f, 20.5f)
+        lineTo(12.2f, 18.8f)
+    }
 
     val Favorite = outline("DetailsHeart") {
         moveTo(20.8f, 4.6f)
@@ -382,7 +400,7 @@ internal object ReiAnixDetailsShortcutIcons {
     }
 }
 
-/** Borderless, evenly sized header action shared by the four Details shortcuts. */
+/** Borderless, evenly sized header action shared by the five Details shortcuts. */
 @Composable
 internal fun ReiAnixDetailsQuickAction(
     label: String,
