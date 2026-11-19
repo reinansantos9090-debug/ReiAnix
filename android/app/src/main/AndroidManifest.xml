@@ -11,6 +11,7 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
   
   <!-- Runtime media access; selected-only access is not equivalent to a SAF tree grant. -->
@@ -62,6 +63,14 @@
         <data android:mimeType="video/*" />
       </intent-filter>
     </activity>
+    <!-- Enabled only by the user-selected audio-only mode. No duplicate player. -->
+    <service android:name=".player.AudioOnlyPlaybackService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback">
+      <intent-filter>
+        <action android:name="androidx.media3.session.MediaSessionService" />
+      </intent-filter>
+    </service>
     <activity android:name=".NativePlayerActivity" android:theme="@style/ReiAnixPlayerTheme" android:launchMode="singleTop" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" android:screenOrientation="fullSensor" android:supportsPictureInPicture="true" android:exported="false" />
     <activity android:name="com.reianix.reianix_local.MainActivity" android:exported="true" android:launchMode="singleTask" android:documentLaunchMode="never" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
       <intent-filter>

@@ -31,6 +31,7 @@ class PlayerMediaControls(
         get() = mediaSession.platformToken
     private val notificationManager: PlayerNotificationManager
     private var released = false
+    private var backgroundAudio = false
 
     init {
         ensureNotificationChannel()
@@ -73,9 +74,33 @@ class PlayerMediaControls(
             }
     }
 
+    /**
+     * The service's Media3 notification replaces the Activity notification
+     * only in audio-only mode. Both expose the same existing MediaSession.
+     */
+    fun setBackgroundAudioEnabled(enabled: Boolean): Boolean {
+        if (released) return false
+        if (backgroundAudio == enabled) return true
+        if (enabled) {
+            // Detach before starting the service to avoid duplicate notifications.
+            notificationManager.setPlayer(null)
+            if (!AudioOnlyPlaybackService.start(appContext, mediaSession)) {
+                notificationManager.setPlayer(player)
+                return false
+            }
+        } else {
+            AudioOnlyPlaybackService.stop(appContext, mediaSession)
+            notificationManager.setPlayer(player)
+        }
+        backgroundAudio = enabled
+        return true
+    }
+
     fun release() {
         if (released) return
         released = true
+        AudioOnlyPlaybackService.stop(appContext, mediaSession)
+        backgroundAudio = false
         notificationManager.setPlayer(null)
         mediaSession.release()
     }

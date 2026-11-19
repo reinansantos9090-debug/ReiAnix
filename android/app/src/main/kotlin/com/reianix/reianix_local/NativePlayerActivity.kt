@@ -5178,7 +5178,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             invalidateTransition("onStop_finishing")
         }
         if (::player.isInitialized && !isPictureInPictureActive() && sessionState == SessionState.ACTIVE &&
-            !(audioOnly && !isFinishing && (!screenInteractive || screenLocked))
+            !(audioOnly && !isFinishing)
         ) {
             playbackWasRequestedBeforeStop =
                 player.playWhenReady &&
@@ -5630,7 +5630,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             showFeedback("Não há uma faixa de áudio disponível")
             return
         }
+        if (mediaControls?.setBackgroundAudioEnabled(enabled) != true) {
+            showFeedback("Não foi possível alterar o modo somente áudio")
+            return
+        }
         audioOnly = enabled
+        player.setWakeMode(if (enabled) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NONE)
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, enabled).build()
         playerView.keepScreenOn = !enabled
