@@ -37,6 +37,9 @@ on:
       - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/theme/**"
       - "android/app/src/main/kotlin/com/reianix/reianix_local/viewmodel/ReiAnixSettingsViewModel.kt"
       - "android/app/src/test/kotlin/com/reianix/reianix_local/ReiAnixSettingsContractTest.kt"
+      - "android/app/src/main/kotlin/com/reianix/reianix_local/player/FavoriteClip*.kt"
+      - "android/app/src/main/kotlin/com/reianix/reianix_local/player/FavoriteSceneDialogs.kt"
+      - "android/app/src/test/kotlin/com/reianix/reianix_local/PlayerLocalMetadataStoreTest.kt"
       - ".github/workflows/kotlin_jvm_tests.yml"
   workflow_dispatch:
 
@@ -137,5 +140,6 @@ jobs:
               --tests com.reianix.reianix_local.ui.artwork.ReiAnixLocalArtworkTest \
               --tests com.reianix.reianix_local.storage.NativeStorageOnboardingStateTest \
               --tests com.reianix.reianix_local.scanner.SafTreeChangeDetectionTest \
+              --tests com.reianix.reianix_local.PlayerLocalMetadataStoreTest \
             :app:assembleDebugAndroidTest \
             :app:compileReleaseKotlin
