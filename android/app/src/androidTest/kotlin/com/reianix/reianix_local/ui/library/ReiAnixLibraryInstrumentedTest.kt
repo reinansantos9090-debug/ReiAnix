@@ -222,6 +222,41 @@ class ReiAnixLibraryInstrumentedTest {
     }
 
     @Test
+    fun newFilterPanelStagesPersonalSelectionsUntilApply() {
+        var applied: ReiAnixLibraryFilters? = null
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixLibraryScreen(
+                    state = readyState(),
+                    filters = ReiAnixLibraryFilters(),
+                    visibleAnimes = listOf(anime(7L, "Example Anime")),
+                    genres = emptyList(),
+                    onQueryChange = {},
+                    onGenreSelected = {},
+                    onToggleFavorites = {},
+                    onToggleWatching = {},
+                    onToggleCompleted = {},
+                    onClearFilters = {},
+                    onRefresh = {},
+                    onOpenDetails = {},
+                    onApplyFilters = { applied = it },
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
+        composeRule.onNodeWithContentDescription("Estado").performClick()
+        composeRule.onNodeWithText("Quero assistir").performClick()
+        composeRule.onNodeWithContentDescription("Etiqueta").performClick()
+        composeRule.onNodeWithText("Com notas pessoais").performClick()
+        composeRule.runOnIdle { assertTrue(applied == null) }
+        composeRule.onNodeWithText("Aplicar").performClick()
+        composeRule.runOnIdle {
+            assertTrue(applied?.watchState == "PLANNING")
+            assertTrue(applied?.labelFilter == "WITH_NOTE")
+        }
+    }
+
+    @Test
     fun searchButtonUsesProvidedNavigationAction() {
         var opened = false
         composeRule.setContent {
