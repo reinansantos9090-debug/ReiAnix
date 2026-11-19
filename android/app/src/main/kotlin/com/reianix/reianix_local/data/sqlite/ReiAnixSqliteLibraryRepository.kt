@@ -204,6 +204,8 @@ class ReiAnixSqliteLibraryRepository(
         offset: Int,
         libraryOnly: Boolean = false,
         allResults: Boolean = false,
+        watchState: String = "ALL",
+        labelFilter: String = "ALL",
     ): ReiAnixSqliteSearchPage = withContext(Dispatchers.IO) {
         require(limit in 1..ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS) {
             "Search page size must be between 1 and ${ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS}."
@@ -260,6 +262,25 @@ class ReiAnixSqliteLibraryRepository(
                          lower(COALESCE(ec.availability_state,'')) IN ('missing','scope_unavailable','volume_unavailable') OR
                          NOT (COALESCE(ec.watched,0)=1 OR
                               (COALESCE(ec.duration,0)>0 AND COALESCE(ec.progress,0)>=ec.duration*0.9))))"""
+        }
+
+        // Personal states are local preferences, not AniList's release status.
+        val statusKey = "'reianix.personal.status.' || CAST(a.id AS TEXT)"
+        when (watchState) {
+            "ALL" -> Unit
+            "NONE" -> where += "NOT EXISTS (SELECT 1 FROM preferences p WHERE p.key=($statusKey) AND p.value IN ('PLANNING','WATCHING','COMPLETED','PAUSED','DROPPED'))"
+            else -> {
+                where += "EXISTS (SELECT 1 FROM preferences p WHERE p.key=($statusKey) AND p.value=?)"
+                args += watchState
+            }
+        }
+        val notePresent = "length(trim(COALESCE(a.personal_note,''), char(9)||char(10)||char(13)||' ')) > 0"
+        val tagsPresent = "replace(replace(replace(replace(COALESCE(a.user_tags,''),' ',''),char(9),''),char(10),''),char(13),'') NOT IN ('','[]','null')"
+        when (labelFilter) {
+            "WITH_NOTE" -> where += "($notePresent)"
+            "WITHOUT_NOTE" -> where += "NOT ($notePresent)"
+            "WITH_TAGS" -> where += "($tagsPresent)"
+            "WITHOUT_TAGS" -> where += "NOT ($tagsPresent)"
         }
 
         // SQL candidate narrowing uses first-character variants, then the streamed cursor
