@@ -35,9 +35,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -171,6 +174,84 @@ fun ReiAnixPersonalExtras(
 }
 
 
+/**
+ * Four consistent outline silhouettes based on the Details shortcut reference.
+ * Each vector shares a 24-unit viewport, round caps/joins and a 2-unit stroke.
+ */
+internal object ReiAnixDetailsShortcutIcons {
+    private fun outline(name: String, draw: PathBuilder.() -> Unit): ImageVector =
+        ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f).apply {
+            path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f,
+                strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
+                pathBuilder = draw)
+        }.build()
+
+    val Favorite = outline("DetailsHeart") {
+        moveTo(20.8f, 4.6f)
+        curveTo(18.7f, 2.4f, 15.2f, 2.4f, 13.0f, 4.6f)
+        lineTo(12f, 5.7f)
+        lineTo(10.9f, 4.6f)
+        curveTo(8.8f, 2.4f, 5.3f, 2.4f, 3.2f, 4.6f)
+        curveTo(1f, 6.8f, 1f, 10.3f, 3.2f, 12.5f)
+        lineTo(12f, 21f)
+        lineTo(20.8f, 12.5f)
+        curveTo(23f, 10.3f, 23f, 6.8f, 20.8f, 4.6f)
+        close()
+    }
+    val Note = outline("DetailsNotebookPen") {
+        moveTo(12f, 21f)
+        lineTo(6f, 21f)
+        curveTo(4.9f, 21f, 4f, 20.1f, 4f, 19f)
+        lineTo(4f, 5f)
+        curveTo(4f, 3.9f, 4.9f, 3f, 6f, 3f)
+        lineTo(17f, 3f)
+        curveTo(18.1f, 3f, 19f, 3.9f, 19f, 5f)
+        lineTo(19f, 9f)
+        moveTo(8f, 2f); lineTo(8f, 5f)
+        moveTo(12f, 2f); lineTo(12f, 5f)
+        moveTo(16f, 2f); lineTo(16f, 5f)
+        moveTo(8f, 9f); lineTo(15f, 9f)
+        moveTo(8f, 13f); lineTo(12f, 13f)
+        moveTo(14f, 17.5f)
+        lineTo(19.5f, 12f)
+        curveTo(20.1f, 11.4f, 21f, 11.4f, 21.6f, 12f)
+        lineTo(22f, 12.4f)
+        curveTo(22.6f, 13f, 22.6f, 13.9f, 22f, 14.5f)
+        lineTo(16.5f, 20f)
+        lineTo(13f, 21f)
+        close()
+    }
+    val Tag = outline("DetailsTag") {
+        moveTo(3f, 3f)
+        lineTo(10.5f, 3f)
+        curveTo(11f, 3f, 11.5f, 3.3f, 12f, 3.8f)
+        lineTo(21f, 12.8f)
+        curveTo(21.8f, 13.6f, 21.8f, 14.9f, 21f, 15.7f)
+        lineTo(15.7f, 21f)
+        curveTo(14.9f, 21.8f, 13.6f, 21.8f, 12.8f, 21f)
+        lineTo(3.8f, 12f)
+        curveTo(3.3f, 11.5f, 3f, 11f, 3f, 10.5f)
+        lineTo(3f, 3f)
+        close()
+        moveTo(9.5f, 8f)
+        curveTo(9.5f, 10f, 6.5f, 10f, 6.5f, 8f)
+        curveTo(6.5f, 6f, 9.5f, 6f, 9.5f, 8f)
+        close()
+    }
+    val Bookmark = outline("DetailsBookmark") {
+        moveTo(6f, 3f)
+        lineTo(18f, 3f)
+        curveTo(19.1f, 3f, 20f, 3.9f, 20f, 5f)
+        lineTo(20f, 21f)
+        lineTo(12f, 16f)
+        lineTo(4f, 21f)
+        lineTo(4f, 5f)
+        curveTo(4f, 3.9f, 4.9f, 3f, 6f, 3f)
+        close()
+    }
+}
+
 /** Borderless, evenly sized header action shared by the four Details shortcuts. */
 @Composable
 internal fun ReiAnixDetailsQuickAction(
@@ -264,7 +345,7 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
     }) {
         ReiAnixDetailsQuickAction(
             label = "Adicionar à lista",
-            icon = if (selected == null) Icons.Filled.BookmarkBorder else Icons.Filled.Bookmark,
+            icon = ReiAnixDetailsShortcutIcons.Bookmark,
             onClick = { expanded = true },
             enabled = !loading && !saving,
             active = selected != null,
