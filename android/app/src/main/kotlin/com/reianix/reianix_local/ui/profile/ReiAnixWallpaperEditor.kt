@@ -80,7 +80,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Personalize o fundo do aplicativo", style = MaterialTheme.typography.titleLarge)
-            Text("O player de vídeo continuará com o fundo original.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("O player de vídeo continuará com o fundo original. O tema escuro será usado enquanto o papel de parede estiver ativo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Box(Modifier.widthIn(max = if (ratio >= 1f) 420.dp else 220.dp).fillMaxWidth().aspectRatio(ratio)
                 .clip(RoundedCornerShape(14.dp)).background(Color.Black).border(1.dp, Color(0xFF454545), RoundedCornerShape(14.dp))) {
                 bitmap?.let { ReiAnixWallpaperLayer(it, draft, Modifier.matchParentSize()) }
@@ -88,13 +88,12 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
                     Text("ReiAnix", color = Color.White, style = MaterialTheme.typography.titleMedium)
                     Text("Biblioteca", color = Color.White)
                     repeat(2) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             repeat(3) {
-                                Box(Modifier.weight(1f).aspectRatio(0.7f).clip(RoundedCornerShape(5.dp)).background(Color.White.copy(alpha = 0.16f)))
+                                Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(5.dp)).background(Color.White.copy(alpha = 0.16f)))
                             }
                         }
                     }
-                    Spacer(Modifier.weight(1f))
                     Text("Início   Biblioteca   Buscar   Ajustes", color = Color.White, style = MaterialTheme.typography.labelSmall)
                 }
             }
