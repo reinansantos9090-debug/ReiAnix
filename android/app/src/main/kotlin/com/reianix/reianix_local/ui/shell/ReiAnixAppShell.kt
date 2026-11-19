@@ -54,15 +54,13 @@ fun ReiAnixAppShell(
     navigationContent: @Composable (PaddingValues) -> Unit,
     modifier: Modifier = Modifier,
     showBottomNavigation: Boolean = true,
-    drawBehindTopInset: Boolean = false,
 ) {
     Scaffold(
         modifier = modifier,
         containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets.safeDrawing.only(
-            if (drawBehindTopInset) WindowInsetsSides.Horizontal
-            else WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-        ),
+        // Every destination owns its top inset at the actual header/scrolling
+        // content. Do not reserve a permanent black strip in the viewport.
+        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
         bottomBar = {
             if (showBottomNavigation) {
                 ReiAnixBottomNavigation(
