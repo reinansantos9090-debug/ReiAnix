@@ -5,6 +5,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
+import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
+import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
+import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperLayer
+import com.reianix.reianix_local.ui.theme.rememberWallpaperBitmap
 import androidx.compose.ui.Modifier
 import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
 
@@ -19,13 +30,24 @@ fun ReiAnixComposeRoot(
     themeMode: String? = null,
     content: @Composable () -> Unit,
 ) {
-    ReiAnixComposeTheme(themeMode = themeMode) {
+    val context = LocalContext.current
+    val store = remember(context) { ReiAnixWallpaperStore.from(context) }
+    val wallpaper by store.state.collectAsStateWithLifecycle()
+    val bitmap = rememberWallpaperBitmap(store, wallpaper)
+    val wallpaperVisible = wallpaper.imageName != null && bitmap != null
+    LaunchedEffect(context) {
+        ReiAnixProfileStore.from(context).removeLegacyBanner()
+    }
+    ReiAnixComposeTheme(themeMode = if (wallpaperVisible) "dark" else themeMode) {
         androidx.compose.foundation.layout.Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         ) {
-            content()
+            if (wallpaperVisible) bitmap?.let {
+                ReiAnixWallpaperLayer(it, wallpaper, Modifier.matchParentSize())
+            }
+            CompositionLocalProvider(LocalReiAnixWallpaperVisible provides wallpaperVisible) {
+                content()
+            }
         }
     }
 }
