@@ -215,7 +215,7 @@ class ReiAnixLibraryInstrumentedTest {
             }
         }
 
-        composeRule.onNodeWithText("Baixar capas que faltam")
+        composeRule.onNodeWithContentDescription("Baixar capas que faltam")
             .assertIsDisplayed()
             .performClick()
         assertTrue(requested)
