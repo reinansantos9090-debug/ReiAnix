@@ -639,6 +639,7 @@ class ReiAnixLibraryViewModel(
     val pagedLibraryState: StateFlow<ReiAnixLibraryPagedUiState> = nativePagedLibraryState.asStateFlow()
 
     private var libraryFilterJob: Job? = null
+    private var lastPersonalFilterKey: Pair<String, String> = "ALL" to "ALL"
 
     // These values are projections of the persisted SettingsStore preferences,
     // not another preference store. The settings StateFlow remains canonical.
@@ -899,6 +900,10 @@ class ReiAnixLibraryViewModel(
         ) { canonical, page, filters ->
             if (page.animes.isNotEmpty()) {
                 page.animes
+            } else if (filters.hasPersonalFilters) {
+                // Personal status is stored in preferences, not the canonical card projection.
+                // Never use the unfiltered fallback for an empty personal-filter query.
+                emptyList()
             } else if (canonical.isNotEmpty()) {
                 val requested = ReiAnixLibraryFilterEngine.filter(
                     animes = canonical,
@@ -2332,7 +2337,11 @@ class ReiAnixLibraryViewModel(
         }
         val normalizedGenre = genre.takeIf { it != "Todos" }?.trim()
         val previous = nativePagedLibraryState.value
-        val retainedPageIndex = if (reset) {
+        val personalFilters = libraryFilters.value
+        val personalKey = personalFilters.watchState to personalFilters.labelFilter
+        val samePersonalFilters = lastPersonalFilterKey == personalKey
+        lastPersonalFilterKey = personalKey
+        val retainedPageIndex = if (reset && samePersonalFilters) {
             ReiAnixLibraryRefreshWindow.retainedPageIndex(
                 previous = previous,
                 pageSize = normalizedPageSize,
@@ -2417,6 +2426,8 @@ class ReiAnixLibraryViewModel(
                 offset = if (normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS) 0 else offset,
                 libraryOnly = true,
                 allResults = normalizedPageSize == REIANIX_LIBRARY_ALL_ITEMS,
+                watchState = personalFilters.watchState,
+                labelFilter = personalFilters.labelFilter,
             )) {
                 is ReiAnixLibraryQueryResult.Success -> {
                     val pageResult = result.value
@@ -2568,6 +2579,27 @@ class ReiAnixLibraryViewModel(
         pendingSafRemovalReferences.remove(reference.trim())
         refreshNativeFolders()
         repository.publishCatalog()
+    }
+
+    fun applyLibraryFilters(filters: ReiAnixLibraryFilters) {
+        _libraryFilters.value = filters
+    }
+
+    // The status editor owns preferences separately from artwork/catalog mutations.
+    // Re-query only when such a filter is active and the user returns to Library.
+    fun refreshPersonalLibraryFilters() {
+        val filters = libraryFilters.value
+        if (!filters.hasPersonalFilters) return
+        loadNativeLibraryPage(
+            page = 0,
+            query = filters.query,
+            genre = filters.selectedGenreKey ?: "Todos",
+            sort = filters.sort,
+            favoritesOnly = filters.favoritesOnly,
+            watchingOnly = filters.watchingOnly,
+            completedOnly = filters.completedOnly,
+            reset = true,
+        )
     }
 
     fun setLibrarySearchQuery(value: String) {
