@@ -76,12 +76,14 @@ internal fun automaticWallpaperDim(pixels: IntArray): Float {
 
 data class WallpaperImage(val bitmap: ImageBitmap, val dim: Float)
 
+data class WallpaperImageLoad(val image: WallpaperImage? = null, val loading: Boolean = false)
+
 @Composable
-fun rememberWallpaperImage(store: ReiAnixWallpaperStore, wallpaper: ReiAnixWallpaper): WallpaperImage? {
-    val name = wallpaper.imageName ?: return null
+fun rememberWallpaperImage(store: ReiAnixWallpaperStore, wallpaper: ReiAnixWallpaper): WallpaperImageLoad {
+    val name = wallpaper.imageName ?: return WallpaperImageLoad()
     return key(store, name) {
-        val image by produceState<WallpaperImage?>(initialValue = null, store, name) {
-            value = withContext(Dispatchers.IO) {
+        val result by produceState(WallpaperImageLoad(loading = true), store, name) {
+            val image = withContext(Dispatchers.IO) {
                 runCatching {
                     val file = store.file(name) ?: return@runCatching null
                     val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return@runCatching null
@@ -92,8 +94,9 @@ fun rememberWallpaperImage(store: ReiAnixWallpaperStore, wallpaper: ReiAnixWallp
                     WallpaperImage(bitmap.asImageBitmap(), automaticWallpaperDim(samples))
                 }.getOrNull()
             }
+            value = WallpaperImageLoad(image = image)
         }
-        image
+        result
     }
 }
 
@@ -105,7 +108,7 @@ fun ReiAnixWallpaperScope(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val store = remember(context) { ReiAnixWallpaperStore.from(context) }
     val wallpaper by store.state.collectAsStateWithLifecycle()
-    val image = rememberWallpaperImage(store, wallpaper)
+    val image = rememberWallpaperImage(store, wallpaper).image
     // Keep content at a stable composition position when loading/removing the image.
     val scheme = if (image != null) ReiAnixDarkColorScheme else MaterialTheme.colorScheme
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography, shapes = MaterialTheme.shapes) {
