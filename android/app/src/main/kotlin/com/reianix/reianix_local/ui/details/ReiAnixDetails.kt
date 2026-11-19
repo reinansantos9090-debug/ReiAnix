@@ -828,9 +828,6 @@ private fun DetailsHero(
 ) {
     val menuExpanded = rememberSaveable(anime.id) { mutableStateOf(false) }
     var showNoteEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
-    var noteDraft by rememberSaveable(anime.id) { mutableStateOf(anime.personalNote.orEmpty()) }
-    var noteSaving by rememberSaveable(anime.id) { mutableStateOf(false) }
-    var noteError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
     var actionError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
     var showTagsEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
     var tagsDraft by rememberSaveable(anime.id) { mutableStateOf(anime.userTags.joinToString(", ")) }
@@ -1046,8 +1043,6 @@ private fun DetailsHero(
                 label = "Nota pessoal",
                 icon = ReiAnixDetailsShortcutIcons.Note,
                 onClick = {
-                    noteDraft = anime.personalNote.orEmpty()
-                    noteError = null
                     showNoteEditor = true
                 },
                 active = !anime.personalNote.isNullOrBlank(),
@@ -1345,80 +1340,11 @@ private fun DetailsHero(
             )
         }
         if (showNoteEditor) {
-            AlertDialog(
-                onDismissRequest = { if (!noteSaving) showNoteEditor = false },
-                title = { Text("Nota pessoal") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                        OutlinedTextField(
-                            value = noteDraft,
-                            onValueChange = { value -> if (value.length <= 2000) noteDraft = value },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Nota privada") },
-                            minLines = 3,
-                            maxLines = 8,
-                            enabled = !noteSaving,
-                            supportingText = { Text("${noteDraft.length}/2000") },
-                            isError = noteError != null,
-                        )
-                        noteError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                    }
-                },
-                confirmButton = {
-                    ReiAnixPrimaryButton(
-                        text = if (noteSaving) "Salvando…" else "Salvar",
-                        enabled = !noteSaving,
-                        onClick = {
-                            if (!noteSaving) {
-                                noteSaving = true
-                                noteError = null
-                                actionScope.launch {
-                                    try {
-                                        onSavePersonalNote(anime.id, noteDraft)
-                                        showNoteEditor = false
-                                    } catch (failure: Exception) {
-                                        noteError = failure.message?.takeIf(String::isNotBlank)
-                                            ?: "Não foi possível salvar a nota."
-                                    } finally {
-                                        noteSaving = false
-                                    }
-                                }
-                            }
-                        },
-                    )
-                },
-                dismissButton = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
-                        ReiAnixCompactButton(
-                            text = "Cancelar",
-                            onClick = { if (!noteSaving) showNoteEditor = false },
-                        )
-                        if (!anime.personalNote.isNullOrBlank()) {
-                            ReiAnixCompactButton(
-                                text = "Apagar",
-                                onClick = {
-                                    if (!noteSaving) {
-                                        noteSaving = true
-                                        noteError = null
-                                        actionScope.launch {
-                                            try {
-                                                onSavePersonalNote(anime.id, null)
-                                                noteDraft = ""
-                                                showNoteEditor = false
-                                            } catch (failure: Exception) {
-                                                noteError = failure.message?.takeIf(String::isNotBlank)
-                                                    ?: "Não foi possível apagar a nota."
-                                            } finally {
-                                                noteSaving = false
-                                            }
-                                        }
-                                    }
-                                },
-                            )
-                        }
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ReiAnixPersonalNoteDialog(
+                animeId = anime.id,
+                initialNote = anime.personalNote,
+                onSaveNote = onSavePersonalNote,
+                onDismiss = { showNoteEditor = false },
             )
         }
         actionError?.let { message ->
