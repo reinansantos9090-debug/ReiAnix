@@ -351,7 +351,9 @@ class ReiAnixAniListIntegrationService(
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> return result
             }
-            val ranked = rankExplicitAniListRepair(local, anchor, candidates)
+            val ranked = withContext(Dispatchers.Default) {
+                rankExplicitAniListRepair(local, anchor, candidates)
+            }
             val best = ranked.firstOrNull() ?: return AniListResult.Failure(
                 AniListError.InvalidRequest("Nenhuma correspondência confiável no AniList. Dados atuais preservados."),
             )
@@ -1822,7 +1824,7 @@ internal fun rankExplicitAniListRepair(
             }
             // Do not let metadata from the current association outrank an exact
             // original-title match when repairing a different work.
-            val ceiling = if (exactOriginal) 1.0 else if (exactAlternate && original.score < 0.58) 0.94 else 0.96
+            val ceiling = if (exactOriginal) 1.0 else if (exactAlternate && original.score < 0.58) 0.94 else 0.95
             if (candidate.format.isNullOrBlank()) score -= 0.025
             val best = if ((alternate?.score ?: 0.0) > original.score) alternate ?: original else original
             best.copy(score = score.coerceIn(0.0, ceiling))
