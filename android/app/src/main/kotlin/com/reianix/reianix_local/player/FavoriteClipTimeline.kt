@@ -127,6 +127,14 @@ internal class FavoriteClipTimeline(context: Context, private val durationMs: Lo
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                target?.let { current ->
+                    val last = when (current) {
+                        Target.START -> startMs
+                        Target.END -> endMs
+                        Target.CURSOR -> positionMs
+                    }
+                    onDrag(current, last, true)
+                }
                 target = null
                 parent?.requestDisallowInterceptTouchEvent(false)
                 return true
