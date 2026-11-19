@@ -900,7 +900,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
 
-        favoriteClipSession = null
+        if (favoriteClipSession != null) {
+            activePlayerListener?.let { player.removeListener(it) }
+            activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }
+            activePlayerListener = null
+            activeAnalyticsListener = null
+            player.stop()
+            favoriteClipSession = null
+        }
         super.onNewIntent(newIntent)
         setIntent(newIntent)
         requestId = incomingRequestId
@@ -1686,10 +1693,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         override fun onPlaybackStateChanged(state: Int) {
             if (!isCurrent()) return
             val clipSession = favoriteClipSession
-            if (state == Player.STATE_READY && clipSession?.restoring == true &&
-                player.currentMediaItem == clipSession.originalItem) {
+            val restoredEpisode = state == Player.STATE_READY && clipSession?.restoring == true &&
+                player.currentMediaItem == clipSession.originalItem
+            if (restoredEpisode) {
                 favoriteClipSession = null
-                completionReported = clipSession.originalCompletion
                 touchControls()
             }
             val label = when (state) {
@@ -1804,7 +1811,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
                     }
                     updateEpisodeNavigationButtons()
-                    completionReported = false
+                    completionReported = if (restoredEpisode) clipSession?.originalCompletion == true else false
                     updateTrackButtons()
                     updatePlayPauseButton()
                     updateProgressUi()
@@ -1813,6 +1820,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
                     }
                     if (!errorVisible) scheduleControlsHide()
+                    if (restoredEpisode && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                        handler.post { if (favoriteScenesAvailable() && favoriteClipSession == null) showFavoriteScenes() }
+                    }
                 }
                 Player.STATE_BUFFERING -> {
                     updatePlayPauseButton()
@@ -3011,7 +3021,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             locked = locked,
             canNext = favoriteClipSession == null && intent.getBooleanExtra("canNext", false),
             canPrevious = favoriteClipSession == null && intent.getBooleanExtra("canPrevious", false),
-            episodeTransitionInProgress = episodeChangePending,
+            episodeTransitionInProgress = episodeChangePending || favoriteClipSession?.restoring == true,
             aspectLabel = aspectModeLabel,
             sleepTimerLabel = if (sleepTimerDeadlineMs > 0L) formatTime(sleepTimerRemainingMs()) else "Desativado",
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
