@@ -259,8 +259,10 @@ class ReiAnixLibraryInstrumentedTest {
         fun choosePersonalFilters() {
             composeRule.onNodeWithContentDescription("Estado").performClick()
             composeRule.onNodeWithText("Quero assistir").performClick()
+            composeRule.onNodeWithTag("library-filter-check", useUnmergedTree = true).assertIsDisplayed()
             composeRule.onNodeWithContentDescription("Etiqueta").performClick()
             composeRule.onNodeWithText("Com notas pessoais").performClick()
+            composeRule.onNodeWithTag("library-filter-check", useUnmergedTree = true).assertIsDisplayed()
         }
 
         openFilterSheet()
