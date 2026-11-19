@@ -248,6 +248,7 @@ class ReiAnixAniListIntegrationService(
     }
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
+    private val explicitRepairInFlight = ConcurrentHashMap.newKeySet<Long>()
 
     private data class TraceMoeProgressState(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>>,
@@ -318,6 +319,75 @@ class ReiAnixAniListIntegrationService(
     suspend fun findLocalAnimeIdsByAniListId(anilistId: Int): List<Long> {
         require(anilistId > 0) { "AniList ID must be positive." }
         return library.findAnimeIdsByAniListId(anilistId.toLong())
+    }
+
+    /**
+     * Deliberate user action, separate from the automatic library discovery path.
+     * Search the original local title and known aliases together, then commit only
+     * a strongly supported non-MUSIC candidate. A failed search changes nothing.
+     */
+    suspend fun repairMetadataAndArtwork(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
+        if (!isAniListEnabled()) return AniListResult.Failure(
+            AniListError.InvalidRequest("A integração AniList está desativada nas configurações."),
+        )
+        if (!explicitRepairInFlight.add(animeId)) return AniListResult.Failure(
+            AniListError.InvalidRequest("Este anime já está sendo verificado."),
+        )
+        try {
+            val local = library.getAnime(animeId) ?: return AniListResult.Failure(
+                AniListError.InvalidRequest("Anime não encontrado na biblioteca."),
+            )
+            val titles = buildList {
+                add(local.lookupTitle)
+                add(local.title)
+                add(local.romaji.orEmpty())
+                add(local.english.orEmpty())
+                add(local.nativeTitle.orEmpty())
+                local.aliasesJson?.let { raw ->
+                    runCatching { JSONArray(raw) }.getOrNull()?.let { aliases ->
+                        for (i in 0 until aliases.length()) add(aliases.optString(i))
+                    }
+                }
+            }
+            val terms = boundedAniListSearchTerms(titles, limit = 6)
+            val anchor = local.lookupTitle.takeIf(String::isNotBlank) ?: local.title
+            if (terms.isEmpty() || anchor.isBlank()) return AniListResult.Failure(
+                AniListError.InvalidRequest("O anime não tem título válido para identificação."),
+            )
+            // The existing association may itself be wrong. Never let aliases,
+            // year or synopsis copied from that association choose another anime
+            // without independent agreement with the original library title.
+            val candidates = when (val result = client.searchAnimeAliases(terms)) {
+                is AniListResult.Success -> result.value
+                is AniListResult.Failure -> return result
+            }
+            val ranked = rankExplicitAniListRepair(local, anchor, candidates)
+            val best = ranked.firstOrNull() ?: return AniListResult.Failure(
+                AniListError.InvalidRequest("Nenhuma correspondência confiável no AniList. Dados atuais preservados."),
+            )
+            val margin = best.score - (ranked.getOrNull(1)?.score ?: 0.0)
+            if (best.score < 0.86 || margin < 0.05) return AniListResult.Failure(
+                AniListError.InvalidRequest("Identificação inconclusiva. Capa e metadados atuais preservados."),
+            )
+            if (local.anilistMatchManual == true && local.anilistId != best.anime.id.toLong()) {
+                return AniListResult.Failure(
+                    AniListError.InvalidRequest("A associação escolhida manualmente foi preservada."),
+                )
+            }
+            val latest = library.getAnime(animeId) ?: return AniListResult.Failure(
+                AniListError.InvalidRequest("Anime não encontrado na biblioteca."),
+            )
+            if (latest.anilistId != local.anilistId || latest.anilistMatchManual != local.anilistMatchManual ||
+                latest.lookupTitle != local.lookupTitle) return AniListResult.Failure(
+                AniListError.InvalidRequest("A identificação mudou durante a busca. Tente novamente."),
+            )
+            return applyRemote(
+                latest, best.anime, manual = latest.anilistMatchManual == true,
+                score = best.score, margin = margin.coerceIn(0.0, 1.0), explicitRepair = true,
+            )
+        } finally {
+            explicitRepairInFlight.remove(animeId)
+        }
     }
 
     suspend fun refreshMetadata(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
@@ -1361,6 +1431,7 @@ class ReiAnixAniListIntegrationService(
         score: Double?,
         margin: Double?,
         traceMoeConfirmed: Boolean = false,
+        explicitRepair: Boolean = false,
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
             // Artwork preference controls whether the remote URL becomes eligible
@@ -1390,7 +1461,7 @@ class ReiAnixAniListIntegrationService(
                         localizer == null -> remoteOriginal
                         else -> {
                             val cached = localizer.getCachedDescriptionPtBr(remoteOriginal)
-                            cached ?: localizer.localizeToPtBr(remoteOriginal) ?: remoteOriginal
+                            cached ?: if (explicitRepair) remoteOriginal else localizer.localizeToPtBr(remoteOriginal) ?: remoteOriginal
                         }
                     }
                 }
@@ -1424,8 +1495,10 @@ class ReiAnixAniListIntegrationService(
                 score = score,
                 margin = margin,
                 traceMoeConfirmed = traceMoeConfirmed,
+                explicitRepair = explicitRepair,
+                expectedAssociationId = local.anilistId,
             )
-            if (!manual && updated.anilistId != remote.id.toLong()) {
+            if ((!manual || explicitRepair) && updated.anilistId != remote.id.toLong()) {
                 return AniListResult.Failure(
                     AniListError.InvalidRequest(
                         "Automatic match was not applied because a manual or existing association has priority.",
@@ -1463,7 +1536,7 @@ class ReiAnixAniListIntegrationService(
                     Log.w(TAG, "AniList metadata committed but genre registry sync failed", error)
                 }
             }
-            if (artworkEnabled && (manual || traceMoeConfirmed)) {
+            if (artworkEnabled && (manual || traceMoeConfirmed || explicitRepair)) {
                 explicitArtworkPublisher?.invoke(updated.id)
             }
             enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled)
@@ -1671,6 +1744,61 @@ class ReiAnixAniListIntegrationService(
         )
         const val AUTO_MATCH_COOLDOWN_MS = 6 * 60 * 60 * 1000L
     }
+}
+
+/** Conservative repair ranking, isolated from first-load artwork discovery. */
+internal fun rankExplicitAniListRepair(
+    local: ReiAnixAnimeRecord,
+    anchor: String,
+    candidates: List<AniListAnime>,
+): List<ReiAnixAniListMatcher.RankedCandidate> {
+    fun plain(value: String): String = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
+        .lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+    fun words(value: String?): Set<String> = plain(value.orEmpty()).split(" ")
+        .filter { it.length >= 4 }.toSet()
+    val originalTitle = plain(anchor)
+    val independentlySourced = local.anilistId == null &&
+        !local.metadataSource.orEmpty().contains("anilist", ignoreCase = true) &&
+        !local.metadataSource.orEmpty().endsWith("_candidate", ignoreCase = true)
+    val localGenres = runCatching { JSONArray(local.genresJson.orEmpty()) }.getOrNull()?.let { raw ->
+        (0 until raw.length()).map { plain(raw.optString(it)) }.toSet()
+    }.orEmpty()
+    val localSynopsis = words(local.descriptionOriginal ?: local.description)
+    val context = ReiAnixAniListMatcher.Context(
+        year = local.year.takeIf { independentlySourced },
+        mediaKind = local.mediaKind,
+    )
+    return candidates.asSequence()
+        .distinctBy { it.id }
+        .filter { candidate ->
+            candidate.format.orEmpty().uppercase(Locale.ROOT) in setOf("TV", "TV_SHORT", "MOVIE", "OVA", "ONA", "SPECIAL") &&
+                candidate.coverCandidates.isNotEmpty() &&
+                (!local.mediaKind.equals("movie", true) || candidate.format.equals("MOVIE", true)) &&
+                (!local.mediaKind.equals("series", true) || !candidate.format.equals("MOVIE", true))
+        }
+        .mapNotNull { candidate ->
+            val ranked = ReiAnixAniListMatcher.rank(anchor, listOf(candidate), context).firstOrNull()
+                ?: return@mapNotNull null
+            val exact = (listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) +
+                candidate.synonyms).any { plain(it) == originalTitle }
+            // Exact original titles beat fuzzy season/part variants, even when
+            // the ordinary matcher normalizes away a season marker.
+            var score = if (exact) 1.0 else ranked.score.coerceAtMost(0.93)
+            if (ranked.score < 0.86 && !exact) return@mapNotNull null
+            val corroborate = independentlySourced || candidate.id.toLong() == local.anilistId
+            if (corroborate && !exact) {
+                if (local.year != null && candidate.seasonYear == local.year) score += 0.015
+                if (local.format != null && local.format.equals(candidate.format, true)) score += 0.01
+                if (local.episodesCount != null && local.episodesCount == candidate.episodes) score += 0.01
+                if (localGenres.intersect(candidate.genres.map(::plain).toSet()).isNotEmpty()) score += 0.01
+                val synopsis = words(candidate.description)
+                if (localSynopsis.size >= 5 && synopsis.size >= 5 &&
+                    localSynopsis.intersect(synopsis).size.toDouble() / minOf(localSynopsis.size, synopsis.size) >= 0.45
+                ) score += 0.015
+            }
+            ranked.copy(score = score.coerceIn(0.0, if (exact) 1.0 else 0.95))
+        }.sortedWith(compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }.thenBy { it.anime.id })
+        .toList()
 }
 
 sealed interface AniListAutoMatchResult {
