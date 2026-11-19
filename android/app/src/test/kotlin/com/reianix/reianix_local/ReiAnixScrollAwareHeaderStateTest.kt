@@ -8,6 +8,27 @@ import org.junit.Test
 class ReiAnixScrollAwareHeaderStateTest {
 
     @Test
+    fun headerWithTopCutoutInsetCollapsesAllTheWayToZero() {
+        val state = ReiAnixScrollAwareHeaderState()
+        // The measured scrolling header includes the 24 px top safety inset.
+        state.updateMeasuredHeight(72 + 24)
+        val collapse = state.nestedScrollConnection.onPreScroll(
+            Offset(0f, -150f),
+            NestedScrollSource.UserInput,
+        )
+        assertEquals(-96f, collapse.y, 0.01f)
+        assertEquals(0f, state.visibleHeightPx, 0.01f)
+
+        state.updateContentAtTop(true)
+        val expand = state.nestedScrollConnection.onPreScroll(
+            Offset(0f, 150f),
+            NestedScrollSource.UserInput,
+        )
+        assertEquals(96f, expand.y, 0.01f)
+        assertEquals(96f, state.visibleHeightPx, 0.01f)
+    }
+
+    @Test
     fun returningToTopDoesNotSnapPartiallyCollapsedHeaderOpen() {
         val state = ReiAnixScrollAwareHeaderState()
         state.updateMeasuredHeight(120)
