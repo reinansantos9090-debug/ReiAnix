@@ -90,6 +90,38 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
+    fun fourHeaderShortcutsArePresentAndFavoriteDispatchesExistingAction() {
+        var favoriteAnimeId: Long? = null
+        val initial = detailsStateWithEpisodes(1)
+        val state = initial.copy(
+            anime = initial.anime!!.copy(description = "Sinopse para teste."),
+        )
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = { favoriteAnimeId = it },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-quick-actions"))
+        listOf("favorite", "note", "tags", "list").forEach { shortcut ->
+            composeRule.onNodeWithTag("details-quick-" + shortcut).assertIsDisplayed()
+        }
+        composeRule.onNodeWithTag("details-quick-favorite").performClick()
+        assertEquals(700L, favoriteAnimeId)
+        composeRule.onNodeWithTag("details-quick-note").performClick()
+        composeRule.onNodeWithText("Nota privada").assertIsDisplayed()
+        composeRule.onNodeWithText("Cancelar").performClick()
+        composeRule.onNodeWithTag("details-quick-tags").performClick()
+        composeRule.onNodeWithText("Tags pessoais").assertIsDisplayed()
+    }
+
+    @Test
     fun synopsisIsInHeaderBeforeTraceMoe() {
         val original = detailsStateWithEpisodes(1)
         val state = original.copy(
