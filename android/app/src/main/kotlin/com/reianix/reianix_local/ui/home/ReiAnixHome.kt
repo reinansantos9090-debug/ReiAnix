@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -200,12 +200,14 @@ private fun ReiAnixHomeObservedScreen(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollHeaderState.nestedScrollConnection)
-            .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top)),
+            .background(MaterialTheme.colorScheme.background),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ReiAnixScrollAwareHeader(state = scrollHeaderState) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 HomeHeader(
                     onOpenCollector = onOpenCollector,
                     onSearch = onSearch,
