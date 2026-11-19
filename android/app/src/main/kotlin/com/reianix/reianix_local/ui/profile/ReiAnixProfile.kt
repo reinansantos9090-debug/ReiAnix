@@ -154,6 +154,17 @@ private fun normalizedMedia(path: String): String = if (path.startsWith("/")) Ur
 
 @Composable
 fun ReiAnixProfileRoute(navController: NavHostController, viewModel: ReiAnixLibraryViewModel) {
+    // Profile deliberately follows the supplied black reference, independently
+    // of the optional app-wide light theme. Keep inherited content colors readable.
+    com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme(themeMode = "dark") {
+        Surface(color = Color.Black, contentColor = Color.White, modifier = Modifier.fillMaxSize()) {
+            ProfileContent(navController, viewModel)
+        }
+    }
+}
+
+@Composable
+private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixLibraryViewModel) {
     val context = LocalContext.current
     val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
     val store = remember(context) { ReiAnixProfileStore.from(context) }
