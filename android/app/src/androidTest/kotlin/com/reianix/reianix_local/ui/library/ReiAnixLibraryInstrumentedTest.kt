@@ -6,6 +6,12 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reianix.reianix_local.ui.ReiAnixComposeRoot
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
@@ -215,10 +221,134 @@ class ReiAnixLibraryInstrumentedTest {
             }
         }
 
-        composeRule.onNodeWithText("Baixar capas que faltam")
+        composeRule.onNodeWithContentDescription("Baixar capas que faltam")
             .assertIsDisplayed()
             .performClick()
         assertTrue(requested)
+    }
+
+    @Test
+    fun filterPanelAppliesSelectionsImmediatelyAndCombinesTabs() {
+        var applied: ReiAnixLibraryFilters? = null
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixLibraryScreen(
+                    state = readyState(),
+                    filters = ReiAnixLibraryFilters(),
+                    visibleAnimes = listOf(anime(7L, "Example Anime")),
+                    genres = emptyList(),
+                    onQueryChange = {},
+                    onGenreSelected = {},
+                    onToggleFavorites = {},
+                    onToggleWatching = {},
+                    onToggleCompleted = {},
+                    onClearFilters = {},
+                    onRefresh = {},
+                    onOpenDetails = {},
+                    onApplyFilters = { applied = it },
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
+        composeRule.onNodeWithContentDescription("Ordenar").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Gêneros").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Estado").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Etiqueta").assertIsDisplayed()
+        composeRule.onNodeWithText("Aplicar").assertDoesNotExist()
+        composeRule.onNodeWithText("Cancelar").assertDoesNotExist()
+        composeRule.onNodeWithText("Limpar").assertDoesNotExist()
+
+        val list = composeRule.onNodeWithTag("library-filter-options", useUnmergedTree = true)
+        composeRule.onNodeWithContentDescription("Estado").performClick()
+        list.performScrollToIndex(1)
+        composeRule.onNodeWithText("Quero assistir").performClick()
+        composeRule.onNodeWithTag("library-filter-check", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertEquals("PLANNING", applied?.watchState)
+            assertEquals("ALL", applied?.labelFilter)
+        }
+
+        composeRule.onNodeWithContentDescription("Etiqueta").performClick()
+        list.performScrollToIndex(1)
+        composeRule.onNodeWithText("Com notas pessoais").performClick()
+        composeRule.onNodeWithTag("library-filter-check", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertEquals("PLANNING", applied?.watchState)
+            assertEquals("WITH_NOTE", applied?.labelFilter)
+        }
+
+        // Reverting one selection to Todos preserves the filter on the other tab.
+        list.performScrollToIndex(0)
+        composeRule.onNodeWithText("Todos").performClick()
+        composeRule.runOnIdle {
+            assertEquals("PLANNING", applied?.watchState)
+            assertEquals("ALL", applied?.labelFilter)
+        }
+    }
+
+    @Test
+    fun filterSheetStaysFixedAtScrollBoundariesAndAcrossTabs() {
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixLibraryScreen(
+                    state = readyState(),
+                    filters = ReiAnixLibraryFilters(),
+                    visibleAnimes = listOf(anime(7L, "Example Anime")),
+                    genres = emptyList(),
+                    onQueryChange = {},
+                    onGenreSelected = {},
+                    onToggleFavorites = {},
+                    onToggleWatching = {},
+                    onToggleCompleted = {},
+                    onClearFilters = {},
+                    onRefresh = {},
+                    onOpenDetails = {},
+                )
+            }
+        }
+        // Measure the library window before the modal adds its own Compose root.
+        val windowHeight = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.height
+        composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
+        val panel = composeRule.onNodeWithTag("library-filter-sheet", useUnmergedTree = true)
+        val list = composeRule.onNodeWithTag("library-filter-options", useUnmergedTree = true)
+        val tabs = composeRule.onNodeWithContentDescription("Ordenar")
+        val header = composeRule.onNodeWithText("Filtros da biblioteca")
+        val panelBounds = panel.fetchSemanticsNode().boundsInRoot
+        // The old modifier constrained the anchor itself, leaving the sheet at
+        // the top. Allow system-bar insets while checking the lower placement.
+        assertTrue("Painel precisa começar abaixo do topo da janela",
+            panelBounds.top > windowHeight * 0.35f)
+        assertTrue("Painel precisa terminar junto à parte inferior",
+            panelBounds.bottom >= windowHeight * 0.90f)
+        assertTrue("Painel deve ocupar aproximadamente 48% da altura",
+            panelBounds.height in (windowHeight * 0.40f)..(windowHeight * 0.60f))
+        val tabBounds = tabs.fetchSemanticsNode().boundsInRoot
+        val headerBounds = header.fetchSemanticsNode().boundsInRoot
+
+        fun assertAnchored() {
+            assertEquals(panelBounds, panel.fetchSemanticsNode().boundsInRoot)
+            assertEquals(tabBounds, tabs.fetchSemanticsNode().boundsInRoot)
+            assertEquals(headerBounds, header.fetchSemanticsNode().boundsInRoot)
+        }
+
+        list.performScrollToIndex(ReiAnixLibrarySort.OPTIONS.lastIndex)
+        repeat(3) {
+            list.performTouchInput { swipeUp() }
+            assertAnchored()
+        }
+        list.performScrollToIndex(0)
+        repeat(3) {
+            list.performTouchInput { swipeDown() }
+            assertAnchored()
+        }
+        // A short list must not resize or drag the modal sheet, either.
+        composeRule.onNodeWithContentDescription("Gêneros").performClick()
+        list.performTouchInput { swipeUp() }
+        assertAnchored()
+        composeRule.onNodeWithContentDescription("Etiqueta").performClick()
+        list.performTouchInput { swipeDown() }
+        assertAnchored()
+        tabs.assertIsDisplayed()
     }
 
     @Test
