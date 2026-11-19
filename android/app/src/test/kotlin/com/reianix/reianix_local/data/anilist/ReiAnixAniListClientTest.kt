@@ -134,6 +134,8 @@ class ReiAnixAniListClientTest {
         assertEquals("Alternative", body.getJSONObject("variables").getString("term1"))
         assertTrue(body.getString("query").contains("alias0: Page"))
         assertTrue(body.getString("query").contains("alias1: Page"))
+        assertTrue(body.getString("query").contains("format_not: MUSIC"))
+        assertTrue(body.getString("query").contains("perPage: 20"))
     }
 
     @Test
