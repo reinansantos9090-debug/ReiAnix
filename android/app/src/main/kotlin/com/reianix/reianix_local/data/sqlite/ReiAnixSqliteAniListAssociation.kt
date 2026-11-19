@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.database.Cursor
 import org.json.JSONArray
 import org.json.JSONException
+import com.reianix.reianix_local.data.anilist.EXPLICIT_REPAIR_MIN_SCORE
+import com.reianix.reianix_local.data.anilist.EXPLICIT_REPAIR_MIN_MARGIN
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -67,8 +69,10 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             if (!manual && traceMoeConfirmed && (score == null || score < 0.86)) {
                 return@transaction current
             }
+            val minScore = if (explicitRepair) EXPLICIT_REPAIR_MIN_SCORE else 0.86
+            val minMargin = if (explicitRepair) EXPLICIT_REPAIR_MIN_MARGIN else 0.05
             if (!manual && !traceMoeConfirmed &&
-                (score == null || score < 0.86 || margin == null || margin < 0.05)
+                (score == null || score < minScore || margin == null || margin < minMargin)
             ) {
                 return@transaction current
             }
