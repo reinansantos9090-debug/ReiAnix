@@ -226,9 +226,12 @@ fun ReiAnixSettingsRoute(
     scanState: String = "IDLE",
     lastScanStatus: String? = null,
     libraryFoldersContent: (@Composable (() -> Unit) -> Unit)? = null,
+    initialDestination: String? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var selectedDestination by rememberSaveable { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var selectedDestination by rememberSaveable(initialDestination) {
+        androidx.compose.runtime.mutableStateOf<String?>(initialDestination)
+    }
     var selectedItemIndex by rememberSaveable { androidx.compose.runtime.mutableStateOf(0) }
     val rootListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val rootStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
@@ -236,7 +239,11 @@ fun ReiAnixSettingsRoute(
     // Restore saved navigation from APKs that still had these intermediate pages.
     val destination = settingsPageForDestination(selectedDestination)
     fun goBack() {
-        selectedDestination = if (selectedDestination == "Licenças") "Sobre" else null
+        if (initialDestination != null && selectedDestination == initialDestination) {
+            onBack()
+            return
+        }
+        selectedDestination = if (selectedDestination == "Licenças") "Sobre" else initialDestination
         selectedItemIndex = 0
     }
     BackHandler(enabled = destination != null) { goBack() }
