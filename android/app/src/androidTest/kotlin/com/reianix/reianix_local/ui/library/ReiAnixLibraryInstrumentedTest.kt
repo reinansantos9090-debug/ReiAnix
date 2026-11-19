@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -301,12 +302,22 @@ class ReiAnixLibraryInstrumentedTest {
                 )
             }
         }
+        // Measure the library window before the modal adds its own Compose root.
+        val windowHeight = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.height
         composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
         val panel = composeRule.onNodeWithTag("library-filter-sheet", useUnmergedTree = true)
         val list = composeRule.onNodeWithTag("library-filter-options", useUnmergedTree = true)
         val apply = composeRule.onNodeWithText("Aplicar")
         val header = composeRule.onNodeWithText("Filtros da biblioteca")
         val panelBounds = panel.fetchSemanticsNode().boundsInRoot
+        // The old modifier constrained the anchor itself, leaving the sheet at
+        // the top. Allow system-bar insets while checking the lower placement.
+        assertTrue("Painel precisa começar abaixo do topo da janela",
+            panelBounds.top > windowHeight * 0.25f)
+        assertTrue("Painel precisa terminar junto à parte inferior",
+            panelBounds.bottom >= windowHeight * 0.90f)
+        assertTrue("Painel deve ocupar aproximadamente 60% da altura",
+            panelBounds.height in (windowHeight * 0.50f)..(windowHeight * 0.72f))
         val buttonBounds = apply.fetchSemanticsNode().boundsInRoot
         val headerBounds = header.fetchSemanticsNode().boundsInRoot
 
