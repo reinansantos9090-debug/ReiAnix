@@ -30,6 +30,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -50,6 +51,7 @@ import kotlin.math.roundToInt
 internal class FavoriteClipEditor(
     private val host: FragmentActivity,
     private val item: MediaItem,
+    private val trackSelection: TrackSelectionParameters?,
     private val mediaId: String,
     private val durationMs: Long,
     positionMs: Long,
@@ -228,6 +230,12 @@ internal class FavoriteClipEditor(
             preview.player = p
             p.setAudioAttributes(AudioAttributes.DEFAULT, true)
             p.repeatMode = Player.REPEAT_MODE_OFF
+            trackSelection?.let { parameters ->
+                p.trackSelectionParameters = parameters.buildUpon()
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, false)
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, false)
+                    .build()
+            }
             p.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) { render() }
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { render() }
