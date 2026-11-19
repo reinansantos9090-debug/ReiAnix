@@ -1,7 +1,5 @@
 package com.reianix.reianix_local.ui.discovery
 
-import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -92,7 +90,7 @@ fun ReiAnixTimelineHubRoute(
 
     ReiAnixResponsiveRoot {
         Column(
-            modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground()),
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         ) {
             ReiAnixTopBar(
                 title = "Linha do tempo",

@@ -1,7 +1,5 @@
 package com.reianix.reianix_local.ui.home
 
-import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
-
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -185,7 +183,7 @@ private fun ReiAnixHomeObservedScreen(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollHeaderState.nestedScrollConnection)
-            .background(reiAnixScreenBackground()),
+            .background(MaterialTheme.colorScheme.background),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ReiAnixScrollAwareHeader(state = scrollHeaderState) {
@@ -382,7 +380,7 @@ fun ReiAnixHomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(reiAnixScreenBackground()),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         HomeHeader(
             onSearch = onSearch,

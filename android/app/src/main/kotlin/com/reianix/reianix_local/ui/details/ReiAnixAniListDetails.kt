@@ -1,7 +1,5 @@
 package com.reianix.reianix_local.ui.details
 
-import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,7 +64,7 @@ fun ReiAnixAniListDetailsRoute(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(reiAnixScreenBackground()),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         ReiAnixTopBar(
             title = "Detalhes do AniList",
