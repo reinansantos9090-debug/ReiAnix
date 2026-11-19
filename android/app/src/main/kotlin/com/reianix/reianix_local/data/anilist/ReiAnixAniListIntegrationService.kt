@@ -1739,7 +1739,7 @@ class ReiAnixAniListIntegrationService(
 }
 
 // Only the user-initiated repair uses these more permissive thresholds.
-internal const val EXPLICIT_REPAIR_MIN_SCORE = 0.72
+internal const val EXPLICIT_REPAIR_MIN_SCORE = 0.60
 internal const val EXPLICIT_REPAIR_MIN_MARGIN = 0.025
 
 internal fun explicitAniListRepairTitles(local: ReiAnixAnimeRecord): List<String> = buildList {
