@@ -7,6 +7,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -533,10 +534,10 @@ private fun LibraryHeader(
                 }
             }
             if (onOpenCollections != null) {
-                ReiAnixIconActionButton(Icons.Outlined.Folder, "Coleções", onOpenCollections)
+                LibraryWhiteIconButton(Icons.Outlined.Folder, "Coleções", onOpenCollections)
             }
             if (onSearch != null) {
-                ReiAnixIconActionButton(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
+                LibraryWhiteIconButton(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
             }
             IconButton(
                 onClick = onFilters,
@@ -555,6 +556,18 @@ private fun LibraryHeader(
         },
     )
     Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
+}
+
+@Composable
+private fun LibraryWhiteIconButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+    IconButton(onClick = onClick,
+        modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
+            contentDescription = description
+        },
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White,
+            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium))
+    }
 }
 
 @Composable
@@ -640,9 +653,15 @@ private fun LibraryFilterSelector(
     Column(modifier = modifier) {
         Text(title, style = MaterialTheme.typography.labelMedium)
         Box {
-            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
-                Text(value, modifier = Modifier.weight(1f), maxLines = 1,
+            OutlinedButton(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics {
+                    contentDescription = title
+                },
+                shape = MaterialTheme.shapes.medium,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Text(value, modifier = Modifier.weight(1f), maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Text("▾")
             }
