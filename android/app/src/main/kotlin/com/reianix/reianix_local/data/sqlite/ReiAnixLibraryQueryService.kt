@@ -57,6 +57,8 @@ class ReiAnixLibraryQueryService(
         offset: Int = 0,
         libraryOnly: Boolean = false,
         allResults: Boolean = false,
+        watchState: String = "ALL",
+        labelFilter: String = "ALL",
     ): ReiAnixLibraryQueryResult<ReiAnixSqliteSearchPage> =
         this.query("searchAnime") {
             require(limit in 1..MAX_SEARCH_RESULTS) {
@@ -75,6 +77,8 @@ class ReiAnixLibraryQueryService(
                 offset = offset,
                 libraryOnly = libraryOnly,
                 allResults = allResults,
+                watchState = watchState,
+                labelFilter = labelFilter,
             )
             if (page.animeIds.isEmpty()) ReiAnixLibraryQueryResult.Empty("searchAnime")
             else ReiAnixLibraryQueryResult.Success(page)
