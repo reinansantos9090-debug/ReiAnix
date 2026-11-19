@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
@@ -88,7 +90,7 @@ fun ReiAnixWatchStatusCollections(
 
     val selectedAnimes = trackedTitles.filter { statusById[it.first] == selected }
     ReiAnixResponsiveRoot {
-        Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Column(modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground())) {
             ReiAnixTopBar(title = "Listas de acompanhamento", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack)
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())

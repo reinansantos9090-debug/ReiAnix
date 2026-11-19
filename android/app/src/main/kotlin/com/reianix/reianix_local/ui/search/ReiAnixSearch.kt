@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.search
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.aspectRatio
@@ -238,7 +240,7 @@ fun ReiAnixSearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(reiAnixScreenBackground())
             .imePadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

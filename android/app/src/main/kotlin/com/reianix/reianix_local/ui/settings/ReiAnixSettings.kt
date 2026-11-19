@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -323,7 +325,8 @@ fun ReiAnixSettingsScreen(
     ReiAnixSettingsRoot {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
+            color = reiAnixScreenBackground(),
+            contentColor = MaterialTheme.colorScheme.onBackground,
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -481,7 +484,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     ReiAnixSettingsRoot {
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+        color = reiAnixScreenBackground(),
+            contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
         pendingConfirmationAction?.let { action ->
             val (title, message, confirmLabel) = when (action) {

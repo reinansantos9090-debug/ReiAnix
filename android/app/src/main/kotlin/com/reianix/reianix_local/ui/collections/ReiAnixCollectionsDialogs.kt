@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
@@ -246,7 +248,7 @@ fun ReiAnixCollectionsScreen(
 
     ReiAnixResponsiveRoot {
         Column(
-            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+            modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground()),
         ) {
             ReiAnixTopBar(
                 title = if (selected == null) "Coleções" else selected.name,
@@ -617,7 +619,7 @@ internal fun CollectionNameScreen(
     val canSave = !busy && name.isNotBlank()
     Column(
         modifier = Modifier.fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(reiAnixScreenBackground())
             .imePadding()
             .navigationBarsPadding(),
     ) {
