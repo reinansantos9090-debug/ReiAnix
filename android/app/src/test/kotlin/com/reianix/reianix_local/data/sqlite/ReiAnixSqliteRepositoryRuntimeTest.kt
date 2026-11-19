@@ -1032,8 +1032,39 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             ),
         )
         assertEquals(42, ranked.first().anime.id)
-        assertTrue(ranked.none { it.anime.id == 99 || it.anime.id == 98 })
-        assertTrue(ranked.first().score - (ranked.getOrNull(1)?.score ?: 0.0) >= 0.05)
+        assertTrue(ranked.none { it.anime.id == 99 })
+        // An unrelated stored alias is evaluated, but cannot outrank a correct
+        // literal original title.
+        assertTrue(ranked.first().score - (ranked.getOrNull(1)?.score ?: 0.0) >= 0.025)
+    }
+
+    @Test
+    fun explicitRepairAcceptsAlternativeTitleWithoutStrongFolderNameMatch() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val local = requireNotNull(repository.getAnime(1L)).copy(
+            lookupTitle = "Minha pasta 42", title = "Another Name",
+            romaji = "Kimi no Anime", english = "Another Name", nativeTitle = "君のアニメ",
+            aliasesJson = "[\"Official Alternative\"]", anilistId = null, mediaKind = "series",
+        )
+        val terms = com.reianix.reianix_local.data.anilist.explicitAniListRepairSearchTerms(
+            com.reianix.reianix_local.data.anilist.explicitAniListRepairTitles(local),
+        )
+        assertTrue(terms.contains("Kimi no Anime"))
+        assertTrue(terms.contains("Official Alternative"))
+        val candidate = com.reianix.reianix_local.data.anilist.AniListAnime(
+            id = 42, titleRomaji = "Kimi no Anime", titleEnglish = null, titleNative = null,
+            synonyms = listOf("Official Alternative"), description = null, format = "TV",
+            episodes = 12, status = null, averageScore = null, durationMinutes = null,
+            season = null, seasonYear = null, genres = emptyList(),
+            coverLargeUrl = "https://example.invalid/cover.jpg", coverExtraLargeUrl = null,
+            bannerUrl = null, studios = emptyList(),
+        )
+        val ranked = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            local, local.lookupTitle, listOf(candidate, candidate.copy(id = 99, format = "MUSIC")),
+        )
+        assertEquals(42, ranked.single().anime.id)
+        assertTrue(ranked.single().score >= 0.72)
     }
 
     @Test
@@ -1054,7 +1085,7 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             explicitRepair = true, expectedAssociationId = 98L)
         assertEquals(99L, stale.anilistId)
         assertEquals("https://example.invalid/old-cover.jpg", stale.coverUrl)
-        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.99, 0.5,
+        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.79, 0.035,
             explicitRepair = true, expectedAssociationId = 99L)
         assertEquals(42L, corrected.anilistId)
         assertEquals("https://example.invalid/official.jpg", corrected.coverUrl)
