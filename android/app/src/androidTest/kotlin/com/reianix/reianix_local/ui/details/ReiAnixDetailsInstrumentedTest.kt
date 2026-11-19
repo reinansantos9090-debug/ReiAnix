@@ -116,6 +116,8 @@ class ReiAnixDetailsInstrumentedTest {
         assertEquals(700L, favoriteAnimeId)
         composeRule.onNodeWithTag("details-quick-note").performClick()
         composeRule.onNodeWithText("Nota privada").assertIsDisplayed()
+        composeRule.onNodeWithText("Minha avaliação").assertExists()
+        composeRule.onNodeWithText("Ver recomendações").assertDoesNotExist()
         composeRule.onNodeWithText("Cancelar").performClick()
         composeRule.onNodeWithTag("details-quick-tags").performClick()
         composeRule.onNodeWithText("Tags pessoais").assertIsDisplayed()

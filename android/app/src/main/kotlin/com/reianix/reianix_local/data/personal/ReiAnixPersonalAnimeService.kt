@@ -30,6 +30,7 @@ data class ReiAnixLocalRecommendation(
     val animeId: Long,
     val title: String,
     val reason: String,
+    val posterPath: String? = null,
 )
 
 class ReiAnixPersonalAnimeService(
@@ -60,7 +61,7 @@ class ReiAnixPersonalAnimeService(
         return load(animeId)
     }
 
-    /** Deliberately on demand, never part of Home/Library, scan or player hot paths. */
+    /** Details-only local recommendations; ranking runs off the UI thread. */
     suspend fun recommendLocal(animeId: Long, limit: Int = 6): List<ReiAnixLocalRecommendation> {
         require(animeId > 0L)
         require(limit in 1..12)
@@ -75,13 +76,14 @@ class ReiAnixPersonalAnimeService(
                 }
             }
         }
-        val current = all.firstOrNull { it.id == animeId } ?: return emptyList()
         val allPrefs = settings.allPreferences()
+        val ranked = withContext(Dispatchers.Default) {
+        val current = all.firstOrNull { it.id == animeId } ?: return@withContext emptyList<ReiAnixLocalRecommendation>()
         val favoriteGenres = all.asSequence().filter {
             it.favorite == true || (allPrefs[ratingKey(it.id)]?.toIntOrNull() ?: 0) >= 75
         }.flatMap { genres(it.genresJson).asSequence() }.groupingBy { it }.eachCount()
         val seedGenres = genres(current.genresJson)
-        return all.asSequence()
+        all.asSequence()
             .filter { it.id != animeId && it.status != "UNRELEASED" }
             .filter { allPrefs[statusKey(it.id)] !in setOf("COMPLETED", "DROPPED") }
             .map { candidate ->
@@ -101,8 +103,20 @@ class ReiAnixPersonalAnimeService(
                     title = anime.title,
                     reason = common.take(2).joinToString(", ")
                         .ifBlank { "Combina com seus animes favoritos" },
+                    posterPath = anime.coverCache?.takeIf { it.isNotBlank() },
                 )
             }.toList()
+        }
+        // Only the bounded result set is inspected for persisted local artwork.
+        // Do not perform any cover downloads or metadata searches here.
+        return withContext(Dispatchers.IO) {
+            ranked.map { suggestion ->
+                val stored = library.artworkForAnime(suggestion.animeId)
+                    .firstOrNull { it.artworkType == "poster" && !it.localPath.isNullOrBlank() && java.io.File(it.localPath).isFile }
+                    ?.localPath
+                suggestion.copy(posterPath = stored ?: suggestion.posterPath)
+            }
+        }
     }
 
     private fun genres(raw: String?): Set<String> = runCatching {
