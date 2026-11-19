@@ -905,7 +905,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             activeAnalyticsListener?.let { player.removeAnalyticsListener(it) }
             activePlayerListener = null
             activeAnalyticsListener = null
+            handler.removeCallbacks(progressReporter)
             player.stop()
+            player.clearMediaItems()
             favoriteClipSession = null
         }
         super.onNewIntent(newIntent)
@@ -1693,11 +1695,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
         override fun onPlaybackStateChanged(state: Int) {
             if (!isCurrent()) return
             val clipSession = favoriteClipSession
-            val restoredEpisode = state == Player.STATE_READY && clipSession?.restoring == true &&
-                player.currentMediaItem == clipSession.originalItem
+            val restoredEpisode = (state == Player.STATE_READY || state == Player.STATE_ENDED) &&
+                clipSession?.restoring == true &&
+                player.currentMediaItem?.mediaId == clipSession.originalItem.mediaId
             if (restoredEpisode) {
                 favoriteClipSession = null
+                completionReported = clipSession?.originalCompletion == true
                 touchControls()
+                if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                    handler.post { if (favoriteScenesAvailable() && favoriteClipSession == null) showFavoriteScenes() }
+                }
             }
             val label = when (state) {
                 Player.STATE_IDLE -> "STATE_IDLE"
@@ -1820,16 +1827,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
                     }
                     if (!errorVisible) scheduleControlsHide()
-                    if (restoredEpisode && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-                        handler.post { if (favoriteScenesAvailable() && favoriteClipSession == null) showFavoriteScenes() }
-                    }
                 }
                 Player.STATE_BUFFERING -> {
                     updatePlayPauseButton()
                     if (!errorVisible) scheduleControlsHide()
                 }
                 Player.STATE_ENDED -> {
-                    if (favoriteClipSession != null) {
+                    if (favoriteClipSession != null || restoredEpisode) {
                         player.pause()
                         updateProgressUi()
                         touchControls()
@@ -4492,7 +4496,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun updateEpisodeNavigationButtons() {
-        val enabled = !episodeChangePending && !errorVisible
+        val enabled = favoriteClipSession == null && !episodeChangePending && !errorVisible
         findViewByTag<TextView>("reianix_next_episode")?.isEnabled =
             enabled && intent.getBooleanExtra("canNext", false)
         findViewByTag<TextView>("reianix_previous_episode")?.isEnabled =
@@ -5706,7 +5710,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 runCatching { LocalSubtitleResolver.resolve(applicationContext, media) }.getOrDefault(emptyList())
             }
             if (revision != favoriteSceneUiRevision || !favoriteScenesAvailable() || uri != source ||
-                favoriteClipSession != null) return@launch
+                favoriteClipSession != null || player.currentMediaItem != originalItem ||
+                player.currentPosition != originalPosition || player.isPlaying) return@launch
             if (duration <= 0L || end > duration) {
                 Toast.makeText(this@NativePlayerActivity, "Arquivo original indisponível ou trecho inválido", Toast.LENGTH_LONG).show()
                 showFavoriteScenes()
