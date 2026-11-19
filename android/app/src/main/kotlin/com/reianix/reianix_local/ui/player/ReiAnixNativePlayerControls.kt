@@ -3,6 +3,8 @@ package com.reianix.reianix_local.ui.player
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -50,9 +52,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
@@ -446,7 +451,7 @@ fun ReiAnixNativePlayerBottomControls(
     }
 
     val duration = state.durationMs.takeIf { it > 0L } ?: 0L
-    var sliderFraction by remember(duration) {
+    var sliderFraction by remember(mediaUri, duration) {
         mutableFloatStateOf(
             if (duration > 0L) {
                 (state.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
@@ -455,7 +460,25 @@ fun ReiAnixNativePlayerBottomControls(
             },
         )
     }
-    var userDragging by remember { mutableStateOf(false) }
+    var userDragging by remember(mediaUri) { mutableStateOf(false) }
+    var seekPointerHeld by remember(mediaUri) { mutableStateOf(false) }
+    val seekEnabled = duration > 0L && !state.episodeTransitionInProgress &&
+        !state.errorVisible && state.controlsVisible
+    val reportScrubInteraction by rememberUpdatedState(onScrubInteraction)
+
+    DisposableEffect(mediaUri, seekEnabled) {
+        onDispose {
+            if (seekPointerHeld || userDragging) {
+                seekPointerHeld = false
+                userDragging = false
+                reportScrubInteraction(false)
+            }
+        }
+    }
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val previewWidth = if (screenWidth > 0) {
+        minOf(240.dp, (screenWidth.dp - 16.dp).coerceAtLeast(1.dp))
+    } else 240.dp
 
     LaunchedEffect(state.positionMs, state.durationMs, userDragging) {
         if (!userDragging) {
@@ -564,7 +587,7 @@ fun ReiAnixNativePlayerBottomControls(
                         )
                     }
                 }
-                if (userDragging && duration > 0L) {
+                if (userDragging && seekEnabled) {
                     // Floating window renders outside the short landscape overlay
                     // and does not alter the seekbar's position or tap target.
                     val density = LocalDensity.current
@@ -584,7 +607,7 @@ fun ReiAnixNativePlayerBottomControls(
                     ) {
                         Column(
                             modifier = Modifier
-                                .width(160.dp)
+                                .width(previewWidth)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(Color(0xF01B1B1D))
                                 .border(1.dp, Color.White.copy(alpha = 0.24f), RoundedCornerShape(10.dp))
@@ -633,7 +656,7 @@ fun ReiAnixNativePlayerBottomControls(
                 Slider(
                     value = sliderFraction,
                     onValueChange = {
-                        if (!userDragging) onScrubInteraction(true)
+                        if (!userDragging && !seekPointerHeld) reportScrubInteraction(true)
                         userDragging = true
                         sliderFraction = it.coerceIn(0f, 1f)
                     },
@@ -646,11 +669,37 @@ fun ReiAnixNativePlayerBottomControls(
                             )
                         }
                         userDragging = false
-                        onScrubInteraction(false)
+                        if (!seekPointerHeld) reportScrubInteraction(false)
                     },
-                    enabled = duration > 0L && !state.episodeTransitionInProgress,
+                    enabled = seekEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
+                        // Observe the raw gesture from DOWN to UP/CANCEL without
+                        // consuming any changes. Slider still owns the actual seek.
+                        // This also protects a stationary finger or a long press,
+                        // before the first onValueChange has even been emitted.
+                        .pointerInput(mediaUri, seekEnabled) {
+                            if (!seekEnabled) return@pointerInput
+                            awaitEachGesture {
+                                awaitFirstDown(
+                                    requireUnconsumed = false,
+                                    pass = PointerEventPass.Initial,
+                                )
+                                seekPointerHeld = true
+                                reportScrubInteraction(true)
+                                try {
+                                    // The Slider consumes movement in Main; observe
+                                    // Final so consumption cannot end the hold early.
+                                    do {
+                                        val event = awaitPointerEvent(PointerEventPass.Final)
+                                    } while (event.changes.any { it.pressed })
+                                } finally {
+                                    seekPointerHeld = false
+                                    userDragging = false
+                                    reportScrubInteraction(false)
+                                }
+                            }
+                        }
                         .semantics {
                             contentDescription = "Barra de progresso do vídeo"
                             stateDescription = if (duration > 0L) {
