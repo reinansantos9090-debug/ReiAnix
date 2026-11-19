@@ -109,8 +109,18 @@ class ReiAnixDetailsInstrumentedTest {
         }
         composeRule.onNodeWithTag("details-episode-list")
             .performScrollToNode(hasTestTag("details-quick-actions"))
-        listOf("anilist", "favorite", "note", "tags", "list").forEach { shortcut ->
-            composeRule.onNodeWithTag("details-quick-" + shortcut).assertIsDisplayed()
+        val shortcutBounds = listOf("anilist", "favorite", "note", "tags", "list").map { shortcut ->
+            composeRule.onNodeWithTag("details-quick-" + shortcut)
+                .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        }
+        // Equal-width touch targets, equal horizontal pitch and common top
+        // edge, allowing for Compose's integer-pixel weight rounding.
+        val first = shortcutBounds.first()
+        val pitch = shortcutBounds[1].center.x - first.center.x
+        shortcutBounds.forEachIndexed { index, bounds ->
+            org.junit.Assert.assertEquals(first.width, bounds.width, 2f)
+            org.junit.Assert.assertEquals(first.top, bounds.top, 2f)
+            org.junit.Assert.assertEquals(first.center.x + index * pitch, bounds.center.x, 2f)
         }
         composeRule.onNodeWithTag("details-quick-favorite").performClick()
         assertEquals(700L, favoriteAnimeId)
