@@ -7,6 +7,7 @@ import com.reianix.reianix_local.player.DeviceInteractionProfile
 import com.reianix.reianix_local.player.LocalSubtitleResolver
 import com.reianix.reianix_local.player.NativePlayerRequest
 import com.reianix.reianix_local.player.PlayerLocalMetadataStore
+import com.reianix.reianix_local.player.FavoriteSceneDialogs
 import com.reianix.reianix_local.player.PlayerEnhancementPolicy
 import com.reianix.reianix_local.player.PlayerSkipSegment
 import com.reianix.reianix_local.player.AniSkipSegments
@@ -338,6 +339,14 @@ class NativePlayerActivity : FragmentActivity() {
     private var openedReported = false
     private var restoredPositionMs: Long? = null
     private var localMetadata = PlayerLocalMetadataStore.Metadata.empty()
+    private val favoriteSceneDialogs by lazy {
+        FavoriteSceneDialogs(this, ::showPlayerMenuDialog, ::formatTime) {
+            Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
+        }
+    }
+    private var favoriteClipDialog: AlertDialog? = null
+    private var favoriteClipPlayer: ExoPlayer? = null
+    private var favoriteSceneUiRevision = 0L
     private var aspectModeLabel = "Ajustar"
     private var episodeChangePending = false
     private var episodeChangeTimeoutRequestId = ""
@@ -826,6 +835,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onNewIntent(newIntent: Intent) {
+        dismissFavoriteSceneUi()
         if (sessionState != SessionState.ACTIVE) {
             logPlayer(
                 "PLAYER_REUSE_IGNORED requestId=" +
@@ -5149,6 +5159,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onPause() {
+        dismissFavoriteSceneUi()
 
 
         if (sessionState != SessionState.EXITING || !exitProgressPublished) {
@@ -5293,6 +5304,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onDestroy() {
+        dismissFavoriteSceneUi()
         handler.removeCallbacks(sleepTimerTick)
         sleepTimerDialog?.dismiss()
         sleepTimerDialog = null
@@ -5506,55 +5518,219 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (::uri.isInitialized && localMetadata.mediaId == uri.toString())
             localMetadata.notes.filter { it.favorite } else emptyList()
 
+    private fun favoriteScenesAvailable(): Boolean =
+        ::uri.isInitialized && ::player.isInitialized && !episodeChangePending &&
+            !isFinishing && !isDestroyed && sessionState == SessionState.ACTIVE
+
     private fun showFavoriteScenes() {
-        if (!::uri.isInitialized || !::player.isInitialized || episodeChangePending) return
-        val media = uri.toString()
-        val position = player.currentPosition.coerceAtLeast(0L)
-        val notes = favoriteSceneNotes()
-        val items = listOf("Salvar cena atual • " + formatTime(position)) +
-            notes.map { formatTime(it.timestampMs) + " • " + it.text }
-        showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Cenas favoritas")
-            .setItems(items.toTypedArray()) { _, index ->
-                if (uri.toString() == media) {
-                    if (index == 0) {
-                        val input = android.widget.EditText(this).apply {
-                            hint = "Nome da cena (opcional)"
-                            setSingleLine(true)
-                            setTextColor(Color.WHITE)
-                        }
-                        showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-                            .setTitle("Salvar cena favorita")
-                            .setView(input)
-                            .setNegativeButton("Cancelar", null)
-                            .setPositiveButton("Salvar") { _, _ ->
-                                if (uri.toString() == media) {
-                                    val name = input.text.toString().trim().ifBlank { "Cena favorita" }
-                                    try {
-                                        localMetadata = localMetadataStore.addNote(media, position, name, favorite = true)
-                                        syncComposePlayerUiState()
-                                        showFeedback("Cena favorita salva")
-                                    } catch (_: Exception) {
-                                        showFeedback("Não foi possível salvar a cena favorita")
-                                    }
-                                }
-                            }.create())
-                    } else {
-                        val note = notes.getOrNull(index - 1)
-                        if (note != null) showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-                            .setTitle(note.text)
-                            .setItems(arrayOf("Ir para " + formatTime(note.timestampMs), "Remover dos favoritos")) { _, action ->
-                                if (uri.toString() == media) {
-                                    if (action == 0) seekToMarker(note.timestampMs, "Cena favorita")
-                                    else {
-                                        localMetadata = localMetadataStore.deleteNote(media, note.id)
-                                        syncComposePlayerUiState()
-                                    }
-                                }
-                            }.setNegativeButton("Cancelar", null).create())
+        if (!favoriteScenesAvailable()) return
+        val revision = ++favoriteSceneUiRevision
+        val source = uri.toString()
+        setMorePanelVisible(false)
+        // The gallery is independent of the episode currently in the player.
+        lifecycleScope.launch {
+            val scenes = withContext(Dispatchers.IO) {
+                localMetadataStore.favoriteScenes()
+            }
+            if (revision != favoriteSceneUiRevision || !favoriteScenesAvailable() || uri.toString() != source) return@launch
+            favoriteSceneDialogs.gallery(
+                scenes = scenes,
+                canCreate = player.duration > 0L && player.isCurrentMediaItemSeekable,
+                onCreate = { editFavoriteScene(null) },
+                onPlay = ::playFavoriteClip,
+                onEdit = ::editFavoriteScene,
+                onDelete = ::confirmDeleteFavoriteScene,
+            )
+        }
+    }
+
+    private fun editFavoriteScene(scene: PlayerLocalMetadataStore.FavoriteScene?) {
+        if (!favoriteScenesAvailable()) return
+        val revision = ++favoriteSceneUiRevision
+        val media = scene?.mediaId ?: uri.toString()
+        val sameMedia = media == uri.toString()
+        val position = scene?.note?.timestampMs ?: player.currentPosition.coerceAtLeast(0L)
+        val knownDuration = if (sameMedia && player.isCurrentMediaItemSeekable) player.duration else 0L
+        val animeName = scene?.note?.animeTitle?.takeIf { it.isNotBlank() }
+            ?: if (sameMedia) titleValue else ""
+        val episode = scene?.note?.episodeLabel?.takeIf { it.isNotBlank() }
+            ?: if (sameMedia) currentEpisodeLabel() else "Episódio local"
+        lifecycleScope.launch {
+            val duration = if (knownDuration > 0L) knownDuration else favoriteSceneDialogs.durationOf(media)
+            if (revision != favoriteSceneUiRevision || !favoriteScenesAvailable()) return@launch
+            if (duration <= 0L) {
+                Toast.makeText(this@NativePlayerActivity, "Arquivo indisponível ou sem duração válida", Toast.LENGTH_SHORT).show()
+                showFavoriteScenes()
+                return@launch
+            }
+            favoriteSceneDialogs.editor(
+                mediaId = media,
+                durationMs = duration,
+                positionMs = position,
+                existing = scene?.note,
+                onSave = { start, end, name ->
+                    val updated = withContext(Dispatchers.IO) {
+                        localMetadataStore.saveFavoriteClip(
+                            mediaId = media,
+                            startMs = start,
+                            endMs = end,
+                            durationMs = duration,
+                            title = name,
+                            animeTitle = animeName,
+                            episodeLabel = episode,
+                            existingId = scene?.note?.id,
+                        )
                     }
+                    if (favoriteScenesAvailable() && media == uri.toString()) {
+                        localMetadata = updated
+                        syncComposePlayerUiState()
+                    }
+                },
+                onSaved = {
+                    Toast.makeText(this@NativePlayerActivity, "Cena favorita salva", Toast.LENGTH_SHORT).show()
+                    if (revision == favoriteSceneUiRevision) showFavoriteScenes()
+                },
+                onBack = { showFavoriteScenes() },
+            )
+        }
+    }
+
+    private fun confirmDeleteFavoriteScene(scene: PlayerLocalMetadataStore.FavoriteScene) {
+        if (!favoriteScenesAvailable()) return
+        favoriteSceneDialogs.confirmDelete(scene.note.text, onCancel = { showFavoriteScenes() }) {
+            lifecycleScope.launch {
+                try {
+                    val updated = withContext(Dispatchers.IO) {
+                        localMetadataStore.deleteNote(scene.mediaId, scene.note.id)
+                    }
+                    if (favoriteScenesAvailable() && scene.mediaId == uri.toString()) {
+                        localMetadata = updated
+                        syncComposePlayerUiState()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    Toast.makeText(this@NativePlayerActivity, "Não foi possível excluir a cena", Toast.LENGTH_SHORT).show()
                 }
-            }.setNegativeButton("Fechar", null).create())
+                if (favoriteScenesAvailable()) showFavoriteScenes()
+            }
+        }
+    }
+
+    /**
+     * Media3 enforces the clip boundaries at the source. A separate, temporary
+     * player avoids changing the episode's saved position or autoplay state.
+     * Release it on every dismissal and when the Activity leaves the foreground.
+     */
+    private fun playFavoriteClip(scene: PlayerLocalMetadataStore.FavoriteScene) {
+        if (!favoriteScenesAvailable() || favoriteClipDialog != null) return
+        val end = scene.note.clipEndMs ?: return
+        val start = scene.note.timestampMs
+        if (start < 0L || end <= start) return
+        val media = Uri.parse(scene.mediaId)
+        if (media.scheme != "content" && media.scheme != "file") return
+        player.pause()
+        val baseItem = if (media == uri) player.currentMediaItem ?: MediaItem.fromUri(media)
+            else MediaItem.fromUri(media)
+        val item = baseItem.buildUpon()
+            .setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(start)
+                    .setEndPositionMs(end)
+                    .build(),
+            ).build()
+
+        var created: ExoPlayer? = null
+        try {
+            val clip = ExoPlayer.Builder(this).build()
+            created = clip
+            favoriteClipPlayer = clip
+            clip.setAudioAttributes(AudioAttributes.DEFAULT, true)
+            clip.repeatMode = Player.REPEAT_MODE_OFF
+            val tracks = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            if (media != uri) {
+                tracks.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+            }
+            clip.trackSelectionParameters = tracks.build()
+            val preview = PlayerView(this).apply {
+                useController = true
+                setShowNextButton(false)
+                setShowPreviousButton(false)
+                setShowShuffleButton(false)
+                setShowRepeatButton(false)
+                setBackgroundColor(Color.BLACK)
+                this.player = clip
+                keepScreenOn = true
+            }
+            val layout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                addView(preview, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    minOf(dp(240), (resources.displayMetrics.heightPixels * 0.45f).roundToInt()),
+                ))
+                addView(TextView(this@NativePlayerActivity).apply {
+                    text = formatTime(start) + " – " + formatTime(end) + " • " + formatTime(end - start)
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(8), 0, dp(4))
+                })
+            }
+            val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+                .setTitle(scene.note.text)
+                .setView(layout)
+                .setNegativeButton("Voltar", null)
+                .create()
+            favoriteClipDialog = dialog
+            dialog.setOnDismissListener {
+                preview.player = null
+                if (favoriteClipPlayer === clip) {
+                    favoriteClipPlayer = null
+                    clip.release()
+                }
+                val returnToGallery = favoriteClipDialog === dialog
+                if (returnToGallery) favoriteClipDialog = null
+                if (returnToGallery && favoriteScenesAvailable() &&
+                    lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                    showFavoriteScenes()
+                }
+            }
+            clip.addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    Toast.makeText(this@NativePlayerActivity,
+                        "Não foi possível reproduzir o trecho. Verifique o arquivo original.", Toast.LENGTH_LONG).show()
+                    dialog.dismiss()
+                }
+            })
+            showPlayerMenuDialog(dialog)
+            clip.setMediaItem(item)
+            clip.prepare()
+            clip.playWhenReady = true
+        } catch (_: Exception) {
+            val dialog = favoriteClipDialog
+            if (dialog != null) dialog.dismiss()
+            else if (favoriteClipPlayer === created) {
+                favoriteClipPlayer = null
+                created?.release()
+            }
+            Toast.makeText(this, "Não foi possível abrir a cena", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun dismissFavoriteSceneUi() {
+        favoriteSceneUiRevision += 1L
+        favoriteSceneDialogs.dismiss()
+        // Clear the reference before dismissing to distinguish a lifecycle
+        // close from the user returning to the gallery.
+        val dialog = favoriteClipDialog
+        favoriteClipDialog = null
+        dialog?.dismiss()
+        favoriteClipPlayer?.let { it.release() }
+        favoriteClipPlayer = null
     }
 
     private fun loadCaptionAppearance() {
