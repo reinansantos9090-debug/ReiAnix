@@ -340,12 +340,23 @@ class NativePlayerActivity : FragmentActivity() {
     private var restoredPositionMs: Long? = null
     private var localMetadata = PlayerLocalMetadataStore.Metadata.empty()
     private val favoriteSceneDialogs by lazy {
-        FavoriteSceneDialogs(this, ::showPlayerMenuDialog, ::formatTime) {
+        FavoriteSceneDialogs(this, ::formatTime) {
             Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
         }
     }
-    private var favoriteClipDialog: AlertDialog? = null
-    private var favoriteClipPlayer: ExoPlayer? = null
+    private data class FavoriteClipSession(
+        val scene: PlayerLocalMetadataStore.FavoriteScene,
+        val originalItem: MediaItem,
+        val originalPositionMs: Long,
+        val originalDurationMs: Long,
+        val originalTracks: TrackSelectionParameters,
+        val originalCompletion: Boolean,
+        val sourceDurationMs: Long,
+        var restoring: Boolean = false,
+    )
+    private var favoriteClipSession: FavoriteClipSession? = null
+    private val inFavoriteClip: Boolean get() = favoriteClipSession?.restoring == false
+    private val effectiveSeekMs: Long get() = if (inFavoriteClip) 10_000L else doubleTapSeekMs
     private var favoriteSceneUiRevision = 0L
     private var aspectModeLabel = "Ajustar"
     private var episodeChangePending = false
@@ -471,7 +482,7 @@ class NativePlayerActivity : FragmentActivity() {
     private var activeAnalyticsListener: AnalyticsListener? = null
 
     private val titleValue: String
-        get() = intent.getStringExtra("title") ?: "Episódio"
+        get() = favoriteClipSession?.takeUnless { it.restoring }?.scene?.note?.text ?: intent.getStringExtra("title") ?: "Episódio"
 
     private val controlsHider = object : Runnable {
         override fun run() {
@@ -889,6 +900,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
 
+        favoriteClipSession = null
         super.onNewIntent(newIntent)
         setIntent(newIntent)
         requestId = incomingRequestId
@@ -1673,6 +1685,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onPlaybackStateChanged(state: Int) {
             if (!isCurrent()) return
+            val clipSession = favoriteClipSession
+            if (state == Player.STATE_READY && clipSession?.restoring == true &&
+                player.currentMediaItem == clipSession.originalItem) {
+                favoriteClipSession = null
+                completionReported = clipSession.originalCompletion
+                touchControls()
+            }
             val label = when (state) {
                 Player.STATE_IDLE -> "STATE_IDLE"
                 Player.STATE_BUFFERING -> "STATE_BUFFERING"
@@ -1714,7 +1733,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     // READY means Media3 prepared the media. The preparation indicator
                     // is no longer needed; first-frame telemetry remains independently
                     // measured by EVENT_RENDERED_FIRST_FRAME.
-                    if (!openedReported) {
+                    if (!openedReported && favoriteClipSession == null) {
                         openedReported = true
                         val opened = publishLegacyPlayerEvent(
                             JSONObject().put("type", "player_opened")
@@ -1800,6 +1819,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     if (!errorVisible) scheduleControlsHide()
                 }
                 Player.STATE_ENDED -> {
+                    if (favoriteClipSession != null) {
+                        player.pause()
+                        updateProgressUi()
+                        touchControls()
+                        return
+                    }
                     completionReported = true
                     saveProgress("player_completed", force = true)
                     updatePlayPauseButton()
@@ -1885,6 +1910,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onPlayerError(error: PlaybackException) {
             if (!isCurrent()) return
+            if (inFavoriteClip) {
+                logPlayer("FAVORITE_CLIP_PLAYBACK_FAILED", error)
+                Toast.makeText(this@NativePlayerActivity, "Não foi possível reproduzir a cena", Toast.LENGTH_LONG).show()
+                handler.post { if (inFavoriteClip && !isFinishing && !isDestroyed) exitFavoriteClip() }
+                return
+            }
 
             val exoError = error as? ExoPlaybackException
             val rendererIndex = exoError?.rendererIndex?.takeIf { it >= 0 }
@@ -2243,7 +2274,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode)
 
     private fun canRequestPictureInPicture(): Boolean =
-        !audioOnly && canEnterPictureInPicture() &&
+        favoriteClipSession == null && !audioOnly && canEnterPictureInPicture() &&
             sessionState == SessionState.ACTIVE &&
             !errorVisible &&
             !playbackErrorForGeneration &&
@@ -2631,7 +2662,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ReiAnixComposeTheme {
                     ReiAnixNativePlayerOptionsPanel(
                         state = composePlayerUiState.value,
-                        showPictureInPicture = canEnterPictureInPicture(),
+                        showPictureInPicture = !composePlayerUiState.value.favoriteClipMode && canEnterPictureInPicture(),
                         resetSignal = optionsPanelResetSignal.value,
                         onPrevious = {
                             if (!episodeChangePending && intent.getBooleanExtra("canPrevious", false)) {
@@ -2782,6 +2813,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
      * connection is involved. The local video remains intact.
      */
     private fun openCurrentVideoExternally() {
+        if (favoriteClipSession != null) return
         setMorePanelVisible(false)
         if (!::uri.isInitialized || !::player.isInitialized || player.currentMediaItem == null) {
             Toast.makeText(this, "Abra um vídeo local antes de escolher o aplicativo", Toast.LENGTH_SHORT).show()
@@ -2826,7 +2858,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ReiAnixComposeTheme {
                     ReiAnixNativePlayerCenterControls(
                         state = composePlayerUiState.value,
-                        seekSeconds = (doubleTapSeekMs / 1_000L).coerceAtLeast(1L),
+                        seekSeconds = (effectiveSeekMs / 1_000L).coerceAtLeast(1L),
                         onPlayPause = { togglePlayPause() },
                         onSeekRelative = { deltaMs ->
                             val seconds = deltaMs / 1000L
@@ -2844,7 +2876,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ReiAnixComposeTheme {
                     ReiAnixNativePlayerBottomControls(
                         state = composePlayerUiState.value,
-                        mediaUri = if (::uri.isInitialized) uri.toString() else null,
+                        mediaUri = if (composePlayerUiState.value.favoriteClipMode) favoriteClipSession?.scene?.mediaId
+                            else if (::uri.isInitialized) uri.toString() else null,
                         onScrubInteraction = ::setSeekScrubActive,
                         onSeekTo = { targetMs ->
                             val duration = if (::player.isInitialized) player.duration else 0L
@@ -2960,7 +2993,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         composePlayerUiState.value = ReiAnixNativePlayerUiState(
             title = titleValue,
-            episodeLabel = listOfNotNull(episodeLabel, resolution).joinToString(" • "),
+            episodeLabel = listOfNotNull(if (inFavoriteClip) "Cena favorita" else episodeLabel, resolution).joinToString(" • "),
             technicalLine = buildPlayerTechnicalLine(),
             positionMs = currentPosition.coerceAtLeast(0L),
             durationMs = currentDuration.coerceAtLeast(0L),
@@ -2976,8 +3009,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             errorVisible = errorVisible,
             controlsVisible = controlsVisible,
             locked = locked,
-            canNext = intent.getBooleanExtra("canNext", false),
-            canPrevious = intent.getBooleanExtra("canPrevious", false),
+            canNext = favoriteClipSession == null && intent.getBooleanExtra("canNext", false),
+            canPrevious = favoriteClipSession == null && intent.getBooleanExtra("canPrevious", false),
             episodeTransitionInProgress = episodeChangePending,
             aspectLabel = aspectModeLabel,
             sleepTimerLabel = if (sleepTimerDeadlineMs > 0L) formatTime(sleepTimerRemainingMs()) else "Desativado",
@@ -2986,7 +3019,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             subtitleTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_TEXT),
             audioTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_AUDIO) > 0,
             subtitleTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_TEXT) > 0,
-            autoplayNext = autoplayNext,
+            autoplayNext = favoriteClipSession == null && autoplayNext,
             horizontalSeekEnabled = horizontalSeekEnabled,
             volumeGesturesEnabled = volumeGesturesEnabled,
             brightnessGesturesEnabled = brightnessGesturesEnabled,
@@ -2996,8 +3029,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             safeTopPx = gestureSafeTop,
             safeBottomPx = gestureSafeBottom,
             skipSegments = currentSkipSegments(currentDuration),
-            favoriteSceneTimes = favoriteSceneNotes().map { it.timestampMs },
+            favoriteSceneTimes = if (favoriteClipSession == null) favoriteSceneNotes().map { it.timestampMs } else emptyList(),
             audioOnly = audioOnly,
+            favoriteClipMode = inFavoriteClip,
+            favoriteClipStartMs = favoriteClipSession?.takeUnless { it.restoring }?.scene?.note?.timestampMs ?: 0L,
+            favoriteClipSourceDurationMs = favoriteClipSession?.takeUnless { it.restoring }?.sourceDurationMs ?: 0L,
         )
         val unlockedOverlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
         val lockedAffordanceVisible = controlsVisible && locked && !errorVisible && !inPictureInPicture
@@ -3327,6 +3363,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun showEpisodePlaylist() {
+        if (favoriteClipSession != null) return
         if (locked || episodeChangePending || episodePlaylistOverlay != null) return
         val sourceSession = playerSessionId
         val animeId = intent.getStringExtra("animeId")?.toLongOrNull() ?: return
@@ -4058,6 +4095,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun retryCurrentMedia() {
+        if (favoriteClipSession != null) { restoreOriginalEpisode(); return }
         if (!::player.isInitialized) {
             logPlayer("PLAYER_RETRY_UNAVAILABLE requestId=" + requestId.ifEmpty { "-" })
             return
@@ -4301,9 +4339,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         exitReported = true
         suppressExitEvent = true
-        val rawDuration = if (::player.isInitialized) player.duration else 0L
+        val original = favoriteClipSession
+        val rawDuration = original?.originalDurationMs ?: if (::player.isInitialized) player.duration else 0L
         val currentDuration = if (rawDuration > 0L) rawDuration else 0L
-        val rawPosition = if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L
+        val rawPosition = original?.originalPositionMs ?: if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L
         val currentPosition = if (currentDuration > 0L) rawPosition.coerceAtMost(currentDuration) else rawPosition
         val exitCapturedAt = nextPlayerEventCreatedAt()
         val payload = JSONObject()
@@ -4313,7 +4352,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .put("animeId", intent.getStringExtra("animeId").orEmpty())
             .put("positionMs", currentPosition)
             .put("durationMs", currentDuration)
-            .put("completion", completionReported)
+            .put("completion", original?.originalCompletion ?: completionReported)
             .put("reason", reason)
             .put("classification", exitClassification)
             .put("traceId", traceId)
@@ -4404,6 +4443,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun finishPlayer(reason: String) {
+        if (inFavoriteClip && reason in setOf("back_button", "user_button", "android_back", "player_error_back")) {
+            exitFavoriteClip()
+            return
+        }
         // A player Back/finish request is a single terminal transition. Ignore
         // re-entrant requests while EXITING or after destruction so one Android
         // Back event can never enqueue two exits or two Activity finishes.
@@ -4513,6 +4556,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             playerSessionId == expectedSessionId
 
     private fun requestEpisode(eventType: String, selectedEpisodeId: Long? = null) {
+        if (favoriteClipSession != null) return
         if (expireSleepTimerIfDue()) return
         val isNextRequest = eventType == "player_next_request"
         val isPreviousRequest = eventType == "player_previous_request"
@@ -4970,7 +5014,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun buildProgressEvent(eventType: String, force: Boolean): JSONObject? {
-        if (!::player.isInitialized) return null
+        if (favoriteClipSession != null || !::player.isInitialized) return null
         val episodeId = currentEpisodeId()
         val mediaId = currentMediaId()
         val sessionId = playerSessionId.trim()
@@ -5286,11 +5330,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (::player.isInitialized) {
             outState.putString("session_request_id", requestId)
             outState.putString("session_uri", if (::uri.isInitialized) uri.toString() else intent.getStringExtra("uri").orEmpty())
-            outState.putLong("position_ms", player.currentPosition.coerceAtLeast(0L))
-            outState.putLong("duration_ms", player.duration.coerceAtLeast(0L))
+            outState.putLong("position_ms", favoriteClipSession?.originalPositionMs ?: player.currentPosition.coerceAtLeast(0L))
+            outState.putLong("duration_ms", favoriteClipSession?.originalDurationMs ?: player.duration.coerceAtLeast(0L))
             outState.putFloat("playback_speed", player.playbackParameters.speed)
-            outState.putBoolean("play_when_ready", player.playWhenReady)
-            outState.putBundle("track_selection_parameters", player.trackSelectionParameters.toBundle())
+            outState.putBoolean("play_when_ready", favoriteClipSession == null && player.playWhenReady)
+            outState.putBundle("track_selection_parameters", (favoriteClipSession?.originalTracks ?: player.trackSelectionParameters).toBundle())
         }
         if (::playerView.isInitialized) {
             outState.putInt("resize_mode", playerView.resizeMode)
@@ -5476,12 +5520,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun currentSkipSegments(durationMs: Long): List<PlayerSkipSegment> {
+        if (favoriteClipSession != null) return emptyList()
         val manual = if (::uri.isInitialized && localMetadata.mediaId == uri.toString()) localMetadata
             else PlayerLocalMetadataStore.Metadata.empty()
         return PlayerEnhancementPolicy.segments(manual, remoteSkipSegments, durationMs)
     }
 
     private fun requestSmartSkipSegments(durationMs: Long) {
+        if (favoriteClipSession != null) return
         if (!::player.isInitialized || !::uri.isInitialized || durationMs <= 0L ||
             errorVisible || episodeChangePending || sessionState != SessionState.ACTIVE ||
             (skipLookupGeneration == playerGeneration && skipLookupDuration == durationMs)) return
@@ -5524,9 +5570,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun showFavoriteScenes() {
         if (!favoriteScenesAvailable()) return
+        if (inFavoriteClip) { exitFavoriteClip(); return }
+        if (favoriteClipSession != null) return
         val revision = ++favoriteSceneUiRevision
         val source = uri.toString()
         setMorePanelVisible(false)
+        player.pause()
         // The gallery is independent of the episode currently in the player.
         lifecycleScope.launch {
             val scenes = withContext(Dispatchers.IO) {
@@ -5623,119 +5672,114 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
-    /**
-     * Media3 enforces the clip boundaries at the source. A separate, temporary
-     * player avoids changing the episode's saved position or autoplay state.
-     * Release it on every dismissal and when the Activity leaves the foreground.
-     */
+    /** Play clipped media using the existing ExoPlayer and the normal player UI. */
     private fun playFavoriteClip(scene: PlayerLocalMetadataStore.FavoriteScene) {
-        if (!favoriteScenesAvailable() || favoriteClipDialog != null) return
+        if (!favoriteScenesAvailable() || favoriteClipSession != null || errorVisible ||
+            player.duration <= 0L || player.playbackState == Player.STATE_IDLE) return
         val end = scene.note.clipEndMs ?: return
         val start = scene.note.timestampMs
         if (start < 0L || end <= start) return
         val media = Uri.parse(scene.mediaId)
         if (media.scheme != "content" && media.scheme != "file") return
+        val revision = ++favoriteSceneUiRevision
+        val source = uri
         player.pause()
-        val baseItem = if (media == uri) player.currentMediaItem ?: MediaItem.fromUri(media)
-            else MediaItem.fromUri(media)
-        val item = baseItem.buildUpon()
-            .setClippingConfiguration(
-                MediaItem.ClippingConfiguration.Builder()
+        val originalItem = player.currentMediaItem ?: return
+        val sameMedia = media == source
+        val originalPosition = player.currentPosition.coerceAtLeast(0L)
+        val originalDuration = player.duration
+        val tracks = player.trackSelectionParameters
+        val originalCompleted = completionReported
+        lifecycleScope.launch {
+            val duration = if (sameMedia) originalDuration else favoriteSceneDialogs.durationOf(scene.mediaId)
+            val sidecars = if (sameMedia) emptyList() else withContext(Dispatchers.IO) {
+                runCatching { LocalSubtitleResolver.resolve(applicationContext, media) }.getOrDefault(emptyList())
+            }
+            if (revision != favoriteSceneUiRevision || !favoriteScenesAvailable() || uri != source ||
+                favoriteClipSession != null) return@launch
+            if (duration <= 0L || end > duration) {
+                Toast.makeText(this@NativePlayerActivity, "Arquivo original indisponível ou trecho inválido", Toast.LENGTH_LONG).show()
+                showFavoriteScenes()
+                return@launch
+            }
+            val baseItem = if (sameMedia) originalItem else buildMediaItem(media, null, sidecars)
+            val item = baseItem.buildUpon()
+                .setMediaId("favorite-clip:" + scene.note.id)
+                .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
                     .setStartPositionMs(start)
                     .setEndPositionMs(end)
-                    .build(),
-            ).build()
-
-        var created: ExoPlayer? = null
-        try {
-            val clip = ExoPlayer.Builder(this).build()
-            created = clip
-            favoriteClipPlayer = clip
-            clip.setAudioAttributes(AudioAttributes.DEFAULT, true)
-            clip.repeatMode = Player.REPEAT_MODE_OFF
-            val tracks = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-            if (media != uri) {
-                tracks.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .build())
+                .build()
+            // Checkpoint the episode before replacing its source. The clip may
+            // not produce any episode-progress/completion/account-sync writes.
+            saveProgress("player_paused", force = true)
+            favoriteClipSession = FavoriteClipSession(scene, originalItem, originalPosition,
+                originalDuration, tracks, originalCompleted, duration)
+            skipLookupJob?.cancel()
+            remoteSkipSegments = emptyList()
+            try {
+                val selection = tracks.buildUpon()
+                if (!sameMedia) selection.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
                     .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                     .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                replaceFavoritePlaybackItem(item, 0L, selection.build(), true)
+            } catch (error: Exception) {
+                logPlayer("FAVORITE_CLIP_START_FAILED", error)
+                Toast.makeText(this@NativePlayerActivity, "Não foi possível abrir a cena", Toast.LENGTH_SHORT).show()
+                restoreOriginalEpisode()
             }
-            clip.trackSelectionParameters = tracks.build()
-            val preview = PlayerView(this).apply {
-                useController = true
-                setShowNextButton(false)
-                setShowPreviousButton(false)
-                setShowShuffleButton(false)
-                setBackgroundColor(Color.BLACK)
-                this.player = clip
-                keepScreenOn = true
-            }
-            val layout = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(6), dp(12), dp(6))
-                addView(preview, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    minOf(dp(240), (resources.displayMetrics.heightPixels * 0.45f).roundToInt()),
-                ))
-                addView(TextView(this@NativePlayerActivity).apply {
-                    text = formatTime(start) + " – " + formatTime(end) + " • " + formatTime(end - start)
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                    setPadding(0, dp(8), 0, dp(4))
-                })
-            }
-            val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-                .setTitle(scene.note.text)
-                .setView(layout)
-                .setNegativeButton("Voltar", null)
-                .create()
-            favoriteClipDialog = dialog
-            dialog.setOnDismissListener {
-                preview.player = null
-                if (favoriteClipPlayer === clip) {
-                    favoriteClipPlayer = null
-                    clip.release()
-                }
-                val returnToGallery = favoriteClipDialog === dialog
-                if (returnToGallery) favoriteClipDialog = null
-                if (returnToGallery && favoriteScenesAvailable() &&
-                    lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-                    showFavoriteScenes()
-                }
-            }
-            clip.addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    Toast.makeText(this@NativePlayerActivity,
-                        "Não foi possível reproduzir o trecho. Verifique o arquivo original.", Toast.LENGTH_LONG).show()
-                    dialog.dismiss()
-                }
-            })
-            showPlayerMenuDialog(dialog)
-            clip.setMediaItem(item)
-            clip.prepare()
-            clip.playWhenReady = true
-        } catch (_: Exception) {
-            val dialog = favoriteClipDialog
-            if (dialog != null) dialog.dismiss()
-            else if (favoriteClipPlayer === created) {
-                favoriteClipPlayer = null
-                created?.release()
-            }
-            Toast.makeText(this, "Não foi possível abrir a cena", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun replaceFavoritePlaybackItem(item: MediaItem, position: Long,
+        tracks: TrackSelectionParameters, play: Boolean) {
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
+        setMorePanelVisible(false)
+        closeEpisodePlaylist()
+        beginPlayerGeneration("favorite_scene")
+        openedReported = true
+        initialSeekApplied = true
+        initialPositionMsForGeneration = position
+        firstFrameRenderedForTesting = false
+        completionReported = false
+        errorVisible = false
+        findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
+        player.pause()
+        if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
+        detachPlayerViewForMediaReset("favorite_scene")
+        player.trackSelectionParameters = tracks
+        player.setMediaItem(item, position)
+        reattachPlayerViewAfterMediaReset("favorite_scene")
+        player.playWhenReady = play && !sleepTimerPaused && !expireSleepTimerIfDue()
+        player.prepare()
+        touchControls()
+        updateProgressUi()
+        updatePictureInPictureParams()
+    }
+
+    private fun restoreOriginalEpisode() {
+        val session = favoriteClipSession ?: return
+        session.restoring = true
+        try {
+            replaceFavoritePlaybackItem(session.originalItem, session.originalPositionMs,
+                session.originalTracks.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioOnly).build(), false)
+        } catch (error: Exception) {
+            logPlayer("FAVORITE_CLIP_RESTORE_FAILED", error)
+            // Keep the original position snapshot protected even on failure.
+            showPlayerError("Não foi possível restaurar o episódio.", "media3_error")
+        }
+    }
+
+    private fun exitFavoriteClip() {
+        restoreOriginalEpisode()
+        // The normal player remains underneath the gallery. Wait for READY
+        // before allowing another clip or editing the episode.
+        showFeedback("Voltando ao episódio", 1000L)
     }
 
     private fun dismissFavoriteSceneUi() {
         favoriteSceneUiRevision += 1L
         favoriteSceneDialogs.dismiss()
-        // Clear the reference before dismissing to distinguish a lifecycle
-        // close from the user returning to the gallery.
-        val dialog = favoriteClipDialog
-        favoriteClipDialog = null
-        dialog?.dismiss()
-        favoriteClipPlayer?.let { it.release() }
-        favoriteClipPlayer = null
     }
 
     private fun loadCaptionAppearance() {
@@ -5883,6 +5927,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun updateMetadataControls(positionMs: Long) {
         if (!::root.isInitialized) return
+        if (favoriteClipSession != null) {
+            findViewByTag<TextView>("reianix_skip_opening")?.visibility = View.GONE
+            findViewByTag<TextView>("reianix_skip_ending")?.visibility = View.GONE
+            return
+        }
         val position = positionMs.coerceAtLeast(0L)
         val duration = if (::player.isInitialized) player.duration.takeIf { it > 0L } else null
         val opening = localMetadata.opening?.takeIf { duration == null || it.endMs <= duration }
@@ -5903,6 +5952,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun showLocalMetadataEditor() {
+        if (favoriteClipSession != null) return
         if (!::localMetadataStore.isInitialized || !::uri.isInitialized) return
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
 
@@ -6419,12 +6469,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     when (PlayerGesturePolicy.side(event.x, width)) {
                         PlayerGesturePolicy.Side.LEFT -> {
                             logPlayer("PLAYER_DOUBLE_TAP side=left requestId=" + requestId.ifEmpty { "-" })
-                            seekBy(-doubleTapSeekMs, "−" + (doubleTapSeekMs / 1000L) + "s")
+                            seekBy(-effectiveSeekMs, "−" + (effectiveSeekMs / 1000L) + "s")
                         }
 
                         PlayerGesturePolicy.Side.RIGHT -> {
                             logPlayer("PLAYER_DOUBLE_TAP side=right requestId=" + requestId.ifEmpty { "-" })
-                            seekBy(doubleTapSeekMs, "+" + (doubleTapSeekMs / 1000L) + "s")
+                            seekBy(effectiveSeekMs, "+" + (effectiveSeekMs / 1000L) + "s")
                         }
 
                         PlayerGesturePolicy.Side.CENTER -> {
