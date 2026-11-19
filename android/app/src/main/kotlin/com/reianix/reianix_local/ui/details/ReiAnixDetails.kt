@@ -582,6 +582,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
         ) {
             DetailsHero(
                 anime = anime,
+                associationRevision = associationRevision,
                 currentEpisode = currentEpisode,
                 nextEpisode = nextEpisode,
                 onBack = onBack,
@@ -621,7 +622,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
             contentType = "details-about",
         ) {
             Column {
-                DetailsAboutSection(anime = anime, associationRevision = associationRevision)
+                DetailsAboutSection(anime = anime)
                 ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
             }
         }
@@ -807,6 +808,7 @@ private fun DetailsSectionTabs(
 @Composable
 private fun DetailsHero(
     anime: ReiAnixDetailsAnimeUiModel,
+    associationRevision: Long,
     currentEpisode: ReiAnixEpisodeUiModel?,
     nextEpisode: ReiAnixEpisodeUiModel?,
     onBack: () -> Unit,
@@ -1005,8 +1007,28 @@ private fun DetailsHero(
                 )
             }
         }
+        // Keep the synopsis and optional character strip directly below the title
+        // and metadata, above genres and Trace.moe, independently of the About tab.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = responsive.horizontalPadding)
+                .testTag("details-header-metadata"),
+        ) {
+            anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
+                Column(
+                    modifier = Modifier.padding(top = ReiAnixTokens.Spacing.md),
+                ) {
+                    DetailsExpandableSynopsis(description)
+                }
+            }
+            ReiAnixMetadataCharacters(
+                animeId = anime.id,
+                metadataRevision = associationRevision.toString() + ":" + anime.metadataAvailability.name + ":" + anime.presentationState.name,
+            )
+        }
         if (anime.genres.isNotEmpty()) {
-            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = responsive.horizontalPadding),
+            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
                 anime.genres.forEach { genre -> ReiAnixBadge(text = genre.name, tone = ReiAnixBadgeTone.Primary) }
             }
@@ -1446,11 +1468,7 @@ private fun DetailsHeroIcon(
 @Composable
 private fun DetailsExpandableSynopsis(description: String) {
     var expanded by rememberSaveable(description) { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth().padding(
-            start = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            end = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-            bottom = ReiAnixTokens.Spacing.lg,
-        ),
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = ReiAnixTokens.Spacing.md),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
         Text(text = "Sinopse", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
         Text(text = description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
@@ -1464,18 +1482,9 @@ private fun DetailsExpandableSynopsis(description: String) {
 }
 
 @Composable
-private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel, associationRevision: Long) {
+private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
-        anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
-            DetailsExpandableSynopsis(description)
-        }
-        // Supplemental people appear with the synopsis and other metadata,
-        // not inside the personal experience panel or behind a button.
-        ReiAnixMetadataCharacters(
-            animeId = anime.id,
-            metadataRevision = associationRevision.toString() + ":" + anime.metadataAvailability.name + ":" + anime.presentationState.name,
-        )
         val knownTitles = sequenceOf(
             anime.title,
             anime.romajiTitle,
