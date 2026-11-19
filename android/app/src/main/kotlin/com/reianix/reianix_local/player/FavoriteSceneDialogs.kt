@@ -10,6 +10,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.util.LruCache
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -17,6 +18,7 @@ import android.widget.BaseAdapter
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
@@ -105,9 +107,14 @@ internal class FavoriteSceneDialogs(
     }
 
     private fun fullScreen(title: String, onBack: () -> Unit, body: LinearLayout.() -> Unit, onClose: () -> Unit = {}) {
-        dismiss()
         if (activity.isFinishing || activity.isDestroyed) return
+        val previous = currentDialog
+        val previousEditor = currentEditor
         val dialog = Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen)
+        dialog.window?.apply {
+            setWindowAnimations(0)
+            setBackgroundDrawable(ColorDrawable(Color.BLACK))
+        }
         val root = column().apply {
             setBackgroundColor(Color.BLACK)
             val header = LinearLayout(activity).apply {
@@ -146,6 +153,9 @@ internal class FavoriteSceneDialogs(
             SystemUiController(this).applyImmersive(false)
         }
         ViewCompat.requestApplyInsets(root)
+        // Replace the window only after the new black surface is visible.
+        previous?.dismiss()
+        previousEditor?.dismiss()
     }
 
     private suspend fun loadFrame(mediaId: String, positionMs: Long): Bitmap? {
@@ -198,10 +208,11 @@ internal class FavoriteSceneDialogs(
         onPlay: (PlayerLocalMetadataStore.FavoriteScene) -> Unit,
         onEdit: (PlayerLocalMetadataStore.FavoriteScene) -> Unit,
         onDelete: (PlayerLocalMetadataStore.FavoriteScene) -> Unit,
+        onBack: () -> Unit = {},
     ) {
         val jobs = mutableMapOf<View, Job>()
         val content = column().apply { setPadding(dp(16), dp(4), dp(16), dp(8)) }
-        if (canCreate) content.addView(action("+ Salvar novo trecho") { dismiss(); onCreate() })
+        if (canCreate) content.addView(action("+ Salvar cena") { onCreate() })
         if (scenes.isEmpty()) content.addView(label("Nenhuma cena favorita salva.").apply {
             setPadding(dp(4), dp(16), dp(4), dp(16))
         }) else {
@@ -223,12 +234,33 @@ internal class FavoriteSceneDialogs(
                                 addView(label("", 12f, 0xFFCCCCCC.toInt()))
                                 addView(label("", 12f, 0xFFCCCCCC.toInt()))
                             }, LinearLayout.LayoutParams(0, -2, 1f))
+                            addView(label("⋮", 26f).apply {
+                                gravity = Gravity.CENTER
+                                isClickable = true
+                                isFocusable = false
+                            }, LinearLayout.LayoutParams(dp(48), dp(48)))
                         }
                         jobs.remove(row)?.cancel()
                         val scene = getItem(position)
                         val note = scene.note
                         val image = row.getChildAt(0) as ImageView
                         val textColumn = row.getChildAt(1) as LinearLayout
+                        val more = row.getChildAt(2) as TextView
+                        more.contentDescription = "Opções de ${note.text}"
+                        more.setOnClickListener { anchor ->
+                            val popup = PopupMenu(ContextThemeWrapper(activity,
+                                android.R.style.Theme_Material_NoActionBar_Fullscreen), anchor)
+                            popup.menu.add(0, 1, 0, "Editar")
+                            popup.menu.add(0, 2, 1, "Excluir")
+                            popup.setOnMenuItemClickListener { item ->
+                                when (item.itemId) {
+                                    1 -> { onEdit(scene); true }
+                                    2 -> { onDelete(scene); true }
+                                    else -> false
+                                }
+                            }
+                            popup.show()
+                        }
                         (textColumn.getChildAt(0) as TextView).text = note.text
                         (textColumn.getChildAt(1) as TextView).text =
                             listOf(note.animeTitle, note.episodeLabel).filter(String::isNotBlank)
@@ -246,24 +278,10 @@ internal class FavoriteSceneDialogs(
                 }
                 setOnItemClickListener { _, _, index, _ ->
                     val scene = scenes[index]
-                    dismiss()
-                    val note = scene.note
-                    fullScreen(note.text, onBack = {
-                        gallery(scenes, canCreate, onCreate, onPlay, onEdit, onDelete)
-                    }, body = {
-                        val details = listOf(note.animeTitle, note.episodeLabel)
-                            .filter(String::isNotBlank).joinToString(" • ")
-                        if (details.isNotBlank()) addView(label(details, 14f, 0xFFAAAAAA.toInt()).apply {
-                            setPadding(dp(20), dp(12), dp(20), dp(8))
-                        })
-                        if (note.clipEndMs != null) {
-                            addView(action("Reproduzir trecho") { dismiss(); onPlay(scene) })
-                            addView(action("Editar trecho") { dismiss(); onEdit(scene) })
-                        } else {
-                            addView(action("Editar e transformar em clipe") { dismiss(); onEdit(scene) })
-                        }
-                        addView(action("Excluir") { dismiss(); onDelete(scene) })
-                    })
+                    // A saved clip opens directly. Old point-only bookmarks
+                    // need a range before they can be played as clips.
+                    if (scene.note.clipEndMs != null) onPlay(scene)
+                    else report("Use Editar para definir o trecho desta cena.")
                 }
             }
             list.setBackgroundColor(Color.BLACK)
@@ -271,7 +289,7 @@ internal class FavoriteSceneDialogs(
             list.dividerHeight = dp(1)
             content.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        fullScreen("Cenas favoritas", onBack = {}, body = {
+        fullScreen("Cenas favoritas", onBack = onBack, body = {
             addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
         }, onClose = { jobs.values.forEach { it.cancel() }; jobs.clear() })
     }
@@ -281,8 +299,8 @@ internal class FavoriteSceneDialogs(
             addView(label(name + "\nO arquivo original não será alterado.").apply {
                 setPadding(dp(20), dp(20), dp(20), dp(20))
             })
-            addView(action("Excluir") { dismiss(); onDelete() })
-            addView(action("Cancelar") { dismiss(); onCancel() })
+            addView(action("Excluir") { onDelete() })
+            addView(action("Cancelar") { onCancel() })
         })
     }
 
@@ -298,8 +316,9 @@ internal class FavoriteSceneDialogs(
         onBack: () -> Unit,
     ) {
         if (durationMs <= 0L) { report("Duração indisponível para criar um clipe"); return }
-        dismiss()
         if (activity.isFinishing || activity.isDestroyed) return
+        val previous = currentDialog
+        val previousEditor = currentEditor
         val editor = FavoriteClipEditor(
             host = activity,
             item = previewItem,
@@ -318,6 +337,9 @@ internal class FavoriteSceneDialogs(
         editor.setOnDismissListener {
             if (currentEditor === editor) currentEditor = null
         }
+        editor.window?.setWindowAnimations(0)
         editor.show()
+        previous?.dismiss()
+        previousEditor?.dismiss()
     }
 }
