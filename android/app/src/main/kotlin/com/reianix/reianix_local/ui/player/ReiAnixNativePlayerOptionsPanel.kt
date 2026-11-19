@@ -173,7 +173,7 @@ fun ReiAnixNativePlayerOptionsPanel(
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.BookmarkBorder,
-                    label = "Cenas favoritas",
+                    label = "Salvar cena",
                     onClick = onFavoriteScenes,
                 )
                 PlayerOptionActionRow(
