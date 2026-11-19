@@ -106,7 +106,14 @@ class PlayerLocalMetadataStore(context: Context) {
             createdAtMs = nowMs,
             favorite = favorite,
         )
-        val updated = current.copy(notes = (current.notes + note).takeLast(MAX_NOTES_PER_MEDIA))
+        val combined = current.notes + note
+        // Legacy ordinary notes must never evict persisted favorite clips.
+        val retained = if (combined.size <= MAX_NOTES_PER_MEDIA) combined else {
+            val removable = combined.firstOrNull { !it.favorite && it.id != note.id }
+                ?: error("Limite de cenas e notas deste episódio atingido")
+            combined.filterNot { it.id == removable.id }
+        }
+        val updated = current.copy(notes = retained)
         val written = write(updateRoot(readRoot(), updated))
         if (favorite) check(written) { "Unable to persist favorite scene" }
         return updated
