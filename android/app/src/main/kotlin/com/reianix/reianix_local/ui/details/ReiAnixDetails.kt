@@ -4,6 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -319,7 +324,11 @@ fun ReiAnixDetailsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .then(
+                if (state.status == ReiAnixDetailsLoadStatus.READY && state.anime != null) Modifier
+                else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         when (state.status) {
@@ -865,57 +874,6 @@ private fun DetailsHero(
     val hasMarathonContent = anime.seasons.any { it.episodes.isNotEmpty() }
 
     Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
-        ReiAnixTopBar(
-            title = "Detalhes",
-            navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
-            navigationContentDescription = "Voltar",
-            onNavigationClick = onBack,
-            actions = {
-                Box {
-                    ReiAnixIconActionButton(
-                        icon = Icons.Filled.MoreVert,
-                        contentDescription = "Mais opções",
-                        onClick = { menuExpanded.value = true },
-                    )
-                    DropdownMenu(
-                        expanded = menuExpanded.value,
-                        onDismissRequest = { menuExpanded.value = false },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Atualizar detalhes") },
-                            leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
-                            onClick = {
-                                menuExpanded.value = false
-                                onRefresh()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(if (anime.pinned) "Desafixar anime" else "Fixar anime") },
-                            onClick = {
-                                menuExpanded.value = false
-                                actionScope.launch {
-                                    try {
-                                        onTogglePinned(anime.id)
-                                    } catch (failure: Exception) {
-                                        actionError = failure.message
-                                            ?.takeIf(String::isNotBlank)
-                                            ?: "Não foi possível alterar o pin."
-                                    }
-                                }
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Associar ao AniList") },
-                            onClick = {
-                                menuExpanded.value = false
-                                onManageAniList()
-                            },
-                        )
-                    }
-                }
-            },
-        )
         Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
             ReiAnixBackdrop(
                 localPath = backdropPath,
@@ -939,6 +897,68 @@ private fun DetailsHero(
                         ),
                     ),
                 ),
+            )
+            ReiAnixTopBar(
+                title = "Detalhes",
+                modifier = Modifier
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.88f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    )
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                navigationContentDescription = "Voltar",
+                onNavigationClick = onBack,
+                actions = {
+                    Box {
+                        ReiAnixIconActionButton(
+                            icon = Icons.Filled.MoreVert,
+                            contentDescription = "Mais opções",
+                            onClick = { menuExpanded.value = true },
+                        )
+                        DropdownMenu(
+                            expanded = menuExpanded.value,
+                            onDismissRequest = { menuExpanded.value = false },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Atualizar detalhes") },
+                                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded.value = false
+                                    onRefresh()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (anime.pinned) "Desafixar anime" else "Fixar anime") },
+                                onClick = {
+                                    menuExpanded.value = false
+                                    actionScope.launch {
+                                        try {
+                                            onTogglePinned(anime.id)
+                                        } catch (failure: Exception) {
+                                            actionError = failure.message
+                                                ?.takeIf(String::isNotBlank)
+                                                ?: "Não foi possível alterar o pin."
+                                        }
+                                    }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Associar ao AniList") },
+                                onClick = {
+                                    menuExpanded.value = false
+                                    onManageAniList()
+                                },
+                            )
+                        }
+                    }
+                },
             )
         }
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding)) {
