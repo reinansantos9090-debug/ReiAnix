@@ -5797,7 +5797,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val opening = favoriteClipSession
                 handler.postDelayed({
                     if (favoriteOpeningWaitingForFrame && favoriteClipSession === opening && inFavoriteClip) {
-                        Toast.makeText(this, "A cena não conseguiu carregar", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@NativePlayerActivity, "A cena não conseguiu carregar", Toast.LENGTH_SHORT).show()
                         exitFavoriteClip()
                     }
                 }, 10_000L)
