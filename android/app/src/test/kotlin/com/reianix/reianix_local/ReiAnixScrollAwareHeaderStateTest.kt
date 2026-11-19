@@ -1,11 +1,26 @@
 package com.reianix.reianix_local.ui.scroll
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import com.reianix.reianix_local.ui.shell.reiAnixAppContentInsets
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReiAnixScrollAwareHeaderStateTest {
+
+    @Test
+    fun sharedViewportNeverReservesTopCutoutButProtectsHorizontalEdges() {
+        val density = Density(1f)
+        val insets = reiAnixAppContentInsets(WindowInsets(8, 32, 12, 24))
+
+        assertEquals(0, insets.getTop(density))
+        assertEquals(8, insets.getLeft(density, LayoutDirection.Ltr))
+        assertEquals(12, insets.getRight(density, LayoutDirection.Ltr))
+        assertEquals(0, insets.getBottom(density))
+    }
 
     @Test
     fun headerWithTopCutoutInsetCollapsesAllTheWayToZero() {
