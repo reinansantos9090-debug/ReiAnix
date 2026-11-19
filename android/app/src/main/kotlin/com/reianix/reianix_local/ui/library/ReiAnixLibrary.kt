@@ -634,9 +634,9 @@ private fun LibraryFiltersDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        // The sheet is anchored at a constant height and never inherits drags
-        // or leftover fling velocity from the options list.
-        modifier = Modifier.fillMaxHeight(0.60f).testTag("library-filter-sheet"),
+        // Leave the sheet's outer constraints at full window height so its
+        // expanded anchor is measured from the actual bottom of the window.
+        modifier = Modifier.testTag("library-filter-sheet"),
         sheetMaxWidth = Dp.Unspecified,
         sheetGesturesEnabled = false,
         dragHandle = null,
@@ -647,7 +647,9 @@ private fun LibraryFiltersDialog(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                // Size the content, not the anchor's parent constraints.
+                .fillMaxHeight(0.60f)
                 .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
