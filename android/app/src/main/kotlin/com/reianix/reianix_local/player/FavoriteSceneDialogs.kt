@@ -220,6 +220,16 @@ internal class FavoriteSceneDialogs(
         present(dialog) { jobs.values.forEach { it.cancel() }; jobs.clear() }
     }
 
+    fun confirmDelete(name: String, onCancel: () -> Unit, onDelete: () -> Unit) {
+        val dialog = AlertDialog.Builder(activity, R.style.ReiAnixPlayerMenuDialogTheme)
+            .setTitle("Excluir cena favorita?")
+            .setMessage(name + "\nO arquivo original não será alterado.")
+            .setNegativeButton("Cancelar") { _, _ -> onCancel() }
+            .setPositiveButton("Excluir") { _, _ -> onDelete() }
+            .create()
+        present(dialog)
+    }
+
     fun editor(
         mediaId: String,
         durationMs: Long,
