@@ -184,6 +184,55 @@ class PlayerLocalMetadataStoreTest {
     }
 
     @Test
+    fun clipPersistsBothBoundariesAndAppearsAcrossEpisodes() {
+        val store = store()
+        store.addNote("episode-a", 1_000L, "Nota comum")
+        val first = store.saveFavoriteClip("episode-a", 5_000L, 65_000L, 100_000L,
+            "Minha cena", "Anime A", "Episódio 1")
+        val saved = first.notes.single { it.favorite }
+        store.saveFavoriteClip("episode-b", 1_000L, 2_000L, 5_000L,
+            "Outra cena", "Anime B", "Episódio 2")
+        val all = store().favoriteScenes()
+        assertEquals(2, all.size)
+        assertEquals(saved, all.first { it.mediaId == "episode-a" }.note)
+        assertEquals(65_000L, saved.clipEndMs)
+        assertEquals("Anime A", saved.animeTitle)
+        assertEquals("Episódio 1", saved.episodeLabel)
+        assertEquals(2, store().get("episode-a").notes.size)
+    }
+
+    @Test
+    fun editLegacyFavoritePreservesIdAndRejectsInvalidClipWithoutWriting() {
+        val store = store()
+        val old = store.addNote("episode-a", 15_000L, "Marcador", favorite = true).notes.single()
+        assertEquals(null, old.clipEndMs)
+        val updated = store.saveFavoriteClip("episode-a", 10_000L, 20_000L, 30_000L,
+            "Clipe", "Anime A", "Episódio 1", old.id)
+        assertEquals(old.id, updated.notes.single().id)
+        assertEquals(20_000L, updated.notes.single().clipEndMs)
+        assertThrows(IllegalArgumentException::class.java) {
+            store.saveFavoriteClip("episode-a", 25_000L, 40_000L, 30_000L,
+                "Inválido", "Anime A", "Episódio 1", old.id)
+        }
+        assertEquals(updated, store().get("episode-a"))
+        store.deleteNote("episode-a", old.id)
+        assertTrue(store().favoriteScenes().isEmpty())
+    }
+
+    @Test
+    fun initialClipAndEditorStayInsideEpisodeBounds() {
+        val policy = com.reianix.reianix_local.player.FavoriteClipRange
+        assertEquals(PlayerLocalMetadataStore.Segment(10_000L, 70_000L),
+            policy.initial(10_000L, 100_000L))
+        assertEquals(PlayerLocalMetadataStore.Segment(99_000L, 100_000L),
+            policy.initial(100_000L, 100_000L))
+        assertEquals(PlayerLocalMetadataStore.Segment(0L, 500L), policy.initial(0L, 500L))
+        assertEquals(19_000L, policy.editStart(25_000L, 20_000L, 100_000L))
+        assertEquals(11_000L, policy.editEnd(0L, 10_000L, 100_000L))
+        assertEquals(100_000L, policy.editEnd(150_000L, 10_000L, 100_000L))
+    }
+
+    @Test
     fun oldNotesRemainNormalNotes() {
         val saved = store().addNote("episode-a", 5_000L, "Nota comum")
         assertFalse(saved.notes.single().favorite)
