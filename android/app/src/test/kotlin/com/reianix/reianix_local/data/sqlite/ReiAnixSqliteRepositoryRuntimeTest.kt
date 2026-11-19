@@ -1065,6 +1065,21 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         )
         assertEquals(42, ranked.single().anime.id)
         assertTrue(ranked.single().score >= 0.72)
+        // A local file classified as a movie must still be allowed to match TV.
+        val wrongFormat = local.copy(mediaKind = "movie", format = "MUSIC")
+        val evidence = com.reianix.reianix_local.data.anilist.ExplicitAniListLocalEvidence(
+            titles = listOf("Kimi no Anime"), episodeCount = 5, durationMinutes = 24.0,
+        )
+        val repaired = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            wrongFormat, wrongFormat.lookupTitle,
+            listOf(candidate.copy(durationMinutes = 24), candidate.copy(id = 99, format = "MUSIC")),
+            evidence,
+        )
+        assertEquals(42, repaired.single().anime.id)
+        assertTrue(repaired.single().score >= 0.50)
+        val sourceEvidence = com.reianix.reianix_local.data.anilist.explicitAniListLocalEvidence(repository.listEpisodes(1L))
+        assertEquals(1, sourceEvidence.episodeCount)
+        assertEquals(20.0, requireNotNull(sourceEvidence.durationMinutes), 0.01)
     }
 
     @Test
@@ -1085,11 +1100,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             explicitRepair = true, expectedAssociationId = 98L)
         assertEquals(99L, stale.anilistId)
         assertEquals("https://example.invalid/old-cover.jpg", stale.coverUrl)
-        val belowThreshold = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.59, 0.035,
+        val belowThreshold = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.49, 0.0,
             explicitRepair = true, expectedAssociationId = 99L)
         assertEquals(99L, belowThreshold.anilistId)
         assertEquals("https://example.invalid/old-cover.jpg", belowThreshold.coverUrl)
-        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.60, 0.035,
+        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.50, 0.0,
             explicitRepair = true, expectedAssociationId = 99L)
         assertEquals(42L, corrected.anilistId)
         assertEquals("https://example.invalid/official.jpg", corrected.coverUrl)
@@ -1102,6 +1117,20 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             explicitRepair = true, expectedAssociationId = 42L)
         assertEquals(42L, protected.anilistId)
         assertEquals("https://example.invalid/official.jpg", protected.coverUrl)
+        // Explicit repair can replace a proven MUSIC association without
+        // granting permission to alter manually owned fields.
+        database.transaction { connection ->
+            connection.execSQL("UPDATE anime SET format='MUSIC', metadata_source='manual', metadata_status='manual' WHERE id=1")
+        }
+        val musicCorrected = repository.updateAniListMetadataAndAssociation(
+            patch.copy(format = "TV", coverUrl = "https://example.invalid/correct-series.jpg"),
+            77L, false, 0.97, 0.0, explicitRepair = true, expectedAssociationId = 42L,
+            correctManualMusic = true,
+        )
+        assertEquals(77L, musicCorrected.anilistId)
+        assertEquals("TV", musicCorrected.format)
+        assertEquals("https://example.invalid/correct-series.jpg", musicCorrected.coverUrl)
+        assertEquals("Original Title", musicCorrected.title)
     }
 
     @Test
