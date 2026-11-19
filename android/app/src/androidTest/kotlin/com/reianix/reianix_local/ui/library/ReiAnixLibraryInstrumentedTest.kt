@@ -243,12 +243,32 @@ class ReiAnixLibraryInstrumentedTest {
                 )
             }
         }
-        composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
-        composeRule.onNodeWithContentDescription("Estado").performClick()
-        composeRule.onNodeWithText("Quero assistir").performClick()
-        composeRule.onNodeWithContentDescription("Etiqueta").performClick()
-        composeRule.onNodeWithText("Com notas pessoais").performClick()
+        fun openFilterSheet() {
+            composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
+            composeRule.onNodeWithContentDescription("Ordenar").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("Gêneros").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("Estado").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("Etiqueta").assertIsDisplayed()
+        }
+        fun choosePersonalFilters() {
+            composeRule.onNodeWithContentDescription("Estado").performClick()
+            composeRule.onNodeWithText("Quero assistir").performClick()
+            composeRule.onNodeWithContentDescription("Etiqueta").performClick()
+            composeRule.onNodeWithText("Com notas pessoais").performClick()
+        }
+
+        openFilterSheet()
+        choosePersonalFilters()
         composeRule.runOnIdle { assertTrue(applied == null) }
+        composeRule.onNodeWithText("Cancelar").performClick()
+        composeRule.runOnIdle { assertTrue(applied == null) }
+
+        openFilterSheet()
+        choosePersonalFilters()
+        composeRule.onNodeWithText("Limpar").performClick()
+        composeRule.runOnIdle { assertTrue(applied == null) }
+        composeRule.onNodeWithText("Todos").assertIsDisplayed()
+        choosePersonalFilters()
         composeRule.onNodeWithText("Aplicar").performClick()
         composeRule.runOnIdle {
             assertTrue(applied?.watchState == "PLANNING")
