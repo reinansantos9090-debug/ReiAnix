@@ -506,9 +506,9 @@ fun ReiAnixNativePlayerBottomControls(
     }
     var previewFrame by remember(mediaUri) { mutableStateOf<Bitmap?>(null) }
     val previewImage = remember(previewFrame) { previewFrame?.asImageBitmap() }
-    LaunchedEffect(userDragging, previewFrames, duration) {
+    LaunchedEffect(userDragging, previewFrames, duration, seekEnabled) {
         previewFrame = null
-        if (!userDragging || duration <= 0L || previewFrames == null) return@LaunchedEffect
+        if (!userDragging || !seekEnabled || previewFrames == null) return@LaunchedEffect
         try {
             while (true) {
                 val targetMs = (sliderFraction * duration.toFloat()).toLong()
