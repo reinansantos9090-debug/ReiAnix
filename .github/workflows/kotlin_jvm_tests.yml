@@ -133,6 +133,7 @@ jobs:
               --tests com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
               --tests com.reianix.reianix_local.ReiAnixLibraryFiltersTest \
               --tests com.reianix.reianix_local.ReiAnixLibraryRefreshWindowTest \
+              --tests com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeaderStateTest \
               --tests com.reianix.reianix_local.LibraryUiMappersTest \
               --tests com.reianix.reianix_local.ui.artwork.ReiAnixLocalArtworkTest \
               --tests com.reianix.reianix_local.storage.NativeStorageOnboardingStateTest \
