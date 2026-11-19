@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -71,29 +72,19 @@ fun ReiAnixCollectionsRoute(
     viewModel: ReiAnixLibraryViewModel,
 ) {
     val catalog by viewModel.uiState.collectAsStateWithLifecycle()
-    var tracking by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = tracking) { tracking = false }
     val openAnime: (Long) -> Unit = { animeId ->
         navController.navigateToDetails(
             animeId = animeId.toString(),
             origin = ReiAnixRoutes.COLLECTIONS,
         )
     }
-    if (tracking) {
-        ReiAnixWatchStatusCollections(
-            animes = catalog.animes,
-            onOpenAnime = openAnime,
-            onBack = { tracking = false },
-        )
-    } else {
-        ReiAnixCollectionsScreen(
-            viewModel = viewModel,
-            animes = catalog.animes,
-            onOpenAnime = openAnime,
-            onDismiss = { navController.popBackStack() },
-            onOpenTracking = { tracking = true },
-        )
-    }
+    ReiAnixCollectionsScreen(
+        viewModel = viewModel,
+        animes = catalog.animes,
+        onOpenAnime = openAnime,
+        onDismiss = { navController.popBackStack() },
+        onAddFolder = { navController.navigate(ReiAnixRoutes.STORAGE) { launchSingleTop = true } },
+    )
 }
 
 @Composable
@@ -103,6 +94,7 @@ fun ReiAnixCollectionsScreen(
     onOpenAnime: (Long) -> Unit,
     onDismiss: () -> Unit,
     onOpenTracking: () -> Unit = {},
+    onAddFolder: () -> Unit = viewModel::selectSafTree,
 ) {
     val repository = viewModel.personalCollectionsRepository
     val scope = rememberCoroutineScope()
@@ -209,17 +201,27 @@ fun ReiAnixCollectionsScreen(
                 if (loading) Text("Carregando coleções…")
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 if (selected == null) {
-                    Button(
-                        onClick = { editingNameId = null; nameDraft = ""; showNameDialog = true },
-                        enabled = !busy && !loading,
-                    ) { Text("Nova coleção") }
-                    OutlinedButton(onClick = onOpenTracking) { Text("Listas de acompanhamento") }
                     if (!loading && error != null) {
                         TextButton(onClick = { retryToken++ }) { Text("Tentar novamente") }
                     }
-                    if (!loading && collections.isEmpty() && error == null) {
-                        Text("Crie sua primeira coleção, como Obras-primas ou Quero reassistir.")
+                    // Keep existing collections accessible when present; center the two
+                    // primary actions in the available space rather than pinning them to the top.
+                    Column(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                    ) {
+                        Button(
+                            onClick = { editingNameId = null; nameDraft = ""; showNameDialog = true },
+                            enabled = !busy && !loading,
+                            modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().heightIn(min = 56.dp),
+                        ) { Text("Nova coleção") }
+                        OutlinedButton(
+                            onClick = onAddFolder,
+                            modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().heightIn(min = 56.dp),
+                        ) { Text("Adicionar pasta") }
                     }
+                    if (collections.isNotEmpty()) {
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -252,6 +254,7 @@ fun ReiAnixCollectionsScreen(
                                 }
                             }
                         }
+                    }
                     }
                 } else {
                     Row(
