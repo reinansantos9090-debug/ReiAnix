@@ -120,6 +120,31 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
+    fun repairSearchDeduplicatesAliasesAndResultsInOneHttpRequest() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"alias0":{"media":[{"id":42,"title":{"romaji":"Example"}}]},
+                     "alias1":{"media":[{"id":42,"title":{"romaji":"Example"}},{"id":43,"title":{"romaji":"Other"}}]}}}
+        """.trimIndent()))
+        val result = ReiAnixAniListClient(transport, 0).searchAnimeAliases(listOf("Example", "Alternative", "Example"))
+        assertTrue(result is AniListResult.Success)
+        assertEquals(listOf(42, 43), (result as AniListResult.Success).value.map { it.id })
+        assertEquals(1, transport.calls)
+        val body = transport.requestBody!!
+        assertEquals("Example", body.getJSONObject("variables").getString("term0"))
+        assertEquals("Alternative", body.getJSONObject("variables").getString("term1"))
+        assertTrue(body.getString("query").contains("alias0: Page"))
+        assertTrue(body.getString("query").contains("alias1: Page"))
+    }
+
+    @Test
+    fun repairSearchRejectsPartialAliasResponse() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"alias0":{"media":[]}}}"""))
+        val result = ReiAnixAniListClient(transport, 0).searchAnimeAliases(listOf("Original", "Alternative"))
+        assertTrue(result is AniListResult.Failure)
+        assertEquals(1, transport.calls)
+    }
+
+    @Test
     fun idLookupSendsLiteralIdVariableAndExpectedJsonValue() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """{"data":{"Media":{"id":42,"title":{}}}}"""))
         val result = ReiAnixAniListClient(transport, 0).getAnime(42)
