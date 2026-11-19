@@ -131,6 +131,7 @@ jobs:
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.searchCombinedResultWindowMatchesTwoPagesAndPreservesAllItems' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.explicitRepairIgnoresMusicAndWrongAliasEvenWhenAlreadyAssociated' \
+              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.explicitRepairAcceptsAlternativeTitleWithoutStrongFolderNameMatch' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.explicitRepairReplacesWrongAutomaticAssociationButRejectsStaleOrManualAssociation' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reianix.reianix_local.ReiAnixSettingsContractTest \
