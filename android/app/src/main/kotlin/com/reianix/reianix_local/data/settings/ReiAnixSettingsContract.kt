@@ -81,6 +81,7 @@ object ReiAnixSettingsContract {
         int("library.continue_watching_limit", 10, 5, 10, 15, 20),
         bool("player.autoplay_next", true),
         bool("player.resume", true),
+        bool("player.smart_resume", false),
         decimal("player.default_speed", "1.0", "0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0"),
         enum("player.aspect_ratio", "fit", "fit", "fill"),
         bool("player.zoom_enabled", true),

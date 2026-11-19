@@ -883,6 +883,15 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("player.resume", it.toString()) },
                         )
                     }
+                    item(key = "setting:player.smart_resume") {
+                        BooleanSettingRow(
+                            keyName = "player.smart_resume",
+                            title = "Retomada inteligente",
+                            description = "Volta 5 segundos ao continuar um episódio.",
+                            checked = state.settings["player.smart_resume"] == "true",
+                            onCheckedChange = { onUpdateSetting("player.smart_resume", it.toString()) },
+                        )
+                    }
                     item(key = "setting:player.default_speed") {
                         ChoiceSettingRow(
                             keyName = "player.default_speed",

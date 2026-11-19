@@ -95,6 +95,9 @@ fun ReiAnixNativePlayerOptionsPanel(
     onOpenWithExternal: () -> Unit,
     onPictureInPicture: () -> Unit,
     onInformation: () -> Unit,
+    onFavoriteScenes: () -> Unit = {},
+    onSubtitleAppearance: () -> Unit = {},
+    onAudioOnlyChanged: (Boolean) -> Unit = {},
 ) {
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
     LaunchedEffect(resetSignal) {
@@ -151,6 +154,17 @@ fun ReiAnixNativePlayerOptionsPanel(
                     value = if (state.subtitleTrackSelectionEnabled) state.subtitleTrackLabel else "Indisponível",
                     enabled = state.subtitleTrackSelectionEnabled && !state.episodeTransitionInProgress,
                     onClick = onSubtitles,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Subtitles,
+                    label = "Personalizar legendas",
+                    onClick = onSubtitleAppearance,
+                )
+                PlayerOptionToggleRow(
+                    icon = Icons.Filled.VolumeUp,
+                    label = "Somente áudio",
+                    checked = state.audioOnly,
+                    onCheckedChange = onAudioOnlyChanged,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Gesture,
@@ -242,6 +256,11 @@ fun ReiAnixNativePlayerOptionsPanel(
                     label = "Marcadores",
                     showChevron = false,
                     onClick = onMarkers,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.BookmarkBorder,
+                    label = "Cenas favoritas",
+                    onClick = onFavoriteScenes,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Info,

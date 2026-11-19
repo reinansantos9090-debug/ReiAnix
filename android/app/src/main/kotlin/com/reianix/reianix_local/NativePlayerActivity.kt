@@ -7,6 +7,10 @@ import com.reianix.reianix_local.player.DeviceInteractionProfile
 import com.reianix.reianix_local.player.LocalSubtitleResolver
 import com.reianix.reianix_local.player.NativePlayerRequest
 import com.reianix.reianix_local.player.PlayerLocalMetadataStore
+import com.reianix.reianix_local.player.PlayerEnhancementPolicy
+import com.reianix.reianix_local.player.PlayerSkipSegment
+import com.reianix.reianix_local.player.AniSkipSegments
+import androidx.media3.ui.CaptionStyleCompat
 import com.reianix.reianix_local.player.PlayerMediaPolicy
 import com.reianix.reianix_local.player.ExternalVideoChooser
 import com.reianix.reianix_local.player.PlayerStartupMetrics
@@ -195,6 +199,11 @@ class NativePlayerActivity : FragmentActivity() {
     private var subtitleScale = 1f
     private var subtitleBottomPaddingPercent = 8
     private var subtitleEmbeddedStyle = true
+    private var audioOnly = false
+    private var remoteSkipSegments = emptyList<PlayerSkipSegment>()
+    private var skipLookupGeneration = -1L
+    private var skipLookupDuration = -1L
+    private var skipLookupJob: kotlinx.coroutines.Job? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var sleepTimerDeadlineMs = 0L
@@ -1176,6 +1185,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val shouldPlayWhenReady = !sleepTimerPaused && (playWhenReadyOverride
             ?: intent.getBooleanExtra("autoplay", true))
         requestedPlayWhenReadyForGeneration = shouldPlayWhenReady
+        skipLookupJob?.cancel()
+        remoteSkipSegments = emptyList()
+        skipLookupGeneration = -1L
+        skipLookupDuration = -1L
 
         initialSeekApplied = false
         completionReported = false
@@ -1310,6 +1323,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             logPlayer("RESUME_FROM_NATIVE_SQLITE_FAILED episodeId=" + canonicalEpisodeId, error)
                         }
                     }
+                }
+
+                if (startupPositionMs > 0L && restoredPositionMs == null && reason != "retry") {
+                    val smart = runCatching {
+                        kotlinx.coroutines.runBlocking {
+                            ReiAnixSqliteSettingsRepository(applicationContext)
+                                .getPreference("player.smart_resume", "false") == "true"
+                        }
+                    }.getOrDefault(false)
+                    startupPositionMs = PlayerEnhancementPolicy.resumePosition(startupPositionMs, smart)
                 }
 
                 // Optional MIME/display-name/size/subtitle discovery starts in parallel
@@ -2107,6 +2130,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .setPreferredAudioLanguage(preferredAudioLanguage.takeIf { it.isNotBlank() })
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioOnly)
         when (subtitleMode) {
             "never" -> builder
                 .setPreferredTextLanguage(null)
@@ -2160,6 +2184,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setApplyEmbeddedStyles(subtitleEmbeddedStyle)
             setApplyEmbeddedFontSizes(subtitleEmbeddedStyle)
             setUserDefaultStyle()
+            val appearance = getSharedPreferences("player_caption_appearance", MODE_PRIVATE)
+            if (appearance.contains("color") || appearance.contains("font")) {
+                val font = when (appearance.getString("font", "default")) {
+                    "serif" -> Typeface.SERIF
+                    "mono" -> Typeface.MONOSPACE
+                    "sans" -> Typeface.SANS_SERIF
+                    else -> Typeface.DEFAULT
+                }
+                setStyle(CaptionStyleCompat(appearance.getInt("color", Color.WHITE),
+                    Color.TRANSPARENT, Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    Color.BLACK, font))
+            }
         }
         logPlayer(
             "SUBTITLE_PREFS scale=" + subtitleScale +
@@ -2197,6 +2233,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             player.playbackState != Player.STATE_ENDED
 
     private fun requestPictureInPicture() {
+        if (audioOnly) {
+            showFeedback("Desative o modo somente áudio para usar o PIP")
+            return
+        }
         if (!canRequestPictureInPicture()) {
             logPlayer(
                 "PLAYER_PIP_REQUEST_REJECTED requestId=" + requestId.ifEmpty { "-" } +
@@ -2596,6 +2636,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         },
                         onMarkers = { showLocalMetadataEditor() },
+                        onFavoriteScenes = { showFavoriteScenes() },
+                        onSubtitleAppearance = { showSubtitleAppearance() },
+                        onAudioOnlyChanged = { enabled -> setAudioOnly(enabled) },
                         onAutoplayChanged = { enabled ->
                             autoplayNext = enabled
                             persistCanonicalPlayerSetting("player.autoplay_next", enabled.toString())
@@ -2930,6 +2973,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             longPressEnabled = longPressEnabled,
             safeTopPx = gestureSafeTop,
             safeBottomPx = gestureSafeBottom,
+            skipSegments = currentSkipSegments(currentDuration),
+            favoriteSceneTimes = favoriteSceneNotes().map { it.timestampMs },
+            audioOnly = audioOnly,
         )
         val unlockedOverlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
         val lockedAffordanceVisible = controlsVisible && locked && !errorVisible && !inPictureInPicture
@@ -3199,6 +3245,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             durationLabel.text = if (duration > 0L) formatTime(duration) else "--:--"
         }
         updateMetadataControls(position)
+        requestSmartSkipSegments(duration)
         syncComposePlayerUiState()
     }
 
@@ -5116,7 +5163,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (isFinishing && !isChangingConfigurations) {
             invalidateTransition("onStop_finishing")
         }
-        if (::player.isInitialized && !isPictureInPictureActive() && sessionState == SessionState.ACTIVE) {
+        if (::player.isInitialized && !isPictureInPictureActive() && sessionState == SessionState.ACTIVE &&
+            !(audioOnly && !isFinishing && (!screenInteractive || screenLocked))
+        ) {
             playbackWasRequestedBeforeStop =
                 player.playWhenReady &&
                     player.playbackState != Player.STATE_ENDED &&
@@ -5346,6 +5395,162 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
     }
 
+    private fun currentSkipSegments(durationMs: Long): List<PlayerSkipSegment> {
+        val manual = if (::uri.isInitialized && localMetadata.mediaId == uri.toString()) localMetadata
+            else PlayerLocalMetadataStore.Metadata.empty()
+        return PlayerEnhancementPolicy.segments(manual, remoteSkipSegments, durationMs)
+    }
+
+    private fun requestSmartSkipSegments(durationMs: Long) {
+        if (!::player.isInitialized || !::uri.isInitialized || durationMs <= 0L ||
+            errorVisible || episodeChangePending || sessionState != SessionState.ACTIVE ||
+            (skipLookupGeneration == playerGeneration && skipLookupDuration == durationMs)) return
+        val episodeId = currentEpisodeId().toLongOrNull() ?: return
+        val generation = playerGeneration
+        val source = uri
+        skipLookupGeneration = generation
+        skipLookupDuration = durationMs
+        skipLookupJob?.cancel()
+        skipLookupJob = lifecycleScope.launch {
+            val segments = withContext(Dispatchers.IO) {
+                try {
+                    val repository = ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository
+                    val episode = repository.getEpisode(episodeId) ?: return@withContext emptyList<PlayerSkipSegment>()
+                    val anime = repository.getAnime(episode.animeId) ?: return@withContext emptyList<PlayerSkipSegment>()
+                    val anilistId = anime.anilistId ?: return@withContext emptyList<PlayerSkipSegment>()
+                    if (anime.anilistMatchManual != true && anime.anilistMatchStatus != "matched") return@withContext emptyList<PlayerSkipSegment>()
+                    val number = PlayerEnhancementPolicy.episodeNumber(episode.number)
+                        ?: return@withContext emptyList<PlayerSkipSegment>()
+                    AniSkipSegments(applicationContext).fetch(anilistId, number, durationMs)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) { emptyList<PlayerSkipSegment>() }
+            }
+            if (generation == playerGeneration && source == uri && ::player.isInitialized &&
+                player.duration == durationMs && sessionState == SessionState.ACTIVE) {
+                remoteSkipSegments = segments
+                syncComposePlayerUiState()
+            }
+        }
+    }
+
+    private fun favoriteSceneNotes(): List<PlayerLocalMetadataStore.Note> =
+        if (::uri.isInitialized && localMetadata.mediaId == uri.toString())
+            localMetadata.notes.filter { it.text.startsWith("★ ") } else emptyList()
+
+    private fun showFavoriteScenes() {
+        if (!::uri.isInitialized || !::player.isInitialized || episodeChangePending) return
+        val media = uri.toString()
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val notes = favoriteSceneNotes()
+        val items = listOf("Salvar cena atual • " + formatTime(position)) +
+            notes.map { formatTime(it.timestampMs) + " • " + it.text.removePrefix("★ ") }
+        showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+            .setTitle("Cenas favoritas")
+            .setItems(items.toTypedArray()) { _, index ->
+                if (uri.toString() == media) {
+                    if (index == 0) {
+                        val input = android.widget.EditText(this).apply {
+                            hint = "Nome da cena (opcional)"
+                            setSingleLine(true)
+                            setTextColor(Color.WHITE)
+                        }
+                        showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+                            .setTitle("Salvar cena favorita")
+                            .setView(input)
+                            .setNegativeButton("Cancelar", null)
+                            .setPositiveButton("Salvar") { _, _ ->
+                                if (uri.toString() == media) {
+                                    val name = input.text.toString().trim().ifBlank { "Cena favorita" }
+                                    localMetadata = localMetadataStore.addNote(media, position, "★ " + name)
+                                    syncComposePlayerUiState()
+                                    showFeedback("Cena favorita salva")
+                                }
+                            }.create())
+                    } else {
+                        val note = notes.getOrNull(index - 1)
+                        if (note != null) showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+                            .setTitle(note.text.removePrefix("★ "))
+                            .setItems(arrayOf("Ir para " + formatTime(note.timestampMs), "Remover dos favoritos")) { _, action ->
+                                if (uri.toString() == media) {
+                                    if (action == 0) seekToMarker(note.timestampMs, "Cena favorita")
+                                    else {
+                                        localMetadata = localMetadataStore.deleteNote(media, note.id)
+                                        syncComposePlayerUiState()
+                                    }
+                                }
+                            }.setNegativeButton("Cancelar", null).create())
+                    }
+                }
+            }.setNegativeButton("Fechar", null).create())
+    }
+
+    private fun showSubtitleAppearance() {
+        val preferences = getSharedPreferences("player_caption_appearance", MODE_PRIVATE)
+        fun choose(title: String, labels: Array<String>, selected: (Int) -> Unit) {
+            showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+                .setTitle(title).setItems(labels) { _, index ->
+                    selected(index)
+                    applySubtitlePreferences()
+                    showFeedback("Legendas atualizadas")
+                }.setNegativeButton("Cancelar", null).create())
+        }
+        showPlayerMenuDialog(AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+            .setTitle("Personalizar legendas")
+            .setItems(arrayOf("Tamanho", "Posição vertical", "Cor do texto", "Fonte", "Estilos originais", "Restaurar padrão")) { _, index ->
+                when (index) {
+                    0 -> choose("Tamanho", arrayOf("Pequeno", "Normal", "Grande", "Muito grande")) { i ->
+                        subtitleScale = floatArrayOf(0.75f, 1f, 1.25f, 1.5f)[i]
+                        persistCanonicalPlayerSetting("audio.subtitle_scale", subtitleScale.toString())
+                    }
+                    1 -> choose("Posição vertical", arrayOf("Mais baixa", "Normal", "Mais alta", "Alta")) { i ->
+                        subtitleBottomPaddingPercent = intArrayOf(4, 8, 12, 16)[i]
+                        persistCanonicalPlayerSetting("audio.subtitle_bottom_padding", subtitleBottomPaddingPercent.toString())
+                    }
+                    2 -> choose("Cor do texto", arrayOf("Branco", "Amarelo", "Ciano")) { i ->
+                        preferences.edit().putInt("color", intArrayOf(Color.WHITE, Color.YELLOW, Color.CYAN)[i]).apply()
+                        subtitleEmbeddedStyle = false
+                        persistCanonicalPlayerSetting("audio.subtitle_embedded_style", "false")
+                    }
+                    3 -> choose("Fonte", arrayOf("Padrão", "Sem serifa", "Serifada", "Monoespaçada")) { i ->
+                        preferences.edit().putString("font", arrayOf("default", "sans", "serif", "mono")[i]).apply()
+                        subtitleEmbeddedStyle = false
+                        persistCanonicalPlayerSetting("audio.subtitle_embedded_style", "false")
+                    }
+                    4 -> choose("Estilos originais", arrayOf("Manter", "Ignorar")) { i ->
+                        subtitleEmbeddedStyle = i == 0
+                        persistCanonicalPlayerSetting("audio.subtitle_embedded_style", subtitleEmbeddedStyle.toString())
+                    }
+                    5 -> {
+                        preferences.edit().clear().apply()
+                        subtitleScale = 1f
+                        subtitleBottomPaddingPercent = 8
+                        subtitleEmbeddedStyle = true
+                        persistCanonicalPlayerSetting("audio.subtitle_scale", "1.0")
+                        persistCanonicalPlayerSetting("audio.subtitle_bottom_padding", "8")
+                        persistCanonicalPlayerSetting("audio.subtitle_embedded_style", "true")
+                        applySubtitlePreferences()
+                    }
+                }
+            }.setNegativeButton("Fechar", null).create())
+    }
+
+    private fun setAudioOnly(enabled: Boolean) {
+        if (!::player.isInitialized || errorVisible || episodeChangePending || inPictureInPicture) return
+        if (enabled && supportedTrackCount(C.TRACK_TYPE_AUDIO) <= 0) {
+            showFeedback("Não há uma faixa de áudio disponível")
+            return
+        }
+        audioOnly = enabled
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, enabled).build()
+        if (enabled) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        showFeedback(if (enabled) "Somente áudio • tela pode ser apagada" else "Vídeo ativado")
+        syncComposePlayerUiState()
+        touchControls()
+    }
+
     private fun loadLocalMetadataAsync(generation: Long, localUri: Uri) {
         if (!::localMetadataStore.isInitialized) return
         try {
@@ -5360,6 +5565,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         return@post
                     }
                     localMetadata = metadata
+                    syncComposePlayerUiState()
                     updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
                 }
             }
