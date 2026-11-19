@@ -169,4 +169,24 @@ class PlayerLocalMetadataStoreTest {
 
         assertFalse(metadataFile.exists())
     }
+
+    @Test
+    fun favoriteScenePersistsAcrossStoreReopeningAndCanBeDeleted() {
+        val first = store().addNote("episode-a", 15_000L, "Cena favorita", favorite = true)
+        assertTrue(first.notes.single().favorite)
+        val reopened = store().get("episode-a")
+        assertEquals(15_000L, reopened.notes.single().timestampMs)
+        assertTrue(reopened.notes.single().favorite)
+        assertTrue(store().get("episode-b").notes.isEmpty())
+        val removed = store().deleteNote("episode-a", reopened.notes.single().id)
+        assertTrue(removed.notes.isEmpty())
+        assertTrue(store().get("episode-a").notes.isEmpty())
+    }
+
+    @Test
+    fun oldNotesRemainNormalNotes() {
+        val saved = store().addNote("episode-a", 5_000L, "Nota comum")
+        assertFalse(saved.notes.single().favorite)
+        assertFalse(store().get("episode-a").notes.single().favorite)
+    }
 }
