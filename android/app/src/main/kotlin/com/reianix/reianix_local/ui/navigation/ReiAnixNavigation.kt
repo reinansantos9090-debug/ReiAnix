@@ -32,6 +32,7 @@ import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsRoute
 import com.reianix.reianix_local.ui.discovery.ReiAnixTimelineHubRoute
 import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
 import com.reianix.reianix_local.ui.profile.ReiAnixProfileRoute
+import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperScope
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
@@ -428,9 +429,9 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.COLLECTIONS) { collections() }
             composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
-            composable(ReiAnixRoutes.SETTINGS) { settings() }
-            composable(ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
-            composable(ReiAnixRoutes.PROFILE) { profile() }
+            composable(ReiAnixRoutes.SETTINGS) { ReiAnixWallpaperScope { settings() } }
+            composable(ReiAnixRoutes.SETTINGS_GENERAL) { ReiAnixWallpaperScope { settingsGeneral() } }
+            composable(ReiAnixRoutes.PROFILE) { ReiAnixWallpaperScope { profile() } }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }
             composable(ReiAnixRoutes.COLLECTOR) { collector() }
