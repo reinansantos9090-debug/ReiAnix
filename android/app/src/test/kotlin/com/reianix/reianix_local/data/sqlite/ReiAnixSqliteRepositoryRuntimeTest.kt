@@ -1007,6 +1007,36 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun explicitRepairIgnoresMusicAndWrongAliasEvenWhenAlreadyAssociated() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val local = requireNotNull(repository.getAnime(1L)).copy(
+            lookupTitle = "Example Anime Season 2", title = "Unrelated Music",
+            aliasesJson = "[\"Unrelated Music\"]", anilistId = 99L,
+            anilistMatchManual = false, mediaKind = "series",
+        )
+        fun candidate(id: Int, title: String, format: String) =
+            com.reianix.reianix_local.data.anilist.AniListAnime(
+                id = id, titleRomaji = title, titleEnglish = null, titleNative = null,
+                synonyms = emptyList(), description = null, format = format, episodes = 12,
+                status = null, averageScore = null, durationMinutes = null, season = null,
+                seasonYear = null, genres = emptyList(), coverLargeUrl = "https://example.invalid/cover.jpg",
+                coverExtraLargeUrl = null, bannerUrl = null, studios = emptyList(),
+            )
+        val ranked = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            local, local.lookupTitle, listOf(
+                candidate(99, local.lookupTitle, "MUSIC"),
+                candidate(98, "Unrelated Music", "TV"),
+                candidate(42, local.lookupTitle, "TV"),
+                candidate(43, "Example Anime Season 1", "TV"),
+            ),
+        )
+        assertEquals(42, ranked.first().anime.id)
+        assertTrue(ranked.none { it.anime.id == 99 || it.anime.id == 98 })
+        assertTrue(ranked.first().score - (ranked.getOrNull(1)?.score ?: 0.0) >= 0.05)
+    }
+
+    @Test
     fun explicitRepairReplacesWrongAutomaticAssociationButRejectsStaleOrManualAssociation() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)
