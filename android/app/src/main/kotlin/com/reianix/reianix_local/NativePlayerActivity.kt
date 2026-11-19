@@ -850,6 +850,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     override fun onNewIntent(newIntent: Intent) {
         dismissFavoriteSceneUi()
+        favoriteOpeningWaitingForFrame = false
+        favoriteRestoreWaitingForFrame = false
+        cachedFavoriteScenes = null
+        if (::playerView.isInitialized) playerView.setKeepContentOnPlayerReset(true)
         if (sessionState != SessionState.ACTIVE) {
             logPlayer(
                 "PLAYER_REUSE_IGNORED requestId=" +
@@ -5709,8 +5713,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun confirmDeleteFavoriteScene(scene: PlayerLocalMetadataStore.FavoriteScene) {
-        if (!favoriteScenesAvailable()) return
+        if (!favoriteScenesAvailable() || favoriteClipSession != null || favoriteRestoreWaitingForFrame) return
         favoriteSceneDialogs.confirmDelete(scene.note.text, onCancel = { showFavoriteScenes() }) {
+            favoriteSceneDialogs.setBusy(true)
+            val revision = ++favoriteSceneUiRevision
             lifecycleScope.launch {
                 try {
                     val updated = withContext(Dispatchers.IO) {
@@ -5725,7 +5731,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 } catch (_: Exception) {
                     Toast.makeText(this@NativePlayerActivity, "Não foi possível excluir a cena", Toast.LENGTH_SHORT).show()
                 }
-                if (favoriteScenesAvailable()) showFavoriteScenes()
+                if (revision == favoriteSceneUiRevision && favoriteScenesAvailable()) showFavoriteScenes()
             }
         }
     }
@@ -5831,7 +5837,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         favoriteOpeningWaitingForFrame = false
         playerView.setKeepContentOnPlayerReset(true)
         favoriteSceneDialogs.dismiss()
-        if (!sleepTimerPaused && !expireSleepTimerIfDue() && player.playbackState != Player.STATE_ENDED) player.play()
+        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) &&
+            !sleepTimerPaused && !expireSleepTimerIfDue() && player.playbackState != Player.STATE_ENDED) player.play()
         touchControls()
     }
 
