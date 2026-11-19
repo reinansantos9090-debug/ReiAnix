@@ -26,7 +26,7 @@ class ReiAnixSettingsContractTest {
         assertEquals(8, playerKeys.count { it.startsWith("audio.") })
         assertEquals(true, "player.resume" in playerKeys)
         assertEquals(true, "player.smart_resume" in playerKeys)
-        assertEquals("false", ReiAnixSettingsContract.defaultFor("player.smart_resume"))
+        assertEquals("true", ReiAnixSettingsContract.defaultFor("player.smart_resume"))
         assertEquals("system", ReiAnixSettingsContract.defaultFor("audio.subtitle_color"))
         assertEquals("system", ReiAnixSettingsContract.defaultFor("audio.subtitle_font"))
         assertEquals(false, "appearance.poster_size" in playerKeys)

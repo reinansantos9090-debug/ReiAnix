@@ -888,7 +888,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             keyName = "player.smart_resume",
                             title = "Retomada inteligente",
                             description = "Volta 5 segundos ao continuar um episódio.",
-                            checked = state.settings["player.smart_resume"] == "true",
+                            checked = (state.settings["player.smart_resume"] ?: "true") == "true",
                             onCheckedChange = { onUpdateSetting("player.smart_resume", it.toString()) },
                         )
                     }

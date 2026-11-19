@@ -1335,7 +1335,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val smart = runCatching {
                         kotlinx.coroutines.runBlocking {
                             ReiAnixSqliteSettingsRepository(applicationContext)
-                                .getPreference("player.smart_resume", "false") == "true"
+                                .getPreference("player.smart_resume", ReiAnixSettingsContract.defaultFor("player.smart_resume") ?: "true") == "true"
                         }
                     }.getOrDefault(false)
                     startupPositionMs = PlayerEnhancementPolicy.resumePosition(startupPositionMs, smart)
