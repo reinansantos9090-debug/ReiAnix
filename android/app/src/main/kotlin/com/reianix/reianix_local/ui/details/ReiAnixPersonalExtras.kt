@@ -1,6 +1,8 @@
 package com.reianix.reianix_local.ui.details
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -33,7 +36,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import android.widget.Toast
@@ -43,7 +49,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.reianix.reianix_local.ReiAnixAppDependencies
-import com.reianix.reianix_local.ui.ReiAnixSecondaryButton
 import kotlinx.coroutines.CancellationException
 import com.reianix.reianix_local.data.anilist.AniListResult
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
@@ -166,7 +171,48 @@ fun ReiAnixPersonalExtras(
 }
 
 
-/** Hero action replacing "Marcar visto", backed by the original local watch-state service. */
+/** Borderless, evenly sized header action shared by the four Details shortcuts. */
+@Composable
+internal fun ReiAnixDetailsQuickAction(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    active: Boolean = false,
+) {
+    val color = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        active -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column(
+        modifier = modifier
+            .heightIn(min = 56.dp)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = color,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            textAlign = TextAlign.Center,
+            minLines = 2,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** List shortcut in the header, backed by the original local watch-state service. */
 @Composable
 fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -216,12 +262,13 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
     Box(modifier = modifier.semantics {
         stateDescription = selected?.label ?: "Fora das listas de acompanhamento"
     }) {
-        ReiAnixSecondaryButton(
-            text = "Adicionar à lista",
+        ReiAnixDetailsQuickAction(
+            label = "Adicionar à lista",
+            icon = if (selected == null) Icons.Filled.BookmarkBorder else Icons.Filled.Bookmark,
             onClick = { expanded = true },
             enabled = !loading && !saving,
+            active = selected != null,
             modifier = Modifier.fillMaxWidth(),
-            leadingIcon = Icons.Filled.Add,
         )
         DropdownMenu(
             expanded = expanded,
