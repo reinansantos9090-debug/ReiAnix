@@ -2,7 +2,6 @@ package com.reianix.reianix_local.ui.player
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +36,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -60,6 +60,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntOffset
@@ -477,8 +479,8 @@ fun ReiAnixNativePlayerBottomControls(
     }
     val screenWidth = LocalConfiguration.current.screenWidthDp
     val previewWidth = if (screenWidth > 0) {
-        minOf(240.dp, (screenWidth.dp - 16.dp).coerceAtLeast(1.dp))
-    } else 240.dp
+        minOf(288.dp, (screenWidth.dp - 16.dp).coerceAtLeast(1.dp))
+    } else 288.dp
 
     LaunchedEffect(state.positionMs, state.durationMs, userDragging) {
         if (!userDragging) {
@@ -606,20 +608,14 @@ fun ReiAnixNativePlayerBottomControls(
                         ),
                     ) {
                         Column(
-                            modifier = Modifier
-                                .width(previewWidth)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xF01B1B1D))
-                                .border(1.dp, Color.White.copy(alpha = 0.24f), RoundedCornerShape(10.dp))
-                                .padding(5.dp),
+                            modifier = Modifier.width(previewWidth),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(16f / 9f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0xFF303035)),
+                                    .clip(RoundedCornerShape(10.dp)),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (previewImage != null) {
@@ -647,6 +643,13 @@ fun ReiAnixNativePlayerBottomControls(
                                 text = PlayerTimeFormatter.format(displayPosition),
                                 color = Color.White,
                                 fontSize = 12.sp,
+                                style = LocalTextStyle.current.copy(
+                                    shadow = Shadow(
+                                        color = Color.Black,
+                                        offset = Offset(0f, 1f),
+                                        blurRadius = 4f,
+                                    ),
+                                ),
                                 maxLines = 1,
                                 modifier = Modifier.padding(top = 4.dp),
                             )
