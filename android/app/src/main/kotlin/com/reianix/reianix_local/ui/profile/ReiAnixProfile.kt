@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -157,7 +159,7 @@ fun ReiAnixProfileRoute(navController: NavHostController, viewModel: ReiAnixLibr
     // Profile deliberately follows the supplied black reference, independently
     // of the optional app-wide light theme. Keep inherited content colors readable.
     com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme(themeMode = "dark") {
-        Surface(color = Color.Black, contentColor = Color.White, modifier = Modifier.fillMaxSize()) {
+        Surface(color = reiAnixScreenBackground(), contentColor = Color.White, modifier = Modifier.fillMaxSize()) {
             ProfileContent(navController, viewModel)
         }
     }
@@ -227,7 +229,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
         "history" -> "Histórico"
         else -> "Meu perfil"
     }
-    Column(Modifier.fillMaxSize().background(Color.Black).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
         ReiAnixTopBar(title = title, navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = goBack)
         if (error != null) {
             Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
@@ -238,11 +240,6 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                 item {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        store.image(profile.banner)?.let { file ->
-                            AsyncImage(model = file, contentDescription = "Banner do perfil",
-                                modifier = Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(16.dp)),
-                                contentScale = ContentScale.Crop)
-                        }
                         ProfileAvatar(profile, store, 112.dp)
                         Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, color = Color.White, textAlign = TextAlign.Center)
                         Text(profile.displayBio, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFAAAAAA),
@@ -380,40 +377,42 @@ private fun ProfileEditor(
     var bio by rememberSaveable { mutableStateOf(initial.bio) }
     var avatar by rememberSaveable { mutableStateOf(initial.avatar) }
     var photo by rememberSaveable { mutableStateOf(initial.photo) }
-    var banner by rememberSaveable { mutableStateOf(initial.banner) }
     var frame by rememberSaveable { mutableStateOf(initial.frame) }
     var color by rememberSaveable { mutableStateOf(initial.color) }
     var featured by rememberSaveable { mutableStateOf(initial.featuredAnimeId) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val draft = ReiAnixProfile(name, bio, avatar, photo, banner, frame, color, featured)
+    var showWallpaper by rememberSaveable { mutableStateOf(false) }
+    val draft = ReiAnixProfile(name, bio, avatar, photo, frame, color, featured)
     fun discardAndBack() {
         if (busy) return
         scope.launch {
             store.discard(photo)
-            store.discard(banner)
             onBack()
         }
     }
-    BackHandler { discardAndBack() }
-    fun import(uri: Uri?, isBanner: Boolean) {
+    BackHandler(enabled = !showWallpaper) { discardAndBack() }
+    fun importPhoto(uri: Uri?) {
         if (uri == null || busy) return
         busy = true
         error = null
         scope.launch {
             try {
-                val value = store.importImage(uri, isBanner)
-                if (isBanner) { store.discard(banner); banner = value }
-                else { store.discard(photo); photo = value }
+                val value = store.importPhoto(uri)
+                store.discard(photo)
+                photo = value
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { error = "Não foi possível importar a imagem." }
             finally { busy = false }
         }
     }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { import(it, false) }
-    val bannerPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { import(it, true) }
-    Column(Modifier.fillMaxSize().background(Color.Black).imePadding().navigationBarsPadding()) {
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { importPhoto(it) }
+    if (showWallpaper) {
+        ReiAnixWallpaperEditor(onBack = { showWallpaper = false })
+        return
+    }
+    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).imePadding().navigationBarsPadding()) {
         ReiAnixTopBar(title = if (customize) "Personalização do perfil" else "Editar perfil",
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { discardAndBack() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
@@ -459,12 +458,12 @@ private fun ProfileEditor(
                             .semantics { contentDescription = "Cor $key" }.clickable(enabled = !busy) { color = key })
                     }
                 }
-                Text("Banner", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                store.image(banner)?.let { file ->
-                    AsyncImage(model = file, contentDescription = "Prévia do banner", modifier = Modifier.fillMaxWidth().height(100.dp), contentScale = ContentScale.Crop)
+                Text("Papel de parede do aplicativo", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                ProfileRow(Icons.Outlined.Image, "Personalizar papel de parede") {
+                    if (!busy) showWallpaper = true
                 }
-                OutlinedButton(onClick = { bannerPicker.launch("image/*") }, enabled = !busy) { Text("Escolher banner") }
-                if (banner != null) TextButton(onClick = { val old = banner; banner = null; scope.launch { store.discard(old) } }, enabled = !busy) { Text("Remover banner") }
+                Text("Altere o fundo das telas do ReiAnix.", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
                 Text("Anime favorito em destaque", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
                 TextButton(onClick = { featured = null }, enabled = !busy) { Text(if (featured == null) "✓ Nenhum" else "Nenhum") }
                 favorites.forEach { anime ->
@@ -532,7 +531,7 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
             request = null
         }
     }
-    Column(Modifier.fillMaxSize().background(Color.Black).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
         ReiAnixTopBar("Cenas favoritas", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
