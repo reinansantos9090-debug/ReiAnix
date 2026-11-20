@@ -133,7 +133,7 @@ internal fun profileEpisodeLabel(number: Double?, title: String?, fileName: Stri
         .joinToString(" · ").ifBlank { fileName.orEmpty().ifBlank { "Episódio local" } }
 }
 
-private fun historyGroup(timestamp: Double, now: Calendar): String {
+internal fun historyGroup(timestamp: Double, now: Calendar): String {
     val day = Calendar.getInstance().apply { timeInMillis = (timestamp * 1000).toLong() }
     fun same(a: Calendar, b: Calendar) = a.get(Calendar.YEAR) == b.get(Calendar.YEAR) &&
         a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
@@ -170,7 +170,7 @@ internal fun ProfileFavorites(
     var sortOpen by remember { mutableStateOf(false) }
     val catalog = remember(animes) { animes.associateBy { it.id } }
     val counts = remember(episodes) { episodes.filter { it.missing != true }.distinctBy { it.id }.groupingBy { it.animeId }.eachCount() }
-    val favorites = remember(records, catalog) { records.filter { catalog[it.id]?.favorite ?: (it.favorite == true) } }
+    val favorites = remember(records) { records.filter { it.favorite == true } }
     val visible = remember(favorites, query, sort) {
         favorites.filter { it.title.contains(query.trim(), true) }.let { list ->
             when (sort) {
@@ -253,14 +253,18 @@ internal fun ProfileHistory(
                 items(rows, key = { it.id }) { row ->
                     val model = models[row.id]
                     val fallback by produceState<ReiAnixEpisodeRecord?>(null, row.id, model == null) {
-                        value = if (model == null) library.getEpisode(row.id) else null
+                        value = if (model == null) {
+                            try { library.getEpisode(row.id) }
+                            catch (cancelled: CancellationException) { throw cancelled }
+                            catch (_: Exception) { null }
+                        } else null
                     }
                     val completed = profileHistoryCompleted(row)
                     val duration = row.duration?.takeIf { it.isFinite() && it > 0 }
                     val progress = row.progress?.takeIf { it.isFinite() && it >= 0 } ?: 0.0
                     val fraction = if (completed) 1f else duration?.let { (progress / it).toFloat().coerceIn(0f, 1f) } ?: 0f
                     val tint = if (completed) Color(0xFF40C98A) else MaterialTheme.colorScheme.primary
-                    val playable = row.missing != true && model?.isPlayable != false && fallback?.missing != true
+                    val playable = row.missing != true && (model?.isPlayable ?: (fallback != null && fallback?.missing != true))
                     Card(Modifier.fillMaxWidth().clickable(enabled = playable) { onPlay(row.id, row.animeId) }, colors = profileMediaCardColors()) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Column(Modifier.width(116.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
