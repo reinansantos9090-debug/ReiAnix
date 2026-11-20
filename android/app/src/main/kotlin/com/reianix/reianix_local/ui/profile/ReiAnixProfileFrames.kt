@@ -39,14 +39,17 @@ internal val profileFrameOptions = listOf(
     ProfileFrameOption("none", "Sem moldura", "Usar a foto do perfil sem efeitos."),
     ProfileFrameOption("neon", "Neon azul", "Brilho neon e traços luminosos animados.", true),
     ProfileFrameOption("sakura", "Sakura mágica", "Pétalas rosadas flutuando ao redor da foto.", true),
+    ProfileFrameOption("cat_ears", "Gatinho mágico", "Orelhinhas felinas com brilho de cristais e pingente.", true),
     ProfileFrameOption("gold", "Dourada royal", "Coroa, ornamentos e partículas douradas.", true),
     ProfileFrameOption("galaxy", "Galáxia", "Órbitas cósmicas e estrelas cintilantes.", true),
+    ProfileFrameOption("headset", "Fone gamer", "Arco futurista, almofadas e luzes neon pulsantes.", true),
     ProfileFrameOption("accent", "Colorida", "Contorno na cor escolhida para o perfil."),
     ProfileFrameOption("white", "Branca", "Contorno branco clássico."),
 )
 
 internal fun isAnimatedProfileFrame(frame: String) =
-    frame == "neon" || frame == "sakura" || frame == "gold" || frame == "galaxy"
+    frame == "neon" || frame == "sakura" || frame == "gold" || frame == "galaxy" ||
+        frame == "cat_ears" || frame == "headset"
 
 /**
  * Canvas renders a small bounded number of primitives; the portrait stays in its own
@@ -54,6 +57,10 @@ internal fun isAnimatedProfileFrame(frame: String) =
  */
 @Composable
 internal fun AnimatedProfileFrame(frame: String, modifier: Modifier = Modifier) {
+    if (frame == "cat_ears" || frame == "headset") {
+        AnimatedAccessoryProfileFrame(frame, modifier)
+        return
+    }
     if (!isAnimatedProfileFrame(frame)) return
     val transition = rememberInfiniteTransition(label = "profile-frame-" + frame)
     val angle by transition.animateFloat(
