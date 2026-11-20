@@ -5,6 +5,17 @@ import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -143,13 +154,16 @@ private fun CollectorJourneyObserved(
 }
 
 @Composable
-private fun ReiAnixCollectorJourneyScreen(
+internal fun ReiAnixCollectorJourneyScreen(
     state: com.reianix.reianix_local.viewmodel.ReiAnixCollectorJourneyUiState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onSelectTitle: (String) -> Unit,
     showBack: Boolean = true,
 ) {
+    var page by rememberSaveable { mutableStateOf("menu") }
+    fun back() { if (page == "menu") onBack() else page = "menu" }
+    BackHandler(enabled = page != "menu") { back() }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -165,8 +179,8 @@ private fun ReiAnixCollectorJourneyScreen(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (showBack) {
-                IconButton(onClick = onBack) {
+            if (showBack || page != "menu") {
+                IconButton(onClick = { back() }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Voltar",
@@ -175,22 +189,20 @@ private fun ReiAnixCollectorJourneyScreen(
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Jornada do Colecionador",
+                    text = when (page) {
+                        "stats" -> "Estatísticas da jornada"
+                        "activity" -> "Minha atividade"
+                        "titles" -> "Títulos do colecionador"
+                        "achievements" -> "Conquistas"
+                        else -> "Jornada do Colecionador"
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
-                Text(
-                    text = "Progresso derivado da biblioteca local",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
-            // Stable dimensions: swapping a button for loading text caused
-            // the layout to jump on every async refresh.
-            OutlinedButton(
-                onClick = onRefresh,
-                enabled = !state.isLoading && !state.isSaving,
-            ) { Text("Atualizar") }
+        }
+        if (state.isLoading && state.journey != null) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
         }
 
         if (state.error != null) {
@@ -229,63 +241,23 @@ private fun ReiAnixCollectorJourneyScreen(
                 } else {
                     Text("A jornada está indisponível", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Os dados não foram substituídos por valores vazios. Atualize para tentar novamente.",
+                        "Não foi possível consultar seu progresso. Tente novamente.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(12.dp))
-                    Button(onClick = onRefresh) { Text("Atualizar") }
+                    Button(onClick = onRefresh) { Text("Tentar novamente") }
                 }
             }
             return
         }
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainerHigh),
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("NÍVEL " + journey.level, style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            journey.xp.toString() + " XP de jornada",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            journey.xpIntoLevel.toString() + "/10 episódios concluídos para o próximo nível",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { journey.levelProgress.coerceIn(0f, 1f) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "1 XP equivale a 1 episódio local concluído. XP e níveis não são salvos separadamente.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Título ativo: " + (journey.activeTitleLabel ?: "Nenhum título desbloqueado"),
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-            item {
-                Text("Estatísticas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
+        key(page) {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                when (page) {
+                    "stats" -> {
             item {
                 MetricCard(
                     firstLabel = "Animes concluídos",
@@ -318,6 +290,8 @@ private fun ReiAnixCollectorJourneyScreen(
                     secondValue = journey.formatsExplored.toString(),
                 )
             }
+                    }
+                    "activity" -> {
             item {
                 Text("Atividade nos últimos 6 meses",
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -337,10 +311,12 @@ private fun ReiAnixCollectorJourneyScreen(
                         style = MaterialTheme.typography.labelSmall)
                 }
             }
+                    }
+                    "titles" -> {
             item {
                 Text("Títulos do colecionador", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "Escolha apenas entre títulos realmente desbloqueados. A seleção é confirmada no SQLite antes de atualizar a interface.",
+                    "Escolha um título desbloqueado para exibir no perfil.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -386,6 +362,8 @@ private fun ReiAnixCollectorJourneyScreen(
                     }
                 }
             }
+                    }
+                    "achievements" -> {
             item {
                 Text("Conquistas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
@@ -432,7 +410,46 @@ private fun ReiAnixCollectorJourneyScreen(
                     }
                 }
             }
-            item { Spacer(Modifier.height(12.dp)) }
+                    }
+                    else -> {
+            item {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                    containerColor = reiAnixContentBackground(MaterialTheme.colorScheme.primaryContainer.copy(alpha = .35f)),
+                    contentColor = MaterialTheme.colorScheme.onSurface)) {
+                    Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Outlined.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                        Text("Nível " + journey.level, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text(journey.xp.toString() + " XP de jornada", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        LinearProgressIndicator(progress = { journey.levelProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(journey.xpIntoLevel.toString() + " / 10 XP", style = MaterialTheme.typography.labelSmall)
+                            Text("Próximo nível", style = MaterialTheme.typography.labelSmall)
+                        }
+                        Text("Título ativo: " + (journey.activeTitleLabel ?: "Nenhum título desbloqueado"),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    JourneySummaryCard(Icons.Outlined.EmojiEvents, journey.achievementsUnlocked.toString() + "/" + journey.achievementsTotal,
+                        "Conquistas", Color(0xFFFFC768), Modifier.weight(1f)) { page = "achievements" }
+                    JourneySummaryCard(Icons.Outlined.CalendarToday, journey.activeDays.toString(),
+                        "Dias ativos", MaterialTheme.colorScheme.primary, Modifier.weight(1f)) { page = "activity" }
+                }
+            }
+            item {
+                JourneyCategory(Icons.Outlined.BarChart, "Estatísticas da jornada", "Acompanhe sua evolução") { page = "stats" }
+                JourneyCategory(Icons.Outlined.ShowChart, "Minha atividade", "Atividade dos últimos 6 meses") { page = "activity" }
+                JourneyCategory(Icons.Outlined.MilitaryTech, "Títulos do colecionador", "Desbloqueie e equipe seus títulos") { page = "titles" }
+                JourneyCategory(Icons.Outlined.EmojiEvents, "Conquistas",
+                    journey.achievementsUnlocked.toString() + " de " + journey.achievementsTotal + " desbloqueadas") { page = "achievements" }
+            }
+                    }
+                }
+                item { Spacer(Modifier.height(12.dp)) }
+            }
         }
     }
 }
@@ -460,6 +477,33 @@ private fun MetricCard(
                 Text(secondLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(secondValue, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
+        }
+    }
+}
+
+@Composable
+private fun JourneyCategory(icon: ImageVector, title: String, description: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Icon(icon, null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun JourneySummaryCard(icon: ImageVector, value: String, label: String, tint: Color, modifier: Modifier, onClick: () -> Unit) {
+    Card(modifier.clickable(onClick = onClick), colors = CardDefaults.cardColors(
+        containerColor = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = MaterialTheme.colorScheme.onSurface)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
