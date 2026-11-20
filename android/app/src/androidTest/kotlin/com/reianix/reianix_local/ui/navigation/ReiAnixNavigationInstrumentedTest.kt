@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.ui.navigation
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,8 +20,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -58,12 +62,12 @@ class ReiAnixNavigationInstrumentedTest {
                 ReiAnixNavigationHost(
                     navController = navController,
                     home = {
-                        Box(Modifier.fillMaxSize().testTag("profile-transition-home")) {
+                        Box(Modifier.fillMaxSize().background(Color.Green).testTag("profile-transition-home")) {
                             NavigationTestScreen("Início")
                         }
                     },
                     profile = {
-                        Box(Modifier.fillMaxSize().testTag("profile-transition-profile")) {
+                        Box(Modifier.fillMaxSize().background(Color.Red).testTag("profile-transition-profile")) {
                             Text("Meu perfil de teste")
                         }
                     },
@@ -116,24 +120,40 @@ class ReiAnixNavigationInstrumentedTest {
     }
 
     @Test
-    fun returningFromProfileRestoresHomeAndBottomBarWithoutCrossfade() {
+    fun profileTransitionKeepsOutgoingContentVisibleAndRestoresHomeOnBack() {
         val home = composeRule.onNodeWithTag("profile-transition-home")
         val profile = composeRule.onNodeWithTag("profile-transition-profile")
         val bottomBarItem = composeRule.onNodeWithContentDescription("Início")
         val originalBounds = home.getUnclippedBoundsInRoot()
 
-        composeRule.onNodeWithText("Increment Início").performClick()
-        composeRule.runOnIdle { navController.navigate(ReiAnixRoutes.PROFILE) }
-        profile.assertIsDisplayed()
-        home.assertDoesNotExist()
-        bottomBarItem.assertDoesNotExist()
+        fun centerPixel(tag: String): Color {
+            val pixels = composeRule.onNodeWithTag(tag).captureToImage().toPixelMap()
+            return pixels[pixels.width / 2, pixels.height / 2]
+        }
 
-        // A normal NavHost crossfade would still retain the outgoing profile
-        // at this early frame. The replacement and bar must be atomic.
+        composeRule.onNodeWithText("Increment Início").performClick()
         composeRule.mainClock.autoAdvance = false
         try {
+            composeRule.runOnIdle { navController.navigate(ReiAnixRoutes.PROFILE) }
+            composeRule.mainClock.advanceTimeBy(64L)
+            val enteringProfile = centerPixel("profile-transition-profile")
+            assertTrue("Home must still be visible while Profile starts fading in", enteringProfile.green > .6f)
+            assertTrue(enteringProfile.red < .3f)
+
+            composeRule.mainClock.advanceTimeBy(300L)
+            assertTrue("Profile must fade in", centerPixel("profile-transition-profile").red > enteringProfile.red + .2f)
+            composeRule.mainClock.advanceTimeBy(450L)
+            profile.assertIsDisplayed()
+            home.assertDoesNotExist()
+            bottomBarItem.assertDoesNotExist()
+
             composeRule.runOnIdle { navController.popBackStack() }
             composeRule.mainClock.advanceTimeBy(64L)
+            val leavingProfile = centerPixel("profile-transition-home")
+            assertTrue("Profile must still be visible while Home starts fading in", leavingProfile.red > .6f)
+            assertTrue(leavingProfile.green < .3f)
+
+            composeRule.mainClock.advanceTimeBy(750L)
             home.assertIsDisplayed()
             profile.assertDoesNotExist()
             bottomBarItem.assertIsDisplayed()
@@ -142,13 +162,11 @@ class ReiAnixNavigationInstrumentedTest {
         } finally {
             composeRule.mainClock.autoAdvance = true
         }
-        composeRule.waitForIdle()
         assertEquals(ReiAnixRoutes.HOME, navController.currentBackStackEntry?.destination?.route)
-        assertEquals(originalBounds, home.getUnclippedBoundsInRoot())
     }
 
     @Test
-    fun everyTabAndProfileReplacePreviousContentWithoutTransition() {
+    fun everyTabReplacesPreviousContentAfterTheTransition() {
         val destinations = listOf(
             ReiAnixRoutes.HOME to "Início counter=0",
             ReiAnixRoutes.LIBRARY to "Biblioteca counter=0",
@@ -156,29 +174,14 @@ class ReiAnixNavigationInstrumentedTest {
             ReiAnixRoutes.SETTINGS to "Ajustes counter=0",
         )
         for ((route, label) in destinations.drop(1) + destinations.take(1)) {
-            composeRule.mainClock.autoAdvance = false
-            try {
-                composeRule.runOnIdle { navController.navigateToTopLevel(route) }
-                composeRule.mainClock.advanceTimeBy(64L)
-                composeRule.onNodeWithText(label).assertIsDisplayed()
-                destinations.filter { it.first != route }.forEach { (_, other) ->
-                    composeRule.onNodeWithText(other).assertDoesNotExist()
-                }
-                composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-                    .assertIsDisplayed()
-            } finally {
-                composeRule.mainClock.autoAdvance = true
-            }
+            composeRule.runOnIdle { navController.navigateToTopLevel(route) }
             composeRule.waitForIdle()
-        }
-        composeRule.mainClock.autoAdvance = false
-        try {
-            composeRule.runOnIdle { navController.navigate(ReiAnixRoutes.PROFILE) }
-            composeRule.mainClock.advanceTimeBy(64L)
-            composeRule.onNodeWithTag("profile-transition-profile").assertIsDisplayed()
-            composeRule.onNodeWithTag("profile-transition-home").assertDoesNotExist()
-        } finally {
-            composeRule.mainClock.autoAdvance = true
+            composeRule.onNodeWithText(label).assertIsDisplayed()
+            destinations.filter { it.first != route }.forEach { (_, other) ->
+                composeRule.onNodeWithText(other).assertDoesNotExist()
+            }
+            composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
+                .assertIsDisplayed()
         }
     }
 

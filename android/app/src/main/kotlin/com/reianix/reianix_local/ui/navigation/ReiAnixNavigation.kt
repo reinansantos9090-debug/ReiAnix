@@ -2,15 +2,7 @@ package com.reianix.reianix_local.ui.navigation
 
 import android.net.Uri
 import androidx.annotation.Keep
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.foundation.layout.Box
-import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavGraphBuilder
-import androidx.navigation.NamedNavArgument
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -356,39 +348,6 @@ fun ReiAnixNavigationHost(
     )
 }
 
-/**
- * Navigation Compose can retain an outgoing entry until its internal transition
- * is settled, even with Enter/ExitTransition.None. Transparent destinations
- * must never paint their contents over the current route during that interval.
- * Keep the entry composed for Navigation's save-state/lifecycle handling, but
- * gate drawing using the live back-stack state in the draw phase.
- */
-@Composable
-internal fun ReiAnixCurrentDestination(
-    entryId: String,
-    currentEntryId: () -> String?,
-    content: @Composable () -> Unit,
-) {
-    Box(Modifier.fillMaxSize().drawWithContent {
-        if (currentEntryId() == entryId) drawContent()
-    }) {
-        content()
-    }
-}
-
-private fun NavGraphBuilder.instantDestination(
-    activeEntry: State<NavBackStackEntry?>,
-    route: String,
-    arguments: List<NamedNavArgument> = emptyList(),
-    content: @Composable (NavBackStackEntry) -> Unit,
-) {
-    composable(route = route, arguments = arguments) { entry ->
-        ReiAnixCurrentDestination(entry.id, { activeEntry.value?.id }) {
-            content(entry)
-        }
-    }
-}
-
 @Composable
 fun ReiAnixNavigationHost(
     home: @Composable () -> Unit,
@@ -425,8 +384,7 @@ fun ReiAnixNavigationHost(
         }
     }
 
-    val activeEntry = navController.currentBackStackEntryAsState()
-    val backStackEntry by activeEntry
+    val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val detailOrigin = backStackEntry?.arguments
         ?.getString(ReiAnixRoutes.ARG_ORIGIN)
@@ -459,34 +417,28 @@ fun ReiAnixNavigationHost(
         onBottomDestinationClick = navController::navigateToTopLevel,
         showBottomNavigation = shouldShowBottomNavigation,
         navigationContent = { innerPadding ->
+        // Let NavHost keep the outgoing content visible through its fade.
         NavHost(
             navController = navController,
             startDestination = effectiveStartDestination,
-            modifier = androidx.compose.ui.Modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
-            // The wallpaper belongs to the shell, not either destination.
-            // Remove all route fades/slides, including forward and back.
-            enterTransition = { EnterTransition.None },
-            exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
-            popExitTransition = { ExitTransition.None },
         ) {
-            instantDestination(activeEntry, ReiAnixRoutes.HOME) { home() }
-            instantDestination(activeEntry, ReiAnixRoutes.LIBRARY) { library() }
-            instantDestination(activeEntry, ReiAnixRoutes.MY_LIST) { myList() }
-            instantDestination(activeEntry, ReiAnixRoutes.COLLECTIONS) { collections() }
-            instantDestination(activeEntry, ReiAnixRoutes.ORGANIZE) { organize() }
-            instantDestination(activeEntry, ReiAnixRoutes.SEARCH) { search() }
-            instantDestination(activeEntry, ReiAnixRoutes.SETTINGS) { settings() }
-            instantDestination(activeEntry, ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
-            instantDestination(activeEntry, ReiAnixRoutes.PROFILE) { profile() }
-            instantDestination(activeEntry, ReiAnixRoutes.STORAGE) { storage() }
-            instantDestination(activeEntry, ReiAnixRoutes.RECOVERY) { recovery() }
-            instantDestination(activeEntry, ReiAnixRoutes.COLLECTOR) { collector() }
-            instantDestination(
-                activeEntry = activeEntry,
+            composable(ReiAnixRoutes.HOME) { home() }
+            composable(ReiAnixRoutes.LIBRARY) { library() }
+            composable(ReiAnixRoutes.MY_LIST) { myList() }
+            composable(ReiAnixRoutes.COLLECTIONS) { collections() }
+            composable(ReiAnixRoutes.ORGANIZE) { organize() }
+            composable(ReiAnixRoutes.SEARCH) { search() }
+            composable(ReiAnixRoutes.SETTINGS) { settings() }
+            composable(ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
+            composable(ReiAnixRoutes.PROFILE) { profile() }
+            composable(ReiAnixRoutes.STORAGE) { storage() }
+            composable(ReiAnixRoutes.RECOVERY) { recovery() }
+            composable(ReiAnixRoutes.COLLECTOR) { collector() }
+            composable(
                 route = ReiAnixRoutes.TIMELINE,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_SECTION) {
@@ -498,8 +450,7 @@ fun ReiAnixNavigationHost(
                 timeline(entry.arguments?.getString(ReiAnixRoutes.ARG_SECTION) ?: "animes")
             }
 
-            instantDestination(
-                activeEntry = activeEntry,
+            composable(
                 route = ReiAnixRoutes.DETAILS,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_ANIME_ID) {
@@ -524,8 +475,7 @@ fun ReiAnixNavigationHost(
                 details(ReiAnixDetailsArgs(animeId = animeId, origin = origin))
             }
 
-            instantDestination(
-                activeEntry = activeEntry,
+            composable(
                 route = ReiAnixRoutes.ANILIST_DETAILS,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_ANILIST_ID) {
@@ -550,8 +500,7 @@ fun ReiAnixNavigationHost(
                 )
             }
 
-            instantDestination(
-                activeEntry = activeEntry,
+            composable(
                 route = ReiAnixRoutes.PLAYER,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_EPISODE_ID) {

@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.shell
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
@@ -21,6 +23,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -29,6 +32,7 @@ import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 
 /**
@@ -112,8 +116,18 @@ private fun ReiAnixBottomNavigation(
     ) {
         destinations.forEach { destination ->
             val selected = selectedRoute == destination.route
-            val contentColor = if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant
+            val contentColor by animateColorAsState(
+                targetValue = if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = if (ReiAnixMotionPolicy.systemAnimationsEnabled()) {
+                    androidx.compose.animation.core.tween(
+                        durationMillis = ReiAnixTokens.Motion.stateChangeMillis,
+                    )
+                } else {
+                    snap()
+                },
+                label = "bottom-nav-color",
+            )
             NavigationBarItem(
                 selected = selected,
                 onClick = { onDestinationClick(destination.route) },
