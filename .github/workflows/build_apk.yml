@@ -34,6 +34,10 @@ jobs:
           ART_HEADSET: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2Fcdb37410-83d6-47fa-8629-037a087cf7e6/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAMQyK_Vqfcc5ZAZMnN2HkHVJfhmNRZ9Ed_ZrHjvSv7fm&exp=1795231854&osig=AAAAAAAAAAAAAAAAAAAAAEQ2ZgDyBC5mxhinzP4OL9qE4Ilv_bJf_u_gxpk046uW&signer=media-rpc&token=AAIAAU0AJGNkYjM3NDEwLTgzZDYtNDdmYS04NjI5LTAzN2EwODdjZjdlNgAAAAABofwoLbB8jpMMKxlzgEvjphsUPMSQZ18UHgYHaHwqYw-5PNWBSA&x-canva-quality=thumbnail'
         run: |
           set -euo pipefail
+          # Always commit against the latest PR branch, not the detached PR merge ref.
+          pr_branch="${{ github.event.pull_request.head.ref }}"
+          git fetch origin "$pr_branch"
+          git checkout -B "$pr_branch" "origin/$pr_branch"
           dir='android/app/src/main/res/drawable-nodpi'
           mkdir -p "$dir"
           changed=0
