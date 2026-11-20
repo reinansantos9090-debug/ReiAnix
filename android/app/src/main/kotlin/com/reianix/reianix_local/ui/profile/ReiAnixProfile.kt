@@ -141,7 +141,7 @@ fun ReiAnixProfileHeaderAction(onClick: () -> Unit) {
     val profile by store.state.collectAsStateWithLifecycle()
     IconButton(onClick = onClick, modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget)
         .semantics { contentDescription = "Meu perfil" }) {
-        ProfileAvatar(profile, store, 30.dp)
+        ProfileAvatar(profile, store, 32.dp)
     }
 }
 

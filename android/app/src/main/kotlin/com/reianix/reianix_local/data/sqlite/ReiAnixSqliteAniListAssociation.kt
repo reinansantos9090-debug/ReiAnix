@@ -27,6 +27,8 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         expectedAssociationId: Long? = null,
         correctManualMusic: Boolean = false,
         preparedArtwork: ReiAnixPreparedRepairArtwork? = null,
+        manualSelection: Boolean = false,
+        protectManualRefresh: Boolean = false,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -55,6 +57,11 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
             val current = currentAndManualFields.first
             val protectedFields = currentAndManualFields.second
+            require(!manualSelection || manual)
+            // A background refresh of the previous manual ID must never undo
+            // a newer explicit choice made while the request was in flight.
+            if (protectManualRefresh && current.anilistMatchManual == true &&
+                current.anilistId != anilistId) return@transaction current
             // Explicit repair may replace an automatic association only if it has not
             // changed since the lookup. Manual associations and fields remain protected.
             val allowManualMusicCorrection = explicitRepair && correctManualMusic &&
@@ -87,7 +94,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             }
 
             if (preparedArtwork != null) {
-                require(explicitRepair && preparedArtwork.poster.url == patch.coverUrl &&
+                require((explicitRepair || manualSelection) && preparedArtwork.poster.url == patch.coverUrl &&
                     preparedArtwork.banner?.url == patch.bannerUrl) { "Prepared artwork does not match metadata." }
                 require(listOfNotNull(preparedArtwork.poster, preparedArtwork.banner).all {
                     File(it.path).isFile && File(it.path).length() == it.bytes && it.bytes > 0
@@ -118,7 +125,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             // A changed automatic URL must not inherit an unverified legacy
             // pointer from the previous identity. Preserve manual/local art and
             // keep old files on disk; the normal downloader publishes new art.
-            if (explicitRepair && "cover_url" !in protectedFields &&
+            if ((explicitRepair || manualSelection) && "cover_url" !in protectedFields &&
                 "cover_cache" !in protectedFields && !patch.coverUrl.isNullOrBlank() &&
                 patch.coverUrl != current.coverUrl
             ) {
@@ -146,7 +153,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                     if (!correctCachedPath.isNullOrBlank()) values.put("cover_cache", correctCachedPath)
                 }
             }
-            if (explicitRepair && "banner_url" !in protectedFields &&
+            if ((explicitRepair || manualSelection) && "banner_url" !in protectedFields &&
                 !patch.bannerUrl.isNullOrBlank() && patch.bannerUrl != current.bannerUrl
             ) {
                 connection.execSQL(

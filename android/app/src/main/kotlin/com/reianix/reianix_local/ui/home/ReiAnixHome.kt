@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.ui.home
 
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.graphics.vector.ImageVector
 
 import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
 
@@ -577,18 +580,39 @@ internal fun HomeHeader(
     onOpenTimeline: (() -> Unit)? = null,
     onOpenProfile: () -> Unit = {},
 ) {
-    ReiAnixTopBar(
-        title = "ReiAnix",
-        titleStyle = ReiAnixTokens.TypographyTokens.brandTitle,
-        actions = {
-            if (onOpenTimeline != null) {
-                ReiAnixIconActionButton(Icons.Filled.History, "Linha do tempo", onOpenTimeline)
-            }
-            ReiAnixIconActionButton(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
-            ReiAnixProfileHeaderAction(onClick = onOpenProfile)
-        },
-    )
-    Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.sm))
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+            .heightIn(min = 48.dp)
+            .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "ReiAnix",
+            style = ReiAnixTokens.TypographyTokens.brandTitle.copy(fontSize = 22.sp, lineHeight = 26.sp),
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        if (onOpenTimeline != null) {
+            HomeHeaderIcon(Icons.Filled.History, "Linha do tempo", onOpenTimeline)
+        }
+        HomeHeaderIcon(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
+        ReiAnixProfileHeaderAction(onClick = onOpenProfile)
+    }
+    // Move the controls upward within the existing hero footprint, without
+    // moving the featured title or playback buttons down.
+    Spacer(modifier = Modifier.height(16.dp))
+}
+
+@Composable
+private fun HomeHeaderIcon(icon: ImageVector, label: String, action: () -> Unit) {
+    IconButton(onClick = action, modifier = Modifier.size(48.dp)) {
+        Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(24.dp))
+    }
 }
 
 @Composable
