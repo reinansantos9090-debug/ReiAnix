@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.ui.profile
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color as AndroidColor
+import com.reianix.reianix_local.R
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -276,6 +279,33 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         } finally {
             runBlocking { store.save(original) }
         }
+    }
+
+    @Test
+    fun everyIllustratedFrameIsBundledOfflineWithTransparentPortraitArea() {
+        val resources = composeRule.activity.resources
+        val art = listOf(
+            "gold" to R.drawable.profile_frame_gold,
+            "neon" to R.drawable.profile_frame_neon,
+            "galaxy" to R.drawable.profile_frame_galaxy,
+            "cat_ears" to R.drawable.profile_frame_cat_ears,
+            "headset" to R.drawable.profile_frame_headset,
+        )
+        art.forEach { (name, drawableId) ->
+            assertTrue("$name should be illustrated", isIllustratedProfileFrame(name))
+            val bitmap = BitmapFactory.decodeResource(resources, drawableId)
+            requireNotNull(bitmap) { "Artwork missing for $name" }
+            try {
+                assertTrue("$name is too small", bitmap.width >= 180 && bitmap.height >= 180)
+                assertTrue("$name must have transparency", bitmap.hasAlpha())
+                val centerPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+                assertTrue("$name obscures the profile photo", AndroidColor.alpha(centerPixel) < 64)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+        assertTrue("Sakura is kept on its original implementation",
+            !isIllustratedProfileFrame("sakura"))
     }
 
     @Test
