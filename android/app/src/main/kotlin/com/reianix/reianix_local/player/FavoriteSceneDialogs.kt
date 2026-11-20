@@ -1,6 +1,14 @@
 package com.reianix.reianix_local.player
 
-import android.graphics.drawable.ColorDrawable
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.drawable.GradientDrawable
+import android.content.res.ColorStateList
+import android.graphics.drawable.RippleDrawable
+import android.text.TextUtils
+import android.graphics.Typeface
+import android.widget.ImageButton
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import android.graphics.Bitmap
@@ -152,7 +160,13 @@ internal class FavoriteSceneDialogs(
         previousClose?.invoke()
     }
 
-    private fun fullScreen(title: String, onBack: () -> Unit, body: LinearLayout.() -> Unit, onClose: () -> Unit = {}) {
+    private fun fullScreen(
+        title: String,
+        onBack: () -> Unit,
+        body: LinearLayout.() -> Unit,
+        onClose: () -> Unit = {},
+        headerActions: LinearLayout.() -> Unit = {},
+    ) {
         if (activity.isFinishing || activity.isDestroyed) return
         val root = column().apply {
             val header = LinearLayout(activity).apply {
@@ -164,6 +178,7 @@ internal class FavoriteSceneDialogs(
                     setTextColor(Color.WHITE)
                 }, LinearLayout.LayoutParams(dp(52), dp(52)))
                 addView(label(title, 20f), LinearLayout.LayoutParams(0, -2, 1f))
+                headerActions()
             }
             addView(header, LinearLayout.LayoutParams(-1, -2))
             body()
@@ -219,6 +234,77 @@ internal class FavoriteSceneDialogs(
         }.getOrDefault(0L)
     }
 
+    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radius).toFloat()
+    }
+
+    private fun galleryRipple(fill: Int = Color.TRANSPARENT, radius: Int = 12) =
+        RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), rounded(fill, radius), rounded(Color.WHITE, radius))
+
+    private enum class GalleryIcon { ADD, SORT, MORE, MOVIE }
+
+    /** Small monochrome vector-style icons, independent of the selected app font. */
+    private fun galleryIcon(kind: GalleryIcon, description: String, size: Int = 24): ImageButton =
+        ImageButton(activity).apply {
+            contentDescription = description
+            setBackground(galleryRipple())
+            scaleType = ImageView.ScaleType.CENTER
+            setImageDrawable(object : android.graphics.drawable.Drawable() {
+                private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    strokeWidth = 1.8f
+                    strokeCap = Paint.Cap.ROUND
+                    strokeJoin = Paint.Join.ROUND
+                    style = Paint.Style.STROKE
+                }
+                override fun getIntrinsicWidth() = dp(size)
+                override fun getIntrinsicHeight() = dp(size)
+                override fun draw(canvas: Canvas) {
+                    canvas.save()
+                    canvas.translate(bounds.left.toFloat(), bounds.top.toFloat())
+                    canvas.scale(bounds.width() / 24f, bounds.height() / 24f)
+                    when (kind) {
+                        GalleryIcon.ADD -> {
+                            canvas.drawLine(5f, 12f, 19f, 12f, paint)
+                            canvas.drawLine(12f, 5f, 12f, 19f, paint)
+                        }
+                        GalleryIcon.SORT -> {
+                            canvas.drawLine(7f, 4f, 7f, 20f, paint)
+                            canvas.drawLine(3f, 8f, 7f, 4f, paint)
+                            canvas.drawLine(7f, 4f, 11f, 8f, paint)
+                            canvas.drawLine(17f, 4f, 17f, 20f, paint)
+                            canvas.drawLine(13f, 16f, 17f, 20f, paint)
+                            canvas.drawLine(17f, 20f, 21f, 16f, paint)
+                        }
+                        GalleryIcon.MORE -> {
+                            paint.style = Paint.Style.FILL
+                            for (y in listOf(5f, 12f, 19f)) canvas.drawCircle(12f, y, 1.6f, paint)
+                            paint.style = Paint.Style.STROKE
+                        }
+                        GalleryIcon.MOVIE -> {
+                            canvas.drawRoundRect(3f, 7f, 21f, 21f, 2f, 2f, paint)
+                            canvas.drawLine(3f, 11f, 21f, 11f, paint)
+                            canvas.drawLine(3f, 7f, 19f, 3f, paint)
+                            canvas.drawLine(8f, 6f, 11f, 10f, paint)
+                            canvas.drawLine(15f, 4f, 18f, 8f, paint)
+                            canvas.drawPath(Path().apply {
+                                moveTo(10f, 13f); lineTo(15f, 16f); lineTo(10f, 19f); close()
+                            }, paint)
+                        }
+                    }
+                    canvas.restore()
+                }
+                override fun setAlpha(alpha: Int) { paint.alpha = alpha; invalidateSelf() }
+                override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+                    paint.colorFilter = colorFilter
+                    invalidateSelf()
+                }
+                @Suppress("DEPRECATION")
+                override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+            })
+        }
+
     fun gallery(
         scenes: List<PlayerLocalMetadataStore.FavoriteScene>,
         canCreate: Boolean,
@@ -229,41 +315,105 @@ internal class FavoriteSceneDialogs(
         onBack: () -> Unit = {},
     ) {
         val jobs = mutableMapOf<View, Job>()
-        val content = column().apply { setPadding(dp(16), dp(4), dp(16), dp(8)) }
-        if (canCreate) content.addView(action("+ Salvar cena") { onCreate() })
-        if (scenes.isEmpty()) content.addView(label("Nenhuma cena favorita salva.").apply {
-            setPadding(dp(4), dp(16), dp(4), dp(16))
-        }) else {
+        val content = column().apply { setPadding(dp(16), dp(8), dp(12), dp(8)) }
+        val orderedScenes = scenes.sortedByDescending { it.note.createdAtMs }.toMutableList()
+        var sortIndex = 0
+        var galleryAdapter: BaseAdapter? = null
+        val sortLabels = listOf("Mais recentes", "Mais antigas", "Nome (A–Z)", "Maior duração")
+
+        fun play(scene: PlayerLocalMetadataStore.FavoriteScene) {
+            if (scene.note.clipEndMs != null) onPlay(scene)
+            else report("Use Editar para definir o trecho desta cena.")
+        }
+
+        if (scenes.isEmpty()) {
+            val empty = column().apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(24), dp(24), dp(24), dp(24))
+                addView(galleryIcon(GalleryIcon.MOVIE, "", 44).apply {
+                    isClickable = false
+                    isFocusable = false
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    background = null
+                    alpha = 0.55f
+                }, LinearLayout.LayoutParams(dp(56), dp(56)))
+                addView(label("Nenhuma cena favorita", 20f).apply {
+                    gravity = Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+                addView(label(if (canCreate) "Salve seus momentos favoritos para assistir novamente quando quiser."
+                    else "Salve trechos no player do ReiAnix para encontrá-los aqui.", 14f, 0xFFAAAAAA.toInt()).apply {
+                    gravity = Gravity.CENTER
+                    setLineSpacing(dp(3).toFloat(), 1f)
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+                if (canCreate) addView(action("+  Salvar cena", onCreate).apply {
+                    setTextColor(Color.WHITE)
+                    background = galleryRipple(0xFF202020.toInt())
+                    setPadding(dp(22), 0, dp(22), 0)
+                }, LinearLayout.LayoutParams(-2, dp(48)).apply { topMargin = dp(20) })
+            }
+            content.addView(empty, LinearLayout.LayoutParams(-1, 0, 1f))
+        } else {
+            content.addView(label(if (scenes.size == 1) "1 cena salva" else "${scenes.size} cenas salvas",
+                13f, 0xFFAAAAAA.toInt()).apply {
+                setPadding(dp(4), dp(4), dp(4), dp(8))
+            })
             val list = ListView(activity).apply {
-                dividerHeight = dp(8)
+                divider = null
+                dividerHeight = 0
+                setBackgroundColor(Color.BLACK)
+                setItemsCanFocus(true)
                 adapter = object : BaseAdapter() {
-                    override fun getCount() = scenes.size
-                    override fun getItem(position: Int) = scenes[position]
+                    override fun getCount() = orderedScenes.size
+                    override fun getItem(position: Int) = orderedScenes[position]
                     override fun getItemId(position: Int) = position.toLong()
                     override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                         val row = (convertView as? LinearLayout) ?: LinearLayout(activity).apply {
                             orientation = LinearLayout.HORIZONTAL
                             gravity = Gravity.CENTER_VERTICAL
-                            setPadding(dp(4), dp(8), dp(4), dp(8))
-                            addView(thumbnail(), LinearLayout.LayoutParams(dp(116), dp(66)))
+                            setPadding(dp(4), dp(10), 0, dp(10))
+                            background = galleryRipple()
+                            isClickable = true
+                            isFocusable = true
+                            val preview = column().apply {
+                                addView(thumbnail().apply {
+                                    background = rounded(0xFF202020.toInt(), 10)
+                                    clipToOutline = true
+                                }, LinearLayout.LayoutParams(-1, dp(79)))
+                                addView(label("", 12f, 0xFFAAAAAA.toInt()).apply {
+                                    maxLines = 1
+                                    ellipsize = TextUtils.TruncateAt.END
+                                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
+                            }
+                            addView(preview, LinearLayout.LayoutParams(dp(140), -2))
                             addView(column().apply {
                                 setPadding(dp(12), 0, 0, 0)
-                                addView(label("", 15f))
-                                addView(label("", 12f, 0xFFCCCCCC.toInt()))
-                                addView(label("", 12f, 0xFFCCCCCC.toInt()))
+                                addView(label("", 16f).apply {
+                                    setTypeface(typeface, Typeface.BOLD)
+                                    maxLines = 2
+                                    ellipsize = TextUtils.TruncateAt.END
+                                })
+                                addView(label("", 13f, 0xFFBBBBBB.toInt()).apply {
+                                    maxLines = 2
+                                    ellipsize = TextUtils.TruncateAt.END
+                                    setPadding(0, dp(4), 0, 0)
+                                })
+                                addView(label("", 12f, 0xFFAAAAAA.toInt()).apply {
+                                    setPadding(0, dp(4), 0, 0)
+                                })
                             }, LinearLayout.LayoutParams(0, -2, 1f))
-                            addView(label("⋮", 26f).apply {
-                                gravity = Gravity.CENTER
-                                isClickable = true
-                                isFocusable = false
-                            }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                            addView(galleryIcon(GalleryIcon.MORE, "Opções da cena"),
+                                LinearLayout.LayoutParams(dp(48), dp(48)))
                         }
                         jobs.remove(row)?.cancel()
                         val scene = getItem(position)
                         val note = scene.note
-                        val image = row.getChildAt(0) as ImageView
+                        val preview = row.getChildAt(0) as LinearLayout
+                        val image = preview.getChildAt(0) as ImageView
+                        val duration = preview.getChildAt(1) as TextView
                         val textColumn = row.getChildAt(1) as LinearLayout
-                        val more = row.getChildAt(2) as TextView
+                        val more = row.getChildAt(2) as ImageButton
+                        row.setOnClickListener { play(scene) }
                         more.contentDescription = "Opções de ${note.text}"
                         more.setOnClickListener { anchor ->
                             val popup = PopupMenu(ContextThemeWrapper(activity,
@@ -282,10 +432,13 @@ internal class FavoriteSceneDialogs(
                         (textColumn.getChildAt(0) as TextView).text = note.text
                         (textColumn.getChildAt(1) as TextView).text =
                             listOf(note.animeTitle, note.episodeLabel).filter(String::isNotBlank)
-                                .joinToString(" • ").ifBlank { "Episódio local" }
+                                .distinct().joinToString(" • ").ifBlank { "Episódio local" }
                         (textColumn.getChildAt(2) as TextView).text = note.clipEndMs?.let {
-                            format(note.timestampMs) + " – " + format(it) + " • " + format(it - note.timestampMs)
+                            format(note.timestampMs) + " – " + format(it)
                         } ?: ("Marcador antigo • " + format(note.timestampMs))
+                        duration.text = note.clipEndMs?.let {
+                            "Duração: " + format(it - note.timestampMs)
+                        } ?: "Sem trecho"
                         val cached = thumbnails.get("${scene.mediaId}@${note.timestampMs}")
                         image.setImageBitmap(cached)
                         if (cached == null) jobs[row] = activity.lifecycleScope.launch {
@@ -294,23 +447,47 @@ internal class FavoriteSceneDialogs(
                         }
                         return row
                     }
-                }
-                setOnItemClickListener { _, _, index, _ ->
-                    val scene = scenes[index]
-                    // A saved clip opens directly. Old point-only bookmarks
-                    // need a range before they can be played as clips.
-                    if (scene.note.clipEndMs != null) onPlay(scene)
-                    else report("Use Editar para definir o trecho desta cena.")
-                }
+                }.also { galleryAdapter = it }
             }
-            list.setBackgroundColor(Color.BLACK)
-            list.divider = ColorDrawable(0xFF181818.toInt())
-            list.dividerHeight = dp(1)
             content.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
         }
         fullScreen("Cenas favoritas", onBack = onBack, body = {
             addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
-        }, onClose = { jobs.values.forEach { it.cancel() }; jobs.clear() })
+        }, onClose = { jobs.values.forEach { it.cancel() }; jobs.clear() }, headerActions = {
+            if (scenes.isNotEmpty()) {
+                addView(galleryIcon(GalleryIcon.SORT, "Ordenar cenas").apply {
+                    setOnClickListener { anchor ->
+                        val popup = PopupMenu(ContextThemeWrapper(activity,
+                            android.R.style.Theme_Material_NoActionBar_Fullscreen), anchor)
+                        sortLabels.forEachIndexed { index, title ->
+                            popup.menu.add(1, index, index, title).isChecked = index == sortIndex
+                        }
+                        popup.menu.setGroupCheckable(1, true, true)
+                        popup.setOnMenuItemClickListener { item ->
+                            sortIndex = item.itemId
+                            val sorted = when (sortIndex) {
+                                1 -> scenes.sortedBy { it.note.createdAtMs }
+                                2 -> scenes.sortedWith(compareBy<PlayerLocalMetadataStore.FavoriteScene, String>(String.CASE_INSENSITIVE_ORDER) { it.note.text })
+                                3 -> scenes.sortedByDescending { scene ->
+                                    scene.note.clipEndMs?.minus(scene.note.timestampMs) ?: 0L
+                                }
+                                else -> scenes.sortedByDescending { it.note.createdAtMs }
+                            }
+                            orderedScenes.clear()
+                            orderedScenes.addAll(sorted)
+                            galleryAdapter?.notifyDataSetChanged()
+                            true
+                        }
+                        popup.show()
+                    }
+                }, LinearLayout.LayoutParams(dp(48), dp(48)))
+            }
+            if (canCreate) {
+                addView(galleryIcon(GalleryIcon.ADD, "Salvar cena").apply {
+                    setOnClickListener { onCreate() }
+                }, LinearLayout.LayoutParams(dp(48), dp(48)))
+            }
+        })
     }
 
     fun confirmDelete(name: String, onCancel: () -> Unit, onDelete: () -> Unit) {
