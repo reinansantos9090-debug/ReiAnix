@@ -128,7 +128,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("O brilho é ajustado automaticamente. Fundo apenas no Perfil e nos Ajustes.",
+            Text("O brilho é ajustado automaticamente. O player mantém o fundo original.",
                 textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !busy) { Text("Escolher papel de parede") }

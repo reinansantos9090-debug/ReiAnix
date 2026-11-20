@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -188,7 +190,8 @@ internal fun CollectionAnimeRow(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         color = if (dragging) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant,
+            else reiAnixContentBackground(MaterialTheme.colorScheme.surfaceVariant),
+        contentColor = if (dragging) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
         tonalElevation = if (dragging) 4.dp else 0.dp,
     ) {
         Row(

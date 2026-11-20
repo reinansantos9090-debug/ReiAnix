@@ -4,6 +4,13 @@ import android.net.Uri
 import androidx.annotation.Keep
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.State
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NamedNavArgument
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -349,6 +356,39 @@ fun ReiAnixNavigationHost(
     )
 }
 
+/**
+ * Navigation Compose can retain an outgoing entry until its internal transition
+ * is settled, even with Enter/ExitTransition.None. Transparent destinations
+ * must never paint their contents over the current route during that interval.
+ * Keep the entry composed for Navigation's save-state/lifecycle handling, but
+ * gate drawing using the live back-stack state in the draw phase.
+ */
+@Composable
+internal fun ReiAnixCurrentDestination(
+    entryId: String,
+    currentEntryId: () -> String?,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxSize().drawWithContent {
+        if (currentEntryId() == entryId) drawContent()
+    }) {
+        content()
+    }
+}
+
+private fun NavGraphBuilder.instantDestination(
+    activeEntry: State<NavBackStackEntry?>,
+    route: String,
+    arguments: List<NamedNavArgument> = emptyList(),
+    content: @Composable (NavBackStackEntry) -> Unit,
+) {
+    composable(route = route, arguments = arguments) { entry ->
+        ReiAnixCurrentDestination(entry.id, { activeEntry.value?.id }) {
+            content(entry)
+        }
+    }
+}
+
 @Composable
 fun ReiAnixNavigationHost(
     home: @Composable () -> Unit,
@@ -385,7 +425,8 @@ fun ReiAnixNavigationHost(
         }
     }
 
-    val backStackEntry by navController.currentBackStackEntryAsState()
+    val activeEntry = navController.currentBackStackEntryAsState()
+    val backStackEntry by activeEntry
     val currentRoute = backStackEntry?.destination?.route
     val detailOrigin = backStackEntry?.arguments
         ?.getString(ReiAnixRoutes.ARG_ORIGIN)
@@ -410,6 +451,7 @@ fun ReiAnixNavigationHost(
             currentRoute == ReiAnixRoutes.DETAILS ||
             currentRoute == ReiAnixRoutes.ANILIST_DETAILS)
 
+    ReiAnixWallpaperScope(enabled = currentRoute != ReiAnixRoutes.PLAYER && currentRoute != ReiAnixRoutes.RECOVERY) {
     ReiAnixAppShell(
         modifier = modifier,
         selectedRoute = selectedBottomRoute,
@@ -424,51 +466,27 @@ fun ReiAnixNavigationHost(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
+            // The wallpaper belongs to the shell, not either destination.
+            // Remove all route fades/slides, including forward and back.
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None },
         ) {
-            // Home and Profile have different shell insets. Never crossfade
-            // them while the bottom bar is being added or removed: that would
-            // expose the outgoing wallpaper in the newly measured viewport.
-            composable(
-                route = ReiAnixRoutes.HOME,
-                enterTransition = {
-                    if (initialState.destination.route == ReiAnixRoutes.PROFILE) EnterTransition.None else null
-                },
-                exitTransition = {
-                    if (targetState.destination.route == ReiAnixRoutes.PROFILE) ExitTransition.None else null
-                },
-                popEnterTransition = {
-                    if (initialState.destination.route == ReiAnixRoutes.PROFILE) EnterTransition.None else null
-                },
-                popExitTransition = {
-                    if (targetState.destination.route == ReiAnixRoutes.PROFILE) ExitTransition.None else null
-                },
-            ) { home() }
-            composable(ReiAnixRoutes.LIBRARY) { library() }
-            composable(ReiAnixRoutes.MY_LIST) { myList() }
-            composable(ReiAnixRoutes.COLLECTIONS) { collections() }
-            composable(ReiAnixRoutes.ORGANIZE) { organize() }
-            composable(ReiAnixRoutes.SEARCH) { search() }
-            composable(ReiAnixRoutes.SETTINGS) { ReiAnixWallpaperScope { settings() } }
-            composable(ReiAnixRoutes.SETTINGS_GENERAL) { ReiAnixWallpaperScope { settingsGeneral() } }
-            composable(
-                route = ReiAnixRoutes.PROFILE,
-                enterTransition = {
-                    if (initialState.destination.route == ReiAnixRoutes.HOME) EnterTransition.None else null
-                },
-                exitTransition = {
-                    if (targetState.destination.route == ReiAnixRoutes.HOME) ExitTransition.None else null
-                },
-                popEnterTransition = {
-                    if (initialState.destination.route == ReiAnixRoutes.HOME) EnterTransition.None else null
-                },
-                popExitTransition = {
-                    if (targetState.destination.route == ReiAnixRoutes.HOME) ExitTransition.None else null
-                },
-            ) { ReiAnixWallpaperScope { profile() } }
-            composable(ReiAnixRoutes.STORAGE) { storage() }
-            composable(ReiAnixRoutes.RECOVERY) { recovery() }
-            composable(ReiAnixRoutes.COLLECTOR) { collector() }
-            composable(
+            instantDestination(activeEntry, ReiAnixRoutes.HOME) { home() }
+            instantDestination(activeEntry, ReiAnixRoutes.LIBRARY) { library() }
+            instantDestination(activeEntry, ReiAnixRoutes.MY_LIST) { myList() }
+            instantDestination(activeEntry, ReiAnixRoutes.COLLECTIONS) { collections() }
+            instantDestination(activeEntry, ReiAnixRoutes.ORGANIZE) { organize() }
+            instantDestination(activeEntry, ReiAnixRoutes.SEARCH) { search() }
+            instantDestination(activeEntry, ReiAnixRoutes.SETTINGS) { settings() }
+            instantDestination(activeEntry, ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
+            instantDestination(activeEntry, ReiAnixRoutes.PROFILE) { profile() }
+            instantDestination(activeEntry, ReiAnixRoutes.STORAGE) { storage() }
+            instantDestination(activeEntry, ReiAnixRoutes.RECOVERY) { recovery() }
+            instantDestination(activeEntry, ReiAnixRoutes.COLLECTOR) { collector() }
+            instantDestination(
+                activeEntry = activeEntry,
                 route = ReiAnixRoutes.TIMELINE,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_SECTION) {
@@ -480,7 +498,8 @@ fun ReiAnixNavigationHost(
                 timeline(entry.arguments?.getString(ReiAnixRoutes.ARG_SECTION) ?: "animes")
             }
 
-            composable(
+            instantDestination(
+                activeEntry = activeEntry,
                 route = ReiAnixRoutes.DETAILS,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_ANIME_ID) {
@@ -505,7 +524,8 @@ fun ReiAnixNavigationHost(
                 details(ReiAnixDetailsArgs(animeId = animeId, origin = origin))
             }
 
-            composable(
+            instantDestination(
+                activeEntry = activeEntry,
                 route = ReiAnixRoutes.ANILIST_DETAILS,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_ANILIST_ID) {
@@ -530,7 +550,8 @@ fun ReiAnixNavigationHost(
                 )
             }
 
-            composable(
+            instantDestination(
+                activeEntry = activeEntry,
                 route = ReiAnixRoutes.PLAYER,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_EPISODE_ID) {
@@ -570,4 +591,5 @@ fun ReiAnixNavigationHost(
         }
         }
     )
+    }
 }

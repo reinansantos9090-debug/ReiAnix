@@ -1,5 +1,11 @@
 package com.reianix.reianix_local.ui.home
 
+import androidx.compose.ui.unit.dp
+
+import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -183,7 +189,7 @@ private fun ReiAnixHomeObservedScreen(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollHeaderState.nestedScrollConnection)
-            .background(MaterialTheme.colorScheme.background),
+            .background(reiAnixScreenBackground()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ReiAnixScrollAwareHeader(state = scrollHeaderState) {
@@ -380,7 +386,7 @@ fun ReiAnixHomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(reiAnixScreenBackground()),
     ) {
         HomeHeader(
             onSearch = onSearch,
@@ -955,9 +961,11 @@ private fun HomeContinueCard(
             },
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = reiAnixScreenBackground(),
+            contentColor = if (LocalReiAnixWallpaperVisible.current) MaterialTheme.colorScheme.onSurface
+                else androidx.compose.material3.contentColorFor(MaterialTheme.colorScheme.background),
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (LocalReiAnixWallpaperVisible.current) 0.dp else ReiAnixTokens.Elevation.card),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(

@@ -1,6 +1,10 @@
 package com.reianix.reianix_local.ui.profile
 
 import android.app.Application
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntSize
+import com.reianix.reianix_local.ui.theme.wallpaperPanelCrop
+import com.reianix.reianix_local.ui.theme.wallpaperContentColor
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaper
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
@@ -18,6 +22,31 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 class ReiAnixWallpaperTest {
+    @Test
+    fun transparentContentIsOptInAndPreservesAllOriginalColorsWhenDisabled() {
+        for (original in listOf(Color.Black, Color.White, Color(0xFF151515), Color(0xFF123456))) {
+            assertEquals(original, wallpaperContentColor(original, false))
+            assertEquals(Color.Transparent, wallpaperContentColor(original, true))
+        }
+    }
+
+    @Test
+    fun filterPanelReusesBottomOfScreenWallpaperWithoutRescaling() {
+        val viewport = IntSize(1080, 2400)
+        val panel = IntSize(1080, 1100)
+        for (zoom in listOf(1f, 2f, 3f)) {
+            val config = ReiAnixWallpaper(zoom = zoom, positionX = .7f, positionY = .2f)
+            val full = wallpaperCrop(900, 1600, viewport.width, viewport.height, config)
+            val sheet = wallpaperPanelCrop(900, 1600, viewport, panel, config)
+            assertEquals(full.width, sheet.width)
+            assertEquals(full.height, sheet.height)
+            assertEquals(full.x, sheet.x)
+            assertEquals(full.y - 1300, sheet.y)
+            assertTrue(sheet.x <= 0 && sheet.y <= 0)
+            assertTrue(sheet.x + sheet.width >= panel.width && sheet.y + sheet.height >= panel.height)
+        }
+    }
+
     @Test
     fun cropAlwaysCoversViewportInPortraitAndLandscape() {
         for ((w, h) in listOf(1080 to 2400, 2400 to 1080, 800 to 800)) {

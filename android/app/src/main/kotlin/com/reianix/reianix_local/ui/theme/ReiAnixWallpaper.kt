@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -23,12 +27,25 @@ import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
-/** Defaults to false everywhere except the explicit profile/settings destinations. */
+/** Set only while the shared wallpaper is actually visible. */
 val LocalReiAnixWallpaperVisible = staticCompositionLocalOf { false }
 
 @Composable
 fun reiAnixScreenBackground(): Color =
     if (LocalReiAnixWallpaperVisible.current) Color.Transparent else MaterialTheme.colorScheme.background
+
+/** Preserve original flat surfaces when disabled; remove opaque card blocks only in wallpaper mode. */
+@Composable
+fun reiAnixContentBackground(original: Color): Color =
+    wallpaperContentColor(original, LocalReiAnixWallpaperVisible.current)
+
+internal fun wallpaperContentColor(original: Color, active: Boolean): Color =
+    if (active) Color.Transparent else original
+
+/** Overlays which communicate selection stay subtly tinted rather than opaque. */
+@Composable
+fun reiAnixContentTint(original: Color, alpha: Float = 0.18f): Color =
+    if (LocalReiAnixWallpaperVisible.current) original.copy(alpha = alpha) else original
 
 internal data class WallpaperCrop(val width: Int, val height: Int, val x: Int, val y: Int)
 
@@ -76,6 +93,41 @@ internal fun automaticWallpaperDim(pixels: IntArray): Float {
 
 data class WallpaperImage(val bitmap: ImageBitmap, val dim: Float)
 
+internal data class WallpaperFrame(
+    val image: WallpaperImage,
+    val wallpaper: ReiAnixWallpaper,
+    val viewport: IntSize,
+)
+internal val LocalReiAnixWallpaperFrame = compositionLocalOf<WallpaperFrame?> { null }
+
+/** Use the bottom of the full viewport, rather than stretching the image to the sheet. */
+internal fun wallpaperPanelCrop(sw: Int, sh: Int, viewport: IntSize, panel: IntSize,
+    wallpaper: ReiAnixWallpaper): WallpaperCrop {
+    val width = maxOf(viewport.width, panel.width)
+    val height = maxOf(viewport.height, panel.height)
+    val crop = wallpaperCrop(sw, sh, width, height, wallpaper)
+    return crop.copy(x = crop.x - (width - panel.width) / 2, y = crop.y - (height - panel.height))
+}
+
+/** A modal must cover the underlying cards. Paint the same shared bitmap, not a
+ * transparent hole through the dialog to the library grid. No additional decode. */
+@Composable
+internal fun Modifier.reiAnixWallpaperPanel(shape: Shape): Modifier {
+    val frame = LocalReiAnixWallpaperFrame.current ?: return this
+    val base = MaterialTheme.colorScheme.background
+    return clip(shape).drawBehind {
+        val panel = IntSize(size.width.roundToInt(), size.height.roundToInt())
+        if (panel.width <= 0 || panel.height <= 0) return@drawBehind
+        val bitmap = frame.image.bitmap
+        val crop = wallpaperPanelCrop(bitmap.width, bitmap.height, frame.viewport, panel, frame.wallpaper)
+        drawRect(base)
+        clipRect {
+            drawImage(bitmap, dstOffset = IntOffset(crop.x, crop.y), dstSize = IntSize(crop.width, crop.height))
+            drawRect(Color.Black.copy(alpha = frame.image.dim))
+        }
+    }
+}
+
 data class WallpaperImageLoad(val image: WallpaperImage? = null, val loading: Boolean = false)
 
 @Composable
@@ -100,22 +152,27 @@ fun rememberWallpaperImage(store: ReiAnixWallpaperStore, wallpaper: ReiAnixWallp
     }
 }
 
-/** The only destinations that opt in to the wallpaper own this scope.
- * No image is decoded or theme overridden while browsing unrelated screens.
- */
+/** Single durable wallpaper layer outside the navigation viewport; never scrolls or crossfades with a destination. */
 @Composable
-fun ReiAnixWallpaperScope(content: @Composable () -> Unit) {
+fun ReiAnixWallpaperScope(enabled: Boolean = true, content: @Composable () -> Unit) {
     val context = LocalContext.current
     val store = remember(context) { ReiAnixWallpaperStore.from(context) }
     val wallpaper by store.state.collectAsStateWithLifecycle()
     val image = rememberWallpaperImage(store, wallpaper).image
     // Keep content at a stable composition position when loading/removing the image.
-    val scheme = if (image != null) ReiAnixDarkColorScheme else MaterialTheme.colorScheme
+    val visible = enabled && image != null
+    val scheme = if (visible) ReiAnixDarkColorScheme else MaterialTheme.colorScheme
+    val inheritedContent = androidx.compose.material3.LocalContentColor.current
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography, shapes = MaterialTheme.shapes) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            image?.let { ReiAnixWallpaperLayer(it, wallpaper, Modifier.matchParentSize()) }
-            CompositionLocalProvider(LocalReiAnixWallpaperVisible provides (image != null)) {
-                CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).onSizeChanged { viewport = it }) {
+            if (visible) image?.let { ReiAnixWallpaperLayer(it, wallpaper, Modifier.matchParentSize()) }
+            val frame = if (visible && image != null) WallpaperFrame(image, wallpaper, viewport) else null
+            CompositionLocalProvider(
+                LocalReiAnixWallpaperVisible provides visible,
+                LocalReiAnixWallpaperFrame provides frame,
+            ) {
+                CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides (if (visible) MaterialTheme.colorScheme.onBackground else inheritedContent)) {
                     content()
                 }
             }

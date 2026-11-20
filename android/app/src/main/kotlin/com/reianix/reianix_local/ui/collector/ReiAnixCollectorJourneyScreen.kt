@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.collector
 
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
@@ -149,7 +153,7 @@ private fun ReiAnixCollectorJourneyScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(reiAnixScreenBackground()),
     ) {
         Row(
             modifier = Modifier
@@ -245,7 +249,8 @@ private fun ReiAnixCollectorJourneyScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        containerColor = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
                     ),
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -346,7 +351,8 @@ private fun ReiAnixCollectorJourneyScreen(
                     colors = CardDefaults.cardColors(
                         containerColor = if (title.id == journey.activeTitle)
                             MaterialTheme.colorScheme.secondaryContainer
-                        else MaterialTheme.colorScheme.surface,
+                        else reiAnixContentBackground(MaterialTheme.colorScheme.surface),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
                     ),
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -386,7 +392,7 @@ private fun ReiAnixCollectorJourneyScreen(
             items(journey.achievements) { achievement ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    colors = CardDefaults.cardColors(containerColor = reiAnixContentBackground(MaterialTheme.colorScheme.surface), contentColor = MaterialTheme.colorScheme.onSurface),
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -440,7 +446,7 @@ private fun MetricCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = reiAnixContentBackground(MaterialTheme.colorScheme.surface), contentColor = MaterialTheme.colorScheme.onSurface),
     ) {
         Row(
             modifier = Modifier.padding(12.dp),

@@ -1,7 +1,9 @@
 package com.reianix.reianix_local.ui.shell
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.snap
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -19,7 +21,6 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -28,7 +29,6 @@ import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 
 /**
@@ -61,7 +61,8 @@ fun ReiAnixAppShell(
 ) {
     Scaffold(
         modifier = modifier,
-        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
+        containerColor = reiAnixScreenBackground(),
+        contentColor = MaterialTheme.colorScheme.onBackground,
         // Every destination owns its top inset at the actual header/scrolling
         // content. Do not reserve a permanent black strip in the viewport.
         contentWindowInsets = if (showBottomNavigation) {
@@ -104,28 +105,15 @@ private fun ReiAnixBottomNavigation(
             .semantics {
                 isTraversalGroup = true
             },
-        containerColor = navigationContainerColor,
+        containerColor = reiAnixContentBackground(navigationContainerColor),
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = ReiAnixTokens.Elevation.none,
         windowInsets = NavigationBarDefaults.windowInsets,
     ) {
         destinations.forEach { destination ->
             val selected = selectedRoute == destination.route
-            val contentColor by animateColorAsState(
-                targetValue = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                animationSpec = if (ReiAnixMotionPolicy.systemAnimationsEnabled()) {
-                    androidx.compose.animation.core.tween(
-                        durationMillis = ReiAnixTokens.Motion.stateChangeMillis,
-                    )
-                } else {
-                    snap()
-                },
-                label = "bottom-nav-color",
-            )
+            val contentColor = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
             NavigationBarItem(
                 selected = selected,
                 onClick = { onDestinationClick(destination.route) },

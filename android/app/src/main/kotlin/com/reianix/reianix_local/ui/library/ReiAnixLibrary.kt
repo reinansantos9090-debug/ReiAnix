@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -365,7 +369,7 @@ private fun ReiAnixLibraryPresentationScreen(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollHeaderState.nestedScrollConnection)
-            .background(MaterialTheme.colorScheme.background),
+            .background(reiAnixScreenBackground()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ReiAnixScrollAwareHeader(state = scrollHeaderState) {
@@ -626,6 +630,7 @@ private fun LibraryFiltersDialog(
     }
     val colors = MaterialTheme.colorScheme
     val accent = colors.primary
+    val sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -636,8 +641,9 @@ private fun LibraryFiltersDialog(
         sheetMaxWidth = Dp.Unspecified,
         sheetGesturesEnabled = false,
         dragHandle = null,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        containerColor = colors.background,
+        shape = sheetShape,
+        // Modal panels must be opaque; the wallpaper remains behind the scrim.
+        containerColor = colors.background.copy(alpha = 1f),
         contentColor = colors.onBackground,
         tonalElevation = 0.dp,
     ) {
@@ -1120,7 +1126,8 @@ private fun LibrarySourceSummaryCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = ReiAnixTokens.Shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
             modifier = Modifier
