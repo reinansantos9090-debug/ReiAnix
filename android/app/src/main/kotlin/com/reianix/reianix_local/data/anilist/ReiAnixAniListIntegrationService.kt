@@ -1835,8 +1835,9 @@ internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>):
         val segments = normalized.split('/').filter(String::isNotBlank)
         val parents = if (containsFile) segments.dropLast(1) else segments
         parents.asReversed().take(3).forEach { folder ->
-            if (!folder.contains(':') && !folder.contains('%') && !folder.contains('?') &&
-                !folder.contains('@') && !folder.startsWith("com.")) {
+            if (!folder.contains('%') && !folder.startsWith("com.") &&
+                !folder.startsWith("content:", true) && !folder.startsWith("file:", true) &&
+                !folder.matches(Regex("(?i)(?:primary|home|[0-9a-f]{4}-[0-9a-f]{4}):.*"))) {
                 addTitle(MediaTitleNormalizer.cleanMediaTitle(folder), folders)
             }
         }
