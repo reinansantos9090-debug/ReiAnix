@@ -16,25 +16,57 @@ import org.robolectric.annotation.Config
 @Config(application = Application::class, sdk = [35])
 class ReiAnixArtPackTest {
     @Test
-    fun catalogHasTwentyUniqueImagesWithSeparateCategories() {
+    fun catalogHasThirtyTwoUniqueImagesWithSeparateCategories() {
         val all = ReiAnixArtPack.banners + ReiAnixArtPack.wallpapers
-        assertEquals(10, ReiAnixArtPack.banners.size)
-        assertEquals(10, ReiAnixArtPack.wallpapers.size)
-        assertEquals(20, all.map { it.path }.distinct().size)
-        assertTrue(all.all { it.path.endsWith(".webp") })
+        assertEquals(16, ReiAnixArtPack.banners.size)
+        assertEquals(16, ReiAnixArtPack.wallpapers.size)
+        assertEquals(32, all.map { it.path }.distinct().size)
+        assertEquals(20, all.count { it.path.endsWith(".webp") })
+        assertEquals(12, all.count { it.path.endsWith(".png") })
     }
 
     @Test
-    fun allTwentyArtsAreBundledAndReadableWithoutImport() {
+    fun allThirtyTwoArtsAreBundledAndReadableWithoutImport() {
         val context = RuntimeEnvironment.getApplication()
         for (art in ReiAnixArtPack.banners + ReiAnixArtPack.wallpapers) {
             val bytes = ReiAnixArtPack.open(context, art).use { it.readBytes() }
             assertTrue(bytes.size > 1000)
-            assertEquals("RIFF", String(bytes, 0, 4, Charsets.US_ASCII))
-            assertEquals("WEBP", String(bytes, 8, 4, Charsets.US_ASCII))
+            if (art.extension == "png") {
+                assertArrayEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a), bytes.copyOfRange(0, 8))
+                val dimensions = java.nio.ByteBuffer.wrap(bytes, 16, 8)
+                val width = dimensions.int
+                val height = dimensions.int
+                if (art.folder == "banners") assertEquals(width, height * 3)
+                else assertEquals(width * 16, height * 9)
+            } else {
+                assertEquals("RIFF", String(bytes, 0, 4, Charsets.US_ASCII))
+                assertEquals("WEBP", String(bytes, 8, 4, Charsets.US_ASCII))
+            }
         }
-        assertEquals(10, ReiAnixArtPack.available(true).size)
-        assertEquals(10, ReiAnixArtPack.available(false).size)
+        assertEquals(16, ReiAnixArtPack.available(true).size)
+        assertEquals(16, ReiAnixArtPack.available(false).size)
+    }
+
+    @Test
+    fun bundledPngCanBeAppliedAndRemovedWithoutImportingFromGallery() = runBlocking {
+        val context = RuntimeEnvironment.getApplication()
+        val store = ReiAnixWallpaperStore.banner(context)
+        val art = ReiAnixArtPack.banners.first { it.extension == "png" }
+        val name = store.importPreset(art)
+        val file = requireNotNull(store.file(name))
+        try {
+            assertTrue(name.endsWith(".png"))
+            assertTrue(file.isFile)
+            store.save(ReiAnixWallpaper(imageName = name))
+            assertEquals(name, store.state.value.imageName)
+            store.discard(name)
+            assertTrue(file.exists())
+            store.save(ReiAnixWallpaper())
+            assertFalse(file.exists())
+        } finally {
+            store.save(ReiAnixWallpaper())
+            store.discard(name)
+        }
     }
 
     @Test
