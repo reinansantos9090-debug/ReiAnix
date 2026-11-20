@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.profile
 
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -24,15 +25,22 @@ import com.reianix.reianix_local.ui.collections.TrackingAnime
 import com.reianix.reianix_local.ui.collections.TrackingCollectionsContent
 import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
+import com.reianix.reianix_local.data.profile.ReiAnixWallpaper
+import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
+import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import androidx.compose.ui.unit.dp
 import com.reianix.reianix_local.ui.ReiAnixAnimeCard
-import com.reianix.reianix_local.ui.navigation.ReiAnixCurrentDestination
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavHostController
+import com.reianix.reianix_local.ui.navigation.ReiAnixNavigationHost
+import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
 import com.reianix.reianix_local.ui.ReiAnixEpisodeCard
 import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixLocalMediaUiModel
@@ -47,32 +55,73 @@ class ReiAnixWallpaperCardsInstrumentedTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun outgoingTransparentDestinationCannotDrawOverActiveEntry() {
-        val active = mutableStateOf("profile")
-        val wallpaper = Color(0xFF244A66)
-        composeRule.setContent {
-            ReiAnixComposeTheme(themeMode = "dark") {
-                Box(Modifier.fillMaxSize().background(wallpaper).testTag("navigation-frame")) {
-                    ReiAnixCurrentDestination("home", { active.value }) {
-                        Box(Modifier.fillMaxSize().background(Color.Green))
-                    }
-                    // Deliberately keep Profile composed above Home, exactly
-                    // as a retained outgoing navigation entry can be.
-                    ReiAnixCurrentDestination("profile", { active.value }) {
-                        Box(Modifier.fillMaxSize().background(Color.Magenta))
+    fun transparentDestinationRevealsStableWallpaperAfterTheTransition() {
+        val store = ReiAnixWallpaperStore.from(composeRule.activity)
+        val original = store.state.value
+        val originalFile = store.file(original.imageName)
+        val originalBytes = originalFile?.takeIf { it.isFile }?.readBytes()
+        val name = UUID.randomUUID().toString() + ".png"
+        val file = requireNotNull(store.file(name))
+        file.parentFile?.mkdirs()
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.BLUE)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        try {
+            runBlocking { store.save(ReiAnixWallpaper(imageName = name)) }
+            lateinit var navController: NavHostController
+            composeRule.setContent {
+                ReiAnixComposeTheme(themeMode = "dark") {
+                    navController = rememberNavController()
+                    Box(Modifier.fillMaxSize().testTag("navigation-frame")) {
+                        ReiAnixNavigationHost(
+                            navController = navController,
+                            home = {
+                                if (LocalReiAnixWallpaperVisible.current) {
+                                    Box(
+                                        Modifier.fillMaxSize(.5f).background(Color.Green)
+                                            .testTag("wallpaper-ready"),
+                                    )
+                                }
+                            },
+                            library = {},
+                            search = {},
+                            settings = {},
+                            details = {},
+                            player = {},
+                            profile = {},
+                            showBottomNavigation = false,
+                        )
                     }
                 }
             }
+
+            composeRule.waitUntil(5_000L) {
+                composeRule.onNodeWithTag("wallpaper-ready").isDisplayed()
+            }
+            fun frame() = composeRule.onNodeWithTag("navigation-frame").captureToImage().toPixelMap()
+
+            val before = frame()
+            assertTrue(before[before.width / 4, before.height / 4].green > .9f)
+            val wallpaper = before[before.width * 3 / 4, before.height * 3 / 4]
+            assertTrue(wallpaper.blue > .2f)
+            composeRule.mainClock.autoAdvance = false
+            try {
+                composeRule.runOnIdle { navController.navigate(ReiAnixRoutes.PROFILE) }
+                composeRule.mainClock.advanceTimeBy(96L)
+                val during = frame()
+                assertEquals(wallpaper, during[during.width * 3 / 4, during.height * 3 / 4])
+                composeRule.mainClock.advanceTimeBy(750L)
+            } finally {
+                composeRule.mainClock.autoAdvance = true
+            }
+            val settled = frame()
+            assertEquals(wallpaper, settled[settled.width / 4, settled.height / 4])
+        } finally {
+            if (originalBytes != null) originalFile?.writeBytes(originalBytes)
+            runBlocking { store.save(if (originalBytes != null) original else ReiAnixWallpaper()) }
+            file.delete()
         }
-        fun centerColor(): Color {
-            val pixels = composeRule.onNodeWithTag("navigation-frame").captureToImage().toPixelMap()
-            return pixels[pixels.width / 2, pixels.height / 2]
-        }
-        assertTrue(centerColor().red > .9f && centerColor().blue > .9f)
-        composeRule.runOnIdle { active.value = "home" }
-        composeRule.waitForIdle()
-        val current = centerColor()
-        assertTrue("The retained profile must no longer be drawn", current.green > .9f && current.red < .1f && current.blue < .1f)
     }
 
     @Test
