@@ -345,7 +345,8 @@ class ReiAnixAniListIntegrationService(
             val local = library.getAnime(animeId) ?: return AniListResult.Failure(
                 AniListError.InvalidRequest("Anime não encontrado na biblioteca."),
             )
-            val evidence = explicitAniListLocalEvidence(library.listEpisodes(animeId))
+            val episodes = library.listEpisodes(animeId)
+            val evidence = withContext(Dispatchers.Default) { explicitAniListLocalEvidence(episodes) }
             val titles = explicitAniListRepairTitles(local, evidence)
             // Give each distinct stored title a query slot before spending
             // remaining slots on cleaned variants of the same title.
@@ -1764,78 +1765,178 @@ class ReiAnixAniListIntegrationService(
 }
 
 // Only the user-initiated repair uses these more permissive thresholds.
-internal const val EXPLICIT_REPAIR_MIN_SCORE = 0.50
+internal const val EXPLICIT_REPAIR_MIN_SCORE = 0.60
 internal const val EXPLICIT_REPAIR_MIN_MARGIN = 0.0
 
 internal data class ExplicitAniListLocalEvidence(
     val titles: List<String> = emptyList(),
     val episodeCount: Int = 0,
     val durationMinutes: Double? = null,
+    val fileTitles: List<String> = titles,
 )
 
-private fun repairPlain(value: String): String = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
-    .replace(Regex("\\p{M}+"), "").lowercase(Locale.ROOT)
-    .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
-
+private val repairMarks = Regex("\\p{M}+")
+private val repairInvisible = Regex("[\\p{Cf}]")
+private val repairSeparators = Regex("[^\\p{L}\\p{N}]+")
+private val repairWhitespace = Regex("\\s+")
+private val repairNumberMarker = Regex("(?:s|e|ep)\\d+")
 private val repairGenericWords = setOf("anime", "animes", "home", "adm", "download", "downloads",
     "video", "videos", "media", "storage", "emulated", "internal", "reianix", "episode", "episodes",
     "episodio", "episodios", "ep", "e", "s", "season", "temporada", "temp", "movie", "filme",
     "show", "series", "pasta", "folder", "the", "of", "a", "an", "no", "ni", "na", "de", "da", "do",
-    "to", "and", "in", "wa", "ga", "wo", "pack", "batch", "complete", "dublado", "legendado", "mp4", "mkv")
+    "to", "and", "in", "wa", "ga", "wo", "pack", "batch", "complete", "dublado", "legendado", "mp4", "mkv",
+    "arquivo", "identificado", "identificada", "unknown", "catalog", "key", "online", "primary", "document",
+    "sdcard", "android", "movies", "files", "downloaded", "episode", "trailer", "sample", "clip")
+private val repairGenericTitle = Regex("(?:minha )?(?:pasta|folder|catalog key|unknown|sem titulo|arquivo nao identificado)(?: \\d+)?")
+
+private fun repairPlain(value: String): String = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
+    .replace(repairMarks, "").replace(repairInvisible, "").lowercase(Locale.ROOT)
+    .replace("ß", "ss").replace("ς", "σ").replace(repairSeparators, " ").trim()
+
+// The uninterrupted spelling is independent of romanization word boundaries:
+// shitemo == shite mo, dewa == de wa, full-width/accents/punctuation likewise.
+// Preserve all numbers so sequels with different explicit numbers do not become equal.
+internal fun explicitAniListCompactTitle(value: String): String = repairPlain(value).replace(" ", "")
 
 private fun repairWords(value: String): Set<String> = repairPlain(value).split(" ")
     .filter { it.isNotBlank() && it !in repairGenericWords && it.any(Char::isLetter) &&
-        !it.matches(Regex("(?:s|e|ep)\\d+")) }.toSet()
+        !repairNumberMarker.matches(it) }.toSet()
 
 private fun usefulRepairTitle(value: String): Boolean =
-    value.length in 2..120 && repairWords(value).isNotEmpty() &&
-        !repairPlain(value).matches(Regex("(?:minha )?(?:pasta|folder|catalog key|unknown|sem titulo)(?: \\d+)?"))
+    value.length in 2..120 && repairWords(value).isNotEmpty() && !repairGenericTitle.matches(repairPlain(value))
+
+private fun decodedRepairPath(value: String): String =
+    // SAF document IDs and relative paths often encode the real folder as %2F/%20.
+    // Uri.decode preserves literal '+' in titles (unlike form URL decoding).
+    android.net.Uri.decode(value).replace('\\', '/')
 
 internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>): ExplicitAniListLocalEvidence {
     val available = episodes.filter { it.missing != true }
     val durations = available.mapNotNull { it.duration?.takeIf { seconds -> seconds.isFinite() && seconds > 0 } }.sorted()
-    val fileTitles = mutableListOf<String>()
-    val folderTitles = mutableListOf<String>()
-    available.take(8).forEach { ep ->
-        val parsed = MediaFilenameParser.parseVideoPath(ep.fileName.substringAfterLast('/'), allowStandaloneMovie = true)
-        fileTitles.add(parsed.animeTitle)
-        val folder = ep.path.replace('\\', '/').substringBeforeLast('/', "").substringAfterLast('/')
-        if (!folder.contains(':') && !folder.contains('%')) folderTitles.add(folder)
+    val files = linkedSetOf<String>()
+    val folders = linkedSetOf<String>()
+    fun addTitle(raw: String, target: MutableSet<String>) {
+        val title = raw.trim()
+        if (usefulRepairTitle(title)) target.add(title)
     }
-    val titles = (fileTitles + folderTitles).map(String::trim).filter(::usefulRepairTitle)
-        .distinctBy(MediaTitleNormalizer::normalizeTitle).take(8)
-    return ExplicitAniListLocalEvidence(titles, available.size, durations.getOrNull(durations.size / 2)?.div(60.0))
+    fun addFile(raw: String) {
+        val name = decodedRepairPath(raw).substringAfterLast('/').substringAfterLast(':')
+        if (name.isBlank() || !MediaFilenameParser.supportsExtension("." + name.substringAfterLast('.', "").lowercase(Locale.ROOT))) return
+        val parsed = MediaFilenameParser.parseVideoPath(name, allowStandaloneMovie = true)
+        addTitle(parsed.animeTitle, files)
+    }
+    fun addFolders(raw: String?, containsFile: Boolean) {
+        if (raw.isNullOrBlank()) return
+        val path = decodedRepairPath(raw).trimEnd('/')
+        // Never use provider/authority, URI document IDs, or arbitrary numeric IDs.
+        val segments = path.substringAfterLast(':').split('/').filter(String::isNotBlank)
+        val parents = if (containsFile) segments.dropLast(1) else segments
+        parents.asReversed().take(3).forEach { folder ->
+            if (!folder.contains(':') && !folder.contains('%') && !folder.contains('?') &&
+                !folder.contains('@') && !folder.startsWith("com.")) {
+                addTitle(MediaTitleNormalizer.cleanMediaTitle(folder), folders)
+            }
+        }
+    }
+    available.take(8).forEach { ep ->
+        addFile(ep.fileName)
+        addFile(ep.path)
+        addFolders(ep.path, containsFile = true)
+        // Relative path is normally the directory, but also tolerate a leaf filename.
+        val relative = ep.relativePath
+        if (!relative.isNullOrBlank()) {
+            val leaf = decodedRepairPath(relative).trimEnd('/').substringAfterLast('/')
+            val hasFile = MediaFilenameParser.supportsExtension("." + leaf.substringAfterLast('.', "").lowercase(Locale.ROOT))
+            if (hasFile) addFile(relative)
+            addFolders(relative, hasFile)
+        }
+        addFolders(ep.sourceFolder, containsFile = false)
+    }
+    val fileTitles = files.distinctBy(::repairPlain).take(4)
+    val titles = (fileTitles + folders).distinctBy(::repairPlain).take(8)
+    return ExplicitAniListLocalEvidence(titles, available.size, durations.getOrNull(durations.size / 2)?.div(60.0), fileTitles)
 }
 
-private fun independentRepairTitles(local: ReiAnixAnimeRecord, evidence: ExplicitAniListLocalEvidence): List<String> =
-    (evidence.titles + local.lookupTitle).map(String::trim).filter(::usefulRepairTitle)
-        .distinctBy(MediaTitleNormalizer::normalizeTitle)
+private fun independentRepairTitles(local: ReiAnixAnimeRecord, evidence: ExplicitAniListLocalEvidence): List<String> {
+    val localTitles = evidence.titles.filter(::usefulRepairTitle)
+    val lookup = local.lookupTitle.trim()
+    // A catalog name can already have been corrupted by a prior association.
+    // When real file evidence exists prefer it over such a copied lookup title.
+    val copiedLookup = local.anilistId != null && local.anilistMatchManual != true &&
+        explicitAniListCompactTitle(lookup) == explicitAniListCompactTitle(local.title) &&
+        localTitles.isNotEmpty() && localTitles.none { explicitAniListCompactTitle(it) == explicitAniListCompactTitle(lookup) }
+    return (localTitles + listOf(lookup).filter { !copiedLookup }).filter(::usefulRepairTitle)
+        .distinctBy(::repairPlain)
+}
 
 internal fun explicitAniListRepairTitles(local: ReiAnixAnimeRecord, evidence: ExplicitAniListLocalEvidence = ExplicitAniListLocalEvidence()): List<String> = buildList {
     addAll(independentRepairTitles(local, evidence))
-    // Previously downloaded aliases are not independent evidence. Do not let a
-    // failed repair become self-reinforcing. Unassociated/manual titles are usable.
+    // Remote aliases of a previous automatic match cannot prove that match.
     if ((local.anilistId == null && !local.format.equals("MUSIC", true)) || local.anilistMatchManual == true) {
-        add(local.title)
-        add(local.romaji.orEmpty())
-        add(local.english.orEmpty())
-        add(local.nativeTitle.orEmpty())
+        add(local.title); add(local.romaji.orEmpty()); add(local.english.orEmpty()); add(local.nativeTitle.orEmpty())
         local.aliasesJson?.let { raw ->
             runCatching { JSONArray(raw) }.getOrNull()?.let { aliases ->
                 for (i in 0 until aliases.length()) add(aliases.optString(i))
             }
         }
     }
-}.map(String::trim).filter(::usefulRepairTitle).distinctBy(MediaTitleNormalizer::normalizeTitle).take(16)
+}.map(String::trim).filter(::usefulRepairTitle).distinctBy(::repairPlain).take(16)
+
+private fun repairQuerySpelling(title: String): String {
+    // Query variants only; the original name is never rewritten on disk.
+    return repairPlain(title)
+        .replace(Regex("\\bdewa\\b"), "de wa")
+        .replace(Regex("\\bshitemo\\b"), "shite mo")
+        .replace(Regex("\\bshitewa\\b"), "shite wa")
+        .replace(Regex("\\bniwa\\b"), "ni wa")
+        .replace(Regex("\\btoha\\b"), "to ha")
+        .replace(Regex("\\bnanode\\b"), "na node")
+}
+
+private fun distinctiveRepairFragments(title: String): List<String> {
+    val words = repairPlain(title).split(" ").filter(String::isNotBlank)
+    if (words.size < 4) return emptyList()
+    val windows = words.windowed(minOf(4, words.size - 1), 1)
+        .filter { part -> part.any { it.length >= 4 && it !in repairGenericWords } &&
+            part.count { it !in repairGenericWords && it.any(Char::isLetter) } >= 2 }
+        .sortedByDescending { part -> part.filter { it !in repairGenericWords }.sumOf { it.length.coerceAtMost(12) } }
+    return (listOf(words.take(4).joinToString(" ")) + windows.take(2).map { it.joinToString(" ") })
+        .filter(::usefulRepairTitle).distinct()
+}
 
 internal fun explicitAniListRepairSearchTerms(titles: List<String>): List<String> {
     val variants = titles.filter(::usefulRepairTitle).map(MediaTitleNormalizer::searchTitleVariants)
     val preferred = variants.mapNotNull { it.firstOrNull() }
-    return (preferred + variants.flatten()).filter(::usefulRepairTitle)
-        .distinctBy(MediaTitleNormalizer::normalizeTitle).take(8)
+    val primary = preferred.firstOrNull() ?: return emptyList()
+    val spelling = repairQuerySpelling(primary)
+    val cleaned = MediaTitleNormalizer.searchTitleVariants(primary).drop(1).take(1)
+    val fragments = distinctiveRepairFragments(spelling)
+    // Reserve slots for split romanization and fragments before extra aliases
+    // can exhaust the request budget. All eight searches share one HTTP request.
+    return (listOf(primary, spelling) + cleaned + preferred.drop(1).take(3) +
+        fragments.take(2) + preferred + variants.flatten()).filter(::usefulRepairTitle)
+        .distinctBy(::repairPlain).take(8)
 }
 
-/** Low score is allowed, but it must be based on an actual local title. */
+private fun repairEditSimilarity(left: String, right: String): Double {
+    if (left == right) return 1.0
+    if (left.isEmpty() || right.isEmpty()) return 0.0
+    var previous = IntArray(right.length + 1) { it }
+    var current = IntArray(right.length + 1)
+    for (i in left.indices) {
+        current[0] = i + 1
+        for (j in right.indices) {
+            current[j + 1] = minOf(current[j] + 1, previous[j + 1] + 1, previous[j] + if (left[i] == right[j]) 0 else 1)
+        }
+        val swap = previous; previous = current; current = swap
+    }
+    return 1.0 - previous[right.length].toDouble() / maxOf(left.length, right.length)
+}
+
+private data class RepairTitle(val value: String, val compact: String = explicitAniListCompactTitle(value),
+    val words: Set<String> = repairWords(value))
+
+/** Explicit repair only: genuine title evidence, then soft local metadata. */
 internal fun rankExplicitAniListRepair(
     local: ReiAnixAnimeRecord,
     anchor: String,
@@ -1843,10 +1944,10 @@ internal fun rankExplicitAniListRepair(
     evidence: ExplicitAniListLocalEvidence = ExplicitAniListLocalEvidence(),
 ): List<ReiAnixAniListMatcher.RankedCandidate> {
     val independent = independentRepairTitles(local, evidence)
-    val titles = explicitAniListRepairTitles(local, evidence)
-    val primary = independent.ifEmpty { titles }
-    val fileKeys = evidence.titles.filter(::usefulRepairTitle).map(::repairPlain).toSet()
-    val anchorKey = repairPlain(anchor)
+    val titles = explicitAniListRepairTitles(local, evidence).map { RepairTitle(it) }
+    val primary = independent.ifEmpty { titles.map { it.value } }.toSet()
+    val fileKeys = evidence.fileTitles.filter(::usefulRepairTitle).map(::explicitAniListCompactTitle).toSet()
+    val anchorKey = explicitAniListCompactTitle(anchor)
     val independentlySourced = local.anilistId == null && !local.format.equals("MUSIC", true) &&
         !local.metadataSource.orEmpty().contains("anilist", true) &&
         !local.metadataSource.orEmpty().endsWith("_candidate", true)
@@ -1854,59 +1955,61 @@ internal fun rankExplicitAniListRepair(
         (0 until raw.length()).map { repairPlain(raw.optString(it)) }.toSet()
     }.orEmpty()
     val localSynopsis = repairWords(local.descriptionOriginal ?: local.description.orEmpty())
-    return candidates.asSequence().distinctBy { it.id }.filter { candidate ->
-        val format = candidate.format.orEmpty().uppercase(Locale.ROOT)
-        format != "MUSIC" && candidate.coverCandidates.isNotEmpty()
-    }.mapNotNull { candidate ->
-        val remoteTitles = (listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) +
-            candidate.synonyms).filter(::usefulRepairTitle)
-        val remoteKeys = remoteTitles.map(::repairPlain).toSet()
+    val eligible = candidates.distinctBy { it.id }.filter { !it.format.equals("MUSIC", true) && it.coverCandidates.isNotEmpty() }
+        .map { candidate ->
+            candidate to (listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) + candidate.synonyms)
+                .filter(::usefulRepairTitle).distinctBy(::explicitAniListCompactTitle).map { RepairTitle(it) }
+        }
+    val frequencies = mutableMapOf<String, Int>()
+    eligible.forEach { (_, remote) ->
+        remote.flatMap { it.words }.toSet().forEach { word -> frequencies[word] = (frequencies[word] ?: 0) + 1 }
+    }
+    fun weight(word: String): Double =
+        (1.0 + word.length.coerceAtMost(12) / 12.0) / kotlin.math.sqrt((frequencies[word] ?: 1).toDouble())
+    val primaryTitles = titles.filter { it.value in primary }
+    return eligible.mapNotNull { (candidate, remote) ->
+        val remoteKeys = remote.map { it.compact }.toSet()
         val exactFile = fileKeys.any { it in remoteKeys }
-        val exactOriginal = usefulRepairTitle(anchor) && anchorKey in remoteKeys
-        val exactOther = titles.any { repairPlain(it) in remoteKeys }
-        val exactPrimary = primary.any { repairPlain(it) in remoteKeys }
+        val exactOriginal = primaryTitles.any { it.compact == anchorKey } && anchorKey in remoteKeys
+        val exactPrimary = primaryTitles.any { it.compact in remoteKeys }
+        val exactOther = titles.any { it.compact in remoteKeys }
         var best = 0.0
-        var wordsMatch = false
         for (title in titles) {
-            val localWords = repairWords(title)
-            if (localWords.isEmpty()) continue
-            val spelling = ReiAnixAniListMatcher.rank(title, listOf(candidate)).first().score
-            for (remoteTitle in remoteTitles) {
-                val remoteWords = repairWords(remoteTitle)
-                val shared = localWords.intersect(remoteWords)
-                val overlap = if (shared.isEmpty()) 0.0 else
-                    2.0 * shared.size / (localWords.size + remoteWords.size)
-                val exact = repairPlain(title) == repairPlain(remoteTitle)
-                // The general matcher contains broad fuzzy/containment rules.
-                // Only compare a candidate with real distinctive word overlap,
-                // or a near spelling variant (e.g. macrons / spacing / typo).
-                val left = repairPlain(title).replace(" ", "")
-                val right = repairPlain(remoteTitle).replace(" ", "")
-                val nearSpelling = minOf(left.length, right.length) >= 5 &&
-                    minOf(left.length, right.length).toDouble() / maxOf(left.length, right.length) >= 0.75 &&
-                    spelling >= 0.88 && left.take(3) == right.take(3)
-                if (!exact && overlap < 0.40 && !nearSpelling) continue
-                wordsMatch = true
-                val weight = if (title in primary) 1.0 else 0.94
-                val similarity = if (exact) 0.96 else if (nearSpelling) spelling * 0.90
-                    else (0.55 * overlap + 0.45 * spelling)
-                best = maxOf(best, similarity * weight)
+            for (other in remote) {
+                if (title.compact == other.compact) {
+                    best = maxOf(best, if (title.value in primary) 0.98 else 0.94)
+                    continue
+                }
+                val shared = title.words.intersect(other.words)
+                val totalWeight = title.words.sumOf(::weight) + other.words.sumOf(::weight)
+                val overlap = if (totalWeight > 0) 2.0 * shared.sumOf(::weight) / totalWeight else 0.0
+                val minLength = minOf(title.compact.length, other.compact.length)
+                val maxLength = maxOf(title.compact.length, other.compact.length)
+                if (minLength < 4 || minLength.toDouble() / maxLength < 0.45) continue
+                val spelling = repairEditSimilarity(title.compact, other.compact)
+                val close = minLength >= 5 && spelling >= 0.82
+                // A single shared generic word or unrelated metadata is never sufficient.
+                if (!close && (overlap < 0.45 || shared.isEmpty())) continue
+                if (!close && shared.size == 1 && maxOf(title.words.size, other.words.size) > 2) continue
+                val similarity = if (close) maxOf(spelling * 0.95, 0.60 * spelling + 0.40 * overlap)
+                    else 0.55 * spelling + 0.45 * overlap
+                best = maxOf(best, similarity * if (title.value in primary) 1.0 else 0.94)
             }
         }
-        if (!wordsMatch) return@mapNotNull null
+        if (best <= 0.0) return@mapNotNull null
         var score = when {
-            exactFile -> maxOf(best, 0.99)
+            exactFile -> maxOf(best, 0.995)
             exactOriginal -> maxOf(best, 0.98)
             exactPrimary -> maxOf(best, 0.97)
-            exactOther -> maxOf(best, 0.92)
-            else -> best.coerceAtMost(0.89)
+            exactOther -> maxOf(best, 0.94)
+            else -> best.coerceAtMost(0.90)
         }
         val localDuration = evidence.durationMinutes
         val remoteDuration = candidate.durationMinutes
         if (localDuration != null && remoteDuration != null && localDuration >= 5) {
             val difference = kotlin.math.abs(localDuration - remoteDuration)
             if (difference <= 5) score += 0.035
-            else if (difference >= 25) score -= 0.055
+            else if (difference >= 25) score -= 0.025
         }
         if (evidence.episodeCount > 1 && (candidate.episodes ?: 0) >= evidence.episodeCount) score += 0.015
         if (independentlySourced) {
@@ -1914,17 +2017,14 @@ internal fun rankExplicitAniListRepair(
             if (localGenres.intersect(candidate.genres.map(::repairPlain).toSet()).isNotEmpty()) score += 0.015
             val remoteSynopsis = repairWords(candidate.description.orEmpty())
             if (localSynopsis.size >= 5 && remoteSynopsis.size >= 5 &&
-                localSynopsis.intersect(remoteSynopsis).size.toDouble() / minOf(localSynopsis.size, remoteSynopsis.size) >= 0.45
-            ) score += 0.015
+                localSynopsis.intersect(remoteSynopsis).size.toDouble() / minOf(localSynopsis.size, remoteSynopsis.size) >= 0.45) score += 0.015
         }
-        // Exact independent titles must remain ahead of fuzzy matches, even
-        // with missing metadata. A tie is resolved using actual local evidence.
-        val cap = if (exactPrimary) 1.0 else if (exactOther) 0.94 else 0.90
+        val cap = if (exactPrimary) 1.0 else if (exactOther) 0.94 else 0.92
         ReiAnixAniListMatcher.RankedCandidate(candidate, score.coerceIn(0.0, cap),
-            if (exactFile) "file" else if (exactOriginal) "original" else if (exactOther) "alias" else "words")
+            if (exactFile) "file" else if (exactOriginal) "original" else if (exactPrimary) "folder" else if (exactOther) "alias" else "words")
     }.sortedWith(compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }
         .thenByDescending { it.titleKind == "file" }.thenByDescending { it.titleKind == "original" }
-        .thenBy { it.anime.id }).toList()
+        .thenBy { it.anime.id })
 }
 
 sealed interface AniListAutoMatchResult {
