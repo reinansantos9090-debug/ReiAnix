@@ -258,7 +258,9 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             }
             composeRule.onNodeWithText("Moldura").performScrollTo().performClick()
             composeRule.onNodeWithTag("profile-frame-preview").assertIsDisplayed()
-            for (frame in listOf("neon", "sakura", "gold", "galaxy")) {
+            composeRule.onNodeWithText("Gatinho mágico").assertExists()
+            composeRule.onNodeWithText("Fone gamer").assertExists()
+            for (frame in listOf("neon", "sakura", "cat_ears", "gold", "galaxy", "headset")) {
                 composeRule.onNodeWithTag("profile-frame-option-" + frame)
                     .performScrollTo().performClick()
                 composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == frame }
