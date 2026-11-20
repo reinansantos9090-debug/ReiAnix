@@ -3,8 +3,6 @@ package com.reianix.reianix_local.ui.library
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
-import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperFrame
-import com.reianix.reianix_local.ui.theme.reiAnixWallpaperPanel
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.selection.selectable
@@ -633,19 +631,19 @@ private fun LibraryFiltersDialog(
     val colors = MaterialTheme.colorScheme
     val accent = colors.primary
     val sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-    val hasWallpaper = LocalReiAnixWallpaperFrame.current != null
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         // Leave the sheet's outer constraints at full window height so its
         // expanded anchor is measured from the actual bottom of the window.
-        modifier = Modifier.testTag("library-filter-sheet").reiAnixWallpaperPanel(sheetShape),
+        modifier = Modifier.testTag("library-filter-sheet"),
         sheetMaxWidth = Dp.Unspecified,
         sheetGesturesEnabled = false,
         dragHandle = null,
         shape = sheetShape,
-        containerColor = if (hasWallpaper) Color.Transparent else colors.background,
+        // Modal panels must be opaque; the wallpaper remains behind the scrim.
+        containerColor = colors.background.copy(alpha = 1f),
         contentColor = colors.onBackground,
         tonalElevation = 0.dp,
     ) {
