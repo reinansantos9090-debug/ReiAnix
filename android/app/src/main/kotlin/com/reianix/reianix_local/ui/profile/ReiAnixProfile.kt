@@ -43,6 +43,7 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.reianix.reianix_local.R
 import com.reianix.reianix_local.ReiAnixAppDependencies
+import com.reianix.reianix_local.data.profile.DEFAULT_PROFILE_AVATAR_ID
 import com.reianix.reianix_local.data.profile.ReiAnixProfile
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
@@ -75,15 +76,20 @@ import java.util.Date
 private data class AvatarPreset(val id: String, val label: String, @DrawableRes val image: Int)
 
 private val presets = listOf(
-    AvatarPreset("person", "Dragão e susto", R.drawable.profile_avatar_dragao_assustado),
-    AvatarPreset("moon", "Raposa curiosa", R.drawable.profile_avatar_raposa_curiosa),
-    AvatarPreset("star", "Surpresa", R.drawable.profile_avatar_dragao_surpresa),
-    AvatarPreset("bolt", "Abraço", R.drawable.profile_avatar_abraco_raposa),
-    AvatarPreset("heart", "Soneca", R.drawable.profile_avatar_soneca_dragao),
-    AvatarPreset("forest", "Lanche", R.drawable.profile_avatar_lanche_raposa),
-    AvatarPreset("fire", "Estilo", R.drawable.profile_avatar_dragao_estiloso),
-    AvatarPreset("game", "Festa", R.drawable.profile_avatar_festa_raposa),
+    AvatarPreset("person", "Ops!", R.drawable.profile_avatar_dragao_assustado),
+    AvatarPreset("moon", "Feliz", R.drawable.profile_avatar_raposa_curiosa),
+    AvatarPreset("star", "Surpreso", R.drawable.profile_avatar_dragao_surpresa),
+    AvatarPreset(DEFAULT_PROFILE_AVATAR_ID, "Amoroso", R.drawable.profile_avatar_abraco_raposa),
+    AvatarPreset("heart", "Dormindo", R.drawable.profile_avatar_soneca_dragao),
+    AvatarPreset("forest", "Lanchando", R.drawable.profile_avatar_lanche_raposa),
+    AvatarPreset("fire", "Estiloso", R.drawable.profile_avatar_dragao_estiloso),
+    AvatarPreset("game", "Divertindo", R.drawable.profile_avatar_festa_raposa),
 )
+private val defaultAvatarPreset = presets.first { it.id == DEFAULT_PROFILE_AVATAR_ID }
+
+private fun avatarPresetFor(id: String): AvatarPreset =
+    presets.firstOrNull { it.id == id } ?: defaultAvatarPreset
+
 private val profileColors = linkedMapOf(
     "blue" to Color(0xFF398AFF),
     "purple" to Color(0xFFAA82FF),
@@ -96,7 +102,7 @@ private fun accent(profile: ReiAnixProfile) = profileColors[profile.color] ?: pr
 
 @Composable
 private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, size: Dp, modifier: Modifier = Modifier) {
-    val preset = presets.firstOrNull { it.id == profile.avatar } ?: presets.first()
+    val preset = avatarPresetFor(profile.avatar)
     val photo = store.image(profile.photo)
     var photoFailed by remember(photo) { mutableStateOf(false) }
     val ring = when (profile.frame) {
@@ -699,10 +705,11 @@ internal fun ProfileCustomization(
                             saveChange { it.copy(photo = null) }
                         }) { Text("Remover foto") }
                         Text("Escolha um avatar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                        val selectedAvatarId = avatarPresetFor(profile.avatar).id
                         presets.chunked(4).forEach { group ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                 group.forEach { p ->
-                                    val selected = profile.avatar == p.id && profile.photo == null
+                                    val selected = selectedAvatarId == p.id && profile.photo == null
                                     Column(horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier.weight(1f).clickable(enabled = !busy) {
                                             saveChange { it.copy(avatar = p.id, photo = null) }
