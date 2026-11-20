@@ -472,6 +472,7 @@ private fun ReiAnixLibraryPresentationScreen(
                 )
 
                 ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
+                    transparentOnWallpaper = true,
                     title = "Biblioteca vazia",
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                         "Configure uma pasta de mídia para começar."

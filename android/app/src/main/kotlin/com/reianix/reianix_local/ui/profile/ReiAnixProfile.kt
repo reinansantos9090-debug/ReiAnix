@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -109,16 +110,64 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
     }
 }
 
+/** Camera badge is centered on the circular avatar's lower-right edge.
+ * A single accessible click target covers both the photo and the badge. */
+@Composable
+internal fun EditableProfileAvatar(
+    profile: ReiAnixProfile,
+    store: ReiAnixProfileStore,
+    size: Dp = 112.dp,
+    enabled: Boolean = true,
+    onSelectPhoto: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(size)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onSelectPhoto)
+            .semantics { contentDescription = "Alterar foto de perfil" },
+        contentAlignment = Alignment.Center,
+    ) {
+        ProfileAvatar(profile, store, size)
+        val badgeSize = 24.dp
+        // At 45 degrees, the circular boundary is r/sqrt(2) from the center.
+        val inset = size * 0.1464466f - badgeSize / 2
+        Box(
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .offset(x = -inset, y = -inset)
+                .size(badgeSize)
+                .background(Color(0xFF2675EF), CircleShape)
+                .border(1.5.dp, Color.Black, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.PhotoCamera,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+    }
+}
+
 /** The avatar is centered exactly on the lower edge of the optional banner. */
 @Composable
-private fun ProfileBannerHeader(profile: ReiAnixProfile, store: ReiAnixProfileStore, onEditPhoto: () -> Unit) {
+private fun ProfileBannerHeader(
+    profile: ReiAnixProfile,
+    store: ReiAnixProfileStore,
+    showCamera: Boolean = false,
+    enabled: Boolean = true,
+    onEditPhoto: () -> Unit,
+) {
     val context = LocalContext.current
     val bannerStore = remember(context) { ReiAnixWallpaperStore.banner(context) }
     val banner by bannerStore.state.collectAsStateWithLifecycle()
     val imageLoad = rememberWallpaperImage(bannerStore, banner)
     val image = imageLoad.image
     if (image == null && !imageLoad.loading) {
-        ProfileAvatar(profile, store, 112.dp)
+        if (showCamera) {
+            EditableProfileAvatar(profile, store, enabled = enabled, onSelectPhoto = onEditPhoto)
+        } else {
+            ProfileAvatar(profile, store, 112.dp)
+        }
     } else {
         Box(Modifier.fillMaxWidth().padding(bottom = 58.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(3f).clip(RoundedCornerShape(16.dp))
@@ -126,9 +175,15 @@ private fun ProfileBannerHeader(profile: ReiAnixProfile, store: ReiAnixProfileSt
                 image?.let { ReiAnixWallpaperLayer(it, banner, Modifier.matchParentSize(), editing = true) }
             }
             Box(Modifier.align(Alignment.BottomCenter).offset(y = 58.dp).size(116.dp)
-                .clip(CircleShape).background(Color(0xFF101010)).clickable(onClick = onEditPhoto),
+                .background(Color(0xFF101010), CircleShape)
+                .then(if (showCamera) Modifier else Modifier.clip(CircleShape).clickable(onClick = onEditPhoto)),
                 contentAlignment = Alignment.Center) {
-                ProfileAvatar(profile, store, 108.dp)
+                if (showCamera) {
+                    EditableProfileAvatar(profile, store, size = 108.dp,
+                        enabled = enabled, onSelectPhoto = onEditPhoto)
+                } else {
+                    ProfileAvatar(profile, store, 108.dp)
+                }
             }
         }
     }
@@ -504,33 +559,95 @@ internal fun ProfileCustomization(
             finally { busy = false }
         }
     }
+    var photoDraft by rememberSaveable { mutableStateOf<String?>(null) }
+    // Keep the editor on screen behind the system picker, even while importing.
+    // Persist only the external picker state, not an interrupted import job.
+    var photoPickerOpen by rememberSaveable { mutableStateOf(false) }
+    var launchPhotoPicker by remember { mutableStateOf(false) }
+    var photoPreparing by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null && !busy) {
-            busy = true
-            error = null
-            scope.launch {
-                var imported: String? = null
-                try {
-                    imported = store.importPhoto(uri)
-                    store.update { it.copy(photo = imported) }
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { error = "Não foi possível salvar a foto." }
-                finally {
+        if (photoPickerOpen) {
+            photoPickerOpen = false
+            if (uri != null && photoDraft == null) {
+                photoPreparing = true
+                busy = true
+                error = null
+                scope.launch {
                     try {
-                        // discard never removes the currently saved photo.
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { store.discard(imported) }
-                    } finally { busy = false }
+                        photoDraft = store.importPhotoDraft(uri)
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { error = "Não foi possível abrir a foto." }
+                    finally {
+                        photoPreparing = false
+                        busy = false
+                    }
                 }
             }
         }
     }
-    BackHandler(enabled = page != "banner" && page != "wallpaper") { goBack() }
+    LaunchedEffect(launchPhotoPicker) {
+        if (launchPhotoPicker) {
+            // Commit the editor's layout and give it a frame to draw before
+            // covering this activity with the external gallery.
+            withFrameNanos { }
+            withFrameNanos { }
+            launchPhotoPicker = false
+            try {
+                picker.launch("image/*")
+            } catch (_: Exception) {
+                photoPickerOpen = false
+                error = "Não foi possível abrir a galeria."
+            }
+        }
+    }
+    val draft = photoDraft
+    val waitingForPhoto = photoPickerOpen || photoPreparing
+    val showPhotoEditor = waitingForPhoto || draft != null
+    BackHandler(enabled = !showPhotoEditor && page != "banner" && page != "wallpaper") { goBack() }
+    if (showPhotoEditor) {
+        ReiAnixAvatarEditor(
+            draft = draft?.let { store.photoDraftFile(it) },
+            busy = busy || waitingForPhoto,
+            error = error,
+            loadingSelection = waitingForPhoto,
+            onCancel = {
+                if (!busy) {
+                    photoDraft = null
+                    error = null
+                    if (draft != null) scope.launch { store.discardPhotoDraft(draft) }
+                }
+            },
+            onSave = { crop ->
+                if (!busy && !waitingForPhoto && draft != null) {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        var imported: String? = null
+                        try {
+                            val result = store.importCroppedPhoto(draft, crop.left, crop.top, crop.size)
+                            imported = result
+                            store.update { it.copy(photo = result) }
+                            photoDraft = null
+                            store.discardPhotoDraft(draft)
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { error = "Não foi possível salvar a foto." }
+                        finally {
+                            try {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { store.discard(imported) }
+                            } finally { busy = false }
+                        }
+                    }
+                }
+            },
+        )
+        return
+    }
     if (page == "banner" || page == "wallpaper") {
         ReiAnixWallpaperEditor(onBack = { page = "menu" }, banner = page == "banner")
         return
     }
     val title = when (page) {
-        "photo" -> "Foto e avatares"
+        "photo" -> "Avatares personalizados"
         "frame" -> "Moldura"
         "featured" -> "Anime em destaque"
         else -> "Editar perfil"
@@ -560,11 +677,10 @@ internal fun ProfileCustomization(
                 when (page) {
                     "photo" -> {
                         ProfileAvatar(profile, store, 112.dp)
-                        OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !busy) { Text("Escolher foto da galeria") }
                         if (profile.photo != null) TextButton(enabled = !busy, onClick = {
                             saveChange { it.copy(photo = null) }
                         }) { Text("Remover foto") }
-                        Text("Avatares personalizados", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                        Text("Escolha um avatar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
                         presets.chunked(4).forEach { group ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                 group.forEach { p ->
@@ -597,7 +713,18 @@ internal fun ProfileCustomization(
                         }
                     }
                     else -> {
-                        ProfileBannerHeader(profile, store, onEditPhoto = { leaveMenu { page = "photo" } })
+                        ProfileBannerHeader(
+                            profile = profile,
+                            store = store,
+                            showCamera = true,
+                            enabled = !busy,
+                            onEditPhoto = {
+                                leaveMenu {
+                                    photoPickerOpen = true
+                                    launchPhotoPicker = true
+                                }
+                            },
+                        )
                         Text("Prévia do perfil", style = MaterialTheme.typography.labelLarge)
                         OutlinedTextField(
                             value = name,
@@ -617,8 +744,8 @@ internal fun ProfileCustomization(
                         )
                         HorizontalDivider(color = Color(0xFF292929))
                         Spacer(Modifier.height(4.dp))
-                        CustomizationCategory(Icons.Outlined.Person, "Foto e avatares",
-                            "Foto da galeria e avatares personalizados", !busy) { leaveMenu { page = "photo" } }
+                        CustomizationCategory(Icons.Outlined.Person, "Avatares personalizados",
+                            "Escolha um avatar para seu perfil", !busy) { leaveMenu { page = "photo" } }
                         CustomizationCategory(Icons.Outlined.CropSquare, "Moldura",
                             "Personalize o contorno da foto", !busy) { leaveMenu { page = "frame" } }
                         CustomizationCategory(Icons.Outlined.Image, "Banner do perfil",
