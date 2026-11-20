@@ -55,41 +55,27 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
     val draft = ReiAnixWallpaper(image, zoom, x, y).normalized()
     val scope = rememberCoroutineScope()
     var showArts by rememberSaveable { mutableStateOf(false) }
-    var refreshArts by remember { mutableStateOf(0) }
-    var arts by remember { mutableStateOf<List<PersonalArt>>(emptyList()) }
-    LaunchedEffect(context, banner, refreshArts) {
-        arts = ReiAnixArtPack.available(context, banner)
-    }
-    val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && !busy) {
-            busy = true
-            error = null
-            scope.launch {
-                try {
-                    ReiAnixArtPack.install(context, uri)
-                    refreshArts++
-                    showArts = true
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { error = "Pacote inválido. Selecione o ZIP original das 20 artes do ReiAnix." }
-                finally { busy = false }
-            }
-        }
-    }
+    val arts = remember(banner) { ReiAnixArtPack.available(banner) }
     fun selectArt(art: PersonalArt) {
         if (busy) return
         busy = true
         error = null
-        showArts = false
         scope.launch {
+            var imported: String? = null
             try {
-                val imported = store.importPreset(art)
-                val previous = image
-                image = imported
-                zoom = 1f; x = 0.5f; y = 0.5f
-                store.discard(previous)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { error = "Não foi possível abrir a arte." }
-            finally { busy = false }
+                imported = store.importPreset(art)
+                // Built-in art already has its final framing and needs no crop editor.
+                store.save(ReiAnixWallpaper(imageName = imported))
+                store.discard(image)
+                onBack()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                store.discard(imported)
+                error = "Não foi possível aplicar a arte."
+            } finally {
+                busy = false
+            }
         }
     }
     fun leave() {
@@ -100,7 +86,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
             finally { busy = false }
         }
     }
-    BackHandler { leave() }
+    BackHandler { if (!busy && showArts) showArts = false else leave() }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null && !busy) {
             busy = true
@@ -117,6 +103,36 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                 finally { busy = false }
             }
         }
+    }
+    if (showArts) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
+            ReiAnixTopBar(if (banner) "Banners otaku" else "Papéis de parede otaku",
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                onNavigationClick = { if (!busy) showArts = false })
+            Text("Escolha uma arte para aplicar imediatamente.",
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(arts.chunked(if (banner) 1 else 2)) { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { art ->
+                            Column(Modifier.weight(1f).clickable(enabled = !busy) { selectArt(art) }) {
+                                AsyncImage(model = ReiAnixArtPack.model(art), contentDescription = art.title,
+                                    modifier = Modifier.fillMaxWidth().aspectRatio(if (banner) 3f else 9f / 16f)
+                                        .clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Fit)
+                                Text(art.title, style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(vertical = 6.dp))
+                            }
+                        }
+                        if (!banner && row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        return
     }
     val previewState = rememberWallpaperImage(store, draft)
     val preview = previewState.image
@@ -210,37 +226,4 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
             }
         }
     }
-    if (showArts) {
-        AlertDialog(
-            onDismissRequest = { if (!busy) showArts = false },
-            title = { Text(if (banner) "Banners otaku" else "Papéis de parede otaku") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (arts.isEmpty()) Text("Importe o pacote ZIP das 20 artes uma única vez. Depois, a coleção funciona offline.")
-                    else LazyColumn(Modifier.heightIn(max = 440.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(arts.chunked(2)) { row ->
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                row.forEach { art ->
-                                    Column(Modifier.weight(1f).clickable(enabled = !busy) { selectArt(art) }) {
-                                        AsyncImage(model = ReiAnixArtPack.model(context, art), contentDescription = art.title,
-                                            modifier = Modifier.fillMaxWidth().aspectRatio(if (banner) 3f else 9f / 16f)
-                                                .clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
-                                        Text(art.title, style = MaterialTheme.typography.labelMedium)
-                                    }
-                                }
-                                if (row.size == 1) Spacer(Modifier.weight(1f))
-                            }
-                        }
-                    }
-                    TextButton(enabled = !busy, onClick = {
-                        showArts = false
-                        packPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
-                    }) { Text("Importar pacote de artes (ZIP)") }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showArts = false }, enabled = !busy) { Text("Fechar") } },
-        )
-    }
-
 }

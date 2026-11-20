@@ -11,11 +11,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
@@ -29,32 +24,17 @@ class ReiAnixArtPackTest {
         assertTrue(all.all { it.path.endsWith(".webp") })
     }
 
-    private fun archive(name: String): ByteArray {
-        val out = ByteArrayOutputStream()
-        ZipOutputStream(out).use {
-            it.putNextEntry(ZipEntry(name))
-            it.write(byteArrayOf(1, 2, 3))
-            it.closeEntry()
-        }
-        return out.toByteArray()
-    }
-
     @Test
-    fun rejectsTraversalAndIncompletePacks() {
-        val root = File(RuntimeEnvironment.getApplication().cacheDir, "art-pack-test")
-        val stage = File(root, "stage")
-        stage.mkdirs()
-        try {
-            for (name in listOf("../outside.webp", "README.txt")) {
-                try {
-                    ReiAnixArtPack.extract(ByteArrayInputStream(archive(name)), stage)
-                    fail("Invalid archive accepted")
-                } catch (_: IllegalArgumentException) { }
-            }
-            assertFalse(File(root, "outside.webp").exists())
-        } finally {
-            root.deleteRecursively()
+    fun allTwentyArtsAreBundledAndReadableWithoutImport() {
+        val context = RuntimeEnvironment.getApplication()
+        for (art in ReiAnixArtPack.banners + ReiAnixArtPack.wallpapers) {
+            val bytes = ReiAnixArtPack.open(context, art).use { it.readBytes() }
+            assertTrue(bytes.size > 1000)
+            assertEquals("RIFF", String(bytes, 0, 4, Charsets.US_ASCII))
+            assertEquals("WEBP", String(bytes, 8, 4, Charsets.US_ASCII))
         }
+        assertEquals(10, ReiAnixArtPack.available(true).size)
+        assertEquals(10, ReiAnixArtPack.available(false).size)
     }
 
     @Test
