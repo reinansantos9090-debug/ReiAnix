@@ -692,6 +692,11 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
     var request by remember { mutableStateOf<String?>(null) }
     var delete by remember { mutableStateOf<PlayerLocalMetadataStore.FavoriteScene?>(null) }
     var reload by remember { mutableStateOf(0) }
+    var search by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var edit by remember { mutableStateOf<PlayerLocalMetadataStore.FavoriteScene?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val titles = remember(records) { records.associate { it.id to it.title } }
     val scope = rememberCoroutineScope()
     LaunchedEffect(records, reload) {
         loading = true
@@ -720,31 +725,105 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
             request = null
         }
     }
+    val visible = scenes.filter { scene ->
+        val episode = matches[scene.mediaId]
+        listOf(scene.note.text, scene.note.animeTitle, scene.note.episodeLabel, episode?.let { titles[it.animeId] }.orEmpty())
+            .any { it.contains(query.trim(), ignoreCase = true) }
+    }
     Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
-        ReiAnixTopBar("Cenas favoritas", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack)
+        ReiAnixTopBar("Cenas favoritas", subtitle = "${scenes.size} cenas salvas",
+            navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack, actions = {
+                IconButton(onClick = { search = !search; if (!search) query = "" }) { Icon(Icons.Outlined.Search, "Pesquisar cenas") }
+            })
+        if (search) ProfileMediaSearch(query) { query = it }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        else if (scenes.isEmpty()) Text("Nenhuma cena salva. Salve trechos no player do ReiAnix.", Modifier.padding(20.dp))
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-            items(scenes, key = { it.note.id }) { scene ->
+        if (loading || saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (!loading && visible.isEmpty()) Text(if (scenes.isEmpty()) "Nenhuma cena salva. Salve trechos no player do ReiAnix." else "Nenhuma cena encontrada.", Modifier.padding(20.dp))
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(visible, key = { it.note.id }) { scene ->
                 val episode = matches[scene.mediaId]
-                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    IconButton(enabled = episode != null && scene.note.clipEndMs != null, onClick = {
-                        episode?.let { request = viewModel.openEpisode(it.id, it.animeId, favoriteSceneId = scene.note.id) }
-                    }) { Icon(Icons.Outlined.PlayArrow, "Reproduzir cena") }
-                    Column(Modifier.weight(1f)) {
-                        Text(scene.note.text, style = MaterialTheme.typography.titleMedium)
-                        Text(listOf(scene.note.animeTitle, scene.note.episodeLabel).filter { it.isNotBlank() }.joinToString(" · "),
-                            color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
-                        Text(sceneTime(scene.note.timestampMs) + (scene.note.clipEndMs?.let { " – " + sceneTime(it) } ?: " · Marcador"),
-                            color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
-                        if (episode == null) Text("Arquivo original indisponível", color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
+                val note = scene.note
+                var menu by remember { mutableStateOf(false) }
+                val playable = episode != null && note.clipEndMs != null && !saving
+                Card(Modifier.fillMaxWidth().clickable(enabled = playable) {
+                    episode?.let { request = viewModel.openEpisode(it.id, it.animeId, favoriteSceneId = note.id) }
+                }, colors = CardDefaults.cardColors(
+                    containerColor = com.reianix.reianix_local.ui.theme.reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+                    contentColor = MaterialTheme.colorScheme.onSurface)) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.width(116.dp).aspectRatio(16f / 9f)) {
+                            ProfileVideoFrame(episode?.path, note.timestampMs, episode?.modifiedAt.toString(),
+                                Modifier.fillMaxSize(), exactScene = true)
+                            Icon(Icons.Outlined.PlayCircleOutline, null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(28.dp))
+                            note.clipEndMs?.let { end ->
+                                Text(sceneTime((end - note.timestampMs).coerceAtLeast(0L)),
+                                    color = Color.White, style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                                        .background(Color.Black.copy(alpha = .75f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp))
+                            }
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(note.text, style = MaterialTheme.typography.titleMedium)
+                            val animeTitle = episode?.let { titles[it.animeId] } ?: note.animeTitle
+                            Text(animeTitle.ifBlank { "Anime local" }, style = MaterialTheme.typography.bodySmall)
+                            Text(if (episode != null) profileEpisodeLabel(episode.number, episode.episodeTitle, episode.fileName)
+                                else note.episodeLabel.ifBlank { "Episódio local" }, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(sceneTime(note.timestampMs) + (note.clipEndMs?.let { " – " + sceneTime(it) } ?: " · Marcador"),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (episode == null) Text("Arquivo original indisponível", style = MaterialTheme.typography.labelSmall)
+                        }
+                        Box {
+                            IconButton(onClick = { menu = true }, enabled = !saving) { Icon(Icons.Outlined.MoreVert, "Opções da cena") }
+                            DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem(text = { Text("Editar") }, enabled = episode != null && note.clipEndMs != null,
+                                    onClick = { menu = false; edit = scene })
+                                DropdownMenuItem(text = { Text("Excluir") }, onClick = { menu = false; delete = scene })
+                            }
+                        }
                     }
-                    IconButton(onClick = { delete = scene }) { Icon(Icons.Outlined.Delete, "Excluir cena") }
                 }
             }
         }
+    }
+    edit?.let { scene ->
+        val episode = matches[scene.mediaId]
+        val note = scene.note
+        var name by remember(note.id) { mutableStateOf(note.text) }
+        var from by remember(note.id) { mutableStateOf((note.timestampMs / 1000.0).toString()) }
+        var to by remember(note.id) { mutableStateOf(((note.clipEndMs ?: note.timestampMs) / 1000.0).toString()) }
+        val start = from.replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 && it <= Long.MAX_VALUE / 1000.0 }?.let { (it * 1000).toLong() }
+        val end = to.replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 && it <= Long.MAX_VALUE / 1000.0 }?.let { (it * 1000).toLong() }
+        val duration = episode?.duration?.takeIf { it.isFinite() && it > 0 }?.let { (it * 1000).toLong() }
+            ?: note.clipEndMs ?: 0L
+        AlertDialog(onDismissRequest = { if (!saving) edit = null }, title = { Text("Editar cena") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Nome da cena") })
+                    OutlinedTextField(from, { from = it }, singleLine = true, label = { Text("Início (segundos)") })
+                    OutlinedTextField(to, { to = it }, singleLine = true, label = { Text("Fim (segundos)") })
+                    Text("Duração disponível: " + sceneTime(duration), style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(enabled = !saving && start != null && end != null && end > start && end <= duration,
+                onClick = {
+                    saving = true
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                store.saveFavoriteClip(scene.mediaId, requireNotNull(start), requireNotNull(end), duration,
+                                    name, episode?.let { titles[it.animeId] } ?: note.animeTitle,
+                                    note.episodeLabel, existingId = note.id)
+                            }
+                            edit = null
+                            reload++
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { error = "Não foi possível editar a cena."; edit = null }
+                        finally { saving = false }
+                    }
+                }) { Text("Salvar") } },
+            dismissButton = { TextButton(enabled = !saving, onClick = { edit = null }) { Text("Cancelar") } })
     }
     delete?.let { scene ->
         AlertDialog(onDismissRequest = { delete = null }, title = { Text("Excluir cena?") },
