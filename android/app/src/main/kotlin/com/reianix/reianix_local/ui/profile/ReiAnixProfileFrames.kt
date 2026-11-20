@@ -37,11 +37,11 @@ internal data class ProfileFrameOption(
 
 internal val profileFrameOptions = listOf(
     ProfileFrameOption("none", "Sem moldura", "Usar a foto do perfil sem efeitos."),
-    ProfileFrameOption("neon", "Neon azul", "Brilho neon e traços luminosos animados.", true),
+    ProfileFrameOption("neon", "Neon azul", "Armadura luminosa, cristais e LED pulsante.", true),
     ProfileFrameOption("sakura", "Sakura mágica", "Pétalas rosadas flutuando ao redor da foto.", true),
     ProfileFrameOption("cat_ears", "Gatinho mágico", "Orelhinhas felinas com brilho de cristais e pingente.", true),
-    ProfileFrameOption("gold", "Dourada royal", "Coroa, ornamentos e partículas douradas.", true),
-    ProfileFrameOption("galaxy", "Galáxia", "Órbitas cósmicas e estrelas cintilantes.", true),
+    ProfileFrameOption("gold", "Dourada royal", "Coroa imperial, safiras e ouro ornamentado.", true),
+    ProfileFrameOption("galaxy", "Galáxia", "Cristais celestes, ametistas e estrelas cintilantes.", true),
     ProfileFrameOption("headset", "Fone gamer", "Arco futurista, almofadas e luzes neon pulsantes.", true),
     ProfileFrameOption("accent", "Colorida", "Contorno na cor escolhida para o perfil."),
     ProfileFrameOption("white", "Branca", "Contorno branco clássico."),
@@ -59,6 +59,11 @@ internal fun isAnimatedProfileFrame(frame: String) =
 internal fun AnimatedProfileFrame(frame: String, modifier: Modifier = Modifier) {
     if (frame == "cat_ears" || frame == "headset") {
         AnimatedAccessoryProfileFrame(frame, modifier)
+        return
+    }
+    // Preserve Sakura's approved rendering as-is. Only the three rejected designs change.
+    if (frame == "gold" || frame == "neon" || frame == "galaxy") {
+        RefinedProfileFrame(frame, modifier)
         return
     }
     if (!isAnimatedProfileFrame(frame)) return
