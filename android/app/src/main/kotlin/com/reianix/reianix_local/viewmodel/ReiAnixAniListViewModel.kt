@@ -399,11 +399,12 @@ class ReiAnixAniListViewModel(
     }
 
     fun associateAniListManually(animeId: Long, anilistId: Int) {
+        if (_aniListUiState.value.isManualAssociationLoading) return
         manualAssociationJob?.cancel()
         val requestId = ++manualAssociationRequestId
         manualAssociationJob = viewModelScope.launch {
             _aniListUiState.value = _aniListUiState.value.copy(
-                isManualAssociationLoading = true, error = null,
+                isManualAssociationLoading = true, error = null, lastAssociationMessage = null,
             )
             try {
                 when (val result = integration.associateManually(animeId, anilistId)) {

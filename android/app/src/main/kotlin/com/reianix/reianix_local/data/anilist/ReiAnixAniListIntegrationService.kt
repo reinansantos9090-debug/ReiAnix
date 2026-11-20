@@ -482,7 +482,7 @@ class ReiAnixAniListIntegrationService(
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> return result
         } ?: return AniListResult.Failure(AniListError.InvalidResponse("AniList returned no anime for this ID."))
-        val patched = when (val result = applyRemote(local, remote, manual = true, score = 1.0, margin = 1.0)) {
+        val patched = when (val result = applyRemote(local, remote, manual = true, score = 1.0, margin = 1.0, manualSelection = true)) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> return result
         }
@@ -1443,6 +1443,7 @@ class ReiAnixAniListIntegrationService(
         traceMoeConfirmed: Boolean = false,
         explicitRepair: Boolean = false,
         correctManualMusic: Boolean = false,
+        manualSelection: Boolean = false,
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
             // Artwork preference controls whether the remote URL becomes eligible
@@ -1472,13 +1473,13 @@ class ReiAnixAniListIntegrationService(
                         localizer == null -> remoteOriginal
                         else -> {
                             val cached = localizer.getCachedDescriptionPtBr(remoteOriginal)
-                            cached ?: if (explicitRepair) remoteOriginal else localizer.localizeToPtBr(remoteOriginal) ?: remoteOriginal
+                            cached ?: if (explicitRepair || manualSelection) remoteOriginal else localizer.localizeToPtBr(remoteOriginal) ?: remoteOriginal
                         }
                     }
                 }
                 remoteOriginal to displayDescription
             }
-            val prepared = if (explicitRepair && artworkEnabled) {
+            val prepared = if ((explicitRepair || manualSelection) && artworkEnabled && (explicitRepair || prepareRepairArtwork != null)) {
                 prepareRepairArtwork?.invoke(local.id, remote) ?: return AniListResult.Failure(
                     AniListError.InvalidRequest("Não foi possível preparar a capa e o banner. Os dados anteriores foram mantidos."),
                 )
@@ -1515,8 +1516,10 @@ class ReiAnixAniListIntegrationService(
                 expectedAssociationId = local.anilistId,
                 correctManualMusic = correctManualMusic,
                 preparedArtwork = prepared,
+                manualSelection = manualSelection,
+                protectManualRefresh = manual && !manualSelection,
             )
-            if ((!manual || explicitRepair) && updated.anilistId != remote.id.toLong()) {
+            if (updated.anilistId != remote.id.toLong()) {
                 return AniListResult.Failure(
                     AniListError.InvalidRequest(
                         "Automatic match was not applied because a manual or existing association has priority.",
