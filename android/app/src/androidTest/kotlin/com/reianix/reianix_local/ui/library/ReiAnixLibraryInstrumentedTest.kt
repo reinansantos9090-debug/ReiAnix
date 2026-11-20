@@ -1,5 +1,21 @@
 package com.reianix.reianix_local.ui.library
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.test.captureToImage
+import com.reianix.reianix_local.data.profile.ReiAnixWallpaper
+import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperFrame
+import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
+import com.reianix.reianix_local.ui.theme.WallpaperFrame
+import com.reianix.reianix_local.ui.theme.WallpaperImage
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -283,6 +299,59 @@ class ReiAnixLibraryInstrumentedTest {
         composeRule.runOnIdle {
             assertEquals("PLANNING", applied?.watchState)
             assertEquals("ALL", applied?.labelFilter)
+        }
+    }
+
+    @Test
+    fun wallpaperNeverPaintsOverLibraryFilterPanel() {
+        val wallpaperColor = Color(0xFFFF00FF)
+        composeRule.setContent {
+            ReiAnixComposeRoot(themeMode = "dark") {
+                val image = remember {
+                    val bitmap = android.graphics.Bitmap.createBitmap(16, 32, android.graphics.Bitmap.Config.ARGB_8888)
+                    bitmap.eraseColor(android.graphics.Color.MAGENTA)
+                    WallpaperImage(bitmap.asImageBitmap(), 0f)
+                }
+                Box(Modifier.fillMaxSize().background(wallpaperColor)) {
+                    CompositionLocalProvider(
+                        LocalReiAnixWallpaperVisible provides true,
+                        LocalReiAnixWallpaperFrame provides WallpaperFrame(image, ReiAnixWallpaper(), IntSize(1080, 2400)),
+                    ) {
+                        ReiAnixLibraryScreen(
+                            state = readyState(),
+                            filters = ReiAnixLibraryFilters(),
+                            visibleAnimes = listOf(anime(7L, "Example Anime")),
+                            genres = emptyList(),
+                            onQueryChange = {},
+                            onGenreSelected = {},
+                            onToggleFavorites = {},
+                            onToggleWatching = {},
+                            onToggleCompleted = {},
+                            onClearFilters = {},
+                            onRefresh = {},
+                            onOpenDetails = {},
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription("Filtros da biblioteca").performClick()
+        composeRule.onNodeWithText("Filtros da biblioteca").assertIsDisplayed()
+        val panel = composeRule.onNodeWithTag("library-filter-sheet", useUnmergedTree = true)
+        for (tab in listOf("Ordenar", "Gêneros", "Estado", "Etiqueta")) {
+            composeRule.onNodeWithContentDescription(tab).assertIsDisplayed().performClick()
+            val pixels = panel.captureToImage().toPixelMap()
+            var wallpaperPixels = 0
+            var sampled = 0
+            // Avoid rounded corners and test the actual interior of the modal.
+            for (y in pixels.height / 8 until pixels.height * 7 / 8 step 4) {
+                for (x in pixels.width / 8 until pixels.width * 7 / 8 step 4) {
+                    val p = pixels[x, y]
+                    if (p.red > .8f && p.blue > .8f && p.green < .2f) wallpaperPixels++
+                    sampled++
+                }
+            }
+            assertTrue("Wallpaper must not be painted inside the filter panel", sampled > 0 && wallpaperPixels == 0)
         }
     }
 
