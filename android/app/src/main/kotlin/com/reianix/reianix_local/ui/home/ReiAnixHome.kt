@@ -818,7 +818,7 @@ private fun HomeHero(
                             .70f to Color.Transparent,
                             1f to Color.Transparent,
                         ),
-                    ),
+                    )
                     .background(
                         Brush.verticalGradient(
                             0f to if (header != null) Color.Black.copy(alpha = .72f) else Color.Transparent,
