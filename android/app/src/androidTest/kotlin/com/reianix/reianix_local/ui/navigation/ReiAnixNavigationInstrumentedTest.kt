@@ -148,6 +148,41 @@ class ReiAnixNavigationInstrumentedTest {
     }
 
     @Test
+    fun everyTabAndProfileReplacePreviousContentWithoutTransition() {
+        val destinations = listOf(
+            ReiAnixRoutes.HOME to "Início counter=0",
+            ReiAnixRoutes.LIBRARY to "Biblioteca counter=0",
+            ReiAnixRoutes.SEARCH to "Buscar counter=0",
+            ReiAnixRoutes.SETTINGS to "Ajustes counter=0",
+        )
+        for ((route, label) in destinations.drop(1) + destinations.take(1)) {
+            composeRule.mainClock.autoAdvance = false
+            try {
+                composeRule.runOnIdle { navController.navigateToTopLevel(route) }
+                composeRule.mainClock.advanceTimeBy(64L)
+                composeRule.onNodeWithText(label).assertIsDisplayed()
+                destinations.filter { it.first != route }.forEach { (_, other) ->
+                    composeRule.onNodeWithText(other).assertDoesNotExist()
+                }
+                composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
+                    .assertIsDisplayed()
+            } finally {
+                composeRule.mainClock.autoAdvance = true
+            }
+            composeRule.waitForIdle()
+        }
+        composeRule.mainClock.autoAdvance = false
+        try {
+            composeRule.runOnIdle { navController.navigate(ReiAnixRoutes.PROFILE) }
+            composeRule.mainClock.advanceTimeBy(64L)
+            composeRule.onNodeWithTag("profile-transition-profile").assertIsDisplayed()
+            composeRule.onNodeWithTag("profile-transition-home").assertDoesNotExist()
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
     fun topLevelNavigationDoesNotDuplicateAnyDestination() {
         listOf(
             "Início" to ReiAnixRoutes.HOME,
