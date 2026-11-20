@@ -6,8 +6,13 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.State
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.layout
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NamedNavArgument
@@ -357,33 +362,66 @@ fun ReiAnixNavigationHost(
 }
 
 /**
- * Navigation Compose can retain an outgoing entry until its internal transition
- * is settled, even with Enter/ExitTransition.None. Transparent destinations
- * must never paint their contents over the current route during that interval.
- * Keep the entry composed for Navigation's save-state/lifecycle handling, but
- * gate drawing using the live back-stack state in the draw phase.
+ * The current back-stack entry can change before NavHost has placed its content.
+ * Keep the last placed destination visible until the requested entry is placed,
+ * then switch both draw gates together. No fade, timer, snapshot or extra bitmap.
  */
+internal class ReiAnixDestinationHandoff {
+    private var presentedEntryId by mutableStateOf<String?>(null)
+
+    fun onPlaced(entryId: String, currentEntryId: String?) {
+        if (entryId == currentEntryId && presentedEntryId != entryId) {
+            presentedEntryId = entryId
+        }
+    }
+
+    fun onDisposed(entryId: String) {
+        if (presentedEntryId == entryId) presentedEntryId = null
+    }
+
+    fun shouldDraw(entryId: String, currentEntryId: String?): Boolean =
+        entryId == (presentedEntryId ?: currentEntryId)
+}
+
 @Composable
 internal fun ReiAnixCurrentDestination(
     entryId: String,
     currentEntryId: () -> String?,
+    handoff: ReiAnixDestinationHandoff,
     content: @Composable () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize().drawWithContent {
-        if (currentEntryId() == entryId) drawContent()
-    }) {
+    DisposableEffect(handoff, entryId) {
+        onDispose { handoff.onDisposed(entryId) }
+    }
+    Box(Modifier.fillMaxSize()
+        .layout { measurable, constraints ->
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, placeable.height) {
+                placeable.placeRelative(0, 0)
+                // Read the requested id in placement, not composition or draw.
+                // This also re-runs placement for a retained entry on Back.
+                if (placeable.width > 0 && placeable.height > 0) {
+                    handoff.onPlaced(entryId, currentEntryId())
+                }
+            }
+        }
+        .drawWithContent {
+            // A retained outgoing entry must not overlay a placed destination.
+            if (handoff.shouldDraw(entryId, currentEntryId())) drawContent()
+        }) {
         content()
     }
 }
 
 private fun NavGraphBuilder.instantDestination(
     activeEntry: State<NavBackStackEntry?>,
+    handoff: ReiAnixDestinationHandoff,
     route: String,
     arguments: List<NamedNavArgument> = emptyList(),
     content: @Composable (NavBackStackEntry) -> Unit,
 ) {
     composable(route = route, arguments = arguments) { entry ->
-        ReiAnixCurrentDestination(entry.id, { activeEntry.value?.id }) {
+        ReiAnixCurrentDestination(entry.id, { activeEntry.value?.id }, handoff) {
             content(entry)
         }
     }
@@ -426,6 +464,7 @@ fun ReiAnixNavigationHost(
     }
 
     val activeEntry = navController.currentBackStackEntryAsState()
+    val handoff = remember(navController) { ReiAnixDestinationHandoff() }
     val backStackEntry by activeEntry
     val currentRoute = backStackEntry?.destination?.route
     val detailOrigin = backStackEntry?.arguments
@@ -473,20 +512,21 @@ fun ReiAnixNavigationHost(
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { ExitTransition.None },
         ) {
-            instantDestination(activeEntry, ReiAnixRoutes.HOME) { home() }
-            instantDestination(activeEntry, ReiAnixRoutes.LIBRARY) { library() }
-            instantDestination(activeEntry, ReiAnixRoutes.MY_LIST) { myList() }
-            instantDestination(activeEntry, ReiAnixRoutes.COLLECTIONS) { collections() }
-            instantDestination(activeEntry, ReiAnixRoutes.ORGANIZE) { organize() }
-            instantDestination(activeEntry, ReiAnixRoutes.SEARCH) { search() }
-            instantDestination(activeEntry, ReiAnixRoutes.SETTINGS) { settings() }
-            instantDestination(activeEntry, ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
-            instantDestination(activeEntry, ReiAnixRoutes.PROFILE) { profile() }
-            instantDestination(activeEntry, ReiAnixRoutes.STORAGE) { storage() }
-            instantDestination(activeEntry, ReiAnixRoutes.RECOVERY) { recovery() }
-            instantDestination(activeEntry, ReiAnixRoutes.COLLECTOR) { collector() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.HOME) { home() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.LIBRARY) { library() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.MY_LIST) { myList() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.COLLECTIONS) { collections() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.ORGANIZE) { organize() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.SEARCH) { search() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.SETTINGS) { settings() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.PROFILE) { profile() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.STORAGE) { storage() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.RECOVERY) { recovery() }
+            instantDestination(activeEntry, handoff, ReiAnixRoutes.COLLECTOR) { collector() }
             instantDestination(
                 activeEntry = activeEntry,
+                handoff = handoff,
                 route = ReiAnixRoutes.TIMELINE,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_SECTION) {
@@ -500,6 +540,7 @@ fun ReiAnixNavigationHost(
 
             instantDestination(
                 activeEntry = activeEntry,
+                handoff = handoff,
                 route = ReiAnixRoutes.DETAILS,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_ANIME_ID) {
@@ -526,6 +567,7 @@ fun ReiAnixNavigationHost(
 
             instantDestination(
                 activeEntry = activeEntry,
+                handoff = handoff,
                 route = ReiAnixRoutes.ANILIST_DETAILS,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_ANILIST_ID) {
@@ -552,6 +594,7 @@ fun ReiAnixNavigationHost(
 
             instantDestination(
                 activeEntry = activeEntry,
+                handoff = handoff,
                 route = ReiAnixRoutes.PLAYER,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_EPISODE_ID) {

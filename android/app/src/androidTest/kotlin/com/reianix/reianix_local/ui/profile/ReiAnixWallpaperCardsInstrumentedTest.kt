@@ -29,6 +29,7 @@ import org.junit.Assert.assertEquals
 import androidx.compose.ui.unit.dp
 import com.reianix.reianix_local.ui.ReiAnixAnimeCard
 import com.reianix.reianix_local.ui.navigation.ReiAnixCurrentDestination
+import com.reianix.reianix_local.ui.navigation.ReiAnixDestinationHandoff
 import com.reianix.reianix_local.ui.ReiAnixEpisodeCard
 import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixLocalMediaUiModel
@@ -45,16 +46,20 @@ class ReiAnixWallpaperCardsInstrumentedTest {
     @Test
     fun outgoingTransparentDestinationCannotDrawOverActiveEntry() {
         val active = mutableStateOf("profile")
+        val homeReady = mutableStateOf(false)
+        val handoff = ReiAnixDestinationHandoff()
         val wallpaper = Color(0xFF244A66)
         composeRule.setContent {
             ReiAnixComposeTheme(themeMode = "dark") {
                 Box(Modifier.fillMaxSize().background(wallpaper).testTag("navigation-frame")) {
-                    ReiAnixCurrentDestination("home", { active.value }) {
-                        Box(Modifier.fillMaxSize().background(Color.Green))
+                    if (homeReady.value) {
+                        ReiAnixCurrentDestination("home", { active.value }, handoff) {
+                            Box(Modifier.fillMaxSize().background(Color.Green))
+                        }
                     }
                     // Deliberately keep Profile composed above Home, exactly
                     // as a retained outgoing navigation entry can be.
-                    ReiAnixCurrentDestination("profile", { active.value }) {
+                    ReiAnixCurrentDestination("profile", { active.value }, handoff) {
                         Box(Modifier.fillMaxSize().background(Color.Magenta))
                     }
                 }
@@ -67,8 +72,19 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         assertTrue(centerColor().red > .9f && centerColor().blue > .9f)
         composeRule.runOnIdle { active.value = "home" }
         composeRule.waitForIdle()
+        val waiting = centerColor()
+        assertTrue("Keep outgoing content visible until the new entry is placed",
+            waiting.red > .9f && waiting.blue > .9f)
+        composeRule.runOnIdle { homeReady.value = true }
+        composeRule.waitForIdle()
         val current = centerColor()
         assertTrue("The retained profile must no longer be drawn", current.green > .9f && current.red < .1f && current.blue < .1f)
+        // Both entries are retained now. Switching back must also update placement.
+        composeRule.runOnIdle { active.value = "profile" }
+        composeRule.waitForIdle()
+        val returned = centerColor()
+        assertTrue("Back must restore the previous entry without overlap",
+            returned.red > .9f && returned.blue > .9f)
     }
 
     @Test
