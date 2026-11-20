@@ -1820,7 +1820,8 @@ internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>):
         if (usefulRepairTitle(title)) target.add(title)
     }
     fun addFile(raw: String) {
-        val name = decodedRepairPath(raw).substringAfterLast('/').substringAfterLast(':')
+        val name = decodedRepairPath(raw).substringAfterLast('/')
+            .replace(Regex("(?i)^(?:primary|home|[0-9a-f]{4}-[0-9a-f]{4}):"), "")
         if (name.isBlank() || !MediaFilenameParser.supportsExtension("." + name.substringAfterLast('.', "").lowercase(Locale.ROOT))) return
         val parsed = MediaFilenameParser.parseVideoPath(name, allowStandaloneMovie = true)
         addTitle(parsed.animeTitle, files)
@@ -1829,7 +1830,9 @@ internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>):
         if (raw.isNullOrBlank()) return
         val path = decodedRepairPath(raw).trimEnd('/')
         // Never use provider/authority, URI document IDs, or arbitrary numeric IDs.
-        val segments = path.substringAfterLast(':').split('/').filter(String::isNotBlank)
+        val normalized = path.substringAfterLast("/document/", path)
+            .replace(Regex("(?i)^(?:primary|home|[0-9a-f]{4}-[0-9a-f]{4}):"), "")
+        val segments = normalized.split('/').filter(String::isNotBlank)
         val parents = if (containsFile) segments.dropLast(1) else segments
         parents.asReversed().take(3).forEach { folder ->
             if (!folder.contains(':') && !folder.contains('%') && !folder.contains('?') &&
@@ -1986,6 +1989,9 @@ internal fun rankExplicitAniListRepair(
                 val minLength = minOf(title.compact.length, other.compact.length)
                 val maxLength = maxOf(title.compact.length, other.compact.length)
                 if (minLength < 4 || minLength.toDouble() / maxLength < 0.45) continue
+                // Avoid quadratic edit work on obviously unrelated titles. A
+                // no-word-overlap typo must be close in length to reach 0.82.
+                if (overlap < 0.45 && (minLength < 5 || minLength.toDouble() / maxLength < 0.82)) continue
                 val spelling = repairEditSimilarity(title.compact, other.compact)
                 val close = minLength >= 5 && spelling >= 0.82
                 // A single shared generic word or unrelated metadata is never sufficient.
