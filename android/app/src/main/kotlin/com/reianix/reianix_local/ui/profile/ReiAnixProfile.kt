@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -109,16 +110,64 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
     }
 }
 
+/** Camera badge is centered on the circular avatar's lower-right edge.
+ * A single accessible click target covers both the photo and the badge. */
+@Composable
+internal fun EditableProfileAvatar(
+    profile: ReiAnixProfile,
+    store: ReiAnixProfileStore,
+    size: Dp = 112.dp,
+    enabled: Boolean = true,
+    onSelectPhoto: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(size)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onSelectPhoto)
+            .semantics { contentDescription = "Alterar foto de perfil" },
+        contentAlignment = Alignment.Center,
+    ) {
+        ProfileAvatar(profile, store, size)
+        val badgeSize = 24.dp
+        // At 45 degrees, the circular boundary is r/sqrt(2) from the center.
+        val inset = size * 0.1464466f - badgeSize / 2
+        Box(
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .offset(x = -inset, y = -inset)
+                .size(badgeSize)
+                .background(Color(0xFF2675EF), CircleShape)
+                .border(1.5.dp, Color.Black, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.PhotoCamera,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+    }
+}
+
 /** The avatar is centered exactly on the lower edge of the optional banner. */
 @Composable
-private fun ProfileBannerHeader(profile: ReiAnixProfile, store: ReiAnixProfileStore, onEditPhoto: () -> Unit) {
+private fun ProfileBannerHeader(
+    profile: ReiAnixProfile,
+    store: ReiAnixProfileStore,
+    showCamera: Boolean = false,
+    enabled: Boolean = true,
+    onEditPhoto: () -> Unit,
+) {
     val context = LocalContext.current
     val bannerStore = remember(context) { ReiAnixWallpaperStore.banner(context) }
     val banner by bannerStore.state.collectAsStateWithLifecycle()
     val imageLoad = rememberWallpaperImage(bannerStore, banner)
     val image = imageLoad.image
     if (image == null && !imageLoad.loading) {
-        ProfileAvatar(profile, store, 112.dp)
+        if (showCamera) {
+            EditableProfileAvatar(profile, store, enabled = enabled, onSelectPhoto = onEditPhoto)
+        } else {
+            ProfileAvatar(profile, store, 112.dp)
+        }
     } else {
         Box(Modifier.fillMaxWidth().padding(bottom = 58.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(3f).clip(RoundedCornerShape(16.dp))
@@ -126,9 +175,15 @@ private fun ProfileBannerHeader(profile: ReiAnixProfile, store: ReiAnixProfileSt
                 image?.let { ReiAnixWallpaperLayer(it, banner, Modifier.matchParentSize(), editing = true) }
             }
             Box(Modifier.align(Alignment.BottomCenter).offset(y = 58.dp).size(116.dp)
-                .clip(CircleShape).background(Color(0xFF101010)).clickable(onClick = onEditPhoto),
+                .background(Color(0xFF101010), CircleShape)
+                .then(if (showCamera) Modifier else Modifier.clip(CircleShape).clickable(onClick = onEditPhoto)),
                 contentAlignment = Alignment.Center) {
-                ProfileAvatar(profile, store, 108.dp)
+                if (showCamera) {
+                    EditableProfileAvatar(profile, store, size = 108.dp,
+                        enabled = enabled, onSelectPhoto = onEditPhoto)
+                } else {
+                    ProfileAvatar(profile, store, 108.dp)
+                }
             }
         }
     }
@@ -562,7 +617,7 @@ internal fun ProfileCustomization(
         return
     }
     val title = when (page) {
-        "photo" -> "Foto e avatares"
+        "photo" -> "Avatares personalizados"
         "frame" -> "Moldura"
         "featured" -> "Anime em destaque"
         else -> "Editar perfil"
@@ -592,11 +647,10 @@ internal fun ProfileCustomization(
                 when (page) {
                     "photo" -> {
                         ProfileAvatar(profile, store, 112.dp)
-                        OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !busy) { Text("Escolher foto da galeria") }
                         if (profile.photo != null) TextButton(enabled = !busy, onClick = {
                             saveChange { it.copy(photo = null) }
                         }) { Text("Remover foto") }
-                        Text("Avatares personalizados", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                        Text("Escolha um avatar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
                         presets.chunked(4).forEach { group ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                 group.forEach { p ->
@@ -629,7 +683,13 @@ internal fun ProfileCustomization(
                         }
                     }
                     else -> {
-                        ProfileBannerHeader(profile, store, onEditPhoto = { leaveMenu { page = "photo" } })
+                        ProfileBannerHeader(
+                            profile = profile,
+                            store = store,
+                            showCamera = true,
+                            enabled = !busy,
+                            onEditPhoto = { leaveMenu { picker.launch("image/*") } },
+                        )
                         Text("Prévia do perfil", style = MaterialTheme.typography.labelLarge)
                         OutlinedTextField(
                             value = name,
@@ -649,8 +709,8 @@ internal fun ProfileCustomization(
                         )
                         HorizontalDivider(color = Color(0xFF292929))
                         Spacer(Modifier.height(4.dp))
-                        CustomizationCategory(Icons.Outlined.Person, "Foto e avatares",
-                            "Foto da galeria e avatares personalizados", !busy) { leaveMenu { page = "photo" } }
+                        CustomizationCategory(Icons.Outlined.Person, "Avatares personalizados",
+                            "Escolha um avatar para seu perfil", !busy) { leaveMenu { page = "photo" } }
                         CustomizationCategory(Icons.Outlined.CropSquare, "Moldura",
                             "Personalize o contorno da foto", !busy) { leaveMenu { page = "frame" } }
                         CustomizationCategory(Icons.Outlined.Image, "Banner do perfil",
