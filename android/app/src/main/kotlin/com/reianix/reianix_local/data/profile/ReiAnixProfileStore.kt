@@ -71,8 +71,13 @@ class ReiAnixProfileStore private constructor(context: Context) {
         }
     }
 
-    suspend fun save(profile: ReiAnixProfile) = withContext(Dispatchers.IO) {
+    suspend fun save(profile: ReiAnixProfile) = update { profile }
+
+    /** Transform the latest profile under the same lock as persistence, so
+     * autosaving identity cannot overwrite an independently changed field. */
+    suspend fun update(change: (ReiAnixProfile) -> ReiAnixProfile) = withContext(Dispatchers.IO) {
         mutex.withLock {
+            val profile = change(current.value)
             val clean = profile.copy(name = profile.name.trim().take(40), bio = profile.bio.trim().take(160))
             require(clean.photo == null || image(clean.photo)?.isFile == true) { "Foto indisponível." }
             val old = current.value

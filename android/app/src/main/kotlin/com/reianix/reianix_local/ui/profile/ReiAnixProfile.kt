@@ -58,6 +58,9 @@ import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.File
@@ -239,11 +242,8 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
     }
 
     when (section) {
-        "edit" -> {
-            ProfileEditor(profile, store, goBack)
-            return
-        }
-        "customize" -> {
+        // "customize" remains a compatibility alias for restored navigation state.
+        "edit", "customize" -> {
             ProfileCustomization(store, records.filter { it.favorite == true }, goBack)
             return
         }
@@ -315,7 +315,6 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                     ProfileRow(Icons.Outlined.BookmarkBorder, "Listas de acompanhamento") { section = "lists" }
                     ProfileRow(Icons.Outlined.EmojiEvents, "Conquistas") { navController.navigate(ReiAnixRoutes.COLLECTOR) { launchSingleTop = true } }
                     ProfileRow(Icons.Outlined.History, "Histórico") { section = "history" }
-                    ProfileRow(Icons.Outlined.Palette, "Personalização do perfil") { section = "customize" }
                     ProfileRow(Icons.Outlined.Settings, "Configurações gerais") { navController.navigate(ReiAnixRoutes.SETTINGS_GENERAL) { launchSingleTop = true } }
                 }
             }
@@ -429,90 +428,8 @@ private fun AnimeProfileRow(anime: ReiAnixAnimeRecord, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun ProfileEditor(
-    initial: ReiAnixProfile, store: ReiAnixProfileStore, onBack: () -> Unit,
-) {
-    var name by rememberSaveable { mutableStateOf(initial.name) }
-    var bio by rememberSaveable { mutableStateOf(initial.bio) }
-    var avatar by rememberSaveable { mutableStateOf(initial.avatar) }
-    var photo by rememberSaveable { mutableStateOf(initial.photo) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-    val draft = initial.copy(name = name, bio = bio, avatar = avatar, photo = photo)
-    fun discardAndBack() {
-        if (busy) return
-        scope.launch {
-            store.discard(photo)
-            onBack()
-        }
-    }
-    BackHandler { discardAndBack() }
-    fun importPhoto(uri: Uri?) {
-        if (uri == null || busy) return
-        busy = true
-        error = null
-        scope.launch {
-            try {
-                val value = store.importPhoto(uri)
-                store.discard(photo)
-                photo = value
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { error = "Não foi possível importar a imagem." }
-            finally { busy = false }
-        }
-    }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { importPhoto(it) }
-    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).imePadding().navigationBarsPadding()) {
-        ReiAnixTopBar(title = "Editar perfil",
-            navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { discardAndBack() })
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ProfileAvatar(draft, store, 104.dp)
-            OutlinedButton(onClick = { photoPicker.launch("image/*") }, enabled = !busy) { Text("Escolher foto da galeria") }
-            if (photo != null) TextButton(onClick = {
-                val old = photo; photo = null; scope.launch { store.discard(old) }
-            }, enabled = !busy) { Text("Remover foto") }
-            run {
-                OutlinedTextField(name, { name = it.take(40) }, label = { Text("Nome do usuário") },
-                    singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(bio, { bio = it.take(160) }, label = { Text("Biografia") },
-                    maxLines = 4, enabled = !busy, modifier = Modifier.fillMaxWidth())
-            }
-            Text("Avatares personalizados", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-            presets.chunked(4).forEach { group ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    group.forEach { p ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(enabled = !busy) {
-                            avatar = p.id
-                            val old = photo; photo = null; scope.launch { store.discard(old) }
-                        }.padding(4.dp)) {
-                            ProfileAvatar(draft.copy(avatar = p.id, photo = null,
-                                frame = if (avatar == p.id && photo == null) "accent" else "none"), store, 48.dp)
-                            Text(p.label, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        }
-        Button(onClick = {
-            busy = true
-            scope.launch {
-                try { store.save(draft); onBack() }
-                catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { error = "Não foi possível salvar o perfil." }
-                finally { busy = false }
-            }
-        }, enabled = !busy, modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 50.dp)) {
-            if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Salvar perfil")
-        }
-    }
-}
-
-/** Independent subpages keep customization lightweight. Profile choices save
- * immediately; the image editors retain their explicit crop/preview confirmation. */
+/** Unified profile editor. Identity and profile choices save automatically;
+ * image editors retain their explicit crop/preview confirmation. */
 @Composable
 internal fun ProfileCustomization(
     store: ReiAnixProfileStore,
@@ -524,10 +441,56 @@ internal fun ProfileCustomization(
     var page by rememberSaveable { mutableStateOf("menu") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Keep the raw text while typing (the store trims surrounding whitespace).
+    // The job snapshots only identity fields, never stale photo/frame/banner values.
+    var name by rememberSaveable { mutableStateOf(profile.name) }
+    var bio by rememberSaveable { mutableStateOf(profile.bio) }
+    var textSaveJob by remember { mutableStateOf<Job?>(null) }
+
+    suspend fun persistIdentity(newName: String, newBio: String) {
+        store.update { it.copy(name = newName, bio = newBio) }
+    }
+
+    fun scheduleTextSave() {
+        val newName = name
+        val newBio = bio
+        val previous = textSaveJob
+        previous?.cancel()
+        error = null
+        textSaveJob = scope.launch {
+            try {
+                previous?.join()
+                delay(200)
+                persistIdentity(newName, newBio)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { error = "Não foi possível salvar o perfil automaticamente." }
+        }
+    }
+
+    // Flush the latest text before navigating so a rapid Back or menu tap
+    // cannot discard the last edit or race with a customization write.
+    fun leaveMenu(next: () -> Unit) {
+        if (busy) return
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                textSaveJob?.cancelAndJoin()
+                val current = store.state.value
+                if (name.trim() != current.name || bio.trim() != current.bio) {
+                    persistIdentity(name, bio)
+                }
+                next()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { error = "Não foi possível salvar o perfil. Tente novamente." }
+            finally { busy = false }
+        }
+    }
+
     fun goBack() {
         if (busy) return
         error = null
-        if (page == "menu") onBack() else page = "menu"
+        if (page == "menu") leaveMenu(onBack) else page = "menu"
     }
     fun saveChange(change: (ReiAnixProfile) -> ReiAnixProfile) {
         if (busy) return
@@ -535,7 +498,7 @@ internal fun ProfileCustomization(
         error = null
         scope.launch {
             try {
-                store.save(change(store.state.value))
+                store.update(change)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { error = "Não foi possível salvar a personalização." }
             finally { busy = false }
@@ -549,7 +512,7 @@ internal fun ProfileCustomization(
                 var imported: String? = null
                 try {
                     imported = store.importPhoto(uri)
-                    store.save(store.state.value.copy(photo = imported))
+                    store.update { it.copy(photo = imported) }
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { error = "Não foi possível salvar a foto." }
                 finally {
@@ -570,9 +533,9 @@ internal fun ProfileCustomization(
         "photo" -> "Foto e avatares"
         "frame" -> "Moldura"
         "featured" -> "Anime em destaque"
-        else -> "Personalização do perfil"
+        else -> "Editar perfil"
     }
-    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).imePadding().navigationBarsPadding()) {
         ReiAnixTopBar(title = title, navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { goBack() })
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (page == "featured") {
@@ -634,19 +597,36 @@ internal fun ProfileCustomization(
                         }
                     }
                     else -> {
-                        ProfileAvatar(profile, store, 88.dp)
+                        ProfileBannerHeader(profile, store, onEditPhoto = { leaveMenu { page = "photo" } })
                         Text("Prévia do perfil", style = MaterialTheme.typography.labelLarge)
-                        Spacer(Modifier.height(6.dp))
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it.take(40); scheduleTextSave() },
+                            label = { Text("Nome do usuário") },
+                            singleLine = true,
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = bio,
+                            onValueChange = { bio = it.take(160); scheduleTextSave() },
+                            label = { Text("Biografia") },
+                            maxLines = 4,
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        HorizontalDivider(color = Color(0xFF292929))
+                        Spacer(Modifier.height(4.dp))
                         CustomizationCategory(Icons.Outlined.Person, "Foto e avatares",
-                            "Foto da galeria e avatares personalizados", !busy) { page = "photo" }
+                            "Foto da galeria e avatares personalizados", !busy) { leaveMenu { page = "photo" } }
                         CustomizationCategory(Icons.Outlined.CropSquare, "Moldura",
-                            "Personalize o contorno da foto", !busy) { page = "frame" }
+                            "Personalize o contorno da foto", !busy) { leaveMenu { page = "frame" } }
                         CustomizationCategory(Icons.Outlined.Image, "Banner do perfil",
-                            "Escolha e personalize o banner", !busy) { page = "banner" }
+                            "Escolha e personalize o banner", !busy) { leaveMenu { page = "banner" } }
                         CustomizationCategory(Icons.Outlined.Wallpaper, "Papel de parede",
-                            "Personalize o fundo do ReiAnix", !busy) { page = "wallpaper" }
+                            "Personalize o fundo do ReiAnix", !busy) { leaveMenu { page = "wallpaper" } }
                         CustomizationCategory(Icons.Outlined.StarBorder, "Anime em destaque",
-                            "Escolha seu anime favorito", !busy) { page = "featured" }
+                            "Escolha seu anime favorito", !busy) { leaveMenu { page = "featured" } }
                     }
                 }
             }
