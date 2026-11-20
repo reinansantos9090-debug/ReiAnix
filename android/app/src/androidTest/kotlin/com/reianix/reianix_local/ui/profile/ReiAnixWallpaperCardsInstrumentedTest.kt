@@ -16,6 +16,9 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import com.reianix.reianix_local.ui.collections.TrackingAnime
+import com.reianix.reianix_local.ui.collections.TrackingCollectionsContent
+import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
@@ -64,6 +67,41 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         composeRule.waitForIdle()
         val current = centerColor()
         assertTrue("The retained profile must no longer be drawn", current.green > .9f && current.red < .1f && current.blue < .1f)
+    }
+
+    @Test
+    fun statisticsShowsRealMetricsAndProgress() {
+        composeRule.setContent {
+            ReiAnixComposeTheme(themeMode = "dark") {
+                ProfileStatisticsContent(ProfileStats(57, 602, 100, 600.0, 1, 3, emptyList(), 60), false)
+            }
+        }
+        composeRule.onNodeWithText("57").assertIsDisplayed()
+        composeRule.onNodeWithText("602").assertIsDisplayed()
+        composeRule.onNodeWithText("60 de 602 episódios concluídos · 9%").assertExists()
+        composeRule.onNodeWithText("Gêneros mais assistidos").assertExists()
+    }
+
+    @Test
+    fun trackingCategoriesOpenTheirOwnListWithRealProgress() {
+        var opened = 0L
+        composeRule.setContent {
+            ReiAnixComposeTheme(themeMode = "dark") {
+                TrackingCollectionsContent(
+                    listOf(TrackingAnime(42, "Anime de teste", null, null, ReiAnixWatchStatus.WATCHING, 12, 3)),
+                    false, null, {}, { opened = it }, {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("Quero assistir").assertExists()
+        composeRule.onNodeWithText("Anime de teste").assertDoesNotExist()
+        composeRule.onNodeWithText("Assistindo").performClick()
+        composeRule.onNodeWithText("12 episódios disponíveis").assertIsDisplayed()
+        composeRule.onNodeWithText("3/12 concluídos").assertIsDisplayed()
+        composeRule.onNodeWithText("Anime de teste").performClick()
+        assertEquals(42L, opened)
+        composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        composeRule.onNodeWithText("Quero assistir").assertIsDisplayed()
     }
 
     @Test
