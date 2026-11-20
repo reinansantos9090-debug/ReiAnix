@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.RadioButton
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.Star
@@ -181,6 +183,7 @@ fun ReiAnixDetailsRoute(
         }
     }
     var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
+    var showManualAssociation by rememberSaveable(canonicalId) { mutableStateOf(false) }
     // The Details status can remain READY while the asynchronous local-library
     // projection gains a media URI, corrected availability/duration, or a newly
     // published thumbnail. Include those source facts in a stable effect key so a
@@ -282,6 +285,11 @@ fun ReiAnixDetailsRoute(
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
         onSelectSource = viewModel::selectSafTree,
         onManageAniList = { aniListViewModel.repairAniListMetadata(canonicalId) },
+        onManualAniList = {
+            aniListViewModel.clearAniListMessage()
+            aniListViewModel.searchAniList("")
+            showManualAssociation = true
+        },
         aniListRepairRunning = aniListState.repairRunning,
         onOpenMarathon = { showMarathonDialog = true },
         onTogglePinned = viewModel::toggleAnimePinnedNative,
@@ -292,6 +300,15 @@ fun ReiAnixDetailsRoute(
         onIdentifyWithTraceMoe = viewModel::identifyAnimeWithTraceMoe,
         onCancelTraceMoe = viewModel::cancelTraceMoeIdentification,
     )
+    if (showManualAssociation) {
+        AniListAssociationDialog(
+            state = aniListState,
+            initialQuery = state.anime?.title.orEmpty(),
+            onSearch = aniListViewModel::searchAniList,
+            onAssociate = { remoteId -> aniListViewModel.associateAniListManually(canonicalId, remoteId) },
+            onDismiss = { showManualAssociation = false },
+        )
+    }
     if (showMarathonDialog) {
         ReiAnixMarathonDialog(
             viewModel = viewModel,
@@ -324,6 +341,7 @@ fun ReiAnixDetailsScreen(
     traceMoeState: ReiAnixTraceMoeIdentificationUiState = ReiAnixTraceMoeIdentificationUiState(),
     onIdentifyWithTraceMoe: (Long) -> Unit = {},
     onCancelTraceMoe: (Long) -> Unit = {},
+    onManualAniList: (() -> Unit)? = null,
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -351,6 +369,7 @@ fun ReiAnixDetailsScreen(
                         onOpenRecommendedAnime = onOpenRecommendedAnime,
                         onSetEpisodeWatched = onSetEpisodeWatched,
                         onManageAniList = onManageAniList,
+                        onManualAniList = onManualAniList,
                         aniListRepairRunning = aniListRepairRunning,
                         onOpenMarathon = onOpenMarathon,
                         onTogglePinned = onTogglePinned,
@@ -514,6 +533,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onOpenRecommendedAnime: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
+    onManualAniList: (() -> Unit)?,
     aniListRepairRunning: Boolean,
     onOpenMarathon: () -> Unit,
     onTogglePinned: suspend (Long) -> Boolean,
@@ -608,6 +628,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
                 onManageAniList = onManageAniList,
+                onManualAniList = onManualAniList,
                 aniListRepairRunning = aniListRepairRunning,
                 onOpenMarathon = onOpenMarathon,
                 onTogglePinned = onTogglePinned,
@@ -850,6 +871,22 @@ internal fun DetailsPinAction(
     }
 }
 
+/** Independent manual lookup; the existing automatic repair remains unchanged. */
+@Composable
+internal fun DetailsManualAniListAction(onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).testTag("details-manual-anilist"),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = "Pesquisar e associar anime ao AniList",
+            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
 /** One tap triggers the explicit repair; no intermediate menu or dialog. */
 @Composable
 internal fun DetailsAniListAction(
@@ -879,6 +916,7 @@ private fun DetailsHero(
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onManageAniList: () -> Unit,
+    onManualAniList: (() -> Unit)?,
     aniListRepairRunning: Boolean,
     onOpenMarathon: () -> Unit,
     onTogglePinned: suspend (Long) -> Boolean,
@@ -970,6 +1008,10 @@ private fun DetailsHero(
                 navigationContentDescription = "Voltar",
                 onNavigationClick = onBack,
                 actions = {
+                    if (onManualAniList != null) {
+                        DetailsManualAniListAction(onClick = onManualAniList)
+                        Spacer(Modifier.width(8.dp))
+                    }
                     DetailsPinAction(
                         pinned = anime.pinned,
                         enabled = !pinSaving,
@@ -1902,24 +1944,30 @@ private fun seasonLabel(raw: String): String = when (raw.trim().uppercase(Locale
 }
 
 @Composable
-private fun AniListAssociationDialog(
+internal fun AniListAssociationDialog(
     state: ReiAnixAniListUiState,
+    initialQuery: String,
     onSearch: (String) -> Unit,
     onAssociate: (Int) -> Unit,
-    onRefreshMetadata: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf(initialQuery) }
+    var selectedId by rememberSaveable { mutableStateOf<Int?>(null) }
+    val saving = state.isManualAssociationLoading
+    val searching = state.isSearchLoading
+    val selection = state.results.firstOrNull { it.id == selectedId }
+        ?.takeIf { state.query == query.trim() }
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Associar anime ao AniList") },
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Associar ao AniList") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = query,
-                    onValueChange = { query = it },
+                    onValueChange = { query = it; selectedId = null },
                     label = { Text("Título do anime") },
                     singleLine = true,
+                    enabled = !saving,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(
@@ -1929,38 +1977,44 @@ private fun AniListAssociationDialog(
                 ) {
                     ReiAnixCompactButton(
                         text = "Pesquisar",
-                        enabled = query.isNotBlank() && !state.isLoading,
-                        onClick = { onSearch(query) },
+                        enabled = query.isNotBlank() && !saving && !searching,
+                        onClick = { selectedId = null; onSearch(query) },
                     )
-                    if (state.isLoading) CircularProgressIndicator(modifier = Modifier.size(ReiAnixTokens.Spacing.lg))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Start,
-                ) {
-                    ReiAnixCompactButton(
-                        text = if (state.isMetadataRefreshLoading) "Atualizando metadados…" else "Atualizar metadados AniList",
-                        enabled = !state.isLoading,
-                        onClick = onRefreshMetadata,
-                    )
+                    if (searching || saving) CircularProgressIndicator(modifier = Modifier.size(20.dp))
                 }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                state.lastAssociationMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-                if (!state.isLoading && state.query.isNotBlank() && state.results.isEmpty() && state.error == null) {
-                    Text("Nenhum resultado encontrado.")
+                if (state.lastAssociationMessage == "Associação AniList salva.") {
+                    Text(state.lastAssociationMessage, color = MaterialTheme.colorScheme.primary)
                 }
+                if (!searching && state.query == query.trim() && state.query.isNotBlank() &&
+                    state.results.isEmpty() && state.error == null) Text("Nenhum resultado encontrado.")
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().height(280.dp),
-                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                    modifier = Modifier.fillMaxWidth().height(260.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(state.results, key = { it.id }) { anime ->
-                        AniListCandidateRow(anime = anime, onSelect = { onAssociate(anime.id) })
+                    if (state.query == query.trim()) {
+                        items(state.results, key = { it.id }) { anime ->
+                            AniListCandidateRow(anime, selectedId == anime.id, !saving && !searching) {
+                                selectedId = anime.id
+                            }
+                        }
                     }
+                }
+                if (selection != null) {
+                    Text("A capa e os metadados serão atualizados. Os episódios locais serão preservados.",
+                        style = MaterialTheme.typography.bodySmall)
                 }
             }
         },
         confirmButton = {
-            ReiAnixSecondaryButton(text = "Fechar", onClick = onDismiss)
+            ReiAnixPrimaryButton(
+                text = if (saving) "Associando…" else "Associar anime",
+                enabled = selection != null && !saving && !searching,
+                onClick = { selection?.let { onAssociate(it.id) } },
+            )
+        },
+        dismissButton = {
+            ReiAnixSecondaryButton(text = "Fechar", enabled = !saving, onClick = onDismiss)
         },
     )
 }
@@ -1968,22 +2022,38 @@ private fun AniListAssociationDialog(
 @Composable
 private fun AniListCandidateRow(
     anime: AniListAnime,
+    selected: Boolean,
+    enabled: Boolean,
     onSelect: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onSelect),
-        color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onSelect),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+            else reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
         shape = ReiAnixTokens.Shapes.small,
     ) {
-        Column(
-            modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+        Row(
+            modifier = Modifier.padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(anime.preferredTitle, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val facts = listOfNotNull(anime.seasonYear?.toString(), anime.format, anime.episodes?.let { "$it episódios" })
-            if (facts.isNotEmpty()) Text(facts.joinToString(" • "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("AniList ID: ${anime.id}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ReiAnixPoster(
+                localPath = null,
+                contentDescription = null,
+                modifier = Modifier.width(48.dp).aspectRatio(2f / 3f),
+                identity = "manual-anilist:" + anime.id,
+                maxDimensionPx = 192,
+                externalUrl = anime.coverLargeUrl ?: anime.coverExtraLargeUrl,
+                fallbackExternalUrl = anime.coverExtraLargeUrl,
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(anime.preferredTitle, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val facts = listOfNotNull(anime.seasonYear?.toString(), anime.format, anime.episodes?.let { "$it episódios" })
+                if (facts.isNotEmpty()) Text(facts.joinToString(" • "), style = MaterialTheme.typography.bodySmall)
+                Text("AniList ID: ${anime.id}", style = MaterialTheme.typography.labelSmall)
+            }
+            RadioButton(selected = selected, onClick = null, enabled = enabled)
         }
     }
 }
