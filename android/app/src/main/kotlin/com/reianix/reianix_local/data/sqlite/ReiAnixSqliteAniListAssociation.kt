@@ -2,6 +2,8 @@ package com.reianix.reianix_local.data.sqlite
 
 import android.content.ContentValues
 import android.database.Cursor
+import com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairArtwork
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONException
 import com.reianix.reianix_local.data.anilist.EXPLICIT_REPAIR_MIN_SCORE
@@ -24,6 +26,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         explicitRepair: Boolean = false,
         expectedAssociationId: Long? = null,
         correctManualMusic: Boolean = false,
+        preparedArtwork: ReiAnixPreparedRepairArtwork? = null,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -83,6 +86,13 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 return@transaction current
             }
 
+            if (preparedArtwork != null) {
+                require(explicitRepair && preparedArtwork.poster.url == patch.coverUrl &&
+                    preparedArtwork.banner?.url == patch.bannerUrl) { "Prepared artwork does not match metadata." }
+                require(listOfNotNull(preparedArtwork.poster, preparedArtwork.banner).all {
+                    File(it.path).isFile && File(it.path).length() == it.bytes && it.bytes > 0
+                }) { "Prepared artwork is no longer available." }
+            }
             val values = ContentValues()
             patch.title?.takeIf(String::isNotBlank)?.let { if ("title" !in protectedFields) values.put("title", it.trim()) }
             patch.romaji?.takeIf(String::isNotBlank)?.let { if ("romaji" !in protectedFields) values.put("romaji", it) }
@@ -145,6 +155,61 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                         "AND COALESCE(manual,0)=0 AND LOWER(COALESCE(source,'')) NOT IN ('local','manual')",
                     arrayOf(patch.bannerUrl, patch.animeId.toString()),
                 )
+            }
+            if (preparedArtwork != null) {
+                val entity = if (current.mediaKind.equals("movie", true)) "movie" else "anime"
+                val identityChanged = current.anilistId != anilistId
+                val now = System.currentTimeMillis() / 1000.0
+                // Publish validated artwork and metadata in one transaction.
+                for ((type, image) in listOf("poster" to preparedArtwork.poster, "backdrop" to preparedArtwork.banner)) {
+                    val poster = type == "poster"
+                    val kinds = if (poster) "('poster','cover')" else "('backdrop','banner')"
+                    if ((poster && ("cover_url" in protectedFields || "cover_cache" in protectedFields)) ||
+                        (!poster && "banner_url" in protectedFields)) continue
+                    val baseWhere = "entity_type IN ('anime','movie') AND entity_id=? AND artwork_type IN $kinds"
+                    val owner = connection.rawQuery(
+                        "SELECT 1 FROM artwork WHERE $baseWhere AND (COALESCE(manual,0)=1 OR LOWER(COALESCE(source,'')) IN ('manual','local')) LIMIT 1",
+                        arrayOf(patch.animeId.toString()),
+                    ).use { it.moveToFirst() }
+                    if (owner) {
+                        if (poster) values.remove("cover_cache")
+                        continue
+                    }
+                    if (image == null && !identityChanged) continue
+                    connection.delete("artwork", "$baseWhere AND COALESCE(manual,0)=0 AND LOWER(COALESCE(source,'')) NOT IN ('manual','local')",
+                        arrayOf(patch.animeId.toString()))
+                    if (image == null) {
+                        values.putNull("banner_url")
+                        continue
+                    }
+                    val art = ContentValues().apply {
+                        put("entity_type", entity); put("entity_id", patch.animeId.toString()); put("artwork_type", type)
+                        put("source", "cache"); put("source_ref", image.url); put("external_url", image.url)
+                        put("local_path", image.path); put("manual", 0); put("priority", 400); put("status", "ready")
+                        put("discovered_at", now); put("updated_at", now); put("last_attempt_at", now)
+                        put("failure_count", 0); put("artwork_key", image.key); put("variant", "large")
+                        put("byte_size", image.bytes); put("width", image.width); put("height", image.height)
+                        put("checksum", image.checksum); put("content_type", image.mime); put("last_access", now)
+                    }
+                    connection.insertOrThrow("artwork", null, art)
+                    if (poster) values.put("cover_cache", image.path)
+                }
+                if (identityChanged) {
+                    // Do not retain editorial fields of the rejected identity.
+                    val absent = listOf(
+                        "romaji" to patch.romaji, "english" to patch.english, "native" to patch.nativeTitle,
+                        "aliases" to patch.aliasesJson, "description" to patch.description,
+                        "description_original" to patch.descriptionOriginal, "genres" to patch.genresJson,
+                        "year" to patch.year, "season" to patch.season, "status" to patch.status,
+                        "episodes_count" to patch.episodesCount, "duration" to patch.duration,
+                        "score" to patch.score, "format" to patch.format, "studio" to patch.studio,
+                    )
+                    for ((column, value) in absent) {
+                        if ((if (column == "description_original") "description" else column) !in protectedFields && value == null) {
+                            values.putNull(column)
+                        }
+                    }
+                }
             }
             val remoteMetadataFieldsApplied = values.size() > 0
             patch.metadataFetchedAt?.let { values.put("metadata_fetched_at", it) }
