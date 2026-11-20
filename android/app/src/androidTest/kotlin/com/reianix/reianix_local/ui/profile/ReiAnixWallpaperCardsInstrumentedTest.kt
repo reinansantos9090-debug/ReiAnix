@@ -15,6 +15,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.onNodeWithText
 import com.reianix.reianix_local.ui.collections.TrackingAnime
 import com.reianix.reianix_local.ui.collections.TrackingCollectionsContent
@@ -158,7 +162,7 @@ class ReiAnixWallpaperCardsInstrumentedTest {
                     ProfileCustomization(store, emptyList(), onBack = {})
                 }
             }
-            listOf("Foto e avatares", "Moldura", "Banner do perfil", "Papel de parede", "Anime em destaque").forEach {
+            listOf("Avatares personalizados", "Moldura", "Banner do perfil", "Papel de parede", "Anime em destaque").forEach {
                 composeRule.onNodeWithText(it).assertExists()
             }
             composeRule.onNodeWithText("Editar perfil").assertIsDisplayed()
@@ -170,7 +174,12 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             composeRule.onNodeWithText("Cor do perfil").assertDoesNotExist()
             composeRule.onNodeWithText("Salvar perfil").assertDoesNotExist()
             composeRule.onNodeWithText("Salvar alterações").assertDoesNotExist()
-            composeRule.onNodeWithText("Avatares personalizados").assertDoesNotExist()
+            composeRule.onNodeWithText("Escolher foto da galeria").assertDoesNotExist()
+            composeRule.onNodeWithContentDescription("Alterar foto de perfil").assertExists()
+            composeRule.onNodeWithText("Avatares personalizados").performScrollTo().performClick()
+            composeRule.onNodeWithText("Escolha um avatar").assertExists()
+            composeRule.onNodeWithText("Escolher foto da galeria").assertDoesNotExist()
+            composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             composeRule.onNodeWithText("Moldura").performScrollTo().performClick()
             composeRule.onNodeWithText("Dourada").assertIsDisplayed().performClick()
             composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == "gold" }
@@ -183,6 +192,21 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         } finally {
             runBlocking { store.save(original) }
         }
+    }
+
+    @Test
+    fun photoAndCameraBadgeShareOneClickTarget() {
+        val store = ReiAnixProfileStore.from(composeRule.activity)
+        var opened = 0
+        composeRule.setContent {
+            ReiAnixComposeTheme(themeMode = "dark") {
+                EditableProfileAvatar(store.state.value, store, onSelectPhoto = { opened++ })
+            }
+        }
+        val avatar = composeRule.onNodeWithContentDescription("Alterar foto de perfil")
+        avatar.performTouchInput { click(center) }
+        avatar.performTouchInput { click(Offset(width * 0.8535534f, height * 0.8535534f)) }
+        composeRule.runOnIdle { assertEquals(2, opened) }
     }
 
     @Test
