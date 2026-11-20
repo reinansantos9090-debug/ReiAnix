@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import com.reianix.reianix_local.R
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import com.reianix.reianix_local.data.profile.ReiAnixProfile
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
@@ -70,16 +72,17 @@ import java.io.File
 import java.text.DateFormat
 import java.util.Date
 
-private data class AvatarPreset(val id: String, val label: String, val icon: ImageVector, val color: Color)
+private data class AvatarPreset(val id: String, val label: String, @DrawableRes val image: Int)
+
 private val presets = listOf(
-    AvatarPreset("person", "Clássico", Icons.Outlined.Person, Color(0xFF607D8B)),
-    AvatarPreset("moon", "Lua", Icons.Outlined.DarkMode, Color(0xFF4656B0)),
-    AvatarPreset("star", "Estrela", Icons.Outlined.Star, Color(0xFFAB7333)),
-    AvatarPreset("bolt", "Energia", Icons.Outlined.Bolt, Color(0xFF2478D2)),
-    AvatarPreset("heart", "Coração", Icons.Outlined.FavoriteBorder, Color(0xFFC75780)),
-    AvatarPreset("forest", "Natureza", Icons.Outlined.Park, Color(0xFF247D69)),
-    AvatarPreset("fire", "Chama", Icons.Outlined.LocalFireDepartment, Color(0xFFC05235)),
-    AvatarPreset("game", "Gamer", Icons.Outlined.SportsEsports, Color(0xFF8754BB)),
+    AvatarPreset("person", "Dragão e susto", R.drawable.profile_avatar_dragao_assustado),
+    AvatarPreset("moon", "Raposa curiosa", R.drawable.profile_avatar_raposa_curiosa),
+    AvatarPreset("star", "Surpresa", R.drawable.profile_avatar_dragao_surpresa),
+    AvatarPreset("bolt", "Abraço", R.drawable.profile_avatar_abraco_raposa),
+    AvatarPreset("heart", "Soneca", R.drawable.profile_avatar_soneca_dragao),
+    AvatarPreset("forest", "Lanche", R.drawable.profile_avatar_lanche_raposa),
+    AvatarPreset("fire", "Estilo", R.drawable.profile_avatar_dragao_estiloso),
+    AvatarPreset("game", "Festa", R.drawable.profile_avatar_festa_raposa),
 )
 private val profileColors = linkedMapOf(
     "blue" to Color(0xFF398AFF),
@@ -95,6 +98,7 @@ private fun accent(profile: ReiAnixProfile) = profileColors[profile.color] ?: pr
 private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, size: Dp, modifier: Modifier = Modifier) {
     val preset = presets.firstOrNull { it.id == profile.avatar } ?: presets.first()
     val photo = store.image(profile.photo)
+    var photoFailed by remember(photo) { mutableStateOf(false) }
     val ring = when (profile.frame) {
         "accent" -> accent(profile)
         "gold" -> Color(0xFFFFC768)
@@ -103,12 +107,16 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
     }
     Box(
         modifier.size(size).then(if (ring != Color.Transparent) Modifier.border(2.dp, ring, CircleShape).padding(3.dp) else Modifier)
-            .clip(CircleShape).background(preset.color.copy(alpha = 0.28f)),
+            .clip(CircleShape).background(MaterialTheme.colorScheme.surface),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(preset.icon, null, tint = Color.White, modifier = Modifier.size(size * 0.55f))
-        if (photo != null) AsyncImage(model = photo, contentDescription = null,
-            modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        AsyncImage(
+            model = if (photo != null && !photoFailed) photo else preset.image,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            onError = { if (photo != null) photoFailed = true },
+        )
     }
 }
 
