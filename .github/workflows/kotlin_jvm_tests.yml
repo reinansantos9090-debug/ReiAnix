@@ -133,6 +133,8 @@ jobs:
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.explicitRepairIgnoresMusicAndWrongAliasEvenWhenAlreadyAssociated' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.explicitRepairAcceptsAlternativeTitleWithoutStrongFolderNameMatch' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.explicitRepairReplacesWrongAutomaticAssociationButRejectsStaleOrManualAssociation' \
+              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.explicitRepairRecoversOriginalFileIdentityAndRejectsGenericFolder' \
+              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.explicitRepairCommitsPreparedArtworkTogetherWithMetadata' \
               --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
               --tests com.reianix.reianix_local.ReiAnixSettingsContractTest \
               --tests com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModelEpisodeSummaryTest \
