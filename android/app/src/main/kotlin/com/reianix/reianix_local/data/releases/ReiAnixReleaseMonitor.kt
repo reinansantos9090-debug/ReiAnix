@@ -170,7 +170,7 @@ class ReiAnixReleaseWorker(context: Context, params: WorkerParameters) :
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             val notification = NotificationCompat.Builder(context, ReiAnixReleaseMonitor.CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_reianix_notification)
                 .setContentTitle("Novo episódio: " + title)
                 .setContentText("Episódio " + airing.episode + " estreou. Veja as opções oficiais.")
                 .setStyle(NotificationCompat.BigTextStyle().bigText(
