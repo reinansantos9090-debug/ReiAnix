@@ -210,7 +210,7 @@ jobs:
             -PreianixBuildVersion="0.2.1" \
             :app:assembleRelease
 
-      - name: Explicitly verify release Kotlin compilation
+      - name: Verify release and instrumented-test Kotlin compilation
         shell: bash
         env:
           GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
@@ -220,7 +220,8 @@ jobs:
             -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
             -PreianixEnableR8=${{ github.event_name != 'pull_request' }} \
             -PreianixBuildVersion="0.2.1" \
-            :app:compileReleaseKotlin
+            :app:compileReleaseKotlin \
+            :app:compileDebugAndroidTestKotlin
 
       - name: Test native Android external-player chooser
         if: github.event_name == 'pull_request'
