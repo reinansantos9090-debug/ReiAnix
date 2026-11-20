@@ -69,6 +69,42 @@ jobs:
             git push origin "HEAD:refs/heads/${{ github.event.pull_request.head.ref }}"
           fi
 
+
+      - name: Import original illustrated frame images into Android resources
+        if: github.event_name == 'pull_request' && github.head_ref == 'feat/profile-frames-cat-ears-headset'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=android/app/src/main/res/drawable-nodpi
+          mkdir -p "$target"
+          fetch_png() {
+            local name="$1" url="$2"
+            local dst="$target/profile_frame_art_${name}.png"
+            if [[ ! -s "$dst" ]]; then
+              curl --fail --location --retry 2 --max-time 30 --silent --show-error "$url" --output "$dst"
+              python3 - "$dst" <<'PY_IMAGE'
+import sys, pathlib, struct
+p = pathlib.Path(sys.argv[1]); d = p.read_bytes()
+assert d[:8] == b'\\x89PNG\\r\\n\\x1a\\n', f'Not PNG: {p}'
+w,h = struct.unpack('>II', d[16:24])
+assert w >= 150 and h >= 150, f'Unexpected small image {w}x{h}'
+print(f'Imported {p.name}: {w}x{h}, {len(d)} bytes')
+PY_IMAGE
+            fi
+          }
+          fetch_png "gold" 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F6199e9a9-83c1-4e59-ba05-ea05a0c6e659/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAPTTnPwg6N9WU-4gddArvFMpiGImbT5ydRT2tpTowMwR&exp=1795233716&osig=AAAAAAAAAAAAAAAAAAAAAGvwu4FmV9-yFuZAlDRh8uIzvKtLxi6Ol0yK96HCWDMB&signer=media-rpc&token=AAIAAU0AJDYxOTllOWE5LTgzYzEtNGU1OS1iYTA1LWVhMDVhMGM2ZTY1OQAAAAABofxElyAb0Q26egceJw6M_1ertxrBq1h-EInduOLwl7VsyuYp2g&x-canva-quality=thumbnail'
+          fetch_png "neon" 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F60c17732-7e1d-420b-9f0f-b37695f7d16f/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAOD4bmPABA11gP8yaoaFIFwkkhKZ09A6k_SS9XIlKyfV&exp=1795234200&osig=AAAAAAAAAAAAAAAAAAAAAOOqM_AqXzLPY0Exz1CgTm-HmNEnaqJDwPdODV3T6kz4&signer=media-rpc&token=AAIAAU0AJDYwYzE3NzMyLTdlMWQtNDIwYi05ZjBmLWIzNzY5NWY3ZDE2ZgAAAAABofxL-cA3RO6eMHsThpMGaJmIywty0e7VyGZ7dp1-ddJ-2eUNiA&x-canva-quality=thumbnail'
+          fetch_png "galaxy" 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2Ff24c9447-ef83-4d9e-afcd-5f798e8b1445/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAJ4dT8LNvLbv_HPknnrCLE53Tj8vcljUU_EF0qdMvRLn&exp=1795234358&osig=AAAAAAAAAAAAAAAAAAAAAHJv_19iWidVHpAZ3tXzaWqqoZBjtgaOCR5XSrp3qqF0&signer=media-rpc&token=AAIAAU0AJGYyNGM5NDQ3LWVmODMtNGQ5ZS1hZmNkLTVmNzk4ZThiMTQ0NQAAAAABofxOYvDyC8sHbn73CmvWR0c6vkRRlE2HunvwwQpoyj3BPNsfUg&x-canva-quality=thumbnail'
+          fetch_png "cat_ears" 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2Fc16cbab6-4461-45f8-b0ce-fdc052049885/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAEt9jNwtyb24cG9vlLsIbnkyfIyW7EtboIbcHu1lI4Oq&exp=1795233762&osig=AAAAAAAAAAAAAAAAAAAAAHnLZ5CbFbsDhm1tKwO1ZCc4CCcXToJjbCBRdVtK5wYq&signer=media-rpc&token=AAIAAU0AJGMxNmNiYWI2LTQ0NjEtNDVmOC1iMGNlLWZkYzA1MjA0OTg4NQAAAAABofxFStCH1oY-w6K7icka6NviK0WAYXe8vzz1HLJS4ApP7QyeEw&x-canva-quality=thumbnail'
+          fetch_png "headset" 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F498129e0-7021-4be1-936e-b1dd09f67d6a/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAEceDIgziaWtWOTpW07OVj1izpxVI1bhZAZkxuD6eLvS&exp=1795234262&osig=AAAAAAAAAAAAAAAAAAAAAO_Smct_4ltJ09vNZR7md6NPjSkB7t_IOQUfJQ17Tl7G&signer=media-rpc&token=AAIAAU0AJDQ5ODEyOWUwLTcwMjEtNGJlMS05MzZlLWIxZGQwOWY2N2Q2YQAAAAABofxM6_Ct9CMLjld6LeXdNdg_ZFwHq7lH86ntTq0n1UMEty161Q&x-canva-quality=thumbnail'
+          if [[ -n "$(git status --porcelain -- "$target/profile_frame_art_"*.png)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "$target"/profile_frame_art_*.png
+            git commit -m "Add five professionally illustrated offline profile frame assets"
+            git push origin "HEAD:${{ github.head_ref }}"
+          fi
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
