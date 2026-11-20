@@ -560,35 +560,65 @@ internal fun ProfileCustomization(
         }
     }
     var photoDraft by rememberSaveable { mutableStateOf<String?>(null) }
+    // Keep the editor on screen behind the system picker, even while importing.
+    // Persist only the external picker state, not an interrupted import job.
+    var photoPickerOpen by rememberSaveable { mutableStateOf(false) }
+    var launchPhotoPicker by remember { mutableStateOf(false) }
+    var photoPreparing by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null && !busy && photoDraft == null) {
-            busy = true
-            error = null
-            scope.launch {
-                try {
-                    photoDraft = store.importPhotoDraft(uri)
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { error = "Não foi possível abrir a foto." }
-                finally { busy = false }
+        if (photoPickerOpen) {
+            photoPickerOpen = false
+            if (uri != null && photoDraft == null) {
+                photoPreparing = true
+                busy = true
+                error = null
+                scope.launch {
+                    try {
+                        photoDraft = store.importPhotoDraft(uri)
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { error = "Não foi possível abrir a foto." }
+                    finally {
+                        photoPreparing = false
+                        busy = false
+                    }
+                }
             }
         }
     }
-    BackHandler(enabled = photoDraft == null && page != "banner" && page != "wallpaper") { goBack() }
+    LaunchedEffect(launchPhotoPicker) {
+        if (launchPhotoPicker) {
+            // Commit the editor's layout and give it a frame to draw before
+            // covering this activity with the external gallery.
+            withFrameNanos { }
+            withFrameNanos { }
+            launchPhotoPicker = false
+            try {
+                picker.launch("image/*")
+            } catch (_: Exception) {
+                photoPickerOpen = false
+                error = "Não foi possível abrir a galeria."
+            }
+        }
+    }
     val draft = photoDraft
-    if (draft != null) {
+    val waitingForPhoto = photoPickerOpen || photoPreparing
+    val showPhotoEditor = waitingForPhoto || draft != null
+    BackHandler(enabled = !showPhotoEditor && page != "banner" && page != "wallpaper") { goBack() }
+    if (showPhotoEditor) {
         ReiAnixAvatarEditor(
-            draft = store.photoDraftFile(draft),
-            busy = busy,
+            draft = draft?.let { store.photoDraftFile(it) },
+            busy = busy || waitingForPhoto,
             error = error,
+            loadingSelection = waitingForPhoto,
             onCancel = {
                 if (!busy) {
                     photoDraft = null
                     error = null
-                    scope.launch { store.discardPhotoDraft(draft) }
+                    if (draft != null) scope.launch { store.discardPhotoDraft(draft) }
                 }
             },
             onSave = { crop ->
-                if (!busy) {
+                if (!busy && !waitingForPhoto && draft != null) {
                     busy = true
                     error = null
                     scope.launch {
@@ -688,7 +718,12 @@ internal fun ProfileCustomization(
                             store = store,
                             showCamera = true,
                             enabled = !busy,
-                            onEditPhoto = { leaveMenu { picker.launch("image/*") } },
+                            onEditPhoto = {
+                                leaveMenu {
+                                    photoPickerOpen = true
+                                    launchPhotoPicker = true
+                                }
+                            },
                         )
                         Text("Prévia do perfil", style = MaterialTheme.typography.labelLarge)
                         OutlinedTextField(

@@ -21,6 +21,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -50,11 +52,18 @@ internal fun ReiAnixAvatarEditor(
     error: String?,
     onCancel: () -> Unit,
     onSave: (AvatarCropRect) -> Unit,
+    loadingSelection: Boolean = false,
 ) {
-    val loaded by produceState(AvatarEditorImage(), draft) {
-        value = AvatarEditorImage(withContext(Dispatchers.IO) {
-            draft?.let { BitmapFactory.decodeFile(it.absolutePath) }
-        }, false)
+    // Keep the same screen and toolbar while the selection is copied.
+    // Key only the bitmap loader: a new file never displays the old empty result.
+    val loaded = key(draft) {
+        val result by produceState(AvatarEditorImage()) {
+            val decoded = withContext(Dispatchers.IO) {
+                draft?.let { file -> runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull() }
+            }
+            value = AvatarEditorImage(decoded, false)
+        }
+        result
     }
     var cx by rememberSaveable(draft?.name) { mutableStateOf(.5f) }
     var cy by rememberSaveable(draft?.name) { mutableStateOf(.5f) }
@@ -65,17 +74,34 @@ internal fun ReiAnixAvatarEditor(
         Modifier.fillMaxSize().background(Color.Black).statusBarsPadding().navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onCancel, enabled = !busy) { Text("Cancelar", color = Color.White) }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { cx = .5f; cy = .5f; fraction = 1f },
-                enabled = !busy && bitmap != null) { Text("Reverter", color = Color.White) }
-            TextButton(onClick = {
-                bitmap?.let { onSave(avatarCropRect(it.width, it.height, cx, cy, fraction)) }
-            }, enabled = !busy && bitmap != null) { Text("Salvar", color = Color.White) }
+        Row(
+            modifier = Modifier.align(Alignment.End)
+                .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)
+                .widthIn(max = 260.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onCancel,
+                enabled = !busy,
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("avatar-editor-cancel"),
+            ) {
+                Text("Cancelar", color = Color.White, fontSize = 18.sp)
+            }
+            TextButton(
+                onClick = {
+                    bitmap?.let { onSave(avatarCropRect(it.width, it.height, cx, cy, fraction)) }
+                },
+                enabled = !busy && bitmap != null,
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("avatar-editor-save"),
+            ) {
+                Text("Salvar", color = Color.White, fontSize = 18.sp)
+            }
         }
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        // Reserve the same height throughout loading, editing and saving.
+        Box(Modifier.fillMaxWidth().height(4.dp)) {
+            if (busy || loadingSelection) LinearProgressIndicator(Modifier.fillMaxSize())
+        }
         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
             if (bitmap != null) {
                 val image = remember(bitmap) { bitmap.asImageBitmap() }
@@ -161,8 +187,8 @@ internal fun ReiAnixAvatarEditor(
                         drawCircle(Color.White, 4.dp.toPx(), Offset(x, y))
                     }
                 }
-            } else if (loaded.loading) {
-                CircularProgressIndicator()
+            } else if (loadingSelection || loaded.loading) {
+                CircularProgressIndicator(Modifier.testTag("avatar-editor-loading"))
             } else {
                 Text("Não foi possível abrir a foto. Volte e selecione outra imagem.", color = Color.White)
             }
