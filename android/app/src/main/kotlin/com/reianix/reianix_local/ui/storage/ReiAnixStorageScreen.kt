@@ -31,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
@@ -71,7 +70,6 @@ fun ReiAnixStorageRoute(
     viewModel: ReiAnixLibraryViewModel,
     onBack: () -> Unit,
     onRemoveSaf: (String) -> Unit,
-    onSelectDefaultReiAnixFolder: () -> Unit,
     onOpenBroadSettings: () -> Unit,
     onCheckAccess: () -> Unit,
     title: String = "Armazenamento",
@@ -89,7 +87,6 @@ fun ReiAnixStorageRoute(
         onBack = onBack,
         onSelectSaf = viewModel::selectSafTree,
         onRemoveSaf = onRemoveSaf,
-        onSelectDefaultReiAnixFolder = onSelectDefaultReiAnixFolder,
         onOpenBroadSettings = onOpenBroadSettings,
         onCheckAccess = onCheckAccess,
         onRefreshLibrary = {
@@ -105,7 +102,6 @@ fun ReiAnixStorageScreen(
     onBack: () -> Unit,
     onSelectSaf: () -> Unit,
     onRemoveSaf: (String) -> Unit,
-    onSelectDefaultReiAnixFolder: () -> Unit,
     onOpenBroadSettings: () -> Unit,
     onCheckAccess: () -> Unit,
     onRefreshLibrary: () -> Unit,
@@ -115,7 +111,7 @@ fun ReiAnixStorageScreen(
 ) {
     ReiAnixSettingsRoot {
         ReiAnixLibraryFoldersSection(state, nativeFolders, onSelectSaf, onRemoveSaf,
-            onRefreshNativeFolders, onSelectDefaultReiAnixFolder = onSelectDefaultReiAnixFolder, onBack = onBack)
+            onRefreshNativeFolders, onBack = onBack)
     }
 }
 
@@ -124,7 +120,6 @@ fun ReiAnixStorageScreen(
 fun ReiAnixLibraryFoldersRoute(
     viewModel: ReiAnixLibraryViewModel,
     onBack: () -> Unit = {},
-    onSelectDefaultReiAnixFolder: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val nativeFolders by viewModel.nativeFoldersState.collectAsStateWithLifecycle()
@@ -136,7 +131,6 @@ fun ReiAnixLibraryFoldersRoute(
         onSelectSaf = viewModel::selectSafTree,
         onRemoveSaf = viewModel::removeSafTree,
         onRefreshNativeFolders = viewModel::refreshNativeFolders,
-        onSelectDefaultReiAnixFolder = onSelectDefaultReiAnixFolder,
         onBack = onBack,
     )
     }
@@ -149,7 +143,6 @@ private fun ReiAnixLibraryFoldersSection(
     onSelectSaf: () -> Unit,
     onRemoveSaf: (String) -> Unit,
     onRefreshNativeFolders: () -> Unit,
-    onSelectDefaultReiAnixFolder: () -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
 ) {
@@ -174,24 +167,6 @@ private fun ReiAnixLibraryFoldersSection(
         // During loading or query failures, retain the last known configured folders.
         else -> snapshotSafSources
     }
-    fun isDefaultReiAnixFolder(source: ReiAnixStorageSourceUiModel): Boolean =
-        runCatching {
-            android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(source.reference)) ==
-                "primary:Download/ReiAnix"
-        }.getOrDefault(false)
-
-    val defaultSource = configuredSafSources.firstOrNull(::isDefaultReiAnixFolder)
-    val localContext = LocalContext.current
-    val defaultAuthorized = defaultSource?.let { source ->
-        runCatching {
-            val treeUri = android.net.Uri.parse(source.reference)
-            localContext.contentResolver.persistedUriPermissions.any { permission ->
-                permission.isReadPermission && permission.uri == treeUri
-            }
-        }.getOrDefault(false)
-    } == true
-    val otherSafSources = configuredSafSources.filterNot(::isDefaultReiAnixFolder)
-
     // Keep the folder list stable while SQLite refreshes. A very short query should
     // not flash a full-screen loading state over folders we already know about.
     var showFolderLoading by remember { mutableStateOf(false) }
@@ -219,48 +194,6 @@ private fun ReiAnixLibraryFoldersSection(
                 item(key = "folders-header") {
                     SettingsHeader("Pastas", "", onBack)
                 }
-                // The default destination is always shown, with permission
-                // supplied by an actual, persisted SAF tree grant when present.
-                item(key = "default-download-folder") {
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 72.dp)
-                            .settingsClickable(
-                                enabled = !defaultAuthorized && !selectionBusy && !removeBusy,
-                                onClick = onSelectDefaultReiAnixFolder,
-                            )
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        Icon(
-                            Icons.Filled.Folder,
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text("ReiAnix", style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "Downloads/ReiAnix · Pasta padrão",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                if (defaultAuthorized) "Pasta autorizada"
-                                else "Toque aqui para autorizar somente esta pasta",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        if (defaultAuthorized) {
-                            Icon(
-                                Icons.Filled.CheckCircle,
-                                contentDescription = "Pasta autorizada",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
                 if (showFolderLoading) {
                     item(key = "folders-loading") {
                         ReiAnixLoadingState("Verificando armazenamento", "Consultando as pastas da biblioteca…")
@@ -271,7 +204,7 @@ private fun ReiAnixLibraryFoldersSection(
                         ReiAnixLoadingState("Seleção de pasta em andamento", "Aguardando o seletor de pastas do Android…")
                     }
                 }
-                items(otherSafSources, key = { it.reference }) { source ->
+                items(configuredSafSources, key = { it.reference }) { source ->
                     val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
                     Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,

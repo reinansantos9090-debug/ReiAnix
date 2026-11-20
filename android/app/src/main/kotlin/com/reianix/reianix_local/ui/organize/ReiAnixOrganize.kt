@@ -98,7 +98,6 @@ fun ReiAnixOrganizeRoute(
     viewModel: ReiAnixLibraryViewModel,
     onBack: () -> Unit,
     onOpenStorageAccess: () -> Unit,
-    onSelectDefaultReiAnixFolder: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
     onOpenSettings: () -> Unit,
@@ -128,7 +127,6 @@ fun ReiAnixOrganizeRoute(
         isRefreshing = isRefreshing,
         onBack = onBack,
         onOpenStorageAccess = onOpenStorageAccess,
-        onSelectDefaultReiAnixFolder = onSelectDefaultReiAnixFolder,
         onAddFolder = onAddFolder,
         onRemoveFolder = onRemoveFolder,
         onOpenSettings = onOpenSettings,
@@ -164,7 +162,6 @@ fun ReiAnixOrganizeScreen(
     isRefreshing: Boolean,
     onBack: () -> Unit,
     onOpenStorageAccess: () -> Unit,
-    onSelectDefaultReiAnixFolder: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
     onOpenSettings: () -> Unit,
@@ -319,7 +316,6 @@ fun ReiAnixOrganizeScreen(
 
             ReiAnixLibraryLoadStatus.EMPTY -> {
                 EmptyOrganizeContent(
-                    onSelectDefaultReiAnixFolder = onSelectDefaultReiAnixFolder,
                     onOpenStorageAccess = onOpenStorageAccess,
                     onAddFolder = onAddFolder,
                     onRefresh = onRefresh,
@@ -1213,7 +1209,6 @@ private fun OrganizeCollectionContent(
 
 @Composable
 private fun EmptyOrganizeContent(
-    onSelectDefaultReiAnixFolder: () -> Unit,
     onOpenStorageAccess: () -> Unit,
     onAddFolder: () -> Unit,
     onRefresh: () -> Unit,
@@ -1237,12 +1232,6 @@ private fun EmptyOrganizeContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
-            EmptyAction(
-                label = "Pasta ReiAnix",
-                onClick = onSelectDefaultReiAnixFolder,
-                icon = Icons.Filled.Info,
-                modifier = Modifier.weight(1f),
-            )
             EmptyAction(
                 label = "Adicionar pasta",
                 onClick = onAddFolder,

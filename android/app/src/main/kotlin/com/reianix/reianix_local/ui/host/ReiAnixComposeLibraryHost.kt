@@ -366,9 +366,6 @@ class ReiAnixComposeLibraryHost(
                                     // Manage folders through SAF rather than requesting all-files access.
                                     navController.navigate(ReiAnixRoutes.STORAGE)
                                 },
-                                onSelectDefaultReiAnixFolder = {
-                                    activity.requestDefaultReiAnixFolderAuthorization()
-                                },
                                 onAddFolder = libraryViewModel::selectSafTree,
                                 onRemoveFolder = libraryViewModel::removeSafTree,
                                 onOpenSettings = {
@@ -421,9 +418,6 @@ class ReiAnixComposeLibraryHost(
                                     com.reianix.reianix_local.ui.storage.ReiAnixLibraryFoldersRoute(
                                         libraryViewModel,
                                         onBack = onFoldersBack,
-                                        onSelectDefaultReiAnixFolder = {
-                                            activity.requestDefaultReiAnixFolderAuthorization()
-                                        },
                                     )
                                 },
                             )
@@ -463,9 +457,6 @@ class ReiAnixComposeLibraryHost(
                                     com.reianix.reianix_local.ui.storage.ReiAnixLibraryFoldersRoute(
                                         libraryViewModel,
                                         onBack = onFoldersBack,
-                                        onSelectDefaultReiAnixFolder = {
-                                            activity.requestDefaultReiAnixFolderAuthorization()
-                                        },
                                     )
                                 },
                             )
@@ -486,9 +477,6 @@ class ReiAnixComposeLibraryHost(
                                     }
                                 },
                                 onRemoveSaf = libraryViewModel::removeSafTree,
-                                onSelectDefaultReiAnixFolder = {
-                                    activity.requestDefaultReiAnixFolderAuthorization()
-                                },
                                 onOpenBroadSettings = libraryViewModel::selectSafTree,
                                 onCheckAccess = {
                                     activity.requestNativeStorageAction("check_storage_access")
@@ -506,11 +494,7 @@ class ReiAnixComposeLibraryHost(
                             state = nativeOnboarding.phase,
                             error = nativeOnboarding.error,
                             selectedFolderPath = welcomeFolderPaths.selectedFolder,
-                            reiAnixFolderPath = welcomeFolderPaths.reiAnixFolder,
                             onStart = activity::completeReiAnixWelcome,
-                            onSelectReiAnixFolder = {
-                                activity.requestDefaultReiAnixFolderAuthorization()
-                            },
                             onSelectFolder = {
                                 activity.requestNativeStorageAction("select_tree")
                             },
