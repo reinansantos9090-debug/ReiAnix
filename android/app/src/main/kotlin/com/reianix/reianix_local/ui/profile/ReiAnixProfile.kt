@@ -150,6 +150,7 @@ internal data class ProfileStats(
     val favoriteCount: Int,
     val startedAnimeCount: Int,
     val genres: List<Pair<String, Int>>,
+    val availableCompletedEpisodes: Int = completedEpisodes,
 )
 internal fun profileStatistics(animes: List<ReiAnixAnimeRecord>, rows: List<ReiAnixCollectorEpisodeRow>): ProfileStats {
     val episodes = rows.distinctBy { it.id }
@@ -172,7 +173,7 @@ internal fun profileStatistics(animes: List<ReiAnixAnimeRecord>, rows: List<ReiA
             }.getOrDefault(emptyList())
         }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key to it.value }
     return ProfileStats(animes.size, available.size, completed.size, watched, animes.count { it.favorite == true },
-        startedIds.size, genres)
+        startedIds.size, genres, completed.count { it.missing != true })
 }
 
 private fun timeText(seconds: Double): String {
@@ -215,7 +216,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
     val goBack: () -> Unit = { if (section != "profile") section = "profile" else navController.popBackStack() }
     BackHandler(enabled = section != "profile" && section !in setOf("edit", "customize")) { goBack() }
 
-    LaunchedEffect(library, retry) {
+    LaunchedEffect(library, retry, section == "history" || section == "favorites") {
         loading = true
         error = null
         try {
@@ -238,8 +239,12 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
     }
 
     when (section) {
-        "edit", "customize" -> {
-            ProfileEditor(profile, store, records.filter { it.favorite == true }, section == "customize", goBack)
+        "edit" -> {
+            ProfileEditor(profile, store, goBack)
+            return
+        }
+        "customize" -> {
+            ProfileCustomization(store, records.filter { it.favorite == true }, goBack)
             return
         }
         "lists" -> {
@@ -248,6 +253,14 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
         }
         "scenes" -> {
             ProfileScenes(viewModel, goBack, records)
+            return
+        }
+        "favorites" -> {
+            ProfileFavorites(records, catalog.animes, episodes, loading, openAnime, goBack)
+            return
+        }
+        "history" -> {
+            ProfileHistory(episodes, catalog.animes, loading, library, playEpisode, goBack)
             return
         }
     }
@@ -306,52 +319,8 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                     ProfileRow(Icons.Outlined.Settings, "Configurações gerais") { navController.navigate(ReiAnixRoutes.SETTINGS_GENERAL) { launchSingleTop = true } }
                 }
             }
-            "stats" -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                stats?.let { st ->
-                    ProfileMetric("Animes na biblioteca", st.animeCount.toString())
-                    ProfileMetric("Episódios disponíveis", st.episodeCount.toString())
-                    ProfileMetric("Episódios concluídos", st.completedEpisodes.toString())
-                    ProfileMetric("Animes iniciados", st.startedAnimeCount.toString())
-                    ProfileMetric("Favoritos", st.favoriteCount.toString())
-                    ProfileMetric("Tempo registrado", timeText(st.watchedSeconds))
-                    Text("Estimativa com base no progresso salvo e na duração dos episódios concluídos; não contabiliza reassistidas separadamente.",
-                        color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
-                    HorizontalDivider(color = Color(0xFF292929))
-                    Text("Gêneros mais assistidos", style = MaterialTheme.typography.titleMedium)
-                    val max = st.genres.firstOrNull()?.second ?: 1
-                    if (st.genres.isEmpty()) Text("Nenhum gênero registrado no histórico.")
-                    st.genres.take(12).forEach { (name, count) ->
-                        ProfileMetric(name, count.toString())
-                        LinearProgressIndicator(progress = { count.toFloat() / max }, modifier = Modifier.fillMaxWidth(), color = accent(profile))
-                    }
-                } ?: Text(if (loading) "Carregando…" else "Estatísticas indisponíveis.")
-            }
-            "favorites" -> {
-                val favorites = records.filter { it.favorite == true }
-                if (favorites.isEmpty()) Text(if (loading) "Carregando…" else "Nenhum anime favorito.", Modifier.padding(20.dp))
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(favorites, key = { it.id }) { anime -> AnimeProfileRow(anime, onClick = { openAnime(anime.id) }) }
-                }
-            }
-            "history" -> {
-                val history = episodes.filter { it.lastPlayedAt?.let { timestamp -> timestamp.isFinite() && timestamp > 0.0 } == true }.sortedByDescending { it.lastPlayedAt }
-                if (history.isEmpty()) Text(if (loading) "Carregando…" else "Nenhuma reprodução registrada.", Modifier.padding(20.dp))
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-                    items(history, key = { it.id }) { row ->
-                        val date = DateFormat.getDateTimeInstance().format(Date((row.lastPlayedAt!! * 1000).toLong()))
-                        Row(Modifier.fillMaxWidth().clickable(enabled = row.missing != true) { playEpisode(row.id, row.animeId) }.padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Icon(Icons.Outlined.History, null)
-                            Column(Modifier.weight(1f)) {
-                                Text(row.animeTitle ?: "Anime", style = MaterialTheme.typography.titleMedium)
-                                Text(date + " · " + timeText(row.progress ?: 0.0), color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
-                            }
-                            Icon(Icons.Outlined.PlayArrow, null)
-                        }
-                    }
-                }
-            }
+            "stats" -> ProfileStatisticsContent(stats, loading)
+
         }
     }
 }
@@ -364,6 +333,70 @@ private fun ProfileNumber(value: String, label: String, color: Color, modifier: 
         Text(label, color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodyMedium)
     }
 }
+@Composable
+internal fun ProfileStatisticsContent(stats: ProfileStats?, loading: Boolean) {
+    if (stats == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (loading) CircularProgressIndicator() else Text("Estatísticas indisponíveis.")
+        }
+        return
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Resumo da biblioteca", style = MaterialTheme.typography.titleMedium)
+        val metrics = listOf(
+            Triple(Icons.Outlined.VideoLibrary, stats.animeCount.toString(), "Animes na biblioteca"),
+            Triple(Icons.Outlined.Movie, stats.episodeCount.toString(), "Episódios disponíveis"),
+            Triple(Icons.Outlined.CheckCircle, stats.completedEpisodes.toString(), "Episódios concluídos"),
+            Triple(Icons.Outlined.PlayCircleOutline, stats.startedAnimeCount.toString(), "Animes iniciados"),
+            Triple(Icons.Outlined.FavoriteBorder, stats.favoriteCount.toString(), "Favoritos"),
+            Triple(Icons.Outlined.Schedule, timeText(stats.watchedSeconds), "Tempo assistido"),
+        )
+        metrics.chunked(2).forEach { pair ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                pair.forEach { (icon, value, label) ->
+                    Card(Modifier.weight(1f).fillMaxHeight(), colors = CardDefaults.cardColors(
+                        containerColor = com.reianix.reianix_local.ui.theme.reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+                        contentColor = MaterialTheme.colorScheme.onSurface)) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                            Text(value, style = MaterialTheme.typography.headlineSmall)
+                            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+        Text("Progresso da biblioteca", style = MaterialTheme.typography.titleMedium)
+        // The existing completed count may include episodes no longer present.
+        // Use the same available-library denominator, avoiding impossible percentages.
+        val availableCompleted = stats.availableCompletedEpisodes.coerceIn(0, stats.episodeCount.coerceAtLeast(0))
+        val progress = if (stats.episodeCount > 0) availableCompleted.toFloat() / stats.episodeCount else 0f
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        Text("$availableCompleted de ${stats.episodeCount} episódios concluídos · ${(progress * 100).toInt()}%",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Tempo estimado pelo progresso salvo, sem contar reassistidas separadamente.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        HorizontalDivider()
+        Text("Gêneros mais assistidos", style = MaterialTheme.typography.titleMedium)
+        if (stats.genres.isEmpty()) {
+            Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Outlined.BarChart, null, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Seu histórico de gêneros aparecerá aqui.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            }
+        } else {
+            val max = stats.genres.maxOf { it.second }.coerceAtLeast(1)
+            stats.genres.take(12).forEach { (name, count) ->
+                ProfileMetric(name, count.toString())
+                LinearProgressIndicator(progress = { (count.toFloat() / max).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
 @Composable
 private fun ProfileMetric(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -398,22 +431,16 @@ private fun AnimeProfileRow(anime: ReiAnixAnimeRecord, onClick: () -> Unit) {
 
 @Composable
 private fun ProfileEditor(
-    initial: ReiAnixProfile, store: ReiAnixProfileStore, favorites: List<ReiAnixAnimeRecord>,
-    customize: Boolean, onBack: () -> Unit,
+    initial: ReiAnixProfile, store: ReiAnixProfileStore, onBack: () -> Unit,
 ) {
     var name by rememberSaveable { mutableStateOf(initial.name) }
     var bio by rememberSaveable { mutableStateOf(initial.bio) }
     var avatar by rememberSaveable { mutableStateOf(initial.avatar) }
     var photo by rememberSaveable { mutableStateOf(initial.photo) }
-    var frame by rememberSaveable { mutableStateOf(initial.frame) }
-    var color by rememberSaveable { mutableStateOf(initial.color) }
-    var featured by rememberSaveable { mutableStateOf(initial.featuredAnimeId) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    var showWallpaper by rememberSaveable { mutableStateOf(false) }
-    var showBanner by rememberSaveable { mutableStateOf(false) }
-    val draft = ReiAnixProfile(name, bio, avatar, photo, frame, color, featured)
+    val draft = initial.copy(name = name, bio = bio, avatar = avatar, photo = photo)
     fun discardAndBack() {
         if (busy) return
         scope.launch {
@@ -421,7 +448,7 @@ private fun ProfileEditor(
             onBack()
         }
     }
-    BackHandler(enabled = !showWallpaper && !showBanner) { discardAndBack() }
+    BackHandler { discardAndBack() }
     fun importPhoto(uri: Uri?) {
         if (uri == null || busy) return
         busy = true
@@ -437,16 +464,8 @@ private fun ProfileEditor(
         }
     }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { importPhoto(it) }
-    if (showBanner) {
-        ReiAnixWallpaperEditor(onBack = { showBanner = false }, banner = true)
-        return
-    }
-    if (showWallpaper) {
-        ReiAnixWallpaperEditor(onBack = { showWallpaper = false })
-        return
-    }
     Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).imePadding().navigationBarsPadding()) {
-        ReiAnixTopBar(title = if (customize) "Personalização do perfil" else "Editar perfil",
+        ReiAnixTopBar(title = "Editar perfil",
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { discardAndBack() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -455,7 +474,7 @@ private fun ProfileEditor(
             if (photo != null) TextButton(onClick = {
                 val old = photo; photo = null; scope.launch { store.discard(old) }
             }, enabled = !busy) { Text("Remover foto") }
-            if (!customize) {
+            run {
                 OutlinedTextField(name, { name = it.take(40) }, label = { Text("Nome do usuário") },
                     singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(bio, { bio = it.take(160) }, label = { Text("Biografia") },
@@ -476,40 +495,6 @@ private fun ProfileEditor(
                     }
                 }
             }
-            if (customize) {
-                Text("Moldura", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    listOf("none" to "Sem", "accent" to "Cor", "gold" to "Ouro", "white" to "Branca").forEach { (key, label) ->
-                        FilterChip(selected = frame == key, onClick = { frame = key }, label = { Text(label) }, enabled = !busy)
-                    }
-                }
-                Text("Cor do perfil", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    profileColors.forEach { (key, value) ->
-                        Box(Modifier.size(32.dp).clip(CircleShape).background(value)
-                            .then(if (color == key) Modifier.border(3.dp, Color.Gray, CircleShape) else Modifier)
-                            .semantics { contentDescription = "Cor $key" }.clickable(enabled = !busy) { color = key })
-                    }
-                }
-                Text("Banner do perfil", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                ProfileBannerHeader(draft, store, onEditPhoto = { if (!busy) photoPicker.launch("image/*") })
-                ProfileRow(Icons.Outlined.Image, "Personalizar banner") { if (!busy) showBanner = true }
-                Text("Papel de parede do aplicativo", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                ProfileRow(Icons.Outlined.Image, "Personalizar papel de parede") {
-                    if (!busy) showWallpaper = true
-                }
-                Text("Personalize o fundo do ReiAnix.", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
-                Text("Anime favorito em destaque", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                TextButton(onClick = { featured = null }, enabled = !busy) { Text(if (featured == null) "✓ Nenhum" else "Nenhum") }
-                favorites.forEach { anime ->
-                    Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { featured = anime.id }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = featured == anime.id, onClick = null)
-                        Spacer(Modifier.width(12.dp))
-                        Text(anime.title)
-                    }
-                }
-            }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
         Button(onClick = {
@@ -526,6 +511,174 @@ private fun ProfileEditor(
     }
 }
 
+/** Independent subpages keep customization lightweight. Profile choices save
+ * immediately; the image editors retain their explicit crop/preview confirmation. */
+@Composable
+internal fun ProfileCustomization(
+    store: ReiAnixProfileStore,
+    favorites: List<ReiAnixAnimeRecord>,
+    onBack: () -> Unit,
+) {
+    val profile by store.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var page by rememberSaveable { mutableStateOf("menu") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    fun goBack() {
+        if (busy) return
+        error = null
+        if (page == "menu") onBack() else page = "menu"
+    }
+    fun saveChange(change: (ReiAnixProfile) -> ReiAnixProfile) {
+        if (busy) return
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                store.save(change(store.state.value))
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { error = "Não foi possível salvar a personalização." }
+            finally { busy = false }
+        }
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && !busy) {
+            busy = true
+            error = null
+            scope.launch {
+                var imported: String? = null
+                try {
+                    imported = store.importPhoto(uri)
+                    store.save(store.state.value.copy(photo = imported))
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { error = "Não foi possível salvar a foto." }
+                finally {
+                    try {
+                        // discard never removes the currently saved photo.
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { store.discard(imported) }
+                    } finally { busy = false }
+                }
+            }
+        }
+    }
+    BackHandler(enabled = page != "banner" && page != "wallpaper") { goBack() }
+    if (page == "banner" || page == "wallpaper") {
+        ReiAnixWallpaperEditor(onBack = { page = "menu" }, banner = page == "banner")
+        return
+    }
+    val title = when (page) {
+        "photo" -> "Foto e avatares"
+        "frame" -> "Moldura"
+        "featured" -> "Anime em destaque"
+        else -> "Personalização do perfil"
+    }
+    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
+        ReiAnixTopBar(title = title, navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { goBack() })
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (page == "featured") {
+            // Favorites can be large; do not compose all thumbnails at once.
+            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp)) {
+                item {
+                    Text("Escolha um anime favorito para destacar no perfil.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ProfileFeaturedChoice("Nenhum", profile.featuredAnimeId == null, !busy) {
+                        saveChange { it.copy(featuredAnimeId = null) }
+                    }
+                }
+                items(favorites, key = { it.id }) { anime ->
+                    ProfileFeaturedChoice(anime.title, profile.featuredAnimeId == anime.id, !busy) {
+                        saveChange { it.copy(featuredAnimeId = anime.id) }
+                    }
+                }
+            }
+        } else {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                when (page) {
+                    "photo" -> {
+                        ProfileAvatar(profile, store, 112.dp)
+                        OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !busy) { Text("Escolher foto da galeria") }
+                        if (profile.photo != null) TextButton(enabled = !busy, onClick = {
+                            saveChange { it.copy(photo = null) }
+                        }) { Text("Remover foto") }
+                        Text("Avatares personalizados", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                        presets.chunked(4).forEach { group ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                group.forEach { p ->
+                                    val selected = profile.avatar == p.id && profile.photo == null
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.weight(1f).clickable(enabled = !busy) {
+                                            saveChange { it.copy(avatar = p.id, photo = null) }
+                                        }.padding(vertical = 8.dp)) {
+                                        ProfileAvatar(profile.copy(avatar = p.id, photo = null,
+                                            frame = if (selected) "accent" else "none"), store, 48.dp)
+                                        Text(p.label, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "frame" -> {
+                        ProfileAvatar(profile, store, 112.dp)
+                        Text("Escolha a moldura da foto do perfil.", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        listOf("none" to "Sem moldura", "accent" to "Colorida", "gold" to "Dourada", "white" to "Branca").forEach { (key, label) ->
+                            Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(enabled = !busy) {
+                                saveChange { it.copy(frame = key) }
+                            }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                ProfileAvatar(profile.copy(frame = key), store, 48.dp)
+                                Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                RadioButton(selected = profile.frame == key, onClick = null)
+                            }
+                        }
+                    }
+                    else -> {
+                        ProfileAvatar(profile, store, 88.dp)
+                        Text("Prévia do perfil", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(6.dp))
+                        CustomizationCategory(Icons.Outlined.Person, "Foto e avatares",
+                            "Foto da galeria e avatares personalizados", !busy) { page = "photo" }
+                        CustomizationCategory(Icons.Outlined.CropSquare, "Moldura",
+                            "Personalize o contorno da foto", !busy) { page = "frame" }
+                        CustomizationCategory(Icons.Outlined.Image, "Banner do perfil",
+                            "Escolha e personalize o banner", !busy) { page = "banner" }
+                        CustomizationCategory(Icons.Outlined.Wallpaper, "Papel de parede",
+                            "Personalize o fundo do ReiAnix", !busy) { page = "wallpaper" }
+                        CustomizationCategory(Icons.Outlined.StarBorder, "Anime em destaque",
+                            "Escolha seu anime favorito", !busy) { page = "featured" }
+                    }
+                }
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+    }
+}
+
+@Composable
+private fun CustomizationCategory(icon: ImageVector, title: String, description: String, enabled: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(enabled = enabled, onClick = onClick)
+        .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun ProfileFeaturedChoice(title: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(enabled = enabled, onClick = onClick).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        RadioButton(selected = selected, onClick = null)
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
 @Composable
 private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit, records: List<ReiAnixAnimeRecord>) {
     val context = LocalContext.current
@@ -539,6 +692,11 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
     var request by remember { mutableStateOf<String?>(null) }
     var delete by remember { mutableStateOf<PlayerLocalMetadataStore.FavoriteScene?>(null) }
     var reload by remember { mutableStateOf(0) }
+    var search by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var edit by remember { mutableStateOf<PlayerLocalMetadataStore.FavoriteScene?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val titles = remember(records) { records.associate { it.id to it.title } }
     val scope = rememberCoroutineScope()
     LaunchedEffect(records, reload) {
         loading = true
@@ -567,31 +725,105 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
             request = null
         }
     }
+    val visible = scenes.filter { scene ->
+        val episode = matches[scene.mediaId]
+        listOf(scene.note.text, scene.note.animeTitle, scene.note.episodeLabel, episode?.let { titles[it.animeId] }.orEmpty())
+            .any { it.contains(query.trim(), ignoreCase = true) }
+    }
     Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
-        ReiAnixTopBar("Cenas favoritas", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack)
+        ReiAnixTopBar("Cenas favoritas", subtitle = "${scenes.size} cenas salvas",
+            navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack, actions = {
+                IconButton(onClick = { search = !search; if (!search) query = "" }) { Icon(Icons.Outlined.Search, "Pesquisar cenas") }
+            })
+        if (search) ProfileMediaSearch(query) { query = it }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        else if (scenes.isEmpty()) Text("Nenhuma cena salva. Salve trechos no player do ReiAnix.", Modifier.padding(20.dp))
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-            items(scenes, key = { it.note.id }) { scene ->
+        if (loading || saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (!loading && visible.isEmpty()) Text(if (scenes.isEmpty()) "Nenhuma cena salva. Salve trechos no player do ReiAnix." else "Nenhuma cena encontrada.", Modifier.padding(20.dp))
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(visible, key = { it.note.id }) { scene ->
                 val episode = matches[scene.mediaId]
-                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    IconButton(enabled = episode != null && scene.note.clipEndMs != null, onClick = {
-                        episode?.let { request = viewModel.openEpisode(it.id, it.animeId, favoriteSceneId = scene.note.id) }
-                    }) { Icon(Icons.Outlined.PlayArrow, "Reproduzir cena") }
-                    Column(Modifier.weight(1f)) {
-                        Text(scene.note.text, style = MaterialTheme.typography.titleMedium)
-                        Text(listOf(scene.note.animeTitle, scene.note.episodeLabel).filter { it.isNotBlank() }.joinToString(" · "),
-                            color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
-                        Text(sceneTime(scene.note.timestampMs) + (scene.note.clipEndMs?.let { " – " + sceneTime(it) } ?: " · Marcador"),
-                            color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
-                        if (episode == null) Text("Arquivo original indisponível", color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
+                val note = scene.note
+                var menu by remember { mutableStateOf(false) }
+                val playable = episode != null && note.clipEndMs != null && !saving
+                Card(Modifier.fillMaxWidth().clickable(enabled = playable) {
+                    episode?.let { request = viewModel.openEpisode(it.id, it.animeId, favoriteSceneId = note.id) }
+                }, colors = CardDefaults.cardColors(
+                    containerColor = com.reianix.reianix_local.ui.theme.reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+                    contentColor = MaterialTheme.colorScheme.onSurface)) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.width(116.dp).aspectRatio(16f / 9f)) {
+                            ProfileVideoFrame(episode?.path, note.timestampMs, episode?.modifiedAt.toString(),
+                                Modifier.fillMaxSize(), exactScene = true)
+                            Icon(Icons.Outlined.PlayCircleOutline, null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(28.dp))
+                            note.clipEndMs?.let { end ->
+                                Text(sceneTime((end - note.timestampMs).coerceAtLeast(0L)),
+                                    color = Color.White, style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                                        .background(Color.Black.copy(alpha = .75f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp))
+                            }
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(note.text, style = MaterialTheme.typography.titleMedium)
+                            val animeTitle = episode?.let { titles[it.animeId] } ?: note.animeTitle
+                            Text(animeTitle.ifBlank { "Anime local" }, style = MaterialTheme.typography.bodySmall)
+                            Text(if (episode != null) profileEpisodeLabel(episode.number, episode.episodeTitle, episode.fileName)
+                                else note.episodeLabel.ifBlank { "Episódio local" }, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(sceneTime(note.timestampMs) + (note.clipEndMs?.let { " – " + sceneTime(it) } ?: " · Marcador"),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (episode == null) Text("Arquivo original indisponível", style = MaterialTheme.typography.labelSmall)
+                        }
+                        Box {
+                            IconButton(onClick = { menu = true }, enabled = !saving) { Icon(Icons.Outlined.MoreVert, "Opções da cena") }
+                            DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem(text = { Text("Editar") }, enabled = episode != null && note.clipEndMs != null,
+                                    onClick = { menu = false; edit = scene })
+                                DropdownMenuItem(text = { Text("Excluir") }, onClick = { menu = false; delete = scene })
+                            }
+                        }
                     }
-                    IconButton(onClick = { delete = scene }) { Icon(Icons.Outlined.Delete, "Excluir cena") }
                 }
             }
         }
+    }
+    edit?.let { scene ->
+        val episode = matches[scene.mediaId]
+        val note = scene.note
+        var name by remember(note.id) { mutableStateOf(note.text) }
+        var from by remember(note.id) { mutableStateOf((note.timestampMs / 1000.0).toString()) }
+        var to by remember(note.id) { mutableStateOf(((note.clipEndMs ?: note.timestampMs) / 1000.0).toString()) }
+        val start = from.replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 && it <= Long.MAX_VALUE / 1000.0 }?.let { (it * 1000).toLong() }
+        val end = to.replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 && it <= Long.MAX_VALUE / 1000.0 }?.let { (it * 1000).toLong() }
+        val duration = episode?.duration?.takeIf { it.isFinite() && it > 0 }?.let { (it * 1000).toLong() }
+            ?: note.clipEndMs ?: 0L
+        AlertDialog(onDismissRequest = { if (!saving) edit = null }, title = { Text("Editar cena") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Nome da cena") })
+                    OutlinedTextField(from, { from = it }, singleLine = true, label = { Text("Início (segundos)") })
+                    OutlinedTextField(to, { to = it }, singleLine = true, label = { Text("Fim (segundos)") })
+                    Text("Duração disponível: " + sceneTime(duration), style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(enabled = !saving && start != null && end != null && end > start && end <= duration,
+                onClick = {
+                    saving = true
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                store.saveFavoriteClip(scene.mediaId, requireNotNull(start), requireNotNull(end), duration,
+                                    name, episode?.let { titles[it.animeId] } ?: note.animeTitle,
+                                    note.episodeLabel, existingId = note.id)
+                            }
+                            edit = null
+                            reload++
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { error = "Não foi possível editar a cena."; edit = null }
+                        finally { saving = false }
+                    }
+                }) { Text("Salvar") } },
+            dismissButton = { TextButton(enabled = !saving, onClick = { edit = null }) { Text("Cancelar") } })
     }
     delete?.let { scene ->
         AlertDialog(onDismissRequest = { delete = null }, title = { Text("Excluir cena?") },

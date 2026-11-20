@@ -15,6 +15,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import com.reianix.reianix_local.ui.collections.TrackingAnime
+import com.reianix.reianix_local.ui.collections.TrackingCollectionsContent
+import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performClick
+import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import androidx.compose.ui.unit.dp
 import com.reianix.reianix_local.ui.ReiAnixAnimeCard
 import com.reianix.reianix_local.ui.navigation.ReiAnixCurrentDestination
@@ -58,6 +67,111 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         composeRule.waitForIdle()
         val current = centerColor()
         assertTrue("The retained profile must no longer be drawn", current.green > .9f && current.red < .1f && current.blue < .1f)
+    }
+
+    @Test
+    fun collectorDashboardSeparatesSectionsAndRetainsAutomaticRefresh() {
+        val journey = com.reianix.reianix_local.data.collector.ReiAnixCollectorJourneyCalculator.build(emptyList(), null)
+        composeRule.setContent {
+            ReiAnixComposeTheme(themeMode = "dark") {
+                com.reianix.reianix_local.ui.collector.ReiAnixCollectorJourneyScreen(
+                    state = com.reianix.reianix_local.viewmodel.ReiAnixCollectorJourneyUiState(journey = journey),
+                    onBack = {}, onRefresh = {}, onSelectTitle = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("Nível 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Atualizar").assertDoesNotExist()
+        composeRule.onNodeWithText("Estatísticas da jornada").performClick()
+        composeRule.onNodeWithText("Animes concluídos").assertIsDisplayed()
+        composeRule.onNodeWithText("Nível 1").assertDoesNotExist()
+        composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        composeRule.onNodeWithText("Nível 1").assertIsDisplayed()
+    }
+
+    @Test
+    fun historyDisplaysActualEpisodeNumberAndPlaybackTime() {
+        assertEquals("Episódio 01", profileEpisodeLabel(1.0, null, "video.mp4"))
+        assertEquals("Episódio 12 · Final", profileEpisodeLabel(12.0, "Final", "video.mp4"))
+        assertEquals("08:25", profilePlaybackTime(505.0))
+        assertEquals("1:01:01", profilePlaybackTime(3661.0))
+        assertEquals("00:00", profilePlaybackTime(Double.NaN))
+        val now = java.util.Calendar.getInstance()
+        assertEquals("Hoje", historyGroup(now.timeInMillis / 1000.0, now))
+        val yesterday = (now.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, -1) }
+        assertEquals("Ontem", historyGroup(yesterday.timeInMillis / 1000.0, now))
+        val row = com.reianix.reianix_local.data.sqlite.ReiAnixCollectorEpisodeRow(
+            id = 1L, animeId = 42L, progress = 505.0, duration = 1440.0, watched = false,
+            missing = false, lastPlayedAt = now.timeInMillis / 1000.0, episodeType = null,
+            animeTitle = "Teste", year = null, genresJson = null, format = null, mediaKind = null,
+        )
+        assertTrue(!profileHistoryCompleted(row))
+        assertTrue(profileHistoryCompleted(row.copy(watched = true)))
+        assertTrue(profileHistoryCompleted(row.copy(progress = 1400.0)))
+    }
+
+    @Test
+    fun statisticsShowsRealMetricsAndProgress() {
+        composeRule.setContent {
+            ReiAnixComposeTheme(themeMode = "dark") {
+                ProfileStatisticsContent(ProfileStats(57, 602, 100, 600.0, 1, 3, emptyList(), 60), false)
+            }
+        }
+        composeRule.onNodeWithText("57").assertIsDisplayed()
+        composeRule.onNodeWithText("602").assertIsDisplayed()
+        composeRule.onNodeWithText("60 de 602 episódios concluídos · 9%").assertExists()
+        composeRule.onNodeWithText("Gêneros mais assistidos").assertExists()
+    }
+
+    @Test
+    fun trackingCategoriesOpenTheirOwnListWithRealProgress() {
+        var opened = 0L
+        composeRule.setContent {
+            ReiAnixComposeTheme(themeMode = "dark") {
+                TrackingCollectionsContent(
+                    listOf(TrackingAnime(42, "Anime de teste", null, null, ReiAnixWatchStatus.WATCHING, 12, 3)),
+                    false, null, {}, { opened = it }, {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("Quero assistir").assertExists()
+        composeRule.onNodeWithText("Anime de teste").assertDoesNotExist()
+        composeRule.onNodeWithText("Assistindo").performClick()
+        composeRule.onNodeWithText("12 episódios disponíveis").assertIsDisplayed()
+        composeRule.onNodeWithText("3/12 concluídos").assertIsDisplayed()
+        composeRule.onNodeWithText("Anime de teste").performClick()
+        assertEquals(42L, opened)
+        composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        composeRule.onNodeWithText("Quero assistir").assertIsDisplayed()
+    }
+
+    @Test
+    fun customizationShowsCategoriesAndSavesFrameWithoutGlobalSave() {
+        val store = ReiAnixProfileStore.from(composeRule.activity)
+        val original = store.state.value
+        try {
+            runBlocking { store.save(original.copy(frame = "none")) }
+            composeRule.setContent {
+                ReiAnixComposeTheme(themeMode = "dark") {
+                    ProfileCustomization(store, emptyList(), onBack = {})
+                }
+            }
+            listOf("Foto e avatares", "Moldura", "Banner do perfil", "Papel de parede", "Anime em destaque").forEach {
+                composeRule.onNodeWithText(it).assertExists()
+            }
+            composeRule.onNodeWithText("Cor do perfil").assertDoesNotExist()
+            composeRule.onNodeWithText("Salvar perfil").assertDoesNotExist()
+            composeRule.onNodeWithText("Avatares personalizados").assertDoesNotExist()
+            composeRule.onNodeWithText("Moldura").performClick()
+            composeRule.onNodeWithText("Dourada").assertIsDisplayed().performClick()
+            composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == "gold" }
+            assertEquals(original.color, store.state.value.color)
+            composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            composeRule.onNodeWithText("Personalização do perfil").assertIsDisplayed()
+            composeRule.onNodeWithText("Dourada").assertDoesNotExist()
+        } finally {
+            runBlocking { store.save(original) }
+        }
     }
 
     @Test

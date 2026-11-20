@@ -36,7 +36,7 @@ class ReiAnixWallpaperStore private constructor(context: Context, private val is
     private val current = MutableStateFlow(read())
     val state = current.asStateFlow()
 
-    fun file(name: String?): File? = name?.takeIf { it.matches(Regex("[a-f0-9-]+[.](jpg|webp)")) }
+    fun file(name: String?): File? = name?.takeIf { it.matches(Regex("[a-f0-9-]+[.](jpg|webp|png)")) }
         ?.let { File(directory, it) }
 
     private fun read() = ReiAnixWallpaper(
@@ -51,7 +51,7 @@ class ReiAnixWallpaperStore private constructor(context: Context, private val is
     internal suspend fun importPreset(art: PersonalArt): String = withContext(Dispatchers.IO) {
         require(art.folder == if (isBanner) "banners" else "wallpapers")
         check(directory.isDirectory || directory.mkdirs())
-        val name = UUID.randomUUID().toString() + ".webp"
+        val name = UUID.randomUUID().toString() + "." + art.extension
         val target = File(directory, name)
         try {
             ReiAnixArtPack.open(app, art).use { input ->
