@@ -1,6 +1,8 @@
 package com.reianix.reianix_local.ui.profile
 
 import android.app.Application
+import androidx.compose.ui.graphics.Color
+import com.reianix.reianix_local.ui.theme.wallpaperContentColor
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaper
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
@@ -18,6 +20,14 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 class ReiAnixWallpaperTest {
+    @Test
+    fun transparentContentIsOptInAndPreservesAllOriginalColorsWhenDisabled() {
+        for (original in listOf(Color.Black, Color.White, Color(0xFF151515), Color(0xFF123456))) {
+            assertEquals(original, wallpaperContentColor(original, false))
+            assertEquals(Color.Transparent, wallpaperContentColor(original, true))
+        }
+    }
+
     @Test
     fun cropAlwaysCoversViewportInPortraitAndLandscape() {
         for ((w, h) in listOf(1080 to 2400, 2400 to 1080, 800 to 800)) {
