@@ -1,0 +1,22 @@
+name: Probe generated frame asset export
+on:
+  push:
+    paths: ['.github/workflows/frame-asset-probe.yml']
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe authorized public asset sizes
+        shell: bash
+        env:
+          THUMB: 'https://media.canva.com/v2/image-resize/format:PNG/height:133/quality:100/uri:ifs%3A%2F%2FM%2F43350df6-15d2-4af2-8642-0cda0da3b2b1/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAAWkVhF8TqrpRM92R0aJ-MHlCAdgqQUUopWD1mRZ5RI1&exp=1795231038&osig=AAAAAAAAAAAAAAAAAAAAABEG_QfAntKVvDjeqsPXxrqtp5BSHp_jqPrqnm3_aqd5&signer=media-rpc&token=AAIAAU0AJDQzMzUwZGY2LTE1ZDItNGFmMi04NjQyLTBjZGEwZGEzYjJiMQAAAAABofwbujAlcUbF16SSLSPh0fOMvYyUcot3HS7rADjwXScW-qU8PQ&x-canva-quality=thumbnail'
+          FULL: 'https://media.canva.com/v2/image-resize/format:PNG/height:1024/quality:100/uri:ifs%3A%2F%2FM%2F43350df6-15d2-4af2-8642-0cda0da3b2b1/watermark:F/width:1536?csig=AAAAAAAAAAAAAAAAAAAAAAWkVhF8TqrpRM92R0aJ-MHlCAdgqQUUopWD1mRZ5RI1&exp=1795231038&osig=AAAAAAAAAAAAAAAAAAAAABEG_QfAntKVvDjeqsPXxrqtp5BSHp_jqPrqnm3_aqd5&signer=media-rpc&token=AAIAAU0AJDQzMzUwZGY2LTE1ZDItNGFmMi04NjQyLTBjZGEwZGEzYjJiMQAAAAABofwbujAlcUbF16SSLSPh0fOMvYyUcot3HS7rADjwXScW-qU8PQ&x-canva-quality=thumbnail'
+        run: |
+          set +e
+          for key in THUMB FULL; do
+            url="${!key}"
+            printf "%s: " "$key"
+            curl -L --max-time 15 --silent --show-error -o /tmp/canva-${key}.img -w '%{http_code} %{size_download} bytes\n' "$url"
+            file /tmp/canva-${key}.img
+          done
