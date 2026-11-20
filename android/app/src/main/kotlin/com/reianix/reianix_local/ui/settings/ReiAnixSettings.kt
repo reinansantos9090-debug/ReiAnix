@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.layout.Box
@@ -249,6 +250,7 @@ fun ReiAnixSettingsRoute(
         selectedItemIndex = 0
     }
     BackHandler(enabled = destination != null) { goBack() }
+    Box(Modifier.fillMaxSize().reiAnixScreenFade(destination)) {
     when {
         destination == "Pastas" -> {
             if (libraryFoldersContent != null) {
@@ -308,6 +310,7 @@ fun ReiAnixSettingsRoute(
                 onRetry = viewModel::refresh,
             )
         }
+    }
     }
 }
 

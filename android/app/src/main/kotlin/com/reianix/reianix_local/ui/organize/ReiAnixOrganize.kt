@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.organize
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
@@ -103,12 +104,13 @@ fun ReiAnixOrganizeRoute(
     onOpenSettings: () -> Unit,
 ) {
     var showSafFileManager by rememberSaveable { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize().reiAnixScreenFade(showSafFileManager)) {
     if (showSafFileManager) {
         ReiAnixSafFileManagerRoute(
             viewModel = viewModel,
             onBack = { showSafFileManager = false },
         )
-        return
+        return@Box
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val filters by viewModel.organizeFilters.collectAsStateWithLifecycle()
@@ -150,6 +152,7 @@ fun ReiAnixOrganizeRoute(
         isClassifyingLocalGenres = genreOperation.isRunning,
         isOrganizerGenreOperationError = genreOperation.isError,
     )
+    }
 }
 
 @Composable

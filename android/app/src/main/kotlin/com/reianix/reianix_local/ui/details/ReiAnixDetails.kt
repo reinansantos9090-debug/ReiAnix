@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
@@ -611,7 +612,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
         modifier = Modifier
             .widthIn(max = LocalReiAnixResponsiveMetrics.current.contentMaxWidth)
             .fillMaxWidth()
-            .testTag("details-episode-list"),
+            .testTag("details-episode-list")
+            .reiAnixScreenFade(selectedSeasonKey),
         contentPadding = PaddingValues(bottom = ReiAnixTokens.Spacing.xxxl),
     ) {
         item(

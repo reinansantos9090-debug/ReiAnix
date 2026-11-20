@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.shell
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.snap
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
@@ -76,11 +80,15 @@ fun ReiAnixAppShell(
             WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
         },
         bottomBar = {
-            if (showBottomNavigation) {
+            AnimatedVisibility(
+                visible = showBottomNavigation,
+                enter = expandVertically(animationSpec = tween(150)),
+                exit = shrinkVertically(animationSpec = tween(150)),
+            ) {
                 ReiAnixBottomNavigation(
                     selectedRoute = selectedRoute,
                     destinations = bottomDestinations,
-                    onDestinationClick = onBottomDestinationClick,
+                    onDestinationClick = { if (showBottomNavigation) onBottomDestinationClick(it) },
                 )
             }
         },

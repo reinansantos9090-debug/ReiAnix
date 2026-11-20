@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.search
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.background
@@ -361,7 +362,8 @@ fun ReiAnixSearchScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(1f)
+                .reiAnixScreenFade(source),
         ) {
             if (source == "anilist") {
                 when {

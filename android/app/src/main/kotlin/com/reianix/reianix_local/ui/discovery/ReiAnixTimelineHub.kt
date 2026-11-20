@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.discovery
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.background
@@ -119,7 +120,7 @@ fun ReiAnixTimelineHubRoute(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f).reiAnixScreenFade(selectedTab)) {
                 when (selectedTab) {
                     "animes" -> {
                         val homeState by viewModel.homeState.collectAsStateWithLifecycle()

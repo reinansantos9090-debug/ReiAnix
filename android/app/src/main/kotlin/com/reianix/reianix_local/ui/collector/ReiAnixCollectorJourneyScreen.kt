@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.collector
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
@@ -164,10 +165,12 @@ internal fun ReiAnixCollectorJourneyScreen(
     var page by rememberSaveable { mutableStateOf("menu") }
     fun back() { if (page == "menu") onBack() else page = "menu" }
     BackHandler(enabled = page != "menu") { back() }
+    val pageFade = Modifier.reiAnixScreenFade(page)
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(reiAnixScreenBackground()),
+            .background(reiAnixScreenBackground())
+            .then(pageFade),
     ) {
         Row(
             modifier = Modifier

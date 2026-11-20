@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.player
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -114,6 +115,7 @@ fun ReiAnixNativePlayerOptionsPanel(
             .shadow(16.dp, panelShape, clip = false)
             .clip(panelShape)
             .background(Color(0xE61B1B1D))
+            .reiAnixScreenFade(page)
             .verticalScroll(scrollState)
             .padding(vertical = 5.dp),
     ) {
