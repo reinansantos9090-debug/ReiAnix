@@ -6,6 +6,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import com.reianix.reianix_local.data.profile.PersonalArt
+import com.reianix.reianix_local.data.profile.ReiAnixArtPack
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -33,9 +42,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
+internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false) {
     val context = LocalContext.current
-    val store = remember(context) { ReiAnixWallpaperStore.from(context) }
+    val store = remember(context, banner) { if (banner) ReiAnixWallpaperStore.banner(context) else ReiAnixWallpaperStore.from(context) }
     val saved by store.state.collectAsStateWithLifecycle()
     var image by rememberSaveable { mutableStateOf(saved.imageName) }
     var zoom by rememberSaveable { mutableStateOf(saved.zoom) }
@@ -45,6 +54,30 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     val draft = ReiAnixWallpaper(image, zoom, x, y).normalized()
     val scope = rememberCoroutineScope()
+    var showArts by rememberSaveable { mutableStateOf(false) }
+    val arts = remember(banner) { ReiAnixArtPack.available(banner) }
+    fun selectArt(art: PersonalArt) {
+        if (busy) return
+        busy = true
+        error = null
+        scope.launch {
+            var imported: String? = null
+            try {
+                imported = store.importPreset(art)
+                // Built-in art already has its final framing and needs no crop editor.
+                store.save(ReiAnixWallpaper(imageName = imported))
+                store.discard(image)
+                onBack()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                store.discard(imported)
+                error = "Não foi possível aplicar a arte."
+            } finally {
+                busy = false
+            }
+        }
+    }
     fun leave() {
         if (busy) return
         busy = true
@@ -53,7 +86,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
             finally { busy = false }
         }
     }
-    BackHandler { leave() }
+    BackHandler { if (!busy && showArts) showArts = false else leave() }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null && !busy) {
             busy = true
@@ -71,13 +104,43 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
             }
         }
     }
+    if (showArts) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
+            ReiAnixTopBar(if (banner) "Banners otaku" else "Papéis de parede otaku",
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                onNavigationClick = { if (!busy) showArts = false })
+            Text("Escolha uma arte para aplicar imediatamente.",
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(arts.chunked(if (banner) 1 else 2)) { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { art ->
+                            Column(Modifier.weight(1f).clickable(enabled = !busy) { selectArt(art) }) {
+                                AsyncImage(model = ReiAnixArtPack.model(art), contentDescription = art.title,
+                                    modifier = Modifier.fillMaxWidth().aspectRatio(if (banner) 3f else 9f / 16f)
+                                        .clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Fit)
+                                Text(art.title, style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(vertical = 6.dp))
+                            }
+                        }
+                        if (!banner && row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        return
+    }
     val previewState = rememberWallpaperImage(store, draft)
     val preview = previewState.image
     val config = LocalConfiguration.current
-    val ratio = (config.screenWidthDp.toFloat() / config.screenHeightDp.coerceAtLeast(1)).coerceIn(0.3f, 3f)
+    val ratio = if (banner) 3f else (config.screenWidthDp.toFloat() / config.screenHeightDp.coerceAtLeast(1)).coerceIn(0.3f, 3f)
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
-        ReiAnixTopBar("Papel de parede", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { leave() })
+        ReiAnixTopBar(if (banner) "Banner do perfil" else "Papel de parede", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { leave() })
         Text("Arraste a imagem e use dois dedos para ampliar.",
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -128,10 +191,13 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("O brilho é ajustado automaticamente. O player mantém o fundo original.",
+            Text(if (banner) "O banner é opcional e aparece somente no seu perfil." else "O brilho é ajustado automaticamente. O player mantém o fundo original.",
                 textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !busy) { Text("Escolher papel de parede") }
+            OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !busy) { Text("Escolher da galeria") }
+            OutlinedButton(onClick = { showArts = true }, enabled = !busy) {
+                Text(if (banner) "Banners otaku" else "Papéis de parede otaku")
+            }
             if (image != null) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     TextButton(enabled = !busy, onClick = { zoom = 1f; x = 0.5f; y = 0.5f }) { Text("Reverter") }
@@ -139,7 +205,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
                         val previous = image
                         image = null; zoom = 1f; x = 0.5f; y = 0.5f
                         scope.launch { store.discard(previous) }
-                    }) { Text("Remover papel de parede") }
+                    }) { Text(if (banner) "Remover banner" else "Remover papel de parede") }
                 }
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -151,12 +217,12 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit) {
                 scope.launch {
                     try { store.save(selection); onBack() }
                     catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { error = "Não foi possível salvar o papel de parede." }
+                    catch (_: Exception) { error = "Não foi possível salvar a imagem." }
                     finally { busy = false }
                 }
             }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                 if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Text("Salvar papel de parede")
+                else Text(if (banner) "Salvar banner" else "Salvar papel de parede")
             }
         }
     }

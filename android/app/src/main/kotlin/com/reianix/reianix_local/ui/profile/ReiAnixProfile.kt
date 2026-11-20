@@ -41,6 +41,9 @@ import coil.compose.AsyncImage
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import com.reianix.reianix_local.data.profile.ReiAnixProfile
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
+import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
+import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperLayer
+import com.reianix.reianix_local.ui.theme.rememberWallpaperImage
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reianix.reianix_local.data.sqlite.ReiAnixCollectorEpisodeRow
 import com.reianix.reianix_local.data.sqlite.ReiAnixEpisodeRecord
@@ -100,6 +103,31 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
         Icon(preset.icon, null, tint = Color.White, modifier = Modifier.size(size * 0.55f))
         if (photo != null) AsyncImage(model = photo, contentDescription = null,
             modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+    }
+}
+
+/** The avatar is centered exactly on the lower edge of the optional banner. */
+@Composable
+private fun ProfileBannerHeader(profile: ReiAnixProfile, store: ReiAnixProfileStore, onEditPhoto: () -> Unit) {
+    val context = LocalContext.current
+    val bannerStore = remember(context) { ReiAnixWallpaperStore.banner(context) }
+    val banner by bannerStore.state.collectAsStateWithLifecycle()
+    val imageLoad = rememberWallpaperImage(bannerStore, banner)
+    val image = imageLoad.image
+    if (image == null && !imageLoad.loading) {
+        ProfileAvatar(profile, store, 112.dp)
+    } else {
+        Box(Modifier.fillMaxWidth().padding(bottom = 58.dp)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(3f).clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF202530))) {
+                image?.let { ReiAnixWallpaperLayer(it, banner, Modifier.matchParentSize(), editing = true) }
+            }
+            Box(Modifier.align(Alignment.BottomCenter).offset(y = 58.dp).size(116.dp)
+                .clip(CircleShape).background(Color(0xFF101010)).clickable(onClick = onEditPhoto),
+                contentAlignment = Alignment.Center) {
+                ProfileAvatar(profile, store, 108.dp)
+            }
+        }
     }
 }
 
@@ -240,7 +268,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                 item {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ProfileAvatar(profile, store, 112.dp)
+                        ProfileBannerHeader(profile, store, onEditPhoto = { section = "edit" })
                         Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, color = Color.White, textAlign = TextAlign.Center)
                         Text(profile.displayBio, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFAAAAAA),
                             textAlign = TextAlign.Center)
@@ -384,6 +412,7 @@ private fun ProfileEditor(
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var showWallpaper by rememberSaveable { mutableStateOf(false) }
+    var showBanner by rememberSaveable { mutableStateOf(false) }
     val draft = ReiAnixProfile(name, bio, avatar, photo, frame, color, featured)
     fun discardAndBack() {
         if (busy) return
@@ -392,7 +421,7 @@ private fun ProfileEditor(
             onBack()
         }
     }
-    BackHandler(enabled = !showWallpaper) { discardAndBack() }
+    BackHandler(enabled = !showWallpaper && !showBanner) { discardAndBack() }
     fun importPhoto(uri: Uri?) {
         if (uri == null || busy) return
         busy = true
@@ -408,6 +437,10 @@ private fun ProfileEditor(
         }
     }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { importPhoto(it) }
+    if (showBanner) {
+        ReiAnixWallpaperEditor(onBack = { showBanner = false }, banner = true)
+        return
+    }
     if (showWallpaper) {
         ReiAnixWallpaperEditor(onBack = { showWallpaper = false })
         return
@@ -458,6 +491,9 @@ private fun ProfileEditor(
                             .semantics { contentDescription = "Cor $key" }.clickable(enabled = !busy) { color = key })
                     }
                 }
+                Text("Banner do perfil", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                ProfileBannerHeader(draft, store, onEditPhoto = { if (!busy) photoPicker.launch("image/*") })
+                ProfileRow(Icons.Outlined.Image, "Personalizar banner") { if (!busy) showBanner = true }
                 Text("Papel de parede do aplicativo", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
                 ProfileRow(Icons.Outlined.Image, "Personalizar papel de parede") {
                     if (!busy) showWallpaper = true
