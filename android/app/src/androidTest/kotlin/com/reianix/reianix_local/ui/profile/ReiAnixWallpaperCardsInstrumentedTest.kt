@@ -70,6 +70,26 @@ class ReiAnixWallpaperCardsInstrumentedTest {
     }
 
     @Test
+    fun collectorDashboardSeparatesSectionsAndRetainsAutomaticRefresh() {
+        val journey = com.reianix.reianix_local.data.collector.ReiAnixCollectorJourneyCalculator.build(emptyList(), null)
+        composeRule.setContent {
+            ReiAnixComposeTheme(themeMode = "dark") {
+                com.reianix.reianix_local.ui.collector.ReiAnixCollectorJourneyScreen(
+                    state = com.reianix.reianix_local.viewmodel.ReiAnixCollectorJourneyUiState(journey = journey),
+                    onBack = {}, onRefresh = {}, onSelectTitle = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("Nível 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Atualizar").assertDoesNotExist()
+        composeRule.onNodeWithText("Estatísticas da jornada").performClick()
+        composeRule.onNodeWithText("Animes concluídos").assertIsDisplayed()
+        composeRule.onNodeWithText("Nível 1").assertDoesNotExist()
+        composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        composeRule.onNodeWithText("Nível 1").assertIsDisplayed()
+    }
+
+    @Test
     fun statisticsShowsRealMetricsAndProgress() {
         composeRule.setContent {
             ReiAnixComposeTheme(themeMode = "dark") {
