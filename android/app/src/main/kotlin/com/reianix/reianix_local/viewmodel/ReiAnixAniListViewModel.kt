@@ -180,7 +180,7 @@ class ReiAnixAniListViewModel(
                     is AniListResult.Success -> {
                         val current = _aniListUiState.value
                         _aniListUiState.value = current.copy(
-                            repairMessage = "Metadados verificados. Atualização da capa solicitada.",
+                            repairMessage = "Identificação e detalhes atualizados.",
                             associationRevision = current.associationRevision + 1,
                         )
                     }
