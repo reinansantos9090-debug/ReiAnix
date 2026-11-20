@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.ui.discovery
 
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.contentColorFor
+import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -129,7 +132,9 @@ internal fun ReiAnixTimelineList(
                         .fillMaxWidth()
                         .clickable(role = Role.Button) { onOpenAnime(anime.id) },
                     shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceVariant),
+                    contentColor = if (LocalReiAnixWallpaperVisible.current) MaterialTheme.colorScheme.onSurface
+                        else contentColorFor(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     Row(
                         modifier = Modifier

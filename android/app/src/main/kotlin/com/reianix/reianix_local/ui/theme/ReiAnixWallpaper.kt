@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -89,6 +93,41 @@ internal fun automaticWallpaperDim(pixels: IntArray): Float {
 
 data class WallpaperImage(val bitmap: ImageBitmap, val dim: Float)
 
+internal data class WallpaperFrame(
+    val image: WallpaperImage,
+    val wallpaper: ReiAnixWallpaper,
+    val viewport: IntSize,
+)
+internal val LocalReiAnixWallpaperFrame = compositionLocalOf<WallpaperFrame?> { null }
+
+/** Use the bottom of the full viewport, rather than stretching the image to the sheet. */
+internal fun wallpaperPanelCrop(sw: Int, sh: Int, viewport: IntSize, panel: IntSize,
+    wallpaper: ReiAnixWallpaper): WallpaperCrop {
+    val width = maxOf(viewport.width, panel.width)
+    val height = maxOf(viewport.height, panel.height)
+    val crop = wallpaperCrop(sw, sh, width, height, wallpaper)
+    return crop.copy(x = crop.x - (width - panel.width) / 2, y = crop.y - (height - panel.height))
+}
+
+/** A modal must cover the underlying cards. Paint the same shared bitmap, not a
+ * transparent hole through the dialog to the library grid. No additional decode. */
+@Composable
+internal fun Modifier.reiAnixWallpaperPanel(shape: Shape): Modifier {
+    val frame = LocalReiAnixWallpaperFrame.current ?: return this
+    val base = MaterialTheme.colorScheme.background
+    return clip(shape).drawBehind {
+        val panel = IntSize(size.width.roundToInt(), size.height.roundToInt())
+        if (panel.width <= 0 || panel.height <= 0) return@drawBehind
+        val bitmap = frame.image.bitmap
+        val crop = wallpaperPanelCrop(bitmap.width, bitmap.height, frame.viewport, panel, frame.wallpaper)
+        drawRect(base)
+        clipRect {
+            drawImage(bitmap, dstOffset = IntOffset(crop.x, crop.y), dstSize = IntSize(crop.width, crop.height))
+            drawRect(Color.Black.copy(alpha = frame.image.dim))
+        }
+    }
+}
+
 data class WallpaperImageLoad(val image: WallpaperImage? = null, val loading: Boolean = false)
 
 @Composable
@@ -124,10 +163,15 @@ fun ReiAnixWallpaperScope(enabled: Boolean = true, content: @Composable () -> Un
     val visible = enabled && image != null
     val scheme = if (visible) ReiAnixDarkColorScheme else MaterialTheme.colorScheme
     val inheritedContent = androidx.compose.material3.LocalContentColor.current
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography, shapes = MaterialTheme.shapes) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).onSizeChanged { viewport = it }) {
             if (visible) image?.let { ReiAnixWallpaperLayer(it, wallpaper, Modifier.matchParentSize()) }
-            CompositionLocalProvider(LocalReiAnixWallpaperVisible provides visible) {
+            val frame = if (visible && image != null) WallpaperFrame(image, wallpaper, viewport) else null
+            CompositionLocalProvider(
+                LocalReiAnixWallpaperVisible provides visible,
+                LocalReiAnixWallpaperFrame provides frame,
+            ) {
                 CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides (if (visible) MaterialTheme.colorScheme.onBackground else inheritedContent)) {
                     content()
                 }
