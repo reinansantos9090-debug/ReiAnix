@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
-internal const val DEFAULT_PROFILE_AVATAR_ID = "bolt"
+internal const val DEFAULT_PROFILE_AVATAR_ID = "fire"
 
 /** User-owned local profile, entirely independent of catalog metadata and external accounts. */
 data class ReiAnixProfile(

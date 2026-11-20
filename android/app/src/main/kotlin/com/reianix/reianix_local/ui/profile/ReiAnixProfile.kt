@@ -79,10 +79,10 @@ private val presets = listOf(
     AvatarPreset("person", "Ops!", R.drawable.profile_avatar_dragao_assustado),
     AvatarPreset("moon", "Feliz", R.drawable.profile_avatar_raposa_curiosa),
     AvatarPreset("star", "Surpreso", R.drawable.profile_avatar_dragao_surpresa),
-    AvatarPreset(DEFAULT_PROFILE_AVATAR_ID, "Amoroso", R.drawable.profile_avatar_abraco_raposa),
+    AvatarPreset("bolt", "Amoroso", R.drawable.profile_avatar_abraco_raposa),
     AvatarPreset("heart", "Dormindo", R.drawable.profile_avatar_soneca_dragao),
     AvatarPreset("forest", "Lanchando", R.drawable.profile_avatar_lanche_raposa),
-    AvatarPreset("fire", "Estiloso", R.drawable.profile_avatar_dragao_estiloso),
+    AvatarPreset(DEFAULT_PROFILE_AVATAR_ID, "Estiloso", R.drawable.profile_avatar_dragao_estiloso),
     AvatarPreset("game", "Divertindo", R.drawable.profile_avatar_festa_raposa),
 )
 private val defaultAvatarPreset = presets.first { it.id == DEFAULT_PROFILE_AVATAR_ID }
