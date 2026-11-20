@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -19,8 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import com.reianix.reianix_local.R
 import androidx.compose.ui.unit.dp
 
 /** PNG artwork is bundled in drawable-nodpi and never fetched from the network.
@@ -37,20 +36,15 @@ internal fun IllustratedProfileFrame(
     modifier: Modifier = Modifier,
 ) {
     if (!isIllustratedProfileFrame(frame)) return
-    val context = LocalContext.current
-    // Dynamic discovery keeps preview builds usable while a new graphic is being
-    // added. Keep rule in res/raw preserves resources with dynamic references.
-    val drawableId = remember(context, frame) {
-        context.resources.getIdentifier("profile_frame_$frame", "drawable", context.packageName)
-    }
-    if (drawableId == 0) {
-        // This is only for source checkouts before the illustrated resources are imported.
-        if (frame == "cat_ears" || frame == "headset") {
-            AnimatedAccessoryProfileFrame(frame, modifier)
-        } else {
-            RefinedProfileFrame(frame, modifier)
-        }
-        return
+    // Static resource references guarantee these illustrated frames survive APK shrinking.
+    // Never silently fall back to the old geometric designs.
+    val drawableId = when (frame) {
+        "gold" -> R.drawable.profile_frame_gold
+        "neon" -> R.drawable.profile_frame_neon
+        "galaxy" -> R.drawable.profile_frame_galaxy
+        "cat_ears" -> R.drawable.profile_frame_cat_ears
+        "headset" -> R.drawable.profile_frame_headset
+        else -> return
     }
 
     val transition = rememberInfiniteTransition(label = "illustrated-frame-$frame")
