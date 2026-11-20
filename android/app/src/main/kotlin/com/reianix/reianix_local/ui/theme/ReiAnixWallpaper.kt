@@ -23,12 +23,25 @@ import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
-/** Defaults to false everywhere except the explicit profile/settings destinations. */
+/** Set only while the shared wallpaper is actually visible. */
 val LocalReiAnixWallpaperVisible = staticCompositionLocalOf { false }
 
 @Composable
 fun reiAnixScreenBackground(): Color =
     if (LocalReiAnixWallpaperVisible.current) Color.Transparent else MaterialTheme.colorScheme.background
+
+/** Preserve original flat surfaces when disabled; remove opaque card blocks only in wallpaper mode. */
+@Composable
+fun reiAnixContentBackground(original: Color): Color =
+    wallpaperContentColor(original, LocalReiAnixWallpaperVisible.current)
+
+internal fun wallpaperContentColor(original: Color, active: Boolean): Color =
+    if (active) Color.Transparent else original
+
+/** Overlays which communicate selection stay subtly tinted rather than opaque. */
+@Composable
+fun reiAnixContentTint(original: Color, alpha: Float = 0.18f): Color =
+    if (LocalReiAnixWallpaperVisible.current) original.copy(alpha = alpha) else original
 
 internal data class WallpaperCrop(val width: Int, val height: Int, val x: Int, val y: Int)
 
@@ -100,21 +113,20 @@ fun rememberWallpaperImage(store: ReiAnixWallpaperStore, wallpaper: ReiAnixWallp
     }
 }
 
-/** The only destinations that opt in to the wallpaper own this scope.
- * No image is decoded or theme overridden while browsing unrelated screens.
- */
+/** Single durable wallpaper layer outside the navigation viewport; never scrolls or crossfades with a destination. */
 @Composable
-fun ReiAnixWallpaperScope(content: @Composable () -> Unit) {
+fun ReiAnixWallpaperScope(enabled: Boolean = true, content: @Composable () -> Unit) {
     val context = LocalContext.current
     val store = remember(context) { ReiAnixWallpaperStore.from(context) }
     val wallpaper by store.state.collectAsStateWithLifecycle()
     val image = rememberWallpaperImage(store, wallpaper).image
     // Keep content at a stable composition position when loading/removing the image.
-    val scheme = if (image != null) ReiAnixDarkColorScheme else MaterialTheme.colorScheme
+    val visible = enabled && image != null
+    val scheme = if (visible) ReiAnixDarkColorScheme else MaterialTheme.colorScheme
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography, shapes = MaterialTheme.shapes) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            image?.let { ReiAnixWallpaperLayer(it, wallpaper, Modifier.matchParentSize()) }
-            CompositionLocalProvider(LocalReiAnixWallpaperVisible provides (image != null)) {
+            if (visible) image?.let { ReiAnixWallpaperLayer(it, wallpaper, Modifier.matchParentSize()) }
+            CompositionLocalProvider(LocalReiAnixWallpaperVisible provides visible) {
                 CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
                     content()
                 }

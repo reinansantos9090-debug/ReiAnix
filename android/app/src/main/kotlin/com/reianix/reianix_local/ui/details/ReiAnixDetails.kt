@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -327,7 +331,7 @@ fun ReiAnixDetailsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(reiAnixScreenBackground())
             .then(
                 if (state.status == ReiAnixDetailsLoadStatus.READY && state.anime != null) Modifier
                 else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
@@ -943,7 +947,7 @@ private fun DetailsHero(
     val overallProgress = remember(allEpisodes) { detailsProgressFraction(allEpisodes) }
     val hasMarathonContent = anime.seasons.any { it.episodes.isNotEmpty() }
 
-    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+    Column(modifier = Modifier.fillMaxWidth().background(reiAnixScreenBackground())) {
         Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
             ReiAnixBackdrop(
                 localPath = backdropPath,
@@ -1614,8 +1618,9 @@ private fun DetailsSeasonCard(
         color = if (selected) {
             MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
         } else {
-            MaterialTheme.colorScheme.surface
+            reiAnixContentBackground(MaterialTheme.colorScheme.surface)
         },
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
             modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
@@ -1989,7 +1994,8 @@ private fun AniListCandidateRow(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onSelect),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shape = ReiAnixTokens.Shapes.small,
     ) {
         Column(

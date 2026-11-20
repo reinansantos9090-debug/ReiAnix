@@ -1,5 +1,13 @@
 package com.reianix.reianix_local.ui
 
+import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
+
+import com.reianix.reianix_local.ui.theme.reiAnixContentTint
+
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -81,7 +89,7 @@ import kotlin.math.roundToInt
 fun ReiAnixSurface(
     modifier: Modifier = Modifier,
     shape: androidx.compose.ui.graphics.Shape = ReiAnixTokens.Shapes.card,
-    color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surface,
+    color: androidx.compose.ui.graphics.Color = reiAnixContentBackground(MaterialTheme.colorScheme.surface),
     borderColor: androidx.compose.ui.graphics.Color? = null,
     content: @Composable () -> Unit,
 ) {
@@ -179,7 +187,7 @@ fun ReiAnixCard(
             .heightIn(min = ReiAnixTokens.Dimensions.cardMinHeight),
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
             contentColor = MaterialTheme.colorScheme.onSurface,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
@@ -778,9 +786,10 @@ fun ReiAnixAnimeCard(
             ),
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = reiAnixScreenBackground(),
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (LocalReiAnixWallpaperVisible.current) 0.dp else ReiAnixTokens.Elevation.card),
     ) {
         Column {
             Box {
@@ -972,11 +981,12 @@ fun ReiAnixEpisodeCard(
         colors = CardDefaults.cardColors(
             containerColor = when {
                 isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
-                isNext -> MaterialTheme.colorScheme.surfaceContainer
-                else -> MaterialTheme.colorScheme.background
+                isNext -> reiAnixContentTint(MaterialTheme.colorScheme.surfaceContainer)
+                else -> reiAnixScreenBackground()
             },
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = ReiAnixTokens.Elevation.card),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (LocalReiAnixWallpaperVisible.current) 0.dp else ReiAnixTokens.Elevation.card),
     ) {
         Row(
             modifier = Modifier
@@ -1171,7 +1181,8 @@ fun ReiAnixSettingCard(
         enabled = onClick != null && enabled,
         shape = if (continuous) androidx.compose.ui.graphics.RectangleShape else ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
-            containerColor = if (continuous) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = reiAnixContentBackground(if (continuous) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceContainer),
+            contentColor = MaterialTheme.colorScheme.onSurface,
             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
         ),
         modifier = Modifier

@@ -410,6 +410,7 @@ fun ReiAnixNavigationHost(
             currentRoute == ReiAnixRoutes.DETAILS ||
             currentRoute == ReiAnixRoutes.ANILIST_DETAILS)
 
+    ReiAnixWallpaperScope(enabled = currentRoute != ReiAnixRoutes.PLAYER && currentRoute != ReiAnixRoutes.RECOVERY) {
     ReiAnixAppShell(
         modifier = modifier,
         selectedRoute = selectedBottomRoute,
@@ -448,8 +449,8 @@ fun ReiAnixNavigationHost(
             composable(ReiAnixRoutes.COLLECTIONS) { collections() }
             composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
-            composable(ReiAnixRoutes.SETTINGS) { ReiAnixWallpaperScope { settings() } }
-            composable(ReiAnixRoutes.SETTINGS_GENERAL) { ReiAnixWallpaperScope { settingsGeneral() } }
+            composable(ReiAnixRoutes.SETTINGS) { settings() }
+            composable(ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
             composable(
                 route = ReiAnixRoutes.PROFILE,
                 enterTransition = {
@@ -464,7 +465,7 @@ fun ReiAnixNavigationHost(
                 popExitTransition = {
                     if (targetState.destination.route == ReiAnixRoutes.HOME) ExitTransition.None else null
                 },
-            ) { ReiAnixWallpaperScope { profile() } }
+            ) { profile() }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }
             composable(ReiAnixRoutes.COLLECTOR) { collector() }
@@ -570,4 +571,5 @@ fun ReiAnixNavigationHost(
         }
         }
     )
+    }
 }
