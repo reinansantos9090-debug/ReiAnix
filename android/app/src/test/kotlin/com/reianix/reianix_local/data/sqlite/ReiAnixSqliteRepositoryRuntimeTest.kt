@@ -1119,6 +1119,60 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun explicitRepairMatchesRomanizationSpacingAndDecodedSafFolders() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val original = requireNotNull(repository.getAnime(1L))
+        val ep = repository.listEpisodes(1L).first()
+        val pairs = listOf(
+            "Saigo ni Hitotsu dake Onegai shitemo Yoroshii deshou ka" to
+                "Saigo ni Hitotsu dake Onegai shite mo Yoroshii deshou ka",
+            "Futsutsuka na Akujo dewa Gozaimasu ga Suuguu Chouso Torikae Den" to
+                "Futsutsuka na Akujo de wa Gozaimasu ga: Suuguu Chouso Torikae Den",
+            "Re:Zero kara Hajimeru Isekai Seikatsu" to "Re：Zero kara Hajimeru Isekai Seikatsu",
+            "Jūjutsu Kaisen" to "Jujutsu Kaisen",
+        )
+        fun candidate(id: Int, name: String, format: String = "TV") =
+            com.reianix.reianix_local.data.anilist.AniListAnime(
+                id = id, titleRomaji = name, titleEnglish = null, titleNative = null,
+                synonyms = emptyList(), description = null, format = format, episodes = 12,
+                status = null, averageScore = null, durationMinutes = 24, season = null,
+                seasonYear = null, genres = emptyList(), coverLargeUrl = "https://example.invalid/cover.jpg",
+                coverExtraLargeUrl = null, bannerUrl = null, studios = emptyList(),
+            )
+        for ((localName, official) in pairs) {
+            val oldName = "Anime Document: München e no Michi"
+            val local = original.copy(lookupTitle = oldName, title = oldName, romaji = oldName,
+                anilistId = 99L, anilistMatchManual = false, mediaKind = "series", format = "TV")
+            val doc = android.net.Uri.encode("primary:Anime/$localName/Episódio 01.mp4")
+            val evidence = com.reianix.reianix_local.data.anilist.explicitAniListLocalEvidence(listOf(
+                ep.copy(fileName = "Episódio 01.mp4", path = "content://com.android.externalstorage.documents/document/$doc",
+                    relativePath = "Anime/$localName/", sourceFolder = "Anime", duration = 1420.0),
+            ))
+            assertTrue(evidence.titles.contains(localName))
+            val titles = com.reianix.reianix_local.data.anilist.explicitAniListRepairTitles(local, evidence)
+            assertTrue(titles.none { it.contains("München") })
+            val queries = com.reianix.reianix_local.data.anilist.explicitAniListRepairSearchTerms(titles)
+            assertTrue(queries.size <= 8)
+            assertTrue(queries.none { it.equals("Anime", true) })
+            assertEquals(
+                com.reianix.reianix_local.data.anilist.explicitAniListCompactTitle(localName),
+                com.reianix.reianix_local.data.anilist.explicitAniListCompactTitle(official),
+            )
+            val correct = candidate(42, official)
+            val ranked = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+                local, local.lookupTitle, listOf(candidate(99, oldName), correct, correct.copy(id = 98, format = "MUSIC")), evidence,
+            )
+            assertEquals(42, ranked.first().anime.id)
+            assertTrue(ranked.first().score >= 0.60)
+            assertTrue(ranked.none { it.anime.id == 99 || it.anime.id == 98 })
+        }
+        val fragments = com.reianix.reianix_local.data.anilist.explicitAniListRepairSearchTerms(listOf(pairs.first().first))
+        assertTrue(fragments.any { it.contains("shite mo", true) })
+        assertTrue(fragments.any { it.equals("saigo ni hitotsu dake", true) })
+    }
+
+    @Test
     fun explicitRepairCommitsPreparedArtworkTogetherWithMetadata() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)
@@ -1171,11 +1225,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             explicitRepair = true, expectedAssociationId = 98L)
         assertEquals(99L, stale.anilistId)
         assertEquals("https://example.invalid/old-cover.jpg", stale.coverUrl)
-        val belowThreshold = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.49, 0.0,
+        val belowThreshold = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.59, 0.0,
             explicitRepair = true, expectedAssociationId = 99L)
         assertEquals(99L, belowThreshold.anilistId)
         assertEquals("https://example.invalid/old-cover.jpg", belowThreshold.coverUrl)
-        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.50, 0.0,
+        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.60, 0.0,
             explicitRepair = true, expectedAssociationId = 99L)
         assertEquals(42L, corrected.anilistId)
         assertEquals("https://example.invalid/official.jpg", corrected.coverUrl)
