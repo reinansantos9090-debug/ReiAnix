@@ -27,14 +27,9 @@ internal object ReiAnixArtPack {
         "vale_das_sakuras" to "Vale das sakuras", "lua_azul_alpina" to "Lua azul alpina",
         "eclipse_dourado" to "Eclipse dourado", "costa_estelar_turquesa" to "Costa estelar turquesa",
     ).map { PersonalArt("banners", it.first, it.second, "png") }
-    // The six user-selected reference images come first, preserving all existing art.
+    // Keep the remaining reference image first; low-resolution presets are excluded.
     val wallpapers = listOf(
-        "samurai_lua_vermelha" to "Samurai da lua vermelha",
         "cidade_chuvosa_violeta" to "Cidade chuvosa violeta",
-        "torii_via_lactea" to "Torii sob a Via Láctea",
-        "retrato_manga" to "Retrato de mangá",
-        "portal_floresta_luminosa" to "Portal da floresta luminosa",
-        "pagoda_ao_entardecer" to "Pagode ao entardecer",
     ).map { PersonalArt("wallpapers", it.first, it.second) } + listOf(
         "cafe_chuvoso" to "Café chuvoso", "caminho_sakura" to "Caminho sakura",
         "cascatas_misticas" to "Cascatas místicas", "cidade_cyberpunk" to "Cidade cyberpunk",
