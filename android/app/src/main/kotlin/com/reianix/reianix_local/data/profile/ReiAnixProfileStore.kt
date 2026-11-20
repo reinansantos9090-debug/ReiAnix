@@ -15,11 +15,13 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
+internal const val DEFAULT_PROFILE_AVATAR_ID = "bolt"
+
 /** User-owned local profile, entirely independent of catalog metadata and external accounts. */
 data class ReiAnixProfile(
     val name: String = "",
     val bio: String = "",
-    val avatar: String = "person",
+    val avatar: String = DEFAULT_PROFILE_AVATAR_ID,
     val photo: String? = null,
     val frame: String = "none",
     val color: String = "blue",
@@ -50,7 +52,7 @@ class ReiAnixProfileStore private constructor(context: Context) {
     private fun read() = ReiAnixProfile(
         name = prefs.getString("name", "").orEmpty(),
         bio = prefs.getString("bio", "").orEmpty(),
-        avatar = prefs.getString("avatar", "person").orEmpty(),
+        avatar = prefs.getString("avatar", DEFAULT_PROFILE_AVATAR_ID) ?: DEFAULT_PROFILE_AVATAR_ID,
         photo = prefs.getString("photo", null),
         frame = prefs.getString("frame", "none").orEmpty(),
         color = prefs.getString("color", "blue").orEmpty(),
