@@ -1,0 +1,139 @@
+name: Restaurar 12 artes de referência em alta resolução
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/restore-reference-art-once.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: restore-reference-art-pr385
+  cancel-in-progress: true
+
+jobs:
+  restore:
+    if: github.event.pull_request.number == 385 && github.event.pull_request.head.ref == 'ui/profile-customization-categories' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the exact PR head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      - name: Set up temporary CPU super-resolution environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/reianix-art-venv"
+          "$RUNNER_TEMP/reianix-art-venv/bin/python" -m pip install --disable-pip-version-check --index-url https://download.pytorch.org/whl/cpu 'torch==2.6.0'
+          "$RUNNER_TEMP/reianix-art-venv/bin/python" -m pip install --disable-pip-version-check 'numpy==2.2.6' 'Pillow==11.3.0'
+          curl --fail --location --retry 3 --max-time 180 \
+            'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth' \
+            --output "$RUNNER_TEMP/reianix-art-model.pth"
+
+      - name: Restore and verify exactly the 12 low-resolution references
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/reianix-art-venv/bin/python" - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import tempfile
+          import numpy as np
+          from PIL import Image
+          import torch
+          from torch import nn
+          from torch.nn import functional as F
+
+          # Architecture compatible with the public Real-ESRGAN
+          # realesr-animevideov3 checkpoint (xinntao/Real-ESRGAN, BSD-3-Clause).
+          # The model and Python remain outside Android and are not packaged.
+          class AnimeRestorer(nn.Module):
+              def __init__(self):
+                  super().__init__()
+                  layers = [nn.Conv2d(3, 64, 3, padding=1), nn.PReLU(64)]
+                  for _ in range(16):
+                      layers.extend([nn.Conv2d(64, 64, 3, padding=1), nn.PReLU(64)])
+                  layers.append(nn.Conv2d(64, 48, 3, padding=1))
+                  self.body = nn.ModuleList(layers)
+
+              def forward(self, x):
+                  y = x
+                  for layer in self.body:
+                      y = layer(y)
+                  return F.pixel_shuffle(y, 4) + F.interpolate(x, scale_factor=4, mode="nearest")
+
+          root = Path("android/app/src/main/assets/personalization")
+          names = {
+              "banners": ["samurai_rubro_cinematico", "metropole_violeta", "fuji_sakura_torii",
+                          "lua_sobre_montanhas", "eclipse_castelo", "oceano_azul"],
+              "wallpapers": ["samurai_lua_vermelha", "cidade_chuvosa_violeta", "torii_via_lactea",
+                             "retrato_manga", "portal_floresta_luminosa", "pagoda_ao_entardecer"],
+          }
+          minimums = {"banners": (1920, 960), "wallpapers": (1080, 1920)}
+          expected_inputs = {"banners": (296, 148), "wallpapers": (198, 352)}
+          targets = {root / folder / (name + ".webp"): folder
+                     for folder, items in names.items() for name in items}
+          assert len(targets) == 12
+          untouched = {
+              p: hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in root.rglob("*") if p.is_file() and p not in targets
+          }
+          torch.set_num_threads(min(4, os.cpu_count() or 1))
+          model = AnimeRestorer().eval()
+          checkpoint = torch.load(Path(os.environ["RUNNER_TEMP"]) / "reianix-art-model.pth",
+                                  map_location="cpu", weights_only=True)
+          model.load_state_dict(checkpoint.get("params_ema", checkpoint.get("params", checkpoint)), strict=True)
+          with tempfile.TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as staging:
+              finished = []
+              for path, folder in targets.items():
+                  with Image.open(path) as original:
+                      src = original.convert("RGB")
+                  if src.size != expected_inputs[folder]:
+                      raise RuntimeError(f"Unexpected source size for {path}: {src.size}")
+                  array = np.asarray(src, dtype=np.float32) / 255.0
+                  x = torch.from_numpy(array).permute(2, 0, 1).unsqueeze(0).contiguous()
+                  with torch.inference_mode():
+                      restored = model(x).clamp(0, 1)
+                  restored = (restored[0].permute(1, 2, 0).numpy() * 255.0).round().astype(np.uint8)
+                  image = Image.fromarray(restored).resize(minimums[folder], Image.Resampling.LANCZOS)
+                  dest = Path(staging) / path.name
+                  image.save(dest, format="WEBP", quality=94, method=6)
+                  with Image.open(dest) as check:
+                      check.load()
+                      assert check.format == "WEBP" and check.size == minimums[folder]
+                      assert check.mode == "RGB"
+                  assert dest.read_bytes() != path.read_bytes()
+                  finished.append((path, dest))
+                  print(f"{path.name}: {src.size} -> {image.size}, {dest.stat().st_size:,} bytes", flush=True)
+              assert len(finished) == 12
+              for path, dest in finished:
+                  path.write_bytes(dest.read_bytes())
+          for path, digest in untouched.items():
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, f"Unrelated asset modified: {path}"
+          assert len(untouched) >= 32
+          print("Verified 12 restored assets; all other artwork unchanged.", flush=True)
+          PY
+
+      - name: Commit only restored images and remove the one-time workflow
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git add -- android/app/src/main/assets/personalization/
+          test "$(git diff --cached --name-only | wc -l)" -eq 12
+          git rm -- .github/workflows/restore-reference-art-once.yml
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'art: restaurar as 12 referências em alta resolução, mantendo as demais'
+          git push origin HEAD:refs/heads/ui/profile-customization-categories
+          echo "Restored asset commit: $(git rev-parse HEAD)"
