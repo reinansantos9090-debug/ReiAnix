@@ -2,8 +2,6 @@ package com.reianix.reianix_local.ui.navigation
 
 import android.net.Uri
 import androidx.annotation.Keep
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
@@ -468,10 +466,6 @@ fun ReiAnixNavigationHost(
                 .consumeWindowInsets(innerPadding),
             // The wallpaper belongs to the shell, not either destination.
             // Remove all route fades/slides, including forward and back.
-            enterTransition = { EnterTransition.None },
-            exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
-            popExitTransition = { ExitTransition.None },
         ) {
             instantDestination(activeEntry, ReiAnixRoutes.HOME) { home() }
             instantDestination(activeEntry, ReiAnixRoutes.LIBRARY) { library() }
