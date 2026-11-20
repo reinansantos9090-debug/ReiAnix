@@ -116,7 +116,7 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
         // Space for frame ornaments; photo and built-in avatar remain circular and clipped.
         Box(
             Modifier.fillMaxSize()
-                .padding(if (animated) size * 0.11f else 0.dp)
+                .padding(if (isIllustratedProfileFrame(profile.frame)) size * 0.17f else if (animated) size * 0.11f else 0.dp)
                 .then(if (ring != Color.Transparent) Modifier.border(2.dp, ring, CircleShape).padding(3.dp) else Modifier)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surface),
