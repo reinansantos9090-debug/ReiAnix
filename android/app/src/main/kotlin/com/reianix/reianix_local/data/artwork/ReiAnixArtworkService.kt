@@ -19,6 +19,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
@@ -230,6 +233,16 @@ internal fun artworkCacheLimitBytes(raw: String?): Long =
 internal fun artworkDownloadsAllowed(raw: String?): Boolean =
     raw == null || raw.trim().equals("true", ignoreCase = true)
 
+/** Validated image saved to disk but not yet visible to the catalog. */
+data class ReiAnixPreparedRepairImage(
+    val type: String, val url: String, val path: String, val key: String,
+    val bytes: Long, val width: Int, val height: Int, val checksum: String, val mime: String,
+)
+data class ReiAnixPreparedRepairArtwork(
+    val poster: ReiAnixPreparedRepairImage,
+    val banner: ReiAnixPreparedRepairImage?,
+)
+
 /** Native persistent artwork writer for Compose, backed by the canonical v29 SQLite. */
 class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqliteDatabase) {
     private val appContext = context.applicationContext
@@ -289,6 +302,65 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     private class HttpFailure(val code: Int, val retryAfterSeconds: Long?) : IOException("Artwork HTTP " + code)
     private class InvalidImage(message: String) : Exception(message)
+
+    /**
+     * Explicit repair only: validate both images before changing SQLite identity.
+     * Never run publication callbacks or mutate the ordinary artwork queue here.
+     */
+    suspend fun prepareExplicitRepairArtwork(
+        animeId: Long,
+        remoteId: Long,
+        posterUrls: List<String>,
+        bannerUrl: String?,
+    ): ReiAnixPreparedRepairArtwork? = withContext(Dispatchers.IO) {
+        if (cacheClearInProgress.get() || !remoteArtworkEnabled()) return@withContext null
+        suspend fun prepare(type: String, url: String): ReiAnixPreparedRepairImage? {
+            if (!safeUrl(url)) return null
+            val key = remoteKey(remoteId, url, type)
+            val cached = database.read { db ->
+                db.rawQuery(
+                    "SELECT local_path FROM artwork WHERE entity_type IN ('anime','movie') AND entity_id=? " +
+                        "AND artwork_type=? AND external_url=? AND status='ready' ORDER BY priority DESC",
+                    arrayOf(animeId.toString(), type, url),
+                ).use { cursor ->
+                    var result: String? = null
+                    while (cursor.moveToNext()) {
+                        val path = cursor.getString(0)
+                        if (validImage(path)) { result = path; break }
+                    }
+                    result
+                }
+            }
+            if (cached != null) {
+                val file = File(cached)
+                val dims = dimensions(cached)
+                val digest = checksum(file)
+                if (dims != null && digest != null) return ReiAnixPreparedRepairImage(
+                    type, url, cached, key, file.length(), dims.first, dims.second, digest, mime(cached),
+                )
+            }
+            return try {
+                val image = download(key, url)
+                ReiAnixPreparedRepairImage(type, url, image.file.absolutePath, key,
+                    image.bytes, image.width, image.height, image.checksum, image.mime)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Log.w(TAG, "Explicit AniList repair could not prepare $type", failure)
+                null
+            }
+        }
+        coroutineScope {
+            val poster = async {
+                posterUrls.distinct().firstNotNullOfOrNull { prepare("poster", it) }
+            }
+            val banner = async { bannerUrl?.let { prepare("backdrop", it) } }
+            val preparedPoster = poster.await()
+            val preparedBanner = banner.await()
+            if (preparedPoster == null || (bannerUrl != null && preparedBanner == null) || cacheClearInProgress.get()) null
+            else ReiAnixPreparedRepairArtwork(preparedPoster, preparedBanner)
+        }
+    }
 
     fun requestAnimeArtwork(animeId: Long, force: Boolean = false): Boolean =
         requestAnimeArtworkInternal(animeId, force, candidateCandidates = null)
