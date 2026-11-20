@@ -238,8 +238,12 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
     }
 
     when (section) {
-        "edit", "customize" -> {
-            ProfileEditor(profile, store, records.filter { it.favorite == true }, section == "customize", goBack)
+        "edit" -> {
+            ProfileEditor(profile, store, goBack)
+            return
+        }
+        "customize" -> {
+            ProfileCustomization(store, records.filter { it.favorite == true }, goBack)
             return
         }
         "lists" -> {
@@ -398,22 +402,16 @@ private fun AnimeProfileRow(anime: ReiAnixAnimeRecord, onClick: () -> Unit) {
 
 @Composable
 private fun ProfileEditor(
-    initial: ReiAnixProfile, store: ReiAnixProfileStore, favorites: List<ReiAnixAnimeRecord>,
-    customize: Boolean, onBack: () -> Unit,
+    initial: ReiAnixProfile, store: ReiAnixProfileStore, onBack: () -> Unit,
 ) {
     var name by rememberSaveable { mutableStateOf(initial.name) }
     var bio by rememberSaveable { mutableStateOf(initial.bio) }
     var avatar by rememberSaveable { mutableStateOf(initial.avatar) }
     var photo by rememberSaveable { mutableStateOf(initial.photo) }
-    var frame by rememberSaveable { mutableStateOf(initial.frame) }
-    var color by rememberSaveable { mutableStateOf(initial.color) }
-    var featured by rememberSaveable { mutableStateOf(initial.featuredAnimeId) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    var showWallpaper by rememberSaveable { mutableStateOf(false) }
-    var showBanner by rememberSaveable { mutableStateOf(false) }
-    val draft = ReiAnixProfile(name, bio, avatar, photo, frame, color, featured)
+    val draft = initial.copy(name = name, bio = bio, avatar = avatar, photo = photo)
     fun discardAndBack() {
         if (busy) return
         scope.launch {
@@ -421,7 +419,7 @@ private fun ProfileEditor(
             onBack()
         }
     }
-    BackHandler(enabled = !showWallpaper && !showBanner) { discardAndBack() }
+    BackHandler { discardAndBack() }
     fun importPhoto(uri: Uri?) {
         if (uri == null || busy) return
         busy = true
@@ -437,16 +435,8 @@ private fun ProfileEditor(
         }
     }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { importPhoto(it) }
-    if (showBanner) {
-        ReiAnixWallpaperEditor(onBack = { showBanner = false }, banner = true)
-        return
-    }
-    if (showWallpaper) {
-        ReiAnixWallpaperEditor(onBack = { showWallpaper = false })
-        return
-    }
     Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).imePadding().navigationBarsPadding()) {
-        ReiAnixTopBar(title = if (customize) "Personalização do perfil" else "Editar perfil",
+        ReiAnixTopBar(title = "Editar perfil",
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { discardAndBack() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -455,7 +445,7 @@ private fun ProfileEditor(
             if (photo != null) TextButton(onClick = {
                 val old = photo; photo = null; scope.launch { store.discard(old) }
             }, enabled = !busy) { Text("Remover foto") }
-            if (!customize) {
+            run {
                 OutlinedTextField(name, { name = it.take(40) }, label = { Text("Nome do usuário") },
                     singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(bio, { bio = it.take(160) }, label = { Text("Biografia") },
@@ -476,40 +466,6 @@ private fun ProfileEditor(
                     }
                 }
             }
-            if (customize) {
-                Text("Moldura", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    listOf("none" to "Sem", "accent" to "Cor", "gold" to "Ouro", "white" to "Branca").forEach { (key, label) ->
-                        FilterChip(selected = frame == key, onClick = { frame = key }, label = { Text(label) }, enabled = !busy)
-                    }
-                }
-                Text("Cor do perfil", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    profileColors.forEach { (key, value) ->
-                        Box(Modifier.size(32.dp).clip(CircleShape).background(value)
-                            .then(if (color == key) Modifier.border(3.dp, Color.Gray, CircleShape) else Modifier)
-                            .semantics { contentDescription = "Cor $key" }.clickable(enabled = !busy) { color = key })
-                    }
-                }
-                Text("Banner do perfil", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                ProfileBannerHeader(draft, store, onEditPhoto = { if (!busy) photoPicker.launch("image/*") })
-                ProfileRow(Icons.Outlined.Image, "Personalizar banner") { if (!busy) showBanner = true }
-                Text("Papel de parede do aplicativo", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                ProfileRow(Icons.Outlined.Image, "Personalizar papel de parede") {
-                    if (!busy) showWallpaper = true
-                }
-                Text("Personalize o fundo do ReiAnix.", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
-                Text("Anime favorito em destaque", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-                TextButton(onClick = { featured = null }, enabled = !busy) { Text(if (featured == null) "✓ Nenhum" else "Nenhum") }
-                favorites.forEach { anime ->
-                    Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { featured = anime.id }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = featured == anime.id, onClick = null)
-                        Spacer(Modifier.width(12.dp))
-                        Text(anime.title)
-                    }
-                }
-            }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
         Button(onClick = {
@@ -523,6 +479,174 @@ private fun ProfileEditor(
         }, enabled = !busy, modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 50.dp)) {
             if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Salvar perfil")
         }
+    }
+}
+
+/** Independent subpages keep customization lightweight. Profile choices save
+ * immediately; the image editors retain their explicit crop/preview confirmation. */
+@Composable
+internal fun ProfileCustomization(
+    store: ReiAnixProfileStore,
+    favorites: List<ReiAnixAnimeRecord>,
+    onBack: () -> Unit,
+) {
+    val profile by store.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var page by rememberSaveable { mutableStateOf("menu") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    fun goBack() {
+        if (busy) return
+        error = null
+        if (page == "menu") onBack() else page = "menu"
+    }
+    fun saveChange(change: (ReiAnixProfile) -> ReiAnixProfile) {
+        if (busy) return
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                store.save(change(store.state.value))
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { error = "Não foi possível salvar a personalização." }
+            finally { busy = false }
+        }
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && !busy) {
+            busy = true
+            error = null
+            scope.launch {
+                var imported: String? = null
+                try {
+                    imported = store.importPhoto(uri)
+                    store.save(store.state.value.copy(photo = imported))
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { error = "Não foi possível salvar a foto." }
+                finally {
+                    try {
+                        // discard never removes the currently saved photo.
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { store.discard(imported) }
+                    } finally { busy = false }
+                }
+            }
+        }
+    }
+    BackHandler(enabled = page != "banner" && page != "wallpaper") { goBack() }
+    if (page == "banner" || page == "wallpaper") {
+        ReiAnixWallpaperEditor(onBack = { page = "menu" }, banner = page == "banner")
+        return
+    }
+    val title = when (page) {
+        "photo" -> "Foto e avatares"
+        "frame" -> "Moldura"
+        "featured" -> "Anime em destaque"
+        else -> "Personalização do perfil"
+    }
+    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
+        ReiAnixTopBar(title = title, navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { goBack() })
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (page == "featured") {
+            // Favorites can be large; do not compose all thumbnails at once.
+            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp)) {
+                item {
+                    Text("Escolha um anime favorito para destacar no perfil.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ProfileFeaturedChoice("Nenhum", profile.featuredAnimeId == null, !busy) {
+                        saveChange { it.copy(featuredAnimeId = null) }
+                    }
+                }
+                items(favorites, key = { it.id }) { anime ->
+                    ProfileFeaturedChoice(anime.title, profile.featuredAnimeId == anime.id, !busy) {
+                        saveChange { it.copy(featuredAnimeId = anime.id) }
+                    }
+                }
+            }
+        } else {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                when (page) {
+                    "photo" -> {
+                        ProfileAvatar(profile, store, 112.dp)
+                        OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !busy) { Text("Escolher foto da galeria") }
+                        if (profile.photo != null) TextButton(enabled = !busy, onClick = {
+                            saveChange { it.copy(photo = null) }
+                        }) { Text("Remover foto") }
+                        Text("Avatares personalizados", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                        presets.chunked(4).forEach { group ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                group.forEach { p ->
+                                    val selected = profile.avatar == p.id && profile.photo == null
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.weight(1f).clickable(enabled = !busy) {
+                                            saveChange { it.copy(avatar = p.id, photo = null) }
+                                        }.padding(vertical = 8.dp)) {
+                                        ProfileAvatar(profile.copy(avatar = p.id, photo = null,
+                                            frame = if (selected) "accent" else "none"), store, 48.dp)
+                                        Text(p.label, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "frame" -> {
+                        ProfileAvatar(profile, store, 112.dp)
+                        Text("Escolha a moldura da foto do perfil.", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        listOf("none" to "Sem moldura", "accent" to "Colorida", "gold" to "Dourada", "white" to "Branca").forEach { (key, label) ->
+                            Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(enabled = !busy) {
+                                saveChange { it.copy(frame = key) }
+                            }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                ProfileAvatar(profile.copy(frame = key), store, 48.dp)
+                                Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                RadioButton(selected = profile.frame == key, onClick = null)
+                            }
+                        }
+                    }
+                    else -> {
+                        ProfileAvatar(profile, store, 88.dp)
+                        Text("Prévia do perfil", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(6.dp))
+                        CustomizationCategory(Icons.Outlined.Person, "Foto e avatares",
+                            "Foto da galeria e avatares personalizados", !busy) { page = "photo" }
+                        CustomizationCategory(Icons.Outlined.CropSquare, "Moldura",
+                            "Personalize o contorno da foto", !busy) { page = "frame" }
+                        CustomizationCategory(Icons.Outlined.Image, "Banner do perfil",
+                            "Escolha e personalize o banner", !busy) { page = "banner" }
+                        CustomizationCategory(Icons.Outlined.Wallpaper, "Papel de parede",
+                            "Personalize o fundo do ReiAnix", !busy) { page = "wallpaper" }
+                        CustomizationCategory(Icons.Outlined.StarBorder, "Anime em destaque",
+                            "Escolha seu anime favorito", !busy) { page = "featured" }
+                    }
+                }
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+    }
+}
+
+@Composable
+private fun CustomizationCategory(icon: ImageVector, title: String, description: String, enabled: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(enabled = enabled, onClick = onClick)
+        .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun ProfileFeaturedChoice(title: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(enabled = enabled, onClick = onClick).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        RadioButton(selected = selected, onClick = null)
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
     }
 }
 
