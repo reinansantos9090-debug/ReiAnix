@@ -90,6 +90,27 @@ class ReiAnixWallpaperCardsInstrumentedTest {
     }
 
     @Test
+    fun historyDisplaysActualEpisodeNumberAndPlaybackTime() {
+        assertEquals("Episódio 01", profileEpisodeLabel(1.0, null, "video.mp4"))
+        assertEquals("Episódio 12 · Final", profileEpisodeLabel(12.0, "Final", "video.mp4"))
+        assertEquals("08:25", profilePlaybackTime(505.0))
+        assertEquals("1:01:01", profilePlaybackTime(3661.0))
+        assertEquals("00:00", profilePlaybackTime(Double.NaN))
+        val now = java.util.Calendar.getInstance()
+        assertEquals("Hoje", historyGroup(now.timeInMillis / 1000.0, now))
+        val yesterday = (now.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, -1) }
+        assertEquals("Ontem", historyGroup(yesterday.timeInMillis / 1000.0, now))
+        val row = com.reianix.reianix_local.data.sqlite.ReiAnixCollectorEpisodeRow(
+            id = 1L, animeId = 42L, progress = 505.0, duration = 1440.0, watched = false,
+            missing = false, lastPlayedAt = now.timeInMillis / 1000.0, episodeType = null,
+            animeTitle = "Teste", year = null, genresJson = null, format = null, mediaKind = null,
+        )
+        assertTrue(!profileHistoryCompleted(row))
+        assertTrue(profileHistoryCompleted(row.copy(watched = true)))
+        assertTrue(profileHistoryCompleted(row.copy(progress = 1400.0)))
+    }
+
+    @Test
     fun statisticsShowsRealMetricsAndProgress() {
         composeRule.setContent {
             ReiAnixComposeTheme(themeMode = "dark") {
