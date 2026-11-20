@@ -1083,6 +1083,77 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun explicitRepairRecoversOriginalFileIdentityAndRejectsGenericFolder() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val local = requireNotNull(repository.getAnime(1L)).copy(
+            lookupTitle = "catalog-key",
+            title = "Anime Document: München e no Michi",
+            romaji = "Anime Document: München e no Michi",
+            aliasesJson = "[\"Anime Document\"]", anilistId = 99L, format = "TV",
+        )
+        val actual = repository.listEpisodes(1L).single().copy(
+            fileName = "Saigo ni Hitotsu dake Onegai shitemo Yoroshii deshou ka - Episódio 01.mp4",
+            path = "/storage/emulated/0/Anime/episode.mp4",
+            duration = 1420.0,
+        )
+        val evidence = com.reianix.reianix_local.data.anilist.explicitAniListLocalEvidence(listOf(actual))
+        assertTrue(evidence.titles.none { it.equals("Anime", true) })
+        val terms = com.reianix.reianix_local.data.anilist.explicitAniListRepairTitles(local, evidence)
+        assertTrue(terms.none { it.contains("München") })
+        fun candidate(id: Int, title: String, format: String = "TV") =
+            com.reianix.reianix_local.data.anilist.AniListAnime(
+                id = id, titleRomaji = title, titleEnglish = null, titleNative = null,
+                synonyms = emptyList(), description = null, format = format, episodes = 12,
+                status = null, averageScore = null, durationMinutes = 24, season = null,
+                seasonYear = null, genres = emptyList(), coverLargeUrl = "https://example.invalid/cover.jpg",
+                coverExtraLargeUrl = null, bannerUrl = null, studios = emptyList(),
+            )
+        val correct = candidate(42, "Saigo ni Hitotsu dake Onegai shitemo Yoroshii deshou ka")
+        val ranked = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            local, local.lookupTitle, listOf(candidate(99, local.title), correct, correct.copy(id = 98, format = "MUSIC")),
+            evidence,
+        )
+        assertEquals(42, ranked.first().anime.id)
+        assertTrue(ranked.none { it.anime.id == 99 || it.anime.id == 98 })
+    }
+
+    @Test
+    fun explicitRepairCommitsPreparedArtworkTogetherWithMetadata() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { db ->
+            db.execSQL("UPDATE anime SET anilist_id=99, anilist_match_manual=0, metadata_manual_fields='[]', description='Wrong synopsis', banner_url='https://example.invalid/old-banner.jpg' WHERE id=1")
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val file = File.createTempFile("repair-cover", ".jpg", context.cacheDir)
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            val url = "https://example.invalid/new-cover.jpg"
+            val image = com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairImage(
+                "poster", url, file.absolutePath, "repair-test-poster", file.length(), 1, 1, "digest", "image/jpeg",
+            )
+            val prepared = com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairArtwork(image, null)
+            val patch = ReiAnixAnimeMetadataPatch(animeId = 1L, title = "Correct Anime", coverUrl = url)
+            val updated = repository.updateAniListMetadataAndAssociation(
+                patch, 42L, false, 0.90, 0.0, explicitRepair = true,
+                expectedAssociationId = 99L, preparedArtwork = prepared,
+            )
+            assertEquals("Correct Anime", updated.title)
+            assertEquals(42L, updated.anilistId)
+            assertEquals(file.absolutePath, updated.coverCache)
+            assertEquals(null, updated.bannerUrl)
+            assertEquals(null, updated.description)
+            val poster = repository.artworkForAnime(1L).single { it.artworkType == "poster" }
+            assertEquals(url, poster.externalUrl)
+            assertEquals(file.absolutePath, poster.localPath)
+            assertEquals("ready", poster.status)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun explicitRepairReplacesWrongAutomaticAssociationButRejectsStaleOrManualAssociation() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)
