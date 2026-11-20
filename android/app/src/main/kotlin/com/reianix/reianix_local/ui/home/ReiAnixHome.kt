@@ -191,29 +191,29 @@ private fun ReiAnixHomeObservedScreen(
 ) {
     ReiAnixResponsiveRoot {
     val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
+    val hasPreviousContent = state.animes.isNotEmpty()
+    val hasOperationalError = state.status == ReiAnixLibraryLoadStatus.ERROR ||
+        !state.error.isNullOrBlank()
+    val operationalNotice = when {
+        hasPreviousContent && hasOperationalError ->
+            "A atualização da biblioteca falhou. Os dados locais já carregados foram preservados." +
+                state.error?.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
+        hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.LOADING ->
+            "Atualizando a biblioteca local…"
+        hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
+            "A fonte local está indisponível. O conteúdo já carregado continua disponível."
+        else -> null
+    }
+    val overlayHeader = hasPreviousContent &&
+        state.status != ReiAnixLibraryLoadStatus.EMPTY &&
+        personalListMutationError.isNullOrBlank() && operationalNotice == null
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .nestedScroll(scrollHeaderState.nestedScrollConnection)
+            .then(if (overlayHeader) Modifier else Modifier.nestedScroll(scrollHeaderState.nestedScrollConnection))
             .background(reiAnixScreenBackground()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        val hasPreviousContent = state.animes.isNotEmpty()
-        val hasOperationalError = state.status == ReiAnixLibraryLoadStatus.ERROR ||
-            !state.error.isNullOrBlank()
-        val operationalNotice = when {
-            hasPreviousContent && hasOperationalError ->
-                "A atualização da biblioteca falhou. Os dados locais já carregados foram preservados." +
-                    state.error?.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
-            hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.LOADING ->
-                "Atualizando a biblioteca local…"
-            hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
-                "A fonte local está indisponível. O conteúdo já carregado continua disponível."
-            else -> null
-        }
-        val overlayHeader = hasPreviousContent &&
-            state.status != ReiAnixLibraryLoadStatus.EMPTY &&
-            personalListMutationError.isNullOrBlank() && operationalNotice == null
         val header: @Composable () -> Unit = {
             HomeHeader(
                 onSearch = onSearch,
@@ -812,6 +812,14 @@ private fun HomeHero(
             Box(
                 Modifier.fillMaxSize()
                     .background(
+                        Brush.horizontalGradient(
+                            0f to background.copy(alpha = .50f),
+                            .44f to background.copy(alpha = .14f),
+                            .70f to Color.Transparent,
+                            1f to Color.Transparent,
+                        ),
+                    ),
+                    .background(
                         Brush.verticalGradient(
                             0f to if (header != null) Color.Black.copy(alpha = .72f) else Color.Transparent,
                             .25f to Color.Black.copy(alpha = .12f),
@@ -821,14 +829,6 @@ private fun HomeHero(
                             1f to background.copy(alpha = if (wallpaperVisible) .82f else 1f),
                         ),
                     )
-                    .background(
-                        Brush.horizontalGradient(
-                            0f to background.copy(alpha = .50f),
-                            .44f to background.copy(alpha = .14f),
-                            .70f to Color.Transparent,
-                            1f to Color.Transparent,
-                        ),
-                    ),
             )
         }
         Column(Modifier.fillMaxWidth()) {
@@ -838,85 +838,85 @@ private fun HomeHero(
             }
             Box(Modifier.fillMaxWidth().heightIn(min = heroHeight)) {
                 Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(
-                        start = ReiAnixTokens.Spacing.xl,
-                        end = ReiAnixTokens.Spacing.xl,
-                        bottom = ReiAnixTokens.Spacing.xl,
-                    ),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-            ) {
-                Surface(
-                    shape = ReiAnixTokens.Shapes.chip,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ) {
-                    Text(
-                        text = "Em destaque",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(
-                            horizontal = ReiAnixTokens.Spacing.md,
-                            vertical = ReiAnixTokens.Spacing.xs,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .padding(
+                            start = ReiAnixTokens.Spacing.xl,
+                            end = ReiAnixTokens.Spacing.xl,
+                            bottom = ReiAnixTokens.Spacing.xl,
                         ),
-                    )
-                }
+                    verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                ) {
+                    Surface(
+                        shape = ReiAnixTokens.Shapes.chip,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ) {
+                        Text(
+                            text = "Em destaque",
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(
+                                horizontal = ReiAnixTokens.Spacing.md,
+                                vertical = ReiAnixTokens.Spacing.xs,
+                            ),
+                        )
+                    }
 
-                Text(
-                    text = anime.title,
-                    style = ReiAnixTokens.TypographyTokens.heroTitle,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                val genres = anime.genres
-                    .map { it.name.trim() }
-                    .filter(String::isNotEmpty)
-                    .take(3)
-                if (genres.isNotEmpty()) {
                     Text(
-                        text = genres.joinToString(" • "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        text = anime.title,
+                        style = ReiAnixTokens.TypographyTokens.heroTitle,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                }
 
-                anime.description?.trim()
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.let { description ->
+                    val genres = anime.genres
+                        .map { it.name.trim() }
+                        .filter(String::isNotEmpty)
+                        .take(3)
+                    if (genres.isNotEmpty()) {
                         Text(
-                            text = description,
-                            style = ReiAnixTokens.TypographyTokens.bodySecondary,
+                            text = genres.joinToString(" • "),
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                ) {
-                    anime.playbackTargetEpisodeId?.let { episodeId ->
-                        ReiAnixPrimaryButton(
-                            text = anime.playbackActionLabel,
-                            enabled = anime.playbackActionLabel != "Indisponível",
-                            onClick = { onWatch(episodeId, anime.id) },
+                    anime.description?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { description ->
+                            Text(
+                                text = description,
+                                style = ReiAnixTokens.TypographyTokens.bodySecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                    ) {
+                        anime.playbackTargetEpisodeId?.let { episodeId ->
+                            ReiAnixPrimaryButton(
+                                text = anime.playbackActionLabel,
+                                enabled = anime.playbackActionLabel != "Indisponível",
+                                onClick = { onWatch(episodeId, anime.id) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+
+                        ReiAnixSecondaryButton(
+                            text = secondaryLabel(anime),
+                            onClick = { onSecondaryAction(anime) },
                             modifier = Modifier.weight(1f),
                         )
                     }
-
-                    ReiAnixSecondaryButton(
-                        text = secondaryLabel(anime),
-                        onClick = { onSecondaryAction(anime) },
-                        modifier = Modifier.weight(1f),
-                    )
                 }
-            }
             }
         }
     }
