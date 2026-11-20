@@ -504,27 +504,59 @@ internal fun ProfileCustomization(
             finally { busy = false }
         }
     }
+    var photoDraft by rememberSaveable { mutableStateOf<String?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null && !busy) {
+        if (uri != null && !busy && photoDraft == null) {
             busy = true
             error = null
             scope.launch {
-                var imported: String? = null
                 try {
-                    imported = store.importPhoto(uri)
-                    store.update { it.copy(photo = imported) }
+                    photoDraft = store.importPhotoDraft(uri)
                 } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { error = "Não foi possível salvar a foto." }
-                finally {
-                    try {
-                        // discard never removes the currently saved photo.
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { store.discard(imported) }
-                    } finally { busy = false }
-                }
+                catch (_: Exception) { error = "Não foi possível abrir a foto." }
+                finally { busy = false }
             }
         }
     }
-    BackHandler(enabled = page != "banner" && page != "wallpaper") { goBack() }
+    BackHandler(enabled = photoDraft == null && page != "banner" && page != "wallpaper") { goBack() }
+    val draft = photoDraft
+    if (draft != null) {
+        ReiAnixAvatarEditor(
+            draft = store.photoDraftFile(draft),
+            busy = busy,
+            error = error,
+            onCancel = {
+                if (!busy) {
+                    photoDraft = null
+                    error = null
+                    scope.launch { store.discardPhotoDraft(draft) }
+                }
+            },
+            onSave = { crop ->
+                if (!busy) {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        var imported: String? = null
+                        try {
+                            val result = store.importCroppedPhoto(draft, crop.left, crop.top, crop.size)
+                            imported = result
+                            store.update { it.copy(photo = result) }
+                            photoDraft = null
+                            store.discardPhotoDraft(draft)
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { error = "Não foi possível salvar a foto." }
+                        finally {
+                            try {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { store.discard(imported) }
+                            } finally { busy = false }
+                        }
+                    }
+                }
+            },
+        )
+        return
+    }
     if (page == "banner" || page == "wallpaper") {
         ReiAnixWallpaperEditor(onBack = { page = "menu" }, banner = page == "banner")
         return

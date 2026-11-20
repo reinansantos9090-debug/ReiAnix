@@ -63,6 +63,51 @@ class ReiAnixProfileStore private constructor(context: Context) {
 
     suspend fun importPhoto(uri: Uri): String = importPersonalImage(app, directory, uri, 512)
 
+    // Work on a private, bounded copy. Never modify the user's gallery or active avatar.
+    private val photoDraftDirectory = File(app.cacheDir, "profile_photo_drafts")
+    internal suspend fun importPhotoDraft(uri: Uri): String =
+        importPersonalImage(app, photoDraftDirectory, uri, 2048)
+
+    internal fun photoDraftFile(name: String): File? =
+        name.takeIf { it.matches(Regex("[a-f0-9-]+[.]jpg")) }
+            ?.let { File(photoDraftDirectory, it) }
+
+    internal suspend fun discardPhotoDraft(name: String) = withContext(Dispatchers.IO) {
+        photoDraftFile(name)?.delete()
+        Unit
+    }
+
+    internal suspend fun importCroppedPhoto(name: String, left: Int, top: Int, size: Int): String =
+        withContext(Dispatchers.IO) {
+            val source = requireNotNull(photoDraftFile(name))
+            val bitmap = BitmapFactory.decodeFile(source.absolutePath) ?: error("Foto indisponível.")
+            try {
+                require(size > 0 && left >= 0 && top >= 0 &&
+                    size <= bitmap.width && size <= bitmap.height &&
+                    left <= bitmap.width - size && top <= bitmap.height - size)
+                check(directory.isDirectory || directory.mkdirs())
+                val outputName = UUID.randomUUID().toString() + ".jpg"
+                val target = File(directory, outputName)
+                val cropped = Bitmap.createBitmap(bitmap, left, top, size, size)
+                try {
+                    val scaled = if (size > 512) Bitmap.createScaledBitmap(cropped, 512, 512, true) else cropped
+                    try {
+                        target.outputStream().use { check(scaled.compress(Bitmap.CompressFormat.JPEG, 88, it)) }
+                    } finally {
+                        if (scaled !== cropped) scaled.recycle()
+                    }
+                    outputName
+                } catch (e: Exception) {
+                    target.delete()
+                    throw e
+                } finally {
+                    if (cropped !== bitmap) cropped.recycle()
+                }
+            } finally {
+                bitmap.recycle()
+            }
+        }
+
     /** Only temporary selections can be discarded; never delete the active photo. */
     suspend fun discard(name: String?) = withContext(Dispatchers.IO) {
         mutex.withLock {
