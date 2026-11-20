@@ -121,7 +121,7 @@ jobs:
           print("Verified 12 restored assets; all other artwork unchanged.", flush=True)
           PY
 
-      - name: Commit only restored images and remove the one-time workflow
+      - name: Commit only the restored images
         shell: bash
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -130,7 +130,6 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           git add -- android/app/src/main/assets/personalization/
           test "$(git diff --cached --name-only | wc -l)" -eq 12
-          git rm -- .github/workflows/restore-reference-art-once.yml
           git diff --cached --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
