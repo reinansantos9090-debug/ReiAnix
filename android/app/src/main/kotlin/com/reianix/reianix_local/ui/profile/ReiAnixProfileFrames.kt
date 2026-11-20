@@ -57,13 +57,10 @@ internal fun isAnimatedProfileFrame(frame: String) =
  */
 @Composable
 internal fun AnimatedProfileFrame(frame: String, modifier: Modifier = Modifier) {
-    if (frame == "cat_ears" || frame == "headset") {
-        AnimatedAccessoryProfileFrame(frame, modifier)
-        return
-    }
-    // Preserve Sakura's approved rendering as-is. Only the three rejected designs change.
-    if (frame == "gold" || frame == "neon" || frame == "galaxy") {
-        RefinedProfileFrame(frame, modifier)
+    // Preserve Sakura exactly as originally approved. The other five
+    // use original painted transparent overlays instead of geometric rings.
+    if (isIllustratedProfileFrame(frame)) {
+        IllustratedProfileFrame(frame, modifier)
         return
     }
     if (!isAnimatedProfileFrame(frame)) return
