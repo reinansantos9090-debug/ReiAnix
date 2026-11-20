@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
 import androidx.compose.ui.Modifier
 import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
 
@@ -19,11 +22,13 @@ fun ReiAnixComposeRoot(
     themeMode: String? = null,
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
+    LaunchedEffect(context) {
+        ReiAnixProfileStore.from(context).removeLegacyBanner()
+    }
     ReiAnixComposeTheme(themeMode = themeMode) {
         androidx.compose.foundation.layout.Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         ) {
             content()
         }

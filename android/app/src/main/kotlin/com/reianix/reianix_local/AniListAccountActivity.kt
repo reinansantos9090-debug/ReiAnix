@@ -1,5 +1,7 @@
 package com.reianix.reianix_local
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -96,7 +98,7 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                         }
                     }
                 }
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Surface(Modifier.fillMaxSize(), color = reiAnixScreenBackground(), contentColor = MaterialTheme.colorScheme.onBackground) {
                     Column(
                         Modifier
                             .then(

@@ -45,7 +45,7 @@ private val ReiAnixLightColorScheme = lightColorScheme(
     scrim = ReiAnixTokens.Colors.overlay,
 )
 
-private val ReiAnixDarkColorScheme = darkColorScheme(
+internal val ReiAnixDarkColorScheme = darkColorScheme(
     primary = ReiAnixTokens.Colors.primary,
     onPrimary = ReiAnixTokens.Colors.onPrimary,
     primaryContainer = ReiAnixTokens.Colors.primaryContainer,

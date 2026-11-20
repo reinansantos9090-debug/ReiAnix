@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -95,7 +97,7 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
     }
 
     ReiAnixSettingsRoot {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Surface(modifier = Modifier.fillMaxSize(), color = reiAnixScreenBackground(), contentColor = MaterialTheme.colorScheme.onBackground) {
             LazyColumn(
                 modifier = Modifier
                     .widthIn(max = LocalReiAnixResponsiveMetrics.current.settingsMaxWidth)

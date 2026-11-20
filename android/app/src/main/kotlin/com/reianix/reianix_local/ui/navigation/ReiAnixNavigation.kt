@@ -2,6 +2,8 @@ package com.reianix.reianix_local.ui.navigation
 
 import android.net.Uri
 import androidx.annotation.Keep
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -32,6 +34,7 @@ import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsRoute
 import com.reianix.reianix_local.ui.discovery.ReiAnixTimelineHubRoute
 import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
 import com.reianix.reianix_local.ui.profile.ReiAnixProfileRoute
+import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperScope
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
@@ -422,15 +425,46 @@ fun ReiAnixNavigationHost(
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
         ) {
-            composable(ReiAnixRoutes.HOME) { home() }
+            // Home and Profile have different shell insets. Never crossfade
+            // them while the bottom bar is being added or removed: that would
+            // expose the outgoing wallpaper in the newly measured viewport.
+            composable(
+                route = ReiAnixRoutes.HOME,
+                enterTransition = {
+                    if (initialState.destination.route == ReiAnixRoutes.PROFILE) EnterTransition.None else null
+                },
+                exitTransition = {
+                    if (targetState.destination.route == ReiAnixRoutes.PROFILE) ExitTransition.None else null
+                },
+                popEnterTransition = {
+                    if (initialState.destination.route == ReiAnixRoutes.PROFILE) EnterTransition.None else null
+                },
+                popExitTransition = {
+                    if (targetState.destination.route == ReiAnixRoutes.PROFILE) ExitTransition.None else null
+                },
+            ) { home() }
             composable(ReiAnixRoutes.LIBRARY) { library() }
             composable(ReiAnixRoutes.MY_LIST) { myList() }
             composable(ReiAnixRoutes.COLLECTIONS) { collections() }
             composable(ReiAnixRoutes.ORGANIZE) { organize() }
             composable(ReiAnixRoutes.SEARCH) { search() }
-            composable(ReiAnixRoutes.SETTINGS) { settings() }
-            composable(ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
-            composable(ReiAnixRoutes.PROFILE) { profile() }
+            composable(ReiAnixRoutes.SETTINGS) { ReiAnixWallpaperScope { settings() } }
+            composable(ReiAnixRoutes.SETTINGS_GENERAL) { ReiAnixWallpaperScope { settingsGeneral() } }
+            composable(
+                route = ReiAnixRoutes.PROFILE,
+                enterTransition = {
+                    if (initialState.destination.route == ReiAnixRoutes.HOME) EnterTransition.None else null
+                },
+                exitTransition = {
+                    if (targetState.destination.route == ReiAnixRoutes.HOME) ExitTransition.None else null
+                },
+                popEnterTransition = {
+                    if (initialState.destination.route == ReiAnixRoutes.HOME) EnterTransition.None else null
+                },
+                popExitTransition = {
+                    if (targetState.destination.route == ReiAnixRoutes.HOME) ExitTransition.None else null
+                },
+            ) { ReiAnixWallpaperScope { profile() } }
             composable(ReiAnixRoutes.STORAGE) { storage() }
             composable(ReiAnixRoutes.RECOVERY) { recovery() }
             composable(ReiAnixRoutes.COLLECTOR) { collector() }
