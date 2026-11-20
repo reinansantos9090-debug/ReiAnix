@@ -80,6 +80,7 @@ fun ReiAnixEmptyState(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
     icon: ImageVector? = null,
+    transparentOnWallpaper: Boolean = false,
 ) {
     Column(
         modifier = modifier
@@ -119,6 +120,7 @@ fun ReiAnixEmptyState(
             ReiAnixSecondaryButton(
                 text = actionLabel,
                 onClick = onAction,
+                transparentOnWallpaper = transparentOnWallpaper,
             )
         }
     }
@@ -131,6 +133,7 @@ fun ReiAnixEmptyLibraryState(
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    transparentOnWallpaper: Boolean = false,
 ) {
     ReiAnixEmptyState(
         title = title,
@@ -138,6 +141,7 @@ fun ReiAnixEmptyLibraryState(
         modifier = modifier,
         actionLabel = actionLabel,
         onAction = onAction,
+        transparentOnWallpaper = transparentOnWallpaper,
     )
 }
 
