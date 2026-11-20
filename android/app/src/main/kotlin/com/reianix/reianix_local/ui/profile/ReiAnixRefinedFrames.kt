@@ -102,8 +102,8 @@ private fun DrawScope.gem(
     ))
     drawPath(shape, rim, style = Stroke(width = (radius * 0.13f).coerceAtLeast(0.45f)))
     drawLine(Color.White.copy(alpha = 0.35f + glow * 0.6f),
-        point.copy(x = point.x, y = point.y - radius * 0.67f),
-        point.copy(x = point.x, y = point.y + radius * 0.30f),
+        Offset(point.x, point.y - radius * 0.67f),
+        Offset(point.x, point.y + radius * 0.30f),
         strokeWidth = radius * 0.10f)
 }
 
@@ -163,7 +163,7 @@ private fun DrawScope.drawRoyalFrame(
         lineTo(at.x - r * 0.23f, crownY - r * 0.035f)
         lineTo(at.x - r * 0.17f, crownY - r * 0.22f)
         lineTo(at.x - r * 0.045f, crownY - r * 0.09f)
-        lineTo(at.x, crownY - r * 0.32f)
+        lineTo(at.x, crownY - r * 0.22f)
         lineTo(at.x + r * 0.045f, crownY - r * 0.09f)
         lineTo(at.x + r * 0.17f, crownY - r * 0.22f)
         lineTo(at.x + r * 0.23f, crownY - r * 0.035f)
@@ -182,7 +182,7 @@ private fun DrawScope.drawRoyalFrame(
         size = Size(r * 0.80f, u * 1.02f),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(u * 0.42f),
     )
-    gem(Offset(at.x, crownY - r * 0.12f), r * 0.13f, sapphire, ivory, light)
+    gem(Offset(at.x, crownY - r * 0.085f), r * 0.115f, sapphire, ivory, light)
     if (!compact) {
         gem(Offset(at.x - r * 0.26f, crownY - r * 0.055f),
             r * 0.05f, Color(0xFFFFF5DF), deepGold, light)
