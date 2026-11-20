@@ -165,14 +165,14 @@ internal fun AnimatedProfileFrame(frame: String, modifier: Modifier = Modifier) 
             }
         }
 
-        if (frame == "gold" && size.minDimension >= 70.dp.toPx()) {
+        if (frame == "gold" && size.minDimension >= 50.dp.toPx()) {
             // The crown and laurel wreath are original vector ornaments, never external art.
             val top = mid.y - r
             val crown = Path().apply {
                 moveTo(mid.x - r * 0.32f, top + line * 0.25f)
                 lineTo(mid.x - r * 0.36f, top - r * 0.18f)
                 lineTo(mid.x - r * 0.12f, top - r * 0.02f)
-                lineTo(mid.x, top - r * 0.26f)
+                lineTo(mid.x, top - r * 0.17f)
                 lineTo(mid.x + r * 0.12f, top - r * 0.02f)
                 lineTo(mid.x + r * 0.36f, top - r * 0.18f)
                 lineTo(mid.x + r * 0.32f, top + line * 0.25f)
