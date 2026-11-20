@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTouchInput
@@ -260,8 +262,8 @@ class ReiAnixWallpaperCardsInstrumentedTest {
                 composeRule.onNodeWithTag("profile-frame-option-" + frame)
                     .performScrollTo().performClick()
                 composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == frame }
-                composeRule.onNodeWithTag("profile-frame-animation-" + frame)
-                    .assertExists()
+                composeRule.onAllNodesWithTag("profile-frame-animation-" + frame, useUnmergedTree = true)
+                    .assertCountEquals(2)
             }
             composeRule.onNodeWithTag("profile-frame-option-white")
                 .performScrollTo().performClick()
