@@ -83,13 +83,13 @@ jobs:
             if [[ ! -s "$dst" ]]; then
               curl --fail --location --retry 2 --max-time 30 --silent --show-error "$url" --output "$dst"
               python3 - "$dst" <<'PY_IMAGE'
-import sys, pathlib, struct
-p = pathlib.Path(sys.argv[1]); d = p.read_bytes()
-assert d[:8] == b'\\x89PNG\\r\\n\\x1a\\n', f'Not PNG: {p}'
-w,h = struct.unpack('>II', d[16:24])
-assert w >= 150 and h >= 150, f'Unexpected small image {w}x{h}'
-print(f'Imported {p.name}: {w}x{h}, {len(d)} bytes')
-PY_IMAGE
+          import sys, pathlib, struct
+          p = pathlib.Path(sys.argv[1]); d = p.read_bytes()
+          assert d[:8] == bytes([137,80,78,71,13,10,26,10]), f'Not PNG: {p}'
+          w,h = struct.unpack('>II', d[16:24])
+          assert w >= 150 and h >= 150, f'Unexpected small image {w}x{h}'
+          print(f'Imported {p.name}: {w}x{h}, {len(d)} bytes')
+          PY_IMAGE
             fi
           }
           fetch_png "gold" 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F6199e9a9-83c1-4e59-ba05-ea05a0c6e659/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAPTTnPwg6N9WU-4gddArvFMpiGImbT5ydRT2tpTowMwR&exp=1795233716&osig=AAAAAAAAAAAAAAAAAAAAAGvwu4FmV9-yFuZAlDRh8uIzvKtLxi6Ol0yK96HCWDMB&signer=media-rpc&token=AAIAAU0AJDYxOTllOWE5LTgzYzEtNGU1OS1iYTA1LWVhMDVhMGM2ZTY1OQAAAAABofxElyAb0Q26egceJw6M_1ertxrBq1h-EInduOLwl7VsyuYp2g&x-canva-quality=thumbnail'
