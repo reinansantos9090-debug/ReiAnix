@@ -15,6 +15,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performClick
+import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import androidx.compose.ui.unit.dp
 import com.reianix.reianix_local.ui.ReiAnixAnimeCard
 import com.reianix.reianix_local.ui.navigation.ReiAnixCurrentDestination
@@ -58,6 +64,35 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         composeRule.waitForIdle()
         val current = centerColor()
         assertTrue("The retained profile must no longer be drawn", current.green > .9f && current.red < .1f && current.blue < .1f)
+    }
+
+    @Test
+    fun customizationShowsCategoriesAndSavesFrameWithoutGlobalSave() {
+        val store = ReiAnixProfileStore.from(composeRule.activity)
+        val original = store.state.value
+        try {
+            runBlocking { store.save(original.copy(frame = "none")) }
+            composeRule.setContent {
+                ReiAnixComposeTheme(themeMode = "dark") {
+                    ProfileCustomization(store, emptyList(), onBack = {})
+                }
+            }
+            listOf("Foto e avatares", "Moldura", "Banner do perfil", "Papel de parede", "Anime em destaque").forEach {
+                composeRule.onNodeWithText(it).assertExists()
+            }
+            composeRule.onNodeWithText("Cor do perfil").assertDoesNotExist()
+            composeRule.onNodeWithText("Salvar perfil").assertDoesNotExist()
+            composeRule.onNodeWithText("Avatares personalizados").assertDoesNotExist()
+            composeRule.onNodeWithText("Moldura").performClick()
+            composeRule.onNodeWithText("Dourada").assertIsDisplayed().performClick()
+            composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == "gold" }
+            assertEquals(original.color, store.state.value.color)
+            composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            composeRule.onNodeWithText("Personalização do perfil").assertIsDisplayed()
+            composeRule.onNodeWithText("Dourada").assertDoesNotExist()
+        } finally {
+            runBlocking { store.save(original) }
+        }
     }
 
     @Test
