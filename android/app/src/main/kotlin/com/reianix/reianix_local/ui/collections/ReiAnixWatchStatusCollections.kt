@@ -3,6 +3,8 @@ package com.reianix.reianix_local.ui.collections
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -91,8 +93,16 @@ fun ReiAnixWatchStatusCollections(
         catch (_: Exception) { error = "Não foi possível carregar suas listas." }
         finally { loading = false }
     }
+    // Prefer the same materialized artwork already exposed by the library.
+    // Never launch a separate remote cover request from a tracking list.
+    val visibleArtwork = remember(tracked, animes) {
+        val artworkById = animes.associateBy { it.id }
+        tracked.map { item ->
+            item.copy(coverCache = artworkById[item.id]?.artwork?.localPath ?: item.coverCache)
+        }
+    }
     ReiAnixResponsiveRoot {
-        TrackingCollectionsContent(tracked, loading, error, { retry++ }, onOpenAnime, onBack)
+        TrackingCollectionsContent(visibleArtwork, loading, error, { retry++ }, onOpenAnime, onBack)
     }
 }
 
@@ -121,7 +131,7 @@ internal fun TrackingCollectionsContent(
                 Triple(ReiAnixWatchStatus.PAUSED, Icons.Outlined.PauseCircleOutline, Color(0xFFFFC768)),
                 Triple(ReiAnixWatchStatus.DROPPED, Icons.Outlined.Cancel, Color(0xFFF16B70)),
             )
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
                 categories.forEach { (status, icon, tint) ->
                     val count = tracked.count { it.status == status }
                     Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).clickable { selectedName = status.name }.padding(10.dp),
@@ -156,7 +166,7 @@ internal fun TrackingCollectionsContent(
                                 Box(Modifier.size(60.dp, 88.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                     contentAlignment = Alignment.Center) {
                                     Icon(Icons.Outlined.Movie, null)
-                                    val model: Any? = anime.coverCache?.takeIf { it.isNotBlank() }?.let(::File) ?: anime.coverUrl
+                                    val model = anime.coverCache?.takeIf { it.isNotBlank() }?.let(::File)
                                     AsyncImage(model, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                 }
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
