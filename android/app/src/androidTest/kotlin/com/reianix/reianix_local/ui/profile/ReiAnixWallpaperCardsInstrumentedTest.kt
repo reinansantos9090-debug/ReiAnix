@@ -21,6 +21,8 @@ import com.reianix.reianix_local.ui.collections.TrackingCollectionsContent
 import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -146,7 +148,7 @@ class ReiAnixWallpaperCardsInstrumentedTest {
     }
 
     @Test
-    fun customizationShowsCategoriesAndSavesFrameWithoutGlobalSave() {
+    fun unifiedEditorAutosavesIdentityAndFrameWithoutGlobalSave() {
         val store = ReiAnixProfileStore.from(composeRule.activity)
         val original = store.state.value
         try {
@@ -159,15 +161,24 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             listOf("Foto e avatares", "Moldura", "Banner do perfil", "Papel de parede", "Anime em destaque").forEach {
                 composeRule.onNodeWithText(it).assertExists()
             }
+            composeRule.onNodeWithText("Editar perfil").assertIsDisplayed()
+            composeRule.onNodeWithText("Nome do usuário").performScrollTo().performTextReplacement("Otaku automático")
+            composeRule.onNodeWithText("Biografia").performScrollTo().performTextReplacement("Minha biblioteca")
+            composeRule.waitUntil(timeoutMillis = 5000) {
+                store.state.value.name == "Otaku automático" && store.state.value.bio == "Minha biblioteca"
+            }
             composeRule.onNodeWithText("Cor do perfil").assertDoesNotExist()
             composeRule.onNodeWithText("Salvar perfil").assertDoesNotExist()
+            composeRule.onNodeWithText("Salvar alterações").assertDoesNotExist()
             composeRule.onNodeWithText("Avatares personalizados").assertDoesNotExist()
-            composeRule.onNodeWithText("Moldura").performClick()
+            composeRule.onNodeWithText("Moldura").performScrollTo().performClick()
             composeRule.onNodeWithText("Dourada").assertIsDisplayed().performClick()
             composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == "gold" }
             assertEquals(original.color, store.state.value.color)
             composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-            composeRule.onNodeWithText("Personalização do perfil").assertIsDisplayed()
+            composeRule.onNodeWithText("Editar perfil").assertIsDisplayed()
+            assertEquals("Otaku automático", store.state.value.name)
+            assertEquals("Minha biblioteca", store.state.value.bio)
             composeRule.onNodeWithText("Dourada").assertDoesNotExist()
         } finally {
             runBlocking { store.save(original) }

@@ -62,6 +62,24 @@ class ReiAnixProfileTest {
     }
 
     @Test
+    fun identityAutosavePreservesLatestCustomization() = runBlocking {
+        val store = ReiAnixProfileStore.from(RuntimeEnvironment.getApplication())
+        val original = store.state.value
+        try {
+            store.update { it.copy(frame = "gold", avatar = "moon", featuredAnimeId = 17L) }
+            store.update { it.copy(name = "  Novo nome  ", bio = "Biografia") }
+            val saved = store.state.value
+            assertEquals("Novo nome", saved.name)
+            assertEquals("Biografia", saved.bio)
+            assertEquals("gold", saved.frame)
+            assertEquals("moon", saved.avatar)
+            assertEquals(17L, saved.featuredAnimeId)
+        } finally {
+            store.save(original)
+        }
+    }
+
+    @Test
     fun clipHandoffMatchesRequestAndMediaAndIsConsumedOnlyOnce() {
         val scene = PlayerLocalMetadataStore.FavoriteScene("content://local/media/1",
             PlayerLocalMetadataStore.Note("scene-1", 1000, "Cena", 1, true, 5000))
