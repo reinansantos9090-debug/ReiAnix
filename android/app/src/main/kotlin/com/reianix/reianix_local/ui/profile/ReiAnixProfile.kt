@@ -216,7 +216,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
     val goBack: () -> Unit = { if (section != "profile") section = "profile" else navController.popBackStack() }
     BackHandler(enabled = section != "profile" && section !in setOf("edit", "customize")) { goBack() }
 
-    LaunchedEffect(library, retry) {
+    LaunchedEffect(library, retry, section == "history" || section == "favorites") {
         loading = true
         error = null
         try {
@@ -253,6 +253,14 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
         }
         "scenes" -> {
             ProfileScenes(viewModel, goBack, records)
+            return
+        }
+        "favorites" -> {
+            ProfileFavorites(records, catalog.animes, episodes, loading, openAnime, goBack)
+            return
+        }
+        "history" -> {
+            ProfileHistory(episodes, catalog.animes, loading, library, playEpisode, goBack)
             return
         }
     }
@@ -312,31 +320,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                 }
             }
             "stats" -> ProfileStatisticsContent(stats, loading)
-            "favorites" -> {
-                val favorites = records.filter { it.favorite == true }
-                if (favorites.isEmpty()) Text(if (loading) "Carregando…" else "Nenhum anime favorito.", Modifier.padding(20.dp))
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(favorites, key = { it.id }) { anime -> AnimeProfileRow(anime, onClick = { openAnime(anime.id) }) }
-                }
-            }
-            "history" -> {
-                val history = episodes.filter { it.lastPlayedAt?.let { timestamp -> timestamp.isFinite() && timestamp > 0.0 } == true }.sortedByDescending { it.lastPlayedAt }
-                if (history.isEmpty()) Text(if (loading) "Carregando…" else "Nenhuma reprodução registrada.", Modifier.padding(20.dp))
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-                    items(history, key = { it.id }) { row ->
-                        val date = DateFormat.getDateTimeInstance().format(Date((row.lastPlayedAt!! * 1000).toLong()))
-                        Row(Modifier.fillMaxWidth().clickable(enabled = row.missing != true) { playEpisode(row.id, row.animeId) }.padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Icon(Icons.Outlined.History, null)
-                            Column(Modifier.weight(1f)) {
-                                Text(row.animeTitle ?: "Anime", style = MaterialTheme.typography.titleMedium)
-                                Text(date + " · " + timeText(row.progress ?: 0.0), color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
-                            }
-                            Icon(Icons.Outlined.PlayArrow, null)
-                        }
-                    }
-                }
-            }
+
         }
     }
 }
