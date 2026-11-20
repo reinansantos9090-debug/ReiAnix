@@ -23,19 +23,47 @@ jobs:
         uses: actions/checkout@v5
 
 
-      - name: Probe high-res frame art availability
+      - name: Import locally bundled illustrated frame art (one-time)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         shell: bash
         env:
-          THUMB: 'https://media.canva.com/v2/image-resize/format:PNG/height:133/quality:100/uri:ifs%3A%2F%2FM%2F43350df6-15d2-4af2-8642-0cda0da3b2b1/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAAWkVhF8TqrpRM92R0aJ-MHlCAdgqQUUopWD1mRZ5RI1&exp=1795231038&osig=AAAAAAAAAAAAAAAAAAAAABEG_QfAntKVvDjeqsPXxrqtp5BSHp_jqPrqnm3_aqd5&signer=media-rpc&token=AAIAAU0AJDQzMzUwZGY2LTE1ZDItNGFmMi04NjQyLTBjZGEwZGEzYjJiMQAAAAABofwbujAlcUbF16SSLSPh0fOMvYyUcot3HS7rADjwXScW-qU8PQ&x-canva-quality=thumbnail'
-          FULL: 'https://media.canva.com/v2/image-resize/format:PNG/height:1024/quality:100/uri:ifs%3A%2F%2FM%2F43350df6-15d2-4af2-8642-0cda0da3b2b1/watermark:F/width:1536?csig=AAAAAAAAAAAAAAAAAAAAAAWkVhF8TqrpRM92R0aJ-MHlCAdgqQUUopWD1mRZ5RI1&exp=1795231038&osig=AAAAAAAAAAAAAAAAAAAAABEG_QfAntKVvDjeqsPXxrqtp5BSHp_jqPrqnm3_aqd5&signer=media-rpc&token=AAIAAU0AJDQzMzUwZGY2LTE1ZDItNGFmMi04NjQyLTBjZGEwZGEzYjJiMQAAAAABofwbujAlcUbF16SSLSPh0fOMvYyUcot3HS7rADjwXScW-qU8PQ&x-canva-quality=thumbnail'
+          ART_GOLD: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2Fff6be661-4d91-4b5c-920e-92ba6c5d5cb5/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAOTCbmjULNlhJickMFMlqrkF2qFJuGmhdhqGIzEctsyp&exp=1795231104&osig=AAAAAAAAAAAAAAAAAAAAAMQULt1EpCay-4qQTquYQf8teFZRxaFcycoqo3jKQVGQ&signer=media-rpc&token=AAIAAU0AJGZmNmJlNjYxLTRkOTEtNGI1Yy05MjBlLTkyYmE2YzVkNWNiNQAAAAABofwcvAB-7Yd-j4E172s2S29rNRCp5RYwnkRhTAi7YT9EWbEoxg&x-canva-quality=thumbnail'
+          ART_NEON: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2Ff6deba3f-95da-4842-971a-a524e65c3d19/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAANlIGALV9RSQoSB-cHxjv_pmebB6W5acIiqnvdslAsIF&exp=1795234500&osig=AAAAAAAAAAAAAAAAAAAAANQKHrOjP0UEFiQXfDED0aL-4QByHf9B90El7e164d5d&signer=media-rpc&token=AAIAAU0AJGY2ZGViYTNmLTk1ZGEtNDg0Mi05NzFhLWE1MjRlNjVjM2QxOQAAAAABofxQjaDEm2J_Js8B37Rpj8n9dLrr0ulYvJ7V2-Wl2xhZJvnAzg&x-canva-quality=thumbnail'
+          ART_GALAXY: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F2941c749-cacd-44d5-87ff-c2813995365a/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAALIVA6VjyzJwEyL-9vfBPx-uH1ZRXPNnppROs3LQ8AF-&exp=1795232346&osig=AAAAAAAAAAAAAAAAAAAAAKmKXJHf2dUTyw55itoZknh36ArizOr8ejNZw9MpRn09&signer=media-rpc&token=AAIAAU0AJDI5NDFjNzQ5LWNhY2QtNDRkNS04N2ZmLWMyODEzOTk1MzY1YQAAAAABofwvr5ANZ1ut-AftEKdhnouWc2VLHYI7dfQGtaD4OVA2y9BCYQ&x-canva-quality=thumbnail'
+          ART_CAT_EARS: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2Fe6ecedc5-8849-47c9-a936-92a2b1f43941/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAIYwzi0YKTCIX4__u72aCZ67ID_mX8BWGGyE5bh11BPH&exp=1795231711&osig=AAAAAAAAAAAAAAAAAAAAAJzZEr2mRkxnL-QtdbYZLPxloz_XWETHxtyIhCakwSce&signer=media-rpc&token=AAIAAU0AJGU2ZWNlZGM1LTg4NDktNDdjOS1hOTM2LTkyYTJiMWY0Mzk0MQAAAAABofwl_xgMI3H2q1fa1jQHPv50_il2R0APvBP3A8noqP7mGszYzg&x-canva-quality=thumbnail'
+          ART_HEADSET: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2Fcdb37410-83d6-47fa-8629-037a087cf7e6/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAMQyK_Vqfcc5ZAZMnN2HkHVJfhmNRZ9Ed_ZrHjvSv7fm&exp=1795231854&osig=AAAAAAAAAAAAAAAAAAAAAEQ2ZgDyBC5mxhinzP4OL9qE4Ilv_bJf_u_gxpk046uW&signer=media-rpc&token=AAIAAU0AJGNkYjM3NDEwLTgzZDYtNDdmYS04NjI5LTAzN2EwODdjZjdlNgAAAAABofwoLbB8jpMMKxlzgEvjphsUPMSQZ18UHgYHaHwqYw-5PNWBSA&x-canva-quality=thumbnail'
         run: |
-          set +e
-          for key in THUMB FULL; do
-            url="${!key}"
-            printf "%s: " "$key"
-            curl -L --max-time 15 --silent --show-error -o /tmp/canva-${key}.img -w '%{http_code} %{size_download} bytes\n' "$url"
-            file /tmp/canva-${key}.img
+          set -euo pipefail
+          dir='android/app/src/main/res/drawable-nodpi'
+          mkdir -p "$dir"
+          changed=0
+          for key in GOLD NEON GALAXY CAT_EARS HEADSET; do
+            lower="${key,,}"
+            name="ART_${key}"
+            url="${!name}"
+            dest="$dir/profile_frame_${lower}.png"
+            if [[ -s "$dest" ]]; then continue; fi
+            # High-resolution CDN URL is attempted first; signed thumbnail is
+            # a compatible fallback if the provider does not authorize resizing.
+            full="${url/height:200/height:320}"
+            full="${full/width:200/width:320}"
+            if ! curl --fail --location --silent --show-error --max-time 35 "$full" --output "$dest"; then
+              curl --fail --location --silent --show-error --max-time 35 "$url" --output "$dest"
+            fi
+            file "$dest"
+            if ! file -b "$dest" | grep -qi 'PNG image data'; then
+              echo "::error::Invalid PNG for $lower"
+              exit 1
+            fi
+            changed=1
           done
+          if [[ "$changed" == 1 ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "$dir"/profile_frame_*.png
+            git commit -m "Bundle original illustrated profile frame artwork as Android drawables"
+            git push origin "HEAD:refs/heads/${{ github.event.pull_request.head.ref }}"
+          fi
 
       - name: Set up Java
         uses: actions/setup-java@v5
