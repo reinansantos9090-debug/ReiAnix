@@ -1172,6 +1172,7 @@ private fun DetailsHero(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("details-tracemoe-identify-button"),
+                transparentOnWallpaper = true,
             )
             if (isTraceMoeRunning && !traceMoeState.currentThumbnailPath.isNullOrBlank()) {
                 Row(
@@ -1319,6 +1320,7 @@ private fun DetailsHero(
                 onClick = { target?.takeIf { it.isPlayable }?.let { onWatch(it.id) } },
                 enabled = target?.isPlayable == true,
                 modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-play-action"),
+                transparentOnWallpaper = true,
                 leadingIcon = Icons.Filled.PlayArrow,
             )
             ReiAnixSecondaryButton(
@@ -1326,6 +1328,7 @@ private fun DetailsHero(
                 onClick = onOpenMarathon,
                 enabled = hasMarathonContent,
                 modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-marathon-action"),
+                transparentOnWallpaper = true,
             )
         }
         if (anime.userTags.isNotEmpty()) {

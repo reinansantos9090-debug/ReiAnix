@@ -216,7 +216,10 @@ fun ReiAnixPrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     leadingIcon: ImageVector? = null,
+    transparentOnWallpaper: Boolean = false,
 ) {
+    val revealWallpaper = transparentOnWallpaper && LocalReiAnixWallpaperVisible.current
+    val accent = MaterialTheme.colorScheme.primary
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -228,11 +231,16 @@ fun ReiAnixPrimaryButton(
             },
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.buttonColors(
-            containerColor = ReiAnixTokens.Colors.primaryButton,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            disabledContainerColor = ReiAnixTokens.Colors.accentDisabled,
-            disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
+            containerColor = if (revealWallpaper) androidx.compose.ui.graphics.Color.Transparent else ReiAnixTokens.Colors.primaryButton,
+            contentColor = if (revealWallpaper) accent else MaterialTheme.colorScheme.onPrimary,
+            disabledContainerColor = if (revealWallpaper) androidx.compose.ui.graphics.Color.Transparent else ReiAnixTokens.Colors.accentDisabled,
+            disabledContentColor = (if (revealWallpaper) accent else MaterialTheme.colorScheme.onPrimary)
+                .copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
         ),
+        border = if (revealWallpaper) androidx.compose.foundation.BorderStroke(
+            width = ReiAnixTokens.Dimensions.borderWidth,
+            color = if (enabled) accent else accent.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
+        ) else null,
     ) {
         leadingIcon?.let {
             Icon(
