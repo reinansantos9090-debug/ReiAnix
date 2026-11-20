@@ -1007,6 +1007,258 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun explicitRepairIgnoresMusicAndWrongAliasEvenWhenAlreadyAssociated() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val local = requireNotNull(repository.getAnime(1L)).copy(
+            lookupTitle = "Example Anime Season 2", title = "Unrelated Music",
+            aliasesJson = "[\"Unrelated Music\"]", anilistId = 99L,
+            anilistMatchManual = false, mediaKind = "series",
+        )
+        fun candidate(id: Int, title: String, format: String) =
+            com.reianix.reianix_local.data.anilist.AniListAnime(
+                id = id, titleRomaji = title, titleEnglish = null, titleNative = null,
+                synonyms = emptyList(), description = null, format = format, episodes = 12,
+                status = null, averageScore = null, durationMinutes = null, season = null,
+                seasonYear = null, genres = emptyList(), coverLargeUrl = "https://example.invalid/cover.jpg",
+                coverExtraLargeUrl = null, bannerUrl = null, studios = emptyList(),
+            )
+        val ranked = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            local, local.lookupTitle, listOf(
+                candidate(99, local.lookupTitle, "MUSIC"),
+                candidate(98, "Unrelated Music", "TV"),
+                candidate(42, local.lookupTitle, "TV"),
+                candidate(43, "Example Anime Season 1", "TV"),
+            ),
+        )
+        assertEquals(42, ranked.first().anime.id)
+        assertTrue(ranked.none { it.anime.id == 99 })
+        // An unrelated stored alias is evaluated, but cannot outrank a correct
+        // literal original title.
+        assertTrue(ranked.first().score - (ranked.getOrNull(1)?.score ?: 0.0) >= 0.025)
+    }
+
+    @Test
+    fun explicitRepairAcceptsAlternativeTitleWithoutStrongFolderNameMatch() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val local = requireNotNull(repository.getAnime(1L)).copy(
+            lookupTitle = "Minha pasta 42", title = "Another Name",
+            romaji = "Kimi no Anime", english = "Another Name", nativeTitle = "君のアニメ",
+            aliasesJson = "[\"Official Alternative\"]", anilistId = null, mediaKind = "series",
+        )
+        val terms = com.reianix.reianix_local.data.anilist.explicitAniListRepairSearchTerms(
+            com.reianix.reianix_local.data.anilist.explicitAniListRepairTitles(local),
+        )
+        assertTrue(terms.contains("Kimi no Anime"))
+        assertTrue(terms.contains("Official Alternative"))
+        val candidate = com.reianix.reianix_local.data.anilist.AniListAnime(
+            id = 42, titleRomaji = "Kimi no Anime", titleEnglish = null, titleNative = null,
+            synonyms = listOf("Official Alternative"), description = null, format = "TV",
+            episodes = 12, status = null, averageScore = null, durationMinutes = null,
+            season = null, seasonYear = null, genres = emptyList(),
+            coverLargeUrl = "https://example.invalid/cover.jpg", coverExtraLargeUrl = null,
+            bannerUrl = null, studios = emptyList(),
+        )
+        val ranked = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            local, local.lookupTitle, listOf(candidate, candidate.copy(id = 99, format = "MUSIC")),
+        )
+        assertEquals(42, ranked.single().anime.id)
+        assertTrue(ranked.single().score >= 0.72)
+        // A local file classified as a movie must still be allowed to match TV.
+        val wrongFormat = local.copy(mediaKind = "movie", format = "MUSIC")
+        val evidence = com.reianix.reianix_local.data.anilist.ExplicitAniListLocalEvidence(
+            titles = listOf("Kimi no Anime"), episodeCount = 5, durationMinutes = 24.0,
+        )
+        val repaired = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            wrongFormat, wrongFormat.lookupTitle,
+            listOf(candidate.copy(durationMinutes = 24), candidate.copy(id = 99, format = "MUSIC")),
+            evidence,
+        )
+        assertEquals(42, repaired.single().anime.id)
+        assertTrue(repaired.single().score >= 0.50)
+        val sourceEvidence = com.reianix.reianix_local.data.anilist.explicitAniListLocalEvidence(repository.listEpisodes(1L))
+        assertEquals(1, sourceEvidence.episodeCount)
+        assertEquals(20.0, requireNotNull(sourceEvidence.durationMinutes), 0.01)
+    }
+
+    @Test
+    fun explicitRepairRecoversOriginalFileIdentityAndRejectsGenericFolder() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val local = requireNotNull(repository.getAnime(1L)).copy(
+            lookupTitle = "catalog-key",
+            title = "Anime Document: München e no Michi",
+            romaji = "Anime Document: München e no Michi",
+            aliasesJson = "[\"Anime Document\"]", anilistId = 99L, format = "TV",
+        )
+        val actual = repository.listEpisodes(1L).single().copy(
+            fileName = "Saigo ni Hitotsu dake Onegai shitemo Yoroshii deshou ka - Episódio 01.mp4",
+            path = "/storage/emulated/0/Anime/episode.mp4",
+            duration = 1420.0,
+        )
+        val evidence = com.reianix.reianix_local.data.anilist.explicitAniListLocalEvidence(listOf(actual))
+        assertTrue(evidence.titles.none { it.equals("Anime", true) })
+        val terms = com.reianix.reianix_local.data.anilist.explicitAniListRepairTitles(local, evidence)
+        assertTrue(terms.none { it.contains("München") })
+        fun candidate(id: Int, title: String, format: String = "TV") =
+            com.reianix.reianix_local.data.anilist.AniListAnime(
+                id = id, titleRomaji = title, titleEnglish = null, titleNative = null,
+                synonyms = emptyList(), description = null, format = format, episodes = 12,
+                status = null, averageScore = null, durationMinutes = 24, season = null,
+                seasonYear = null, genres = emptyList(), coverLargeUrl = "https://example.invalid/cover.jpg",
+                coverExtraLargeUrl = null, bannerUrl = null, studios = emptyList(),
+            )
+        val correct = candidate(42, "Saigo ni Hitotsu dake Onegai shitemo Yoroshii deshou ka")
+        val ranked = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            local, local.lookupTitle, listOf(candidate(99, local.title), correct, correct.copy(id = 98, format = "MUSIC")),
+            evidence,
+        )
+        assertEquals(42, ranked.first().anime.id)
+        assertTrue(ranked.none { it.anime.id == 99 || it.anime.id == 98 })
+    }
+
+    @Test
+    fun explicitRepairMatchesRomanizationSpacingAndDecodedSafFolders() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val original = requireNotNull(repository.getAnime(1L))
+        val ep = repository.listEpisodes(1L).first()
+        val pairs = listOf(
+            "Saigo ni Hitotsu dake Onegai shitemo Yoroshii deshou ka" to
+                "Saigo ni Hitotsu dake Onegai shite mo Yoroshii deshou ka",
+            "Futsutsuka na Akujo dewa Gozaimasu ga Suuguu Chouso Torikae Den" to
+                "Futsutsuka na Akujo de wa Gozaimasu ga: Suuguu Chouso Torikae Den",
+            "Re:Zero kara Hajimeru Isekai Seikatsu" to "Re：Zero kara Hajimeru Isekai Seikatsu",
+            "Jūjutsu Kaisen" to "Jujutsu Kaisen",
+        )
+        fun candidate(id: Int, name: String, format: String = "TV") =
+            com.reianix.reianix_local.data.anilist.AniListAnime(
+                id = id, titleRomaji = name, titleEnglish = null, titleNative = null,
+                synonyms = emptyList(), description = null, format = format, episodes = 12,
+                status = null, averageScore = null, durationMinutes = 24, season = null,
+                seasonYear = null, genres = emptyList(), coverLargeUrl = "https://example.invalid/cover.jpg",
+                coverExtraLargeUrl = null, bannerUrl = null, studios = emptyList(),
+            )
+        for ((localName, official) in pairs) {
+            val oldName = "Anime Document: München e no Michi"
+            val local = original.copy(lookupTitle = oldName, title = oldName, romaji = oldName,
+                anilistId = 99L, anilistMatchManual = false, mediaKind = "series", format = "TV")
+            val doc = android.net.Uri.encode("primary:Anime/$localName/Episódio 01.mp4")
+            val evidence = com.reianix.reianix_local.data.anilist.explicitAniListLocalEvidence(listOf(
+                ep.copy(fileName = "Episódio 01.mp4", path = "content://com.android.externalstorage.documents/document/$doc",
+                    relativePath = "Anime/$localName/", sourceFolder = "Anime", duration = 1420.0),
+            ))
+            assertTrue(evidence.titles.contains(localName))
+            val titles = com.reianix.reianix_local.data.anilist.explicitAniListRepairTitles(local, evidence)
+            assertTrue(titles.none { it.contains("München") })
+            val queries = com.reianix.reianix_local.data.anilist.explicitAniListRepairSearchTerms(titles)
+            assertTrue(queries.size <= 8)
+            assertTrue(queries.none { it.equals("Anime", true) })
+            assertEquals(
+                com.reianix.reianix_local.data.anilist.explicitAniListCompactTitle(localName),
+                com.reianix.reianix_local.data.anilist.explicitAniListCompactTitle(official),
+            )
+            val correct = candidate(42, official)
+            val ranked = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+                local, local.lookupTitle, listOf(candidate(99, oldName), correct, correct.copy(id = 98, format = "MUSIC")), evidence,
+            )
+            assertEquals(42, ranked.first().anime.id)
+            assertTrue(ranked.first().score >= 0.60)
+            assertTrue(ranked.none { it.anime.id == 99 || it.anime.id == 98 })
+        }
+        val fragments = com.reianix.reianix_local.data.anilist.explicitAniListRepairSearchTerms(listOf(pairs.first().first))
+        assertTrue(fragments.any { it.contains("shite mo", true) })
+        assertTrue(fragments.any { it.equals("saigo ni hitotsu dake", true) })
+    }
+
+    @Test
+    fun explicitRepairCommitsPreparedArtworkTogetherWithMetadata() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { db ->
+            db.execSQL("UPDATE anime SET anilist_id=99, anilist_match_manual=0, metadata_manual_fields='[]', description='Wrong synopsis', banner_url='https://example.invalid/old-banner.jpg' WHERE id=1")
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val file = File.createTempFile("repair-cover", ".jpg", context.cacheDir)
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            val url = "https://example.invalid/new-cover.jpg"
+            val image = com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairImage(
+                "poster", url, file.absolutePath, "repair-test-poster", file.length(), 1, 1, "digest", "image/jpeg",
+            )
+            val prepared = com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairArtwork(image, null)
+            val patch = ReiAnixAnimeMetadataPatch(animeId = 1L, title = "Correct Anime", coverUrl = url)
+            val updated = repository.updateAniListMetadataAndAssociation(
+                patch, 42L, false, 0.90, 0.0, explicitRepair = true,
+                expectedAssociationId = 99L, preparedArtwork = prepared,
+            )
+            assertEquals("Correct Anime", updated.title)
+            assertEquals(42L, updated.anilistId)
+            assertEquals(file.absolutePath, updated.coverCache)
+            assertEquals(null, updated.bannerUrl)
+            assertEquals(null, updated.description)
+            val poster = repository.artworkForAnime(1L).single { it.artworkType == "poster" }
+            assertEquals(url, poster.externalUrl)
+            assertEquals(file.absolutePath, poster.localPath)
+            assertEquals("ready", poster.status)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun explicitRepairReplacesWrongAutomaticAssociationButRejectsStaleOrManualAssociation() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            // The shared fixture owns both title and cover_url manually. Here the
+            // cover is deliberately automatic, while the title remains protected.
+            connection.execSQL(
+                "UPDATE anime SET anilist_id = 99, anilist_match_manual = 0, anilist_match_status = 'matched', " +
+                    "metadata_manual_fields = '[\"title\"]' WHERE id = 1",
+            )
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val patch = ReiAnixAnimeMetadataPatch(animeId = 1L, coverUrl = "https://example.invalid/official.jpg")
+        val stale = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.99, 0.5,
+            explicitRepair = true, expectedAssociationId = 98L)
+        assertEquals(99L, stale.anilistId)
+        assertEquals("https://example.invalid/old-cover.jpg", stale.coverUrl)
+        val belowThreshold = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.59, 0.0,
+            explicitRepair = true, expectedAssociationId = 99L)
+        assertEquals(99L, belowThreshold.anilistId)
+        assertEquals("https://example.invalid/old-cover.jpg", belowThreshold.coverUrl)
+        val corrected = repository.updateAniListMetadataAndAssociation(patch, 42L, false, 0.60, 0.0,
+            explicitRepair = true, expectedAssociationId = 99L)
+        assertEquals(42L, corrected.anilistId)
+        assertEquals("https://example.invalid/official.jpg", corrected.coverUrl)
+        assertEquals("Original Title", corrected.title)
+        database.transaction { connection ->
+            connection.execSQL("UPDATE anime SET anilist_match_manual = 1, anilist_match_status = 'manual' WHERE id = 1")
+        }
+        val protected = repository.updateAniListMetadataAndAssociation(
+            patch.copy(coverUrl = "https://example.invalid/wrong.jpg"), 77L, false, 0.99, 0.5,
+            explicitRepair = true, expectedAssociationId = 42L)
+        assertEquals(42L, protected.anilistId)
+        assertEquals("https://example.invalid/official.jpg", protected.coverUrl)
+        // Explicit repair can replace a proven MUSIC association without
+        // granting permission to alter manually owned fields.
+        database.transaction { connection ->
+            connection.execSQL("UPDATE anime SET format='MUSIC', metadata_source='manual', metadata_status='manual' WHERE id=1")
+        }
+        val musicCorrected = repository.updateAniListMetadataAndAssociation(
+            patch.copy(format = "TV", coverUrl = "https://example.invalid/correct-series.jpg"),
+            77L, false, 0.97, 0.0, explicitRepair = true, expectedAssociationId = 42L,
+            correctManualMusic = true,
+        )
+        assertEquals(77L, musicCorrected.anilistId)
+        assertEquals("TV", musicCorrected.format)
+        assertEquals("https://example.invalid/correct-series.jpg", musicCorrected.coverUrl)
+        assertEquals("Original Title", musicCorrected.title)
+    }
+
+    @Test
     fun traceMoeCannotReplaceManualAssociationOrManualMetadata() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)

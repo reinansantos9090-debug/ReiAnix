@@ -197,6 +197,11 @@ class ReiAnixAppDependencies(context: Context) {
             candidateMetadataPublisher = { animeId, candidate ->
                 candidateMetadataService.offerAniList(animeId, candidate)
             },
+            prepareRepairArtwork = { animeId, remote ->
+                artworkService.prepareExplicitRepairArtwork(
+                    animeId, remote.id.toLong(), remote.coverCandidates.map { it.url }, remote.bannerUrl,
+                )
+            },
             explicitArtworkPublisher = { animeId ->
                 artworkService.requestAnimeArtwork(animeId, force = true)
                 Unit

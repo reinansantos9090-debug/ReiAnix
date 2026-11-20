@@ -168,7 +168,14 @@ fun ReiAnixDetailsRoute(
         factory = ReiAnixAniListViewModelFactory(LocalContext.current),
     )
     val aniListState by aniListViewModel.uiState.collectAsStateWithLifecycle()
-    var showAniListDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
+    val repairContext = LocalContext.current
+    LaunchedEffect(canonicalId, aniListState.repairRevision) {
+        if (aniListState.repairAnimeId == canonicalId && !aniListState.repairRunning) {
+            aniListState.repairMessage?.let { message ->
+                android.widget.Toast.makeText(repairContext, message, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     // The Details status can remain READY while the asynchronous local-library
     // projection gains a media URI, corrected availability/duration, or a newly
@@ -270,7 +277,8 @@ fun ReiAnixDetailsRoute(
         onOpenRecommendedAnime = { recommendedId -> navController.navigateToDetails(recommendedId.toString(), origin) },
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
         onSelectSource = viewModel::selectSafTree,
-        onManageAniList = { showAniListDialog = true },
+        onManageAniList = { aniListViewModel.repairAniListMetadata(canonicalId) },
+        aniListRepairRunning = aniListState.repairRunning,
         onOpenMarathon = { showMarathonDialog = true },
         onTogglePinned = viewModel::toggleAnimePinnedNative,
         onSavePersonalNote = viewModel::saveAnimePersonalNoteNative,
@@ -280,17 +288,6 @@ fun ReiAnixDetailsRoute(
         onIdentifyWithTraceMoe = viewModel::identifyAnimeWithTraceMoe,
         onCancelTraceMoe = viewModel::cancelTraceMoeIdentification,
     )
-    if (showAniListDialog) {
-        AniListAssociationDialog(
-            state = aniListState,
-            onSearch = aniListViewModel::searchAniList,
-            onAssociate = { selectedId ->
-                aniListViewModel.associateAniListManually(canonicalId, selectedId)
-            },
-            onRefreshMetadata = { aniListViewModel.refreshAniListMetadata(canonicalId) },
-            onDismiss = { showAniListDialog = false },
-        )
-    }
     if (showMarathonDialog) {
         ReiAnixMarathonDialog(
             viewModel = viewModel,
@@ -314,6 +311,7 @@ fun ReiAnixDetailsScreen(
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
     onSelectSource: () -> Unit = onRetry,
     onManageAniList: () -> Unit = {},
+    aniListRepairRunning: Boolean = false,
     onOpenMarathon: () -> Unit = {},
     onTogglePinned: suspend (Long) -> Boolean = { false },
     onSavePersonalNote: suspend (Long, String?) -> String? = { _, note -> note?.trim()?.takeIf { it.isNotEmpty() } },
@@ -349,6 +347,7 @@ fun ReiAnixDetailsScreen(
                         onOpenRecommendedAnime = onOpenRecommendedAnime,
                         onSetEpisodeWatched = onSetEpisodeWatched,
                         onManageAniList = onManageAniList,
+                        aniListRepairRunning = aniListRepairRunning,
                         onOpenMarathon = onOpenMarathon,
                         onTogglePinned = onTogglePinned,
                         onSavePersonalNote = onSavePersonalNote,
@@ -511,6 +510,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onOpenRecommendedAnime: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
+    aniListRepairRunning: Boolean,
     onOpenMarathon: () -> Unit,
     onTogglePinned: suspend (Long) -> Boolean,
     onSavePersonalNote: suspend (Long, String?) -> String?,
@@ -604,6 +604,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 onWatch = onWatch,
                 onToggleFavorite = onToggleFavorite,
                 onManageAniList = onManageAniList,
+                aniListRepairRunning = aniListRepairRunning,
                 onOpenMarathon = onOpenMarathon,
                 onTogglePinned = onTogglePinned,
                 onSavePersonalNote = onSavePersonalNote,
@@ -845,45 +846,22 @@ internal fun DetailsPinAction(
     }
 }
 
-/** Metadata actions remain accessible without a redundant menu over the backdrop. */
+/** One tap triggers the explicit repair; no intermediate menu or dialog. */
 @Composable
 internal fun DetailsAniListAction(
-    animeId: Long,
-    onManageAniList: () -> Unit,
-    onRefresh: () -> Unit,
+    running: Boolean,
+    onRepair: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by rememberSaveable(animeId) { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        ReiAnixDetailsQuickAction(
-            label = "AniList",
-            icon = ReiAnixDetailsShortcutIcons.AniList,
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) {
-            DropdownMenuItem(
-                text = { Text("Associar ao AniList") },
-                leadingIcon = { Icon(ReiAnixDetailsShortcutIcons.AniList, contentDescription = null) },
-                onClick = {
-                    expanded = false
-                    onManageAniList()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Atualizar detalhes") },
-                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
-                onClick = {
-                    expanded = false
-                    onRefresh()
-                },
-            )
-        }
-    }
+    ReiAnixDetailsQuickAction(
+        label = if (running) "Verificando…" else "AniList",
+        icon = ReiAnixDetailsShortcutIcons.AniList,
+        onClick = onRepair,
+        enabled = !running,
+        modifier = modifier.semantics {
+            stateDescription = if (running) "Verificando capa e metadados" else "Verificar capa e metadados"
+        },
+    )
 }
 
 @Composable
@@ -897,6 +875,7 @@ private fun DetailsHero(
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onManageAniList: () -> Unit,
+    aniListRepairRunning: Boolean,
     onOpenMarathon: () -> Unit,
     onTogglePinned: suspend (Long) -> Boolean,
     onSavePersonalNote: suspend (Long, String?) -> String?,
@@ -1102,9 +1081,8 @@ private fun DetailsHero(
             verticalAlignment = Alignment.Top,
         ) {
             DetailsAniListAction(
-                animeId = anime.id,
-                onManageAniList = onManageAniList,
-                onRefresh = onRefresh,
+                running = aniListRepairRunning,
+                onRepair = onManageAniList,
                 modifier = Modifier.weight(1f).testTag("details-quick-anilist"),
             )
             ReiAnixDetailsQuickAction(
