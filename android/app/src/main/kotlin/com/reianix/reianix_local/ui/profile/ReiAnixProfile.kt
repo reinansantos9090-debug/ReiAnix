@@ -150,6 +150,7 @@ internal data class ProfileStats(
     val favoriteCount: Int,
     val startedAnimeCount: Int,
     val genres: List<Pair<String, Int>>,
+    val availableCompletedEpisodes: Int = completedEpisodes,
 )
 internal fun profileStatistics(animes: List<ReiAnixAnimeRecord>, rows: List<ReiAnixCollectorEpisodeRow>): ProfileStats {
     val episodes = rows.distinctBy { it.id }
@@ -172,7 +173,7 @@ internal fun profileStatistics(animes: List<ReiAnixAnimeRecord>, rows: List<ReiA
             }.getOrDefault(emptyList())
         }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key to it.value }
     return ProfileStats(animes.size, available.size, completed.size, watched, animes.count { it.favorite == true },
-        startedIds.size, genres)
+        startedIds.size, genres, completed.count { it.missing != true })
 }
 
 private fun timeText(seconds: Double): String {
@@ -310,27 +311,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                     ProfileRow(Icons.Outlined.Settings, "Configurações gerais") { navController.navigate(ReiAnixRoutes.SETTINGS_GENERAL) { launchSingleTop = true } }
                 }
             }
-            "stats" -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                stats?.let { st ->
-                    ProfileMetric("Animes na biblioteca", st.animeCount.toString())
-                    ProfileMetric("Episódios disponíveis", st.episodeCount.toString())
-                    ProfileMetric("Episódios concluídos", st.completedEpisodes.toString())
-                    ProfileMetric("Animes iniciados", st.startedAnimeCount.toString())
-                    ProfileMetric("Favoritos", st.favoriteCount.toString())
-                    ProfileMetric("Tempo registrado", timeText(st.watchedSeconds))
-                    Text("Estimativa com base no progresso salvo e na duração dos episódios concluídos; não contabiliza reassistidas separadamente.",
-                        color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
-                    HorizontalDivider(color = Color(0xFF292929))
-                    Text("Gêneros mais assistidos", style = MaterialTheme.typography.titleMedium)
-                    val max = st.genres.firstOrNull()?.second ?: 1
-                    if (st.genres.isEmpty()) Text("Nenhum gênero registrado no histórico.")
-                    st.genres.take(12).forEach { (name, count) ->
-                        ProfileMetric(name, count.toString())
-                        LinearProgressIndicator(progress = { count.toFloat() / max }, modifier = Modifier.fillMaxWidth(), color = accent(profile))
-                    }
-                } ?: Text(if (loading) "Carregando…" else "Estatísticas indisponíveis.")
-            }
+            "stats" -> ProfileStatisticsContent(stats, loading)
             "favorites" -> {
                 val favorites = records.filter { it.favorite == true }
                 if (favorites.isEmpty()) Text(if (loading) "Carregando…" else "Nenhum anime favorito.", Modifier.padding(20.dp))
@@ -368,6 +349,70 @@ private fun ProfileNumber(value: String, label: String, color: Color, modifier: 
         Text(label, color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodyMedium)
     }
 }
+@Composable
+internal fun ProfileStatisticsContent(stats: ProfileStats?, loading: Boolean) {
+    if (stats == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (loading) CircularProgressIndicator() else Text("Estatísticas indisponíveis.")
+        }
+        return
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Resumo da biblioteca", style = MaterialTheme.typography.titleMedium)
+        val metrics = listOf(
+            Triple(Icons.Outlined.VideoLibrary, stats.animeCount.toString(), "Animes na biblioteca"),
+            Triple(Icons.Outlined.Movie, stats.episodeCount.toString(), "Episódios disponíveis"),
+            Triple(Icons.Outlined.CheckCircle, stats.completedEpisodes.toString(), "Episódios concluídos"),
+            Triple(Icons.Outlined.PlayCircleOutline, stats.startedAnimeCount.toString(), "Animes iniciados"),
+            Triple(Icons.Outlined.FavoriteBorder, stats.favoriteCount.toString(), "Favoritos"),
+            Triple(Icons.Outlined.Schedule, timeText(stats.watchedSeconds), "Tempo assistido"),
+        )
+        metrics.chunked(2).forEach { pair ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                pair.forEach { (icon, value, label) ->
+                    Card(Modifier.weight(1f).fillMaxHeight(), colors = CardDefaults.cardColors(
+                        containerColor = com.reianix.reianix_local.ui.theme.reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+                        contentColor = MaterialTheme.colorScheme.onSurface)) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                            Text(value, style = MaterialTheme.typography.headlineSmall)
+                            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+        Text("Progresso da biblioteca", style = MaterialTheme.typography.titleMedium)
+        // The existing completed count may include episodes no longer present.
+        // Use the same available-library denominator, avoiding impossible percentages.
+        val availableCompleted = stats.availableCompletedEpisodes.coerceIn(0, stats.episodeCount.coerceAtLeast(0))
+        val progress = if (stats.episodeCount > 0) availableCompleted.toFloat() / stats.episodeCount else 0f
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        Text("$availableCompleted de ${stats.episodeCount} episódios concluídos · ${(progress * 100).toInt()}%",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Tempo estimado pelo progresso salvo, sem contar reassistidas separadamente.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        HorizontalDivider()
+        Text("Gêneros mais assistidos", style = MaterialTheme.typography.titleMedium)
+        if (stats.genres.isEmpty()) {
+            Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Outlined.BarChart, null, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Seu histórico de gêneros aparecerá aqui.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            }
+        } else {
+            val max = stats.genres.maxOf { it.second }.coerceAtLeast(1)
+            stats.genres.take(12).forEach { (name, count) ->
+                ProfileMetric(name, count.toString())
+                LinearProgressIndicator(progress = { (count.toFloat() / max).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
 @Composable
 private fun ProfileMetric(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
