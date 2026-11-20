@@ -112,14 +112,15 @@ private fun ProfileBannerHeader(profile: ReiAnixProfile, store: ReiAnixProfileSt
     val context = LocalContext.current
     val bannerStore = remember(context) { ReiAnixWallpaperStore.banner(context) }
     val banner by bannerStore.state.collectAsStateWithLifecycle()
-    val image = rememberWallpaperImage(bannerStore, banner).image
-    if (image == null) {
+    val imageLoad = rememberWallpaperImage(bannerStore, banner)
+    val image = imageLoad.image
+    if (image == null && !imageLoad.loading) {
         ProfileAvatar(profile, store, 112.dp)
     } else {
         Box(Modifier.fillMaxWidth().padding(bottom = 58.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(3f).clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF202530))) {
-                ReiAnixWallpaperLayer(image, banner, Modifier.matchParentSize(), editing = true)
+                image?.let { ReiAnixWallpaperLayer(it, banner, Modifier.matchParentSize(), editing = true) }
             }
             Box(Modifier.align(Alignment.BottomCenter).offset(y = 58.dp).size(116.dp)
                 .clip(CircleShape).background(Color(0xFF101010)).clickable(onClick = onEditPhoto),
