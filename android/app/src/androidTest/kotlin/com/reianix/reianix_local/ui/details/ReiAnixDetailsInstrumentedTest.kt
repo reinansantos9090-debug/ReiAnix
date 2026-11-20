@@ -134,7 +134,7 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
-    fun headerPinChangesDirectlyAndAniListRepairsWithoutOpeningMenu() {
+    fun headerPinChangesThroughOverflowAndAniListRemainsIndependent() {
         val state = mutableStateOf(detailsStateWithEpisodes(1))
         var pinCalls = 0
         var managed = 0
@@ -159,10 +159,21 @@ class ReiAnixDetailsInstrumentedTest {
                 )
             }
         }
-        composeRule.onNodeWithContentDescription("Mais opções").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Fixar anime").assertIsDisplayed().performClick()
-        composeRule.onNodeWithContentDescription("Desafixar anime").assertIsDisplayed().performClick()
-        composeRule.onNodeWithContentDescription("Fixar anime").assertIsDisplayed()
+        val overflow = composeRule.onNodeWithTag("details-overflow")
+        val pin = composeRule.onNodeWithTag("details-pin")
+        overflow.assertIsDisplayed()
+        pin.assertDoesNotExist()
+        overflow.performClick()
+        composeRule.onNodeWithText("Fixar").assertIsDisplayed()
+        pin.performClick()
+        pin.assertDoesNotExist()
+        overflow.performClick()
+        composeRule.onNodeWithText("Desafixar").assertIsDisplayed()
+        pin.performClick()
+        overflow.performClick()
+        composeRule.onNodeWithText("Fixar").assertIsDisplayed()
+        composeRule.onNodeWithTag("details-tracemoe-identify-button").assertIsDisplayed()
+        composeRule.onNodeWithTag("details-tracemoe-identify-button").performClick()
         composeRule.onNodeWithTag("details-episode-list")
             .performScrollToNode(hasTestTag("details-quick-actions"))
         composeRule.onNodeWithTag("details-quick-anilist").performClick()
@@ -210,7 +221,7 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
-    fun synopsisIsInHeaderBeforeTraceMoe() {
+    fun synopsisRemainsInHeaderWithoutInlineTraceMoeButton() {
         val original = detailsStateWithEpisodes(1)
         val state = original.copy(
             anime = original.anime!!.copy(
@@ -236,15 +247,12 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithTag("details-episode-list")
             .performScrollToNode(hasTestTag("details-header-metadata"))
         synopsis.assertExists()
-        val metadata = composeRule.onNodeWithTag("details-header-metadata", useUnmergedTree = true)
-            .fetchSemanticsNode()
-        val traceMoe = composeRule.onNodeWithTag("details-tracemoe-identify-button", useUnmergedTree = true)
-            .fetchSemanticsNode()
-        org.junit.Assert.assertTrue(metadata.positionInRoot.y < traceMoe.positionInRoot.y)
+        composeRule.onNodeWithTag("details-tracemoe-identify-button", useUnmergedTree = true)
+            .assertDoesNotExist()
     }
 
     @Test
-    fun traceMoeIdentificationButtonDispatchesTheCurrentAnimeId() {
+    fun traceMoeOverflowItemDispatchesTheCurrentAnimeId() {
         var requestedAnimeId: Long? = null
 
         composeRule.setContent {
@@ -261,8 +269,11 @@ class ReiAnixDetailsInstrumentedTest {
         }
 
         val identifyButton = composeRule.onNodeWithTag("details-tracemoe-identify-button")
-        identifyButton.assertIsDisplayed()
-        identifyButton.performClick()
+        identifyButton.assertDoesNotExist()
+        composeRule.onNodeWithTag("details-overflow").performClick()
+        composeRule.onNodeWithText("Identificar capa").assertIsDisplayed()
+        identifyButton.assertIsDisplayed().performClick()
+        identifyButton.assertDoesNotExist()
         assertEquals(700L, requestedAnimeId)
     }
 
@@ -306,7 +317,7 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
-    fun traceMoeRunningButtonCancelsTheCurrentAnimeIdentification() {
+    fun traceMoeRunningOverflowItemCancelsTheCurrentAnimeIdentification() {
         var cancelledAnimeId: Long? = null
 
         composeRule.setContent {
@@ -326,7 +337,10 @@ class ReiAnixDetailsInstrumentedTest {
             }
         }
 
+        composeRule.onNodeWithText("Cancelar identificação").assertDoesNotExist()
+        composeRule.onNodeWithTag("details-overflow").performClick()
         composeRule.onNodeWithText("Cancelar identificação").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Cancelar identificação").assertDoesNotExist()
         assertEquals(700L, cancelledAnimeId)
     }
 

@@ -43,6 +43,8 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -847,29 +849,78 @@ private fun DetailsSectionTabs(
     }
 }
 
-/** Direct pin toggle, with canonical persisted state supplied by the Details model. */
+/** Secondary header actions; canonical pin and identification states remain owned by the caller. */
 @Composable
-internal fun DetailsPinAction(
+internal fun DetailsOverflowActions(
     pinned: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
+    pinEnabled: Boolean,
+    traceMoeStatus: ReiAnixTraceMoeIdentificationStatus,
+    onTogglePinned: () -> Unit,
+    onIdentifyOrCancel: () -> Unit,
 ) {
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget)
-            .testTag("details-pin")
-            .semantics {
-                selected = pinned
-                stateDescription = if (pinned) "Fixado" else "Não fixado"
-            },
-    ) {
-        Icon(
-            imageVector = if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-            contentDescription = if (pinned) "Desafixar anime" else "Fixar anime",
-            modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-            tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-        )
+    var expanded by remember { mutableStateOf(false) }
+    val running = traceMoeStatus == ReiAnixTraceMoeIdentificationStatus.RUNNING
+    val identifyLabel = when (traceMoeStatus) {
+        ReiAnixTraceMoeIdentificationStatus.RUNNING -> "Cancelar identificação"
+        ReiAnixTraceMoeIdentificationStatus.IDLE -> "Identificar capa"
+        ReiAnixTraceMoeIdentificationStatus.SUCCESS -> "Identificar novamente"
+        ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
+        ReiAnixTraceMoeIdentificationStatus.FAILED,
+        ReiAnixTraceMoeIdentificationStatus.CANCELLED -> "Tentar novamente"
+    }
+
+    Box {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget)
+                .testTag("details-overflow"),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = "Mais opções",
+                modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            shape = MaterialTheme.shapes.medium,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (pinned) "Desafixar" else "Fixar") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                        contentDescription = null,
+                    )
+                },
+                modifier = Modifier.testTag("details-pin").semantics {
+                    selected = pinned
+                    stateDescription = if (pinned) "Fixado" else "Não fixado"
+                },
+                enabled = pinEnabled,
+                onClick = {
+                    expanded = false
+                    onTogglePinned()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(identifyLabel) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = if (running) Icons.Filled.Close else Icons.Filled.ImageSearch,
+                        contentDescription = null,
+                    )
+                },
+                modifier = Modifier.testTag("details-tracemoe-identify-button"),
+                onClick = {
+                    expanded = false
+                    onIdentifyOrCancel()
+                },
+            )
+        }
     }
 }
 
@@ -1014,10 +1065,18 @@ private fun DetailsHero(
                         DetailsManualAniListAction(onClick = onManualAniList)
                         Spacer(Modifier.width(8.dp))
                     }
-                    DetailsPinAction(
+                    DetailsOverflowActions(
                         pinned = anime.pinned,
-                        enabled = !pinSaving,
-                        onClick = {
+                        pinEnabled = !pinSaving,
+                        traceMoeStatus = traceMoeState.status,
+                        onIdentifyOrCancel = {
+                            if (traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING) {
+                                onCancelTraceMoe(anime.id)
+                            } else {
+                                onIdentifyWithTraceMoe(anime.id)
+                            }
+                        },
+                        onTogglePinned = {
                             if (!pinSaving) {
                                 pinSaving = true
                                 actionError = null
@@ -1167,7 +1226,7 @@ private fun DetailsHero(
                 modifier = Modifier.weight(1f).testTag("details-quick-list"),
             )
         }
-        // Synopsis and character strip stay before genres and Trace.moe.
+        // Synopsis and character strip stay before genres and identification feedback.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1188,95 +1247,79 @@ private fun DetailsHero(
                 anime.genres.forEach { genre -> ReiAnixBadge(text = genre.name, tone = ReiAnixBadgeTone.Primary) }
             }
         }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = responsive.horizontalPadding,
-                    top = ReiAnixTokens.Spacing.md,
-                    end = responsive.horizontalPadding,
-                ),
-            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-        ) {
-            val isTraceMoeRunning = traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING
-            val identifyButtonLabel = when (traceMoeState.status) {
-                ReiAnixTraceMoeIdentificationStatus.RUNNING -> "Cancelar identificação"
-                ReiAnixTraceMoeIdentificationStatus.SUCCESS -> "Identificar novamente com Trace.moe"
-                ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
-                ReiAnixTraceMoeIdentificationStatus.FAILED,
-                ReiAnixTraceMoeIdentificationStatus.CANCELLED -> "Tentar novamente com Trace.moe"
-                ReiAnixTraceMoeIdentificationStatus.IDLE -> "Identificar capa com Trace.moe"
-            }
-            ReiAnixSecondaryButton(
-                text = identifyButtonLabel,
-                onClick = {
-                    if (isTraceMoeRunning) onCancelTraceMoe(anime.id)
-                    else onIdentifyWithTraceMoe(anime.id)
-                },
+        val isTraceMoeRunning = traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING
+        val identifyFeedback = when (traceMoeState.status) {
+            ReiAnixTraceMoeIdentificationStatus.RUNNING ->
+                traceMoeState.message ?: "Preparando a próxima thumbnail..."
+            ReiAnixTraceMoeIdentificationStatus.SUCCESS,
+            ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
+            ReiAnixTraceMoeIdentificationStatus.FAILED,
+            ReiAnixTraceMoeIdentificationStatus.CANCELLED -> traceMoeState.message
+            ReiAnixTraceMoeIdentificationStatus.IDLE -> null
+        }
+        if (isTraceMoeRunning || identifyFeedback != null) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("details-tracemoe-identify-button"),
-            )
-            if (isTraceMoeRunning && !traceMoeState.currentThumbnailPath.isNullOrBlank()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = ReiAnixTokens.Spacing.xs),
-                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
+                    .padding(
+                        start = responsive.horizontalPadding,
+                        top = ReiAnixTokens.Spacing.md,
+                        end = responsive.horizontalPadding,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+            ) {
+                if (isTraceMoeRunning && !traceMoeState.currentThumbnailPath.isNullOrBlank()) {
+                    Row(
                         modifier = Modifier
-                            .width(104.dp)
-                            .aspectRatio(16f / 9f)
-                            .clip(ReiAnixTokens.Shapes.small),
+                            .fillMaxWidth()
+                            .padding(top = ReiAnixTokens.Spacing.xs),
+                        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ReiAnixEpisodeThumbnail(
-                            localPath = traceMoeState.currentThumbnailPath,
-                            sourceRevisions = anime.seasons.asSequence()
-                                .flatMap { it.episodes.asSequence() }
-                                .plus(anime.specials.asSequence())
-                                .plus(anime.mediaFiles.asSequence())
-                                .firstOrNull { it.id == traceMoeState.currentEpisodeId }
-                                ?.artwork?.sourceRevisions.orEmpty(),
-                            contentDescription = traceMoeState.currentEpisodeLabel ?: "Thumbnail em análise",
-                            modifier = Modifier.fillMaxSize(),
-                            identity = "${anime.stableKey}:trace-moe:${traceMoeState.currentEpisodeId}",
-                        )
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-                    ) {
-                        Text(
-                            text = traceMoeState.currentEpisodeLabel ?: "Thumbnail atual",
-                            style = ReiAnixTokens.TypographyTokens.itemTitle,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = "${traceMoeState.validResponses.coerceIn(0, 3)} de 3 respostas válidas",
-                            style = ReiAnixTokens.TypographyTokens.metadata,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Box(
+                            modifier = Modifier
+                                .width(104.dp)
+                                .aspectRatio(16f / 9f)
+                                .clip(ReiAnixTokens.Shapes.small),
+                        ) {
+                            ReiAnixEpisodeThumbnail(
+                                localPath = traceMoeState.currentThumbnailPath,
+                                sourceRevisions = anime.seasons.asSequence()
+                                    .flatMap { it.episodes.asSequence() }
+                                    .plus(anime.specials.asSequence())
+                                    .plus(anime.mediaFiles.asSequence())
+                                    .firstOrNull { it.id == traceMoeState.currentEpisodeId }
+                                    ?.artwork?.sourceRevisions.orEmpty(),
+                                contentDescription = traceMoeState.currentEpisodeLabel ?: "Thumbnail em análise",
+                                modifier = Modifier.fillMaxSize(),
+                                identity = "${anime.stableKey}:trace-moe:${traceMoeState.currentEpisodeId}",
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+                        ) {
+                            Text(
+                                text = traceMoeState.currentEpisodeLabel ?: "Thumbnail atual",
+                                style = ReiAnixTokens.TypographyTokens.itemTitle,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = "${traceMoeState.validResponses.coerceIn(0, 3)} de 3 respostas válidas",
+                                style = ReiAnixTokens.TypographyTokens.metadata,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
-            }
-            val identifyFeedback = when (traceMoeState.status) {
-                ReiAnixTraceMoeIdentificationStatus.RUNNING ->
-                    traceMoeState.message ?: "Preparando a próxima thumbnail..."
-                ReiAnixTraceMoeIdentificationStatus.SUCCESS,
-                ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
-                ReiAnixTraceMoeIdentificationStatus.FAILED,
-                ReiAnixTraceMoeIdentificationStatus.CANCELLED -> traceMoeState.message
-                ReiAnixTraceMoeIdentificationStatus.IDLE -> null
-            }
-            identifyFeedback?.let { message ->
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                identifyFeedback?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
         if (overallProgress > 0f) {
