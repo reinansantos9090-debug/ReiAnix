@@ -1208,6 +1208,46 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun manualSelectionReplacesPriorManualIdAndRejectsStaleRefresh() = runBlocking {
+        createCanonicalFixture()
+        val database = ReiAnixSqliteDatabase(context)
+        database.transaction { connection ->
+            connection.execSQL("UPDATE anime SET anilist_id=99, anilist_match_manual=1, metadata_manual_fields='[]' WHERE id=1")
+        }
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val file = File.createTempFile("manual-cover", ".jpg", context.cacheDir)
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            val url = "https://example.invalid/manual-cover.jpg"
+            val image = com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairImage(
+                "poster", url, file.absolutePath, "manual-test-poster", file.length(), 1, 1, "digest", "image/jpeg",
+            )
+            val prepared = com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairArtwork(image, null)
+            val updated = repository.updateAniListMetadataAndAssociation(
+                ReiAnixAnimeMetadataPatch(animeId = 1L, title = "Chosen anime", coverUrl = url),
+                42L, true, 1.0, 1.0, preparedArtwork = prepared, manualSelection = true,
+            )
+            assertEquals(42L, updated.anilistId)
+            assertEquals("manual", updated.anilistMatchStatus)
+            assertEquals(file.absolutePath, updated.coverCache)
+            val stale = repository.updateAniListMetadataAndAssociation(
+                ReiAnixAnimeMetadataPatch(animeId = 1L, title = "Stale anime"),
+                99L, true, 1.0, 1.0, protectManualRefresh = true,
+            )
+            assertEquals(42L, stale.anilistId)
+            assertEquals("Chosen anime", stale.title)
+            val automatic = repository.updateAniListMetadataAndAssociation(
+                ReiAnixAnimeMetadataPatch(animeId = 1L, title = "Wrong anime"),
+                77L, false, .99, .5, traceMoeConfirmed = true,
+            )
+            assertEquals(42L, automatic.anilistId)
+            assertEquals("Chosen anime", automatic.title)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun explicitRepairReplacesWrongAutomaticAssociationButRejectsStaleOrManualAssociation() = runBlocking {
         createCanonicalFixture()
         val database = ReiAnixSqliteDatabase(context)

@@ -176,6 +176,39 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
+    fun manualAniListSearchIsSeparateFromPinAndAutomaticRepair() {
+        var opened = 0
+        var repaired = 0
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = detailsStateWithEpisodes(1),
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                    onManualAniList = { opened++ },
+                    onManageAniList = { repaired++ },
+                )
+            }
+        }
+        val search = composeRule.onNodeWithTag("details-manual-anilist")
+        val pin = composeRule.onNodeWithTag("details-pin")
+        search.assertIsDisplayed()
+        pin.assertIsDisplayed()
+        val searchBounds = search.fetchSemanticsNode().boundsInRoot
+        val pinBounds = pin.fetchSemanticsNode().boundsInRoot
+        org.junit.Assert.assertTrue(searchBounds.right < pinBounds.left)
+        assertEquals(searchBounds.width, pinBounds.width, 1f)
+        assertEquals(searchBounds.top, pinBounds.top, 1f)
+        search.performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, opened)
+            assertEquals(0, repaired)
+        }
+    }
+
+    @Test
     fun playbackAndMarathonShareOneRowAndEqualDimensions() {
         var watchedEpisodeId: Long? = null
         var marathonOpened = false
