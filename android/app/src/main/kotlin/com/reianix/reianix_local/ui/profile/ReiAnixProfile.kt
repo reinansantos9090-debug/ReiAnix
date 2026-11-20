@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import android.net.Uri
@@ -44,6 +45,7 @@ import com.reianix.reianix_local.data.profile.ReiAnixProfile
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
 import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperLayer
+import com.reianix.reianix_local.ui.theme.WallpaperImageLoad
 import com.reianix.reianix_local.ui.theme.rememberWallpaperImage
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reianix.reianix_local.data.sqlite.ReiAnixCollectorEpisodeRow
@@ -156,11 +158,12 @@ private fun ProfileBannerHeader(
     showCamera: Boolean = false,
     enabled: Boolean = true,
     onEditPhoto: () -> Unit,
+    retainedImage: WallpaperImageLoad? = null,
 ) {
     val context = LocalContext.current
     val bannerStore = remember(context) { ReiAnixWallpaperStore.banner(context) }
     val banner by bannerStore.state.collectAsStateWithLifecycle()
-    val imageLoad = rememberWallpaperImage(bannerStore, banner)
+    val imageLoad = retainedImage ?: rememberWallpaperImage(bannerStore, banner)
     val image = imageLoad.image
     if (image == null && !imageLoad.loading) {
         if (showCamera) {
@@ -296,27 +299,32 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
         finally { loading = false }
     }
 
+    val bannerStore = remember(context) { ReiAnixWallpaperStore.banner(context) }
+    val banner by bannerStore.state.collectAsStateWithLifecycle()
+    val bannerImage = rememberWallpaperImage(bannerStore, banner)
+
+    Box(Modifier.fillMaxSize().reiAnixScreenFade(section)) {
     when (section) {
         // "customize" remains a compatibility alias for restored navigation state.
         "edit", "customize" -> {
             ProfileCustomization(store, records.filter { it.favorite == true }, goBack)
-            return
+            return@Box
         }
         "lists" -> {
             ReiAnixWatchStatusCollections(catalog.animes, onOpenAnime = openAnime, onBack = goBack)
-            return
+            return@Box
         }
         "scenes" -> {
             ProfileScenes(viewModel, goBack, records)
-            return
+            return@Box
         }
         "favorites" -> {
             ProfileFavorites(records, catalog.animes, episodes, loading, openAnime, goBack)
-            return
+            return@Box
         }
         "history" -> {
             ProfileHistory(episodes, catalog.animes, loading, library, playEpisode, goBack)
-            return
+            return@Box
         }
     }
     val title = when (section) {
@@ -336,7 +344,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                 item {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ProfileBannerHeader(profile, store, onEditPhoto = { section = "edit" })
+                        ProfileBannerHeader(profile, store, onEditPhoto = { section = "edit" }, retainedImage = bannerImage)
                         Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, color = Color.White, textAlign = TextAlign.Center)
                         Text(profile.displayBio, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFAAAAAA),
                             textAlign = TextAlign.Center)
@@ -376,6 +384,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
             "stats" -> ProfileStatisticsContent(stats, loading)
 
         }
+    }
     }
 }
 
@@ -604,6 +613,7 @@ internal fun ProfileCustomization(
     val waitingForPhoto = photoPickerOpen || photoPreparing
     val showPhotoEditor = waitingForPhoto || draft != null
     BackHandler(enabled = !showPhotoEditor && page != "banner" && page != "wallpaper") { goBack() }
+    Box(Modifier.fillMaxSize().reiAnixScreenFade(if (showPhotoEditor) "crop" else page)) {
     if (showPhotoEditor) {
         ReiAnixAvatarEditor(
             draft = draft?.let { store.photoDraftFile(it) },
@@ -640,11 +650,11 @@ internal fun ProfileCustomization(
                 }
             },
         )
-        return
+        return@Box
     }
     if (page == "banner" || page == "wallpaper") {
         ReiAnixWallpaperEditor(onBack = { page = "menu" }, banner = page == "banner")
-        return
+        return@Box
     }
     val title = when (page) {
         "photo" -> "Avatares personalizados"
@@ -759,6 +769,7 @@ internal fun ProfileCustomization(
             }
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+    }
     }
 }
 

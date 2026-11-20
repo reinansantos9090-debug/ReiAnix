@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -115,7 +116,7 @@ internal fun TrackingCollectionsContent(
     val selected = ReiAnixWatchStatus.entries.firstOrNull { it.name == selectedName }
     fun back() { if (selected != null) selectedName = null else onBack() }
     BackHandler(enabled = selected != null) { back() }
-    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).reiAnixScreenFade(selected).navigationBarsPadding()) {
         ReiAnixTopBar(title = selected?.label ?: "Listas de acompanhamento",
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { back() })
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())

@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
@@ -250,7 +251,7 @@ fun ReiAnixCollectionsScreen(
 
     ReiAnixResponsiveRoot {
         Column(
-            modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground()),
+            modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground()).reiAnixScreenFade(selectedId),
         ) {
             ReiAnixTopBar(
                 title = if (selected == null) "Coleções" else selected.name,

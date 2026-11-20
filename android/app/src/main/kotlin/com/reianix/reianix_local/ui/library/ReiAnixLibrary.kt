@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
@@ -710,9 +711,10 @@ private fun LibraryFiltersDialog(
             }
 
             // One bounded scrolling surface; heading and tabs remain fixed.
+            val optionsFade = Modifier.reiAnixScreenFade(tab)
             key(tab) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f).selectableGroup()
+                    modifier = optionsFade.fillMaxWidth().weight(1f).selectableGroup()
                         .testTag("library-filter-options"),
                     // Disable the Android stretch/bounce at either scroll boundary
                     // for this list only. The library grid keeps its own behavior.
