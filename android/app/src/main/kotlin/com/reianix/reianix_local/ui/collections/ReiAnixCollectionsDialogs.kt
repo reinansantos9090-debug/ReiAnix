@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
@@ -246,7 +250,7 @@ fun ReiAnixCollectionsScreen(
 
     ReiAnixResponsiveRoot {
         Column(
-            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+            modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground()),
         ) {
             ReiAnixTopBar(
                 title = if (selected == null) "Coleções" else selected.name,
@@ -359,7 +363,8 @@ fun ReiAnixCollectionsScreen(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(18.dp),
-                                    color = MaterialTheme.colorScheme.surface,
+                                    color = reiAnixContentBackground(MaterialTheme.colorScheme.surface),
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 ) {
                                     Row(
@@ -583,7 +588,8 @@ private fun CollectionActionCard(
         enabled = enabled,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = reiAnixContentBackground(MaterialTheme.colorScheme.surface),
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
@@ -617,7 +623,7 @@ internal fun CollectionNameScreen(
     val canSave = !busy && name.isNotBlank()
     Column(
         modifier = Modifier.fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(reiAnixScreenBackground())
             .imePadding()
             .navigationBarsPadding(),
     ) {

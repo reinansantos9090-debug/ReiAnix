@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -365,7 +369,7 @@ private fun ReiAnixLibraryPresentationScreen(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollHeaderState.nestedScrollConnection)
-            .background(MaterialTheme.colorScheme.background),
+            .background(reiAnixScreenBackground()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ReiAnixScrollAwareHeader(state = scrollHeaderState) {
@@ -1120,7 +1124,8 @@ private fun LibrarySourceSummaryCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = ReiAnixTokens.Shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
             modifier = Modifier

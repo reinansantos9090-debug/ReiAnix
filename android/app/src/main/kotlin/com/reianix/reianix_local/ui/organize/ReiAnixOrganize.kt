@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.organize
 
+import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
+
+import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+
 import android.net.Uri
 
 import androidx.compose.foundation.background
@@ -185,7 +189,7 @@ fun ReiAnixOrganizeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(reiAnixScreenBackground()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         OrganizeTopBar(
@@ -414,7 +418,8 @@ private fun OrganizeSourcesAndScanPanel(
     Surface(
         modifier = modifier,
         shape = androidx.compose.ui.graphics.RectangleShape,
-        color = MaterialTheme.colorScheme.background,
+        color = reiAnixScreenBackground(),
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
         Column(
             modifier = Modifier.padding(ReiAnixTokens.Spacing.md),
@@ -467,7 +472,8 @@ private fun OrganizeSourcesAndScanPanel(
 
             Surface(
                 shape = androidx.compose.ui.graphics.RectangleShape,
-                color = MaterialTheme.colorScheme.background,
+                color = reiAnixScreenBackground(),
+        contentColor = MaterialTheme.colorScheme.onBackground,
             ) {
                 Row(
                     modifier = Modifier.padding(ReiAnixTokens.Spacing.sm),
@@ -849,7 +855,8 @@ private fun OrganizeOverview(
                                     contentDescription = "Gênero " + genre.name
                                 },
                             shape = ReiAnixTokens.Shapes.card,
-                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = MaterialTheme.colorScheme.onSurface,
                             onClick = { onOpenCollection(genre.stableKey) },
                         ) {
                             Column(
@@ -878,7 +885,8 @@ private fun OrganizeOverview(
         item(key = "overview-total") {
             Surface(
                 shape = ReiAnixTokens.Shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainer,
+                color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(
@@ -1280,7 +1288,8 @@ private fun EmptyAction(
             },
         onClick = onClick,
         shape = ReiAnixTokens.Shapes.button,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
             modifier = Modifier
@@ -1315,7 +1324,8 @@ private fun OrganizeCategoryCard(
             },
         onClick = onClick,
         shape = ReiAnixTokens.Shapes.card,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(
             modifier = Modifier.padding(ReiAnixTokens.Spacing.lg),
