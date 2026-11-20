@@ -28,6 +28,8 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import androidx.compose.ui.unit.dp
 import com.reianix.reianix_local.ui.ReiAnixAnimeCard
+import com.reianix.reianix_local.ui.ReiAnixSearchField
+import com.reianix.reianix_local.ui.ReiAnixChip
 import com.reianix.reianix_local.ui.navigation.ReiAnixCurrentDestination
 import com.reianix.reianix_local.ui.ReiAnixEpisodeCard
 import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
@@ -183,6 +185,47 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         } finally {
             runBlocking { store.save(original) }
         }
+    }
+
+    @Test
+    fun searchAndFilterControlsRevealWallpaperOnlyWhenOptedIn() {
+        val active = mutableStateOf(true)
+        val selected = mutableStateOf(false)
+        val wallpaper = Color(0xFF8C286D)
+        composeRule.setContent {
+            ReiAnixComposeTheme(themeMode = "dark") {
+                Box(Modifier.fillMaxSize().background(wallpaper)) {
+                    CompositionLocalProvider(LocalReiAnixWallpaperVisible provides active.value) {
+                        Column {
+                            ReiAnixSearchField("", {}, modifier = Modifier.testTag("search-wallpaper"),
+                                transparentOnWallpaper = true)
+                            ReiAnixChip("Favoritos", { selected.value = !selected.value },
+                                modifier = Modifier.width(180.dp).testTag("filter-wallpaper"),
+                                selected = selected.value, transparentOnWallpaper = true)
+                            ReiAnixChip("Outro", {}, modifier = Modifier.width(180.dp).testTag("unchanged-chip"))
+                        }
+                    }
+                }
+            }
+        }
+        fun showsWallpaper(tag: String): Boolean {
+            val pixels = composeRule.onNodeWithTag(tag).captureToImage().toPixelMap()
+            val color = pixels[(pixels.width * .18f).toInt(), pixels.height / 2]
+            return kotlin.math.abs(color.red - wallpaper.red) < .025f &&
+                kotlin.math.abs(color.green - wallpaper.green) < .025f &&
+                kotlin.math.abs(color.blue - wallpaper.blue) < .025f
+        }
+        assertTrue(showsWallpaper("search-wallpaper"))
+        assertTrue(showsWallpaper("filter-wallpaper"))
+        assertTrue(!showsWallpaper("unchanged-chip"))
+        composeRule.onNodeWithTag("filter-wallpaper").performClick()
+        composeRule.waitForIdle()
+        assertTrue(selected.value)
+        assertTrue(showsWallpaper("filter-wallpaper"))
+        composeRule.runOnIdle { active.value = false }
+        composeRule.waitForIdle()
+        assertTrue(!showsWallpaper("search-wallpaper"))
+        assertTrue(!showsWallpaper("filter-wallpaper"))
     }
 
     @Test
