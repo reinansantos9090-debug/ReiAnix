@@ -8,7 +8,15 @@ internal data class PersonalArt(val folder: String, val id: String, val title: S
 }
 
 internal object ReiAnixArtPack {
+    // The six user-selected reference images come first, preserving all existing art.
     val banners = listOf(
+        "samurai_rubro_cinematico" to "Samurai rubro",
+        "metropole_violeta" to "Metrópole violeta",
+        "fuji_sakura_torii" to "Fuji e sakuras",
+        "lua_sobre_montanhas" to "Lua sobre montanhas",
+        "eclipse_castelo" to "Eclipse no castelo",
+        "oceano_azul" to "Oceano azul",
+    ).map { PersonalArt("banners", it.first, it.second) } + listOf(
         "chuva_neon" to "Chuva neon", "cidade_dourada" to "Cidade dourada",
         "eclipse_rubro" to "Eclipse rubro", "floresta_encantada" to "Floresta encantada",
         "montanha_nevada" to "Montanha nevada", "quarto_gamer" to "Quarto gamer",
@@ -19,7 +27,15 @@ internal object ReiAnixArtPack {
         "vale_das_sakuras" to "Vale das sakuras", "lua_azul_alpina" to "Lua azul alpina",
         "eclipse_dourado" to "Eclipse dourado", "costa_estelar_turquesa" to "Costa estelar turquesa",
     ).map { PersonalArt("banners", it.first, it.second, "png") }
+    // The six user-selected reference images come first, preserving all existing art.
     val wallpapers = listOf(
+        "samurai_lua_vermelha" to "Samurai da lua vermelha",
+        "cidade_chuvosa_violeta" to "Cidade chuvosa violeta",
+        "torii_via_lactea" to "Torii sob a Via Láctea",
+        "retrato_manga" to "Retrato de mangá",
+        "portal_floresta_luminosa" to "Portal da floresta luminosa",
+        "pagoda_ao_entardecer" to "Pagode ao entardecer",
+    ).map { PersonalArt("wallpapers", it.first, it.second) } + listOf(
         "cafe_chuvoso" to "Café chuvoso", "caminho_sakura" to "Caminho sakura",
         "cascatas_misticas" to "Cascatas místicas", "cidade_cyberpunk" to "Cidade cyberpunk",
         "costa_ao_entardecer" to "Costa ao entardecer", "crepusculo_urbano" to "Crepúsculo urbano",
