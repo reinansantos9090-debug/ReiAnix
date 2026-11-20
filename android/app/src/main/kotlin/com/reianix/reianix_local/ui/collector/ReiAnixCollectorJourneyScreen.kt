@@ -216,9 +216,9 @@ internal fun ReiAnixCollectorJourneyScreen(
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(state.error, color = MaterialTheme.colorScheme.onErrorContainer)
-                    if (state.journey == null) {
+                    if (state.journey != null) {
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = onRefresh) { Text("Tentar novamente") }
+                        Button(onClick = onRefresh, enabled = !state.isLoading && !state.isSaving) { Text("Tentar novamente") }
                     }
                 }
             }
@@ -423,7 +423,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                         Text(journey.xp.toString() + " XP de jornada", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         LinearProgressIndicator(progress = { journey.levelProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(journey.xpIntoLevel.toString() + " / 10 XP", style = MaterialTheme.typography.labelSmall)
+                            Text(journey.xpIntoLevel.toString() + " / " + (journey.xpIntoLevel + journey.xpToNext) + " XP", style = MaterialTheme.typography.labelSmall)
                             Text("Próximo nível", style = MaterialTheme.typography.labelSmall)
                         }
                         Text("Título ativo: " + (journey.activeTitleLabel ?: "Nenhum título desbloqueado"),
