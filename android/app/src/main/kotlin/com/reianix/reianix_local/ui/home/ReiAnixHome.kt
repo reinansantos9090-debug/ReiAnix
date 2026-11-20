@@ -960,7 +960,8 @@ private fun HomeContinueCard(
         shape = ReiAnixTokens.Shapes.card,
         colors = CardDefaults.cardColors(
             containerColor = reiAnixScreenBackground(),
-            contentColor = MaterialTheme.colorScheme.onSurface,
+            contentColor = if (LocalReiAnixWallpaperVisible.current) MaterialTheme.colorScheme.onSurface
+                else androidx.compose.material3.contentColorFor(MaterialTheme.colorScheme.background),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (LocalReiAnixWallpaperVisible.current) 0.dp else ReiAnixTokens.Elevation.card),
     ) {

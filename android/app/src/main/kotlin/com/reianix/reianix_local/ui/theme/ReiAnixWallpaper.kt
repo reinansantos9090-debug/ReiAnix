@@ -123,11 +123,12 @@ fun ReiAnixWallpaperScope(enabled: Boolean = true, content: @Composable () -> Un
     // Keep content at a stable composition position when loading/removing the image.
     val visible = enabled && image != null
     val scheme = if (visible) ReiAnixDarkColorScheme else MaterialTheme.colorScheme
+    val inheritedContent = androidx.compose.material3.LocalContentColor.current
     MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography, shapes = MaterialTheme.shapes) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             if (visible) image?.let { ReiAnixWallpaperLayer(it, wallpaper, Modifier.matchParentSize()) }
             CompositionLocalProvider(LocalReiAnixWallpaperVisible provides visible) {
-                CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+                CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides (if (visible) MaterialTheme.colorScheme.onBackground else inheritedContent)) {
                     content()
                 }
             }
