@@ -1826,7 +1826,7 @@ internal fun explicitAniListRepairTitles(local: ReiAnixAnimeRecord, evidence: Ex
             }
         }
     }
-}.map(String::trim).filter(::usefulRepairTitle).distinctBy(MediaTitleNormalizer::normalizeTitle)
+}.map(String::trim).filter(::usefulRepairTitle).distinctBy(MediaTitleNormalizer::normalizeTitle).take(16)
 
 internal fun explicitAniListRepairSearchTerms(titles: List<String>): List<String> {
     val variants = titles.filter(::usefulRepairTitle).map(MediaTitleNormalizer::searchTitleVariants)
@@ -1870,6 +1870,7 @@ internal fun rankExplicitAniListRepair(
         for (title in titles) {
             val localWords = repairWords(title)
             if (localWords.isEmpty()) continue
+            val spelling = ReiAnixAniListMatcher.rank(title, listOf(candidate)).first().score
             for (remoteTitle in remoteTitles) {
                 val remoteWords = repairWords(remoteTitle)
                 val shared = localWords.intersect(remoteWords)
@@ -1881,7 +1882,6 @@ internal fun rankExplicitAniListRepair(
                 // or a near spelling variant (e.g. macrons / spacing / typo).
                 val left = repairPlain(title).replace(" ", "")
                 val right = repairPlain(remoteTitle).replace(" ", "")
-                val spelling = ReiAnixAniListMatcher.rank(title, listOf(candidate)).first().score
                 val nearSpelling = minOf(left.length, right.length) >= 5 &&
                     minOf(left.length, right.length).toDouble() / maxOf(left.length, right.length) >= 0.75 &&
                     spelling >= 0.88 && left.take(3) == right.take(3)
@@ -1919,7 +1919,7 @@ internal fun rankExplicitAniListRepair(
         }
         // Exact independent titles must remain ahead of fuzzy matches, even
         // with missing metadata. A tie is resolved using actual local evidence.
-        val cap = if (exactPrimary) 1.0 else if (exactOther) 0.96 else 0.94
+        val cap = if (exactPrimary) 1.0 else if (exactOther) 0.94 else 0.90
         ReiAnixAniListMatcher.RankedCandidate(candidate, score.coerceIn(0.0, cap),
             if (exactFile) "file" else if (exactOriginal) "original" else if (exactOther) "alias" else "words")
     }.sortedWith(compareByDescending<ReiAnixAniListMatcher.RankedCandidate> { it.score }
