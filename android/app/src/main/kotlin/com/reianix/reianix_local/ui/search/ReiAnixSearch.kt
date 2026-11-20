@@ -429,6 +429,7 @@ fun ReiAnixSearchScreen(
                             ReiAnixLibraryLoadStatus.EMPTY,
                             ReiAnixLibraryLoadStatus.READY,
                             -> ReiAnixEmptyLibraryState(
+                                transparentOnWallpaper = true,
                                 message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                                     "Configure uma pasta local para pesquisar sua biblioteca."
                                 } else {
@@ -490,6 +491,7 @@ fun ReiAnixSearchScreen(
                     ReiAnixLibraryLoadStatus.EMPTY,
                     ReiAnixLibraryLoadStatus.READY,
                     -> ReiAnixEmptyLibraryState(
+                        transparentOnWallpaper = true,
                         message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                             "Configure uma pasta local para pesquisar sua biblioteca."
                         } else {

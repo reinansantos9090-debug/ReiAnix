@@ -305,6 +305,7 @@ private fun ReiAnixHomeObservedScreen(
             ReiAnixLibraryLoadStatus.EMPTY -> {
                 if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                     ReiAnixEmptyLibraryState(
+                        transparentOnWallpaper = true,
                         message = "Configure uma pasta da biblioteca para começar a usar a Home.",
                         actionLabel = "Selecionar pasta",
                         onAction = onSelectSource,
@@ -312,6 +313,7 @@ private fun ReiAnixHomeObservedScreen(
                     )
                 } else {
                     ReiAnixEmptyLibraryState(
+                        transparentOnWallpaper = true,
                         message = "Nenhum vídeo compatível foi encontrado nas fontes configuradas.",
                         actionLabel = "Selecionar pasta",
                         onAction = onSelectSource,
@@ -451,6 +453,7 @@ fun ReiAnixHomeScreen(
                 }
             }
             ReiAnixLibraryLoadStatus.EMPTY -> HomeMessage(
+                transparentOnWallpaper = true,
                 title = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                     "Configure sua biblioteca"
                 } else {
@@ -1249,12 +1252,14 @@ private fun HomeMessage(
     message: String,
     actionLabel: String,
     onAction: () -> Unit,
+    transparentOnWallpaper: Boolean = false,
 ) {
     ReiAnixEmptyState(
         title = title,
         message = message,
         actionLabel = actionLabel,
         onAction = onAction,
+        transparentOnWallpaper = transparentOnWallpaper,
         modifier = Modifier.fillMaxSize(),
     )
 }

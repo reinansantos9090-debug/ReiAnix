@@ -260,7 +260,9 @@ fun ReiAnixSecondaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     leadingIcon: ImageVector? = null,
+    transparentOnWallpaper: Boolean = false,
 ) {
+    val revealWallpaper = transparentOnWallpaper && LocalReiAnixWallpaperVisible.current
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
@@ -272,13 +274,14 @@ fun ReiAnixSecondaryButton(
             },
         shape = ReiAnixTokens.Shapes.button,
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface,
+            containerColor = if (revealWallpaper) androidx.compose.ui.graphics.Color.Transparent else MaterialTheme.colorScheme.surface,
+            contentColor = if (revealWallpaper) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface,
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = ReiAnixTokens.Dimensions.borderWidth,
-            color = if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
+            color = if (revealWallpaper && enabled) androidx.compose.ui.graphics.Color.White.copy(alpha = 0.45f)
+                else if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
         leadingIcon?.let {
