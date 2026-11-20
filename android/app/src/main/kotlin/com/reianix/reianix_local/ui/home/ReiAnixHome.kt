@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.home
 
+import androidx.compose.ui.unit.dp
+
 import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
