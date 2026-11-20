@@ -918,6 +918,7 @@ private fun ColumnScope.LibraryReadyContent(
                     value = filters.query,
                     onValueChange = onQueryChange,
                     accessibilityLabel = "Pesquisar na biblioteca",
+                    transparentOnWallpaper = true,
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Título ou gênero") },
                     leadingIcon = {
@@ -1263,6 +1264,7 @@ private fun LibraryFilterChip(
         text = text,
         onClick = onClick,
         selected = selected,
+        transparentOnWallpaper = true,
         modifier = Modifier.semantics {
             contentDescription = "Filtro $text"
         },

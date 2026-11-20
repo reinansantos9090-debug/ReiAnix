@@ -59,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -333,23 +334,26 @@ fun ReiAnixCompactButton(
 }
 
 @Composable
-private fun reiAnixOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
-    focusedBorderColor = MaterialTheme.colorScheme.primary,
-    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-    disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
-    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-    disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
-    focusedLabelColor = MaterialTheme.colorScheme.primary,
-    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
-    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    disabledPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
-)
+private fun reiAnixOutlinedTextFieldColors(transparentOnWallpaper: Boolean = false): androidx.compose.material3.TextFieldColors {
+    val revealWallpaper = transparentOnWallpaper && LocalReiAnixWallpaperVisible.current
+    return OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = if (revealWallpaper) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant,
+        unfocusedContainerColor = if (revealWallpaper) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant,
+        disabledContainerColor = if (revealWallpaper) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
+        focusedBorderColor = MaterialTheme.colorScheme.primary,
+        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+        disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
+        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+        disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
+        focusedLabelColor = MaterialTheme.colorScheme.primary,
+        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
+        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        disabledPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
+    )
+}
 
 @Composable
 fun ReiAnixTextField(
@@ -388,6 +392,7 @@ fun ReiAnixSearchField(
     singleLine: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    transparentOnWallpaper: Boolean = false,
 ) {
     OutlinedTextField(
         value = value,
@@ -407,7 +412,7 @@ fun ReiAnixSearchField(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         shape = ReiAnixTokens.Shapes.textField,
-        colors = reiAnixOutlinedTextFieldColors(),
+        colors = reiAnixOutlinedTextFieldColors(transparentOnWallpaper),
     )
 }
 
@@ -418,7 +423,11 @@ fun ReiAnixChip(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     selected: Boolean = false,
+    transparentOnWallpaper: Boolean = false,
 ) {
+    val revealWallpaper = transparentOnWallpaper && LocalReiAnixWallpaperVisible.current
+    val selectedTextColor = if (revealWallpaper) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.onPrimary
     FilterChip(
         selected = selected,
         onClick = onClick,
@@ -434,7 +443,7 @@ fun ReiAnixChip(
                 style = ReiAnixTokens.TypographyTokens.chip,
                 color = when {
                     !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha)
-                    selected -> MaterialTheme.colorScheme.onPrimary
+                    selected -> selectedTextColor
                     else -> MaterialTheme.colorScheme.onSurface
                 },
                 maxLines = 1,
@@ -443,13 +452,15 @@ fun ReiAnixChip(
         },
         shape = ReiAnixTokens.Shapes.chip,
         colors = FilterChipDefaults.filterChipColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = if (revealWallpaper) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant,
             labelColor = MaterialTheme.colorScheme.onSurface,
-            selectedContainerColor = MaterialTheme.colorScheme.primary,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
+            selectedContainerColor = if (revealWallpaper) Color.Transparent else MaterialTheme.colorScheme.primary,
+            selectedLabelColor = selectedTextColor,
+            disabledContainerColor = if (revealWallpaper) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = ReiAnixTokens.Colors.disabledContainerAlpha),
             disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ReiAnixTokens.Colors.disabledTextAlpha),
-        ),
+        ).let { colors ->
+            if (revealWallpaper) colors.copy(disabledSelectedContainerColor = Color.Transparent) else colors
+        },
         border = FilterChipDefaults.filterChipBorder(
             enabled = enabled,
             selected = selected,

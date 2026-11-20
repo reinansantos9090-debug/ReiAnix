@@ -261,11 +261,13 @@ fun ReiAnixSearchScreen(
             ReiAnixChip(
                 text = "Biblioteca local",
                 selected = source == "local",
+                transparentOnWallpaper = true,
                 onClick = { onSourceSelected("local") },
             )
             ReiAnixChip(
                 text = "Descobrir no AniList",
                 selected = source == "anilist",
+                transparentOnWallpaper = true,
                 onClick = { onSourceSelected("anilist") },
             )
         }
@@ -276,6 +278,7 @@ fun ReiAnixSearchScreen(
             value = searchQuery,
             onValueChange = onQueryChange,
             accessibilityLabel = if (source == "anilist") "Pesquisar animes no AniList" else "Pesquisar na biblioteca",
+            transparentOnWallpaper = true,
             modifier = Modifier
                 .padding(
                     horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
@@ -814,6 +817,7 @@ private fun SearchActiveFilters(
                 ReiAnixChip(
                     text = "Favoritos",
                     selected = true,
+                    transparentOnWallpaper = true,
                     onClick = onClear,
                 )
             }
@@ -823,6 +827,7 @@ private fun SearchActiveFilters(
                 ReiAnixChip(
                     text = "Assistindo",
                     selected = true,
+                    transparentOnWallpaper = true,
                     onClick = onClear,
                 )
             }
@@ -832,6 +837,7 @@ private fun SearchActiveFilters(
                 ReiAnixChip(
                     text = "Completos",
                     selected = true,
+                    transparentOnWallpaper = true,
                     onClick = onClear,
                 )
             }
