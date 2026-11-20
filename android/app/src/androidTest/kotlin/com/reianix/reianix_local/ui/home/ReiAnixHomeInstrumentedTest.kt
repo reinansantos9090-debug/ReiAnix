@@ -13,6 +13,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -58,6 +61,36 @@ class ReiAnixHomeInstrumentedTest {
         composeRule.onNodeWithContentDescription("Mais opções da Home").assertDoesNotExist()
         composeRule.runOnIdle {
             assertEquals(1, timelineOpens)
+            assertEquals(1, searchOpens)
+            assertEquals(1, profileOpens)
+        }
+    }
+
+    @Test
+    fun readyBannerContainsHeaderAndRetainsItsActions() {
+        var searchOpens = 0
+        var profileOpens = 0
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixHomeScreen(
+                    state = readyState(listOf(anime(7L, "Featured anime", favorite = false, playbackEpisodeId = 71L))),
+                    onSearch = { searchOpens++ },
+                    onOpenDetails = {},
+                    onWatch = { _, _ -> },
+                    onToggleFavorite = {},
+                    onRefresh = {},
+                    onOpenProfile = { profileOpens++ },
+                )
+            }
+        }
+        val hero = composeRule.onNodeWithTag("home-featured-banner").fetchSemanticsNode().boundsInRoot
+        val brand = composeRule.onNodeWithText("ReiAnix").fetchSemanticsNode().boundsInRoot
+        org.junit.Assert.assertTrue(brand.top >= hero.top && brand.bottom <= hero.bottom)
+        composeRule.onAllNodesWithText("ReiAnix").assertCountEquals(1)
+        composeRule.onNodeWithContentDescription("Pesquisar na biblioteca").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Meu perfil").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Assistir").assertIsDisplayed()
+        composeRule.runOnIdle {
             assertEquals(1, searchOpens)
             assertEquals(1, profileOpens)
         }
