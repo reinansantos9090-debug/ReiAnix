@@ -355,11 +355,11 @@ fun ReiAnixNavigationHost(
 }
 
 /**
- * Navigation Compose can retain an outgoing entry until its internal transition
- * is settled, even with Enter/ExitTransition.None. Transparent destinations
- * must never paint their contents over the current route during that interval.
- * Keep the entry composed for Navigation's save-state/lifecycle handling, but
- * gate drawing using the live back-stack state in the draw phase.
+ * Navigation Compose keeps outgoing entries composed while a route transition
+ * runs. With transparent destinations and a persistent wallpaper, drawing an
+ * outgoing entry over the current route can expose stale content or cause a
+ * visual flash. Keep entries composed for save-state/lifecycle handling, but
+ * draw only the live back-stack destination while the incoming route fades in.
  */
 @Composable
 internal fun ReiAnixCurrentDestination(
@@ -464,8 +464,7 @@ fun ReiAnixNavigationHost(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
-            // The wallpaper belongs to the shell, not either destination.
-            // Remove all route fades/slides, including forward and back.
+            // Route fades reveal the persistent wallpaper owned by the shell.
         ) {
             instantDestination(activeEntry, ReiAnixRoutes.HOME) { home() }
             instantDestination(activeEntry, ReiAnixRoutes.LIBRARY) { library() }
