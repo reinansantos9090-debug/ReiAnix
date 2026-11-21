@@ -107,14 +107,10 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
     val photo = store.image(profile.photo)
     var photoFailed by remember(photo) { mutableStateOf(false) }
     val animated = isAnimatedProfileFrame(profile.frame)
-    val ring = when (profile.frame) {
-        "accent" -> accent(profile)
-        "white" -> Color.White
-        else -> Color.Transparent
-    }
+    val ring = if (profile.frame == "white") Color.White else Color.Transparent
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
-        // Royal and Cat are TOP accessories, not circular rings. Their art is
-        // cropped and anchored to the upper edge of these carefully placed portraits.
+        // The Royal crown is a top accessory, not a circular ring. Its illustration
+        // is cropped and anchored to the upper edge of the portrait.
         // Keep an actual round photo (not an oval) and don't move other frame styles.
         val topAccessory = topAccessoryGeometry(profile.frame)
         val portraitModifier = when {
@@ -738,7 +734,7 @@ internal fun ProfileCustomization(
                                             saveChange { it.copy(avatar = p.id, photo = null) }
                                         }.padding(vertical = 8.dp)) {
                                         ProfileAvatar(profile.copy(avatar = p.id, photo = null,
-                                            frame = if (selected) "accent" else "none"), store, 48.dp)
+                                            frame = "none"), store, 48.dp)
                                         Text(p.label, style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
