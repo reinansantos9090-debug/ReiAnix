@@ -11,6 +11,14 @@ import java.nio.charset.StandardCharsets
 
 class NativePlayerRequestTest {
     @Test
+    fun anExplicitFalseStillDisablesPlayerZoom() {
+        val request = NativePlayerRequest.fromQueryParameters(
+            mapOf("setting_player_zoom_enabled" to "false")::get,
+        )
+        assertFalse(request.zoomEnabled)
+    }
+
+    @Test
     fun parsesBridgeContractWithDefaultsAndValidation() {
         val values = mapOf(
             "request_id" to "req-123",
@@ -52,7 +60,7 @@ class NativePlayerRequestTest {
         assertTrue(request.canNext)
         assertFalse(request.canPrevious)
         assertFalse(request.autoplay)
-        assertFalse(request.zoomEnabled)
+        assertTrue(request.zoomEnabled) // Default is enabled; only an explicit false disables zoom.
         assertEquals(1f, request.defaultSpeed)
         assertEquals(300, request.autoHideSeconds)
         assertEquals(1L, request.doubleTapSeekSeconds)
