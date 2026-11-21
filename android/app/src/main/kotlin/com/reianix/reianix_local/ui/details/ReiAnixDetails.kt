@@ -642,7 +642,9 @@ private fun ColumnScope.ReiAnixDetailsReady(
             key = "details-recommendations:" + anime.stableKey,
             contentType = "details-recommendations",
         ) {
-            ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
+            Box(modifier = Modifier.fillMaxWidth().testTag("details-recommendations")) {
+                ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
+            }
         }
 
         if (hasSeasons) {
