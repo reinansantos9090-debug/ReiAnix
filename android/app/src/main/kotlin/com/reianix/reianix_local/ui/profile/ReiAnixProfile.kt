@@ -116,7 +116,15 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
         // Space for frame ornaments; photo and built-in avatar remain circular and clipped.
         Box(
             Modifier.fillMaxSize()
-                .padding(if (isIllustratedProfileFrame(profile.frame)) size * 0.17f else if (animated) size * 0.11f else 0.dp)
+                .padding(when (profile.frame) {
+                    // The crown sits above the portrait; no heavy frame should shrink the face.
+                    "gold" -> size * 0.105f
+                    "headset" -> size * 0.085f
+                    "neon", "galaxy" -> size * 0.11f
+                    // Keep the approved cat-bow/paw composition and Sakura unchanged.
+                    "cat_ears" -> size * 0.17f
+                    else -> if (animated) size * 0.11f else 0.dp
+                })
                 .then(if (ring != Color.Transparent) Modifier.border(2.dp, ring, CircleShape).padding(3.dp) else Modifier)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surface),
