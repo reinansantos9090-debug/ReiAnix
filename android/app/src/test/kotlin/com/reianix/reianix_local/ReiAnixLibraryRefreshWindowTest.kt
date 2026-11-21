@@ -5,6 +5,7 @@ import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiState
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryRefreshWindow
 import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.viewmodel.isExplicitLibraryRefresh
 import com.reianix.reianix_local.ui.model.ReiAnixMetadataAvailability
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,6 +63,17 @@ class ReiAnixLibraryRefreshWindowTest {
         completedOnly = previous.completedOnly,
         maxQueryRows = maxRows,
     )
+
+    @Test
+    fun automaticStartupScanDoesNotTriggerManualRefreshIndicator() {
+        // The scanner may be RUNNING while the existing SQLite library is ready;
+        // no explicit refresh command exists in that state.
+        assertFalse(isExplicitLibraryRefresh(null, "RUNNING"))
+        assertFalse(isExplicitLibraryRefresh("scan_library", "RUNNING"))
+        assertFalse(isExplicitLibraryRefresh("refresh", "COMPLETED"))
+        assertTrue(isExplicitLibraryRefresh("refresh", "QUEUED"))
+        assertTrue(isExplicitLibraryRefresh("REFRESH", "running"))
+    }
 
     @Test
     fun backgroundRefreshKeepsScrolledPageWhenFiltersMatch() {
