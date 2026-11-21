@@ -37,11 +37,10 @@ internal data class ProfileFrameOption(
 
 internal val profileFrameOptions = listOf(
     ProfileFrameOption("none", "Sem moldura", "Usar a foto do perfil sem efeitos."),
-    ProfileFrameOption("neon", "Neon azul", "Brilho neon e traços luminosos animados.", true),
+    ProfileFrameOption("neon", "Neon azul", "Armadura luminosa, cristais e LED pulsante.", true),
     ProfileFrameOption("sakura", "Sakura mágica", "Pétalas rosadas flutuando ao redor da foto.", true),
-    ProfileFrameOption("gold", "Dourada royal", "Coroa, ornamentos e partículas douradas.", true),
-    ProfileFrameOption("galaxy", "Galáxia", "Órbitas cósmicas e estrelas cintilantes.", true),
-    ProfileFrameOption("accent", "Colorida", "Contorno na cor escolhida para o perfil."),
+    ProfileFrameOption("gold", "Dourada royal", "Coroa imperial, safiras e ouro ornamentado.", true),
+    ProfileFrameOption("galaxy", "Galáxia", "Cristais celestes, ametistas e estrelas cintilantes.", true),
     ProfileFrameOption("white", "Branca", "Contorno branco clássico."),
 )
 
@@ -54,6 +53,12 @@ internal fun isAnimatedProfileFrame(frame: String) =
  */
 @Composable
 internal fun AnimatedProfileFrame(frame: String, modifier: Modifier = Modifier) {
+    // Sakura keeps its originally approved animation. Remaining premium
+    // frames use local illustrated assets rather than geometric rings.
+    if (isIllustratedProfileFrame(frame)) {
+        IllustratedProfileFrame(frame, modifier)
+        return
+    }
     if (!isAnimatedProfileFrame(frame)) return
     val transition = rememberInfiniteTransition(label = "profile-frame-" + frame)
     val angle by transition.animateFloat(

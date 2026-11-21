@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.ui.profile
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color as AndroidColor
+import com.reianix.reianix_local.R
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -258,12 +261,21 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             }
             composeRule.onNodeWithText("Moldura").performScrollTo().performClick()
             composeRule.onNodeWithTag("profile-frame-preview").assertIsDisplayed()
+            composeRule.onNodeWithText("Gatinho mágico").assertDoesNotExist()
+            composeRule.onNodeWithText("Colorida").assertDoesNotExist()
+            composeRule.onNodeWithTag("profile-frame-option-cat_ears").assertDoesNotExist()
+            composeRule.onNodeWithTag("profile-frame-option-accent").assertDoesNotExist()
+            composeRule.onNodeWithText("Fone gamer").assertDoesNotExist()
             for (frame in listOf("neon", "sakura", "gold", "galaxy")) {
                 composeRule.onNodeWithTag("profile-frame-option-" + frame)
                     .performScrollTo().performClick()
                 composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == frame }
                 composeRule.onAllNodesWithTag("profile-frame-animation-" + frame, useUnmergedTree = true)
                     .assertCountEquals(2)
+                if (frame == "gold") {
+                    composeRule.onAllNodesWithTag("profile-frame-top-accessory-gold", useUnmergedTree = true)
+                        .assertCountEquals(2)
+                }
             }
             composeRule.onNodeWithTag("profile-frame-option-white")
                 .performScrollTo().performClick()
@@ -271,6 +283,76 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             composeRule.onNodeWithTag("profile-frame-option-none")
                 .performScrollTo().performClick()
             composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == "none" }
+        } finally {
+            runBlocking { store.save(original) }
+        }
+    }
+
+    @Test
+    fun everyIllustratedFrameIsBundledOfflineWithTransparentPortraitArea() {
+        val resources = composeRule.activity.resources
+        val art = listOf(
+            "gold" to R.drawable.profile_frame_gold,
+            "neon" to R.drawable.profile_frame_neon,
+            "galaxy" to R.drawable.profile_frame_galaxy,
+        )
+        art.forEach { (name, drawableId) ->
+            assertTrue("$name should be illustrated", isIllustratedProfileFrame(name))
+            val bitmap = BitmapFactory.decodeResource(resources, drawableId)
+            requireNotNull(bitmap) { "Artwork missing for $name" }
+            try {
+                assertTrue("$name is too small", bitmap.width >= 180 && bitmap.height >= 180)
+                assertTrue("$name must have transparency", bitmap.hasAlpha())
+                val centerPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+                assertTrue("$name obscures the profile photo", AndroidColor.alpha(centerPixel) < 64)
+                if (name == "gold") {
+                    // Crown and accessories should not form a heavy circular border.
+                    val bottomPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height * 9 / 10)
+                    assertTrue("$name must have a clean lower edge", AndroidColor.alpha(bottomPixel) < 64)
+                }
+            } finally {
+                bitmap.recycle()
+            }
+        }
+        assertTrue("Sakura is kept on its original implementation",
+            !isIllustratedProfileFrame("sakura"))
+    }
+
+    @Test
+    fun crownTouchesPortraitTopWithoutPaintingWholeSheet() {
+        // Cropping the PNG ensures the crown does not float above the round photo.
+        for (frame in listOf("gold")) {
+            val geometry = requireNotNull(topAccessoryGeometry(frame))
+            assertTrue("$frame not anchored to photo", geometry.artworkBottom > geometry.portraitTop)
+            assertTrue("$frame covers too much face",
+                geometry.artworkBottom - geometry.portraitTop < 0.09f)
+            assertTrue("$frame ornament does not rise above photo",
+                geometry.artworkTop < geometry.portraitTop)
+            assertTrue("$frame portrait exceeds avatar bounds",
+                geometry.portraitTop + geometry.portraitDiameter <= 1f)
+        }
+        assertTrue("Sakura was changed", topAccessoryGeometry("sakura") == null)
+        assertTrue("Neon was changed", topAccessoryGeometry("neon") == null)
+        assertTrue("Retired cat frame must not render",
+            topAccessoryGeometry("cat_ears") == null)
+    }
+
+    @Test
+    fun retiredFrameOptionsReturnToNoFrameWithoutLosingProfilePhoto() {
+        val store = ReiAnixProfileStore.from(composeRule.activity)
+        val original = store.state.value
+        try {
+            for (retired in listOf("headset", "cat_ears", "accent")) {
+                assertEquals("none", normalizedProfileFrame(retired))
+                runBlocking { store.save(original.copy(frame = retired)) }
+                assertEquals("none", store.state.value.frame)
+                assertEquals(original.photo, store.state.value.photo)
+                assertTrue(profileFrameOptions.none { it.id == retired })
+                assertTrue(!isIllustratedProfileFrame(retired))
+                assertTrue(!isAnimatedProfileFrame(retired))
+            }
+            assertEquals("gold", normalizedProfileFrame("gold"))
+            assertEquals("sakura", normalizedProfileFrame("sakura"))
         } finally {
             runBlocking { store.save(original) }
         }
