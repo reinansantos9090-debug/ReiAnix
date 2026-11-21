@@ -35,6 +35,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import com.reianix.reianix_local.data.profile.ReiAnixProfileStore
+import com.reianix.reianix_local.data.profile.normalizedProfileFrame
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaper
 import com.reianix.reianix_local.data.profile.ReiAnixWallpaperStore
 import java.util.UUID
