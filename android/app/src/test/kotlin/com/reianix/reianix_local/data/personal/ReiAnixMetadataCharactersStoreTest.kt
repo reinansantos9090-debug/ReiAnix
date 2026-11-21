@@ -1,6 +1,8 @@
 package com.reianix.reianix_local.data.personal
 
 import com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter
+import kotlinx.coroutines.runBlocking
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -58,6 +60,24 @@ class ReiAnixMetadataCharactersStoreTest {
         store.publish(95L, "anilist", "100", first, complete = false)
         assertEquals(35, store.entries.value[95L]?.characters?.size)
         assertTrue(store.entries.value[95L]?.complete == true)
+    }
+
+    @Test
+    fun previousIncompleteKitsuCacheIsRestoredAsRetryableNotFinished() = runBlocking {
+        val context = RuntimeEnvironment.getApplication<android.app.Application>()
+        val path = File(context.cacheDir, "characters/metadata/99054121.json")
+        path.parentFile?.mkdirs()
+        try {
+            path.writeText(
+                """{"version":2,"source":"kitsu","sourceId":"2","complete":true,"characters":[]}""",
+            )
+            val store = ReiAnixMetadataCharactersStore(context)
+            store.restore(99054121L)
+            assertEquals("kitsu", store.entries.value[99054121L]?.source)
+            assertTrue(store.entries.value[99054121L]?.complete == false)
+        } finally {
+            path.delete()
+        }
     }
 
     @Test

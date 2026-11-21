@@ -100,7 +100,7 @@ class ReiAnixMetadataCharactersStore(context: Context) {
                 val file = File(folder, animeId.toString() + ".json")
                 if (!file.isFile) return@runCatching null
                 val root = JSONObject(file.readText())
-                if (root.optInt("version") !in 1..2) return@runCatching null
+                if (root.optInt("version") !in 1..3) return@runCatching null
                 val source = root.optString("source")
                 val sourceId = root.optString("sourceId")
                 if ((source != "anilist" && source != "kitsu") || sourceId.isBlank()) {
@@ -116,8 +116,10 @@ class ReiAnixMetadataCharactersStore(context: Context) {
                         add(ReiAnixAnimeCharacter(id, name, item.optString("role"), image))
                     }
                 }
-                Entry(source, sourceId, values, root.optInt("version") == 2 &&
-                    root.optBoolean("complete", false))
+                // v2 could incorrectly mark a broken/empty Kitsu parse as
+                // complete. Force one new pass after upgrading to v3.
+                Entry(source, sourceId, values, root.optInt("version") == 3 &&
+                    root.optBoolean("complete", false) && values.isNotEmpty())
             }.getOrNull()
         } ?: return
         synchronized(lock) {
@@ -134,7 +136,7 @@ class ReiAnixMetadataCharactersStore(context: Context) {
             array.put(JSONObject().put("id", item.id).put("name", item.name)
                 .put("role", item.role).put("image", item.imageUrl ?: ""))
         }
-        val payload = JSONObject().put("version", 2)
+        val payload = JSONObject().put("version", 3)
             .put("source", entry.source).put("sourceId", entry.sourceId)
             .put("complete", entry.complete)
             .put("characters", array).toString()

@@ -5,7 +5,14 @@ import com.reianix.reianix_local.data.anilist.AniListError
 import com.reianix.reianix_local.data.anilist.AniListResult
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdentityMatcher
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdentity
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdentityDecision
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogAnime
+import com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
 import com.reianix.reianix_local.data.catalog.ReiAnixCatalogResult
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogError
+import com.reianix.reianix_local.data.catalog.ReiAnixKitsuCharacterPage
+import com.reianix.reianix_local.data.catalog.ReiAnixCatalogSource
 import com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogIds
 import com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProvider
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
@@ -42,16 +49,19 @@ class ReiAnixCharacterCompletionService(
     private val settings: ReiAnixSqliteSettingsRepository,
     private val aniList: ReiAnixAniListClient,
     private val kitsu: ReiAnixKitsuCatalogProvider = ReiAnixKitsuCatalogProvider(),
+    private val aniMap: ReiAnixAniMapCatalogIdResolver = ReiAnixAniMapCatalogIdResolver(),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val priority = Channel<Long>(Channel.UNLIMITED)
     private val backlog = Channel<Long>(Channel.UNLIMITED)
     private val pending = ConcurrentHashMap.newKeySet<Long>()
+    private val priorityPromoted = ConcurrentHashMap.newKeySet<Long>()
     private val startupScheduled = AtomicBoolean(false)
 
     init {
         scope.launch {
-            delay(12_000L) // Keep initial poster/metadata publishing uncontended.
+            // Newly resolved metadata can enqueue characters immediately; the
+            // worker yields to active poster/backdrop transfers before any HTTP.
             while (isActive) {
                 val id = priority.tryReceive().getOrNull()
                     ?: backlog.tryReceive().getOrNull()
@@ -59,6 +69,10 @@ class ReiAnixCharacterCompletionService(
                         priority.onReceive { it }
                         backlog.onReceive { it }
                     }
+                // An item promoted out of the backlog may still have an old
+                // backlog token. Consume its work once, never twice.
+                if (!pending.remove(id)) continue
+                priorityPromoted.remove(id)
                 try {
                     completeAnime(id)
                 } catch (cancelled: CancellationException) {
@@ -66,7 +80,7 @@ class ReiAnixCharacterCompletionService(
                 } catch (error: Exception) {
                     Log.w(TAG, "Could not complete character metadata for anime=$id", error)
                 } finally {
-                    pending.remove(id)
+                    priorityPromoted.remove(id)
                 }
             }
         }
@@ -74,9 +88,15 @@ class ReiAnixCharacterCompletionService(
 
     /** A new confirmed metadata association uses this non-blocking notification. */
     fun schedule(animeId: Long, prioritize: Boolean = false) {
-        if (animeId <= 0L || !pending.add(animeId)) return
+        if (animeId <= 0L) return
+        val fresh = pending.add(animeId)
+        if (!fresh && !prioritize) return
+        if (!fresh && !priorityPromoted.add(animeId)) return
         val queued = if (prioritize) priority.trySend(animeId) else backlog.trySend(animeId)
-        if (queued.isFailure) pending.remove(animeId)
+        if (queued.isFailure) {
+            if (fresh) pending.remove(animeId)
+            priorityPromoted.remove(animeId)
+        }
     }
 
     /** Old anime with full metadata but NO cast must be included in backfill. */
@@ -141,14 +161,16 @@ class ReiAnixCharacterCompletionService(
         if (current?.characters?.isNotEmpty() == true && current.complete) return
         val kitsuId = ids.kitsuId?.takeIf(String::isNotBlank)
             ?: current?.takeIf { it.source == "kitsu" }?.sourceId
+            ?: resolveCrosswalkKitsuId(animeId, local, ids)
         if (kitsuId != null) {
             if (current?.source == "kitsu" && current.sourceId == kitsuId &&
-                current.complete
+                current.complete && current.characters.isNotEmpty()
             ) return
             loadKitsuPages(animeId, kitsuId)
         } else if (current?.characters.isNullOrEmpty()) {
-            // For local metadata that predates a saved external Kitsu ID,
-            // match strictly before showing anyone else's cast.
+            // Some pre-existing catalog data is candidate-only. An exact
+            // verified Kitsu cover can anchor a cast even when year/format
+            // were deliberately excluded from identity matching.
             tryVerifiedKitsuSearch(animeId, local, ids)
         }
     }
@@ -192,9 +214,12 @@ class ReiAnixCharacterCompletionService(
     private suspend fun loadKitsuPages(animeId: Long, kitsuId: String) {
         var page = 0
         while (scope.coroutineContext.isActive && page < MAX_PAGES) {
-            awaitQuietArtwork()
-            val result = kitsu.getCharacterPage(kitsuId, page * KITSU_PAGE_SIZE, KITSU_PAGE_SIZE)
-            if (result !is ReiAnixCatalogResult.Success) return
+            val result = requestKitsuPage(kitsuId, page * KITSU_PAGE_SIZE)
+            if (result !is ReiAnixCatalogResult.Success) {
+                Log.w(TAG, "Kitsu character page failed: anime=$animeId page=$page " +
+                    "error=" + (result as ReiAnixCatalogResult.Failure).error)
+                return // Keep incomplete cache so another session can retry.
+            }
             val info = result.value
             store.publish(animeId, "kitsu", kitsuId, info.characters, !info.hasNextPage)
             if (!info.hasNextPage) return
@@ -203,24 +228,90 @@ class ReiAnixCharacterCompletionService(
         }
     }
 
+    private suspend fun requestKitsuPage(
+        kitsuId: String, offset: Int,
+    ): ReiAnixCatalogResult<ReiAnixKitsuCharacterPage> {
+        var last: ReiAnixCatalogResult<ReiAnixKitsuCharacterPage> =
+            ReiAnixCatalogResult.Failure(ReiAnixCatalogError.Unavailable)
+        repeat(3) { attempt ->
+            awaitQuietArtwork()
+            val response = kitsu.getCharacterPage(kitsuId, offset, KITSU_PAGE_SIZE)
+            if (response is ReiAnixCatalogResult.Success) return response
+            last = response
+            val error = (response as ReiAnixCatalogResult.Failure).error
+            if (error is ReiAnixCatalogError.InvalidRequest ||
+                error is ReiAnixCatalogError.InvalidResponse
+            ) return response
+            if (attempt < 2) {
+                val pause = (error as? ReiAnixCatalogError.RateLimited)
+                    ?.retryAfterMillis?.coerceIn(2_000L, 60_000L)
+                    ?: (2_000L * (attempt + 1))
+                delay(pause)
+            }
+        }
+        return last
+    }
+
+    private suspend fun resolveCrosswalkKitsuId(
+        animeId: Long,
+        local: ReiAnixAnimeRecord,
+        known: ReiAnixExternalCatalogIds,
+    ): String? {
+        if (!known.hasAnyId) return null
+        awaitQuietArtwork()
+        val response = aniMap.resolveIds(known)
+        if (response !is ReiAnixCatalogResult.Success) return null
+        val mapping = response.value ?: return null
+        // AniMap must contain an already-verified ID and match this exact
+        // local anime. No title-only association is accepted here.
+        return ReiAnixCatalogIdentityMatcher.evaluateMapping(
+            animeId, local.toExternalCatalogIdentity(), mapping, known,
+        ).value?.externalIds?.kitsuId
+    }
+
     private suspend fun tryVerifiedKitsuSearch(
         animeId: Long,
         local: ReiAnixAnimeRecord,
         known: ReiAnixExternalCatalogIds,
     ) {
-        val title = local.lookupTitle.takeIf(String::isNotBlank) ?: local.title
-        if (title.isBlank()) return
-        awaitQuietArtwork()
-        val result = kitsu.searchAnimeWithCharacters(title, 10)
-        if (result !is ReiAnixCatalogResult.Success) return
-        val selected = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
-            animeId, local.toExternalCatalogIdentity(), result.value, known,
-        ).value?.remote ?: return
-        val kitsuId = selected.ids.kitsuId ?: return
-        store.publish(
-            animeId, "kitsu", kitsuId, selected.characters, selected.charactersComplete,
-        )
-        if (!selected.charactersComplete) loadKitsuPages(animeId, kitsuId)
+        val identity = local.toExternalCatalogIdentity()
+        val readyKitsuPosters = database.read { db ->
+            db.rawQuery(
+                "SELECT DISTINCT external_url FROM artwork " +
+                    "WHERE entity_id=? AND entity_type IN ('anime','movie') " +
+                    "AND artwork_type='poster' AND LOWER(source)='kitsu' " +
+                    "AND status='ready' AND TRIM(COALESCE(local_path,''))!='' " +
+                    "AND TRIM(COALESCE(external_url,''))!=''",
+                arrayOf(animeId.toString()),
+            ).use { cursor ->
+                buildSet<String> {
+                    while (cursor.moveToNext()) {
+                        cursor.getString(0)?.let(::add)
+                    }
+                }
+            }
+        }
+
+        // Previously this used searchAnimeWithCharacters for up to ten
+        // candidates, potentially transferring hundreds of included people
+        // and timing out before ANY cast was published. Search metadata
+        // without included relations, then fetch the selected ID's small
+        // character pages. All of this is outside poster/metadata loading.
+        val queries = (listOf(local.lookupTitle, local.title) + identity.titles)
+            .map(String::trim).filter(String::isNotBlank)
+            .distinctBy { it.lowercase() }
+            .take(4)
+        for (query in queries) {
+            awaitQuietArtwork()
+            val result = kitsu.searchAnime(query, 10)
+            if (result !is ReiAnixCatalogResult.Success) continue
+            val selected = selectKitsuCastCandidate(
+                animeId, identity, result.value, known, readyKitsuPosters,
+            ) ?: continue
+            val kitsuId = selected.ids.kitsuId ?: continue
+            loadKitsuPages(animeId, kitsuId)
+            return
+        }
     }
 
     /** Artwork is always the higher priority network lane. */
@@ -244,4 +335,34 @@ class ReiAnixCharacterCompletionService(
         const val MAX_PAGES = 125 // 2500 Kitsu or 3125 AniList credits, not the old 10/12 cap.
         const val BETWEEN_PAGES_MS = 1_250L
     }
+}
+
+/**
+ * Title-only matches aren't sufficient to attach characters. But an already
+ * downloaded Kitsu poster URL and an exact compatible title provide a second
+ * independent anchor even for legacy candidate-only metadata records whose
+ * year/format must not be trusted as identity evidence.
+ */
+internal fun selectKitsuCastCandidate(
+    animeId: Long,
+    identity: ReiAnixCatalogIdentity,
+    candidates: List<ReiAnixCatalogAnime>,
+    knownIds: ReiAnixExternalCatalogIds,
+    readyKitsuPosterUrls: Set<String>,
+): ReiAnixCatalogAnime? {
+    val verified = ReiAnixCatalogIdentityMatcher.evaluateCandidates(
+        animeId, identity, candidates, knownIds,
+    ).value?.remote
+    if (verified != null) return verified
+    if (readyKitsuPosterUrls.isEmpty()) return null
+    return candidates.filter { candidate ->
+        candidate.source == ReiAnixCatalogSource.KITSU &&
+            candidate.coverUrl in readyKitsuPosterUrls &&
+            ReiAnixCatalogIdentityMatcher.evaluate(
+                animeId, identity, candidate, knownIds,
+            ).decision in setOf(
+                ReiAnixCatalogIdentityDecision.CONFIRMED,
+                ReiAnixCatalogIdentityDecision.PROBABLE,
+            )
+    }.distinctBy { it.ids.kitsuId }.singleOrNull()
 }
