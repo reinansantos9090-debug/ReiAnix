@@ -75,9 +75,15 @@ class ReiAnixDetailsInstrumentedTest {
 
         composeRule.onNodeWithText("ReiAnix Test").assertIsDisplayed()
         composeRule.onNodeWithText("2026").assertIsDisplayed()
-        composeRule.onNodeWithText("Nota 8.6/10").assertIsDisplayed()
-        composeRule.onNodeWithText("Biblioteca: 12 episódios locais").assertIsDisplayed()
-        composeRule.onNodeWithText("AniList: 24 episódios esperados").assertIsDisplayed()
+        composeRule.onNodeWithTag("details-compact-metadata").assertExists()
+        composeRule.onNode(
+            hasText("Biblioteca") and hasAnyAncestor(hasTestTag("details-compact-metadata")),
+            useUnmergedTree = true,
+        ).assertExists()
+        composeRule.onNodeWithText("Anime").assertIsDisplayed()
+        composeRule.onNodeWithText("8.6/10").assertIsDisplayed()
+        composeRule.onNodeWithText("Biblioteca: 12 episódios locais", substring = true).assertExists()
+        composeRule.onNodeWithText("AniList: 24 episódios esperados", substring = true).assertExists()
         composeRule.onNodeWithText("Action").assertIsDisplayed()
         composeRule.onNodeWithText("Drama").assertIsDisplayed()
         composeRule.onNodeWithText("Continuar").performClick()
@@ -241,12 +247,14 @@ class ReiAnixDetailsInstrumentedTest {
         }
 
         val synopsis = composeRule.onNode(
-            hasText("Sinopse") and hasAnyAncestor(hasTestTag("details-header-metadata")),
+            hasText("Sinopse de teste para verificar a organização dos detalhes.") and
+                hasAnyAncestor(hasTestTag("details-header-metadata")),
             useUnmergedTree = true,
         )
         composeRule.onNodeWithTag("details-episode-list")
             .performScrollToNode(hasTestTag("details-header-metadata"))
         synopsis.assertExists()
+        composeRule.onNodeWithTag("details-synopsis", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("details-tracemoe-identify-button", useUnmergedTree = true)
             .assertDoesNotExist()
     }

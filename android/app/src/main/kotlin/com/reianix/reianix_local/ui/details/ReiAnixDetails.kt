@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -90,6 +91,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -992,23 +994,6 @@ private fun DetailsHero(
     val posterPath = anime.artwork?.localPath?.takeIf { it.isNotBlank() }
     val target = anime.playbackTargetEpisode
 
-    val metadata = buildList {
-        anime.year?.let { add(it.toString()) }
-        anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { add(statusLabel(it)) }
-        anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { add(formatLabel(it)) }
-        anime.episodeCount?.takeIf { it > 0 }?.let { count ->
-            add(if (count == 1) "Biblioteca: 1 episódio local" else "Biblioteca: $count episódios locais")
-        }
-        anime.announcedEpisodeCount?.takeIf { it > 0 }?.let { count ->
-            add(if (count == 1) "AniList: 1 episódio esperado" else "AniList: $count episódios esperados")
-        }
-        anime.seasons.size.takeIf { it > 0 }?.let { count ->
-            add(if (count == 1) "1 temporada" else "$count temporadas")
-        }
-        anime.score?.let { add("Nota " + formatScore(it)) }
-        anime.durationMinutes?.takeIf { it > 0 }?.let { add("$it min/ep") }
-    }.joinToString(" • ")
-
     val allEpisodes = remember(anime.seasons, anime.specials, anime.mediaFiles) {
         buildList { anime.seasons.forEach { addAll(it.episodes) }; addAll(anime.specials); addAll(anime.mediaFiles) }
     }
@@ -1116,9 +1101,7 @@ private fun DetailsHero(
                             maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
-                    if (metadata.isNotBlank()) Text(text = metadata, style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    DetailsCloudStreamMetadata(anime = anime, centered = true)
                 }
             } else {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -1147,8 +1130,7 @@ private fun DetailsHero(
                             Text(text = alternate, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                        if (metadata.isNotBlank()) Text(text = metadata, style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        DetailsCloudStreamMetadata(anime = anime, centered = false)
                     }
                 }
             }
@@ -1168,6 +1150,43 @@ private fun DetailsHero(
                         else -> ReiAnixBadgeTone.Primary
                     },
                 )
+            }
+        }
+        // CloudStream-inspired reading order: synopsis, characters, genres, actions.
+        // Keep the banner/poster composition above untouched, including its overlap.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.md)
+                .testTag("details-header-metadata"),
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg),
+        ) {
+            anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
+                DetailsExpandableSynopsis(description)
+            }
+            ReiAnixMetadataCharacters(
+                animeId = anime.id,
+                metadataRevision = associationRevision.toString() + ":" + anime.metadataAvailability.name + ":" + anime.presentationState.name,
+            )
+        }
+        if (anime.genres.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.sm)
+                    .testTag("details-genres"),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xl),
+            ) {
+                anime.genres.forEach { genre ->
+                    Text(
+                        text = genre.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontStyle = FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                    )
+                }
             }
         }
         Row(
@@ -1223,27 +1242,6 @@ private fun DetailsHero(
                 animeId = anime.id,
                 modifier = Modifier.weight(1f).testTag("details-quick-list"),
             )
-        }
-        // Synopsis and character strip stay before genres and identification feedback.
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = responsive.horizontalPadding)
-                .testTag("details-header-metadata"),
-        ) {
-            anime.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
-                DetailsExpandableSynopsis(description)
-            }
-            ReiAnixMetadataCharacters(
-                animeId = anime.id,
-                metadataRevision = associationRevision.toString() + ":" + anime.metadataAvailability.name + ":" + anime.presentationState.name,
-            )
-        }
-        if (anime.genres.isNotEmpty()) {
-            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.sm),
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                anime.genres.forEach { genre -> ReiAnixBadge(text = genre.name, tone = ReiAnixBadgeTone.Primary) }
-            }
         }
         val isTraceMoeRunning = traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING
         val identifyFeedback = when (traceMoeState.status) {
@@ -1512,57 +1510,188 @@ private fun DetailsHeroIcon(
     ReiAnixIconActionButton(icon = icon, contentDescription = label, onClick = onClick, modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = ReiAnixTokens.Colors.surfaceOverlayAlpha), CircleShape))
 }
 
+/**
+ * A compact CloudStream-style synopsis directly beneath the title metadata.
+ * Preserve expansion for longer descriptions without truncating stored content.
+ */
 @Composable
 private fun DetailsExpandableSynopsis(description: String) {
     var expanded by rememberSaveable(description) { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = ReiAnixTokens.Spacing.md),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
-        Text(text = "Sinopse", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
-        Text(text = description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
-            maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis)
-        ReiAnixCompactButton(
-            text = if (expanded) "menos" else "mais",
-            onClick = { expanded = !expanded },
-            contentPadding = PaddingValues(ReiAnixTokens.Spacing.none),
+    var canExpand by remember(description) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+    ) {
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = if (expanded) Int.MAX_VALUE else 6,
+            overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
+            onTextLayout = { layout -> if (!expanded) canExpand = layout.hasVisualOverflow },
+            modifier = Modifier.testTag("details-synopsis"),
         )
+        if (canExpand) {
+            ReiAnixCompactButton(
+                text = if (expanded) "Recolher" else "Ler mais",
+                onClick = { expanded = !expanded },
+                contentPadding = PaddingValues(ReiAnixTokens.Spacing.none),
+            )
+        }
     }
 }
 
 @Composable
 private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
-        val knownTitles = sequenceOf(
-            anime.title,
-            anime.romajiTitle,
-            anime.englishTitle,
-            anime.nativeTitle,
-        ).mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-            .map { it.lowercase(Locale.ROOT) }
-            .toSet()
-        val alternateTitles = anime.aliases.asSequence()
-            .map { it.trim() }
-            .filter(String::isNotEmpty)
-            .filter { it.lowercase(Locale.ROOT) !in knownTitles }
-            .distinctBy { it.lowercase(Locale.ROOT) }
-            .toList()
-        val details = buildList {
-            anime.studio?.trim()?.takeIf { it.isNotBlank() }?.let { add("Estúdio" to it) }
-            anime.seasonLabel?.trim()?.takeIf { it.isNotBlank() }?.let { add("Temporada" to seasonLabel(it)) }
-            alternateTitles.takeIf { it.isNotEmpty() }?.let { add("Títulos alternativos" to it.joinToString(" • ")) }
+    val originalTitle = anime.nativeTitle?.trim()?.takeIf {
+        it.isNotBlank() && !it.equals(anime.title, ignoreCase = true)
+    }
+    val knownTitles = listOfNotNull(
+        anime.title.lowercase(Locale.ROOT),
+        originalTitle?.lowercase(Locale.ROOT),
+    ).toSet()
+    val alternateTitles = sequenceOf(anime.romajiTitle, anime.englishTitle)
+        .plus(anime.aliases.asSequence())
+        .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+        .filter { it.lowercase(Locale.ROOT) !in knownTitles }
+        .distinctBy { it.lowercase(Locale.ROOT) }
+        .toList()
+    val facts = buildList {
+        anime.studio?.trim()?.takeIf(String::isNotBlank)?.let { add("Estúdio" to it) }
+        anime.seasonLabel?.trim()?.takeIf(String::isNotBlank)?.let { add("Temporada" to seasonLabel(it)) }
+        originalTitle?.let { add("Título original" to it) }
+    }
+    if (facts.isEmpty() && alternateTitles.isEmpty()) return
+
+    var allTitlesVisible by rememberSaveable(anime.id) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(
+            horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
+            vertical = ReiAnixTokens.Spacing.lg,
+        ),
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+    ) {
+        Text(
+            text = "Informações",
+            style = ReiAnixTokens.TypographyTokens.sectionTitle,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        facts.forEach { (label, value) ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(ReiAnixTokens.Dimensions.detailsInfoLabelWidth),
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
-        if (details.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                Text(text = "Informações", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
-                details.forEach { (label, value) ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
-                        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(ReiAnixTokens.Dimensions.detailsInfoLabelWidth))
-                        Text(text = value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 3, overflow = TextOverflow.Ellipsis)
+        if (alternateTitles.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
+            ) {
+                Text(
+                    text = "Títulos alternativos",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(ReiAnixTokens.Dimensions.detailsInfoLabelWidth),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (allTitlesVisible) alternateTitles.joinToString("\n") else alternateTitles.first(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = if (allTitlesVisible) Int.MAX_VALUE else 2,
+                        overflow = if (allTitlesVisible) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    )
+                    if (alternateTitles.size > 1 || alternateTitles.first().length > 60) {
+                        ReiAnixCompactButton(
+                            text = if (allTitlesVisible) "Ocultar" else "Ver todos",
+                            onClick = { allTitlesVisible = !allTitlesVisible },
+                            contentPadding = PaddingValues(ReiAnixTokens.Spacing.none),
+                        )
                     }
                 }
             }
         }
+    }
+}
 
+/**
+ * CloudStream-style compact metadata, with existing canonical SQLite facts only.
+ * A wrapped first line keeps source/type/year/score/status readable beside the poster.
+ */
+@Composable
+private fun DetailsCloudStreamMetadata(anime: ReiAnixDetailsAnimeUiModel, centered: Boolean) {
+    val primary = buildList {
+        add(if (anime.mediaKind == ReiAnixMediaKind.MOVIE) "Filme" else "Anime")
+        anime.year?.let { add(it.toString()) }
+        anime.score?.takeIf { it.isFinite() }?.let { add(formatScore(it) + "/10") }
+        anime.status?.trim()?.takeIf(String::isNotBlank)?.let { add(statusLabel(it)) }
+        anime.format?.trim()?.takeIf(String::isNotBlank)?.let { add(formatLabel(it)) }
+    }
+    val secondary = buildList {
+        anime.episodeCount?.takeIf { it > 0 }?.let { add("Biblioteca: " + episodeCountLabel(it) + " locais") }
+        anime.announcedEpisodeCount?.takeIf { it > 0 }?.let { add("AniList: " + episodeCountLabel(it) + " esperados") }
+        anime.seasons.size.takeIf { it > 0 }?.let {
+            add(if (it == 1) "1 temporada" else "$it temporadas")
+        }
+        anime.durationMinutes?.takeIf { it > 0 }?.let { add("$it min/ep") }
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("details-compact-metadata"),
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+    ) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
+            verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = ReiAnixTokens.Shapes.small,
+            ) {
+                Text(
+                    text = "Biblioteca",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = ReiAnixTokens.Spacing.sm, vertical = ReiAnixTokens.Spacing.xs),
+                )
+            }
+            primary.forEach { fact ->
+                Text(
+                    text = fact,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    modifier = Modifier.padding(
+                        start = ReiAnixTokens.Spacing.sm,
+                        top = ReiAnixTokens.Spacing.xs,
+                        bottom = ReiAnixTokens.Spacing.xs,
+                    ),
+                )
+            }
+        }
+        if (secondary.isNotEmpty()) {
+            Text(
+                text = secondary.joinToString(" • "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = if (centered) androidx.compose.ui.text.style.TextAlign.Center
+                    else androidx.compose.ui.text.style.TextAlign.Start,
+            )
+        }
     }
 }
 
