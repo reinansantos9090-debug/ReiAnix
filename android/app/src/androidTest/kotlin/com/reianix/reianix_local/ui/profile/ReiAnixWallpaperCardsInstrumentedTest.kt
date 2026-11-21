@@ -269,6 +269,10 @@ class ReiAnixWallpaperCardsInstrumentedTest {
                 composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == frame }
                 composeRule.onAllNodesWithTag("profile-frame-animation-" + frame, useUnmergedTree = true)
                     .assertCountEquals(2)
+                if (frame == "gold" || frame == "cat_ears") {
+                    composeRule.onAllNodesWithTag("profile-frame-top-accessory-" + frame, useUnmergedTree = true)
+                        .assertCountEquals(2)
+                }
                 if (frame == "cat_ears") {
                     // The ears must stay still; no separate animated layer.
                     composeRule.onAllNodesWithTag("profile-frame-cat-left-ear", useUnmergedTree = true)
@@ -317,6 +321,24 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         }
         assertTrue("Sakura is kept on its original implementation",
             !isIllustratedProfileFrame("sakura"))
+    }
+
+    @Test
+    fun crownAndCatEarsTouchPortraitTopWithoutPaintingWholeSheet() {
+        // Shared layout metrics prevent the exact regression shown in screenshots:
+        // centering a padded PNG puts the crown/ears over the face or floats them away.
+        for (frame in listOf("gold", "cat_ears")) {
+            val geometry = requireNotNull(topAccessoryGeometry(frame))
+            assertTrue("$frame not anchored to photo", geometry.artworkBottom > geometry.portraitTop)
+            assertTrue("$frame covers too much face",
+                geometry.artworkBottom - geometry.portraitTop < 0.09f)
+            assertTrue("$frame ornament does not rise above photo",
+                geometry.artworkTop < geometry.portraitTop)
+            assertTrue("$frame portrait exceeds avatar bounds",
+                geometry.portraitTop + geometry.portraitDiameter <= 1f)
+        }
+        assertTrue("Sakura was changed", topAccessoryGeometry("sakura") == null)
+        assertTrue("Neon was changed", topAccessoryGeometry("neon") == null)
     }
 
     @Test
