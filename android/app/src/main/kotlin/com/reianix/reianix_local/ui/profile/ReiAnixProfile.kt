@@ -116,10 +116,13 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
         // Royal and Cat are TOP accessories, not circular rings. Their art is
         // cropped and anchored to the upper edge of these carefully placed portraits.
         // Keep an actual round photo (not an oval) and don't move other frame styles.
-        val portraitModifier = when (profile.frame) {
-            "gold" -> Modifier.size(size * 0.72f).offset(y = size * 0.13f)
-            "cat_ears" -> Modifier.size(size * 0.77f).offset(y = size * 0.115f)
-            "neon", "galaxy" -> Modifier.fillMaxSize().padding(size * 0.11f)
+        val topAccessory = topAccessoryGeometry(profile.frame)
+        val portraitModifier = when {
+            topAccessory != null -> Modifier
+                .size(size * topAccessory.portraitDiameter)
+                .offset(y = size * topAccessory.portraitOffsetY)
+            profile.frame == "neon" || profile.frame == "galaxy" ->
+                Modifier.fillMaxSize().padding(size * 0.11f)
             else -> Modifier.fillMaxSize().padding(if (animated) size * 0.11f else 0.dp)
         }
         Box(
