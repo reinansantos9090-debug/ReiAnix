@@ -60,7 +60,7 @@ class ReiAnixCharacterCache(
             if (cached != null) return@withLock AniListResult.Success(cached)
             val response = client.getCharacters(anilistId)
             if (response is AniListResult.Success) {
-                withContext(Dispatchers.IO) {
+                val saved = withContext(Dispatchers.IO) {
                     runCatching {
                         folder.mkdirs()
                         val array = JSONArray()
@@ -74,9 +74,12 @@ class ReiAnixCharacterCache(
                             cacheFile.writeText(array.toString())
                             temporary.delete()
                         }
-                    }
+                        true
+                    }.getOrDefault(false)
                 }
-                published.tryEmit(anilistId)
+                // Never trigger a cache reload on a failed write: it would fetch
+                // and emit repeatedly if storage were temporarily unavailable.
+                if (saved) published.tryEmit(anilistId)
             }
             response
         }
