@@ -26,6 +26,28 @@ class ReiAnixKitsuCharacterSelectionTest {
     )
 
     @Test
+    fun onlyRealKitsuPosterCdnUrlsCanProvideAnAnimeId() {
+        assertEquals("1", kitsuAnimeIdFromPosterUrl(
+            "https://media.kitsu.app/anime/poster_images/1/original.jpg",
+        ))
+        assertEquals("4928", kitsuAnimeIdFromPosterUrl(
+            "https://media.kitsu.io/anime/poster_images/4928/large.jpg",
+        ))
+        assertNull(kitsuAnimeIdFromPosterUrl(
+            "https://evil.example/anime/poster_images/1/original.jpg",
+        ))
+        assertNull(kitsuAnimeIdFromPosterUrl(
+            "http://media.kitsu.app/anime/poster_images/1/original.jpg",
+        ))
+        assertNull(kitsuAnimeIdFromPosterUrl(
+            "https://media.kitsu.app.evil.example/anime/poster_images/1/original.jpg",
+        ))
+        assertNull(kitsuAnimeIdFromPosterUrl(
+            "https://media.kitsu.app/anime/poster_images/not-an-id/original.jpg",
+        ))
+    }
+
+    @Test
     fun candidateOnlyMetadataUsesUniquelyMatchingReadyKitsuPosterAndExactTitle() {
         val match = kitsu("2", "Cowboy Bebop", "https://media.kitsu.app/poster-2.jpg")
         val different = kitsu("99", "Cowboy Bebop", "https://media.kitsu.app/poster-99.jpg")

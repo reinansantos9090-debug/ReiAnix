@@ -292,6 +292,28 @@ class ReiAnixCharacterCompletionService(
             }
         }
 
+        // A ready poster from Kitsu's own CDN encodes the provider anime ID.
+        // Verify that lightweight anime record against BOTH the poster URL
+        // and the local title before loading its character relationship.
+        // This bypasses slow/ambiguous text search for previously imported
+        // anime with complete or provisional editorial metadata.
+        val embeddedKitsuId = readyKitsuPosters
+            .mapNotNull(::kitsuAnimeIdFromPosterUrl).distinct().singleOrNull()
+        if (embeddedKitsuId != null) {
+            awaitQuietArtwork()
+            val detail = kitsu.getAnime(embeddedKitsuId)
+            val remote = (detail as? ReiAnixCatalogResult.Success)?.value
+            if (remote != null) {
+                val verified = selectKitsuCastCandidate(
+                    animeId, identity, listOf(remote), known, readyKitsuPosters,
+                )
+                if (verified != null) {
+                    loadKitsuPages(animeId, embeddedKitsuId)
+                    return
+                }
+            }
+        }
+
         // Previously this used searchAnimeWithCharacters for up to ten
         // candidates, potentially transferring hundreds of included people
         // and timing out before ANY cast was published. Search metadata
@@ -334,6 +356,23 @@ class ReiAnixCharacterCompletionService(
         const val KITSU_PAGE_SIZE = 20
         const val MAX_PAGES = 125 // 2500 Kitsu or 3125 AniList credits, not the old 10/12 cap.
         const val BETWEEN_PAGES_MS = 1_250L
+    }
+}
+
+/**
+ * Kitsu's official poster URLs carry a stable numeric anime ID. Accept only
+ * its known media CDN and exact path shape: arbitrary metadata URLs are never
+ * treated as trusted external identifiers.
+ */
+internal fun kitsuAnimeIdFromPosterUrl(url: String): String? {
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return null
+    if (uri.scheme != "https" || uri.userInfo != null ||
+        uri.host?.lowercase() !in setOf("media.kitsu.app", "media.kitsu.io")
+    ) return null
+    val path = uri.path.split('/').filter(String::isNotEmpty)
+    if (path.size < 4 || path[0] != "anime" || path[1] != "poster_images") return null
+    return path[2].takeIf {
+        it.matches(Regex("[1-9][0-9]{0,17}"))
     }
 }
 

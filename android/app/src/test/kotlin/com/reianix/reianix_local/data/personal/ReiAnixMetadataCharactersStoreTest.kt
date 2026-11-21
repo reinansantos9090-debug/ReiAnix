@@ -64,7 +64,7 @@ class ReiAnixMetadataCharactersStoreTest {
 
     @Test
     fun previousIncompleteKitsuCacheIsRestoredAsRetryableNotFinished() = runBlocking {
-        val context = RuntimeEnvironment.getApplication<android.app.Application>()
+        val context = RuntimeEnvironment.getApplication()
         val path = File(context.cacheDir, "characters/metadata/99054121.json")
         path.parentFile?.mkdirs()
         try {
