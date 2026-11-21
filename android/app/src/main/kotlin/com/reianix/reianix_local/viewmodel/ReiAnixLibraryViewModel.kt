@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.reianix.reianix_local.MainActivity
+import com.reianix.reianix_local.bridge.NativeInternalIntentGuard
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import com.reianix.reianix_local.resolveNativePlaybackStartPosition
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkPublication
@@ -2982,6 +2983,7 @@ class ReiAnixLibraryViewModel(
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP,
                 )
+                NativeInternalIntentGuard.stamp(appContext, intent)
                 val handoffStarted = withContext(Dispatchers.Main) {
                     // A lifecycle disconnect can cancel the pending request while
                     // SQLite/settings work is running on Dispatchers.IO. Re-check
