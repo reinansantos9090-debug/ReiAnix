@@ -46,6 +46,15 @@ data class ReiAnixAniListUiState(
         get() = isSearchLoading || isManualAssociationLoading || isAutoMatchLoading || isMetadataRefreshLoading
 }
 
+/** One-shot feedback: successful/failed explicit repairs must not replay on navigation. */
+internal fun ReiAnixAniListUiState.consumeRepairNotice(animeId: Long, revision: Long):
+    Pair<ReiAnixAniListUiState, String?> {
+    if (repairAnimeId != animeId || repairRunning || repairRevision != revision || repairMessage == null) {
+        return this to null
+    }
+    return copy(repairMessage = null) to repairMessage
+}
+
 /**
  * AniList operations are isolated from local-library search and projection.
  * The integration service still persists to the canonical SQLite repository.
@@ -167,6 +176,13 @@ class ReiAnixAniListViewModel(
             }
         }
     }
+    /** Consume a completed repair notification once, not every time Details is reopened. */
+    fun takeRepairNotice(animeId: Long, revision: Long): String? {
+        val (next, message) = _aniListUiState.value.consumeRepairNotice(animeId, revision)
+        if (message != null) _aniListUiState.value = next
+        return message
+    }
+
     /** Refreshes only a local anime's existing AniList association through the native service. */
     /** One explicit action, with independent progress and no modal selection. */
     fun repairAniListMetadata(animeId: Long) {

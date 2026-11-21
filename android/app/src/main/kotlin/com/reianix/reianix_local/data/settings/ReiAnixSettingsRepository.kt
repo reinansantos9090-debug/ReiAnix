@@ -3,6 +3,7 @@ package com.reianix.reianix_local.data.settings
 import android.content.Context
 import android.content.Intent
 import com.reianix.reianix_local.MainActivity
+import com.reianix.reianix_local.bridge.NativeInternalIntentGuard
 import android.os.FileObserver
 import android.util.Log
 import com.reianix.reianix_local.bridge.NativeMailbox
@@ -479,6 +480,7 @@ class ReiAnixSettingsRepository(
                     putExtra(ReiAnixSettingsFileService.EXTRA_ACTION, action)
                     putExtra(ReiAnixSettingsFileService.EXTRA_REQUEST_ID, requestId)
                 }
+                NativeInternalIntentGuard.stamp(appContext, intent)
                 appContext.startActivity(intent)
                 Log.i(TAG, "SETTINGS_FILE_ACTION_LAUNCHED requestId=" + requestId + " action=" + action)
             } catch (cancelled: CancellationException) {
@@ -698,6 +700,7 @@ class ReiAnixSettingsRepository(
                         Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     data = target
                 }
+                NativeInternalIntentGuard.stamp(appContext, intent)
                 appContext.startActivity(intent)
                 Log.i(TAG, "SETTINGS_ACCOUNT_ACTION_LAUNCHED requestId=" + requestId + " action=" + action + " owner=kotlin")
             } catch (cancelled: CancellationException) {

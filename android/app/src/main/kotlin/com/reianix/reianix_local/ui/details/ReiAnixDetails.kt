@@ -179,10 +179,8 @@ fun ReiAnixDetailsRoute(
     val aniListState by aniListViewModel.uiState.collectAsStateWithLifecycle()
     val repairContext = LocalContext.current
     LaunchedEffect(canonicalId, aniListState.repairRevision) {
-        if (aniListState.repairAnimeId == canonicalId && !aniListState.repairRunning) {
-            aniListState.repairMessage?.let { message ->
-                android.widget.Toast.makeText(repairContext, message, android.widget.Toast.LENGTH_SHORT).show()
-            }
+        aniListViewModel.takeRepairNotice(canonicalId, aniListState.repairRevision)?.let { message ->
+            android.widget.Toast.makeText(repairContext, message, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
     var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }

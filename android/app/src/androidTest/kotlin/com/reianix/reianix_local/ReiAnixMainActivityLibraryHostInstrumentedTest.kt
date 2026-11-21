@@ -2,6 +2,7 @@ package com.reianix.reianix_local
 
 import android.content.Intent
 import android.net.Uri
+import com.reianix.reianix_local.bridge.NativeInternalIntentGuard
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -24,7 +25,7 @@ class ReiAnixMainActivityLibraryHostInstrumentedTest {
             ),
         )
 
-        composeRule.activity.onNewIntent(intent)
+        composeRule.activity.onNewIntent(NativeInternalIntentGuard.stamp(composeRule.activity, intent))
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Biblioteca", useUnmergedTree = true)
@@ -43,7 +44,7 @@ class ReiAnixMainActivityLibraryHostInstrumentedTest {
                     "",
             ),
         )
-        composeRule.activity.onNewIntent(intent)
+        composeRule.activity.onNewIntent(NativeInternalIntentGuard.stamp(composeRule.activity, intent))
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Biblioteca", useUnmergedTree = true)
             .assertIsDisplayed()
