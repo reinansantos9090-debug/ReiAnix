@@ -262,18 +262,19 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             composeRule.onNodeWithText("Moldura").performScrollTo().performClick()
             composeRule.onNodeWithTag("profile-frame-preview").assertIsDisplayed()
             composeRule.onNodeWithText("Gatinho mágico").assertExists()
-            composeRule.onNodeWithText("Fone gamer").assertExists()
-            for (frame in listOf("neon", "sakura", "cat_ears", "gold", "galaxy", "headset")) {
+            composeRule.onNodeWithText("Fone gamer").assertDoesNotExist()
+            for (frame in listOf("neon", "sakura", "cat_ears", "gold", "galaxy")) {
                 composeRule.onNodeWithTag("profile-frame-option-" + frame)
                     .performScrollTo().performClick()
                 composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == frame }
                 composeRule.onAllNodesWithTag("profile-frame-animation-" + frame, useUnmergedTree = true)
                     .assertCountEquals(2)
                 if (frame == "cat_ears") {
+                    // The ears must stay still; no separate animated layer.
                     composeRule.onAllNodesWithTag("profile-frame-cat-left-ear", useUnmergedTree = true)
-                        .assertCountEquals(2)
+                        .assertCountEquals(0)
                     composeRule.onAllNodesWithTag("profile-frame-cat-right-ear", useUnmergedTree = true)
-                        .assertCountEquals(2)
+                        .assertCountEquals(0)
                 }
             }
             composeRule.onNodeWithTag("profile-frame-option-white")
@@ -295,9 +296,6 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             "neon" to R.drawable.profile_frame_neon,
             "galaxy" to R.drawable.profile_frame_galaxy,
             "cat_ears" to R.drawable.profile_frame_cat_ears,
-            "headset" to R.drawable.profile_frame_headset,
-            "cat_left_ear" to R.drawable.profile_frame_cat_left_ear,
-            "cat_right_ear" to R.drawable.profile_frame_cat_right_ear,
         )
         art.forEach { (name, drawableId) ->
             assertTrue("$name should be illustrated", isIllustratedProfileFrame(name))
@@ -308,10 +306,10 @@ class ReiAnixWallpaperCardsInstrumentedTest {
                 assertTrue("$name must have transparency", bitmap.hasAlpha())
                 val centerPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
                 assertTrue("$name obscures the profile photo", AndroidColor.alpha(centerPixel) < 64)
-                if (name == "gold" || name == "headset") {
-                    // There should be no heavy full-circle ornament under the portrait.
+                if (name == "gold" || name == "cat_ears") {
+                    // Crown and accessories should not form a heavy circular border.
                     val bottomPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height * 9 / 10)
-                    assertTrue("$name must not have a bottom ring", AndroidColor.alpha(bottomPixel) < 64)
+                    assertTrue("$name must have a clean lower edge", AndroidColor.alpha(bottomPixel) < 64)
                 }
             } finally {
                 bitmap.recycle()
@@ -319,6 +317,21 @@ class ReiAnixWallpaperCardsInstrumentedTest {
         }
         assertTrue("Sakura is kept on its original implementation",
             !isIllustratedProfileFrame("sakura"))
+    }
+
+    @Test
+    fun deprecatedHeadsetSelectionFallsBackToNoFrame() {
+        val store = ReiAnixProfileStore.from(composeRule.activity)
+        val original = store.state.value
+        try {
+            runBlocking { store.save(original.copy(frame = "headset")) }
+            assertEquals("none", store.state.value.frame)
+            assertTrue(profileFrameOptions.none { it.id == "headset" })
+            assertTrue(!isIllustratedProfileFrame("headset"))
+            assertTrue(!isAnimatedProfileFrame("headset"))
+        } finally {
+            runBlocking { store.save(original) }
+        }
     }
 
     @Test
