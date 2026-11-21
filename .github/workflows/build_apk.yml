@@ -22,32 +22,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Finalize approved crown and stationary kitten artwork
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 407 && github.event.pull_request.head.repo.full_name == github.repository
-        shell: bash
-        env:
-          GOLD_ART: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F3971199e-76a0-4e75-b279-9126f13b55c5/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAADJogGTe2asxwRw3SZlis7Wj2gv7UQqxmdXzPID1Y5-k&exp=1795257499&osig=AAAAAAAAAAAAAAAAAAAAAA-dtYRqXopqAhs8nJoHYGLmgeagEXNJcD-Q46ZWvkRF&signer=media-rpc&token=AAIAAU0AJDM5NzExOTllLTc2YTAtNGU3NS1iMjc5LTkxMjZmMTNiNTVjNQAAAAABof2vfXhfhQHlJ_l3nNl-3u3m0LvWB8tyANUUU4DWY4fn2f-ZVQ&x-canva-quality=thumbnail'
-          CAT_ART: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F4f009221-bc7f-43f7-b0a2-ac0f245e313e/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAGIRokh0CqsCQkOLTOwAu0MEC1Gd17MjzEotdzHldGJa&exp=1795260660&osig=AAAAAAAAAAAAAAAAAAAAADvyiWH1F3Gw--KDfajnhCBGEjVPg05qyvbmDErdKZL0&signer=media-rpc&token=AAIAAU0AJDRmMDA5MjIxLWJjN2YtNDNmNy1iMGEyLWFjMGYyNDVlMzEzZQAAAAABof3fuSBD5a_ibV_6g-BOChyOUk4Ke12eS13xemln16XDQynC6g&x-canva-quality=thumbnail'
-        run: |
-          set -euo pipefail
-          branch="${{ github.event.pull_request.head.ref }}"
-          git fetch --no-tags origin "$branch"
-          git checkout -B "$branch" "origin/$branch"
-          if [[ -f .github/reianix-407-final-art-installed ]]; then echo "PNG artwork already installed"; exit 0; fi
-          dir="android/app/src/main/res/drawable-nodpi"
-          curl --fail --location --retry 2 --max-time 30 --silent --show-error "$GOLD_ART" -o "$dir/profile_frame_gold.png"
-          curl --fail --location --retry 2 --max-time 30 --silent --show-error "$CAT_ART" -o "$dir/profile_frame_cat_ears.png"
-          file "$dir/profile_frame_gold.png" "$dir/profile_frame_cat_ears.png"
-          for file in "$dir/profile_frame_gold.png" "$dir/profile_frame_cat_ears.png"; do
-            if ! file -b "$file" | grep -q "PNG image data"; then echo "::error::PNG expected: $file"; exit 1; fi
-          done
-          printf "%s\n" "Approved crown seated on profile; stationary cat ears, bows and paws without ring" > .github/reianix-407-final-art-installed
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$dir/profile_frame_gold.png" "$dir/profile_frame_cat_ears.png" .github/reianix-407-final-art-installed
-          git commit -m "Seat royal crown and remove kitten circular trim with still ears"
-          git push origin "HEAD:refs/heads/$branch"
-
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
