@@ -177,7 +177,7 @@ class ReiAnixAniListClient(
             val characters = parseCharacterConnection(connection, perPage)
             val pageInfo = connection.optJSONObject("pageInfo")
             val hasNext = pageInfo?.optBoolean("hasNextPage", false)
-                ?: (connection.optJSONArray("edges")?.length() ?: 0) >= perPage
+                ?: ((connection.optJSONArray("edges")?.length() ?: 0) >= perPage)
             AniListResult.Success(ReiAnixCharacterPage(characters, hasNext))
         }
     }

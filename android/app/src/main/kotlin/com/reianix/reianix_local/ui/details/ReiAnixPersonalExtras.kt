@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
 import com.reianix.reianix_local.data.anilist.AniListResult
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter
