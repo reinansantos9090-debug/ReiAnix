@@ -6,6 +6,7 @@ import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reianix.reianix_local.data.personal.ReiAnixMetadataCharactersStore
+import com.reianix.reianix_local.data.personal.ReiAnixCharacterCompletionService
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
 import com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
 import com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProvider
@@ -128,8 +129,11 @@ class ReiAnixAppDependencies(context: Context) {
     val candidateMetadataService: ReiAnixCandidateMetadataService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixCandidateMetadataService(
             sqliteLibraryRepository,
-            charactersPublisher = { animeId, source, sourceId, characters ->
-                metadataCharactersStore.publish(animeId, source, sourceId, characters)
+            charactersPublisher = { animeId, source, sourceId, characters, complete ->
+                metadataCharactersStore.publish(
+                    animeId, source, sourceId, characters, complete,
+                )
+                characterCompletionService.schedule(animeId)
             },
         )
     }
@@ -180,7 +184,9 @@ class ReiAnixAppDependencies(context: Context) {
             charactersPublisher = { animeId, remote ->
                 metadataCharactersStore.publish(
                     animeId, "kitsu", remote.ids.kitsuId.orEmpty(), remote.characters,
+                    complete = remote.charactersComplete,
                 )
+                characterCompletionService.schedule(animeId)
             },
         )
     }
@@ -197,6 +203,14 @@ class ReiAnixAppDependencies(context: Context) {
     // Publication is memory-only; cache writes never block cover or metadata UI.
     val metadataCharactersStore: ReiAnixMetadataCharactersStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixMetadataCharactersStore(appContext)
+    }
+
+    /** Low-priority continuation of casts and recovery for pre-existing anime. */
+    val characterCompletionService: ReiAnixCharacterCompletionService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixCharacterCompletionService(
+            metadataCharactersStore, sqliteLibraryRepository, sqliteDatabase,
+            sqliteSettingsRepository, aniListClient,
+        )
     }
 
     val aniListIntegrationService: ReiAnixAniListIntegrationService by lazy(
@@ -222,7 +236,9 @@ class ReiAnixAppDependencies(context: Context) {
             charactersPublisher = { animeId, remote ->
                 metadataCharactersStore.publish(
                     animeId, "anilist", remote.id.toString(), remote.characters,
+                    complete = remote.charactersComplete,
                 )
+                characterCompletionService.schedule(animeId)
             },
             explicitArtworkPublisher = { animeId ->
                 artworkService.requestAnimeArtwork(animeId, force = true)

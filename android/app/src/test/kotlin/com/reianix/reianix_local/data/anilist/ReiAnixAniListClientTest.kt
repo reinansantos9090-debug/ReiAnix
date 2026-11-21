@@ -88,6 +88,27 @@ class ReiAnixAniListClientTest {
         assertEquals(1, transport.calls)
     }
 
+
+    @Test
+    fun characterPageParsesAllTwentyFiveAndReportsNextPage() = runBlocking {
+        val edges = (1..25).joinToString(",") { i ->
+            """{"role":"MAIN","node":{"id":$i,"name":{"full":"Person $i"},
+                "image":{"medium":"https://img.example/$i.jpg"}}}"""
+        }
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Media":{"characters":{
+              "pageInfo":{"hasNextPage":true},
+              "edges":[$edges]
+            }}}}
+        """.trimIndent()))
+        val result = ReiAnixAniListClient(transport, 0).getCharacterPage(42, 1)
+        val page = (result as AniListResult.Success).value
+        assertEquals(25, page.characters.size)
+        assertTrue(page.hasNextPage)
+        assertTrue(transport.requestBody!!.getString("query").contains("pageInfo { hasNextPage }"))
+        assertEquals(1, transport.calls)
+    }
+
     @Test
     fun cleartextExtraLargeCoverDoesNotHideSecureLargeVariant() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """

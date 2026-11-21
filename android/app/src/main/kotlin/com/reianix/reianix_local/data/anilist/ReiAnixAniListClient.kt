@@ -144,7 +144,45 @@ class ReiAnixAniListClient(
     }
 
 
-    /** Characters are requested only when the user opens the character section. */
+    /** Character-only continuation for casts exceeding the inline metadata page.
+     * This is never used by artwork discovery, normal metadata publication or
+     * Details composition. Callers run it after core loading is idle.
+     */
+    suspend fun getCharacterPage(
+        id: Int, page: Int, perPage: Int = 25,
+    ): AniListResult<ReiAnixCharacterPage> {
+        if (id <= 0 || page <= 0 || perPage !in 1..25) {
+            return AniListResult.Failure(AniListError.InvalidRequest("Invalid character page"))
+        }
+        val gql = """
+            query CharactersByPage(${'$'}id: Int, ${'$'}page: Int, ${'$'}perPage: Int) {
+              Media(id: ${'$'}id, type: ANIME) {
+                characters(page: ${'$'}page, perPage: ${'$'}perPage, sort: [ROLE, FAVOURITES_DESC]) {
+                  pageInfo { hasNextPage }
+                  edges { role node { id name { full } image { medium } } }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id).put("page", page)
+            .put("perPage", perPage)) { data ->
+            val media = data.optJSONObject("Media")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing media in character page"),
+                )
+            val connection = media.optJSONObject("characters")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing character connection"),
+                )
+            val characters = parseCharacterConnection(connection, perPage)
+            val pageInfo = connection.optJSONObject("pageInfo")
+            val hasNext = pageInfo?.optBoolean("hasNextPage", false)
+                ?: (connection.optJSONArray("edges")?.length() ?: 0) >= perPage
+            AniListResult.Success(ReiAnixCharacterPage(characters, hasNext))
+        }
+    }
+
+    /** Legacy bounded character lookup kept for API/source compatibility. */
     suspend fun getCharacters(id: Int, limit: Int = 18): AniListResult<List<ReiAnixAnimeCharacter>> {
         if (id <= 0 || limit !in 1..25) {
             return AniListResult.Failure(AniListError.InvalidRequest("Invalid character request"))
@@ -381,13 +419,20 @@ class ReiAnixAniListClient(
             // Populated from the very SAME GraphQL Media response as year/cover.
             // Missing field in legacy fixtures is distinct from an empty cast.
             characters = media.optJSONObject("characters")?.let(::parseCharacterConnection),
+            charactersComplete = media.optJSONObject("characters")?.let { connection ->
+                val hasNext = connection.optJSONObject("pageInfo")?.optBoolean("hasNextPage", true)
+                hasNext == false
+            } ?: false,
         )
     }
 
-    private fun parseCharacterConnection(connection: JSONObject): List<ReiAnixAnimeCharacter> {
+    private fun parseCharacterConnection(
+        connection: JSONObject,
+        limit: Int = EMBEDDED_CHARACTER_LIMIT,
+    ): List<ReiAnixAnimeCharacter> {
         val edges = connection.optJSONArray("edges") ?: return emptyList()
         return buildList {
-            for (index in 0 until minOf(edges.length(), EMBEDDED_CHARACTER_LIMIT)) {
+            for (index in 0 until minOf(edges.length(), limit)) {
                 val edge = edges.optJSONObject(index) ?: continue
                 val node = edge.optJSONObject("node") ?: continue
                 val characterId = node.optInt("id").takeIf { it > 0 } ?: continue
@@ -427,6 +472,7 @@ class ReiAnixAniListClient(
         private const val EMBEDDED_CHARACTER_LIMIT = 10
         private const val CHARACTER_FIELDS = """
             characters(perPage: 10, sort: [ROLE, FAVOURITES_DESC]) {
+                pageInfo { hasNextPage }
                 edges { role node { id name { full } image { medium } } }
             }
         """
@@ -439,6 +485,11 @@ class ReiAnixAniListClient(
         private const val MEDIA_FIELDS_WITH_CHARACTERS = MEDIA_FIELDS + CHARACTER_FIELDS
     }
 }
+
+data class ReiAnixCharacterPage(
+    val characters: List<ReiAnixAnimeCharacter>,
+    val hasNextPage: Boolean,
+)
 
 data class ReiAnixAnimeCharacter(
     val id: Int,
@@ -480,6 +531,7 @@ data class AniListAnime(
     val studios: List<String>,
     /** Cast included in the same metadata response, null for legacy responses. */
     val characters: List<ReiAnixAnimeCharacter>? = null,
+    val charactersComplete: Boolean = false,
 ) {
     /** Secure, de-duplicated variants ordered by preferred image quality. */
     internal val coverCandidates: List<ReiAnixAniListCoverCandidate>

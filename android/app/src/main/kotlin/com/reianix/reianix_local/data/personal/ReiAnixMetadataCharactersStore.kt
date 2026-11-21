@@ -28,6 +28,8 @@ class ReiAnixMetadataCharactersStore(context: Context) {
         val source: String,
         val sourceId: String,
         val characters: List<ReiAnixAnimeCharacter>,
+        /** True only when every paginated character has been obtained. */
+        val complete: Boolean = false,
     )
 
     private val folder = File(context.applicationContext.cacheDir, "characters/metadata")
@@ -58,6 +60,7 @@ class ReiAnixMetadataCharactersStore(context: Context) {
         source: String,
         sourceId: String,
         characters: List<ReiAnixAnimeCharacter>?,
+        complete: Boolean = true,
     ) {
         if (animeId <= 0L || sourceId.isBlank() || characters == null) return
         if (source != "anilist" && source != "kitsu") return
@@ -68,10 +71,21 @@ class ReiAnixMetadataCharactersStore(context: Context) {
             if (previous?.source == "anilist" && source == "kitsu" &&
                 previous.characters.isNotEmpty()
             ) return@synchronized false
-            if (characters.isEmpty() && previous?.characters?.isNotEmpty() == true &&
-                previous.sourceId == sourceId
+            val sameIdentity = previous?.source == source && previous.sourceId == sourceId
+            // A provider that reports no cast must never erase an existing
+            // usable cast from another provider.
+            if (!sameIdentity && characters.isEmpty() &&
+                previous?.characters?.isNotEmpty() == true
             ) return@synchronized false
-            val next = Entry(source, sourceId, characters.distinctBy { it.id }.take(18))
+            // Incremental pages must not overwrite characters already published
+            // with the metadata; complete responses must not be replaced by a
+            // shorter, older initial-page response for the same identity.
+            val merged = if (sameIdentity) {
+                (previous!!.characters + characters).distinctBy { it.id }
+            } else characters.distinctBy { it.id }
+            val next = Entry(
+                source, sourceId, merged, complete || (sameIdentity && previous!!.complete),
+            )
             if (previous == next) return@synchronized false
             mutableEntries.value = mutableEntries.value + (animeId to next)
             true
@@ -86,7 +100,7 @@ class ReiAnixMetadataCharactersStore(context: Context) {
                 val file = File(folder, animeId.toString() + ".json")
                 if (!file.isFile) return@runCatching null
                 val root = JSONObject(file.readText())
-                if (root.optInt("version") != 1) return@runCatching null
+                if (root.optInt("version") !in 1..2) return@runCatching null
                 val source = root.optString("source")
                 val sourceId = root.optString("sourceId")
                 if ((source != "anilist" && source != "kitsu") || sourceId.isBlank()) {
@@ -102,7 +116,8 @@ class ReiAnixMetadataCharactersStore(context: Context) {
                         add(ReiAnixAnimeCharacter(id, name, item.optString("role"), image))
                     }
                 }
-                Entry(source, sourceId, values)
+                Entry(source, sourceId, values, root.optInt("version") == 2 &&
+                    root.optBoolean("complete", false))
             }.getOrNull()
         } ?: return
         synchronized(lock) {
@@ -119,8 +134,9 @@ class ReiAnixMetadataCharactersStore(context: Context) {
             array.put(JSONObject().put("id", item.id).put("name", item.name)
                 .put("role", item.role).put("image", item.imageUrl ?: ""))
         }
-        val payload = JSONObject().put("version", 1)
+        val payload = JSONObject().put("version", 2)
             .put("source", entry.source).put("sourceId", entry.sourceId)
+            .put("complete", entry.complete)
             .put("characters", array).toString()
         val destination = File(folder, animeId.toString() + ".json")
         val temporary = File(folder, animeId.toString() + ".tmp")

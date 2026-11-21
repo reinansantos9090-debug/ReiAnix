@@ -539,6 +539,12 @@ fun ReiAnixMetadataCharacters(
     LaunchedEffect(animeId, metadataRevision, store) {
         try {
             store.restore(animeId)
+            // The automatic library-wide backfill is the primary source. This
+            // priority signal also repairs old entries that were never scanned,
+            // without making Details wait for any network request.
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                dependencies.characterCompletionService.schedule(animeId, prioritize = true)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

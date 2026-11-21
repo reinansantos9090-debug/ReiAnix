@@ -4,6 +4,7 @@ import com.reianix.reianix_local.data.anilist.AniListAnime
 import com.reianix.reianix_local.data.sqlite.ReiAnixCandidateMetadata
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.mergeCandidateMetadataGaps
+import com.reianix.reianix_local.data.sqlite.getExternalCatalogIds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,7 @@ class ReiAnixCandidateMetadataService(
     // Characters from the same provider response, committed alongside
     // supplementary metadata gaps (never a second API call).
     private val charactersPublisher: ((
-        Long, String, String, List<com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter>?
+        Long, String, String, List<com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter>?, Boolean
     ) -> Unit)? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -52,6 +53,7 @@ class ReiAnixCandidateMetadataService(
             ),
             sourceId = remote.ids.kitsuId.orEmpty(),
             characters = remote.characters,
+            complete = remote.charactersComplete,
         )
     }
 
@@ -73,6 +75,7 @@ class ReiAnixCandidateMetadataService(
             ),
             sourceId = remote.id.toString(),
             characters = remote.characters,
+            complete = remote.charactersComplete,
         )
     }
 
@@ -81,20 +84,27 @@ class ReiAnixCandidateMetadataService(
         candidate: ReiAnixCandidateMetadata,
         sourceId: String,
         characters: List<com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter>?,
+        complete: Boolean,
     ) {
         if (animeId <= 0L) return
         scope.launch {
             try {
-                if (library.mergeCandidateMetadataGaps(animeId, candidate)) {
-                    // The same candidate supplied metadata such as year and its cast.
-                    // Publish the cast before UI observers see the metadata update.
-                    try {
-                        charactersPublisher?.invoke(animeId, candidate.source, sourceId, characters)
-                    } catch (_: Exception) {
-                        // A malformed supplemental cast may not hold back metadata.
+                val changed = library.mergeCandidateMetadataGaps(animeId, candidate)
+                // A year/synopsis already present MUST NOT suppress characters.
+                // However these poster candidates are not always verified
+                // matches: only attach the cast when its source ID is confirmed.
+                if (characters != null && sourceId.isNotBlank()) {
+                    val ids = runCatching { library.getExternalCatalogIds(animeId) }.getOrNull()
+                    val confirmed = when (candidate.source) {
+                        "anilist" -> ids?.aniListId?.toString() == sourceId
+                        "kitsu" -> ids?.kitsuId == sourceId
+                        else -> false
                     }
-                    mutableUpdates.tryEmit(animeId)
+                    if (confirmed) {
+                        charactersPublisher?.invoke(animeId, candidate.source, sourceId, characters, complete)
+                    }
                 }
+                if (changed) mutableUpdates.tryEmit(animeId)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

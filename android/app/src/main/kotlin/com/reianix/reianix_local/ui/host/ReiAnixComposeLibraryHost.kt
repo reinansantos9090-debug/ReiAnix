@@ -194,6 +194,11 @@ class ReiAnixComposeLibraryHost(
                                 )
                             }
 
+                        // Recover the cast for scanned anime even if every other
+                        // metadata field is complete. This never downloads artwork.
+                        withContext(Dispatchers.IO) {
+                            dependencies.characterCompletionService.scheduleAfterScan()
+                        }
                         try {
                             withContext(Dispatchers.IO) {
                                 dependencies.externalCatalogIntegrationService.enrichLibraryGaps(
@@ -309,6 +314,26 @@ class ReiAnixComposeLibraryHost(
                         "Ready-poster metadata recovery failed. errorType=" +
                             error::class.java.simpleName,
                     )
+                }
+            }
+
+            // One low-priority recovery pass for characters in already saved
+            // anime. Independent from the existing metadata and artwork startup
+            // lanes, and gated on a healthy canonical database.
+            LaunchedEffect(
+                libraryViewModel,
+                bootstrapState.phase,
+                bootstrapState.persistenceStatus,
+                libraryState.animeCount,
+            ) {
+                if (bootstrapState.phase == ReiAnixBootstrapPhase.READY &&
+                    bootstrapState.persistenceStatus == ReiAnixBootstrapPersistenceStatus.HEALTHY &&
+                    libraryState.animeCount > 0
+                ) {
+                    withContext(Dispatchers.IO) {
+                        ReiAnixAppDependencies.from(activity.applicationContext)
+                            .characterCompletionService.scheduleStartupBackfill()
+                    }
                 }
             }
 

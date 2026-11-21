@@ -92,6 +92,40 @@ class ReiAnixKitsuCatalogProvider(
         }
     }
 
+    /**
+     * Paged JSON:API relationship for large casts. Used only by the deferred
+     * character repair worker, never by poster or normal metadata lookups.
+     */
+    suspend fun getCharacterPage(
+        externalId: String,
+        offset: Int,
+        limit: Int = 20,
+    ): ReiAnixCatalogResult<ReiAnixKitsuCharacterPage> {
+        val id = externalId.trim()
+        if (!id.matches(Regex("[A-Za-z0-9_-]{1,128}")) ||
+            offset < 0 || limit !in 1..20
+        ) return ReiAnixCatalogResult.Failure(
+            ReiAnixCatalogError.InvalidRequest("Invalid Kitsu character page"),
+        )
+        val url = "$BASE_URL/anime/$id/characters" +
+            "?page%5Blimit%5D=$limit&page%5Boffset%5D=$offset" +
+            "&include=character" +
+            "&fields%5BmediaCharacters%5D=role,character" +
+            "&fields%5Bcharacters%5D=name,image"
+        return execute(url, DETAIL_CACHE_TTL_MILLIS) { root ->
+            val refs = root.optJSONArray("data")
+                ?: throw JSONException("Missing Kitsu character page data")
+            val relation = JSONObject().put("relationships", JSONObject().put(
+                "characters", JSONObject().put("data", refs),
+            ))
+            val characters = parseIncludedCharacters(relation, root.optJSONArray("included"))
+                .orEmpty()
+            val next = root.optJSONObject("links")?.optString("next")
+                ?.takeIf { it.startsWith(BASE_URL) }
+            ReiAnixKitsuCharacterPage(characters, !next.isNullOrBlank())
+        }
+    }
+
     private suspend fun <T> execute(
         url: String,
         fallbackTtlMillis: Long,
@@ -155,6 +189,9 @@ class ReiAnixKitsuCatalogProvider(
             ?.takeIf { it.isFinite() && it in 0.0..100.0 }
             ?.toInt()
 
+        val relationCount = resource.optJSONObject("relationships")
+            ?.optJSONObject("characters")?.optJSONArray("data")?.length()
+        val embeddedCharacters = parseIncludedCharacters(resource, included)
         return ReiAnixCatalogAnime(
             source = source,
             ids = ReiAnixExternalCatalogIds(kitsuId = id),
@@ -178,7 +215,9 @@ class ReiAnixKitsuCatalogProvider(
                 ?: attributes.catalogText("ageRating"),
             startDate = attributes.catalogText("startDate"),
             endDate = attributes.catalogText("endDate"),
-            characters = parseIncludedCharacters(resource, included),
+            characters = embeddedCharacters,
+            charactersComplete = relationCount != null &&
+                embeddedCharacters != null && embeddedCharacters.size == relationCount,
         )
     }
 
@@ -228,7 +267,6 @@ class ReiAnixKitsuCatalogProvider(
                     else -> "Figurante"
                 }
                 add(ReiAnixAnimeCharacter(id, name, role, image))
-                if (size >= CHARACTER_LIMIT) break
             }
         }.distinctBy { it.id }
     }
@@ -275,7 +313,6 @@ class ReiAnixKitsuCatalogProvider(
     companion object {
         const val BASE_URL = "https://kitsu.io/api/edge"
         const val ACCEPT = "application/vnd.api+json, application/json"
-        private const val CHARACTER_LIMIT = 12
         // Kitsu's characters relationship is mediaCharacters -> character.
         // Include both in the existing request; keep only needed attributes.
         private const val CHARACTER_INCLUDE =
@@ -286,6 +323,11 @@ class ReiAnixKitsuCatalogProvider(
         const val DETAIL_CACHE_TTL_MILLIS = 24L * 60L * 60L * 1000L
     }
 }
+
+data class ReiAnixKitsuCharacterPage(
+    val characters: List<ReiAnixAnimeCharacter>,
+    val hasNextPage: Boolean,
+)
 
 private fun JSONObject.catalogText(key: String): String? {
     if (!has(key) || isNull(key)) return null

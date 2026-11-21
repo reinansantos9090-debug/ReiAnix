@@ -163,6 +163,46 @@ class ReiAnixKitsuCatalogProviderTest {
         assertNull(anime.characters)
     }
 
+
+    @Test
+    fun kitsuEmbeddedMetadataNeverTruncatesTheCastAtTwelve() = runBlocking {
+        val refs = (1..28).joinToString(",") { """{"type":"mediaCharacters","id":"$it"}""" }
+        val links = (1..28).joinToString(",") { i ->
+            """{"type":"mediaCharacters","id":"$i","attributes":{"role":"supporting"},"relationships":{"character":{"data":{"type":"characters","id":"$i"}}}}"""
+        }
+        val people = (1..28).joinToString(",") { i ->
+            """{"type":"characters","id":"$i","attributes":{"name":"Person $i","image":{"medium":"https://media.kitsu.app/$i.jpg"}}}"""
+        }
+        val transport = FakeTransport(ReiAnixCatalogHttpResponse(200, """
+            {"data":[{"id":"91","type":"anime","attributes":{"canonicalTitle":"Cast"},
+              "relationships":{"characters":{"data":[$refs]}}}],
+             "included":[$links,$people]}
+        """.trimIndent(), emptyMap()))
+        val result = ReiAnixKitsuCatalogProvider(transport)
+            .searchAnimeWithCharacters("Cast", 1)
+        val anime = (result as ReiAnixCatalogResult.Success).value.single()
+        assertEquals(28, anime.characters?.size)
+        assertTrue(anime.charactersComplete)
+        assertEquals(1, transport.calls)
+    }
+
+    @Test
+    fun kitsuCharacterPagesFollowRelationshipPaginationWithoutNewPosterSearches() = runBlocking {
+        val transport = FakeTransport(ReiAnixCatalogHttpResponse(200, """
+            {"data":[{"type":"mediaCharacters","id":"11","attributes":{"role":"main"},
+                       "relationships":{"character":{"data":{"type":"characters","id":"22"}}}}],
+             "included":[{"type":"characters","id":"22","attributes":{"name":"Hero",
+                           "image":{"medium":"https://media.kitsu.app/c.jpg"}}}],
+             "links":{"next":"https://kitsu.io/api/edge/anime/91/characters?page=2"}}
+        """.trimIndent(), emptyMap()))
+        val result = ReiAnixKitsuCatalogProvider(transport).getCharacterPage("91", 0, 20)
+        val page = (result as ReiAnixCatalogResult.Success).value
+        assertTrue(page.hasNextPage)
+        assertEquals(listOf("Hero"), page.characters.map { it.name })
+        assertTrue(transport.requestedUrl.orEmpty().contains("/anime/91/characters?"))
+        assertTrue(transport.requestedUrl.orEmpty().contains("page%5Boffset%5D=0"))
+    }
+
     @Test
     fun malformedResourceIdsAreSkippedWithoutDiscardingOtherKitsuResults() = runBlocking {
         val transport = FakeTransport(

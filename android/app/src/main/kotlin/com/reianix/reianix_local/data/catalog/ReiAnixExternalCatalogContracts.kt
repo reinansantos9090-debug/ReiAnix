@@ -207,6 +207,8 @@ data class ReiAnixCatalogAnime(
     val unclassifiedArtworkFields: List<ReiAnixCatalogArtworkSourceField> = emptyList(),
     /** Character entries included in the same Kitsu JSON:API metadata response. */
     val characters: List<com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter>? = null,
+    /** False when Kitsu returned only part of its cast relationship. */
+    val charactersComplete: Boolean = false,
 ) {
     init {
         require(!source.resolvesIdentifiers)
