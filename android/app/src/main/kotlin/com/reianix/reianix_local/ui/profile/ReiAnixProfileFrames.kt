@@ -42,14 +42,13 @@ internal val profileFrameOptions = listOf(
     ProfileFrameOption("cat_ears", "Gatinho mágico", "Orelhinhas felinas com brilho de cristais e pingente.", true),
     ProfileFrameOption("gold", "Dourada royal", "Coroa imperial, safiras e ouro ornamentado.", true),
     ProfileFrameOption("galaxy", "Galáxia", "Cristais celestes, ametistas e estrelas cintilantes.", true),
-    ProfileFrameOption("headset", "Fone gamer", "Arco futurista, almofadas e luzes neon pulsantes.", true),
     ProfileFrameOption("accent", "Colorida", "Contorno na cor escolhida para o perfil."),
     ProfileFrameOption("white", "Branca", "Contorno branco clássico."),
 )
 
 internal fun isAnimatedProfileFrame(frame: String) =
     frame == "neon" || frame == "sakura" || frame == "gold" || frame == "galaxy" ||
-        frame == "cat_ears" || frame == "headset"
+        frame == "cat_ears"
 
 /**
  * Canvas renders a small bounded number of primitives; the portrait stays in its own
