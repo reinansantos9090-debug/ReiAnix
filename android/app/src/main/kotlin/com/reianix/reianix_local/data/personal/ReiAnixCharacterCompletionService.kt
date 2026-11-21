@@ -120,7 +120,9 @@ class ReiAnixCharacterCompletionService(
         store.restore(animeId)
         val local = library.getAnime(animeId) ?: return
         val ids = runCatching { library.getExternalCatalogIds(animeId) }.getOrNull()
-            ?: ReiAnixExternalCatalogIds(aniListId = local.anilistId)
+            ?: ReiAnixExternalCatalogIds(
+                aniListId = local.anilistId?.takeIf { it > 0L },
+            )
         val associatedAniList = ids.aniListId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
             ?.toInt()
         val anilistAllowed = settings.getPreference("metadata.anilist_enabled")?.value
