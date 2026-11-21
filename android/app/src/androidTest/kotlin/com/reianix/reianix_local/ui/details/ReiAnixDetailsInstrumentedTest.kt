@@ -76,7 +76,10 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.onNodeWithText("ReiAnix Test").assertIsDisplayed()
         composeRule.onNodeWithText("2026").assertIsDisplayed()
         composeRule.onNodeWithTag("details-compact-metadata").assertExists()
-        composeRule.onNodeWithText("Biblioteca").assertIsDisplayed()
+        composeRule.onNode(
+            hasText("Biblioteca") and hasAnyAncestor(hasTestTag("details-compact-metadata")),
+            useUnmergedTree = true,
+        ).assertExists()
         composeRule.onNodeWithText("Anime").assertIsDisplayed()
         composeRule.onNodeWithText("8.6/10").assertIsDisplayed()
         composeRule.onNodeWithText("Biblioteca: 12 episódios locais", substring = true).assertExists()
